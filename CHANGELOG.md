@@ -87,10 +87,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Appearance migration now has a safe rendering boundary.** This groundwork does not change the
-  current Settings or first paint. It ensures future Mode, Theme, text-size, density, and code
+- **Appearance settings now saves every visual choice through one reliable model.** Mode, Theme,
+  text size, density, code size, and code-line presentation keep the previous choice visible until
+  persistence succeeds. A failed save shows Retry beside that control, while a restore problem
+  produces one warning and repairs only the affected defaults without overwriting the other axes.
+
+- **Appearance rendering now has a safe boundary.** Mode, Theme, text-size, density, and code
   display updates reach the page only after they are saved, and a system light/dark change is
-  ignored whenever a fixed Mode is selected.
+  ignored whenever a fixed Mode is selected. First paint remains unchanged.
 
 - **Appearance preferences now keep their capability ownership.** Mode, Theme, text size, and
   density are independently persisted Design System descriptors, while Conversations owns code

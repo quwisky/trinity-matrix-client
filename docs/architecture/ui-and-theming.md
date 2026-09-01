@@ -454,7 +454,8 @@ closed validator, default, versioned `trinity.appearance.*` key, portable export
 metadata. The six cells compose into one read-only Appearance value plus per-axis state without
 moving persistence out of Preferences Store. Theme validation is derived from `THEME_CATALOG`, so
 a removed Theme safely defaults only that axis and contributes to the aggregate's one recoverable
-partial-hydration warning.
+partial-hydration warning. Recovery writes defaults only for failed descriptors, then hydrates the
+aggregate again; a healthy axis is never reset as collateral.
 
 Resolved Appearance policy is platform-neutral. `resolveAppearance()` combines the six committed
 axes with a system light/dark value, and `AppearanceEffects.run()` is the cold lifetime that owns
@@ -465,13 +466,21 @@ the document and native chrome only while committed Mode is `system`; an explici
 Mode makes that input inert. Preference Store publishes only successful writes, so rejected
 persistence never changes resolved or rendered Appearance.
 
+Settings consumes those six axes through one screen-scoped controller. Labels, descriptions and
+options come from descriptor editor metadata; controls invoke descriptor-backed commands rather
+than `ThemeService` setters. A pending or failed command continues to render the committed value,
+and failure adds an inline Retry beside that control. The screen displays one warning for partial
+hydration and can restore only the affected defaults. As an incremental migration seam, the routed
+screen currently owns hydration and the cold effect subscription for its own lifetime; Application
+Runtime takes over that single session-long lifetime in the next slice.
+
 `ThemeService` remains the temporary startup and caller-compatibility facade during the staged
 migration. Its old `trinity.theme`, `trinity.palette`, `trinity.text-scale`, `trinity.density`,
 `trinity.code-scale`, and `trinity.code-lines` keys are read-only predecessors on the new
-descriptors; later tickets connect the new effect lifetime to startup, Settings, configuration,
-and concrete native chrome before removing the facade. First paint remains the existing CSS-only
-splash; the migration adds no inline bootstrap script. The axes remain orthogonal: any Theme works
-in either Mode, and code size multiplies text size rather than replacing it.
+descriptors; later tickets move the effect lifetime to startup and migrate configuration plus
+concrete native chrome before removing the facade. First paint remains the existing CSS-only splash;
+the migration adds no inline bootstrap script. The axes remain orthogonal: any Theme works in either
+Mode, and code size multiplies text size rather than replacing it.
 
 Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
 the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows

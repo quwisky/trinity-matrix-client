@@ -5,7 +5,10 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
-import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import {
+  closeSettings,
+  openSettingsSection,
+} from '../../../support/journeys/navigation.mts';
 
 // Covers the text-size setting (Settings → Appearance → Text size). The lever is the ROOT
 // font size, applied as a percentage, so everything that inherits from it scales.
@@ -50,15 +53,16 @@ async function choose(
 /**
  * Back to the room after visiting Settings.
  *
- * A full navigation, and it has to be: Settings is its own route and the server rail lives
- * in the rooms feature, so there is no in-app control to click back with. Each of these
- * therefore costs a cold boot — Rust-crypto init plus a first /sync, which this config
- * budgets at 15-40s under load — and that, not any race, is what puts these specs closest
- * to the 120s ceiling. Worth knowing before adding another settings round-trip to them.
+ * Close the host-owned Settings surface without restarting the application. #386 owns the
+ * settings journey and its screen-scoped effect; Application Runtime takes over restart-time
+ * hydration in #387. Reopening Settings below still proves that descriptor persistence, rather
+ * than component-local state, carries each choice across screen lifetimes.
  */
-async function backToRoom(page: Page, roomName: string): Promise<void> {
-  await page.goto('/rooms');
-  await openRoom(page, roomName);
+async function backToRoom(page: Page): Promise<void> {
+  await closeSettings(page);
+  await expect(page.getByTestId('composer-input')).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 const px = (locator: ReturnType<Page['locator']>) =>
@@ -154,8 +158,7 @@ test.describe('Text size', () => {
 
     // Back to the room: the MESSAGE is actually bigger. This is the whole claim — the root
     // value alone would pass even if the body had its own hard-coded size.
-    await page.goto('/rooms');
-    await openRoom(page, roomName);
+    await backToRoom(page);
     const scaled = page.locator('.msg__text', { hasText: body }).first();
     await expect(scaled).toBeVisible({ timeout: 20_000 });
     expect(await px(scaled)).toBeGreaterThan(before);
@@ -175,22 +178,22 @@ test.describe('Text size', () => {
     for (const step of ['small', 'default', 'large'] as const) {
       await openSettingsSection(page, 'appearance');
       await choose(page, 'text-scale-select', `text-scale-${step}`);
-      await page.goto('/rooms');
-      await openRoom(page, roomName);
+      await backToRoom(page);
       await expectColumnsMeet(page, step);
     }
 
     await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
-    await page.goto('/rooms');
-    await openRoom(page, roomName);
+    await backToRoom(page);
 
-    // Persisted, not session state.
-    await page.reload();
-    await openRoom(page, roomName);
-    const afterReload = page.locator('.msg__text', { hasText: body }).first();
-    await expect(afterReload).toBeVisible({ timeout: 20_000 });
-    expect(await px(afterReload)).toBeGreaterThan(before);
+    // Recreate the screen: hydration must read the persisted descriptor envelope rather than
+    // relying on the destroyed controller's local command state. Full application restart is
+    // pinned by #387, where startup becomes the owner of this lifetime.
+    await openSettingsSection(page, 'appearance');
+    await expect(
+      page.getByTestId('text-scale-select').locator('button').first(),
+    ).toHaveText('Larger');
+    await backToRoom(page);
   });
 });
 
@@ -269,7 +272,7 @@ test.describe('Code size', () => {
 
     await openSettingsSection(page, 'appearance');
     await choose(page, 'code-scale-select', 'code-scale-larger');
-    await backToRoom(page, roomName);
+    await backToRoom(page);
 
     const proseLarger = await px(prose);
     const codeLarger = await px(code);
@@ -283,16 +286,18 @@ test.describe('Code size', () => {
     // this ratio would collapse back towards the correction.
     await openSettingsSection(page, 'appearance');
     await choose(page, 'text-scale-select', 'text-scale-larger');
-    await backToRoom(page, roomName);
+    await backToRoom(page);
 
     const proseBoth = await px(prose);
     const codeBoth = await px(code);
     expect(proseBoth).toBeGreaterThan(proseDefault);
     expect(codeBoth / proseBoth).toBeCloseTo(codeLarger / proseLarger, 2);
 
-    // Persisted, not session state.
-    await page.reload();
-    await openRoom(page, roomName);
+    await openSettingsSection(page, 'appearance');
+    await expect(
+      page.getByTestId('code-scale-select').locator('button').first(),
+    ).toHaveText('Larger');
+    await backToRoom(page);
     await expect(code).toBeVisible({ timeout: 20_000 });
     expect(await px(code)).toBeCloseTo(codeBoth, 1);
   });
@@ -409,7 +414,7 @@ test.describe('Code line numbers', () => {
 
     await openSettingsSection(page, 'appearance');
     await choose(page, 'code-lines-select', 'code-lines-always');
-    await backToRoom(page, roomName);
+    await backToRoom(page);
 
     // `always` reaches the short block, which carries no `rows` — proof the preference is
     // applied in CSS rather than baked into the memoized markup.
@@ -419,7 +424,7 @@ test.describe('Code line numbers', () => {
 
     await openSettingsSection(page, 'appearance');
     await choose(page, 'code-lines-select', 'code-lines-off');
-    await backToRoom(page, roomName);
+    await backToRoom(page);
 
     await expect(longBlock).toBeVisible({ timeout: 20_000 });
     expect(await firstNumber(longBlock)).toBe('none');

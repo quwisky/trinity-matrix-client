@@ -246,4 +246,87 @@ describe('AppearancePreferences', () => {
       ...CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS,
     ]).toHaveLength(6);
   });
+
+  it('exposes descriptor editors and commits an axis only after persistence succeeds', async () => {
+    const write = vi
+      .fn<PreferenceStorageAdapter['write']>()
+      .mockReturnValueOnce(
+        of({
+          kind: 'unavailable',
+          diagnostic: { code: 'device-storage-unavailable' },
+        }),
+      )
+      .mockReturnValueOnce(of({ kind: 'completed' }));
+    TestBed.configureTestingModule({
+      providers: [
+        provideAppearancePreferences(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () => of({ kind: 'missing' }),
+            write,
+          } satisfies PreferenceStorageAdapter,
+        },
+      ],
+    });
+    const appearance = TestBed.inject(AppearancePreferences);
+
+    expect(appearance.axes.theme.editor).toEqual(THEME_PREFERENCE.editor);
+
+    await expect(
+      firstValueFrom(appearance.axes.theme.set('amethyst')),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      recovery: 'retry-storage',
+      diagnostic: { code: 'preference-storage-write-failed' },
+    });
+    expect(appearance.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
+
+    await expect(
+      firstValueFrom(appearance.axes.theme.set('amethyst')),
+    ).resolves.toEqual({ kind: 'completed' });
+    expect(appearance.axes.theme.value()).toBe('amethyst');
+  });
+
+  it('recovers only failed hydration axes through their descriptor defaults', async () => {
+    const stored = new Map<string, string>([
+      [
+        THEME_PREFERENCE.persistence.key,
+        JSON.stringify({ version: 1, value: 'removed-theme' }),
+      ],
+      [
+        MODE_PREFERENCE.persistence.key,
+        JSON.stringify({ version: 1, value: 'light' }),
+      ],
+    ]);
+    const adapter: PreferenceStorageAdapter = {
+      read: (request) =>
+        of(
+          stored.has(request.key)
+            ? { kind: 'found', payload: stored.get(request.key) ?? '' }
+            : { kind: 'missing' },
+        ),
+      write: (request) => {
+        stored.set(request.key, request.payload);
+        return of({ kind: 'completed' });
+      },
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        provideAppearancePreferences(),
+        { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
+      ],
+    });
+    const appearance = TestBed.inject(AppearancePreferences);
+    const outcome = await firstValueFrom(appearance.hydrate());
+    if (outcome.kind !== 'partial') {
+      throw new Error('Expected partial Appearance hydration');
+    }
+
+    await expect(
+      firstValueFrom(appearance.recoverHydration(outcome.failures)),
+    ).resolves.toEqual({ kind: 'ready', hydrated: 6 });
+    expect(appearance.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
+    expect(appearance.axes.mode.value()).toBe('light');
+  });
 });

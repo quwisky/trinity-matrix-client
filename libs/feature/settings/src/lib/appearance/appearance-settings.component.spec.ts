@@ -1,44 +1,41 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { THEME_CATALOG } from '@trinity/theme-foundation';
+import {
+  AppearanceEffects,
+  AppearancePreferences,
+  THEME_PREFERENCE,
+  type ResolvedAppearance,
+  provideAppearancePreferences,
+} from '@trinity/application/appearance';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
   ComposerSettingsService,
   SystemLineSettingsService,
-  ThemeService,
-  TRINITY_TEXT_SCALES,
-  TRINITY_CODE_SCALES,
-  TRINITY_CODE_LINE_MODES,
-  TRINITY_DENSITIES,
-  type CodeLineMode,
-  type CodeScale,
-  type Density,
-  type Palette,
-  type ResolvedTheme,
-  type TextScale,
-  type ThemePreference,
 } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
-import { TrnSwitchComponent } from '@trinity/components/controls';
+import {
+  TrnSelectComponent,
+  TrnSwitchComponent,
+} from '@trinity/components/controls';
 import { DateTimeFormatService } from '@trinity/platform-native';
+import {
+  PREFERENCE_STORAGE_ADAPTER,
+  type PreferenceStorageAdapter,
+} from '@trinity/runtime/preferences';
 import {
   SpaceRoomOrderService,
   TRINITY_ROOM_SORTS,
   type RoomSortMode,
 } from '@trinity/data-access/room-library';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
-import { of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 
 describe('AppearanceSettingsComponent', () => {
-  let preference: ReturnType<typeof signal<ThemePreference>>;
-  let resolved: ReturnType<typeof signal<ResolvedTheme>>;
-  let palette: ReturnType<typeof signal<Palette>>;
-  let textScale: ReturnType<typeof signal<TextScale>>;
-  let codeScale: ReturnType<typeof signal<CodeScale>>;
-  let codeLines: ReturnType<typeof signal<CodeLineMode>>;
-  let density: ReturnType<typeof signal<Density>>;
+  let resolved: ReturnType<typeof signal<ResolvedAppearance | undefined>>;
+  let storageRead: Mock<PreferenceStorageAdapter['read']>;
+  let storageWrite: Mock<PreferenceStorageAdapter['write']>;
   let showMembership: ReturnType<typeof signal<boolean>>;
   let showProfile: ReturnType<typeof signal<boolean>>;
   let showRoomChanges: ReturnType<typeof signal<boolean>>;
@@ -53,13 +50,16 @@ describe('AppearanceSettingsComponent', () => {
   let setFormatOnSelection: Mock;
 
   beforeEach(() => {
-    preference = signal<ThemePreference>('system');
-    resolved = signal<ResolvedTheme>('dark');
-    palette = signal<Palette>('trinity');
-    textScale = signal<TextScale>('default');
-    codeScale = signal<CodeScale>('default');
-    codeLines = signal<CodeLineMode>('auto');
-    density = signal<Density>('cosy');
+    resolved = signal<ResolvedAppearance | undefined>({
+      mode: 'dark',
+      theme: 'trinity',
+      textSize: 'default',
+      density: 'cosy',
+      codeSize: 'default',
+      codeLinePresentation: 'auto',
+    });
+    storageRead = vi.fn(() => of({ kind: 'missing' }));
+    storageWrite = vi.fn(() => of({ kind: 'completed' }));
     showMembership = signal(true);
     showProfile = signal(true);
     showRoomChanges = signal(true);
@@ -77,19 +77,17 @@ describe('AppearanceSettingsComponent', () => {
   function renderPage() {
     return render(AppearanceSettingsComponent, {
       providers: [
-        MockProvider(ThemeService, {
-          preference,
-          resolved,
-          palette,
-          palettes: THEME_CATALOG.themes,
-          textScale,
-          textScales: TRINITY_TEXT_SCALES,
-          codeScale,
-          codeScales: TRINITY_CODE_SCALES,
-          codeLines,
-          codeLineModes: TRINITY_CODE_LINE_MODES,
-          density,
-          densities: TRINITY_DENSITIES,
+        provideAppearancePreferences(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: storageRead,
+            write: storageWrite,
+          } satisfies PreferenceStorageAdapter,
+        },
+        MockProvider(AppearanceEffects, {
+          resolved: resolved.asReadonly(),
+          run: () => NEVER,
         }),
         MockProvider(ComposerSettingsService, {
           showFormattingToolbar,
@@ -156,9 +154,16 @@ describe('AppearanceSettingsComponent', () => {
     expect(preview?.getAttribute('aria-hidden')).toBe('true');
     expect(state?.textContent).toContain('dark · Trinity · Cosy');
 
-    resolved.set('light');
-    palette.set('onyx');
-    density.set('compact');
+    resolved.set({
+      mode: 'light',
+      theme: 'onyx',
+      textSize: 'default',
+      density: 'compact',
+      codeSize: 'default',
+      codeLinePresentation: 'auto',
+    });
+    fixture.componentInstance.appearance.update('theme', 'onyx');
+    fixture.componentInstance.appearance.update('density', 'compact');
     fixture.detectChanges();
 
     expect(state?.textContent).toContain('light · Onyx · Compact');
@@ -169,9 +174,35 @@ describe('AppearanceSettingsComponent', () => {
 
     fixture.componentInstance.onThemeChange('light');
 
-    expect(TestBed.inject(ThemeService).setPreference).toHaveBeenCalledWith(
+    expect(TestBed.inject(AppearancePreferences).axes.mode.value()).toBe(
       'light',
     );
+    expect(storageWrite).toHaveBeenCalledOnce();
+  });
+
+  it('surfaces one recoverable warning when one Appearance axis fails hydration', async () => {
+    storageRead.mockImplementation((request) =>
+      of(
+        request.key === THEME_PREFERENCE.persistence.key
+          ? {
+              kind: 'found',
+              payload: JSON.stringify({
+                version: 1,
+                value: 'removed-theme',
+              }),
+            }
+          : { kind: 'missing' },
+      ),
+    );
+
+    const { container } = await renderPage();
+
+    expect(
+      container.querySelectorAll('[data-testid=appearance-hydration-warning]'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('[data-testid=appearance-hydration-recover]'),
+    ).not.toBeNull();
   });
 
   it('gives every enumerated control an accessible name via aria-labelledby', async () => {
@@ -199,27 +230,22 @@ describe('AppearanceSettingsComponent', () => {
   // the palette dropdown above. Here: the controls exist, are bound, and validate what they
   // are handed.
   it('offers every registered text size, bound to the current one', async () => {
-    textScale.set('large');
-    const { container } = await renderPage();
+    const { container, fixture } = await renderPage();
+    fixture.componentInstance.appearance.update('textSize', 'large');
+    fixture.detectChanges();
 
     const trigger = container.querySelector('[data-testid=text-scale-select]');
     expect(trigger).not.toBeNull();
     expect(trigger!.textContent).toContain('Large');
   });
 
-  it('applies a chosen text size, and ignores an unregistered one', async () => {
+  it('applies a chosen text size through the descriptor command', async () => {
     const { fixture } = await renderPage();
-    const theme = TestBed.inject(ThemeService);
-    const cmp = fixture.componentInstance;
+    fixture.componentInstance.appearance.update('textSize', 'larger');
 
-    cmp.onTextScaleChange('larger');
-    expect(theme.setTextScale).toHaveBeenCalledWith('larger');
-
-    // The select can only offer registered ids, but the handler takes `string | null` from
-    // the Helm output — so it must reject anything else rather than widen the type.
-    cmp.onTextScaleChange('gigantic');
-    cmp.onTextScaleChange(null);
-    expect(theme.setTextScale).toHaveBeenCalledTimes(1);
+    expect(TestBed.inject(AppearancePreferences).axes.textSize.value()).toBe(
+      'larger',
+    );
   });
 
   describe('date and time', () => {
@@ -411,8 +437,9 @@ describe('AppearanceSettingsComponent', () => {
   // reading `amethyst` under an option labelled 'Amethyst'. `toContain` is case-sensitive,
   // which is the whole reason the negative half of this assertion can still fail.
   it('shows the chosen palette’s label on the collapsed trigger, not the stored id', async () => {
-    palette.set('amethyst');
-    const { container } = await renderPage();
+    const { container, fixture } = await renderPage();
+    selectFor(fixture, 'palette-select')?.value.set('amethyst');
+    fixture.detectChanges();
 
     const trigger = container.querySelector(
       '[data-testid="palette-select"] hlm-select-trigger',
@@ -425,19 +452,44 @@ describe('AppearanceSettingsComponent', () => {
   it('applies the chosen palette when the dropdown emits a value', async () => {
     const { fixture } = await renderPage();
 
-    fixture.componentInstance.onPaletteChange('amethyst');
+    fixture.componentInstance.appearance.update('theme', 'amethyst');
 
-    expect(TestBed.inject(ThemeService).setPalette).toHaveBeenCalledWith(
+    expect(TestBed.inject(AppearancePreferences).axes.theme.value()).toBe(
       'amethyst',
     );
   });
 
-  it('ignores a cleared (null) palette value', async () => {
-    const { fixture } = await renderPage();
+  it('keeps the committed Theme visible and renders inline Retry after a failed write', async () => {
+    storageWrite
+      .mockReturnValueOnce(
+        of({
+          kind: 'unavailable',
+          diagnostic: { code: 'device-storage-unavailable' },
+        }),
+      )
+      .mockReturnValueOnce(of({ kind: 'completed' }));
+    const { container, fixture } = await renderPage();
 
-    fixture.componentInstance.onPaletteChange(null);
+    fixture.componentInstance.appearance.update('theme', 'amethyst');
+    fixture.detectChanges();
 
-    expect(TestBed.inject(ThemeService).setPalette).not.toHaveBeenCalled();
+    const trigger = container.querySelector(
+      '[data-testid="palette-select"] hlm-select-trigger',
+    );
+    expect(trigger?.textContent).toContain('Trinity');
+    expect(
+      container.querySelector('[data-testid=palette-select-failure]'),
+    ).not.toBeNull();
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=palette-select-retry]')
+      ?.click();
+    fixture.detectChanges();
+
+    expect(trigger?.textContent).toContain('Amethyst');
+    expect(
+      container.querySelector('[data-testid=palette-select-failure]'),
+    ).toBeNull();
   });
 
   /** The `trn-switch` inside the labelled toggle with the given testid. */
@@ -451,6 +503,21 @@ describe('AppearanceSettingsComponent', () => {
           `[data-testid=${testid}]`,
         ),
       ) as { componentInstance: TrnSwitchComponent } | undefined;
+  }
+
+  function selectFor(fixture: unknown, testid: string) {
+    const control = (
+      fixture as { debugElement: { queryAll: (p: unknown) => unknown[] } }
+    ).debugElement
+      .queryAll(By.directive(TrnSelectComponent))
+      .find((control) =>
+        (control as { nativeElement: HTMLElement }).nativeElement.matches(
+          `[data-testid=${testid}]`,
+        ),
+      );
+    return (
+      control as { componentInstance: TrnSelectComponent<string> } | undefined
+    )?.componentInstance;
   }
 
   // Each switch is a separate binding, so a copy-paste slip (profile bound to

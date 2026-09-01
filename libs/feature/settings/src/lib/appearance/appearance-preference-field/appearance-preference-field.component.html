@@ -1,0 +1,43 @@
+<div trnSettingsFieldRow>
+  <span class="min-w-0">
+    <strong
+      [id]="headingId()"
+      class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
+      >{{ model().editor.label }}</strong
+    >
+    <small class="block text-13 text-[var(--trinity-text-muted)]">{{
+      model().editor.description
+    }}</small>
+  </span>
+  <div class="min-w-0">
+    <trn-select
+      [attr.data-testid]="testId()"
+      [aria-labelledby]="headingId()"
+      [placeholder]="'Select ' + model().editor.label.toLowerCase()"
+      triggerClass="w-full"
+      [options]="options()"
+      [value]="model().value()"
+      [disabled]="status().busy()"
+      (valueChange)="update($event)"
+    />
+    @if (status().failed()) {
+      <div
+        role="alert"
+        class="mt-2 flex flex-wrap items-center justify-end gap-2 text-13 text-danger"
+        [attr.data-testid]="testId() + '-failure'"
+      >
+        <span>This choice could not be saved.</span>
+        <button
+          trnBtn
+          type="button"
+          variant="outline"
+          size="sm"
+          [attr.data-testid]="testId() + '-retry'"
+          (click)="controller.retry(axis())"
+        >
+          Retry
+        </button>
+      </div>
+    }
+  </div>
+</div>

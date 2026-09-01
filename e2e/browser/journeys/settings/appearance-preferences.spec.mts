@@ -25,7 +25,7 @@ test.describe('Settings', () => {
     await page.getByTestId('theme-dark').click();
     await expect.poll(() => hasDarkPalette(page)).toBe(true);
 
-    const paletteTrigger = page.getByRole('combobox', { name: 'Palette' });
+    const paletteTrigger = page.getByRole('combobox', { name: 'Theme' });
     await paletteTrigger.evaluate((element) => {
       element.setAttribute('data-testid', 'dark-palette-trigger');
     });

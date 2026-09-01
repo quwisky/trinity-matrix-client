@@ -3,46 +3,16 @@
   headingId="appearance-code-heading"
   description="Set code text independently while keeping it proportional to the app's text size."
 >
-  <div trnSettingsFieldRow>
-    <span class="min-w-0">
-      <strong
-        id="appearance-code-size-heading"
-        class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-        >Code size</strong
-      >
-      <small class="block text-13 text-[var(--trinity-text-muted)]"
-        >Inline code and whole message blocks</small
-      >
-    </span>
-    <trn-select
-      data-testid="code-scale-select"
-      aria-labelledby="appearance-code-size-heading"
-      placeholder="Select a code size"
-      triggerClass="w-full"
-      [options]="codeScaleOptions"
-      [value]="theme.codeScale()"
-      (valueChange)="onCodeScaleChange($event)"
-    />
-  </div>
-  <div trnSettingsFieldRow>
-    <span class="min-w-0">
-      <strong
-        id="appearance-code-lines-heading"
-        class="block text-sm font-semibold text-[var(--trinity-text-bright)]"
-        >Line numbers</strong
-      >
-      <small class="block text-13 text-[var(--trinity-text-muted)]"
-        >Numbers are never included when you copy</small
-      >
-    </span>
-    <trn-select
-      data-testid="code-lines-select"
-      aria-labelledby="appearance-code-lines-heading"
-      placeholder="Select when to number lines"
-      triggerClass="w-full"
-      [options]="codeLineOptions"
-      [value]="theme.codeLines()"
-      (valueChange)="onCodeLinesChange($event)"
-    />
-  </div>
+  <trn-appearance-preference-field
+    axis="codeSize"
+    headingId="appearance-code-size-heading"
+    testId="code-scale-select"
+    optionTestIdPrefix="code-scale"
+  />
+  <trn-appearance-preference-field
+    axis="codeLinePresentation"
+    headingId="appearance-code-lines-heading"
+    testId="code-lines-select"
+    optionTestIdPrefix="code-lines"
+  />
 </trn-settings-group>

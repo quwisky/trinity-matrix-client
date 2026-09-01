@@ -50,8 +50,16 @@ expand step does not alter the existing CSS-only first-paint splash contract.
 
 Settings is a catalog consumer, not a policy owner. Its shared renderer selects descriptor editor
 metadata for an exact context and subscribes to the descriptor command; it does not know raw keys,
-defaults, migration rules, or capability policy. The Privacy journey is the first migrated slice.
-Its descriptors are defined and exported by the Conversations capability in
+defaults, migration rules, or capability policy. The Appearance journey consumes its six-axis
+application model and the select editor metadata carried by each descriptor. A user command keeps
+the committed value rendered until its write completes; failure leaves that value in place and
+offers Retry beside only the initiating control. Partial hydration produces one screen warning,
+and recovery resets only failed axes through their descriptor defaults while preserving the other
+five. Until Application Runtime owns this lifetime in the next migration slice, the routed screen
+temporarily hydrates Appearance and subscribes to its cold effects for its own lifetime.
+
+The Privacy journey follows the same policy boundary through the shared catalog renderer. Its
+descriptors are defined and exported by the Conversations capability in
 `@trinity/data-access/timeline`. The capability contributes them to the policy-free catalog; the
 application composition root separately binds the same descriptor set to the temporary
 `PrivacySettingsService` compatibility facade. Existing callers continue to read signals while

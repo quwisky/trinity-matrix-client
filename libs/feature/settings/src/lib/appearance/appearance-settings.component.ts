@@ -7,23 +7,17 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  TrnButton,
   TrnRadioGroupComponent,
   type TrnRadioOption,
-} from '@trinity/components/controls';
-import {
   TrnSelectComponent,
   type TrnSelectOption,
+  TrnSwitchComponent,
 } from '@trinity/components/controls';
-import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   DateTimeFormatService,
   ComposerSettingsService,
   SystemLineSettingsService,
-  ThemeService,
-  type Palette,
-  type Density,
-  type TextScale,
-  type ThemePreference,
 } from '@trinity/platform-native';
 import {
   SpaceRoomOrderService,
@@ -31,8 +25,9 @@ import {
   isRoomSortMode,
 } from '@trinity/data-access/room-library';
 import { isDateFormat, isTimeFormat } from '@trinity/util/matrix';
-import { THEME_CATALOG } from '@trinity/theme-foundation';
 import { CodeAppearanceBlockComponent } from './code-appearance-block.component';
+import { AppearancePreferenceFieldComponent } from './appearance-preference-field/appearance-preference-field.component';
+import { AppearanceSettingsController } from './appearance-settings.controller';
 import { MessageGesturesBlockComponent } from './message-gestures-block.component';
 import { AppearancePreviewComponent } from './appearance-preview.component';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
@@ -41,7 +36,7 @@ import { SettingsFieldRowDirective } from '../shared/settings-field-row.directiv
 import { SettingsGroupComponent } from '../shared/settings-group/settings-group.component';
 
 /**
- * Appearance settings sub-page: light/dark/system mode, colour palette, text and code size,
+ * Appearance settings sub-page: Mode, Theme, text and code size,
  * how dates and times are written, how rooms are ordered inside a space, and which system
  * lines (joins, profile changes, room changes) the timeline shows.
  *
@@ -52,11 +47,14 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
   selector: 'trn-appearance-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-settings.component.html',
+  providers: [AppearanceSettingsController],
   imports: [
+    TrnButton,
     TrnRadioGroupComponent,
     TrnSelectComponent,
     TrnSwitchComponent,
     CodeAppearanceBlockComponent,
+    AppearancePreferenceFieldComponent,
     MessageGesturesBlockComponent,
     AppearancePreviewComponent,
     SettingsSectionHeadingComponent,
@@ -66,19 +64,20 @@ import { SettingsGroupComponent } from '../shared/settings-group/settings-group.
   ],
 })
 export class AppearanceSettingsComponent {
-  readonly theme = inject(ThemeService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  readonly appearance = inject(AppearanceSettingsController);
   /** Light/dark/system, in the shape the radio group takes. */
-  readonly themeOptions: readonly TrnRadioOption<ThemePreference>[] =
-    THEME_CATALOG.modes.map(({ id, label }) => ({
-      value: id,
+  readonly themeOptions: readonly TrnRadioOption<string>[] =
+    this.appearance.axes.mode.editor.options.map(({ value, label }) => ({
+      value,
       label,
-      testId: `theme-${id}`,
+      testId: `theme-${value}`,
     }));
   readonly systemLines = inject(SystemLineSettingsService);
   readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);
   readonly spaceOrder = inject(SpaceRoomOrderService);
-  private readonly destroyRef = inject(DestroyRef);
 
   /**
    * The instant every format option is previewed against.
@@ -89,49 +88,18 @@ export class AppearanceSettingsComponent {
    */
   readonly sample = new Date(2026, 6, 24, 15, 45).getTime();
 
-  readonly paletteLabel = computed(
+  readonly resolvedMode = computed(
     () =>
-      this.theme.palettes.find((option) => option.id === this.theme.palette())
-        ?.label ?? this.theme.palette(),
+      this.appearance.resolved()?.mode ??
+      (this.appearance.axes.mode.value() === 'light' ? 'light' : 'dark'),
   );
-  readonly densityLabel = computed(
-    () =>
-      this.theme.densities.find((option) => option.id === this.theme.density())
-        ?.label ?? this.theme.density(),
-  );
+  readonly themeLabel = computed(() => this.labelFor('theme'));
+  readonly densityLabel = computed(() => this.labelFor('density'));
 
-  /** Apply + persist the chosen light/dark mode when the radio group changes. */
+  /** Persist the chosen Mode; projection observes it only after the command commits. */
   onThemeChange(value: string): void {
-    this.theme.setPreference(value as ThemePreference);
+    this.appearance.update('mode', value);
   }
-
-  /** Apply + persist the chosen colour palette when the dropdown changes. */
-  onPaletteChange(value: string | null | undefined): void {
-    if (value) {
-      this.theme.setPalette(value as Palette);
-    }
-  }
-
-  /** Every select's choices, in the shape the wrapper takes. */
-  readonly textScaleOptions: readonly TrnSelectOption<string>[] =
-    this.theme.textScales.map((scale) => ({
-      value: scale.id,
-      label: scale.label,
-      testId: `text-scale-${scale.id}`,
-    }));
-
-  readonly densityOptions: readonly TrnSelectOption<string>[] =
-    this.theme.densities.map((density) => ({
-      value: density.id,
-      label: density.label,
-      testId: `density-${density.id}`,
-    }));
-  readonly paletteOptions: readonly TrnSelectOption<string>[] =
-    this.theme.palettes.map((palette) => ({
-      value: palette.id,
-      label: palette.label,
-      testId: `palette-${palette.id}`,
-    }));
   /**
    * `computed`, not a field initializer, because the preview text is not static.
    *
@@ -167,23 +135,6 @@ export class AppearanceSettingsComponent {
       testId: `space-order-${option.id}`,
     }));
 
-  /** Apply + persist how much room the app leaves around things. */
-  onDensityChange(value: string | null | undefined): void {
-    // Guarded like every other choice here: the select is ours, but `valueChange` is a
-    // string and the setter takes a union — narrowing against the registered list is what
-    // keeps a stale saved value or a typo out of the token attribute.
-    if (this.theme.densities.some((density) => density.id === value)) {
-      this.theme.setDensity(value as Density);
-    }
-  }
-
-  /** Apply + persist how large text is. */
-  onTextScaleChange(value: string | null | undefined): void {
-    if (this.theme.textScales.some((scale) => scale.id === value)) {
-      this.theme.setTextScale(value as TextScale);
-    }
-  }
-
   /** Apply + persist how the clock is written. */
   onTimeFormatChange(value: string | null | undefined): void {
     if (isTimeFormat(value)) {
@@ -209,5 +160,14 @@ export class AppearanceSettingsComponent {
             console.error('Could not save the room ordering preference', err),
         });
     }
+  }
+
+  private labelFor(axis: 'theme' | 'density'): string {
+    const model = this.appearance.axes[axis];
+    const value = model.value();
+    return (
+      model.editor.options.find((option) => option.value === value)?.label ??
+      value
+    );
   }
 }

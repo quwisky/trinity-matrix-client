@@ -14,7 +14,7 @@ Trinity keeps the current room open and shows an error so you can retry without 
 
 !!! warning "Preferences do not follow your account"
 
-    Everything that is a *preference* — theme, palette, date and time format, timeline
+    Everything that is a *preference* — Mode, Theme, date and time format, timeline
     density, privacy toggles, keyboard shortcuts, GIF configuration, drafts, the experimental
     flags, the push gateway — is stored on the device that set it. Sign in on a second device
     and you start from the defaults there.
@@ -30,22 +30,22 @@ Trinity keeps the current room open and shows an error so you can retry without 
 
 ## The fourteen sections
 
-| Section            | What it holds                                                          |
-| ------------------ | ---------------------------------------------------------------------- |
-| Profile            | Avatar and display name.                                               |
-| Presence           | Your own online state and status message.                              |
-| Appearance         | Theme, palette, date and time format, room ordering, timeline density. |
-| Devices            | Your signed-in sessions: rename, verify, sign out.                     |
-| Account            | Change your password.                                                  |
-| Security           | Encryption posture and room-key export or import.                      |
-| Notifications      | Account-wide push rules, keywords, and this device's push gateway.     |
-| Server             | What each account's homeserver is running, and where it is reached.    |
-| Privacy            | Read receipts and link previews.                                       |
-| GIFs               | Which GIF provider to use, and its API key.                            |
-| Stickers & emoji   | Account-wide MSC2545 image-pack installation and removal.              |
-| Keyboard shortcuts | Every shortcut, its binding, and rebinding.                            |
-| Experimental       | Opt-in feature flags.                                                  |
-| Advanced           | Every setting on this device as one document: copy, edit, import.      |
+| Section            | What it holds                                                       |
+| ------------------ | ------------------------------------------------------------------- |
+| Profile            | Avatar and display name.                                            |
+| Presence           | Your own online state and status message.                           |
+| Appearance         | Mode, Theme, date and time format, room ordering, timeline density. |
+| Devices            | Your signed-in sessions: rename, verify, sign out.                  |
+| Account            | Change your password.                                               |
+| Security           | Encryption posture and room-key export or import.                   |
+| Notifications      | Account-wide push rules, keywords, and this device's push gateway.  |
+| Server             | What each account's homeserver is running, and where it is reached. |
+| Privacy            | Read receipts and link previews.                                    |
+| GIFs               | Which GIF provider to use, and its API key.                         |
+| Stickers & emoji   | Account-wide MSC2545 image-pack installation and removal.           |
+| Keyboard shortcuts | Every shortcut, its binding, and rebinding.                         |
+| Experimental       | Opt-in feature flags.                                               |
+| Advanced           | Every setting on this device as one document: copy, edit, import.   |
 
 ## Profile
 
@@ -62,21 +62,22 @@ characters. Matrix has no "invisible" state, so Trinity does not offer one.
 
 ## Appearance
 
-Appearance groups related controls under **Mode and palette**, **Layout**, **Code**, **Date and
+Appearance groups related controls under **Mode and Theme**, **Layout**, **Code**, **Date and
 time**, **Room lists**, **Timeline**, **Composer**, and **Message gestures**. Labels and supporting
 copy stay on the leading side while dropdowns and switches stay on the logical trailing side on a
 wide window; they stack when the pane is narrow. The top of the page includes a compact live
-conversation preview. It follows the selected mode, palette, text size, time format and density
+conversation preview. It follows the selected Mode, Theme, text size, time format and density
 immediately, so you can compare the combined result without leaving Settings. It is only a preview:
 its names and messages are illustrative and none of them are interactive.
 
-**Theme.** Light, Dark, or follow the system setting, presented as one segmented radio control with
+**Mode.** Light, Dark, or follow the system setting, presented as one segmented radio control with
 normal arrow-key and screen-reader behavior. The page states which one is currently resolved, which
 matters when you have chosen "system".
 
-**Palette.** The accent colour scheme, independent of light and dark. Two ship: Trinity
-(blurple) and Amethyst (violet). Mode and palette are genuinely orthogonal — each palette
-defines both a light and a dark set.
+**Theme.** The visual token set, independent of light and dark. Three ship: Trinity
+(blurple), Amethyst (violet), and Onyx (neutral, with true black in dark Mode). Mode and Theme are
+genuinely orthogonal — each Theme defines both a light and a dark set. A choice appears only after
+it is saved; if saving fails, the previous choice remains visible with Retry beside the control.
 
 **Text size.** Small, Default, Large or Larger. It is a proportion of whatever your browser
 or device is already set to, so if you have raised your default text size there, this adds to
