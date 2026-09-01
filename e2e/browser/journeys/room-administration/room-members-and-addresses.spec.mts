@@ -85,9 +85,11 @@ test.describe('Room settings', () => {
 
     // Unban them: the row disappears and the ban is lifted server-side.
     await row.getByTestId('banned-member-unban').click();
-    await expect(page.getByText(`Unbanned ${targetName}.`)).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(
+      page
+        .getByLabel('Notifications alt+T')
+        .getByText(`Unbanned ${targetName}.`),
+    ).toBeVisible({ timeout: 20_000 });
 
     const membership = async (): Promise<unknown> => {
       const res = await request.get(

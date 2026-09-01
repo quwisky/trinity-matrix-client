@@ -626,6 +626,9 @@ All notable changes to this project are documented here. The format is based on
   long journey returns through the product's jump-to-latest action while keeping its bottom-pin and
   deliberate-reading-offset assertions strict.
 
+- **The room-unban journey now identifies the visible confirmation notification precisely.** Its
+  assertion no longer collides with CDK's visually hidden live-announcer copy of the same message.
+
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
   their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also
