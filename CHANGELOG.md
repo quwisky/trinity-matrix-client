@@ -601,6 +601,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
+  Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
+  their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also
+  records the current URL, button states and alerts before checking the guarded verification route.
+
 - **Selecting the Room already open no longer reports a navigation error.** An exact Workspace
   selection is now a successful no-op: it neither writes duplicate browser history nor releases
   and refocuses the active Conversation. Selecting the same Room from the compact list still

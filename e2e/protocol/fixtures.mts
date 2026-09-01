@@ -28,10 +28,13 @@ import {
   type ProtocolCredentials,
 } from './runtime.mts';
 
-interface ProtocolFixtures {
+interface ProtocolCredentialFixtures {
   protocolCredentials: ProtocolCredentials;
   protocolBrowser: ProtocolBrowser;
   protocolDiagnostics: void;
+}
+
+interface ProtocolMetadataFixtures {
   protocolMetadata: void;
 }
 
@@ -82,7 +85,7 @@ const resourceTest = baseTest.extend<E2EResourceFixtures, E2EWorkerFixtures>(
   resourceFixtureDefinitions,
 );
 
-export const test = resourceTest.extend<ProtocolFixtures>({
+const protocolTest = resourceTest.extend<ProtocolMetadataFixtures>({
   protocolMetadata: [
     async ({}, use, testInfo) => {
       const suite = protocolSuite(selectedProtocolSuiteId());
@@ -102,6 +105,13 @@ export const test = resourceTest.extend<ProtocolFixtures>({
     },
     { auto: true },
   ],
+});
+
+/** Protocol checks that intentionally own no Homeserver or Account credentials. */
+export const standaloneTest = protocolTest;
+
+/** Protocol journeys whose diagnostics must redact attempt-scoped credentials. */
+export const test = protocolTest.extend<ProtocolCredentialFixtures>({
   protocolCredentials: async ({ matrixResources, request }, use) => {
     const id = selectedProtocolSuiteId();
     if (protocolMode() === 'remote') {

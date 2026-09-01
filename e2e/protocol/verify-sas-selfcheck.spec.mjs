@@ -6,14 +6,15 @@
 //   2. /login renders the homeserver input (labeled "Homeserver") + "Continue" button
 //   3. after typing a homeserver and clicking Continue, matrix.org discovery
 //      drives discovery (proving the form wiring + serve fallback work)
-//   4. /encryption/verify (behind authGuard) is reachable as a route and the
-//      [data-testid=verify-start] selector + verify-page/data-stage exist in the
-//      shipped bundle once authenticated — checked here structurally by asserting
-//      the lazy chunk + route resolve (redirect to /login when unauthenticated).
+//   4. the shipped router declares /encryption/verify with its
+//      DeviceVerificationPage lazy loader
+//   5. /encryption/verify is protected by authGuard (redirects to /login when
+//      unauthenticated)
 //
 // This is the "verify as much as we can headlessly" path the task asks for when the
 // live round-trip is gated. It does NOT assert a PASS of the SAS flow.
-import { test, expect } from './fixtures.mts';
+import ts from 'typescript';
+import { standaloneTest as test, expect } from './fixtures.mts';
 
 const log = (m) => console.log(`[selfcheck] ${m}`);
 test('validates the homeserver-free SAS surface', async ({ page }) => {
@@ -60,6 +61,20 @@ test('validates the homeserver-free SAS surface', async ({ page }) => {
       .waitFor({ timeout: 30_000 })
       .then(() => 'error'),
   ]).catch(() => null);
+  if (!reacted) {
+    const [buttons, alerts] = await Promise.all([
+      page.getByRole('button').evaluateAll((elements) =>
+        elements.map((element) => ({
+          label: element.textContent?.trim() ?? '',
+          disabled: element.hasAttribute('disabled'),
+        })),
+      ),
+      page.locator('[role="alert"]').allTextContents(),
+    ]);
+    log(
+      `Continue response evidence — url=${page.url()} buttons=${JSON.stringify(buttons)} alerts=${JSON.stringify(alerts)}`,
+    );
+  }
   check(
     `login form reacts to Continue (${reacted ?? 'no reaction'})`,
     !!reacted,
@@ -68,23 +83,51 @@ test('validates the homeserver-free SAS surface', async ({ page }) => {
     check('Username/Password inputs + Sign in resolve after discovery', true);
   }
 
-  // 4. /encryption/verify route resolves (authGuard redirects to /login when
-  //    unauthenticated — proving the route + lazy chunk load without 404).
+  // 4. Prove the exact verification route exists in the shipped router. A redirect
+  //    alone is ambiguous because the wildcard route also eventually reaches the
+  //    guarded rooms surface.
+  const servedScripts = await page.evaluate(async () => {
+    const scriptUrls = Array.from(document.scripts)
+      .map((script) => script.src)
+      .filter(Boolean);
+    const sources = await Promise.all(
+      scriptUrls.map(async (url) => {
+        const response = await fetch(url);
+        return response.ok ? response.text() : '';
+      }),
+    );
+    return {
+      scriptUrls,
+      source: sources.join('\n'),
+    };
+  });
+  const executableSource = ts.transpileModule(servedScripts.source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      removeComments: true,
+      target: ts.ScriptTarget.ESNext,
+    },
+  }).outputText;
+  const routeDeclared =
+    servedScripts.scriptUrls.length > 0 &&
+    executableSource.trim().length > 0 &&
+    /path\s*:\s*["'`]encryption\/verify["'`][\s\S]{0,2000}DeviceVerificationPage/u.test(
+      executableSource,
+    );
+  if (!routeDeclared) {
+    log(
+      `verification route bundle evidence — scripts=${JSON.stringify(servedScripts.scriptUrls)}`,
+    );
+  }
+  check(
+    'shipped router declares /encryption/verify with its DeviceVerificationPage loader',
+    routeDeclared,
+  );
+
+  // 5. Request the declared route signed out and prove its auth guard redirects.
   await page.goto('/encryption/verify', { waitUntil: 'networkidle' });
   const onLogin = /\/login/.test(page.url());
-  check('/encryption/verify route resolves (guarded → /login)', onLogin);
-
-  // 5. Confirm the verify-page testids exist in the shipped feature-crypto bundle.
-  const bundleHasTestids = await page
-    .evaluate(async () => {
-      // Scan all loaded + lazily-fetchable JS for the verify selectors. Cheap proxy:
-      // fetch the index and any chunk URLs referenced, grep for the testid strings.
-      const html = await fetch('/index.html').then((r) => r.text());
-      return /verify-start|verify-page|verify-accept|sas-match/.test(html);
-    })
-    .catch(() => false);
-  // index.html won't contain them (they're in a lazy chunk); this is informational.
-  log(`(info) verify testids present in index.html: ${bundleHasTestids}`);
+  check('/encryption/verify redirects to /login when signed out', onLogin);
 
   exit = checks.every((c) => c.ok) ? 0 : 1;
   console.log(

@@ -1,6 +1,6 @@
 // Headless validation of the in-app E2EE crypto spike in the engine selected by
 // the registered protocol suite (Chromium or WebKit).
-import { test, expect } from './fixtures.mts';
+import { standaloneTest as test, expect } from './fixtures.mts';
 
 test('runs the in-app crypto spike', async ({ page }, testInfo) => {
   let exitCode = 1;

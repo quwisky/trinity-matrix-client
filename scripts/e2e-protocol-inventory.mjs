@@ -7,11 +7,12 @@ const DEFAULT_PATTERN = 'e2e/protocol/**/*.spec.mjs';
 const ASSERTION_METHODS = new Set(['waitFor', 'waitForFunction', 'waitForURL']);
 const EXPECTED_INVENTORY = {
   files: 12,
-  assertions: 188,
+  assertions: 189,
   fingerprint:
-    '0a0d2ceb4c9af3c425842efeb509996aca8b4285a1f11000ab8c7bf0fb45f90d',
+    'ba83ce70aab1b28afbd0aadbcb0fdb1d8f007791819b7f83ee4ed0442fb2ee8a',
 };
 const PRE_MIGRATION_ASSERTIONS = 209;
+const APPROVED_POST_MIGRATION_ASSERTIONS = 1;
 const CENTRALIZED_SHARED_CHECKS = 21;
 const EXPECTED_SHARED_OWNER_FINGERPRINT =
   '71d32ffab7c5c62b8eddb23d73e6cfd72c736867627456db29ddf089f581c1f2';
@@ -157,10 +158,10 @@ export function validateProtocolAssertionInventory(errors, workspaceRoot) {
   }
   if (
     observed.assertions + CENTRALIZED_SHARED_CHECKS !==
-    PRE_MIGRATION_ASSERTIONS
+    PRE_MIGRATION_ASSERTIONS + APPROVED_POST_MIGRATION_ASSERTIONS
   ) {
     errors.push(
-      'protocol assertion inventory no longer reconciles with the pre-migration baseline',
+      'protocol assertion inventory no longer reconciles with the pre-migration baseline plus approved additions',
     );
   }
   if (centralized.fingerprint !== EXPECTED_SHARED_OWNER_FINGERPRINT) {

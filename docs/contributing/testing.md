@@ -638,9 +638,15 @@ renderer" spec.
 endpoint, receives attempt-scoped accounts and resource names through fixtures, and drives the
 registered Chromium or WebKit engine. Playwright owns pass/fail, retries, traces and artifacts;
 the compatibility package commands simply select one explicit Nx target. The assertion inventory
-reconciles the 209 pre-migration checks: 188 flow-specific checks remain pinned across twelve
-specs, while 21 duplicated login and replace-safe toolbar checks are pinned at their shared fixture
-owners. Moving code cannot silently reduce either side of that coverage map.
+reconciles the 209 pre-migration checks plus the strengthened verification-route proof: 189
+flow-specific checks remain pinned across twelve specs, while 21 duplicated login and replace-safe
+toolbar checks are pinned at their shared fixture owners. Moving code cannot silently reduce either
+side of that coverage map.
+
+The crypto spikes, login smoke and SAS self-check use the standalone protocol fixture: they join
+the application endpoint without requesting Synapse or Account credentials. Mutating protocol
+journeys use the credential fixture instead, which owns attempt-scoped Accounts and redacts their
+secrets from failures. A standalone spec must not import the credential-bearing `test` export.
 
 `verify-sas.spec.mjs` is the deepest of them: two browser contexts in one Chromium are two
 devices of the same Matrix user, because isolated IndexedDB means two crypto stores

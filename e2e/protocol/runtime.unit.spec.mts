@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import {
   protocolResponseFailure,
@@ -130,6 +132,28 @@ describe('protocol runtime configuration', () => {
     expect(
       new Set(Object.values(PROTOCOL_CASES).map(({ spec }) => spec)).size,
     ).toBe(12);
+  });
+
+  it('keeps non-mutating protocol cases on the credential-free fixture', () => {
+    const definitions = Object.values(PROTOCOL_CASES);
+    expect(definitions.length).toBeGreaterThan(0);
+
+    for (const definition of definitions) {
+      const source = readFileSync(
+        join(import.meta.dirname, definition.spec),
+        'utf8',
+      )
+        .replace(/\/\*[\s\S]*?\*\//gu, '')
+        .replace(/\/\/[^\n]*/gu, '');
+      const standaloneImport =
+        "import { standaloneTest as test, expect } from './fixtures.mts';";
+
+      if (definition.remoteMutation) {
+        expect(source, definition.spec).not.toContain(standaloneImport);
+      } else {
+        expect(source, definition.spec).toContain(standaloneImport);
+      }
+    }
   });
 
   it('redacts raw and encoded supplied secrets and omits remote bodies', () => {
