@@ -87,6 +87,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Appearance migration now has a safe rendering boundary.** This groundwork does not change the
+  current Settings or first paint. It ensures future Mode, Theme, text-size, density, and code
+  display updates reach the page only after they are saved, and a system light/dark change is
+  ignored whenever a fixed Mode is selected.
+
 - **Appearance preferences now keep their capability ownership.** Mode, Theme, text size, and
   density are independently persisted Design System descriptors, while Conversations owns code
   size and code-line presentation. One read-only application model composes all six values and

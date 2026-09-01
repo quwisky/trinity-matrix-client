@@ -35,6 +35,19 @@ recoverable Appearance warning instead of six application-level warnings. Theme 
 the Theme Foundation catalog, so an unknown or removed Theme id follows the same isolated default
 path as any other rejected value.
 
+Resolved Appearance is a separate application projection, not storage policy. A pure resolver
+combines the six committed axes with the current system Mode. Its cold effect lifetime owns the
+system colour-scheme subscription and sends the result to two narrow ports: the document adapter
+owns all root classes, attributes, and styles, while native chrome receives only resolved Mode.
+System colour-scheme changes therefore have no observable effect under an explicit light or dark
+Mode, and a failed preference write cannot change resolved or rendered Appearance because the
+Preferences Store has not committed it.
+
+Default values remain stylesheet-owned. The document adapter removes the optional Theme, text
+size, density, code-size, and code-line carriers at their defaults; light Mode removes the dark
+class. Concrete startup and native-host bindings remain part of the staged migration, so this
+expand step does not alter the existing CSS-only first-paint splash contract.
+
 Settings is a catalog consumer, not a policy owner. Its shared renderer selects descriptor editor
 metadata for an exact context and subscribes to the descriptor command; it does not know raw keys,
 defaults, migration rules, or capability policy. The Privacy journey is the first migrated slice.

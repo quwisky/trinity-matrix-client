@@ -456,12 +456,22 @@ moving persistence out of Preferences Store. Theme validation is derived from `T
 a removed Theme safely defaults only that axis and contributes to the aggregate's one recoverable
 partial-hydration warning.
 
-`ThemeService` remains the temporary effects and caller-compatibility facade during the staged
+Resolved Appearance policy is platform-neutral. `resolveAppearance()` combines the six committed
+axes with a system light/dark value, and `AppearanceEffects.run()` is the cold lifetime that owns
+system-Mode observation and imperative projection. The browser document adapter alone owns every
+root carrier in the table above. Native chrome receives only `{ mode }`, so Theme, sizing,
+density, and code presentation never cross that boundary. A system colour-scheme change can update
+the document and native chrome only while committed Mode is `system`; an explicit light or dark
+Mode makes that input inert. Preference Store publishes only successful writes, so rejected
+persistence never changes resolved or rendered Appearance.
+
+`ThemeService` remains the temporary startup and caller-compatibility facade during the staged
 migration. Its old `trinity.theme`, `trinity.palette`, `trinity.text-scale`, `trinity.density`,
 `trinity.code-scale`, and `trinity.code-lines` keys are read-only predecessors on the new
-descriptors; later tickets move startup, Settings, configuration, and rendering before removing
-the facade. The axes remain orthogonal: any Theme works in either Mode, and code size multiplies
-text size rather than replacing it.
+descriptors; later tickets connect the new effect lifetime to startup, Settings, configuration,
+and concrete native chrome before removing the facade. First paint remains the existing CSS-only
+splash; the migration adds no inline bootstrap script. The axes remain orthogonal: any Theme works
+in either Mode, and code size multiplies text size rather than replacing it.
 
 Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
 the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows

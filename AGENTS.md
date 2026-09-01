@@ -172,7 +172,10 @@ typed, per-domain libs (do **not** import `@trinity/core` — it no longer exist
   four installation-scoped Design System descriptors compose with Conversations' two code
   presentation descriptors as one read-only six-axis value and per-axis state. The projection
   delegates all hydration and persistence to Preferences Store; any partial hydration retains
-  independent defaults/failures and reduces to one recoverable startup warning.
+  independent defaults/failures and reduces to one recoverable startup warning. A platform-neutral
+  resolver combines committed values with system Mode; one cold effect lifetime owns the system
+  source, document-root carrier adapter, and Mode-only native-chrome projection. The temporary
+  `ThemeService` startup/caller path remains until its migration slice.
 - `@trinity/runtime/host` `[type:platform]`, `[role:kernel]` — Host Capabilities: narrow operation
   contracts and explicit supported/unavailable manifests for authentication handoff, deep links,
   Back, file export, notification presentation, location, badges, secure storage, lifecycle, and
