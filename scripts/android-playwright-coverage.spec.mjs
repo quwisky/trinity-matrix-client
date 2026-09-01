@@ -14,6 +14,10 @@ const ciWorkflow = readFileSync(
   join(workspaceRoot, '.github/workflows/ci.yml'),
   'utf8',
 );
+const code = (file) =>
+  readFileSync(join(workspaceRoot, file), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
 
 describe('Android Playwright canonical coverage', () => {
   it('routes every web spec through the platform fixture', () => {
@@ -33,13 +37,24 @@ describe('Android Playwright canonical coverage', () => {
   });
 
   it('keeps the platform selector inside the Android runner', () => {
-    const runner = readFileSync(
-      join(workspaceRoot, 'e2e/android/run.mts'),
-      'utf8',
-    );
+    const runner = code('e2e/android/run.mts');
     expect(runner).toContain("TRINITY_E2E_PLATFORM'] = 'android'");
     expect(runner).toContain('already contains ${driverPackage}');
     expect(runner).not.toContain('preexistingDriverPackages');
+  });
+
+  it('pins the long-run renderer and suite-level infrastructure boundary', () => {
+    const runner = code('e2e/android/run.mts');
+    const fixture = code('e2e/android/fixtures.mts');
+    expect(runner).toContain("'-no-snapshot'");
+    expect(runner).toContain("'software'");
+    expect(runner).toContain("'-Vulkan'");
+    expect(runner).not.toContain('swiftshader_indirect');
+    expect(runner).toContain('inspectAndroidInfrastructure');
+    expect(runner).toContain('ADB_FAILURE_LIMIT');
+    expect(fixture).toContain("TRINITY_ANDROID_FATAL_MARKER']");
+    expect(fixture).toContain('waitForApplicationReadySurface');
+    expect(fixture).toContain('trinityCrashProcessNames(crashLog)');
   });
 
   it('fails CI shards when any Android retry is flaky', () => {

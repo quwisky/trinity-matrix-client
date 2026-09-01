@@ -629,6 +629,13 @@ All notable changes to this project are documented here. The format is based on
 - **The room-unban journey now identifies the visible confirmation notification precisely.** Its
   assertion no longer collides with CDK's visually hidden live-announcer copy of the same message.
 
+- **Long installed-Android journey runs now fail once at the lost host boundary instead of
+  cascading across later tests.** Runner-owned API 36 emulators use a cold software-GLES,
+  Vulkan-disabled launch; consecutive device-health probes and fixture failure markers stop a
+  lost emulator, Playwright driver, app process, or WebView with process, memory, graphics,
+  activity, WebView, logcat, and crash diagnostics. Reloads and relaunches wait for a finite
+  routed surface, and unrelated Android system-process crashes no longer fail Trinity journeys.
+
 - **The homeserver-free SAS self-check runs without disposable Matrix credentials again.**
   Standalone protocol checks now join only the application lifecycle, while mutating journeys keep
   their attempt-scoped Accounts and secret-redacting diagnostics. A failed Continue response also

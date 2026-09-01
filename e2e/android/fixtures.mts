@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -13,6 +13,12 @@ import {
 } from '@playwright/test';
 import { _android, type AndroidDevice } from 'playwright';
 import { findTriggeredExternalPage } from '../support/external-page.mts';
+import {
+  ANDROID_INFRASTRUCTURE_FAILURE,
+  type AndroidInfrastructureFailure,
+  type AndroidInfrastructureLayer,
+  trinityCrashProcessNames,
+} from './health.mts';
 import { navigateApplication } from '../support/navigation.mts';
 import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import type {
@@ -29,8 +35,90 @@ const exec = promisify(execFile);
 type AndroidWebView = ReturnType<AndroidDevice['webViews']>[number];
 const attachedWebViews = new WeakSet<AndroidWebView>();
 
+function infrastructureFailure(
+  layer: AndroidInfrastructureLayer,
+  summary: string,
+): Error {
+  const failure: AndroidInfrastructureFailure = {
+    kind: ANDROID_INFRASTRUCTURE_FAILURE,
+    version: 1,
+    layer,
+    serial: process.env['TRINITY_ANDROID_SERIAL'] ?? '<unknown>',
+    summary,
+    recordedAt: new Date().toISOString(),
+  };
+  const marker = process.env['TRINITY_ANDROID_FATAL_MARKER'];
+  if (marker) {
+    try {
+      writeFileSync(marker, `${JSON.stringify(failure, null, 2)}\n`, {
+        flag: 'wx',
+      });
+    } catch {
+      // The original infrastructure error is more useful than a secondary
+      // artifact-write failure; the outer runner still has adb diagnostics.
+    }
+  }
+  return new Error(`${failure.kind}: ${failure.layer}: ${failure.summary}`);
+}
+
 async function shell(device: AndroidDevice, command: string): Promise<string> {
-  return (await device.shell(command)).toString('utf8').trim();
+  try {
+    return (await device.shell(command)).toString('utf8').trim();
+  } catch {
+    throw infrastructureFailure(
+      'playwright-driver',
+      'Playwright lost the Android shell transport',
+    );
+  }
+}
+
+type ApplicationSurfaceState =
+  | 'ready'
+  | 'route-empty'
+  | 'runtime-blocked'
+  | 'runtime-restoring'
+  | 'static-boot';
+
+async function waitForApplicationReadySurface(
+  page: Page,
+  description: string,
+  timeout = 60_000,
+): Promise<void> {
+  let lastState: ApplicationSurfaceState = 'static-boot';
+  try {
+    await expect
+      .poll(
+        async () => {
+          lastState = await page.evaluate<ApplicationSurfaceState>(() => {
+            if (document.querySelector('.trn-boot')) return 'static-boot';
+            if (document.querySelector('[data-testid="app-startup-blocked"]'))
+              return 'runtime-blocked';
+            if (document.querySelector('[data-testid="app-booting"]'))
+              return 'runtime-restoring';
+            const outlet = document.querySelector('router-outlet');
+            const routedSurface = outlet?.nextElementSibling;
+            if (
+              !routedSurface ||
+              routedSurface.matches('trn-verification-host')
+            ) {
+              return 'route-empty';
+            }
+            return 'ready';
+          });
+          return lastState;
+        },
+        {
+          message: `${description} must reach a finite routed application surface`,
+          timeout,
+        },
+      )
+      .toBe('ready');
+  } catch {
+    throw infrastructureFailure(
+      'application-surface',
+      `${description} did not become ready (last state: ${lastState})`,
+    );
+  }
 }
 
 async function clearPackageData(
@@ -151,19 +239,23 @@ async function launchPackage(
             !staleWebViews.has(candidate),
         );
       for (const webView of candidates) {
-        const page = await webView.page();
-        const documentCreatedAt = await page.evaluate(
-          () => performance.timeOrigin,
-        );
-        attachedWebViews.add(webView);
-        // Playwright's Android driver may retain a closed target after Android
-        // rapidly reuses its PID. The driver can materialize that target as a new
-        // wrapper, so object identity and live pid checks are not enough. A real
-        // WebView for this Activity launch necessarily owns a new document epoch.
-        if (documentCreatedAt < launchedAfter) continue;
-        await enableSelfSignedTls(page);
-        await page.waitForLoadState('domcontentloaded');
-        return { page, pid: webView.pid() };
+        try {
+          const page = await webView.page();
+          const documentCreatedAt = await page.evaluate(
+            () => performance.timeOrigin,
+          );
+          attachedWebViews.add(webView);
+          // Playwright's Android driver may retain a closed target after Android
+          // rapidly reuses its PID. The driver can materialize that target as a new
+          // wrapper, so object identity and live pid checks are not enough. A real
+          // WebView for this Activity launch necessarily owns a new document epoch.
+          if (documentCreatedAt < launchedAfter) continue;
+          await enableSelfSignedTls(page);
+          await page.waitForLoadState('domcontentloaded');
+          return { page, pid: webView.pid() };
+        } catch {
+          staleWebViews.add(webView);
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -175,7 +267,8 @@ async function launchPackage(
     .webViews()
     .map((candidate) => `${candidate.pkg()}:${candidate.pid()}`)
     .join(', ');
-  throw new Error(
+  throw infrastructureFailure(
+    'application-webview',
     `No ${pkg} WebView appeared after two launches; ` +
       `pidof=${livePids || '<none>'}; webviews=${webViews || '<none>'}; ` +
       `am-start=${startOutput || '<empty>'}`,
@@ -244,17 +337,18 @@ async function configurePage(
 ): Promise<() => Promise<void>> {
   const originalGoto = page.goto.bind(page);
   const originalReload = page.reload.bind(page);
-  const waitForBoot = (timeout: number) =>
+  const waitForAngular = (timeout: number) =>
     page.locator('.trn-boot').waitFor({ state: 'hidden', timeout });
 
   page.reload = async (reloadOptions) => {
     let response = await originalReload(reloadOptions);
     try {
-      await waitForBoot(10_000);
+      await waitForAngular(10_000);
     } catch {
       response = await originalReload(reloadOptions);
-      await waitForBoot(30_000);
+      await waitForAngular(30_000);
     }
+    await waitForApplicationReadySurface(page, 'Android WebView reload');
     return response;
   };
   page.goto = async (url, gotoOptions) => {
@@ -263,15 +357,16 @@ async function configurePage(
       gotoOptions,
     );
     try {
-      await waitForBoot(10_000);
+      await waitForAngular(10_000);
     } catch {
       // Android System WebView occasionally commits the local HTTPS document but
       // never executes its module scripts after a rapid force-stop / relaunch.
       // Retry only that recognizable pre-Angular state; journey failures must not
       // be hidden behind a generic navigation retry.
       response = await originalReload({ waitUntil: 'domcontentloaded' });
-      await waitForBoot(30_000);
+      await waitForAngular(30_000);
     }
+    await waitForApplicationReadySurface(page, 'Android WebView navigation');
     return response;
   };
 
@@ -518,13 +613,24 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           'TRINITY_ANDROID_SERIAL is required by the Android fixture',
         );
       }
-      const devices = await _android.devices();
+      let devices: AndroidDevice[];
+      try {
+        devices = await _android.devices();
+      } catch {
+        throw infrastructureFailure(
+          'playwright-driver',
+          `Playwright could not enumerate Android devices for ${expectedSerial}`,
+        );
+      }
       const device = devices.find(
         (candidate) => candidate.serial() === expectedSerial,
       );
       if (!device) {
         await Promise.allSettled(devices.map((candidate) => candidate.close()));
-        throw new Error(`Playwright could not attach to ${expectedSerial}`);
+        throw infrastructureFailure(
+          'playwright-driver',
+          `Playwright could not attach to ${expectedSerial}`,
+        );
       }
       await Promise.allSettled(
         devices
@@ -555,6 +661,7 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     await clearPackageData(androidDevice, packageName);
 
     let { page } = await launchApp(androidDevice, staleWebViews);
+    await waitForApplicationReadySurface(page, 'initial Android app launch');
     await page.getByLabel('Homeserver', { exact: true }).waitFor({
       state: 'visible',
       timeout: 60_000,
@@ -670,6 +777,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         const previousWebViews = new Set(androidDevice.webViews());
         await shell(androidDevice, `am force-stop ${packageName}`);
         ({ page } = await launchApp(androidDevice, previousWebViews));
+        await waitForApplicationReadySurface(
+          page,
+          'authenticated Android app relaunch',
+        );
         activeContext = page.context();
         await activeContext.tracing.start({
           screenshots: true,
@@ -691,9 +802,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       } catch (error) {
         crashReadError = error;
       }
+      const appCrashProcesses = trinityCrashProcessNames(crashLog);
       const failed =
         testInfo.status !== testInfo.expectedStatus ||
-        crashLog.length > 0 ||
+        appCrashProcesses.length > 0 ||
         Boolean(crashReadError);
       if (failed) {
         await attachFailureArtifacts(
@@ -717,7 +829,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         `Could not inspect the Android crash buffer: ${String(crashReadError)}`,
       );
     }
-    expect(crashLog, 'Android crash log must stay empty').toBe('');
+    expect(
+      trinityCrashProcessNames(crashLog),
+      'Trinity processes must stay out of the Android crash buffer',
+    ).toEqual([]);
   },
 
   touchPlatform: async ({ app }, use) => {
@@ -766,6 +881,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
             `${secondaryPackageName}/${packageName}.MainActivity`,
             staleWebViews,
           ));
+          await waitForApplicationReadySurface(
+            secondaryPage,
+            'secondary Android app launch',
+          );
           await secondaryPage
             .getByLabel('Homeserver', { exact: true })
             .waitFor({
@@ -774,7 +893,7 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
             });
           const originalGoto = secondaryPage.goto.bind(secondaryPage);
           const originalReload = secondaryPage.reload.bind(secondaryPage);
-          const waitForBoot = (timeout: number) =>
+          const waitForAngular = (timeout: number) =>
             secondaryPage!.locator('.trn-boot').waitFor({
               state: 'hidden',
               timeout,
@@ -785,13 +904,17 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
               options,
             );
             try {
-              await waitForBoot(10_000);
+              await waitForAngular(10_000);
             } catch {
               response = await originalReload({
                 waitUntil: 'domcontentloaded',
               });
-              await waitForBoot(30_000);
+              await waitForAngular(30_000);
             }
+            await waitForApplicationReadySurface(
+              secondaryPage!,
+              'secondary Android WebView navigation',
+            );
             return response;
           };
           return secondaryPage;
@@ -827,6 +950,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     const activatePrimary = async (): Promise<void> => {
       await shell(androidDevice, `am start -W -n ${packageName}/.MainActivity`);
       await app.page.waitForLoadState('domcontentloaded');
+      await waitForApplicationReadySurface(
+        app.page,
+        'primary Android app activation',
+      );
     };
 
     try {

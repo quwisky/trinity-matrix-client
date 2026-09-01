@@ -87,6 +87,13 @@ to `/dev/kvm`. Treat an explicitly supplied emulator as disposable: the runner c
 Trinity's package data and device logcat, replaces the debug APK, and force-stops the app;
 only the previous `tcp:8448` reverse mapping is restored.
 
+When the runner starts `Trinity_API_36` itself, the supported headless configuration is a cold
+boot with `-no-snapshot -gpu software -feature -Vulkan` in addition to the no-window, no-audio,
+and no-boot-animation flags. The software GLES path avoids the long-run SwiftShader/Vulkan
+buffer failures seen under the canonical sequential inventory; disabling snapshot load/save
+also prevents a stale renderer state from crossing runs. An explicitly supplied emulator is
+accepted for focused diagnosis, but its renderer flags are outside the runner's control.
+
 ## Plugins
 
 | Plugin                                         | What it is used for                                                                       |
