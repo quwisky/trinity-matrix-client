@@ -49,6 +49,24 @@ application API. Every category owns exactly one public entrypoint, migration ex
 forbidden, and the contract rejects broad `export *` barrels. Adding a shallow public project or
 silently expanding an entrypoint therefore fails `pnpm architecture:check`.
 
+#### Recipe vocabulary
+
+`@trinity/components/foundations` owns the canonical recipe data: `TRN_VARIANTS` / `TrnVariant`
+for semantic treatment and `TRN_SIZES` / `TrnSize` for the ordinal size scale. The constants are
+runtime data and their types are derived string-literal unions, so documentation, stories and
+component inputs cannot describe different vocabularies. A component must expose an
+`Extract`-based subset rather than accepting the whole registry. Unsupported values then fail
+Angular's strict template type-check instead of silently falling through to a vendor default.
+
+Structural choices are separate axes. For `trnBtn`, `variant="primary|secondary|danger"` carries
+semantic intent, `size="xs|sm|md|lg"` selects an ordinal size, `presentation` selects
+`solid|outline|ghost|link`, and `shape="label|icon"` owns geometry. The recipe that maps those
+concepts to Helm classes is private to Controls; neither Helm nor CVA types cross the public
+entrypoint. The expansion window still accepts Helm-shaped button values such as `default`,
+`destructive` and `icon-sm`, but canonical `primary`, `danger`, `md`, and `shape="icon"` render
+equivalently. Those aliases exist only until the consumer-migration and contract tickets remove
+them.
+
 The login page is the first production proof screen. It composes labels, inputs, buttons,
 cards, icons, overlays and progress only through Trinity entrypoints, including
 `@trinity/components/controls` for the native label/control association. The executable ledger
@@ -57,11 +75,12 @@ name. Subsequent feature migrations should add or replace proof screens only whe
 a genuinely new public contract, rather than turning the ledger into a list of every consumer.
 
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
-an `icon*` size, which supplies the shared shape and automatically opts into the common pointer,
-hover and pressed states. A purpose-built control whose geometry carries meaning—a reaction chip,
-server-rail pill, avatar action or compact toolbar button—uses `trnIconButton` instead. It keeps
-that geometry but receives the same interaction states; the owning component must explicitly
-centre its glyph within that custom box. In both forms the inner `<trn-icon>` must
+`shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
+the common pointer, hover and pressed states. A purpose-built control whose geometry carries
+meaning—a reaction chip, server-rail pill, avatar action or compact toolbar button—uses
+`trnIconButton` instead. It keeps that geometry but receives the same interaction states; the
+owning component must explicitly centre its glyph within that custom box. Legacy `icon*` sizes
+remain equivalent during migration. In both forms the inner `<trn-icon>` must
 choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
 `pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
 transform while retaining colour and focus feedback.

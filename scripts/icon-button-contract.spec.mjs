@@ -8,7 +8,8 @@ const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 /**
  * Mechanical coverage for Trinity's two icon-button entry points.
  *
- * `trnBtn size="icon*"` owns standard square geometry. `trnIconButton` is the explicit
+ * `trnBtn shape="icon"` owns standard square geometry; legacy `icon*` sizes remain in the
+ * migration inventory. `trnIconButton` is the explicit
  * opt-in for a purpose-built control whose shape communicates context (for example a reaction
  * chip or server-rail pill). Both receive the same cursor, state feedback and inner-glyph
  * motion. Exact per-file counts make additions and removals reviewable even in an already
@@ -48,7 +49,9 @@ const controlBlocks = sources.flatMap(({ file, source }) =>
 const publicIconButtons = controlBlocks.filter(
   ({ openingTag }) =>
     /\btrnBtn\b/.test(openingTag) &&
-    (/\bsize="icon(?:-[^"]+)?"/.test(openingTag) ||
+    (/\bshape="icon"/.test(openingTag) ||
+      /\[shape\]=/.test(openingTag) ||
+      /\bsize="icon(?:-[^"]+)?"/.test(openingTag) ||
       /\[size\]=/.test(openingTag)),
 );
 
