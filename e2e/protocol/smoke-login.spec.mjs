@@ -2,7 +2,7 @@
 //  1. unauthenticated load redirects to /login
 //  2. real .well-known discovery for matrix.org resolves the homeserver
 //  3. the discovered flows surface the password form + SSO button
-import { test, expect } from './fixtures.mts';
+import { standaloneTest as test, expect } from './fixtures.mts';
 
 test('discovers the live matrix.org login options', async ({ page }) => {
   page.on('pageerror', (e) => console.log(`  [page:error] ${e.message}`));
