@@ -366,8 +366,33 @@ test.describe('@production-renderer application surface', () => {
 
     await signIn(page, credentials);
     await openRoom(page, roomName);
+    if (testInfo.project.name === 'small-light-large') {
+      const warnings = page.getByTestId('app-runtime-warnings');
+      await expect(warnings).toBeVisible();
+      await expect(warnings).toHaveAccessibleName(
+        'Application runtime warnings',
+      );
+      await expect(warnings).toHaveAttribute('tabindex', '0');
+      await expect(
+        page.locator('trn-encryption-banner trn-banner'),
+      ).toBeVisible();
+    }
     await stabilize(page);
     const shell = page.locator('.rooms-shell');
+    if (testInfo.project.name === 'small-light-large') {
+      const warnings = page.getByTestId('app-runtime-warnings');
+      await expectInsideViewport(page, warnings, 'runtime warnings');
+      const [warningBox, shellBox] = await Promise.all([
+        warnings.boundingBox(),
+        shell.boundingBox(),
+      ]);
+      expect(warningBox, 'runtime warnings are laid out').not.toBeNull();
+      expect(shellBox, 'room shell is laid out').not.toBeNull();
+      expect(
+        shellBox!.y,
+        'room shell starts below runtime warnings',
+      ).toBeGreaterThanOrEqual(warningBox!.y + warningBox!.height - 1);
+    }
     await expectInsideViewport(page, shell, 'room shell');
     await expectInsideViewport(
       page,

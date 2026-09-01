@@ -87,8 +87,13 @@ describe('ApplicationRootComponent', () => {
       ],
     });
 
-    expect(getByTestId('app-runtime-warnings').textContent).toContain(
+    const warnings = getByTestId('app-runtime-warnings');
+    expect(warnings.textContent).toContain(
       'Push notifications may be unavailable.',
     );
+    expect(warnings.getAttribute('aria-label')).toBe(
+      'Application runtime warnings',
+    );
+    expect(warnings.tabIndex).toBe(0);
   });
 });

@@ -601,6 +601,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Runtime warnings no longer push the message composer below small phone screens.** The
+  Application Runtime warning region stays visible and keyboard-scrollable while yielding the
+  rest of the visual viewport to the routed surface, including with larger text and an encryption
+  setup prompt present.
+
 - **Signing in no longer freezes the authenticated app when browser notification permission is
   unavailable.** Notification listener reconciliation now reacts only to Account membership;
   a synchronous permission warning cannot become an accidental Angular signal dependency and
