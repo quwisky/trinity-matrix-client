@@ -3,6 +3,7 @@ import {
   computed,
   inject,
   makeEnvironmentProviders,
+  type EnvironmentProviders,
   type Signal,
 } from '@angular/core';
 import {
@@ -50,7 +51,6 @@ export interface AppearanceValue {
 }
 
 export interface AppearanceAxis<T extends PreferenceValue> {
-  readonly descriptor: PreferenceDescriptor<T>;
   readonly state: Signal<PreferenceState<T>>;
   readonly value: Signal<T>;
 }
@@ -127,7 +127,6 @@ export class AppearancePreferences {
       INSTALLATION_PREFERENCE_CONTEXT,
     );
     return Object.freeze({
-      descriptor,
       state,
       value: computed(() => state().value),
     });
@@ -135,7 +134,7 @@ export class AppearancePreferences {
 }
 
 /** Contributes all six descriptors without moving their capability ownership. */
-export function provideAppearancePreferences() {
+export function provideAppearancePreferences(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideDesignSystemAppearancePreferences(),
     provideConversationAppearancePreferences(),

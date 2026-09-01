@@ -1,3 +1,4 @@
+import type { EnvironmentProviders } from '@angular/core';
 import {
   definePreference,
   providePreferenceDescriptors,
@@ -84,13 +85,8 @@ export const CODE_LINE_PRESENTATION_PREFERENCE = definePreference({
 export const CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
   [CODE_SIZE_PREFERENCE, CODE_LINE_PRESENTATION_PREFERENCE];
 
-export const CONVERSATION_APPEARANCE_PREFERENCES = Object.freeze({
-  codeSize: CODE_SIZE_PREFERENCE,
-  codeLinePresentation: CODE_LINE_PRESENTATION_PREFERENCE,
-});
-
 /** Contributes Conversations-owned presentation policy to the preference catalog. */
-export function provideConversationAppearancePreferences() {
+export function provideConversationAppearancePreferences(): EnvironmentProviders {
   return providePreferenceDescriptors(
     () => CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS,
   );

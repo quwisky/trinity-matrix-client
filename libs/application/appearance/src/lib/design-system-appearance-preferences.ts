@@ -1,3 +1,4 @@
+import type { EnvironmentProviders } from '@angular/core';
 import {
   definePreference,
   providePreferenceDescriptors,
@@ -136,7 +137,7 @@ export const DENSITY_PREFERENCE = definePreference({
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
   [MODE_PREFERENCE, THEME_PREFERENCE, TEXT_SIZE_PREFERENCE, DENSITY_PREFERENCE];
 
-export function provideDesignSystemAppearancePreferences() {
+export function provideDesignSystemAppearancePreferences(): EnvironmentProviders {
   return providePreferenceDescriptors(
     () => DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
   );
