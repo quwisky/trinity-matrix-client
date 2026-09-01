@@ -1,10 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ADB_FAILURE_LIMIT,
+  ANDROID_SURFACE_INITIAL_TIMEOUT_MS,
+  ANDROID_SURFACE_RECOVERY_TIMEOUT_MS,
+  ANDROID_WEBVIEW_LIVENESS_TIMEOUT_MS,
   ANDROID_INFRASTRUCTURE_FAILURE,
   crashProcessNames,
+  isAndroidWebViewProbeUnavailable,
+  isPlaywrightTargetLoss,
   nextAdbFailureCount,
   parseInfrastructureFailure,
+  runAndroidInfrastructureOperation,
+  startAndroidInfrastructureWatchdog,
   stabilizeApplicationSurface,
   trinityCrashProcessNames,
 } from '../e2e/android/health.mts';
@@ -31,6 +38,127 @@ describe('Android E2E infrastructure health', () => {
     expect(() =>
       parseInfrastructureFailure('{"kind":"ordinary-test-failure"}'),
     ).toThrow('Invalid Android infrastructure failure marker');
+    expect(() =>
+      parseInfrastructureFailure(
+        JSON.stringify({ ...failure, layer: 'unknown-layer' }),
+      ),
+    ).toThrow('Invalid Android infrastructure failure marker');
+  });
+
+  it('terminates once only after two failed adb probes and clears its force-kill timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const states = [undefined, 'offline'];
+      let failureCount = 0;
+      const inspect = vi.fn(async () => {
+        failureCount = nextAdbFailureCount(failureCount, states.shift());
+        return failureCount >= ADB_FAILURE_LIMIT
+          ? new Error('transport lost')
+          : undefined;
+      });
+      const terminate = vi.fn();
+      const watchdog = startAndroidInfrastructureWatchdog({
+        inspect,
+        terminate,
+        intervalMs: 10,
+        forceKillAfterMs: 20,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      expect(terminate).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(terminate).toHaveBeenCalledTimes(1);
+      expect(terminate).toHaveBeenCalledWith('SIGTERM');
+      expect(watchdog.failure?.message).toBe('transport lost');
+
+      watchdog.stop();
+      await vi.advanceTimersByTimeAsync(30);
+      expect(inspect).toHaveBeenCalledTimes(2);
+      expect(terminate).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('force-kills one unresponsive child after a classified failure', async () => {
+    vi.useFakeTimers();
+    try {
+      const terminate = vi.fn();
+      const watchdog = startAndroidInfrastructureWatchdog({
+        inspect: async () => new Error('driver lost'),
+        terminate,
+        intervalMs: 10,
+        forceKillAfterMs: 20,
+      });
+
+      await vi.advanceTimersByTimeAsync(10);
+      await vi.advanceTimersByTimeAsync(20);
+      expect(terminate.mock.calls).toEqual([['SIGTERM'], ['SIGKILL']]);
+
+      watchdog.stop();
+      await vi.advanceTimersByTimeAsync(30);
+      expect(terminate).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('classifies only verified target loss and preserves ordinary navigation errors', async () => {
+    const classified = new Error('application-webview lost');
+    const ordinary = new Error('page.goto: Timeout 30000ms exceeded');
+    await expect(
+      runAndroidInfrastructureOperation(
+        async () => {
+          throw new Error('Target page, context or browser has been closed');
+        },
+        isPlaywrightTargetLoss,
+        () => classified,
+      ),
+    ).rejects.toBe(classified);
+    await expect(
+      runAndroidInfrastructureOperation(
+        async () => {
+          throw ordinary;
+        },
+        isPlaywrightTargetLoss,
+        () => classified,
+      ),
+    ).rejects.toBe(ordinary);
+    expect(
+      isPlaywrightTargetLoss(
+        new Error('page.goto: net::ERR_CONNECTION_CLOSED at https://localhost'),
+      ),
+    ).toBe(false);
+    await expect(
+      runAndroidInfrastructureOperation(
+        async () => 'ready',
+        isPlaywrightTargetLoss,
+        () => classified,
+      ),
+    ).resolves.toBe('ready');
+  });
+
+  it('bounds a nonresponsive WebView liveness probe and clears a completed timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const unavailable = isAndroidWebViewProbeUnavailable(
+        () => new Promise(() => undefined),
+      );
+      await vi.advanceTimersByTimeAsync(ANDROID_WEBVIEW_LIVENESS_TIMEOUT_MS);
+      await expect(unavailable).resolves.toBe(true);
+
+      await expect(
+        isAndroidWebViewProbeUnavailable(async () => true),
+      ).resolves.toBe(false);
+      await expect(
+        isAndroidWebViewProbeUnavailable(() => {
+          throw new Error('Page has been closed');
+        }),
+      ).resolves.toBe(true);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('scopes crash-buffer failures to Trinity package processes', () => {
@@ -56,6 +184,8 @@ describe('Android E2E infrastructure health', () => {
   });
 
   it('uses at most one bounded recovery for a stalled application surface', async () => {
+    expect(ANDROID_SURFACE_INITIAL_TIMEOUT_MS).toBe(10_000);
+    expect(ANDROID_SURFACE_RECOVERY_TIMEOUT_MS).toBe(30_000);
     const states = ['runtime-restoring', 'ready'];
     const inspect = vi.fn(async () => states.shift());
     const recover = vi.fn(async () => undefined);

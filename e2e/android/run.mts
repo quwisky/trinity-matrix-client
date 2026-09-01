@@ -24,6 +24,7 @@ import {
   ANDROID_INFRASTRUCTURE_FAILURE,
   nextAdbFailureCount,
   parseInfrastructureFailure,
+  startAndroidInfrastructureWatchdog,
 } from './health.mts';
 import {
   openE2EInvocation,
@@ -186,43 +187,25 @@ async function run(
       detached: process.platform !== 'win32',
     });
     activeChild = child;
-    let infrastructureError: Error | undefined;
-    let healthCheckRunning = false;
-    let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
-    const healthTimer = monitorAndroid
-      ? setInterval(() => {
-          if (healthCheckRunning || infrastructureError) return;
-          healthCheckRunning = true;
-          void inspectAndroidInfrastructure()
-            .then((error) => {
-              if (!error || infrastructureError || activeChild !== child)
-                return;
-              infrastructureError = error;
-              terminateProcessGroup(child, 'SIGTERM');
-              forceKillTimer = setTimeout(
-                () => terminateProcessGroup(child, 'SIGKILL'),
-                10_000,
-              );
-              forceKillTimer.unref();
-            })
-            .finally(() => {
-              healthCheckRunning = false;
-            });
-        }, 2_000)
+    const watchdog = monitorAndroid
+      ? startAndroidInfrastructureWatchdog({
+          inspect: inspectAndroidInfrastructure,
+          terminate: (signal) => {
+            if (activeChild === child) terminateProcessGroup(child, signal);
+          },
+        })
       : undefined;
-    healthTimer?.unref();
     const finish = (): void => {
-      if (healthTimer) clearInterval(healthTimer);
-      if (forceKillTimer) clearTimeout(forceKillTimer);
+      watchdog?.stop();
       if (activeChild === child) activeChild = undefined;
     };
     child.once('error', (error) => {
       finish();
-      reject(infrastructureError ?? error);
+      reject(watchdog?.failure ?? error);
     });
     child.once('exit', (code, signalName) => {
       finish();
-      if (infrastructureError) reject(infrastructureError);
+      if (watchdog?.failure) reject(watchdog.failure);
       else if (code === 0) resolve();
       else reject(new Error(`${command} exited with ${code ?? signalName}`));
     });

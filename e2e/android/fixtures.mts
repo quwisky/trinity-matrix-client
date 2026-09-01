@@ -14,10 +14,15 @@ import {
 import { _android, type AndroidDevice } from 'playwright';
 import { findTriggeredExternalPage } from '../support/external-page.mts';
 import {
+  ANDROID_SURFACE_INITIAL_TIMEOUT_MS,
+  ANDROID_SURFACE_RECOVERY_TIMEOUT_MS,
   ANDROID_INFRASTRUCTURE_FAILURE,
   type AndroidApplicationSurfaceState,
   type AndroidInfrastructureFailure,
   type AndroidInfrastructureLayer,
+  isAndroidWebViewProbeUnavailable,
+  isPlaywrightTargetLoss,
+  runAndroidInfrastructureOperation,
   stabilizeApplicationSurface,
   trinityCrashProcessNames,
 } from './health.mts';
@@ -124,6 +129,30 @@ async function inspectApplicationReadySurface(
   }
 }
 
+async function runApplicationWebViewOperation<T>(
+  page: Page,
+  operation: () => Promise<T>,
+  description: string,
+): Promise<T> {
+  return runAndroidInfrastructureOperation(
+    operation,
+    async (error) => {
+      if (page.isClosed() || isPlaywrightTargetLoss(error)) return true;
+      return (
+        page.isClosed() ||
+        (await isAndroidWebViewProbeUnavailable(() =>
+          page.evaluate(() => true),
+        ))
+      );
+    },
+    () =>
+      infrastructureFailure(
+        'application-webview',
+        `${description} could not complete in the installed WebView`,
+      ),
+  );
+}
+
 async function waitForApplicationReadySurface(
   page: Page,
   description: string,
@@ -135,7 +164,9 @@ async function waitForApplicationReadySurface(
       inspectApplicationReadySurface(
         page,
         description,
-        recover && inspection++ === 0 ? 20_000 : 60_000,
+        recover && inspection++ === 0
+          ? ANDROID_SURFACE_INITIAL_TIMEOUT_MS
+          : ANDROID_SURFACE_RECOVERY_TIMEOUT_MS,
       ),
     recover,
   );
@@ -148,6 +179,18 @@ async function waitForApplicationReadySurface(
   }
 }
 
+async function waitForActivatedApplicationPage(
+  page: Page,
+  description: string,
+): Promise<void> {
+  await runApplicationWebViewOperation(
+    page,
+    () => page.waitForLoadState('domcontentloaded'),
+    description,
+  );
+  await waitForApplicationReadySurface(page, description);
+}
+
 function configureApplicationNavigation(
   page: Page,
   description: string,
@@ -156,20 +199,30 @@ function configureApplicationNavigation(
   const originalReload = page.reload.bind(page);
 
   page.reload = async (reloadOptions) => {
-    let response = await originalReload(reloadOptions);
+    let response = await runApplicationWebViewOperation(
+      page,
+      () => originalReload(reloadOptions),
+      `${description} reload`,
+    );
     await waitForApplicationReadySurface(
       page,
       `${description} reload`,
       async () => {
-        response = await originalReload({ waitUntil: 'domcontentloaded' });
+        response = await runApplicationWebViewOperation(
+          page,
+          () => originalReload({ waitUntil: 'domcontentloaded' }),
+          `${description} recovery reload`,
+        );
       },
     );
     return response;
   };
   page.goto = async (url, gotoOptions) => {
-    let response = await originalGoto(
-      new URL(url, appOrigin).href,
-      gotoOptions,
+    let response = await runApplicationWebViewOperation(
+      page,
+      () =>
+        originalGoto(new URL(url, appOrigin).href, gotoOptions),
+      `${description} navigation`,
     );
     await waitForApplicationReadySurface(
       page,
@@ -179,7 +232,11 @@ function configureApplicationNavigation(
         // without executing its module scripts, or leaves Application Runtime
         // restoring after sustained load. One fresh document is the bounded
         // host recovery; any second stall remains a classified suite failure.
-        response = await originalReload({ waitUntil: 'domcontentloaded' });
+        response = await runApplicationWebViewOperation(
+          page,
+          () => originalReload({ waitUntil: 'domcontentloaded' }),
+          `${description} navigation recovery`,
+        );
       },
     );
     return response;
@@ -890,7 +947,7 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     });
   },
 
-  secondaryApp: async ({ androidDevice }, use) => {
+  secondaryApp: async ({ androidDevice, app }, use) => {
     let secondaryPage: Page | undefined;
     try {
       await use({
@@ -934,6 +991,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
             androidDevice,
             `am start -W -n ${packageName}/.MainActivity`,
           );
+          await waitForActivatedApplicationPage(
+            app.page,
+            'primary Android app activation after secondary app',
+          );
         },
       });
     } finally {
@@ -959,8 +1020,7 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
     const activatePrimary = async (): Promise<void> => {
       await shell(androidDevice, `am start -W -n ${packageName}/.MainActivity`);
-      await app.page.waitForLoadState('domcontentloaded');
-      await waitForApplicationReadySurface(
+      await waitForActivatedApplicationPage(
         app.page,
         'primary Android app activation',
       );
@@ -1070,6 +1130,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           await shell(
             androidDevice,
             `am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d ${shellQuote(url)} -p ${packageName}`,
+          );
+          await waitForActivatedApplicationPage(
+            appPage,
+            'primary Android app authentication callback',
           );
         },
       });

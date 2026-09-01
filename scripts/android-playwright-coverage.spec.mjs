@@ -52,9 +52,19 @@ describe('Android Playwright canonical coverage', () => {
     expect(runner).not.toContain('swiftshader_indirect');
     expect(runner).toContain('inspectAndroidInfrastructure');
     expect(runner).toContain('ADB_FAILURE_LIMIT');
+    expect(runner).toContain('startAndroidInfrastructureWatchdog');
     expect(fixture).toContain("TRINITY_ANDROID_FATAL_MARKER']");
     expect(fixture).toContain('waitForApplicationReadySurface');
     expect(fixture).toContain('stabilizeApplicationSurface');
+    expect(fixture).toContain('runApplicationWebViewOperation');
+    expect(fixture).toContain('isAndroidWebViewProbeUnavailable');
+    expect(fixture).toContain('waitForActivatedApplicationPage');
+    expect(fixture).toContain(
+      'primary Android app activation after secondary app',
+    );
+    expect(fixture).toContain('primary Android app authentication callback');
+    expect(fixture).toContain('ANDROID_SURFACE_INITIAL_TIMEOUT_MS');
+    expect(fixture).toContain('ANDROID_SURFACE_RECOVERY_TIMEOUT_MS');
     expect(fixture).toContain(
       "configureApplicationNavigation(page, 'Android WebView')",
     );

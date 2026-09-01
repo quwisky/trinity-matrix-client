@@ -166,8 +166,8 @@ driver, application surface, or package WebView is immediately fatal. That class
 the Playwright process group once instead of turning a lost host into one failure per remaining
 journey. Host diagnostics add emulator process state, `adb get-state`, WebView provider and
 DevTools sockets, memory, graphics configuration, and the separate crash buffer. Only crash
-records naming a Trinity package fail the journey; unrelated Android process crashes remain in
-the retained log without being misattributed.
+records naming a Trinity package fail the journey; unrelated Android process crashes are ignored
+by that assertion and appear in logcat only when another failure retains its diagnostics.
 
 Document navigation waits for the routed Application Runtime surface. A static boot shell, empty
 route, or restoration stall receives one fresh document; a blocked startup or second stall remains
