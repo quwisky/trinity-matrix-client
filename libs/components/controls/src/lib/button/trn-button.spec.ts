@@ -145,6 +145,7 @@ describe('TrnButton', () => {
 
     expect(secondaryGhost).not.toBe(primaryGhost);
     expect(secondaryGhost).toContain('text-secondary-foreground');
+    expect(secondaryGhost).toContain('dark:hover:bg-secondary');
     expect(dangerGhost).not.toBe(primaryGhost);
     expect(dangerGhost).toContain('text-danger');
     expect(dangerGhost).toContain('hover:bg-[var(--trinity-danger-tint-10)]');

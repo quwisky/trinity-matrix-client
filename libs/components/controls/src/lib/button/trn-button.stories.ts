@@ -93,6 +93,15 @@ export const CanonicalAndCompatibility: Story = {
             Primary quiet
           </button>
           <button
+            data-testid="canonical-secondary-ghost"
+            type="button"
+            trnBtn
+            variant="secondary"
+            presentation="ghost"
+          >
+            Secondary quiet
+          </button>
+          <button
             data-testid="canonical-danger-ghost"
             type="button"
             trnBtn

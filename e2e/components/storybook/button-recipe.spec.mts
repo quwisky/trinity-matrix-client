@@ -88,3 +88,24 @@ for (const preview of STORYBOOK_THEME_PREVIEWS.filter(
     }
   });
 }
+
+for (const preview of STORYBOOK_THEME_PREVIEWS.filter(
+  ({ mode }) => mode.id === 'dark',
+)) {
+  test(`${preview.theme.id} dark secondary hover keeps its semantic surface`, async ({
+    page,
+  }) => {
+    await page.goto(`${STORY}&globals=${storybookThemeGlobals(preview)}`);
+    await expectStorybookThemeRoot(page, preview);
+
+    const testId = 'canonical-secondary-ghost';
+    const button = page.getByTestId(testId);
+    await expect(button).toBeVisible();
+    await button.hover();
+
+    const secondary = await resolveTokenSrgb(page, testId, '--secondary');
+    await expect
+      .poll(async () => (await measureContrast(page, testId)).background)
+      .toEqual(secondary);
+  });
+}

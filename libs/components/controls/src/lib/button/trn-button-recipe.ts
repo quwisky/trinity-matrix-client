@@ -59,9 +59,9 @@ const nonSolidTone = {
   },
   secondary: {
     outline:
-      'text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground',
+      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
     ghost:
-      'text-secondary-foreground hover:bg-secondary hover:text-secondary-foreground',
+      'text-secondary-foreground hover:bg-secondary dark:hover:bg-secondary hover:text-secondary-foreground dark:hover:text-secondary-foreground',
     link: 'text-secondary-foreground',
   },
   danger: {
