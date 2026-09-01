@@ -34,6 +34,7 @@ describe('MobileBadgeService', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     TestBed.resetTestingModule();
   });
@@ -91,6 +92,77 @@ describe('MobileBadgeService', () => {
     await expect(firstValueFrom(makeService().set(4))).resolves.toEqual({
       kind: 'rejected',
       diagnostic: { code: 'badge-update-failed' },
+    });
+  });
+
+  it('normalizes a synchronous native bridge failure', async () => {
+    const secret = 'access_token=native-secret';
+    badge.set.mockImplementation(() => {
+      throw new Error(secret);
+    });
+
+    const outcome = await firstValueFrom(makeService().set(4));
+
+    expect(outcome).toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'badge-update-failed' },
+    });
+    expect(JSON.stringify(outcome)).not.toContain(secret);
+  });
+
+  it('bounds a stalled support probe and retries readiness afterward', async () => {
+    vi.useFakeTimers();
+    badge.isSupported
+      .mockImplementationOnce(() => new Promise<never>(() => undefined))
+      .mockResolvedValueOnce({ isSupported: true });
+    const service = makeService();
+    const first = firstValueFrom(service.support());
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(
+      Promise.race([first, Promise.resolve('still-pending')]),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'host-rejected',
+      diagnostic: { code: 'badge-probe-timeout' },
+    });
+    await expect(firstValueFrom(service.support())).resolves.toEqual({
+      kind: 'supported',
+    });
+    expect(badge.isSupported).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds a stalled permission request', async () => {
+    vi.useFakeTimers();
+    badge.requestPermissions.mockImplementation(
+      () => new Promise<never>(() => undefined),
+    );
+    const support = firstValueFrom(makeService().support());
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(
+      Promise.race([support, Promise.resolve('still-pending')]),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'host-rejected',
+      diagnostic: { code: 'badge-probe-timeout' },
+    });
+  });
+
+  it('bounds a stalled badge write', async () => {
+    vi.useFakeTimers();
+    badge.set.mockImplementation(() => new Promise<never>(() => undefined));
+    const command = firstValueFrom(makeService().set(4));
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(
+      Promise.race([command, Promise.resolve('still-pending')]),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'badge-update-timeout' },
     });
   });
 

@@ -42,10 +42,12 @@ import {
   ThemeService,
 } from '@trinity/platform-native';
 import {
+  HOST_OPERATIONS,
   HostBackService,
   HostCapabilitiesService,
   HostDeepLinksService,
   HostUpdatesService,
+  type HostCapabilityManifest,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
@@ -60,6 +62,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let initialNavigation: ReturnType<typeof vi.fn>;
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let restoreAccounts: Mock<() => Observable<AccountRestoreResult>>;
+  let hostManifest: Subject<HostCapabilityManifest>;
   let themeInit: Mock<() => Promise<void>>;
   let badgeSession: Subject<HostOperationOutcome>;
   let notificationSession: Subject<never>;
@@ -99,6 +102,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         },
       }),
     );
+    hostManifest = new Subject<HostCapabilityManifest>();
     themeInit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
     badgeSession = new Subject<HostOperationOutcome>();
     notificationSession = new Subject<never>();
@@ -147,7 +151,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           },
         },
         MockProvider(Location, { path: () => '/rooms', back: vi.fn() }),
-        MockProvider(HostCapabilitiesService, { manifest: () => EMPTY }),
+        MockProvider(HostCapabilitiesService, { manifest: () => hostManifest }),
         MockProvider(AccountRuntimeService, {
           restoreSavedAccounts: restoreAccounts,
           activeAccountId,
@@ -236,6 +240,39 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       firstValueFrom(adapter.establishSessionCapabilities()),
     ).resolves.toEqual({ kind: 'ready' });
     expect(updateCheck).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a rejected badge probe as an optional startup warning', async () => {
+    const operations = Object.fromEntries(
+      HOST_OPERATIONS.map((operation) => [
+        operation,
+        operation === 'badge'
+          ? {
+              kind: 'unavailable',
+              reason: 'host-rejected',
+              diagnostic: { code: 'badge-probe-timeout' },
+            }
+          : { kind: 'supported' },
+      ]),
+    ) as HostCapabilityManifest['operations'];
+    const negotiation = firstValueFrom(adapter.negotiateHost());
+
+    hostManifest.next({ protocolVersion: 1, operations });
+    hostManifest.complete();
+
+    await expect(negotiation).resolves.toEqual({ kind: 'ready' });
+    await expect(
+      firstValueFrom(adapter.establishSessionCapabilities()),
+    ).resolves.toEqual({
+      kind: 'ready',
+      warnings: [
+        expect.objectContaining({
+          stage: 'session-capabilities',
+          scope: 'badge',
+          diagnostic: { code: 'badge-unavailable' },
+        }),
+      ],
+    });
   });
 
   it('routes the cold initial update check through the shared host contract', async () => {

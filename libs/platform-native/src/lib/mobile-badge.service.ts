@@ -6,7 +6,22 @@ import type {
   HostCapabilitySupport,
   HostOperationOutcome,
 } from '@trinity/runtime/host';
-import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
+import {
+  Observable,
+  TimeoutError,
+  catchError,
+  defer,
+  finalize,
+  from,
+  map,
+  of,
+  shareReplay,
+  switchMap,
+  tap,
+  timeout,
+} from 'rxjs';
+
+const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
 
 /**
  * iOS / Android app-icon (launcher) badge sink, called by {@link AppBadgeService}
@@ -23,25 +38,27 @@ import { Observable, catchError, defer, from, map, of, switchMap } from 'rxjs';
  */
 @Injectable({ providedIn: 'root' })
 export class MobileBadgeService implements HostBadgeOperation {
-  /**
-   * Memoized readiness: resolves `true` once the plugin is present, supported, and
-   * the badge permission has been granted. Computed (and the permission requested)
-   * exactly once on first use, then reused so we never re-prompt on every update.
-   */
-  private ready?: Promise<boolean>;
+  /** Finite readiness results are memoized; a failed or timed-out attempt is retryable. */
+  private ready?: boolean;
+  private readiness?: Observable<boolean>;
 
   support(): Observable<HostCapabilitySupport> {
-    return defer(() => from(this.ensureReady())).pipe(
+    return defer(() => this.ensureReady()).pipe(
       map((ready) =>
         ready
           ? ({ kind: 'supported' } as const)
           : ({ kind: 'unavailable', reason: 'not-supported' } as const),
       ),
-      catchError(() =>
+      catchError((error: unknown) =>
         of({
           kind: 'unavailable',
           reason: 'host-rejected',
-          diagnostic: { code: 'badge-probe-failed' },
+          diagnostic: {
+            code:
+              error instanceof TimeoutError
+                ? 'badge-probe-timeout'
+                : 'badge-probe-failed',
+          },
         } as const),
       ),
     );
@@ -52,12 +69,20 @@ export class MobileBadgeService implements HostBadgeOperation {
       switchMap((support) =>
         support.kind === 'unavailable'
           ? of(support)
-          : from(count > 0 ? Badge.set({ count }) : Badge.clear()).pipe(
+          : defer(() =>
+              from(count > 0 ? Badge.set({ count }) : Badge.clear()),
+            ).pipe(
               map(() => ({ kind: 'completed' }) as const),
-              catchError(() =>
+              timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
+              catchError((error: unknown) =>
                 of({
                   kind: 'rejected',
-                  diagnostic: { code: 'badge-update-failed' },
+                  diagnostic: {
+                    code:
+                      error instanceof TimeoutError
+                        ? 'badge-update-timeout'
+                        : 'badge-update-failed',
+                  },
                 } as const),
               ),
             ),
@@ -65,11 +90,20 @@ export class MobileBadgeService implements HostBadgeOperation {
     );
   }
 
-  private ensureReady(): Promise<boolean> {
-    return (this.ready ??= this.probe().catch((error: unknown) => {
-      this.ready = undefined;
-      throw error;
-    }));
+  private ensureReady(): Observable<boolean> {
+    if (this.ready !== undefined) return of(this.ready);
+    if (this.readiness) return this.readiness;
+
+    const readiness = defer(() => from(this.probe())).pipe(
+      timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
+      tap((ready) => (this.ready = ready)),
+      finalize(() => {
+        if (this.readiness === readiness) this.readiness = undefined;
+      }),
+      shareReplay({ bufferSize: 1, refCount: false }),
+    );
+    this.readiness = readiness;
+    return readiness;
   }
 
   private async probe(): Promise<boolean> {
