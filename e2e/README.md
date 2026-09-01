@@ -9,8 +9,12 @@ drifts.
 Use `pnpm e2e` for the pull-request-classified set, `pnpm e2e:all` for every suite available on
 this host, or `pnpm e2e:<environment>` for browser, Web/PWA, components, protocol, Electron or
 Android. The aggregate validates every prerequisite before starting work and runs registered
-suites in safe order. Focused legacy commands remain Nx-backed compatibility aliases for one
-release cycle.
+suites in safe order. Strict tier/environment aggregates stop on an unavailable prerequisite;
+`e2e:all` does the same for every suite marked required and continues only past a suite explicitly
+classified optional. Every current suite is required. Focused legacy
+commands remain Nx-backed compatibility aliases through one released changelog cycle, and may be
+removed only after replacements are documented, repository/CI references reach zero, and that
+cycle has no reported migration failures.
 
 Web/PWA, component/visual, canonical browser and protocol contracts now live in lifecycle-owned projects.
 Canonical app journeys are grouped by capability under `e2e/browser/journeys/`, installed WebView
@@ -43,7 +47,7 @@ e2e/
   web/        trinity-e2e-web: production Web/PWA host and renderer contracts — `pnpm e2e:web`
   android/    API 36 Capacitor WebView fixture, native-only specs, and device
               orchestrator — `pnpm e2e:android`
-  electron/   @nx/playwright Electron specs + support/launch — `pnpm electron:e2e`
+  electron/   trinity-e2e-electron: launched-shell smoke and full desktop journeys
   support/    trinity-e2e-support: invocation/session ownership, dynamic servers,
               process locks, namespaces, reporting, and the Synapse+Caddy+Dex harness
 ```
@@ -75,7 +79,8 @@ pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 | Command                                              | What it does                                                                                                                               |
 | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pnpm e2e`                                           | Run the pull-request-classified local E2E set after one registry/prerequisite preflight.                                                   |
-| `pnpm e2e:all`                                       | Run every registered suite available on this host; this is the migration pull-request delivery gate.                                       |
+| `pnpm e2e:all`                                       | Run the complete local E2E delivery gate; all current suites are required.                                                                 |
+| `pnpm e2e:scheduled`                                 | Run the scheduled-classified cross-browser and protocol suites with strict preflight.                                                      |
 | `pnpm e2e:browser`                                   | Run canonical Synapse browser journeys.                                                                                                    |
 | `pnpm e2e:components`                                | Run Storybook, styling and cross-browser scrollbar contracts.                                                                              |
 | `pnpm e2e:protocol`                                  | Run every registered verification, crypto and protocol/system driver.                                                                      |
@@ -95,6 +100,11 @@ pnpm exec nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
 
 The complete ownership model, compatibility policy and local delivery contract are in
 [End-to-end test architecture](../docs/contributing/e2e-architecture.md).
+
+Each suite writes standard output, blob, JUnit, local HTML and `suite-summary.json` artifacts under
+`dist/.playwright/<project>/<run-id>/<suite-id>/`. Aggregate JSON and Markdown summaries live under
+`dist/.playwright/trinity-e2e/<run-id>/<aggregate>/` and group pass, failure, retry, quarantine,
+unavailable, skipped-by-tier and not-run outcomes by environment, capability and contract type.
 
 ### Remote protocol mode
 
@@ -145,7 +155,7 @@ browser-config `ignoreHTTPSErrors` does not change Android WebView policy.
 
 Failures retain a WebView screenshot, whole-device screenshot, Playwright trace, logcat
 including the crash buffer, activity state, and package diagnostics under
-`dist/.playwright/android/`. Device validation rejects pre-existing Playwright Android
+`dist/.playwright/trinity-e2e-android/<run-id>/android.installed-webview/`. Device validation rejects pre-existing Playwright Android
 driver packages; cleanup can therefore remove the run-installed drivers, restore the prior
 reverse mapping, and stop only an emulator the runner started.
 
@@ -190,7 +200,7 @@ pnpm exec nx run trinity-e2e-browser:e2e -- conversations/stickers-custom-emoji.
 Run the same file in the installed Android app:
 
 ```bash
-pnpm exec nx run trinity-e2e:android-e2e -- browser/journeys/conversations/stickers-custom-emoji.spec.mts
+pnpm exec nx run trinity-e2e-android:e2e -- browser/journeys/conversations/stickers-custom-emoji.spec.mts
 ```
 
 The Android prerequisites and `TRINITY_ANDROID_SERIAL` rules are the same as for the full suite

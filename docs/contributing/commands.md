@@ -201,7 +201,8 @@ commands remain behavior-compatible Nx aliases during the migration:
 | Command               | Selection                                                     |
 | --------------------- | ------------------------------------------------------------- |
 | `pnpm e2e`            | Pull-request-classified suites                                |
-| `pnpm e2e:all`        | Every suite available on this host                            |
+| `pnpm e2e:all`        | Complete local gate; every current suite is required          |
+| `pnpm e2e:scheduled`  | Scheduled-classified suites                                   |
 | `pnpm e2e:browser`    | Canonical Synapse browser journeys                            |
 | `pnpm e2e:web`        | Production Web/PWA host and renderer contracts                |
 | `pnpm e2e:components` | Storybook, styling and cross-browser scrollbar contracts      |
@@ -210,9 +211,12 @@ commands remain behavior-compatible Nx aliases during the migration:
 | `pnpm e2e:android`    | Installed API 36 WebView journeys                             |
 
 `pnpm e2e:all` is the E2E portion of the local delivery gate while GitHub Actions capacity is
-unavailable. It validates the registry and all selected prerequisites before starting the first
-suite, then runs lifecycle owners in a safe order and stops at the first failure. Docker and the
-Android AVD are mandatory on the delivery host. See
+unavailable. It validates the registry, fails before execution when any required suite is
+unavailable, then runs lifecycle owners in a safe order and stops at the first executed failure.
+Only a suite explicitly classified optional may be reported unavailable while the rest continue;
+every current suite is required. Pull-request, scheduled and environment aggregates are strict:
+any missing prerequisite fails before their first suite. Docker and the Android AVD are mandatory
+on the delivery host. See
 [End-to-end test architecture](e2e-architecture.md) for ownership, CI tiers, caching,
 serialization, aliases and artifacts.
 
@@ -249,7 +253,8 @@ pnpm e2e:android -- --shard=1/4
 Without an explicit serial it uses only an AVD named `Trinity_API_36`; it never picks the
 first attached device. It builds and installs the production Capacitor app, collects every
 canonical app journey in the actual WebView plus native-only coverage, and leaves failure
-artifacts under `dist/.playwright/android/`. Journeys that require external FCM delivery, a
+artifacts under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.installed-webview/`. Journeys that require external FCM delivery, a
 not-yet-implemented native file export, or unavailable compositor-panning instrumentation
 are reported as explicit platform skips. Docker is mandatory for authenticated journeys.
 

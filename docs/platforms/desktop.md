@@ -369,9 +369,10 @@ only, by choice. See [CI and releases](../contributing/ci-and-releases.md).
 
 ## How the desktop contract is tested
 
-[e2e/playwright.electron.config.mts](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/playwright.electron.config.mts)
+[e2e/electron/playwright.full.config.mts](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/electron/playwright.full.config.mts)
 launches the real built application through Playwright's `_electron` helper, one worker, no
-parallelism. Its global setup owns disposable Synapse for authenticated journeys. It is the only
+parallelism. The `trinity-e2e-electron` lifecycle target joins the support-owned disposable
+Synapse invocation for authenticated journeys. It is the only
 gate in the repository that exercises the custom scheme, WASM stream instantiation, the sandbox
 posture and `safeStorage`, and it runs the image-pack manager journey against the built shell.
 
@@ -380,9 +381,9 @@ pnpm electron:e2e:smoke   # Docker-independent shell/protocol/security journey
 pnpm electron:e2e
 ```
 
-The smoke command uses a derived Playwright config with global setup and teardown disabled, so its
-nine shell/protocol/security checks stay Docker-independent. The full command retains the Synapse
-harness for authenticated journeys.
+The smoke command uses a derived descriptor-only config and requests no Synapse resource, so its
+nine shell/protocol/security checks stay Docker-independent. The full command requests the shared
+Synapse resource for authenticated journeys.
 
 Each launch gets a fresh temporary `--user-data-dir`, so the app always starts
 unauthenticated. The launcher also passes `--no-sandbox`, which disables Chromium's

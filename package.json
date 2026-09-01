@@ -22,6 +22,7 @@
     "smoke:login": "nx run trinity-e2e-protocol:login-smoke",
     "e2e": "nx run trinity-e2e:e2e-pr",
     "e2e:all": "nx run trinity-e2e:e2e-all",
+    "e2e:scheduled": "nx run trinity-e2e:e2e-scheduled",
     "e2e:browser": "nx run trinity-e2e:e2e-browser",
     "e2e:components": "nx run trinity-e2e:e2e-components",
     "e2e:protocol": "nx run trinity-e2e:e2e-protocol",

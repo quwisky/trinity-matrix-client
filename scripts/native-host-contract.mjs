@@ -13,7 +13,7 @@ const hosts = {
     runCommand: 'pnpm exec cap run android',
     syncCommand: 'pnpm exec cap sync android',
     verifyNativeCommand: './gradlew testDebugUnitTest',
-    e2eCommand: 'pnpm exec nx run trinity-e2e:android-e2e',
+    e2eCommand: 'pnpm exec nx run trinity-e2e-android:e2e',
     packageScripts: {
       'e2e:android': 'nx run trinity-e2e:e2e-android',
       'android:sync': 'nx run trinity-android:sync',

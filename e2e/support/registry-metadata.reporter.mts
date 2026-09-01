@@ -1,13 +1,17 @@
 import type {
   FullConfig,
+  FullResult,
   Reporter,
   Suite,
   TestCase,
   TestResult,
 } from '@playwright/test/reporter';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 interface RegistryMetadataReporterOptions {
   readonly metadata: Readonly<Record<string, string>>;
+  readonly outputFile?: string;
 }
 
 interface AnnotationTarget {
@@ -16,6 +20,11 @@ interface AnnotationTarget {
 
 /** Copy registry metadata onto every test so blob and JUnit preserve the same identity. */
 export default class RegistryMetadataReporter implements Reporter {
+  private attempts = 0;
+  private attemptDurationMs = 0;
+  private readonly attemptsByStatus = new Map<string, number>();
+  private readonly retriesByTest = new Map<string, number>();
+
   constructor(private readonly options: RegistryMetadataReporterOptions) {}
 
   printsToStdio(): boolean {
@@ -34,6 +43,38 @@ export default class RegistryMetadataReporter implements Reporter {
     // serialize the completed test.
     this.annotate(result);
     this.annotate(test);
+    this.attempts += 1;
+    this.attemptDurationMs += result.duration;
+    this.attemptsByStatus.set(
+      result.status,
+      (this.attemptsByStatus.get(result.status) ?? 0) + 1,
+    );
+    this.retriesByTest.set(
+      test.id,
+      Math.max(this.retriesByTest.get(test.id) ?? 0, result.retry),
+    );
+  }
+
+  onEnd(result: FullResult): void {
+    if (!this.options.outputFile) return;
+    const summary = {
+      schemaVersion: 1,
+      suiteId: this.options.metadata['trinity.e2e.suite'],
+      status: result.status,
+      attempts: this.attempts,
+      retries: [...this.retriesByTest.values()].reduce(
+        (total, retries) => total + retries,
+        0,
+      ),
+      durationMs: result.duration,
+      attemptDurationMs: this.attemptDurationMs,
+      attemptsByStatus: Object.fromEntries(this.attemptsByStatus),
+    } as const;
+    mkdirSync(dirname(this.options.outputFile), { recursive: true });
+    writeFileSync(
+      this.options.outputFile,
+      `${JSON.stringify(summary, undefined, 2)}\n`,
+    );
   }
 
   private annotate(target: AnnotationTarget): void {

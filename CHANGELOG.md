@@ -87,6 +87,18 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Electron and Android E2E now have explicit lifecycle owners and unified local reporting.**
+  `trinity-e2e-electron` owns the launched-shell smoke and full desktop suites, while
+  `trinity-e2e-android` owns the emulator, installed-WebView fixture and native journeys; the host
+  applications retain delegating targets only. Registry-driven pull-request, scheduled,
+  environment and exhaustive aggregates now write one JSON/Markdown summary grouped by
+  environment, capability and contract type, distinguishing retries, quarantine, unavailable
+  hosts and tier skips from failures. Strict selections fail preflight before starting, while
+  `e2e:all` requires every current suite and can continue only past a future suite explicitly
+  classified optional. CI tiering,
+  artifact roots, fixture boundaries and compatibility aliases are source-guarded; old commands
+  remain until a documented, reference-free release cycle completes without migration failures.
+
 - **Protocol E2E journeys now run as ordinary Playwright Test specs.** The
   `trinity-e2e-protocol` project owns all verification, crypto, media, relation, room,
   search and emoji flows with standard reports, traces, retries and attempt-scoped Matrix

@@ -12,6 +12,7 @@ import {
 } from '@playwright/test';
 import { _android, type AndroidDevice } from 'playwright';
 import { navigateApplication } from '../support/navigation.mts';
+import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import type {
   AuthCallbackKind,
   AuthPlatform,
@@ -49,7 +50,9 @@ async function clearPackageData(
     ]);
     if (!pid && !residualPreferences) return;
   }
-  throw new Error(`pm clear ${pkg} left a running process or preferences behind`);
+  throw new Error(
+    `pm clear ${pkg} left a running process or preferences behind`,
+  );
 }
 
 async function waitForDurableActiveAccount(
@@ -78,9 +81,12 @@ async function setEmulatorLocation(
   device: AndroidDevice,
   position: { latitude: number; longitude: number },
 ): Promise<void> {
-  const sdkRoot = process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
+  const sdkRoot =
+    process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
   if (!sdkRoot) {
-    throw new Error('ANDROID_HOME or ANDROID_SDK_ROOT is required for geolocation');
+    throw new Error(
+      'ANDROID_HOME or ANDROID_SDK_ROOT is required for geolocation',
+    );
   }
   await exec(
     join(sdkRoot, 'platform-tools/adb'),
@@ -133,13 +139,15 @@ async function launchPackage(
           .map(Number)
           .filter(Number.isFinite),
       );
-      const candidates = device.webViews().filter(
-        (candidate) =>
-          candidate.pkg() === pkg &&
-          livePids.has(candidate.pid()) &&
-          !attachedWebViews.has(candidate) &&
-          !staleWebViews.has(candidate),
-      );
+      const candidates = device
+        .webViews()
+        .filter(
+          (candidate) =>
+            candidate.pkg() === pkg &&
+            livePids.has(candidate.pid()) &&
+            !attachedWebViews.has(candidate) &&
+            !staleWebViews.has(candidate),
+        );
       for (const webView of candidates) {
         const page = await webView.page();
         const documentCreatedAt = await page.evaluate(
@@ -217,7 +225,8 @@ interface AndroidWorkerFixtures {
 interface AndroidUseOptions {
   colorScheme: 'dark' | 'light' | 'no-preference' | null;
   deviceScaleFactor: number | undefined;
-  geolocation: { latitude: number; longitude: number; accuracy?: number } | undefined;
+  geolocation:
+    { latitude: number; longitude: number; accuracy?: number } | undefined;
   hasTouch: boolean;
   isMobile: boolean;
   launchOptions: { args?: string[] };
@@ -247,7 +256,10 @@ async function configurePage(
     return response;
   };
   page.goto = async (url, gotoOptions) => {
-    let response = await originalGoto(new URL(url, appOrigin).href, gotoOptions);
+    let response = await originalGoto(
+      new URL(url, appOrigin).href,
+      gotoOptions,
+    );
     try {
       await waitForBoot(10_000);
     } catch {
@@ -292,7 +304,13 @@ async function configurePage(
     await page.emulateMedia({ colorScheme: options.colorScheme });
   }
   const androidPermissions = new Map([
-    ['geolocation', ['android.permission.ACCESS_COARSE_LOCATION', 'android.permission.ACCESS_FINE_LOCATION']],
+    [
+      'geolocation',
+      [
+        'android.permission.ACCESS_COARSE_LOCATION',
+        'android.permission.ACCESS_FINE_LOCATION',
+      ],
+    ],
     ['microphone', ['android.permission.RECORD_AUDIO']],
     ['notifications', ['android.permission.POST_NOTIFICATIONS']],
   ]);
@@ -300,7 +318,9 @@ async function configurePage(
     (permission) => !androidPermissions.has(permission),
   );
   if (unsupported.length > 0) {
-    throw new Error(`No Android permission adapter for: ${unsupported.join(', ')}`);
+    throw new Error(
+      `No Android permission adapter for: ${unsupported.join(', ')}`,
+    );
   }
   for (const permission of options.permissions.flatMap(
     (value) => androidPermissions.get(value) ?? [],
@@ -315,14 +335,20 @@ async function configurePage(
     '--use-fake-device-for-media-stream',
     '--use-fake-ui-for-media-stream',
   ]);
-  const unsupportedArgs = launchArgs.filter((arg) => !supportedLaunchArgs.has(arg));
+  const unsupportedArgs = launchArgs.filter(
+    (arg) => !supportedLaunchArgs.has(arg),
+  );
   if (unsupportedArgs.length > 0) {
-    throw new Error(`No Android launch-option adapter for: ${unsupportedArgs.join(', ')}`);
+    throw new Error(
+      `No Android launch-option adapter for: ${unsupportedArgs.join(', ')}`,
+    );
   }
   let needsReload = false;
   if (launchArgs.includes('--use-fake-device-for-media-stream')) {
     await page.addInitScript(() => {
-      const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      const original = navigator.mediaDevices.getUserMedia.bind(
+        navigator.mediaDevices,
+      );
       navigator.mediaDevices.getUserMedia = async (constraints) => {
         if (!constraints?.audio) return original(constraints);
         const context = new AudioContext();
@@ -360,7 +386,10 @@ async function configurePage(
       if (locationPulseTask) return;
       locationPulseTask = setEmulatorLocation(device, options.geolocation!)
         .catch((error: unknown) => {
-          console.warn('[android-e2e] could not pulse emulator location', error);
+          console.warn(
+            '[android-e2e] could not pulse emulator location',
+            error,
+          );
         })
         .finally(() => {
           locationPulseTask = undefined;
@@ -384,7 +413,10 @@ async function attachFailureArtifacts(
   initialErrors: readonly string[] = [],
 ): Promise<void> {
   const collectionErrors = [...initialErrors];
-  const bounded = async <T,>(label: string, operation: Promise<T>): Promise<T> => {
+  const bounded = async <T,>(
+    label: string,
+    operation: Promise<T>,
+  ): Promise<T> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
@@ -403,7 +435,10 @@ async function attachFailureArtifacts(
 
   const webviewScreenshot = testInfo.outputPath('webview.png');
   try {
-    await bounded('WebView screenshot', page.screenshot({ path: webviewScreenshot }));
+    await bounded(
+      'WebView screenshot',
+      page.screenshot({ path: webviewScreenshot }),
+    );
     await testInfo.attach('webview.png', {
       path: webviewScreenshot,
       contentType: 'image/png',
@@ -414,7 +449,10 @@ async function attachFailureArtifacts(
 
   const deviceScreenshot = testInfo.outputPath('device.png');
   try {
-    await bounded('device screenshot', device.screenshot({ path: deviceScreenshot }));
+    await bounded(
+      'device screenshot',
+      device.screenshot({ path: deviceScreenshot }),
+    );
     await testInfo.attach('device.png', {
       path: deviceScreenshot,
       contentType: 'image/png',
@@ -469,15 +507,19 @@ async function attachFailureArtifacts(
   await Promise.allSettled(attachments);
 }
 
-export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
+const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
   androidDevice: [
     async ({}, use) => {
       const expectedSerial = process.env['TRINITY_ANDROID_SERIAL'];
       if (!expectedSerial) {
-        throw new Error('TRINITY_ANDROID_SERIAL is required by the Android fixture');
+        throw new Error(
+          'TRINITY_ANDROID_SERIAL is required by the Android fixture',
+        );
       }
       const devices = await _android.devices();
-      const device = devices.find((candidate) => candidate.serial() === expectedSerial);
+      const device = devices.find(
+        (candidate) => candidate.serial() === expectedSerial,
+      );
       if (!device) {
         await Promise.allSettled(devices.map((candidate) => candidate.close()));
         throw new Error(`Playwright could not attach to ${expectedSerial}`);
@@ -492,7 +534,9 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
 
       const closed = await Promise.race([
         device.close().then(() => true),
-        new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000)),
+        new Promise<false>((resolve) =>
+          setTimeout(() => resolve(false), 5_000),
+        ),
       ]);
       if (!closed) {
         console.warn(
@@ -516,7 +560,11 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     let activeContext = page.context();
     let traceIndex = 0;
     const tracePaths: string[] = [];
-    await activeContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
+    await activeContext.tracing.start({
+      screenshots: true,
+      snapshots: true,
+      sources: true,
+    });
 
     const stopTrace = async (): Promise<void> => {
       const path = testInfo.outputPath(`android-trace-${traceIndex}.zip`);
@@ -576,7 +624,8 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       },
       async touch(control: Locator): Promise<void> {
         const box = await control.boundingBox();
-        if (!box) throw new Error('Cannot touch an element without a bounding box');
+        if (!box)
+          throw new Error('Cannot touch an element without a bounding box');
         const point = {
           x: Math.round(box.x + box.width / 2),
           y: Math.round(box.y + box.height / 2),
@@ -657,10 +706,14 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         for (const tracePath of tracePaths) rmSync(tracePath, { force: true });
       }
     } finally {
-      await shell(androidDevice, `am force-stop ${packageName}`).catch(() => undefined);
+      await shell(androidDevice, `am force-stop ${packageName}`).catch(
+        () => undefined,
+      );
     }
     if (crashReadError && testInfo.status === testInfo.expectedStatus) {
-      throw new Error(`Could not inspect the Android crash buffer: ${String(crashReadError)}`);
+      throw new Error(
+        `Could not inspect the Android crash buffer: ${String(crashReadError)}`,
+      );
     }
     expect(crashLog, 'Android crash log must stay empty').toBe('');
   },
@@ -669,13 +722,17 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     await use({
       async tap(page, target): Promise<void> {
         if (page !== app.page) {
-          throw new Error('Android touch input must target the primary app WebView');
+          throw new Error(
+            'Android touch input must target the primary app WebView',
+          );
         }
         await app.touch(target);
       },
       async swipe(page): Promise<void> {
         if (page !== app.page) {
-          throw new Error('Android touch input must target the primary app WebView');
+          throw new Error(
+            'Android touch input must target the primary app WebView',
+          );
         }
         throw new Error(
           'Android compositor touch panning is unavailable through the attached WebView DevTools endpoint',
@@ -707,10 +764,12 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
             `${secondaryPackageName}/${packageName}.MainActivity`,
             staleWebViews,
           ));
-          await secondaryPage.getByLabel('Homeserver', { exact: true }).waitFor({
-            state: 'visible',
-            timeout: 60_000,
-          });
+          await secondaryPage
+            .getByLabel('Homeserver', { exact: true })
+            .waitFor({
+              state: 'visible',
+              timeout: 60_000,
+            });
           const originalGoto = secondaryPage.goto.bind(secondaryPage);
           const originalReload = secondaryPage.reload.bind(secondaryPage);
           const waitForBoot = (timeout: number) =>
@@ -719,11 +778,16 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
               timeout,
             });
           secondaryPage.goto = async (url, options) => {
-            let response = await originalGoto(new URL(url, appOrigin).href, options);
+            let response = await originalGoto(
+              new URL(url, appOrigin).href,
+              options,
+            );
             try {
               await waitForBoot(10_000);
             } catch {
-              response = await originalReload({ waitUntil: 'domcontentloaded' });
+              response = await originalReload({
+                waitUntil: 'domcontentloaded',
+              });
               await waitForBoot(30_000);
             }
             return response;
@@ -731,7 +795,10 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           return secondaryPage;
         },
         async activatePrimary(): Promise<void> {
-          await shell(androidDevice, `am start -W -n ${packageName}/.MainActivity`);
+          await shell(
+            androidDevice,
+            `am start -W -n ${packageName}/.MainActivity`,
+          );
         },
       });
     } finally {
@@ -869,5 +936,7 @@ export const test = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
     }
   },
 });
+
+export const test = androidTest.extend(resourceFixtureDefinitions);
 
 export { expect } from '@playwright/test';

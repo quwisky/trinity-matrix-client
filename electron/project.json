@@ -123,24 +123,22 @@
       }
     },
     "e2e": {
-      "//": "The built-shell journey owns one Electron process at a time plus the fixed-port disposable Synapse stack.",
+      "//": "Compatibility host target; lifecycle ownership is trinity-e2e-electron:full.",
       "cache": false,
       "parallelism": false,
-      "dependsOn": ["build"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.electron.config.mts --resource=electron --resource=synapse",
+        "command": "pnpm exec nx run trinity-e2e-electron:full",
         "cwd": "{workspaceRoot}"
       }
     },
     "e2e-smoke": {
-      "//": "Docker-independent launch, custom-scheme, WASM, bridge, IPC security, safe-storage, CORS and styling proof.",
+      "//": "Compatibility host target; lifecycle ownership is trinity-e2e-electron:smoke.",
       "cache": false,
       "parallelism": false,
-      "dependsOn": ["build"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "node e2e/support/run-playwright.mts --config=e2e/playwright.electron.smoke.config.mts --resource=electron",
+        "command": "pnpm exec nx run trinity-e2e-electron:smoke",
         "cwd": "{workspaceRoot}"
       }
     },

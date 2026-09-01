@@ -27,8 +27,10 @@ const PROJECT_FILES = {
   'trinity-android': 'android/project.json',
   'trinity-desktop': 'electron/project.json',
   'trinity-e2e': 'e2e/project.json',
+  'trinity-e2e-android': 'e2e/android/project.json',
   'trinity-e2e-browser': 'e2e/browser/project.json',
   'trinity-e2e-components': 'e2e/components/project.json',
+  'trinity-e2e-electron': 'e2e/electron/project.json',
   'trinity-e2e-protocol': 'e2e/protocol/project.json',
   'trinity-e2e-web': 'e2e/web/project.json',
 };
@@ -38,8 +40,10 @@ const HISTORICAL_E2E_NAME =
   /(?:phase[ _-]?[67]|shipped[ _-]?ui|shipped-interface)/iu;
 const RETAINED_COMPATIBILITY_ALIAS = 'e2e:ui:shipped';
 const ACTIVE_LIFECYCLE_PROJECTS = new Set([
+  'trinity-e2e-android',
   'trinity-e2e-browser',
   'trinity-e2e-components',
+  'trinity-e2e-electron',
   'trinity-e2e-protocol',
   'trinity-e2e-web',
 ]);
@@ -126,6 +130,9 @@ export function validateRegistry(snapshot, now = new Date()) {
     if (suite.prerequisites.length === 0) {
       errors.push(`${suite.id} has no explicit prerequisite classification`);
     }
+    if (!['required', 'optional'].includes(suite.availabilityPolicy)) {
+      errors.push(`${suite.id} has no explicit availability policy`);
+    }
     if (suite.cachePolicy !== 'never') {
       errors.push(`${suite.id} permits caching for an E2E runtime result`);
     }
@@ -180,8 +187,20 @@ export function validateRegistry(snapshot, now = new Date()) {
         errors.push(`${script.name} references unknown suite ${suiteId}`);
       }
     }
-    if (script.kind === 'compatibility' && !script.removalAfterRelease) {
-      errors.push(`${script.name} has no compatibility removal criterion`);
+    if (script.kind === 'compatibility') {
+      const criterion = script.removalAfterRelease ?? '';
+      if (
+        ![
+          'released changelog',
+          'documented replacements',
+          'zero repository or CI references',
+          'no reported migration failures',
+        ].every((requirement) => criterion.includes(requirement))
+      ) {
+        errors.push(
+          `${script.name} has incomplete compatibility removal criteria`,
+        );
+      }
     }
   }
 
@@ -203,11 +222,20 @@ export function validateRegistry(snapshot, now = new Date()) {
         errors.push(
           `${entrypoint.command} references unknown suite ${suiteId}`,
         );
-      } else if (suite.ciTier !== 'pull-request') {
+      } else if (suite.ciTier !== entrypoint.tier) {
         errors.push(
-          `${suiteId} runs in pull-request CI but is classified ${suite.ciTier}`,
+          `${suiteId} runs in ${entrypoint.tier} CI but is classified ${suite.ciTier}`,
         );
       }
+    }
+  }
+
+  for (const aggregate of snapshot.aggregateTargets) {
+    const expectedPolicy = aggregate.selection.kind === 'all' ? 'skip' : 'fail';
+    if (aggregate.unavailablePolicy !== expectedPolicy) {
+      errors.push(
+        `${aggregate.target} must use ${expectedPolicy} unavailable prerequisites`,
+      );
     }
   }
 
@@ -355,6 +383,17 @@ const validateSuiteFilesAndTargets = (errors, workspaceRoot, snapshot) => {
       ) {
         errors.push(`${target} must explicitly disable task parallelism`);
       }
+      if (
+        target === suite.currentTarget &&
+        target.startsWith(`${suite.targetProject}:`) &&
+        !definition.outputs?.includes(
+          `{workspaceRoot}/dist/.playwright/${suite.targetProject}`,
+        )
+      ) {
+        errors.push(
+          `${target} must publish the standard ${suite.targetProject} artifact root`,
+        );
+      }
     }
   }
 };
@@ -495,8 +534,10 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
     snapshot.ciEntrypoints.flatMap(({ suiteIds }) => suiteIds),
   );
   for (const suite of snapshot.suites) {
-    if (suite.ciTier === 'pull-request' && !ciSuiteIds.has(suite.id)) {
-      errors.push(`pull-request suite has no CI entrypoint: ${suite.id}`);
+    if (suite.ciTier === 'local-only' && ciSuiteIds.has(suite.id)) {
+      errors.push(`local-only suite has a CI entrypoint: ${suite.id}`);
+    } else if (suite.ciTier !== 'local-only' && !ciSuiteIds.has(suite.id)) {
+      errors.push(`${suite.ciTier} suite has no CI entrypoint: ${suite.id}`);
     }
   }
   if (!workflow.includes('# 110 canonical browser specs')) {

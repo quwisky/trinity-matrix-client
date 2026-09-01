@@ -1,6 +1,10 @@
 name: CI
 
 on:
+  schedule:
+    # Registry-classified scheduled E2E only; local-only suites are deliberately
+    # absent from this workflow and pull-request suites keep their existing jobs.
+    - cron: '23 3 * * 0'
   push:
     # renovate/patch-** is load-bearing, not housekeeping. Patch updates are automerged as
     # a branch with no pull request (.github/renovate.json), so the `pull_request` trigger
@@ -48,9 +52,12 @@ permissions:
   contents: read
 
 jobs:
+  # E2E tier contract: pull-request suites run in the existing host/browser jobs,
+  # scheduled suites run only in scheduled-e2e, and local-only suites never run here.
   # Everything that reads the code without running it. Grouped because each part is
   # seconds long; split only if one starts dominating.
   quality:
+    if: github.event_name != 'schedule'
     name: Lint & format
     runs-on: ubuntu-latest
     steps:
@@ -63,6 +70,7 @@ jobs:
       - run: pnpm format:check
 
   test:
+    if: github.event_name != 'schedule'
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
@@ -81,6 +89,7 @@ jobs:
   # things Vitest happily runs — template type errors, and the `lib: es2018` trap where
   # ES2019+ methods pass the unit tests and fail the build (docs/reference/stack.md).
   build:
+    if: github.event_name != 'schedule'
     name: Web build
     runs-on: ubuntu-latest
     steps:
@@ -91,6 +100,7 @@ jobs:
   # electron/ is a separate package with its own lockfile and an explicit trinity-desktop
   # Nx application. The dedicated job additionally launches the real binary.
   desktop:
+    if: github.event_name != 'schedule'
     name: Desktop (Electron)
     runs-on: ubuntu-latest
     steps:
@@ -126,6 +136,7 @@ jobs:
 
   # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
   e2e:
+    if: github.event_name != 'schedule'
     name: E2E (Playwright + Synapse)
     runs-on: ubuntu-latest
     # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
@@ -219,6 +230,7 @@ jobs:
   # Capacitor WebView. Browser E2E cannot substitute for native Back, process
   # relaunch, Android TLS policy, or the packaged application itself.
   android-e2e:
+    if: github.event_name != 'schedule'
     name: Android E2E (Capacitor WebView, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -268,7 +280,31 @@ jobs:
         if: always()
         with:
           name: android-playwright-report-${{ matrix.shard }}
-          path: dist/.playwright/android/
+          path: dist/.playwright/trinity-e2e-android/
+          if-no-files-found: warn
+          retention-days: 7
+          overwrite: true
+
+  scheduled-e2e:
+    name: Scheduled E2E
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      # The typed registry is the source of truth for this tier. Its strict
+      # preflight fails before starting any suite when a required host is absent.
+      - run: pnpm e2e:scheduled
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: scheduled-playwright-report
+          path: |
+            dist/.playwright/trinity-e2e/
+            dist/.playwright/trinity-e2e-components/
+            dist/.playwright/trinity-e2e-protocol/
           if-no-files-found: warn
           retention-days: 7
           overwrite: true

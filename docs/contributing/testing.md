@@ -390,8 +390,9 @@ steps.
 
 ### Android runs shared journeys in the installed WebView
 
-`pnpm e2e:android` delegates to the serialized `trinity-android:e2e` Nx host target and is
-deliberately separate from the Chromium suite. It builds the
+`pnpm e2e:android` selects the serialized, uncached `trinity-e2e-android:e2e` lifecycle target;
+the retained `trinity-android:e2e` host target delegates to it. The suite is deliberately separate
+from the Chromium lifecycle. It builds the
 production Capacitor app, installs it on a validated API 36 x86_64 emulator, and attaches
 Playwright to the app's own WebView. That boundary makes native hardware Back, touch input,
 Android TLS handling, and session restoration after force-stop/relaunch observable.
@@ -420,7 +421,8 @@ driver packages, and the `tcp:8448` reverse mapping. Device validation rejects a
 that already contains Playwright drivers, so their later removal is unambiguously owned by
 this run. It restores only state it changed and
 records screenshots, traces, logcat/crash buffers, activity state, and package diagnostics
-under `dist/.playwright/android/` on failure.
+under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.installed-webview/` on failure.
 
 The matching iOS host exposes `trinity-ios:verify` on every OS and
 `trinity-ios:verify-native` on macOS. The first pins its Nx lifecycle, shared artifact,
@@ -581,11 +583,13 @@ outright and never reaches the branch under test.
 
 ## Desktop specs
 
-`pnpm electron:e2e` delegates to the serialized, uncached `trinity-desktop:e2e` Nx target. That
-target depends on `trinity-desktop:build`, whose graph begins with `trinity:build`, the
+`pnpm electron:e2e` retains the `trinity-desktop:e2e` host alias, which delegates to the
+serialized, uncached `trinity-e2e-electron:full` lifecycle target. That target depends on
+`trinity-desktop:build`, whose graph begins with `trinity:build`, the
 **production** Angular build. The Electron specs are the browser-driven gate on that output, which
 is exactly why the desktop dark-theme regression and image-pack manager journey live here.
-`pnpm electron:e2e:smoke` focuses the Docker-independent launched-shell checks.
+`pnpm electron:e2e:smoke` delegates to `trinity-e2e-electron:smoke` for the
+Docker-independent launched-shell checks.
 
 The config sets `fullyParallel: false`, `workers: 1` and a 120s timeout, and has no
 `webServer` or `baseURL`: each spec launches the process itself. The support invocation owns the
