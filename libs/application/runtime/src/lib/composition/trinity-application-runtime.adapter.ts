@@ -13,6 +13,10 @@ import type {
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
 } from '../application-runtime.models';
+import {
+  AppearanceEffects,
+  AppearancePreferences,
+} from '@trinity/application/appearance';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
 import { PushGatewayService } from '@trinity/data-access/notifications';
@@ -32,7 +36,6 @@ import {
   ShellLayoutService,
   StoragePersistenceService,
   SystemLineSettingsService,
-  ThemeService,
 } from '@trinity/platform-native';
 import {
   HostCapabilitiesService,
@@ -46,6 +49,7 @@ import {
   filter,
   forkJoin,
   from,
+  ignoreElements,
   map,
   of,
   take,
@@ -79,7 +83,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly accounts = inject(AccountRuntimeService);
   private readonly updates = inject(HostUpdatesService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
-  private readonly theme = inject(ThemeService);
+  private readonly appearance = inject(AppearancePreferences);
+  private readonly appearanceEffects = inject(AppearanceEffects);
   private readonly shellLayout = inject(ShellLayoutService);
   private readonly featureFlags = inject(FeatureFlagsService);
   private readonly privacy = inject(PrivacySettingsService);
@@ -128,7 +133,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   hydratePreferences(): Observable<ApplicationStartupStageOutcome> {
     return defer(() =>
       forkJoin({
-        theme: from(this.theme.init()),
+        appearance: this.appearance.hydrate(),
         shellLayout: from(this.shellLayout.init()),
         featureFlags: from(this.featureFlags.init()),
         privacy: this.privacy.init(),
@@ -143,20 +148,26 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         pushGateway: from(this.pushGateway.init()),
       }),
     ).pipe(
-      map(({ privacy }) =>
-        ready(
-          privacy.kind === 'partial'
-            ? [
-                {
-                  stage: 'preference-hydration',
-                  scope: 'preferences',
-                  diagnostic: { code: 'preference-hydration-partial' },
-                  recovery: 'reset-preferences',
-                },
-              ]
-            : [],
-        ),
-      ),
+      map(({ appearance, privacy }) => {
+        const warnings: ApplicationRuntimeWarning[] = [];
+        if (appearance.kind === 'partial') {
+          warnings.push({
+            stage: 'preference-hydration',
+            scope: 'preferences',
+            diagnostic: { code: appearance.warning.code },
+            recovery: appearance.warning.recovery,
+          });
+        }
+        if (privacy.kind === 'partial') {
+          warnings.push({
+            stage: 'preference-hydration',
+            scope: 'preferences',
+            diagnostic: { code: 'preference-hydration-partial' },
+            recovery: 'reset-preferences',
+          });
+        }
+        return ready(warnings);
+      }),
       catchError(() =>
         of({
           kind: 'blocked',
@@ -359,6 +370,10 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
 
   runSession(): Observable<ApplicationRuntimeWarning> {
     return this.session.run();
+  }
+
+  runPreferenceLifetime(): Observable<ApplicationRuntimeWarning> {
+    return this.appearanceEffects.run().pipe(ignoreElements());
   }
 
   private initialUpdateCheck(): Observable<ApplicationRuntimeWarning | null> {

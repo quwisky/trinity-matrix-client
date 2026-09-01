@@ -10,22 +10,19 @@ import {
   PREFERENCE_STORAGE_ADAPTER,
   type PreferenceStorageAdapter,
 } from '@trinity/runtime/preferences';
-import { NEVER, defer, of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { AppearanceSettingsController } from './appearance-settings.controller';
 
 describe('AppearanceSettingsController', () => {
-  it('does not start a command while hydration is still reading preferences', () => {
+  it('does not duplicate Application Runtime hydration or effect ownership', () => {
+    const read = vi.fn<PreferenceStorageAdapter['read']>(() =>
+      of({ kind: 'missing' }),
+    );
     const write = vi.fn<PreferenceStorageAdapter['write']>(() =>
       of({ kind: 'completed' }),
     );
-    let effectsSubscribed = false;
-    const run = vi.fn(() =>
-      defer(() => {
-        effectsSubscribed = true;
-        return NEVER;
-      }),
-    );
+    const run = vi.fn(() => of());
     TestBed.configureTestingModule({
       providers: [
         AppearanceSettingsController,
@@ -33,7 +30,7 @@ describe('AppearanceSettingsController', () => {
         {
           provide: PREFERENCE_STORAGE_ADAPTER,
           useValue: {
-            read: () => NEVER,
+            read,
             write,
           } satisfies PreferenceStorageAdapter,
         },
@@ -48,14 +45,13 @@ describe('AppearanceSettingsController', () => {
     });
     const controller = TestBed.inject(AppearanceSettingsController);
 
-    expect(controller.hydrationBusy()).toBe(true);
-    controller.update('theme', 'amethyst');
-
+    expect(controller.hydrationBusy()).toBe(false);
+    expect(read).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
-    expect(effectsSubscribed).toBe(false);
+    expect(run).not.toHaveBeenCalled();
   });
 
-  it('keeps the committed selection visible and retries the same failed candidate', () => {
+  it('keeps the committed selection visible and retries the same failed candidate', async () => {
     const write = vi
       .fn<PreferenceStorageAdapter['write']>()
       .mockReturnValueOnce(
@@ -65,7 +61,7 @@ describe('AppearanceSettingsController', () => {
         }),
       )
       .mockReturnValueOnce(of({ kind: 'completed' }));
-    const controller = setup({
+    const controller = await setup({
       read: () => of({ kind: 'missing' }),
       write,
     });
@@ -83,12 +79,12 @@ describe('AppearanceSettingsController', () => {
     expect(controller.status.theme.failed()).toBe(false);
   });
 
-  it('reduces partial hydration to one warning and clears it after recovery', () => {
+  it('reduces partial hydration to one warning and clears it after recovery', async () => {
     let themePayload = JSON.stringify({
       version: 1,
       value: 'removed-theme',
     });
-    const controller = setup({
+    const controller = await setup({
       read: (request) =>
         of(
           request.key === THEME_PREFERENCE.persistence.key
@@ -122,10 +118,9 @@ describe('AppearanceSettingsController', () => {
   });
 });
 
-function setup(
+async function setup(
   adapter: PreferenceStorageAdapter,
-): AppearanceSettingsController {
-  const run = vi.fn(() => NEVER);
+): Promise<AppearanceSettingsController> {
   TestBed.configureTestingModule({
     providers: [
       AppearanceSettingsController,
@@ -135,13 +130,12 @@ function setup(
         provide: AppearanceEffects,
         useValue: {
           resolved: signal(undefined).asReadonly(),
-          run,
-        } satisfies Pick<AppearanceEffects, 'resolved' | 'run'>,
+        } satisfies Pick<AppearanceEffects, 'resolved'>,
       },
     ],
   });
+  await firstValueFrom(TestBed.inject(AppearancePreferences).hydrate());
   const controller = TestBed.inject(AppearanceSettingsController);
   expect(TestBed.inject(AppearancePreferences)).toBeDefined();
-  expect(run).toHaveBeenCalledOnce();
   return controller;
 }

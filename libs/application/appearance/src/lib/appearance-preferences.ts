@@ -3,6 +3,7 @@ import {
   computed,
   inject,
   makeEnvironmentProviders,
+  signal,
   type EnvironmentProviders,
   type Signal,
 } from '@angular/core';
@@ -31,6 +32,7 @@ import {
   from,
   map,
   switchMap,
+  tap,
   toArray,
   type Observable,
 } from 'rxjs';
@@ -91,6 +93,7 @@ export type AppearanceHydrationOutcome =
 @Injectable({ providedIn: 'root' })
 export class AppearancePreferences {
   private readonly preferences = inject(PreferenceStoreService);
+  private readonly _hydration = signal<AppearanceHydrationOutcome | null>(null);
 
   readonly axes = Object.freeze({
     mode: this.axis(MODE_PREFERENCE),
@@ -110,6 +113,9 @@ export class AppearancePreferences {
     codeLinePresentation: this.axes.codeLinePresentation.value(),
   }));
 
+  /** Last completed aggregate hydration, retained for recovery-capable consumers. */
+  readonly hydration = this._hydration.asReadonly();
+
   hydrate(): Observable<AppearanceHydrationOutcome> {
     return this.preferences
       .hydrateDescriptors(
@@ -128,6 +134,7 @@ export class AppearancePreferences {
                 },
               },
         ),
+        tap((outcome) => this._hydration.set(outcome)),
       );
   }
 

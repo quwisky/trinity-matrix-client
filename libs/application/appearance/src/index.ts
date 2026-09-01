@@ -1,4 +1,5 @@
 export * from './lib/appearance-document.adapter';
+export * from './lib/appearance-config-entries';
 export * from './lib/appearance-effects';
 export * from './lib/appearance-native-chrome.adapter';
 export * from './lib/appearance-preferences';

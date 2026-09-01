@@ -87,12 +87,19 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Appearance now follows one application-owned lifetime everywhere.** Startup hydrates the six
+  descriptor-backed axes before routing and keeps one document/native effect subscription for the
+  whole session. Advanced configuration exports and imports the current `appearance.*` values,
+  with portable format 2 importing the former version 1 Theme paths through a one-way migration.
+  The Capacitor status bar receives only resolved light/dark Mode, and widget links read that same
+  read-only projection instead of the legacy platform theme service.
+
 - **Appearance settings now saves every visual choice through one reliable model.** Mode, Theme,
   text size, density, code size, and code-line presentation keep the previous choice visible until
   persistence succeeds. A failed save shows Retry beside that control, while a restore problem
   produces one warning and repairs only the affected defaults without overwriting the other axes.
-  Controls wait for hydration before accepting changes, and a fixed Mode remains authoritative
-  while the legacy startup listener is removed in the next migration step.
+  Startup completes hydration before the route becomes available, and a fixed Mode remains
+  authoritative when the system colour scheme changes.
 
 - **Appearance rendering now has a safe boundary.** Mode, Theme, text-size, density, and code
   display updates reach the page only after they are saved, and a system light/dark change is

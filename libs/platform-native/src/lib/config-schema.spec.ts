@@ -45,6 +45,16 @@ describe('config key ledger', () => {
   });
 
   it('names each owning lib for the keys it exports', () => {
+    expect(exportedKeysFor('application/appearance')).toEqual([
+      'trinity.appearance.mode',
+      'trinity.appearance.theme',
+      'trinity.appearance.text-size',
+      'trinity.appearance.density',
+    ]);
+    expect(exportedKeysFor('data-access/timeline')).toEqual([
+      'trinity.appearance.code-size',
+      'trinity.appearance.code-line-presentation',
+    ]);
     expect(exportedKeysFor('data-access/gif')).toEqual(['trinity.gif.config']);
     expect(exportedKeysFor('data-access/notifications')).toEqual([
       'trinity.push.gateway',
@@ -55,24 +65,18 @@ describe('config key ledger', () => {
     // neither change. A list conflicts visibly and resolves additively — which is what
     // happened when this phase's density preference met the composer's selection toggle.
     expect([...exportedKeysFor('platform-native')].sort()).toEqual([
-      'trinity.code-lines',
-      'trinity.code-scale',
       'trinity.composer.format-on-selection',
       'trinity.composer.show-toolbar',
-      'trinity.density',
       'trinity.flags.virtual-timeline',
       'trinity.format.date',
       'trinity.format.time',
       'trinity.message-swipe',
-      'trinity.palette',
       'trinity.privacy.link-previews',
       'trinity.privacy.link-previews-encrypted',
       'trinity.privacy.send-read-receipts',
       'trinity.shell.right-panel-width',
       'trinity.shell.sidebar-width',
       'trinity.shortcuts.overrides',
-      'trinity.text-scale',
-      'trinity.theme',
       'trinity.timeline.show-membership',
       'trinity.timeline.show-profile',
       'trinity.timeline.show-room-changes',
@@ -90,7 +94,7 @@ describe('config key ledger', () => {
     ).toBe(true);
   });
 
-  it('starts the export format at version 1', () => {
-    expect(CONFIG_EXPORT_VERSION).toBe(1);
+  it('versions the Appearance path migration as format 2', () => {
+    expect(CONFIG_EXPORT_VERSION).toBe(2);
   });
 });

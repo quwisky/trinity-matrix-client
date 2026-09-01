@@ -16,8 +16,8 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { ThemeService } from '@trinity/platform-native';
 import { liveRoomState } from '@trinity/util/matrix';
+import { WIDGET_APPEARANCE_PROJECTION } from './widget-appearance-projection';
 import type {
   RoomWidget,
   WidgetLaunch,
@@ -43,7 +43,7 @@ interface WatchedRoom {
 @Injectable({ providedIn: 'root' })
 export class WidgetsService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly theme = inject(ThemeService);
+  private readonly appearance = inject(WIDGET_APPEARANCE_PROJECTION);
   private readonly watched = new Map<string, WatchedRoom>();
 
   private readonly onStateEvent = (event: MatrixEvent): void => {
@@ -185,7 +185,7 @@ export class WidgetsService {
       displayName: roomMember?.rawDisplayName ?? user?.displayName ?? userId,
       avatarUrl,
       clientId: TRINITY_WIDGET_CLIENT_ID,
-      theme: this.theme.resolved(),
+      theme: this.appearance.resolved()?.mode ?? 'dark',
       language: typeof navigator === 'undefined' ? '' : navigator.language,
       deviceId: client?.getDeviceId() ?? '',
       baseUrl: client?.getHomeserverUrl() ?? '',

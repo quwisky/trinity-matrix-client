@@ -463,27 +463,31 @@ system-Mode observation and imperative projection. The browser document adapter 
 root carrier in the table above. Native chrome receives only `{ mode }`, so Theme, sizing,
 density, and code presentation never cross that boundary. A system colour-scheme change updates
 resolved Appearance and native chrome only while committed Mode is `system`; an explicit light or
-dark Mode keeps both inert. Until Application Runtime removes the earlier `ThemeService` listener
-in the next migration slice, the document effect idempotently reasserts the same committed carriers
-after that listener runs so it cannot overwrite a fixed Mode. Preference Store publishes only
-successful writes, so rejected persistence never changes resolved or rendered Appearance.
+dark Mode keeps both inert. Application Runtime owns one effect subscription for its whole session,
+after hydrating Appearance in the preference stage and before Workspace routing. Preference Store
+publishes only successful writes, so rejected persistence never changes resolved or rendered
+Appearance.
 
 Settings consumes those six axes through one screen-scoped controller. Labels, descriptions and
 options come from descriptor editor metadata; controls invoke descriptor-backed commands rather
 than `ThemeService` setters. All six remain disabled until hydration settles, so a write cannot race
 a current or predecessor-key read. A pending or failed command continues to render the committed value,
 and failure adds an inline Retry beside that control. The screen displays one warning for partial
-hydration and can restore only the affected defaults. As an incremental migration seam, the routed
-screen currently owns hydration and the cold effect subscription for its own lifetime; Application
-Runtime takes over that single session-long lifetime in the next slice.
+hydration and can restore only the affected defaults. The routed screen never starts another
+hydration or effect lifetime; Application Runtime has already settled both before the route opens.
 
-`ThemeService` remains the temporary startup and caller-compatibility facade during the staged
-migration. Its old `trinity.theme`, `trinity.palette`, `trinity.text-scale`, `trinity.density`,
-`trinity.code-scale`, and `trinity.code-lines` keys are read-only predecessors on the new
-descriptors; later tickets move the effect lifetime to startup and migrate configuration plus
-concrete native chrome before removing the facade. First paint remains the existing CSS-only splash;
-the migration adds no inline bootstrap script. The axes remain orthogonal: any Theme works in either
-Mode, and code size multiplies text size rather than replacing it.
+Application Runtime also composes the concrete integration ports. Capacitor status-bar projection
+receives only resolved Mode, and widgets receive a read-only resolved Appearance projection. The
+Advanced configuration registry exposes six `appearance.*` paths whose defaults, validation,
+choices, current persistence keys, and commands come from the descriptors. The former
+`trinity.theme`, `trinity.palette`, `trinity.text-scale`, `trinity.density`, `trinity.code-scale`,
+and `trinity.code-lines` keys remain read-only predecessors and never appear in a portable export.
+Portable format 2 also imports the six former version 1 Theme paths through a one-way mapping to
+the current `appearance.*` entries; new exports contain only the current names.
+`ThemeService` remains only as a removable compatibility implementation for the next contraction
+slice. First paint remains the existing CSS-only splash; no inline bootstrap script is added. The
+axes remain orthogonal: any Theme works in either Mode, and code size multiplies text size rather
+than replacing it.
 
 Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
 the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows

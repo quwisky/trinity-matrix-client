@@ -3,6 +3,12 @@ import {
   inject,
   type Provider,
 } from '@angular/core';
+import {
+  APPEARANCE_NATIVE_CHROME_ADAPTER,
+  AppearanceEffects,
+  provideAppearanceConfigEntries,
+  provideAppearancePreferences,
+} from '@trinity/application/appearance';
 import { BADGE_SINK, type BadgeSink } from '@trinity/application/badge';
 import { AVATAR_RESOLVER } from '@trinity/components/generic-content';
 import {
@@ -49,8 +55,13 @@ import {
   type TrustProviderRecoveryPort,
 } from '@trinity/data-access/trust';
 import {
+  WIDGET_APPEARANCE_PROJECTION,
+  type WidgetAppearanceProjection,
+} from '@trinity/data-access/widgets';
+import {
   BUILD_INFO,
   DraftStoreService,
+  NativeAppearanceChromeAdapter,
   type BuildInfo,
   providePlatformConfigEntries,
   providePrivacyPreferenceSet,
@@ -68,8 +79,20 @@ export function applicationCapabilityProviders(
   options: ApplicationCapabilityProviderOptions,
 ): readonly (Provider | EnvironmentProviders)[] {
   return [
+    provideAppearancePreferences(),
+    provideAppearanceConfigEntries(),
     provideConversationPrivacyPreferences(),
     providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
+    {
+      provide: APPEARANCE_NATIVE_CHROME_ADAPTER,
+      useExisting: NativeAppearanceChromeAdapter,
+    },
+    {
+      provide: WIDGET_APPEARANCE_PROJECTION,
+      useFactory: (): WidgetAppearanceProjection => ({
+        resolved: inject(AppearanceEffects).resolved,
+      }),
+    },
     {
       provide: AUTHENTICATION_HOMESERVER_DISCOVERY,
       useFactory: (): AuthenticationHomeserverDiscovery => {

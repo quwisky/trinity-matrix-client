@@ -16,6 +16,7 @@ export * from './lib/message-gesture-settings.service';
 export * from './lib/theme.service';
 export * from './lib/shell-layout.service';
 export * from './lib/native-navigation.service';
+export * from './lib/native-appearance-chrome.adapter';
 export * from './lib/date-time-format.service';
 export * from './lib/device-preference-storage.service';
 export * from './lib/mobile-badge.service';

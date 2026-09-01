@@ -1,9 +1,8 @@
 import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ThemeService } from '@trinity/platform-native';
-import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { WIDGET_APPEARANCE_PROJECTION } from './widget-appearance-projection';
 import { WIDGET_EVENT_TYPE, WidgetsService } from './widgets.service';
 
 interface WidgetFixture {
@@ -31,6 +30,9 @@ function handlerFor(client: { on: Mock }, event: string) {
 }
 
 function setup(initial: WidgetFixture[] = []) {
+  const resolvedAppearance = signal<{ readonly mode: 'light' | 'dark' }>({
+    mode: 'dark',
+  });
   const activeUserId = signal<string | null>('@alice:example.org');
   const membership = signal('join');
   const guest = signal(false);
@@ -85,7 +87,10 @@ function setup(initial: WidgetFixture[] = []) {
     providers: [
       WidgetsService,
       { provide: MatrixClientService, useValue: matrix },
-      MockProvider(ThemeService, { resolved: signal<'dark'>('dark') }),
+      {
+        provide: WIDGET_APPEARANCE_PROJECTION,
+        useValue: { resolved: resolvedAppearance.asReadonly() },
+      },
     ],
   });
   return {
@@ -98,6 +103,7 @@ function setup(initial: WidgetFixture[] = []) {
     membership,
     guest,
     maySendWidgets,
+    resolvedAppearance,
   };
 }
 
@@ -353,6 +359,34 @@ describe('WidgetsService', () => {
     expect(launch.disclosures).toEqual([
       { kind: 'user-id', label: 'your Matrix user ID' },
     ]);
+  });
+
+  it('reads widget theme disclosure from the application Appearance projection', () => {
+    const { service, resolvedAppearance } = setup();
+    const widget = {
+      id: 'board',
+      name: 'Board',
+      type: 'm.custom',
+      rawUrl: 'https://widgets.example/?theme=$org.matrix.msc2873.client_theme',
+      data: {},
+      creatorUserId: '@alice:example.org',
+      waitForIframeLoad: true,
+      sourceEventId: '$board',
+    } as const;
+
+    expect(
+      new URL(
+        service.launchFor('!room:example.org', widget).url as string,
+      ).searchParams.get('theme'),
+    ).toBe('dark');
+
+    resolvedAppearance.set({ mode: 'light' });
+
+    expect(
+      new URL(
+        service.launchFor('!room:example.org', widget).url as string,
+      ).searchParams.get('theme'),
+    ).toBe('light');
   });
 
   it('recomputes launch identity when the active account changes', () => {

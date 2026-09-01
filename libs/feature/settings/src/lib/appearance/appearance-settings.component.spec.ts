@@ -30,7 +30,7 @@ import {
   type RoomSortMode,
 } from '@trinity/data-access/room-library';
 import { AppearanceSettingsComponent } from './appearance-settings.component';
-import { NEVER, of } from 'rxjs';
+import { NEVER, firstValueFrom, of } from 'rxjs';
 
 describe('AppearanceSettingsComponent', () => {
   let resolved: ReturnType<typeof signal<ResolvedAppearance | undefined>>;
@@ -74,8 +74,8 @@ describe('AppearanceSettingsComponent', () => {
     setFormatOnSelection = vi.fn();
   });
 
-  function renderPage() {
-    return render(AppearanceSettingsComponent, {
+  async function renderPage() {
+    const rendered = await render(AppearanceSettingsComponent, {
       providers: [
         provideAppearancePreferences(),
         {
@@ -112,6 +112,9 @@ describe('AppearanceSettingsComponent', () => {
         }),
       ],
     });
+    await firstValueFrom(TestBed.inject(AppearancePreferences).hydrate());
+    await rendered.fixture.whenStable();
+    return rendered;
   }
 
   it('renders the theme options bound to the current preference', async () => {

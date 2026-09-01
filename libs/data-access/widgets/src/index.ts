@@ -1,4 +1,5 @@
 export * from './lib/widget.model';
+export * from './lib/widget-appearance-projection';
 export * from './lib/widget-embed-policy';
 export * from './lib/widget-management-policy';
 export * from './lib/widget-management.service';
