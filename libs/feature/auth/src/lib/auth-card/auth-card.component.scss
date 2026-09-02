@@ -73,15 +73,11 @@
   }
 
   .login-card__mark {
-    display: inline-grid;
+    display: block;
     width: 40px;
     height: 40px;
-    place-items: center;
+    flex: none;
     border-radius: var(--trinity-shape-place-radius);
-    background: var(--trinity-state-attention-surface);
-    color: var(--trinity-state-attention-foreground);
-    font-size: 1.125rem;
-    font-weight: 800;
     box-shadow: var(--trinity-shadow-raised);
   }
 

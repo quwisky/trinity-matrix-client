@@ -247,6 +247,13 @@
 }
 
 @layer overrides {
+  @media (forced-colors: active) {
+    :focus-visible {
+      outline: var(--trinity-focus-ring-width) solid Highlight;
+      outline-offset: var(--trinity-focus-ring-offset);
+    }
+  }
+
   /* Respect users who prefer reduced motion. */
   @media (prefers-reduced-motion: reduce) {
     *,

@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Production Web, PWA and Electron now prove the shipped Appearance system end to end.** The
+  exact production artifact covers untouched defaults, system changes, every Theme × Mode on
+  desktop and mobile, static first paint, offline styling, overlays, density, safe areas, reduced
+  motion and the Electron custom protocol. The signed-out surface now uses Trinity's actual app
+  icon instead of a placeholder letter, and forced-colour keyboard focus uses the system highlight
+  colour so it remains visible when shadow-based rings are suppressed.
+
 - **Tailwind now exposes a closed Trinity design namespace.** Stock colour, elevation and
   open-ended radius utilities are reset in favour of semantic colour, scrim, shadow and invariant
   radius roles. A sparse synthetic Theme, compiled namespace checks, contrast/gamut contracts and
