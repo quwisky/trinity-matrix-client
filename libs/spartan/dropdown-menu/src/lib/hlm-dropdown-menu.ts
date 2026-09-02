@@ -11,7 +11,7 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
 /**
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
  *
- * Five deliberate local overrides live in this file. A regenerate drops all five; each is
+ * Seven deliberate local overrides live in this file. A regenerate drops all seven; each is
  * commented at its site and pinned by a test in libs/spartan/overlay (the only spartan lib
  * with a Vitest target), so a lost override fails the suite rather than shipping.
  *
@@ -29,11 +29,13 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  *      measured 1.38:1, so "Leave room" read as an empty strip. The `bg-destructive/10`
  *      hover tints are left alone — that IS the sanctioned use of the token. See AGENTS.md
  *      ("never use Helm's --destructive as a foreground") and docs/architecture/ui-and-theming.md.
+ *   6. HlmDropdownMenu / HlmDropdownMenuSub — use Trinity's semantic overlay elevation
+ *      instead of Tailwind's open-ended default shadow scale.
  *
  * The register lives in docs/architecture/ui-and-theming.md. Note this file is already a fork in shape as
  * well as content: the generator emits ~16 one-directive files, this is one module.
  *
- *   6. Every `hostDirectives` entry states its `inputs` and `outputs` explicitly, even when
+ *   7. Every `hostDirectives` entry states its `inputs` and `outputs` explicitly, even when
  *      empty — the generator's shorthand decides the element's public API by omission.
  *      Pinned by scripts/host-directives.spec.mjs.
  * └───────────────────────────────────────────────────────────────────────────────────────┘
@@ -418,7 +420,8 @@ export class HlmDropdownMenuSub {
     // TODO: figure out a way for us to know the host is about to be closed. might not be possible with CDK
     this._host.closed.pipe(takeUntilDestroyed()).subscribe(() => this._state.set('closed'));
 
-    classes(() => 'motion-safe:data-open:animate-in motion-safe:data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/5 dark:ring-foreground/10 bg-popover text-popover-foreground min-w-36 rounded-xl p-1.5 shadow-lg ring-1 duration-100 w-auto');
+    // Trinity override: menus are overlays, not an arbitrary Tailwind shadow step.
+    classes(() => 'motion-safe:data-open:animate-in motion-safe:data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/5 dark:ring-foreground/10 bg-popover text-popover-foreground min-w-36 rounded-xl p-1.5 shadow-overlay ring-1 duration-100 w-auto');
   }
 
   private setSideFromTransformOrigin() {
@@ -511,9 +514,10 @@ export class HlmDropdownMenu {
   public readonly sideOffset = input<number, NumberInput>(1, { transform: numberAttribute });
 
   constructor() {
+    // Trinity override: menus are overlays, not an arbitrary Tailwind shadow step.
     classes(
       () =>
-        'motion-safe:data-open:animate-in motion-safe:data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/5 dark:ring-foreground/10 bg-popover text-popover-foreground min-w-48 rounded-xl p-1.5 shadow-lg ring-1 duration-100 my-[--spacing(var(--side-offset))] overflow-x-hidden overflow-y-auto outline-none',
+        'motion-safe:data-open:animate-in motion-safe:data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/5 dark:ring-foreground/10 bg-popover text-popover-foreground min-w-48 rounded-xl p-1.5 shadow-overlay ring-1 duration-100 my-[--spacing(var(--side-offset))] overflow-x-hidden overflow-y-auto outline-none',
     );
 
     this.setSideFromTransformOrigin();

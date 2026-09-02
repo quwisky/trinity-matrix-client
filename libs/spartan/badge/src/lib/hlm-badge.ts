@@ -2,8 +2,15 @@ import { Directive, input } from '@angular/core';
 import { classes } from '@trinity/helm/utils';
 import { type VariantProps, cva } from 'class-variance-authority';
 
+/**
+ * VENDORED FILE — local override: badges consume Trinity's invariant pill radius rather
+ * than Tailwind's open-ended default radius scale. A regenerate drops it;
+ * helm-components.spec.ts pins the role alongside the local status variants.
+ */
+
 export const badgeVariants = cva(
-  'h-5 gap-1 rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium transition-all has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 [&>ng-icon]:text-[length:--spacing(3)] group/badge focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 inline-flex w-fit shrink-0 items-center justify-center overflow-hidden whitespace-nowrap focus-visible:ring-[3px] [&>ng-icon]:pointer-events-none',
+  // Trinity override: badges are semantic pills, independent of Tailwind's numeric scale.
+  'h-5 gap-1 rounded-full border border-transparent px-2 py-0.5 text-xs font-medium transition-all has-data-[icon=inline-end]:pe-1.5 has-data-[icon=inline-start]:ps-1.5 [&>ng-icon]:text-[length:--spacing(3)] group/badge focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 inline-flex w-fit shrink-0 items-center justify-center overflow-hidden whitespace-nowrap focus-visible:ring-[3px] [&>ng-icon]:pointer-events-none',
   {
     variants: {
       variant: {

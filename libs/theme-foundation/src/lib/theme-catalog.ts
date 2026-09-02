@@ -125,6 +125,7 @@ const colorRoles = Object.freeze([
   '--trinity-focus-ring-halo',
   '--trinity-tooltip-surface',
   '--trinity-tooltip-foreground',
+  '--trinity-overlay-scrim',
   '--trinity-camera-scrim',
   '--trinity-qr-surface',
   '--trinity-media-matte',

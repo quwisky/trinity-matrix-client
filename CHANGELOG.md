@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Tailwind now exposes a closed Trinity design namespace.** Stock colour, elevation and
+  open-ended radius utilities are reset in favour of semantic colour, scrim, shadow and invariant
+  radius roles. A sparse synthetic Theme, compiled namespace checks, contrast/gamut contracts and
+  a dated accessibility inventory prove new Theme metadata and overrides remain data-only.
+
 - **Onyx now has a fully achromatic sRGB-safe OKLCH palette in both modes.** Neutral surfaces,
   text, controls and interaction states lose their remaining blue cast, while the dark rail and
   canvas retain true black for OLED displays. Inherited accent, status and syntax colours keep

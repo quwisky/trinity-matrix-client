@@ -8,7 +8,7 @@ import { HlmSelectScrollUp } from './hlm-select-scroll-up';
 /**
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
  *
- * Two deliberate local overrides.
+ * Three deliberate local overrides.
  *
  * 1. Both `animate-in` / `animate-out` triggers carry `motion-safe:`, matching
  *    `hlm-dropdown-menu`. Upstream ships them bare, which left this panel's reduced-motion
@@ -25,6 +25,9 @@ import { HlmSelectScrollUp } from './hlm-select-scroll-up';
  * A regenerate drops this and restores the shorthand. `scripts/host-directives.spec.mjs`
  * fails when it does, rather than letting it ship. See "Registered vendored divergences"
  * in docs/architecture/ui-and-theming.md.
+ *
+ * 3. The panel uses Trinity's semantic overlay elevation instead of Tailwind's open-ended
+ * default shadow scale. Pinned by scripts/theme-foundation-contract.spec.mjs.
  * └──────────────────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -55,6 +58,7 @@ export class HlmSelectContent {
 	public readonly showScroll = input<boolean, BooleanInput>(false, { transform: booleanAttribute });
 
 	constructor() {
-		classes(() => 'bg-popover no-scrollbar text-popover-foreground motion-safe:data-open:animate-in motion-safe:data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 max-h-72 min-w-36 flex-col rounded-lg shadow-md ring-1 duration-100 relative flex w-(--brn-select-width) overflow-x-hidden overflow-y-auto');
+		// Trinity override: a select panel is an overlay, not an arbitrary Tailwind shadow step.
+		classes(() => 'bg-popover no-scrollbar text-popover-foreground motion-safe:data-open:animate-in motion-safe:data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 max-h-72 min-w-36 flex-col rounded-lg shadow-overlay ring-1 duration-100 relative flex w-(--brn-select-width) overflow-x-hidden overflow-y-auto');
 	}
 }

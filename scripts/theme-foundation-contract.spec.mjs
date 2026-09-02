@@ -25,6 +25,26 @@ const styleFiles = globSync(['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'], {
 })
   .filter((file) => !file.startsWith('libs/theme-foundation/styles/'))
   .sort();
+const utilityFiles = globSync(
+  ['apps/**/*.{ts,html,css,scss}', 'libs/**/*.{ts,html,css,scss}'],
+  { cwd: workspaceRoot },
+)
+  .filter((file) => !file.startsWith('libs/theme-foundation/styles/'))
+  .sort();
+
+const authored = (file) => {
+  const source = read(file);
+  return file.endsWith('.html')
+    ? stripMarkupComments(source)
+    : stripSourceComments(source);
+};
+
+const violations = (pattern) =>
+  utilityFiles.flatMap((file) =>
+    [...authored(file).matchAll(pattern)].map(
+      ({ 0: token }) => `${file}: ${token}`,
+    ),
+  );
 
 const carriesCatalogTriplet = (source, ids) =>
   ids.every((id) =>
@@ -129,5 +149,58 @@ describe('Theme Foundation repository contract', () => {
       );
     });
     expect(externalDefinitions).toEqual([]);
+  });
+
+  it('closes Tailwind colours, elevation and radii to governed roles', () => {
+    const adapter = stripSourceComments(
+      read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
+    ).replaceAll('\\*', '*');
+
+    expect(adapter).toContain('--color-*: initial;');
+    expect(adapter).toContain('--shadow-*: initial;');
+    expect(adapter).toContain('--inset-shadow-*: initial;');
+    expect(adapter).toContain('--drop-shadow-*: initial;');
+    expect(adapter).toContain('--radius-*: initial;');
+    expect(adapter).toContain(
+      '--color-overlay-scrim: var(--trinity-overlay-scrim);',
+    );
+    expect(adapter).toContain('--shadow-raised: var(--trinity-shadow-raised);');
+    expect(adapter).toContain(
+      '--shadow-floating: var(--trinity-shadow-floating);',
+    );
+    expect(adapter).toContain(
+      '--shadow-overlay: var(--trinity-shadow-overlay);',
+    );
+    expect(
+      [...adapter.matchAll(/^\s*--radius-(\*|[a-z0-9-]+):/gmu)].map(
+        ([, role]) => role,
+      ),
+    ).toEqual(['*', 'xs', 'sm', 'md', 'lg', 'xl', 'full']);
+
+    expect(
+      violations(
+        /\b(?:bg|text|border|ring|outline|fill|stroke|divide|from|via|to)-(?:black|white|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-[0-9]+|\/[0-9]+|\b)/gu,
+      ),
+    ).toEqual([]);
+    expect(violations(/\bshadow-(?:2xs|xs|sm|md|lg|xl|2xl|inner)\b/gu)).toEqual(
+      [],
+    );
+    expect(violations(/\brounded-(?:2xl|3xl|4xl)\b/gu)).toEqual([]);
+  });
+
+  it('pins the semantic roles carried by local Helm divergences', () => {
+    const expected = {
+      'libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts':
+        'shadow-overlay',
+      'libs/spartan/select/src/lib/hlm-select-content.ts': 'shadow-overlay',
+      'libs/spartan/radio-group/src/lib/hlm-radio-indicator.ts':
+        'shadow-raised',
+      'libs/spartan/tabs/src/lib/hlm-tabs-trigger.ts': 'shadow-raised',
+      'libs/spartan/badge/src/lib/hlm-badge.ts': 'rounded-full',
+    };
+
+    for (const [file, token] of Object.entries(expected)) {
+      expect(authored(file), file).toContain(token);
+    }
   });
 });

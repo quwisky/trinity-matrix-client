@@ -25,7 +25,7 @@ const workspaceRoot = join(import.meta.dirname, '..');
  * `:root[data-theme='x']` as an example, and reading themes off the raw text invents a
  * theme called `x` — which then "fails" with a copy of the default theme's ratios.
  */
-const source = readFileSync(
+const productionSource = readFileSync(
   join(workspaceRoot, 'libs/theme-foundation/styles/internal/variables.scss'),
   'utf8',
 )
@@ -35,6 +35,28 @@ const catalogSource = readFileSync(
   join(workspaceRoot, 'libs/theme-foundation/src/lib/theme-catalog.ts'),
   'utf8',
 );
+
+/**
+ * A deliberately sparse Theme used as a shipping-contract proof. It has only metadata plus
+ * one semantic override per mode; every other role must inherit from the complete base.
+ * Keeping it in the guard rather than the product catalog proves a fourth Theme needs no
+ * component, vendor or application edits.
+ */
+const SYNTHETIC_THEME = Object.freeze({
+  id: 'contract-proof',
+  dataTheme: 'contract-proof',
+  css: `
+    :root[data-theme='contract-proof']:not(.dark) {
+      --trinity-link: oklch(47% 0.19 275deg);
+    }
+
+    :root[data-theme='contract-proof'].dark {
+      --trinity-link: oklch(76% 0.105 275deg);
+    }
+  `,
+});
+
+const source = `${productionSource}\n${SYNTHETIC_THEME.css}`;
 
 /** WCAG AA for body text. Large text may use 3:1; nothing here is guaranteed large. */
 const AA = 4.5;
@@ -280,13 +302,25 @@ function parseBlocks(css) {
 
 const blocks = parseBlocks(source);
 
-/** The themes present in the file, derived rather than listed. */
-const themes = [
-  'trinity',
-  ...new Set(
-    [...source.matchAll(/\[data-theme='([a-z0-9-]+)'\]/g)].map((m) => m[1]),
-  ),
-];
+function catalogThemes(sourceText) {
+  const body =
+    /const themes = Object\.freeze\(\[([\s\S]*?)\] as const satisfies/u.exec(
+      sourceText,
+    )?.[1];
+  if (!body) throw new Error('Missing themes in Theme catalog');
+  return [...body.matchAll(/Object\.freeze\(\{([^{}]+)\}\)/gu)].map(
+    ([, entry]) => {
+      const id = /\bid:\s*'([^']+)'/u.exec(entry)?.[1];
+      const dataTheme =
+        /\bdataTheme:\s*(?:'([^']+)'|null)/u.exec(entry)?.[1] ?? null;
+      if (!id) throw new Error(`Theme catalog entry has no id: ${entry}`);
+      return { id, dataTheme };
+    },
+  );
+}
+
+const productionThemes = catalogThemes(catalogSource);
+const themes = [...productionThemes.map(({ id }) => id), SYNTHETIC_THEME.id];
 
 function catalogRoles(name) {
   const body = new RegExp(
@@ -534,6 +568,50 @@ function* nonTextPairs() {
 const measuredNonText = [...nonTextPairs()];
 
 describe('contrast matrix', () => {
+  it('keeps Theme metadata and CSS carriers bidirectionally complete', () => {
+    const catalogCarriers = productionThemes
+      .flatMap(({ dataTheme }) => (dataTheme === null ? [] : [dataTheme]))
+      .sort();
+    const cssCarriers = [
+      ...new Set(
+        [...productionSource.matchAll(/\[data-theme='([a-z0-9-]+)'\]/gu)].map(
+          ([, carrier]) => carrier,
+        ),
+      ),
+    ].sort();
+
+    expect(productionThemes.map(({ id }) => id)).toEqual([
+      'trinity',
+      'amethyst',
+      'onyx',
+    ]);
+    expect(cssCarriers).toEqual(catalogCarriers);
+  });
+
+  it('proves a sparse synthetic Theme needs only metadata and governed overrides', () => {
+    const syntheticBlocks = parseBlocks(SYNTHETIC_THEME.css);
+    const allowed = new Set([
+      ...catalogRoles('colorRoles'),
+      ...catalogRoles('elevationRoles'),
+    ]);
+
+    expect(syntheticBlocks.map(({ selector }) => selector)).toEqual([
+      ":root[data-theme='contract-proof']:not(.dark)",
+      ":root[data-theme='contract-proof'].dark",
+    ]);
+    expect(
+      syntheticBlocks.every(
+        ({ tokens }) =>
+          tokens.size === 1 &&
+          [...tokens.keys()].every((role) => allowed.has(role)),
+      ),
+    ).toBe(true);
+    expect(themes).toContain(SYNTHETIC_THEME.id);
+    expect(
+      measured.filter(({ theme }) => theme === SYNTHETIC_THEME.id).length,
+    ).toBeGreaterThan(50);
+  });
+
   it('keeps product state colours on governed Theme roles', () => {
     const productStyles = globSync(
       ['apps/trinity/src/**/*.scss', 'libs/feature/**/*.scss'],
