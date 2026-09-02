@@ -98,6 +98,31 @@ test.describe('Electron settings geometry', () => {
       expect(geometry.frame.bottom).toBeLessThanOrEqual(
         geometry.viewport.height + 1,
       );
+
+      const theme = page.getByTestId('theme-select').getByRole('combobox');
+      await theme.focus();
+      await expect(theme).toBeFocused();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await theme.click();
+      const themeOverlay = page.locator('hlm-select-content').first();
+      await expect(themeOverlay).toBeVisible();
+      expect(
+        await themeOverlay.evaluate(
+          (element) => getComputedStyle(element).animationName,
+        ),
+      ).toBe('none');
+      await page.getByTestId('theme-amethyst').click();
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-theme',
+        'amethyst',
+      );
+
+      await page.getByTestId('density-select').getByRole('combobox').click();
+      await page.getByTestId('density-compact').click();
+      await expect(page.locator('html')).toHaveAttribute(
+        'data-density',
+        'compact',
+      );
     } finally {
       await app.close();
     }

@@ -486,11 +486,13 @@ hashing, a budget overage — can pass the canonical browser suite and is caught
 
 `pnpm nx run trinity-e2e-web:production-pwa` runs the focused host contract without Docker.
 The support wrapper builds the production configuration and its dynamic server exposes the exact
-shared `www/` artifact. The check enters on an unknown deep link,
-waits for Application Runtime to reach the login surface, verifies the manifest and crypto WASM,
-then switches Chromium offline and reloads another deep link under service-worker control. This
-is the executable boundary for Web startup, routing and offline shell behavior; authenticated
-Matrix journeys remain in the sequential Synapse-backed suite.
+shared `www/` artifact. Before Angular starts, the check blocks scripts and stylesheets to prove
+the static splash follows light and dark system Mode without motion. It then proves untouched
+Appearance defaults and live system Mode changes, enters on an unknown deep link, verifies the
+manifest and crypto WASM, and reloads a dark Onyx deep link offline under service-worker control
+without changing its semantic Appearance tokens. This is the executable boundary for Web first
+paint, startup, routing, offline shell behavior and production Appearance persistence;
+authenticated Matrix journeys remain in the sequential Synapse-backed suite.
 
 `pnpm e2e:web` is the aggregate Web lifecycle gate. It runs that Docker-free host contract and the
 production-renderer matrix, whose authenticated geometry and contrast scenarios require Docker.
@@ -654,7 +656,11 @@ What the specs establish:
   methods are all absent in the renderer.
 - The safeStorage round trip, or its clean refusal, with the secret never landing in
   `localStorage`.
-- `.dark` on `<html>` actually beats `:root` in the real renderer.
+- Untouched Appearance follows live system light/dark changes; explicit Amethyst light and Onyx
+  dark settings remain authoritative over later OS changes, resolve distinct semantic tokens and
+  load through the production linked stylesheet over `trinity://app`.
+- The settings overlay preserves keyboard focus and applies Theme, density and reduced-motion
+  choices inside the real desktop renderer.
 - The full image-pack manager journey works over `trinity://app`: discovery, install,
   enable/disable, scope, sticker send, uninstall, final account-data readback, and source-state
   preservation. Same-account second-client propagation remains in the Web/Android wrapper because
@@ -744,9 +750,12 @@ pnpm nx run trinity-e2e-web:production-renderer
 
 It creates and records a production build, then drives seven representative cross-cutting
 viewport/device profiles against disposable Synapse, including genuine WebKit plus full Pixel 5
-and 320x568 mobile descriptors rather than resized desktop Chromium. The suite checks geometry,
-horizontal overflow, rendered contrast, focus, accessible names, unread content, safe encryption
-setup and the production reduced-motion contract with Trinity's production typography. See
+and 320x568 mobile descriptors rather than resized desktop Chromium. Two catalog-driven projects
+also prove all six Theme × Mode combinations against the exact artifact on representative desktop
+and Pixel 5 viewports. The suite checks geometry, horizontal overflow, rendered contrast, forced-
+colour focus, mobile safe-area clearance, live Theme switching, accessible names, unread content,
+safe encryption setup and the production reduced-motion contract with Trinity's production
+typography. See
 [`e2e/web/production-renderer/README.md`](../../e2e/web/production-renderer/README.md)
 for the matrix.
 

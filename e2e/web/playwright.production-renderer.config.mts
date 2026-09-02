@@ -60,5 +60,13 @@ export default defineConfig({
         viewport: { width: 900, height: 700 },
       },
     },
+    {
+      name: 'appearance-desktop',
+      use: DESIGN_VIEWPORTS['desktop-standard'],
+    },
+    {
+      name: 'appearance-mobile',
+      use: DESIGN_VIEWPORTS['phone-pixel-5'],
+    },
   ],
 });

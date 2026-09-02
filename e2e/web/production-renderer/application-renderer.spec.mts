@@ -252,6 +252,29 @@ async function expectNoHorizontalScroll(page: Page): Promise<void> {
   ).toBeLessThanOrEqual(1);
 }
 
+async function expectMobileSafeAreaContract(page: Page): Promise<void> {
+  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+    'content',
+    /viewport-fit=cover/,
+  );
+  const evidence = await page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>('.shell-side');
+    const dock = document.querySelector<HTMLElement>('.userbar');
+    if (!shell || !dock)
+      throw new Error('mobile navigation geometry is missing');
+    shell.style.setProperty('--trinity-navigation-safe-area-bottom', '24px');
+    const shellBox = shell.getBoundingClientRect();
+    const dockBox = dock.getBoundingClientRect();
+    const result = {
+      clearsSafeArea: dockBox.bottom <= shellBox.bottom - 24,
+      dockVisible: dockBox.width > 0 && dockBox.height > 0,
+    };
+    shell.style.removeProperty('--trinity-navigation-safe-area-bottom');
+    return result;
+  });
+  expect(evidence).toEqual({ clearsSafeArea: true, dockVisible: true });
+}
+
 async function expectReadable(page: Page, heading: Locator): Promise<void> {
   await heading.evaluate((element) =>
     element.setAttribute('data-testid', 'renderer-contrast-target'),
@@ -338,10 +361,11 @@ test.describe('@production-renderer application surface', () => {
     request,
   }, testInfo) => {
     const appearance = MATRIX[testInfo.project.name];
-    if (!appearance)
-      throw new Error(
-        `Missing production-renderer matrix entry: ${testInfo.project.name}`,
-      );
+    test.skip(
+      !appearance,
+      'covered by the focused Theme and Mode artifact matrix',
+    );
+    if (!appearance) return;
     if (testInfo.project.name === 'webkit-compact-light') {
       expect(browserName).toBe('webkit');
     }
@@ -369,6 +393,9 @@ test.describe('@production-renderer application surface', () => {
     await expectReadable(page, page.getByRole('heading', { level: 1 }));
 
     await signIn(page, credentials);
+    if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) < 768) {
+      await expectMobileSafeAreaContract(page);
+    }
     await openRoom(page, roomName);
     if (testInfo.project.name === 'small-light-large') {
       const warnings = page.getByTestId('app-runtime-warnings');
@@ -455,6 +482,16 @@ test.describe('@production-renderer application surface', () => {
     await expect(
       page.getByTestId('text-scale-select').getByRole('combobox'),
     ).toHaveAccessibleName('Text size');
+    if (testInfo.project.name === 'standard-amethyst-cosy') {
+      const theme = page.getByTestId('theme-select').getByRole('combobox');
+      await theme.click();
+      const onyx = page.getByTestId('theme-onyx');
+      await expect(onyx).toBeVisible();
+      await onyx.click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', 'onyx');
+      await expect(onyx).toHaveCount(0);
+      await expect(theme).toHaveText('Onyx');
+    }
     const settingsNavigation = page.getByRole('navigation', {
       name: 'Settings sections',
     });

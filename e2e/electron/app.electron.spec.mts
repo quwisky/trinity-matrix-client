@@ -236,24 +236,121 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
   }
 });
 
-test('dark Theme wins the cascade when .dark is set (regression)', async () => {
-  // Regression for the desktop dark-theme bug: the class lands on <html>, but the
-  // dark tokens must actually beat the light :root in the real Electron renderer.
-  // This is why apps/trinity/project.json sets optimization.styles.inlineCritical to
-  // false — the deferred stylesheet onload never fires over the trinity:// scheme, so
-  // a regression here shows up as an unstyled or light-in-dark desktop app.
-  const result = await page.evaluate(() => {
-    const html = document.documentElement;
-    const railVar = () =>
-      getComputedStyle(html).getPropertyValue('--trinity-rail').trim();
-    html.classList.remove('dark');
-    const light = railVar();
-    html.classList.add('dark');
-    const dark = railVar();
-    return { light, dark };
-  });
-  expect(result.light).toBe('#e3e5e8'); // :root light default
-  expect(result.dark).toBe('#1e1f22'); // :root.dark (0,2,0) out-ranks :root (0,1,0)
+test('applies production Appearance through the custom protocol', async () => {
+  const keys = [
+    'CapacitorStorage.trinity.appearance.mode',
+    'CapacitorStorage.trinity.appearance.theme',
+    'CapacitorStorage.trinity.appearance.density',
+  ] as const;
+  const setAppearance = async (
+    mode: 'light' | 'dark',
+    theme: 'amethyst' | 'onyx',
+    density: 'cosy' | 'compact',
+  ): Promise<void> => {
+    await page.evaluate(
+      ([appearanceKeys, values]) => {
+        for (const [index, key] of appearanceKeys.entries()) {
+          localStorage.setItem(key, values[index]);
+        }
+      },
+      [keys, [mode, theme, density]] as const,
+    );
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByLabel('Homeserver')).toBeVisible();
+  };
+  const appearance = () =>
+    page.evaluate(() => {
+      const root = document.documentElement;
+      const style = getComputedStyle(root);
+      const stylesheets = [
+        ...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+      ];
+      return {
+        dark: root.classList.contains('dark'),
+        theme: root.getAttribute('data-theme'),
+        density: root.getAttribute('data-density'),
+        rail: style.getPropertyValue('--trinity-rail').trim(),
+        accent: style.getPropertyValue('--trinity-accent').trim(),
+        linkedStylesheets: stylesheets.length,
+        loadedStylesheets: stylesheets.filter(
+          ({ sheet }) => sheet && sheet.cssRules.length > 0,
+        ).length,
+        asyncStyleSwaps: document.querySelectorAll(
+          'link[rel="preload"][as="style"], link[rel="stylesheet"][onload]',
+        ).length,
+      };
+    });
+
+  try {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.evaluate((appearanceKeys) => {
+      for (const key of appearanceKeys) localStorage.removeItem(key);
+    }, keys);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.getByLabel('Homeserver')).toBeVisible();
+    await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+    await expect(page.locator('html')).not.toHaveAttribute('data-density');
+
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+
+    await setAppearance('light', 'amethyst', 'compact');
+    const light = await appearance();
+    expect(light).toMatchObject({
+      asyncStyleSwaps: 0,
+      dark: false,
+      density: 'compact',
+      theme: 'amethyst',
+    });
+    expect(light.linkedStylesheets).toBeGreaterThan(0);
+    expect(light.loadedStylesheets).toBe(light.linkedStylesheets);
+    expect(light.rail).not.toBe('');
+    expect(light.accent).not.toBe('');
+
+    // Fixed light remains authoritative while the OS stays dark.
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+
+    await setAppearance('dark', 'onyx', 'cosy');
+    const dark = await appearance();
+    expect(dark).toMatchObject({
+      asyncStyleSwaps: 0,
+      dark: true,
+      density: null,
+      theme: 'onyx',
+    });
+    expect(dark.linkedStylesheets).toBeGreaterThan(0);
+    expect(dark.loadedStylesheets).toBe(dark.linkedStylesheets);
+    expect(dark.rail).not.toBe(light.rail);
+    expect(dark.accent).not.toBe(light.accent);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.style.animationDuration = '1s';
+        probe.style.transitionDuration = '1s';
+        document.body.append(probe);
+        const style = getComputedStyle(probe);
+        const milliseconds = (duration: string) =>
+          Number.parseFloat(duration) * (duration.endsWith('ms') ? 1 : 1_000);
+        const result = {
+          animation: milliseconds(style.animationDuration),
+          transition: milliseconds(style.transitionDuration),
+        };
+        probe.remove();
+        return result;
+      }),
+    ).toEqual({ animation: 0.01, transition: 0.01 });
+  } finally {
+    await page.evaluate((appearanceKeys) => {
+      for (const key of appearanceKeys) localStorage.removeItem(key);
+    }, keys);
+    await page.emulateMedia({ colorScheme: null, reducedMotion: null });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+  }
 });
 
 test('registers no service worker in the desktop shell', async () => {

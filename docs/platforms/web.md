@@ -149,12 +149,16 @@ prefetched in the `app` asset group, which is what makes the browser offer **Ins
 
 `pnpm nx run trinity-e2e-web:production-pwa` is the focused production Web/PWA host
 acceptance target. It builds the exact `www/` artifact, serves it without Synapse or Docker,
-enters through an unknown deep link, verifies the login startup surface and manifest, waits for
-service-worker control, then reloads another deep link offline and reads the cached crypto WASM.
-Keep production-only host coverage here rather than in the development Playwright suite.
+proves that the script-free splash follows light and dark system Mode, verifies untouched
+Appearance defaults and live system changes, enters through an unknown deep link, and checks the
+login startup surface and manifest. It then waits for service-worker control, reloads a dark Onyx
+deep link offline, and proves both the semantic styling and cached crypto WASM survived. Keep
+production-only host coverage here rather than in the development Playwright suite.
 
-`pnpm e2e:web` adds the production-renderer matrix to that host contract. The aggregate therefore
-requires Docker for its authenticated geometry and contrast scenarios.
+`pnpm e2e:web` adds the production-renderer matrix to that host contract. Alongside the seven
+authenticated geometry and contrast profiles, catalog-driven desktop and Pixel 5 projects prove
+all six Theme × Mode combinations against the same artifact. The aggregate therefore requires
+Docker for its authenticated scenarios.
 
 ## Why inlineCritical is off
 
@@ -170,8 +174,9 @@ critical subset — most visibly, dark mode came out light.
 The fix is to disable the optimisation for every target rather than fork the production
 configuration per platform. There is a live regression test in
 [e2e/electron/app.electron.spec.mts](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/electron/app.electron.spec.mts):
-it toggles `.dark` on `<html>` inside the real Electron renderer and asserts that the
-`--trinity-rail` token resolves to the light value and then the dark one.
+it drives the real Appearance preferences inside the Electron renderer, proves untouched system
+Mode plus explicit Amethyst light and Onyx dark states, and rejects asynchronous stylesheet swaps
+while checking that their semantic tokens resolve through the linked production stylesheet.
 
 !!! warning "Do not re-enable inlineCritical without running the desktop e2e suite"
 

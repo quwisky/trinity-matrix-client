@@ -29,14 +29,18 @@ are still served and hash-verified before they are copied into Electron and Andr
 | pixel-onyx-cosy        | full Pixel 5    | dark Onyx, Cosy           |
 | small-light-large      | full 320x568    | light, Compact, 125% text |
 | webkit-compact-light   | 900x700 WebKit  | light Trinity, Compact    |
+| appearance-desktop     | 1440x900        | all six Theme × Mode      |
+| appearance-mobile      | full Pixel 5    | all six Theme × Mode      |
 
 Every project checks horizontal overflow, surface bounds, representative rendered contrast, the
 production reduced-motion token contract, seeded unread content, accessible control names, picker
 focus restoration and safe encryption setup. Phone profiles also enforce 44px Back and Send
 targets; desktop and phone profiles verify the appropriate Settings navigation treatment. The
 1024px project reaches the primary action through Tab navigation and verifies its focus indicator
-under forced colours. The WebKit project launches Playwright's actual WebKit engine rather than
-only adopting its user agent.
+under forced colours. Mobile profiles prove the floating navigation clears the runtime safe-area
+inset. The WebKit project launches Playwright's actual WebKit engine rather than only adopting its
+user agent. The two Appearance projects derive their cases from the production Theme catalog,
+verify semantic tokens and geometry, and attach one full-page review screenshot per combination.
 
 Performance JSON is diagnostic evidence stored only in ignored Playwright output. It is not a
 machine-independent timing budget. Production Angular budgets remain the hard bundle-size gate.

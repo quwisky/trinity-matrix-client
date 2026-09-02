@@ -267,13 +267,15 @@ describe('cascade layer contract', () => {
       ":is(button, a)[data-trn-icon-button]:is( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
       '@media (pointer: coarse)',
       '@media (pointer: coarse) > button[data-trn-toggle]',
+      '@media (forced-colors: active)',
+      '@media (forced-colors: active) > :focus-visible',
       '@media (prefers-reduced-motion: reduce)',
       '@media (prefers-reduced-motion: reduce) > *, *::before, *::after',
       '@media (pointer: coarse)',
       "@media (pointer: coarse) > button[trnBtn][data-slot='button'], a[trnBtn][data-slot='button']",
     ]);
     expect(styleFingerprint(overrides)).toBe(
-      '08842dda4bb13e91b6bda85351b92ce367faf43cdf774dabe1f5e8212d210fa5',
+      '00b75373903d0fe755a45e14a2d5c64fc6593edc57400bf826ce734bf776661f',
     );
     expect(
       styleFingerprint(
