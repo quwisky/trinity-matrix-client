@@ -237,23 +237,23 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
 });
 
 test('applies production Appearance through the custom protocol', async () => {
-  const keys = [
-    'CapacitorStorage.trinity.appearance.mode',
-    'CapacitorStorage.trinity.appearance.theme',
-    'CapacitorStorage.trinity.appearance.density',
-  ] as const;
-  const setAppearance = async (
-    mode: 'light' | 'dark',
-    theme: 'amethyst' | 'onyx',
-    density: 'cosy' | 'compact',
-  ): Promise<void> => {
+  const keys = {
+    density: 'CapacitorStorage.trinity.appearance.density',
+    mode: 'CapacitorStorage.trinity.appearance.mode',
+    theme: 'CapacitorStorage.trinity.appearance.theme',
+  } as const;
+  const setAppearance = async (selection: {
+    density: 'cosy' | 'compact';
+    mode: 'light' | 'dark';
+    theme: 'amethyst' | 'onyx';
+  }): Promise<void> => {
     await page.evaluate(
       ([appearanceKeys, values]) => {
-        for (const [index, key] of appearanceKeys.entries()) {
-          localStorage.setItem(key, values[index]);
+        for (const field of ['density', 'mode', 'theme'] as const) {
+          localStorage.setItem(appearanceKeys[field], values[field]);
         }
       },
-      [keys, [mode, theme, density]] as const,
+      [keys, selection] as const,
     );
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByLabel('Homeserver')).toBeVisible();
@@ -284,7 +284,9 @@ test('applies production Appearance through the custom protocol', async () => {
   try {
     await page.emulateMedia({ colorScheme: 'light' });
     await page.evaluate((appearanceKeys) => {
-      for (const key of appearanceKeys) localStorage.removeItem(key);
+      for (const key of Object.values(appearanceKeys)) {
+        localStorage.removeItem(key);
+      }
     }, keys);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(page.getByLabel('Homeserver')).toBeVisible();
@@ -295,7 +297,11 @@ test('applies production Appearance through the custom protocol', async () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(page.locator('html')).toHaveClass(/\bdark\b/);
 
-    await setAppearance('light', 'amethyst', 'compact');
+    await setAppearance({
+      density: 'compact',
+      mode: 'light',
+      theme: 'amethyst',
+    });
     const light = await appearance();
     expect(light).toMatchObject({
       asyncStyleSwaps: 0,
@@ -313,7 +319,7 @@ test('applies production Appearance through the custom protocol', async () => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
 
-    await setAppearance('dark', 'onyx', 'cosy');
+    await setAppearance({ density: 'cosy', mode: 'dark', theme: 'onyx' });
     const dark = await appearance();
     expect(dark).toMatchObject({
       asyncStyleSwaps: 0,
@@ -346,7 +352,9 @@ test('applies production Appearance through the custom protocol', async () => {
     ).toEqual({ animation: 0.01, transition: 0.01 });
   } finally {
     await page.evaluate((appearanceKeys) => {
-      for (const key of appearanceKeys) localStorage.removeItem(key);
+      for (const key of Object.values(appearanceKeys)) {
+        localStorage.removeItem(key);
+      }
     }, keys);
     await page.emulateMedia({ colorScheme: null, reducedMotion: null });
     await page.reload({ waitUntil: 'domcontentloaded' });

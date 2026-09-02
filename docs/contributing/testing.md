@@ -488,10 +488,11 @@ hashing, a budget overage — can pass the canonical browser suite and is caught
 The support wrapper builds the production configuration and its dynamic server exposes the exact
 shared `www/` artifact. Before Angular starts, the check blocks scripts and stylesheets to prove
 the static splash follows light and dark system Mode without motion. It then proves untouched
-Appearance defaults and live system Mode changes, enters on an unknown deep link, verifies the
-manifest and crypto WASM, and reloads a dark Onyx deep link offline under service-worker control
-without changing its semantic Appearance tokens. This is the executable boundary for Web first
-paint, startup, routing, offline shell behavior and production Appearance persistence;
+Appearance defaults and live system Mode changes, then launches Chromium's standalone app window
+on an unknown deep link. Inside that installed-PWA context it verifies the manifest and crypto
+WASM, and reloads a dark Onyx deep link offline under service-worker control without changing its
+semantic Appearance tokens. This is the executable boundary for Web first paint, PWA startup,
+routing, offline shell behavior and production Appearance persistence;
 authenticated Matrix journeys remain in the sequential Synapse-backed suite.
 
 `pnpm e2e:web` is the aggregate Web lifecycle gate. It runs that Docker-free host contract and the

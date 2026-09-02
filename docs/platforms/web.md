@@ -150,10 +150,11 @@ prefetched in the `app` asset group, which is what makes the browser offer **Ins
 `pnpm nx run trinity-e2e-web:production-pwa` is the focused production Web/PWA host
 acceptance target. It builds the exact `www/` artifact, serves it without Synapse or Docker,
 proves that the script-free splash follows light and dark system Mode, verifies untouched
-Appearance defaults and live system changes, enters through an unknown deep link, and checks the
-login startup surface and manifest. It then waits for service-worker control, reloads a dark Onyx
-deep link offline, and proves both the semantic styling and cached crypto WASM survived. Keep
-production-only host coverage here rather than in the development Playwright suite.
+Appearance defaults and live system changes, then opens Chromium's standalone app window through
+an unknown deep link and checks the login startup surface and manifest. In that installed-PWA
+context it waits for service-worker control, reloads a dark Onyx deep link offline, and proves both
+the semantic styling and cached crypto WASM survived. Keep production-only host coverage here
+rather than in the development Playwright suite.
 
 `pnpm e2e:web` adds the production-renderer matrix to that host contract. Alongside the seven
 authenticated geometry and contrast profiles, catalog-driven desktop and Pixel 5 projects prove

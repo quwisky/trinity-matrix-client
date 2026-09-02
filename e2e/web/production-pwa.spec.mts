@@ -1,4 +1,13 @@
-import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  chromium,
+  expect,
+  test,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { seedPreference } from '../support/app.mts';
 
 const CRYPTO_WASM = '/assets/crypto/matrix_sdk_crypto_wasm_bg.wasm';
@@ -23,6 +32,20 @@ async function attachScreenshot(
   await testInfo.attach(name, {
     body: await page.screenshot({ fullPage: true }),
     contentType: 'image/png',
+  });
+}
+
+function readAppearanceEvidence(page: Page) {
+  return page.evaluate(() => {
+    const root = document.documentElement;
+    const style = getComputedStyle(root);
+    return {
+      dark: root.classList.contains('dark'),
+      theme: root.getAttribute('data-theme'),
+      background: style.getPropertyValue('--trinity-surface-workspace').trim(),
+      accent: style.getPropertyValue('--trinity-accent').trim(),
+      text: style.getPropertyValue('--trinity-text').trim(),
+    };
   });
 }
 
@@ -96,84 +119,106 @@ test('untouched production Appearance follows system Mode', async ({
   await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
 });
 
-test('the production Web/PWA artifact starts, routes, and remains usable offline', async ({
-  context,
-  page,
-}) => {
-  await page.goto('/does-not-exist');
+test('the installed production PWA starts, routes, and remains usable offline', async ({}, testInfo) => {
+  const baseURL = testInfo.project.use.baseURL;
+  if (typeof baseURL !== 'string') {
+    throw new Error('production PWA base URL is missing');
+  }
+  const profile = await mkdtemp(join(tmpdir(), 'trinity-pwa-'));
 
-  // The production startup lifecycle settles before Router resolves the unknown deep link
-  // through the authenticated Workspace entrypoint and on to the public sign-in screen.
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to Trinity' }),
-  ).toBeVisible();
-  await expect(page).toHaveURL(/\/login$/);
-  const homeserver = page.getByPlaceholder('matrix.org');
-  await homeserver.fill('example.org');
-  await expect(homeserver).toHaveValue('example.org');
+  try {
+    // Chromium's regular headless launcher ignores --app. Supplying the current headless mode
+    // explicitly preserves the standalone app window while keeping this target display-free.
+    const context = await chromium.launchPersistentContext(profile, {
+      args: ['--headless=new', `--app=${new URL('/does-not-exist', baseURL)}`],
+      headless: false,
+    });
 
-  const manifest = await page.evaluate(async () => {
-    const response = await fetch('/manifest.webmanifest');
-    return response.json() as Promise<{ name: string; display: string }>;
-  });
-  expect(manifest).toMatchObject({ name: 'Trinity', display: 'standalone' });
+    try {
+      const page = context.pages()[0] ?? (await context.newPage());
+      await page.waitForLoadState('domcontentloaded');
+      expect(
+        await page.evaluate(
+          () => matchMedia('(display-mode: standalone)').matches,
+        ),
+      ).toBe(true);
 
-  await ensureServiceWorkerControl(page);
-  const onlineWasmBytes = await page.evaluate(async (url) => {
-    const response = await fetch(url);
-    return response.ok ? (await response.arrayBuffer()).byteLength : 0;
-  }, CRYPTO_WASM);
-  expect(onlineWasmBytes).toBeGreaterThan(1_000);
+      // The production startup lifecycle settles before Router resolves the unknown deep link
+      // through the authenticated Workspace entrypoint and on to the public sign-in screen.
+      await expect(
+        page.getByRole('heading', { name: 'Sign in to Trinity' }),
+      ).toBeVisible();
+      await expect(page).toHaveURL(/\/login$/);
+      const homeserver = page.getByPlaceholder('matrix.org');
+      await homeserver.fill('example.org');
+      await expect(homeserver).toHaveValue('example.org');
 
-  await seedPreference(page, 'trinity.appearance.mode', 'dark');
-  await seedPreference(page, 'trinity.appearance.theme', 'onyx');
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to Trinity' }),
-  ).toBeVisible();
-  const onlineAppearance = await page.evaluate(() => {
-    const root = document.documentElement;
-    const style = getComputedStyle(root);
-    return {
-      dark: root.classList.contains('dark'),
-      theme: root.getAttribute('data-theme'),
-      background: style.getPropertyValue('--trinity-surface-workspace').trim(),
-      accent: style.getPropertyValue('--trinity-accent').trim(),
-      text: style.getPropertyValue('--trinity-text').trim(),
-    };
-  });
-  expect(onlineAppearance).toMatchObject({ dark: true, theme: 'onyx' });
-  expect(onlineAppearance.background).not.toBe('');
-  expect(onlineAppearance.accent).not.toBe('');
-  expect(onlineAppearance.text).not.toBe('');
+      const manifest = await page.evaluate(async () => {
+        const response = await fetch('/manifest.webmanifest');
+        return response.json() as Promise<{ name: string; display: string }>;
+      });
+      expect(manifest).toMatchObject({
+        name: 'Trinity',
+        display: 'standalone',
+      });
 
-  await context.setOffline(true);
-  await page.goto('/offline-deep-link', { waitUntil: 'domcontentloaded' });
+      await ensureServiceWorkerControl(page);
+      const onlineWasmBytes = await page.evaluate(async (url) => {
+        const response = await fetch(url);
+        return response.ok ? (await response.arrayBuffer()).byteLength : 0;
+      }, CRYPTO_WASM);
+      expect(onlineWasmBytes).toBeGreaterThan(1_000);
 
-  // The worker serves the shell and every lazy chunk; Router still repairs the URL and the
-  // prefetched crypto module remains available for the first encrypted offline start.
-  await expect(
-    page.getByRole('heading', { name: 'Sign in to Trinity' }),
-  ).toBeVisible();
-  await expect(page).toHaveURL(/\/login$/);
-  const offlineWasmBytes = await page.evaluate(async (url) => {
-    const response = await fetch(url);
-    return response.ok ? (await response.arrayBuffer()).byteLength : 0;
-  }, CRYPTO_WASM);
-  expect(offlineWasmBytes).toBe(onlineWasmBytes);
-  expect(
-    await page.evaluate(() => {
-      const root = document.documentElement;
-      const style = getComputedStyle(root);
-      return {
-        dark: root.classList.contains('dark'),
-        theme: root.getAttribute('data-theme'),
-        background: style
-          .getPropertyValue('--trinity-surface-workspace')
-          .trim(),
-        accent: style.getPropertyValue('--trinity-accent').trim(),
-        text: style.getPropertyValue('--trinity-text').trim(),
-      };
-    }),
-  ).toEqual(onlineAppearance);
+      await seedPreference(page, 'trinity.appearance.mode', 'dark');
+      await seedPreference(page, 'trinity.appearance.theme', 'onyx');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(
+        page.getByRole('heading', { name: 'Sign in to Trinity' }),
+      ).toBeVisible();
+      const onlineAppearance = await readAppearanceEvidence(page);
+      expect(onlineAppearance).toMatchObject({ dark: true, theme: 'onyx' });
+      expect(onlineAppearance.background).not.toBe('');
+      expect(onlineAppearance.accent).not.toBe('');
+      expect(onlineAppearance.text).not.toBe('');
+
+      await context.setOffline(true);
+      await page.goto('/offline-deep-link', { waitUntil: 'domcontentloaded' });
+
+      // The worker serves the shell and every lazy chunk; Router still repairs the URL and the
+      // prefetched crypto module remains available for the first encrypted offline start.
+      await expect(
+        page.getByRole('heading', { name: 'Sign in to Trinity' }),
+      ).toBeVisible();
+      await expect(page).toHaveURL(/\/login$/);
+      const offlineWasmBytes = await page.evaluate(async (url) => {
+        const response = await fetch(url);
+        return response.ok ? (await response.arrayBuffer()).byteLength : 0;
+      }, CRYPTO_WASM);
+      expect(offlineWasmBytes).toBe(onlineWasmBytes);
+      expect(await readAppearanceEvidence(page)).toEqual(onlineAppearance);
+      await attachScreenshot(page, testInfo, 'installed-pwa-onyx-dark.png');
+
+      await page.emulateMedia({ forcedColors: 'active' });
+      await homeserver.focus();
+      await page.keyboard.press('Tab');
+      const continueButton = page.getByRole('button', { name: 'Continue' });
+      await expect(continueButton).toBeFocused();
+      const focusIndicator = await continueButton.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          color: style.outlineColor,
+          style: style.outlineStyle,
+          width: Number.parseFloat(style.outlineWidth),
+        };
+      });
+      expect(focusIndicator.style).not.toBe('none');
+      expect(focusIndicator.width).toBeGreaterThanOrEqual(1);
+      expect(focusIndicator.color).not.toBe('rgba(0, 0, 0, 0)');
+      await attachScreenshot(page, testInfo, 'forced-colors-after.png');
+    } finally {
+      await context.close();
+    }
+  } finally {
+    await rm(profile, { force: true, recursive: true });
+  }
 });

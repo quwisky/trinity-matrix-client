@@ -29,7 +29,7 @@ are still served and hash-verified before they are copied into Electron and Andr
 | pixel-onyx-cosy        | full Pixel 5    | dark Onyx, Cosy           |
 | small-light-large      | full 320x568    | light, Compact, 125% text |
 | webkit-compact-light   | 900x700 WebKit  | light Trinity, Compact    |
-| appearance-desktop     | 1440x900        | all six Theme × Mode      |
+| appearance-desktop     | 1280x720        | all six Theme × Mode      |
 | appearance-mobile      | full Pixel 5    | all six Theme × Mode      |
 
 Every project checks horizontal overflow, surface bounds, representative rendered contrast, the
