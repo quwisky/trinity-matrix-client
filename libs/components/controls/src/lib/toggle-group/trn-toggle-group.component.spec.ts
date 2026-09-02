@@ -2,6 +2,11 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
+import {
+  normalizeTrnTogglePresentation,
+  normalizeTrnToggleSize,
+  normalizeTrnToggleVariant,
+} from '../toggle/trn-toggle-recipe';
 import { TrnToggleGroupComponent } from './trn-toggle-group.component';
 import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
 
@@ -10,7 +15,7 @@ import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
  *
  * `BrnToggleGroup` underneath is a value holder with no keydown handling at all, so a bar
  * built straight on it puts one tab stop per button. What is pinned here is the roving
- * tabindex and the arrow mapping — selection stays the kit's, and is not this file's to
+ * tabindex and the arrow mapping — selection stays Brain's, and is not this file's to
  * assert.
  */
 @Component({
@@ -18,6 +23,10 @@ import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
   template: `
     <trn-toggle-group
       type="multiple"
+      variant="accent"
+      presentation="outline"
+      size="sm"
+      arrangement="joined"
       [orientation]="orientation()"
       [value]="value()"
       (valueChange)="seen.push($event)"
@@ -64,10 +73,31 @@ const tabbable = (container: HTMLElement) =>
     .map((el) => el.dataset['t']);
 
 describe('TrnToggleGroupComponent', () => {
+  it('normalizes the group values accepted by the former public wrapper', () => {
+    expect(normalizeTrnToggleVariant('default')).toBe('neutral');
+    expect(normalizeTrnToggleVariant('outline')).toBe('neutral');
+    expect(normalizeTrnTogglePresentation('outline', 'plain')).toBe('outline');
+    expect(normalizeTrnToggleSize('default')).toBe('md');
+  });
+
+  it('publishes canonical recipe state without exposing the Helm spelling', async () => {
+    const { group, button } = await build();
+
+    expect(group.getAttribute('data-trn-variant')).toBe('accent');
+    expect(group.getAttribute('data-trn-size')).toBe('sm');
+    expect(group.getAttribute('data-trn-presentation')).toBe('outline');
+    expect(group.getAttribute('data-trn-arrangement')).toBe('joined');
+    expect(button('bold').hasAttribute('data-trn-toggle')).toBe(true);
+    expect(group.hasAttribute('data-slot')).toBe(false);
+    expect(group.hasAttribute('data-spacing')).toBe(false);
+    expect(button('bold').hasAttribute('data-slot')).toBe(false);
+    expect(button('bold').className).not.toContain('focus-visible:ring-[3px]');
+  });
+
   it('is a toolbar, and says which way its arrows run', async () => {
     const { group } = await build();
 
-    // `role="group"` is what the kit contributes, and it does not promise arrow keys.
+    // `role="group"` is what Brain contributes, and it does not promise arrow keys.
     expect(group.getAttribute('role')).toBe('toolbar');
     expect(group.getAttribute('aria-orientation')).toBe('horizontal');
   });
@@ -138,7 +168,7 @@ describe('TrnToggleGroupComponent', () => {
   it('carries selection through both layers of hostDirectives', async () => {
     // The mechanism the whole wrapper rests on, and the one that fails at RUNTIME rather
     // than at compile time: `type`, `value` and `valueChange` are published onto this host by
-    // HlmToggleGroup from BrnToggleGroup, and a wrong `hostDirectives` list leaves them
+    // BrnToggleGroup, and a wrong `hostDirectives` list leaves them
     // silently inert while `tsc` stays green.
     const { host, button } = await build();
 
@@ -154,10 +184,8 @@ describe('TrnToggleGroupComponent', () => {
   });
 
   it('lays out the way it announces itself', async () => {
-    // Two properties for one thing is how this went wrong: a locally declared `orientation`
-    // left the kit's own at its default, so the bar rendered as a row (`data-orientation`
-    // drives its `data-vertical:flex-col`) while telling a screen reader it was a column, and
-    // the arrows followed the announcement rather than the layout.
+    // The recipe layout and accessibility announcement must consume the same orientation;
+    // otherwise the arrows can follow one axis while the bar is drawn along the other.
     const { group, host } = await build();
     expect(group.getAttribute('data-orientation')).toBe('horizontal');
 

@@ -38,7 +38,7 @@ const meta: Meta<TrnToggleGroupComponent> = {
         component:
           'A group of toggle buttons with toolbar keyboard behaviour: one tab stop, arrow ' +
           'keys along its orientation, Home/End to the ends, and disabled items skipped. ' +
-          'Selection is the kit primitive underneath; the keyboard is this wrapper.',
+          'Selection is the Brain primitive underneath; the keyboard is this wrapper.',
       },
     },
   },
@@ -57,38 +57,38 @@ export const FormattingBar: Story = {
     template: `
       <trn-toggle-group type="multiple" aria-label="Formatting">
         <button trnToggleGroupItem value="bold" aria-label="Bold">
-          <trn-icon name="bold" />
+          <trn-icon name="bold" motion="pop" />
         </button>
         <button trnToggleGroupItem value="italic" aria-label="Italic">
-          <trn-icon name="italic" />
+          <trn-icon name="italic" motion="pop" />
         </button>
         <button trnToggleGroupItem value="strikethrough" aria-label="Strikethrough">
-          <trn-icon name="strikethrough" />
+          <trn-icon name="strikethrough" motion="pop" />
         </button>
 
         <div trnSeparator orientation="vertical" [decorative]="false"></div>
 
         <button trnToggleGroupItem value="code" aria-label="Code">
-          <trn-icon name="code" />
+          <trn-icon name="code" motion="pop" />
         </button>
         <button trnToggleGroupItem value="quote" aria-label="Quote">
-          <trn-icon name="quote" />
+          <trn-icon name="quote" motion="pop" />
         </button>
 
         <div trnSeparator orientation="vertical" [decorative]="false"></div>
 
         <button trnToggleGroupItem value="link" aria-label="Link">
-          <trn-icon name="link" />
+          <trn-icon name="link" motion="pop" />
         </button>
         <button trnToggleGroupItem value="list" aria-label="List">
-          <trn-icon name="list" />
+          <trn-icon name="list" motion="pop" />
         </button>
       </trn-toggle-group>`,
   }),
 };
 
 /**
- * One at a time — a view switcher rather than a formatting bar. `type="single"` is the kit's
+ * One at a time — a view switcher rather than a formatting bar. `type="single"` is Brain's
  * input, published onto this host, which is the thing that made the wrapper worth testing:
  * it reaches `BrnToggleGroup` through two layers of `hostDirectives`.
  */
@@ -137,38 +137,45 @@ export const WithADisabledItem: Story = {
     template: `
       <trn-toggle-group type="multiple" aria-label="Formatting">
         <button trnToggleGroupItem value="bold" aria-label="Bold">
-          <trn-icon name="bold" />
+          <trn-icon name="bold" motion="pop" />
         </button>
         <button trnToggleGroupItem value="italic" aria-label="Italic" disabled>
-          <trn-icon name="italic" />
+          <trn-icon name="italic" motion="pop" />
         </button>
         <button trnToggleGroupItem value="code" aria-label="Code">
-          <trn-icon name="code" />
+          <trn-icon name="code" motion="pop" />
         </button>
       </trn-toggle-group>`,
   }),
 };
 
-/** The whole bar off — the kit's group-level `disabled`, not each button's. */
+/** The whole bar off — Brain's group-level `disabled`, not each button's. */
 export const WholeGroupDisabled: Story = {
   render: () => ({
     template: `
       <trn-toggle-group type="multiple" disabled aria-label="Formatting">
         <button trnToggleGroupItem value="bold" aria-label="Bold">
-          <trn-icon name="bold" />
+          <trn-icon name="bold" motion="pop" />
         </button>
         <button trnToggleGroupItem value="italic" aria-label="Italic">
-          <trn-icon name="italic" />
+          <trn-icon name="italic" motion="pop" />
         </button>
       </trn-toggle-group>`,
   }),
 };
 
-/** `variant` and `size` are the kit's, re-published unchanged. */
+/** Canonical semantic tone, presentation and ordinal size. */
 export const OutlineSmall: Story = {
   render: () => ({
     template: `
-      <trn-toggle-group type="single" variant="outline" size="sm" value="day">
+      <trn-toggle-group
+        type="single"
+        variant="neutral"
+        presentation="outline"
+        size="sm"
+        arrangement="joined"
+        value="day"
+      >
         <button trnToggleGroupItem value="day">Day</button>
         <button trnToggleGroupItem value="week">Week</button>
         <button trnToggleGroupItem value="month">Month</button>

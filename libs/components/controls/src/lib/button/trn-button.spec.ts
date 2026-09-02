@@ -20,6 +20,12 @@ import {
 class HostComponent {}
 
 @Component({
+  imports: [TrnButton],
+  template: `<button trnBtn loading disabled>Saving</button>`,
+})
+class LoadingHostComponent {}
+
+@Component({
   imports: [TrnButton, TrnIconButton],
   template: `
     @for (size of iconSizes; track size) {
@@ -61,6 +67,15 @@ describe('TrnButton', () => {
 
     expect(button?.disabled).toBe(true);
     expect(button?.getAttribute('data-slot')).toBe('button');
+  });
+
+  it('announces a loading action without replacing native disabled semantics', async () => {
+    const { container } = await render(LoadingHostComponent);
+    const button = container.querySelector('button');
+
+    expect(button?.getAttribute('aria-busy')).toBe('true');
+    expect(button?.hasAttribute('data-loading')).toBe(true);
+    expect(button?.disabled).toBe(true);
   });
 
   it('exposes only the button subset of the canonical vocabulary', () => {

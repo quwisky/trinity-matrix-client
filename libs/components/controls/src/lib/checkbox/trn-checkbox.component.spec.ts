@@ -1,7 +1,11 @@
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
-import { TrnCheckboxComponent } from './trn-checkbox.component';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import {
+  TrnCheckboxComponent,
+  type TrnCheckboxSize,
+  type TrnCheckboxVariant,
+} from './trn-checkbox.component';
 
 @Component({
   imports: [TrnCheckboxComponent],
@@ -9,7 +13,12 @@ import { TrnCheckboxComponent } from './trn-checkbox.component';
     <trn-checkbox
       [checked]="checked()"
       [disabled]="disabled()"
+      [indeterminate]="indeterminate()"
+      [invalid]="invalid()"
+      variant="neutral"
+      size="sm"
       aria-label="Send read receipts"
+      aria-describedby="receipt-help"
       (checkedChange)="last.set($event)"
     />
   `,
@@ -17,17 +26,25 @@ import { TrnCheckboxComponent } from './trn-checkbox.component';
 class HostComponent {
   readonly checked = signal(false);
   readonly disabled = signal(false);
+  readonly indeterminate = signal(false);
+  readonly invalid = signal(false);
   readonly last = signal<boolean | null>(null);
 }
 
 const box = (container: Element) =>
-  container.querySelector('[role="checkbox"]');
+  container.querySelector<HTMLInputElement>('[role="checkbox"]');
 
 describe('TrnCheckboxComponent', () => {
+  it('limits the public recipe to implemented variants and sizes', () => {
+    expectTypeOf<TrnCheckboxVariant>().toEqualTypeOf<'neutral' | 'accent'>();
+    expectTypeOf<'danger'>().not.toExtend<TrnCheckboxVariant>();
+    expectTypeOf<TrnCheckboxSize>().toEqualTypeOf<'sm' | 'md'>();
+    expectTypeOf<'lg'>().not.toExtend<TrnCheckboxSize>();
+  });
+
   it('reflects the bound state onto the rendered control', async () => {
-    // The defect control: `role="checkbox"` and `aria-checked` come from the kit component
-    // this wraps, so they exist only if the composition happened. Asserted through ARIA
-    // rather than a class, because ARIA is what both a screen reader and the e2e suite read
+    // Assert through the native input's ARIA state rather than a presentation class, because
+    // ARIA is what both a screen reader and the e2e suite read
     // (`notification-sound.spec.mts` asserts exactly this attribute).
     const { container, fixture } = await render(HostComponent);
 
@@ -45,6 +62,23 @@ describe('TrnCheckboxComponent', () => {
     expect(box(container)?.getAttribute('aria-label')).toBe(
       'Send read receipts',
     );
+    expect(box(container)?.getAttribute('aria-describedby')).toBe(
+      'receipt-help',
+    );
+  });
+
+  it('maps size, tone, indeterminate and invalid state onto the real control', async () => {
+    const { container, fixture } = await render(HostComponent);
+    fixture.componentInstance.indeterminate.set(true);
+    fixture.componentInstance.invalid.set(true);
+    await fixture.whenStable();
+
+    const host = container.querySelector('trn-checkbox');
+    expect(host?.getAttribute('data-size')).toBe('sm');
+    expect(host?.getAttribute('data-variant')).toBe('neutral');
+    expect(host?.getAttribute('data-invalid')).toBe('true');
+    expect(box(container)?.getAttribute('aria-checked')).toBe('mixed');
+    expect(box(container)?.getAttribute('aria-invalid')).toBe('true');
   });
 
   it('emits when the control is operated, which is the whole job', async () => {
@@ -53,30 +87,26 @@ describe('TrnCheckboxComponent', () => {
     // does not emit does nothing at all. Found while mirroring this file for `trn-switch`,
     // where the same gap would have shipped again.
     //
-    // Driven through a real click rather than by calling the output, so the kit's own event
-    // plumbing is part of what is under test.
+    // Driven through a real click rather than by calling the output, so the native change
+    // event and public output stay wired together.
     const { container, fixture } = await render(HostComponent);
     expect(fixture.componentInstance.last()).toBeNull();
 
-    (box(container) as HTMLElement | null)?.click();
+    box(container)?.click();
     fixture.detectChanges();
 
     expect(fixture.componentInstance.last()).toBe(true);
   });
 
   it('forwards disabled, which is what stops the click', async () => {
-    // Expressed as `data-disabled` on the host and a native `disabled` on the inner
-    // control, not `aria-disabled` — asserted against what the kit actually renders rather
-    // than what a wrapper author would assume. The native property is the load-bearing
-    // half: it is what makes the click a no-op and what Playwright's actionability waits on.
+    // Native disabled is the load-bearing contract: it makes the click a no-op and is what
+    // Playwright's actionability check waits on.
     const { container, fixture } = await render(HostComponent);
     fixture.componentInstance.disabled.set(true);
     fixture.detectChanges();
 
-    const host = container.querySelector('trn-checkbox > hlm-checkbox');
-    expect(host?.hasAttribute('data-disabled')).toBe(true);
-    expect(
-      container.querySelector<HTMLButtonElement>('[role="checkbox"]')?.disabled,
-    ).toBe(true);
+    const host = container.querySelector('trn-checkbox');
+    expect(host?.getAttribute('data-size')).toBe('sm');
+    expect(box(container)?.disabled).toBe(true);
   });
 });

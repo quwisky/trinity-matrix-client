@@ -1,16 +1,29 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  booleanAttribute,
+  computed,
   input,
   output,
 } from '@angular/core';
 import {
-  HlmRadio,
-  HlmRadioGroup,
-  HlmRadioIndicator,
-} from '@trinity/helm/radio-group';
+  type TrnChoiceSize,
+  type TrnChoiceVariant,
+} from '../choice-control/trn-choice-control-recipe';
+import {
+  trnRadioGroupRecipe,
+  trnRadioIndicatorDotRecipe,
+  trnRadioIndicatorRecipe,
+  trnRadioOptionRecipe,
+  type TrnRadioGroupLayout,
+} from './trn-radio-group-recipe';
 
-export type TrnRadioGroupVariant = 'list' | 'segmented';
+export type TrnRadioGroupVariant = TrnChoiceVariant;
+export type { TrnRadioGroupLayout } from './trn-radio-group-recipe';
+export type TrnRadioGroupSize = TrnChoiceSize;
+
+type TrnRadioGroupVariantInput = TrnRadioGroupVariant | TrnRadioGroupLayout;
+let nextRadioGroupId = 0;
 
 /** One choice in a {@link TrnRadioGroupComponent}. */
 export interface TrnRadioOption<T> {
@@ -43,9 +56,8 @@ export interface TrnRadioOption<T> {
  * **The label is rendered here rather than left to the caller, and that is load-bearing in
  * two ways.** It keeps the click target label-sized, which is what makes the text clickable
  * and what e2e drives (`getByTestId('mode-dark').click()` addresses the label, not the
- * radio). And the kit's radio resolves `closest('label')` in a constructor effect to stamp
- * its disabled state — a wrapper that stopped emitting a wrapping label would leave that
- * silently doing nothing.
+ * radio). Native radio inputs now own checked, disabled, focus and keyboard semantics; the
+ * recipe owns only the visible indicator and option treatment.
  *
  * `aria-labelledby` is forwarded to the element that actually carries `role="radiogroup"`
  * and removed from this host, so the reference resolves against the thing it names rather
@@ -54,122 +66,120 @@ export interface TrnRadioOption<T> {
 @Component({
   selector: 'trn-radio-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmRadioGroup, HlmRadio, HlmRadioIndicator],
   // Wrapping moved the caller's layout class onto THIS host, so this host has to be a block.
-  // The kit's `hlm-radio-group` merges `grid gap-2` into its own class list, so on the
-  // element this replaced a `class="px-4 py-2"` applied to a grid box. Here that class sits
-  // one level out, and without a display the host falls back to `inline`: the padding lands
+  // The inner group is a grid, so a layout class moved onto this host has to keep block
+  // geometry. Without a display the host falls back to `inline`: the padding lands
   // on an inline box whose block-level grid child ignores it, so the options lose their
   // indent and the vertical padding spills into empty line boxes instead of spacing them.
   // Measured in Chromium against the real class strings — first option x=16 -> x=0 and the
   // section 20px taller — which no test in this repo can see, since jsdom does no layout.
   // A component STYLE rather than a Tailwind class so the spec below can assert it.
-  styles: [
-    `
-      :host {
-        display: block;
-      }
-
-      :host([data-variant='segmented']) hlm-radio-group {
-        display: grid;
-        grid-auto-flow: column;
-        grid-auto-columns: minmax(0, 1fr);
-        gap: var(--trinity-space-1);
-        padding: var(--trinity-space-1);
-        border: 1px solid var(--trinity-border-subtle);
-        border-radius: var(--trinity-shape-control-radius);
-        background: var(--trinity-surface-floating);
-      }
-
-      :host([data-variant='segmented']) label {
-        min-height: max(
-          var(--trinity-density-control-size),
-          var(--trinity-interaction-target-min-size)
-        );
-        justify-content: center;
-        padding-inline: var(--trinity-space-3);
-        border-radius: calc(var(--trinity-shape-control-radius) - 2px);
-        color: var(--trinity-text-muted);
-        transition:
-          background-color var(--trinity-duration-fast)
-            var(--trinity-ease-standard),
-          color var(--trinity-duration-fast) var(--trinity-ease-standard),
-          box-shadow var(--trinity-duration-fast) var(--trinity-ease-standard);
-        text-align: center;
-        overflow-wrap: anywhere;
-      }
-
-      :host([data-variant='segmented']) label:hover {
-        background: var(--trinity-state-hover-surface);
-        color: var(--trinity-state-hover-foreground);
-      }
-
-      :host([data-variant='segmented']) label.trn-radio-option--selected {
-        background: var(--trinity-state-selected-surface);
-        color: var(--trinity-state-selected-foreground);
-        box-shadow: var(--trinity-shadow-raised);
-      }
-
-      :host([data-variant='segmented']) label:has(input:focus-visible) {
-        outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-        outline-offset: var(--trinity-focus-ring-offset);
-      }
-
-      :host([data-variant='segmented']) hlm-radio-indicator {
-        display: none;
-      }
-    `,
-  ],
+  styles: [':host { display: block; }'],
   host: {
     // Routed to the inner group below; a duplicate here would name an element with no role.
+    '[attr.aria-label]': 'null',
     '[attr.aria-labelledby]': 'null',
-    '[attr.data-variant]': 'variant()',
+    '[attr.data-layout]': 'resolvedLayout()',
+    '[attr.data-size]': 'size()',
+    '[attr.data-variant]': 'resolvedVariant()',
+    '[attr.data-invalid]': 'invalid() ? "true" : null',
   },
   template: `
-    <hlm-radio-group
-      [value]="value()"
-      [disabled]="disabled()"
-      (valueChange)="onValueChange($event)"
+    <div
+      role="radiogroup"
+      [class]="groupClass()"
+      [attr.aria-label]="ariaLabel()"
       [attr.aria-labelledby]="ariaLabelledby()"
+      [attr.aria-invalid]="invalid() ? 'true' : null"
+      [attr.data-invalid]="invalid() ? 'true' : null"
     >
       @for (option of options(); track option.value) {
         <label
-          class="flex cursor-pointer items-center gap-3 text-sm font-medium"
-          [class.trn-radio-option--selected]="option.value === value()"
+          [class]="optionClass()"
+          [attr.data-state]="option.value === value() ? 'selected' : 'idle'"
+          [attr.data-disabled]="disabled() ? 'true' : null"
           [attr.data-testid]="option.testId"
         >
-          <hlm-radio [value]="option.value" [disabled]="disabled()">
-            <hlm-radio-indicator />
-          </hlm-radio>
+          <input
+            class="peer sr-only"
+            type="radio"
+            role="radio"
+            [name]="controlName"
+            [checked]="option.value === value()"
+            [disabled]="disabled()"
+            [attr.aria-checked]="option.value === value()"
+            [attr.aria-invalid]="invalid() ? 'true' : null"
+            (change)="onValueChange(option.value)"
+          />
+          <span aria-hidden="true" [class]="indicatorClass()">
+            <span [class]="indicatorDotClass(option.value === value())"></span>
+          </span>
           {{ option.label }}
         </label>
       }
-    </hlm-radio-group>
+    </div>
   `,
 })
 export class TrnRadioGroupComponent<T> {
-  readonly variant = input<TrnRadioGroupVariant>('list');
+  protected readonly controlName = `trn-radio-${nextRadioGroupId++}`;
+  protected readonly resolvedRecipe = computed<{
+    readonly layout: TrnRadioGroupLayout;
+    readonly variant: TrnRadioGroupVariant;
+  }>(() => {
+    const variant = this.variant();
+    if (variant === 'list' || variant === 'segmented') {
+      return { layout: variant, variant: 'neutral' };
+    }
+    return { layout: this.layout(), variant };
+  });
+  protected readonly resolvedLayout = computed(
+    () => this.resolvedRecipe().layout,
+  );
+  protected readonly resolvedVariant = computed(
+    () => this.resolvedRecipe().variant,
+  );
+  protected readonly groupClass = computed(() =>
+    trnRadioGroupRecipe(this.resolvedLayout(), this.size()),
+  );
+  protected readonly indicatorClass = computed(() =>
+    trnRadioIndicatorRecipe(this.resolvedLayout(), this.size(), this.invalid()),
+  );
+
+  protected optionClass(): string {
+    return trnRadioOptionRecipe(
+      this.resolvedLayout(),
+      this.size(),
+      this.resolvedVariant(),
+    );
+  }
+
+  protected indicatorDotClass(selected: boolean): string {
+    return trnRadioIndicatorDotRecipe(
+      selected,
+      this.size(),
+      this.resolvedVariant(),
+    );
+  }
+
+  /** Native change events always identify the concrete option that was chosen. */
+  protected onValueChange(value: T): void {
+    this.valueChange.emit(value);
+  }
+
+  /** Semantic tone. `list`/`segmented` remain temporary layout aliases. */
+  readonly variant = input<TrnRadioGroupVariantInput>('neutral');
+  readonly layout = input<TrnRadioGroupLayout>('list');
+  readonly size = input<TrnChoiceSize>('md');
   readonly options = input.required<readonly TrnRadioOption<T>[]>();
   readonly value = input<T | null>(null);
-  readonly disabled = input(false);
+  readonly disabled = input(false, { transform: booleanAttribute });
+  readonly invalid = input(false, { transform: booleanAttribute });
 
   /** Points at the heading that names the group. */
+  readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
   readonly ariaLabelledby = input<string | null>(null, {
     alias: 'aria-labelledby',
   });
 
   readonly valueChange = output<T>();
-
-  /**
-   * The kit's group emits `T | null`, because brain models "nothing selected yet" as a
-   * value. A radio group that has been *chosen* from never emits that, so the public output
-   * promises `T` and this drops the empty case rather than pushing a null every call site
-   * would have to re-check. Caught by the AOT build, which type-checks templates where
-   * `nx typecheck` does not.
-   */
-  protected onValueChange(value: T | null): void {
-    if (value !== null) {
-      this.valueChange.emit(value);
-    }
-  }
 }

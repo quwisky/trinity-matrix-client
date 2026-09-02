@@ -3,21 +3,36 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  computed,
   contentChildren,
   effect,
+  forwardRef,
   inject,
+  input,
   untracked,
 } from '@angular/core';
-import { HlmToggleGroup } from '@trinity/helm/toggle-group';
+import { BrnToggleGroup } from '@spartan-ng/brain/toggle-group';
+import { classes } from '@trinity/helm/utils';
+import {
+  normalizeTrnTogglePresentation,
+  normalizeTrnToggleSize,
+  normalizeTrnToggleVariant,
+  trnToggleGroupRecipe,
+  type TrnToggleArrangement,
+  type TrnTogglePresentation,
+  type TrnToggleSizeInput,
+  type TrnToggleVariantInput,
+} from '../toggle/trn-toggle-recipe';
 import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
+import { TRN_TOGGLE_GROUP_STYLE } from './trn-toggle-group-style.token';
 
 /**
  * A group of toggle buttons — a formatting bar, a view switcher, a segmented control.
  *
  * ## Why this wrapper carries keyboard behaviour, unlike its neighbours
  *
- * The rest of this tier is a thin re-publication of the kit's surface. This one is not,
- * because the kit's primitive is a **value holder, not a toolbar**: `BrnToggleGroup` gives
+ * The rest of this tier is a thin re-publication of vendor behavior. This one is not,
+ * because Brain's primitive is a **value holder, not a toolbar**: `BrnToggleGroup` gives
  * `role="group"`, selection state and a `ControlValueAccessor`, and there is no keydown
  * handling anywhere in it. Rendered as-is, a nine-button bar puts nine stops in the tab
  * order — the thing a toolbar exists to avoid, and a WCAG 2.4.3 problem rather than a
@@ -30,47 +45,68 @@ import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
  * by an application order nobody should have to depend on. A binding always wins.
  *
  * Arrow keys move along the group's orientation, Home and End go to the ends, and a disabled
- * item is skipped rather than focused-and-inert. Selection stays the kit's job — this moves
+ * item is skipped rather than focused-and-inert. Selection stays Brain's job — this moves
  * focus, it does not press anything.
  */
 @Component({
   selector: 'trn-toggle-group',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // Only what HlmToggleGroup DECLARES is listed. `type`, `value`, `nullable`, `disabled` and
-  // `valueChange` are absent on purpose and are not lost: Angular re-publishes a host
-  // directive's inputs one level only, so listing them here throws NG0311 — but HlmToggleGroup
-  // already publishes them onto this same host element from BrnToggleGroup, so a call site
-  // binds them on `<trn-toggle-group>` exactly as if they were declared here.
+  // Compose the behavior substrate directly so no Helm visual classes can compete with the
+  // Trinity recipe. Only selection behavior is re-published; styling is owned below.
   hostDirectives: [
     {
-      directive: HlmToggleGroup,
-      inputs: ['variant', 'size', 'spacing', 'orientation'],
-      outputs: [],
+      directive: BrnToggleGroup,
+      inputs: ['type', 'value', 'nullable', 'disabled'],
+      outputs: ['valueChange'],
+    },
+  ],
+  providers: [
+    {
+      provide: TRN_TOGGLE_GROUP_STYLE,
+      useExisting: forwardRef(() => TrnToggleGroupComponent),
     },
   ],
   host: {
     '[attr.role]': '"toolbar"',
-    '[attr.aria-orientation]': 'group.orientation()',
+    '[attr.aria-orientation]': 'orientation()',
+    '[attr.data-orientation]': 'orientation()',
+    '[attr.data-trn-orientation]': 'orientation()',
+    '[attr.data-trn-arrangement]': 'resolvedArrangement()',
+    '[attr.data-trn-presentation]': 'resolvedPresentation()',
+    '[attr.data-trn-size]': 'resolvedSize()',
+    '[attr.data-trn-variant]': 'resolvedVariant()',
     '(keydown)': 'onKeydown($event)',
   },
   template: '<ng-content />',
 })
 export class TrnToggleGroupComponent {
-  /**
-   * The kit directive on this same element, injected so its `orientation` can be READ.
-   *
-   * `orientation` is re-published above rather than re-declared here, and the difference is
-   * not cosmetic: the kit drives `[attr.data-orientation]` and its own
-   * `data-vertical:flex-col` classes from that signal, so a second input declared on this
-   * class would have left the kit's at its default — a bar laid out as a row while announcing
-   * itself as a column, with the arrow keys following the announcement rather than the
-   * layout. One input, one source of truth, read from the directive that owns it.
-   */
-  protected readonly group = inject(HlmToggleGroup);
-
   private readonly items = contentChildren(TrnToggleGroupItemDirective);
 
+  /** Canonical styling inputs. Helm-shaped values remain accepted but are not exported. */
+  readonly variant = input<TrnToggleVariantInput>('neutral');
+  readonly size = input<TrnToggleSizeInput>('md');
+  readonly presentation = input<TrnTogglePresentation>('plain');
+  readonly arrangement = input<TrnToggleArrangement>('separated');
+  readonly orientation = input<'horizontal' | 'vertical'>('horizontal');
+
+  readonly resolvedVariant = computed(() =>
+    normalizeTrnToggleVariant(this.variant()),
+  );
+  readonly resolvedSize = computed(() => normalizeTrnToggleSize(this.size()));
+  readonly resolvedPresentation = computed(() =>
+    normalizeTrnTogglePresentation(this.variant(), this.presentation()),
+  );
+  readonly resolvedArrangement = computed<TrnToggleArrangement>(() =>
+    this.variant() === 'default' || this.variant() === 'outline'
+      ? 'joined'
+      : this.arrangement(),
+  );
+
   constructor() {
+    classes(() =>
+      trnToggleGroupRecipe(this.resolvedArrangement(), this.orientation()),
+    );
+
     // Keyed on the ITEM SET, not on the first render. A contextual bar's buttons live behind
     // `@if`, so the set changes while the group is alive — and seeding once meant that
     // removing whichever item held the stop left every button at -1 and the whole toolbar
@@ -124,7 +160,7 @@ export class TrnToggleGroupComponent {
       return undefined;
     }
     const [back, forward] =
-      this.group.orientation() === 'vertical'
+      this.orientation() === 'vertical'
         ? ['ArrowUp', 'ArrowDown']
         : ['ArrowLeft', 'ArrowRight'];
     // From the FOCUSED item, not a remembered index: focus can also arrive by click or by

@@ -22,7 +22,7 @@ import { inlineStyleSheets } from './inline-styles.mjs';
  * libraries that the Nx module boundaries stop any single project from importing.
  *
  * There is a THIRD idiom, and it was counted by nothing: an inline `styles: [...]` array on
- * the component. Ten wrapper components use it, so it is ledgered here on the same terms —
+ * the component. Six wrapper components use it, so it is ledgered here on the same terms —
  * the set may shrink, and growing it is a visible line in a shared file rather than an
  * invisible default. Without this, a rule could be added anywhere in `libs/components`
  * without any styling guard in the tree reading it.
@@ -218,7 +218,9 @@ describe('styling idiom', () => {
     // then sweep nothing while staying green.
     const css = inlineStyled.map(({ css }) => css).join('\n');
     expect(css).toContain('safe-area-inset-bottom');
-    expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThan(10);
+    expect(css.match(/\{/g)?.length ?? 0).toBeGreaterThanOrEqual(
+      INLINE_STYLE_LEDGER.length,
+    );
 
     // OVER-capture is the failure the checks above cannot see, and the one the tree was
     // actually in: an apostrophe in a `//` comment opened a string that never closed, the

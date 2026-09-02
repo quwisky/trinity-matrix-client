@@ -2,17 +2,26 @@ import {
   ChangeDetectionStrategy,
   Component,
   booleanAttribute,
+  computed,
   input,
   output,
 } from '@angular/core';
-import { HlmSwitch } from '@trinity/helm/switch';
+import {
+  trnSwitchRecipe,
+  trnSwitchThumbRecipe,
+  type TrnChoiceSize,
+  type TrnChoiceVariant,
+} from '../choice-control/trn-choice-control-recipe';
+
+export type TrnSwitchSize = TrnChoiceSize;
+export type TrnSwitchVariant = TrnChoiceVariant;
 
 /**
  * Trinity's switch: a preference that takes effect as you set it.
  *
- * An element, matching the thing it replaces, composed by template because the kit ships a
- * component and `hostDirectives` accepts only directives — the same shape and the same reason
- * as `trn-checkbox`, which this deliberately mirrors input for input.
+ * A native checkbox with `role="switch"` owns keyboard, checked and disabled semantics. The
+ * adjacent track and thumb are presentation only and consume the same bounded recipe vocabulary
+ * as `trn-checkbox`.
  *
  * ## Why a second control rather than a flag on the first
  *
@@ -27,11 +36,9 @@ import { HlmSwitch } from '@trinity/helm/switch';
  *
  * ## The surface is the same four things
  *
- * `checked` in, `checkedChange` out, `disabled`, and `aria-label` for a switch with no visible
- * label of its own. `BrnSwitch` also publishes `size`, `inputId`, `name`, `required`, the
- * `aria-labelledby`/`aria-describedby` pair and a `ControlValueAccessor`; none is bound
- * anywhere in this workspace. Each one kept would be another promise a replacement library has
- * to honour, and each is one line to add when something needs it.
+ * `checked` in, `checkedChange` out, `disabled`, and accessible labelling for a switch with no
+ * visible label of its own. Ordinal size changes only the recipe geometry; it does not alter
+ * the native interaction model.
  *
  * The `ControlValueAccessor` is left unexposed for the reason `trn-checkbox` records: this
  * workspace uses Signal Forms only, and re-publishing a `@angular/forms` integration nobody
@@ -44,23 +51,58 @@ import { HlmSwitch } from '@trinity/helm/switch';
 @Component({
   selector: 'trn-switch',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmSwitch],
-  styles: [':host { display: contents; }'],
+  styles: [
+    ':host { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--trinity-interaction-target-min-size); min-height: var(--trinity-interaction-target-min-size); }',
+  ],
+  host: {
+    '[attr.data-size]': 'size()',
+    '[attr.data-variant]': 'variant()',
+  },
   template: `
-    <hlm-switch
+    <input
+      class="peer absolute inset-0 z-10 size-full cursor-pointer opacity-0 disabled:cursor-default"
+      type="checkbox"
+      role="switch"
       [checked]="checked()"
+      [attr.aria-checked]="checked()"
       [disabled]="disabled()"
-      [aria-label]="ariaLabel()"
-      (checkedChange)="checkedChange.emit($event)"
+      [attr.data-disabled]="disabled() ? 'true' : null"
+      [attr.aria-label]="ariaLabel()"
+      [attr.aria-describedby]="ariaDescribedby()"
+      (change)="onCheckedChange($event)"
     />
+    <span
+      aria-hidden="true"
+      [class]="controlClass()"
+      [attr.data-checked]="checked()"
+    >
+      <span [class]="thumbClass()"></span>
+    </span>
   `,
 })
 export class TrnSwitchComponent {
+  protected readonly controlClass = computed(() =>
+    trnSwitchRecipe(this.variant(), this.size()),
+  );
+  protected readonly thumbClass = computed(() =>
+    trnSwitchThumbRecipe(this.checked(), this.size(), this.variant()),
+  );
+
+  protected onCheckedChange(event: Event): void {
+    this.checkedChange.emit((event.currentTarget as HTMLInputElement).checked);
+  }
+
   readonly checked = input(false, { transform: booleanAttribute });
   readonly disabled = input(false, { transform: booleanAttribute });
+  readonly variant = input<TrnChoiceVariant>('accent');
+  readonly size = input<TrnChoiceSize>('md');
 
   /** For a switch with no visible label of its own. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
+  /** Points at supporting text for the switch. */
+  readonly ariaDescribedby = input<string | null>(null, {
+    alias: 'aria-describedby',
+  });
 
   readonly checkedChange = output<boolean>();
 }

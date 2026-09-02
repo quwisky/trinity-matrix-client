@@ -3,6 +3,7 @@ import {
   DestroyRef,
   Directive,
   ElementRef,
+  booleanAttribute,
   inject,
   input,
 } from '@angular/core';
@@ -36,6 +37,8 @@ import {
   providers: [provideBrnButtonConfig({ variant: null, size: null })],
   host: {
     '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
+    '[attr.aria-busy]': 'loading() ? "true" : null',
+    '[attr.data-loading]': 'loading() ? "" : null',
   },
   hostDirectives: [
     {
@@ -59,6 +62,7 @@ export class TrnButton {
   readonly size = input<TrnButtonSizeInput>('md');
   readonly presentation = input<TrnButtonPresentation>('solid');
   readonly shape = input<TrnButtonShape>('label');
+  readonly loading = input(false, { transform: booleanAttribute });
 
   constructor() {
     classes(() =>

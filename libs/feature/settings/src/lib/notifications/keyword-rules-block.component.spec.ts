@@ -370,10 +370,10 @@ describe('KeywordRulesBlockComponent', () => {
     const el = (fixture: { nativeElement: HTMLElement }) =>
       fixture.nativeElement as HTMLElement;
 
-    /** BrnSwitch renders the interactive control as a button inside the host. */
+    /** The native switch input rendered inside the public component host. */
     const soundControls = (fixture: { nativeElement: HTMLElement }) =>
-      el(fixture).querySelectorAll<HTMLButtonElement>(
-        '[data-testid="keyword-sound"] button',
+      el(fixture).querySelectorAll<HTMLInputElement>(
+        '[data-testid="keyword-sound"] input[role="switch"]',
       );
     const removeButtons = (fixture: { nativeElement: HTMLElement }) =>
       el(fixture).querySelectorAll<HTMLButtonElement>(

@@ -142,7 +142,7 @@ describe('AppearanceSettingsComponent', () => {
       container.querySelectorAll('[trnSettingsFieldRow]').length,
     ).toBeGreaterThanOrEqual(5);
     expect(
-      container.querySelector('trn-radio-group')?.getAttribute('data-variant'),
+      container.querySelector('trn-radio-group')?.getAttribute('data-layout'),
     ).toBe('segmented');
   });
 
@@ -212,7 +212,7 @@ describe('AppearanceSettingsComponent', () => {
     const { container } = await renderPage();
 
     const labelled = [
-      container.querySelector('hlm-radio-group'),
+      container.querySelector('[role=radiogroup]'),
       ...Array.from(container.querySelectorAll('trn-select [role=combobox]')),
     ];
     // Every entry must actually be present, or a missing control would pass this sweep by
