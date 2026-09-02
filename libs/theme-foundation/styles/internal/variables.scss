@@ -334,7 +334,7 @@
     --trinity-control-secondary-foreground: var(--trinity-control-foreground);
     --trinity-control-accent-foreground: var(--trinity-control-foreground);
     --trinity-control-muted-foreground: oklch(43% 0.018 265deg);
-    --trinity-border-control: oklch(89% 0.014 265deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-status-danger-surface: var(--trinity-danger-solid);
     --trinity-status-danger-surface-foreground: var(
       --trinity-danger-solid-foreground
@@ -371,9 +371,9 @@
     --success-foreground: var(--trinity-status-success-surface-foreground);
     --warning: var(--trinity-status-warning-surface);
     --warning-foreground: var(--trinity-status-warning-surface-foreground);
-    --border: var(--trinity-border-control);
+    --border: var(--trinity-border-strong);
     --ring: var(--trinity-focus-ring-halo);
-    --input: var(--trinity-border-control);
+    --input: var(--trinity-border-strong);
   }
 
   // -----------------------------------------------------------------------------
@@ -455,7 +455,7 @@
     --trinity-tooltip-foreground: var(--trinity-control-foreground);
     --trinity-surface-control: oklch(32% 0.018 265deg);
     --trinity-control-muted-foreground: oklch(74% 0.018 265deg);
-    --trinity-border-control: oklch(34% 0.02 265deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
   }
 
   // =============================================================================
@@ -494,7 +494,7 @@
     --trinity-surface-control: oklch(95% 0.012 300deg);
     --trinity-control-foreground: oklch(20% 0.02 300deg);
     --trinity-control-muted-foreground: oklch(43% 0.025 300deg);
-    --trinity-border-control: oklch(89% 0.02 300deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-surface-drop-overlay: oklch(99% 0.005 300deg / 82%);
   }
 
@@ -526,7 +526,7 @@
     --trinity-surface-control: oklch(32% 0.028 300deg);
     --trinity-control-foreground: oklch(97% 0.008 300deg);
     --trinity-control-muted-foreground: oklch(74% 0.025 300deg);
-    --trinity-border-control: oklch(34% 0.032 300deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-surface-drop-overlay: oklch(28% 0.024 300deg / 82%);
   }
 
@@ -557,7 +557,7 @@
     --trinity-surface-control: oklch(95% 0 0deg);
     --trinity-control-foreground: oklch(20% 0 0deg);
     --trinity-control-muted-foreground: oklch(43% 0 0deg);
-    --trinity-border-control: oklch(89% 0 0deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-surface-drop-overlay: oklch(100% 0 0deg / 82%);
   }
 
@@ -583,7 +583,7 @@
     --trinity-surface-control: oklch(25% 0 0deg);
     --trinity-control-foreground: oklch(97% 0 0deg);
     --trinity-control-muted-foreground: oklch(74% 0 0deg);
-    --trinity-border-control: oklch(27% 0 0deg);
+    --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-surface-drop-overlay: oklch(20% 0 0deg / 82%);
   }
 

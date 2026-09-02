@@ -164,6 +164,13 @@ describe('TrnEmojiPickerComponent', () => {
     expect(vendor.componentInstance.color).toBe('var(--trinity-accent)');
   });
 
+  it('renders emoji as named buttons instead of labelled generic spans', async () => {
+    const { fixture } = await render(TrnEmojiPickerComponent);
+    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+
+    expect(vendor.componentInstance.useButton).toBe(true);
+  });
+
   it('maps an ordinal Trinity size to the private vendor glyph measurement', async () => {
     const { fixture } = await render(TrnEmojiPickerComponent, {
       inputs: { size: 'lg' },

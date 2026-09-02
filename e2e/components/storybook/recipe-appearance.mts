@@ -23,7 +23,7 @@ export const renderedRecipeStyle = (locator: Locator) =>
 
 export const renderedColour = (
   locator: Locator,
-  source: 'backgroundColor' | 'color' | `--${string}`,
+  source: 'backgroundColor' | 'borderColor' | 'color' | `--${string}`,
 ): Promise<RenderedColour> =>
   locator.evaluate((element: HTMLElement, name) => {
     const style = getComputedStyle(element);
@@ -31,7 +31,9 @@ export const renderedColour = (
       ? style.getPropertyValue(name).trim()
       : name === 'backgroundColor'
         ? style.backgroundColor
-        : style.color;
+        : name === 'borderColor'
+          ? style.borderColor
+          : style.color;
     if (!value) {
       throw new Error(`Storybook recipe colour ${name} is empty`);
     }

@@ -1,8 +1,9 @@
 <!--
-  `isNative` and `showPreview` are pinned, not inputs: native glyphs mean no sprite-sheet
-  requests, and the preview row is dead weight in both call sites. `title` and `emoji` are
-  deliberately absent — the vendor guards its preview with `*ngIf="showPreview"`, so with
-  the preview off both were inert, and a `title` that renders nowhere is a lie in the diff.
+  `isNative`, `showPreview`, and `useButton` are pinned, not inputs: native glyphs mean no
+  sprite-sheet requests, the preview row is dead weight in both call sites, and emoji are
+  actions rather than labelled generic spans. `title` and `emoji` are deliberately absent —
+  the vendor guards its preview with `*ngIf="showPreview"`, so with the preview off both were
+  inert, and a `title` that renders nowhere is a lie in the diff.
 
   `darkMode` is pinned OFF rather than left unbound, which is not the same thing: the
   vendor defaults it to `matchMedia('(prefers-color-scheme: dark)').matches`, so an absent
@@ -18,6 +19,7 @@
 <emoji-mart
   [isNative]="true"
   [showPreview]="false"
+  [useButton]="true"
   [darkMode]="false"
   [color]="accent"
   [emojiSize]="vendorEmojiSize()"

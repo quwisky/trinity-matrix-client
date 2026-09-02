@@ -13,5 +13,5 @@ export function trnSelectHelmSize(size: TrnSelectSize): 'sm' | 'default' {
 
 /** The focusable trigger fills the public select host without a caller class escape. */
 export function trnSelectTriggerRecipe(): string {
-  return 'w-full';
+  return 'w-full border-[var(--trinity-border-control)]';
 }

@@ -743,12 +743,21 @@ bounded exact geometry; both banner treatments; every empty-state layout; determ
 indeterminate progress; inherited spinner ink; disabled actions; and every tooltip position. The
 ordinary component stories remain the focused explanation of each state.
 
-`trinity-e2e-components:storybook` runs that catalog in every Theme/Mode combination. Axe must
-report no violations and no incomplete findings; browser-composited checks enforce 4.5:1 for
-active text and 3:1 for essential graphics, while `contrast-matrix.spec.mjs` independently checks
-the corresponding semantic token pairs. Disabled controls keep native semantics, an accessible
-name and an internal 2:1 composited readability floor. Their reduced contrast remains the agreed
-WCAG exemption, and state is never communicated by colour alone.
+The **Components / Control recipe matrix / Complete catalog** story applies the same contract to
+Controls. It inventories every supported button variant, size, presentation and shape; checkbox,
+switch, radio, toggle and toggle-group treatment; field, input, textarea and select state; all
+emoji-picker sizes in separate canvases that preserve the vendor's unique named search landmark;
+and the QR scanner's deterministic error path. Long labels and descriptions, invalid, read-only,
+disabled, loading, selected and indeterminate states live in the complete canvas so theme or
+density changes cannot hide a missing recipe.
+
+`trinity-e2e-components:storybook` runs the complete catalog and every emoji-picker size canvas in
+every Theme/Mode combination. Axe must report no violations and no incomplete findings;
+browser-composited checks enforce 4.5:1 for active text and 3:1 for essential graphics, while
+`contrast-matrix.spec.mjs` independently checks the corresponding semantic token pairs. Disabled
+controls keep native semantics, an accessible name and an internal 2:1 composited readability
+floor. Their reduced contrast remains the agreed WCAG exemption, and state is never communicated
+by colour alone.
 
 Automation cannot decide whether the complete set still reads as one coherent visual language.
 Before merging a Foundations or Generic Content treatment change, review the complete catalog in
@@ -762,6 +771,15 @@ all six Theme/Mode combinations and compact density, checking that:
 
 This review is recorded in the pull request. Any optional screenshots are short-lived review
 artifacts and stay outside Git.
+
+Before merging a Controls treatment change, also review its complete catalog in all six Theme/Mode
+combinations and compact density, checking that:
+
+- variant, presentation and ordinal-size progressions remain visually distinct and ordered;
+- checked, indeterminate, invalid, read-only, loading and disabled states never rely on colour alone;
+- keyboard focus, toggle-group roving focus and select open/close behavior remain predictable;
+- long labels, descriptions and options wrap without clipping or horizontal page overflow;
+- coarse-pointer targets remain comfortably operable without making compact density look sparse.
 
 ### Two token families
 

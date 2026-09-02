@@ -1,7 +1,11 @@
-import axe from 'axe-core';
-import { expect, test, type Locator, type Page } from '@playwright/test';
-import { contrastRatio, type Srgb } from '../../browser/support/contrast.mts';
-import { renderedColour } from './recipe-appearance.mts';
+import { expect, test } from '@playwright/test';
+import {
+  DISABLED_READABILITY,
+  disabledContrast,
+  expectContrast,
+  formatAxeResults,
+  runAxe,
+} from './catalog-accessibility.mts';
 import {
   DEFAULT_STORYBOOK_THEME_PREVIEW,
   STORYBOOK_THEME_PREVIEWS,
@@ -11,81 +15,6 @@ import {
 
 const CATALOG_STORY =
   '/iframe.html?id=components-content-recipe-matrix--complete-catalog&viewMode=story';
-const DISABLED_READABILITY = 2;
-
-interface AxeNodeResult {
-  readonly html: string;
-  readonly target: readonly (string | readonly string[])[];
-}
-
-interface AxeRuleResult {
-  readonly help: string;
-  readonly helpUrl: string;
-  readonly id: string;
-  readonly nodes: readonly AxeNodeResult[];
-}
-
-interface AxeScan {
-  readonly incomplete: readonly AxeRuleResult[];
-  readonly violations: readonly AxeRuleResult[];
-}
-
-type ColourSource = 'backgroundColor' | 'color' | `--${string}`;
-
-function composite(foreground: Srgb, background: Srgb, opacity: number): Srgb {
-  const channel = (ink: number, surface: number) =>
-    Math.round(ink * opacity + surface * (1 - opacity));
-  return {
-    r: channel(foreground.r, background.r),
-    g: channel(foreground.g, background.g),
-    b: channel(foreground.b, background.b),
-  };
-}
-
-interface AxeBrowserApi {
-  configure(config: {
-    readonly rules: readonly {
-      readonly enabled: boolean;
-      readonly id: string;
-    }[];
-  }): void;
-  run(context: Element): Promise<AxeScan>;
-}
-
-async function runAxe(page: Page): Promise<AxeScan> {
-  await page.addScriptTag({ content: axe.source });
-  return page.evaluate(async () => {
-    const browserAxe = (
-      window as typeof window & { readonly axe: AxeBrowserApi }
-    ).axe;
-    // Match Storybook's accessibility addon: isolated component canvases are not
-    // required to provide an application-level landmark for every rendered fragment.
-    browserAxe.configure({ rules: [{ id: 'region', enabled: false }] });
-    return browserAxe.run(document.body);
-  });
-}
-
-function formatAxeResults(results: readonly AxeRuleResult[]): string[] {
-  return results.flatMap((result) =>
-    result.nodes.map(
-      (node) =>
-        `${result.id}: ${result.help} at ${JSON.stringify(node.target)} (${node.html}) — ${result.helpUrl}`,
-    ),
-  );
-}
-
-async function expectContrast(
-  foreground: Locator,
-  foregroundProperty: ColourSource,
-  background: Locator,
-  backgroundProperty: ColourSource,
-  minimum: number,
-): Promise<void> {
-  const ink = await renderedColour(foreground, foregroundProperty);
-  const surface = await renderedColour(background, backgroundProperty);
-  expect(contrastRatio(ink, surface)).toBeGreaterThanOrEqual(minimum);
-}
-
 for (const preview of STORYBOOK_THEME_PREVIEWS) {
   test(`${preview.theme.id} ${preview.mode.id} Foundations and Generic Content catalog is complete and accessible`, async ({
     page,
@@ -129,25 +58,12 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       .getByTestId('catalog-banner-disabled')
       .locator('.banner');
     const disabledAction = disabledBanner.getByRole('button');
-    const disabledOpacity = await disabledAction.evaluate((element) =>
-      Number.parseFloat(getComputedStyle(element).opacity),
-    );
-    const disabledSurface = await renderedColour(
-      disabledBanner,
-      'backgroundColor',
-    );
-    const disabledBackground = composite(
-      await renderedColour(disabledAction, 'backgroundColor'),
-      disabledSurface,
-      disabledOpacity,
-    );
-    const disabledInk = composite(
-      await renderedColour(disabledAction, 'color'),
-      disabledSurface,
-      disabledOpacity,
-    );
     expect(
-      contrastRatio(disabledInk, disabledBackground),
+      await disabledContrast(
+        page,
+        'catalog-banner-disabled-action',
+        disabledBanner,
+      ),
     ).toBeGreaterThanOrEqual(DISABLED_READABILITY);
 
     await expectContrast(

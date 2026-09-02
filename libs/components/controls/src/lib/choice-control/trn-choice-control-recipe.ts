@@ -12,7 +12,7 @@ const controlSize = {
 
 const checkedTone = {
   neutral:
-    'data-checked:border-[var(--trinity-state-selected-surface)] data-checked:bg-[var(--trinity-state-selected-surface)] data-checked:text-[var(--trinity-state-selected-foreground)]',
+    'data-checked:border-[var(--trinity-state-selected-foreground)] data-checked:bg-[var(--trinity-state-selected-surface)] data-checked:text-[var(--trinity-state-selected-foreground)]',
   accent:
     'data-checked:border-[var(--trinity-accent)] data-checked:bg-[var(--trinity-accent)] data-checked:text-[var(--trinity-accent-foreground)]',
 } as const;
@@ -27,7 +27,7 @@ export function trnCheckboxRecipe(
   size: TrnChoiceSize,
 ): string {
   return hlm(
-    'inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm border border-[var(--trinity-border-strong)] bg-transparent text-[10px] leading-none peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] peer-disabled:cursor-default peer-disabled:opacity-[var(--trinity-disabled-opacity)] data-[invalid=true]:border-danger',
+    'inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm border border-[var(--trinity-border-control)] bg-transparent text-[10px] leading-none peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] peer-disabled:cursor-default peer-disabled:opacity-[var(--trinity-disabled-opacity)] data-[invalid=true]:border-danger',
     controlSize[size],
     checkedTone[variant],
   );
@@ -38,7 +38,7 @@ export function trnSwitchRecipe(
   size: TrnChoiceSize,
 ): string {
   return hlm(
-    'relative inline-flex shrink-0 cursor-pointer items-center rounded-full bg-[var(--trinity-border-strong)] transition-colors peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] peer-disabled:cursor-default peer-disabled:opacity-[var(--trinity-disabled-opacity)]',
+    'relative inline-flex shrink-0 cursor-pointer items-center rounded-full bg-[var(--trinity-border-control)] transition-colors peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] peer-disabled:cursor-default peer-disabled:opacity-[var(--trinity-disabled-opacity)]',
     size === 'sm' ? 'h-3.5 w-6' : 'h-[18px] w-8',
     switchTone[variant],
   );

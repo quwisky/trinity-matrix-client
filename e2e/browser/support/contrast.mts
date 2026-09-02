@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 /** An opaque sRGB colour, 0-255 per channel. */
 export interface Srgb {
@@ -93,77 +93,82 @@ export async function measureContrast(
   page: Page,
   testId: string,
 ): Promise<MeasuredContrast> {
-  const measured = await page
-    .getByTestId(testId)
-    .evaluate((element: HTMLElement) => {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 1;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) {
-        throw new Error('contrast: no 2d canvas context');
+  return measureLocatorContrast(page.getByTestId(testId));
+}
+
+/** Measure rendered text contrast for a locator when the target is inside a public host. */
+export async function measureLocatorContrast(
+  locator: Locator,
+): Promise<MeasuredContrast> {
+  const measured = await locator.evaluate((element: HTMLElement) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) {
+      throw new Error('contrast: no 2d canvas context');
+    }
+
+    /** Paint `colour` over whatever is already there; throws if the browser rejects it. */
+    const paint = (colour: string): void => {
+      const sentinel = '#010203';
+      ctx.fillStyle = sentinel;
+      ctx.fillStyle = colour;
+      if (ctx.fillStyle === sentinel && colour.trim() !== sentinel) {
+        throw new Error(`contrast: browser rejected the colour "${colour}"`);
       }
+      ctx.fillRect(0, 0, 1, 1);
+    };
 
-      /** Paint `colour` over whatever is already there; throws if the browser rejects it. */
-      const paint = (colour: string): void => {
-        const sentinel = '#010203';
-        ctx.fillStyle = sentinel;
-        ctx.fillStyle = colour;
-        if (ctx.fillStyle === sentinel && colour.trim() !== sentinel) {
-          throw new Error(`contrast: browser rejected the colour "${colour}"`);
-        }
-        ctx.fillRect(0, 0, 1, 1);
-      };
+    const readPixel = (): { r: number; g: number; b: number; a: number } => {
+      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+      return { r, g, b, a };
+    };
 
-      const readPixel = (): { r: number; g: number; b: number; a: number } => {
-        const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-        return { r, g, b, a };
-      };
-
-      const isOpaque = (colour: string): boolean => {
-        ctx.clearRect(0, 0, 1, 1);
-        paint(colour);
-        return readPixel().a === 255;
-      };
-
-      // Nearest opaque surface first, then every translucent background below it. Start at
-      // the measured element because controls such as tooltips can own the first opaque paint;
-      // in that case no ancestor colour participates in the pixels a person sees.
-      const stack: string[] = [];
-      let node: HTMLElement | null = element;
-      let base: string | null = null;
-      while (node) {
-        const background = getComputedStyle(node).backgroundColor;
-        if (isOpaque(background)) {
-          base = background;
-          break;
-        }
-        stack.unshift(background);
-        node = node.parentElement;
-      }
-      if (base === null) {
-        throw new Error(
-          'contrast: no opaque ancestor background — refusing to assume white',
-        );
-      }
-
-      const layers = [base, ...stack];
+    const isOpaque = (colour: string): boolean => {
       ctx.clearRect(0, 0, 1, 1);
-      for (const layer of layers) {
-        paint(layer);
+      paint(colour);
+      return readPixel().a === 255;
+    };
+
+    // Nearest opaque surface first, then every translucent background below it. Start at
+    // the measured element because controls such as tooltips can own the first opaque paint;
+    // in that case no ancestor colour participates in the pixels a person sees.
+    const stack: string[] = [];
+    let node: HTMLElement | null = element;
+    let base: string | null = null;
+    while (node) {
+      const background = getComputedStyle(node).backgroundColor;
+      if (isOpaque(background)) {
+        base = background;
+        break;
       }
-      const background = readPixel();
+      stack.unshift(background);
+      node = node.parentElement;
+    }
+    if (base === null) {
+      throw new Error(
+        'contrast: no opaque ancestor background — refusing to assume white',
+      );
+    }
 
-      // The text colour is flattened onto that same background, so a translucent label
-      // (opacity utilities, disabled states) is measured as it is seen.
-      paint(getComputedStyle(element).color);
-      const text = readPixel();
+    const layers = [base, ...stack];
+    ctx.clearRect(0, 0, 1, 1);
+    for (const layer of layers) {
+      paint(layer);
+    }
+    const background = readPixel();
 
-      return {
-        text: { r: text.r, g: text.g, b: text.b },
-        background: { r: background.r, g: background.g, b: background.b },
-        layers,
-      };
-    });
+    // The text colour is flattened onto that same background, so a translucent label
+    // (opacity utilities, disabled states) is measured as it is seen.
+    paint(getComputedStyle(element).color);
+    const text = readPixel();
+
+    return {
+      text: { r: text.r, g: text.g, b: text.b },
+      background: { r: background.r, g: background.g, b: background.b },
+      layers,
+    };
+  });
 
   return {
     ...measured,

@@ -277,7 +277,7 @@ export const CompleteCatalog: Story = {
           <trn-banner data-testid="catalog-banner-disabled" variant="neutral">
             <trn-icon trnBannerIcon name="cloud-off" />
             Disabled keeps native semantics.
-            <span trnBannerActions><button trnBtn size="sm" disabled>Retry</button></span>
+            <span trnBannerActions><button data-testid="catalog-banner-disabled-action" trnBtn size="sm" disabled>Retry</button></span>
           </trn-banner>
         </section>
 
