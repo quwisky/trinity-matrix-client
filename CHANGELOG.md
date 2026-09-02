@@ -35,6 +35,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Foundations and Generic Content now have a complete accessibility catalog.** One Storybook
+  canvas inventories every public treatment, supported recipe axis, meaningful state, density and
+  bounded exact-size case. All six Theme/Mode combinations now gate Axe results, browser-composited
+  text and graphic contrast, native disabled semantics and non-colour accessible names, while the
+  static contrast matrix covers every status surface pair.
+
 - **Overlays now expose one bounded Trinity vocabulary.** Dialogs, panels, sheets and popovers
   share semantic surface, ordinal size and structural layout recipes while placement remains a
   separate behavior choice. Dropdown items, alerts, action sheets and toasts use canonical

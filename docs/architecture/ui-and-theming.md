@@ -736,6 +736,33 @@ per component: the default is the state least likely to be broken. They are not 
 a unit test — they are a substitute for launching the app and clicking to the one screen where a
 control appears.
 
+The **Components / Content recipe matrix / Complete catalog** story is the executable inventory
+for Foundations and Generic Content. It renders the complete icon vocabulary and motion set; every
+supported icon, avatar, badge, progress and spinner size/variant; avatar shapes, presence, account badges and
+bounded exact geometry; both banner treatments; every empty-state layout; determinate and
+indeterminate progress; inherited spinner ink; disabled actions; and every tooltip position. The
+ordinary component stories remain the focused explanation of each state.
+
+`trinity-e2e-components:storybook` runs that catalog in every Theme/Mode combination. Axe must
+report no violations and no incomplete findings; browser-composited checks enforce 4.5:1 for
+active text and 3:1 for essential graphics, while `contrast-matrix.spec.mjs` independently checks
+the corresponding semantic token pairs. Disabled controls keep native semantics and an accessible
+name; their reduced contrast is the agreed WCAG exemption, and state is never communicated by
+colour alone.
+
+Automation cannot decide whether the complete set still reads as one coherent visual language.
+Before merging a Foundations or Generic Content treatment change, review the complete catalog in
+all six Theme/Mode combinations and compact density, checking that:
+
+- every glyph remains recognisable and every ordinal/exact-size progression is visually ordered;
+- long banners wrap without clipping actions, and empty-state layouts keep their hierarchy;
+- status fills, presence dots and disabled treatments remain distinguishable without appearing
+  active;
+- keyboard focus opens the tooltip and the visible label agrees with the announced purpose.
+
+This review is recorded in the pull request. Any optional screenshots are short-lived review
+artifacts and stay outside Git.
+
 ### Two token families
 
 **Trinity tokens** (`--trinity-*`) are the app's own vocabulary, consumed directly by
