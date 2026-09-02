@@ -1,9 +1,17 @@
 import { Component, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { TrnTabPanelComponent } from './trn-tab-panel.component';
-import { TrnTabsComponent, type TrnTabOption } from './trn-tabs.component';
+import {
+  TrnTabsComponent,
+  type TrnTabOption,
+  type TrnTabsPresentation,
+  type TrnTabsVariant,
+} from './trn-tabs.component';
+import {
+  normalizeTrnTabsPresentation,
+  normalizeTrnTabsVariant,
+} from './trn-tabs-recipe';
 
 /**
  * This wrapper adds no behaviour of its own, so what is worth pinning is the seam: that the
@@ -22,6 +30,8 @@ import { TrnTabsComponent, type TrnTabOption } from './trn-tabs.component';
       <trn-tabs
         [tab]="tab()"
         [tabs]="tabs()"
+        [variant]="variant()"
+        [presentation]="presentation()"
         [orientation]="orientation()"
         (tabActivated)="activated.push($event)"
       >
@@ -46,6 +56,10 @@ import { TrnTabsComponent, type TrnTabOption } from './trn-tabs.component';
 class HostComponent {
   readonly tab = signal('general');
   readonly orientation = signal<'horizontal' | 'vertical'>('horizontal');
+  readonly variant = signal<'neutral' | 'accent' | 'default' | 'line'>(
+    'neutral',
+  );
+  readonly presentation = signal<TrnTabsPresentation>('pill');
   readonly tabs = signal<readonly TrnTabOption[]>([
     { value: 'general', label: 'General', testId: 'tab-general' },
     { value: 'access', label: 'Access', testId: 'tab-access' },
@@ -56,7 +70,7 @@ class HostComponent {
 
 async function build() {
   const { container, fixture } = await render(HostComponent);
-  TestBed.tick();
+  await fixture.whenStable();
   const trigger = (name: string) =>
     container.querySelector<HTMLButtonElement>(`[data-testid="tab-${name}"]`)!;
   /** The kit directive's element, not the `display: contents` host around it. */
@@ -72,6 +86,16 @@ async function build() {
 }
 
 describe('TrnTabsComponent', () => {
+  it('separates semantic treatment from pill and line presentation', () => {
+    expectTypeOf<TrnTabsVariant>().toEqualTypeOf<'neutral' | 'accent'>();
+    expectTypeOf<TrnTabsPresentation>().toEqualTypeOf<'pill' | 'line'>();
+
+    expect(normalizeTrnTabsVariant('default')).toBe('neutral');
+    expect(normalizeTrnTabsVariant('line')).toBe('neutral');
+    expect(normalizeTrnTabsPresentation('default', 'line')).toBe('pill');
+    expect(normalizeTrnTabsPresentation('line', 'pill')).toBe('line');
+  });
+
   it('shows the panel the active tab names, and hides the rest', async () => {
     const { panel } = await build();
 
@@ -80,10 +104,10 @@ describe('TrnTabsComponent', () => {
   });
 
   it('switches panels when a trigger is pressed', async () => {
-    const { trigger, panel } = await build();
+    const { trigger, panel, fixture } = await build();
 
     trigger('access').click();
-    TestBed.tick();
+    await fixture.whenStable();
 
     expect(panel('access').hidden).toBe(false);
     expect(panel('general').hidden).toBe(true);
@@ -93,10 +117,10 @@ describe('TrnTabsComponent', () => {
     // `tabActivated` is BrnTabs's, re-published by HlmTabs and not listed on TrnTabs — the
     // one-level rule means it cannot be. If that re-publication ever stopped reaching this
     // far the binding would go quiet rather than fail to compile.
-    const { trigger, host } = await build();
+    const { trigger, host, fixture } = await build();
 
     trigger('access').click();
-    TestBed.tick();
+    await fixture.whenStable();
 
     expect(host.activated).toEqual(['access']);
   });
@@ -104,11 +128,11 @@ describe('TrnTabsComponent', () => {
   it('does not submit the surrounding form when a tab is pressed', async () => {
     // BrnTabsTrigger's static type="button". A `<button>` in a form defaults to submit, so
     // without it every tab switch in the settings dialogs would save the room.
-    const { trigger, host } = await build();
+    const { trigger, host, fixture } = await build();
 
     expect(trigger('general').getAttribute('type')).toBe('button');
     trigger('access').click();
-    TestBed.tick();
+    await fixture.whenStable();
 
     expect(host.submits).toBe(0);
   });
@@ -132,7 +156,7 @@ describe('TrnTabsComponent', () => {
     // BrnTabsList's FocusKeyManager, and the reason the triggers are rendered inside this
     // component rather than projected: its content query cannot see into a child view, so a
     // trigger one component deeper would leave the arrow keys doing nothing at all.
-    const { container, trigger, panel } = await build();
+    const { container, trigger, panel, fixture } = await build();
     const list = container.querySelector('hlm-tabs-list')!;
     trigger('general').focus();
 
@@ -145,7 +169,7 @@ describe('TrnTabsComponent', () => {
     });
     Object.defineProperty(arrowRight, 'keyCode', { get: () => 39 });
     list.dispatchEvent(arrowRight);
-    TestBed.tick();
+    await fixture.whenStable();
 
     expect(document.activeElement).toBe(trigger('access'));
     // activationMode defaults to 'automatic', so focus selects.
@@ -153,19 +177,19 @@ describe('TrnTabsComponent', () => {
   });
 
   it('carries a bound orientation down two levels of composition', async () => {
-    const { container, host } = await build();
+    const { container, host, fixture } = await build();
     const tabs = container.querySelector('trn-tabs')!;
 
     expect(tabs.getAttribute('data-orientation')).toBe('horizontal');
 
     host.orientation.set('vertical');
-    TestBed.tick();
+    await fixture.whenStable();
 
     expect(tabs.getAttribute('data-orientation')).toBe('vertical');
   });
 
   it('disables the trigger a tab asks to disable', async () => {
-    const { trigger, host } = await build();
+    const { trigger, host, fixture } = await build();
 
     host.tabs.set([
       { value: 'general', label: 'General', testId: 'tab-general' },
@@ -176,7 +200,7 @@ describe('TrnTabsComponent', () => {
         disabled: true,
       },
     ]);
-    TestBed.tick();
+    await fixture.whenStable();
 
     expect(trigger('access').hasAttribute('disabled')).toBe(true);
     expect(trigger('access').getAttribute('aria-disabled')).toBe('true');
@@ -187,5 +211,21 @@ describe('TrnTabsComponent', () => {
 
     expect(trigger('general').tabIndex).toBe(0);
     expect(trigger('access').tabIndex).toBe(-1);
+  });
+
+  it('normalizes compatibility variants onto canonical recipe state', async () => {
+    const { container, host, fixture } = await build();
+    const list = container.querySelector('hlm-tabs-list')!;
+
+    host.variant.set('line');
+    await fixture.whenStable();
+    expect(list.getAttribute('data-trn-variant')).toBe('neutral');
+    expect(list.getAttribute('data-trn-presentation')).toBe('line');
+
+    host.variant.set('accent');
+    host.presentation.set('pill');
+    await fixture.whenStable();
+    expect(list.getAttribute('data-trn-variant')).toBe('accent');
+    expect(list.getAttribute('data-trn-presentation')).toBe('pill');
   });
 });

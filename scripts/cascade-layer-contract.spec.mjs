@@ -177,6 +177,7 @@ describe('cascade layer contract', () => {
         .filter(({ css }) => isFullyLayered(css))
         .map(({ file }) => file),
     ).toEqual([
+      'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
       'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
     ]);
 

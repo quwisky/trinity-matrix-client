@@ -20,7 +20,15 @@ import { HlmTabsContent } from '@trinity/helm/tabs';
   selector: 'trn-tab-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmTabsContent],
-  styles: [':host { display: contents; }'],
+  styles: [
+    `
+      @layer components {
+        :host {
+          display: contents;
+        }
+      }
+    `,
+  ],
   template: `
     <div [hlmTabsContent]="value()" [class]="panelClass()">
       <ng-content />

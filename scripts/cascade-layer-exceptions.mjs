@@ -25,10 +25,6 @@ export const UNLAYERED_RULESET_LEDGER = [
     'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
   ],
   [
-    'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts#inline-styles',
-    '0b8eaf4efc082689f4f52fcf987c9ec87d7d8b5ccdc8cbf50297844afb1e276d',
-  ],
-  [
     'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
     'a5b29ddd3647a4bbfa6891b1de94586054b70a3db5dea5a3bed7169c28dc0dd7',
   ],

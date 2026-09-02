@@ -101,6 +101,22 @@ accessible name, invalid state and keyboard interaction to the actual combobox b
 classes may arrange a whole control in its consumer; repeated inner classes and vendor-specific
 values belong to the owning recipe.
 
+Navigation and Layout follows the same separation between semantic treatment and structure:
+
+| Component         | Canonical contract                                                                                          | Expansion compatibility                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `trn-tabs`        | Variants `neutral`, `accent`; presentations `pill`, `line`; orientation and activation stay Brain behavior. | Former variants `default`, `line` normalize to neutral pill/line recipes. |
+| `trn-page-header` | Variants `neutral`, `accent`; layouts `page`, `toolbar`; the native header owns one page-level `h1`.        | Former variants `page`, `chat` normalize to neutral page/toolbar recipes. |
+| `[trnCard]`       | Variants `neutral`, `muted`; sizes `sm`, `md`; the call site retains its section and heading semantics.     | None; Helm card size and recipe types stay private.                       |
+| `[trnSeparator]`  | Variants `neutral`, `accent`; horizontal/vertical geometry and decorative/announced meaning stay separate.  | None; no size axis is invented for a one-pixel rule.                      |
+
+Tab triggers retain Brain's roving focus, arrow-key activation, disabled state, ARIA ownership and
+non-submitting button type. Structural card slots keep their semantic host elements, and separator
+orientation continues to drive both geometry and the accessible role. Compatibility and canonical
+forms resolve through the same private normalizers; public entrypoints export only Trinity types.
+The category's authored inline panel rule is explicitly classified in `@layer components`, while
+recipe classes use the governed Tailwind utility layer rather than unlayered CSS.
+
 Foundations and Generic Content apply the same rule to the narrower vocabulary each component
 can actually render:
 

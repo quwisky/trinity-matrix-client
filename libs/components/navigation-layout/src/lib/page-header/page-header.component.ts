@@ -4,14 +4,33 @@ import {
   computed,
   input,
 } from '@angular/core';
+import {
+  normalizeTrnPageHeaderLayout,
+  normalizeTrnPageHeaderVariant,
+  trnPageHeaderRecipe,
+  trnPageHeaderTitleRecipe,
+  type TrnPageHeaderLayout,
+  type TrnPageHeaderVariantInput,
+} from './trn-page-header-recipe';
+
+export type {
+  TrnPageHeaderLayout,
+  TrnPageHeaderVariant,
+  TrnPageHeaderVariantInput,
+} from './trn-page-header-recipe';
 
 /**
  * The shared routed-page header shell. Renders exactly one native `<header>` and
- * exactly one `<h1>`, with two layouts selected by `variant`:
- *  - `page` (default): the standard settings / crypto / home header
- *    (`safe-top`, `min-h-14`, transparent, sits on the page's content surface).
- *  - `chat`: the rooms toolbar — tighter spacing, no `safe-top` (the rooms
- *    `.main` column already pads the safe-area top), and the chat background.
+ * exactly one `<h1>`. Semantic treatment and structure are separate axes:
+ *  - `layout="page"` (default): the standard settings / crypto / home header
+ *    (`safe-top`, `min-h-14`, and page spacing).
+ *  - `layout="toolbar"`: tighter spacing and no `safe-top` (the rooms
+ *    `.main` column already pads the safe-area top).
+ *  - `variant="neutral|accent"`: the semantic surface treatment independent
+ *    of that geometry.
+ *
+ * `variant="page|chat"` remains temporarily valid and normalizes to the
+ * equivalent neutral page or toolbar recipe during the expansion window.
  *
  * Everything caller-specific is projected, so this shell imports nothing from
  * helm or the feature libs: consumers supply `hlmBtn` / `trnTooltip` / `<trn-icon>`
@@ -42,29 +61,32 @@ import {
   templateUrl: './page-header.component.html',
 })
 export class PageHeaderComponent {
-  /** Layout recipe: the standard page header, or the rooms chat toolbar. */
-  readonly variant = input<'page' | 'chat'>('page');
+  /** Semantic treatment. `page|chat` remain temporary layout aliases. */
+  readonly variant = input<TrnPageHeaderVariantInput>('neutral');
+
+  /** Standard routed-page geometry or compact toolbar geometry. */
+  readonly layout = input<TrnPageHeaderLayout>('page');
 
   /** Plain-text title. Omit to project a complex title into `[trnHeaderTitle]`. */
   readonly title = input<string>();
 
-  /** Host classes for the `<header>` — verbatim recipes, kept as full literal
-   * strings so the Tailwind classes stay statically scannable. The chat recipe
-   * sets the toolbar background and text color on the header (as the old scoped
-   * `.chat-toolbar` rule did), so both the heading and the resting ghost icon
-   * buttons — which have no color of their own — inherit `--trinity-text-bright`. */
-  protected readonly headerClass = computed(() =>
-    this.variant() === 'chat'
-      ? 'flex h-14 shrink-0 items-center gap-1 border-b border-solid border-[var(--trinity-border-subtle)] px-2 bg-[var(--trinity-surface-workspace)] text-[var(--trinity-text-bright)]'
-      : 'safe-top flex min-h-14 shrink-0 items-center gap-2 border-b border-solid border-border px-3',
+  protected readonly resolvedVariant = computed(() =>
+    normalizeTrnPageHeaderVariant(this.variant()),
   );
 
-  /** Classes for the single `<h1>`. The chat recipe is a flex row so a `#`hash +
+  protected readonly resolvedLayout = computed(() =>
+    normalizeTrnPageHeaderLayout(this.variant(), this.layout()),
+  );
+
+  /** The recipe targets the rendered native header, not the box-less host. */
+  protected readonly headerClass = computed(() =>
+    trnPageHeaderRecipe(this.resolvedVariant(), this.resolvedLayout()),
+  );
+
+  /** Classes for the single `<h1>`. The toolbar recipe is a flex row so a `#`hash +
    * name + lock icon sit inline and truncate; its color is inherited from the
    * header (matching the pre-migration markup, where the h1 had no color class). */
   protected readonly titleClass = computed(() =>
-    this.variant() === 'chat'
-      ? 'flex min-w-0 flex-1 items-center gap-1 px-1 text-base font-semibold'
-      : 'flex-1 truncate text-base font-semibold',
+    trnPageHeaderTitleRecipe(this.resolvedLayout()),
   );
 }

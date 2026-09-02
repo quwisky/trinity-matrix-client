@@ -1,18 +1,24 @@
 import { Component } from '@angular/core';
 import { render } from '@trinity/testing';
+import { expectTypeOf } from 'vitest';
 import { PageHeaderComponent } from './page-header.component';
+import type {
+  TrnPageHeaderLayout,
+  TrnPageHeaderVariant,
+} from './trn-page-header-recipe';
 
 @Component({
   imports: [PageHeaderComponent],
   template: `
-    <trn-page-header [variant]="variant" [title]="title">
+    <trn-page-header [variant]="variant" [layout]="layout" [title]="title">
       <button trnHeaderLeading class="lead">Back</button>
       <span trnHeaderActions><button class="act">Close</button></span>
     </trn-page-header>
   `,
 })
 class TitleHostComponent {
-  variant: 'page' | 'chat' = 'page';
+  variant: 'neutral' | 'accent' | 'page' | 'chat' = 'page';
+  layout: TrnPageHeaderLayout = 'page';
   title: string | undefined = 'Settings';
 }
 
@@ -27,6 +33,11 @@ class TitleHostComponent {
 class ProjectedTitleHostComponent {}
 
 describe('PageHeaderComponent', () => {
+  it('separates semantic treatment from layout', () => {
+    expectTypeOf<TrnPageHeaderVariant>().toEqualTypeOf<'neutral' | 'accent'>();
+    expectTypeOf<TrnPageHeaderLayout>().toEqualTypeOf<'page' | 'toolbar'>();
+  });
+
   it('renders exactly one header and one h1, with the title input as the heading text', async () => {
     const { container } = await render(TitleHostComponent);
 
@@ -55,30 +66,58 @@ describe('PageHeaderComponent', () => {
     expect(container.querySelectorAll('h1')).toHaveLength(1);
   });
 
-  it('swaps host classes by variant', async () => {
-    // Drive the component directly with setInput (like the banner tone test) so
-    // toggling the signal input doesn't trip NG0100 via a host-field mutation.
+  it('keeps legacy layouts equivalent to canonical inputs', async () => {
     const { fixture, container } = await render(PageHeaderComponent, {
-      inputs: { title: 'X' },
+      inputs: { title: 'X', variant: 'page' },
     });
     const header = () => container.querySelector('header')!;
 
-    // page (default): safe-top + min-h-14, no chat background.
     expect(header().className).toContain('safe-top');
     expect(header().className).toContain('min-h-14');
-    expect(header().className).not.toContain('bg-[var(--trinity-chat)]');
+    expect(header().className).toContain('border-border');
+    expect(header().className).not.toContain(
+      'bg-[var(--trinity-surface-workspace)]',
+    );
+    expect(header().className).not.toContain(
+      'text-[var(--trinity-text-bright)]',
+    );
+    expect(header().getAttribute('data-trn-layout')).toBe('page');
+    const legacyPageClass = header().className;
+
+    fixture.componentRef.setInput('variant', 'neutral');
+    fixture.componentRef.setInput('layout', 'page');
+    await fixture.whenStable();
+    expect(header().className).toBe(legacyPageClass);
 
     fixture.componentRef.setInput('variant', 'chat');
-    fixture.detectChanges();
-    // chat: chat background, no safe-top, no min-h-14 (fixed h-14 instead).
+    await fixture.whenStable();
+    const legacyToolbarClass = header().className;
     expect(header().className).toContain(
       'bg-[var(--trinity-surface-workspace)]',
     );
     expect(header().className).not.toContain('safe-top');
     expect(header().className).not.toContain('min-h-14');
-    // The toolbar text color lives on the header (not just the h1) so the
-    // resting ghost icon buttons inherit it, as the old .chat-toolbar rule did.
     expect(header().className).toContain('text-[var(--trinity-text-bright)]');
+    expect(header().getAttribute('data-trn-layout')).toBe('toolbar');
+
+    fixture.componentRef.setInput('variant', 'neutral');
+    fixture.componentRef.setInput('layout', 'toolbar');
+    await fixture.whenStable();
+    expect(header().className).toBe(legacyToolbarClass);
+  });
+
+  it('applies accent without changing page geometry', async () => {
+    const { container } = await render(PageHeaderComponent, {
+      inputs: { title: 'Attention', variant: 'accent', layout: 'page' },
+    });
+    const header = container.querySelector('header')!;
+
+    expect(header.getAttribute('data-trn-variant')).toBe('accent');
+    expect(header.getAttribute('data-trn-layout')).toBe('page');
+    expect(header.className).toContain(
+      'bg-[var(--trinity-state-attention-surface)]',
+    );
+    expect(header.className).toContain('safe-top');
   });
 
   it('does not reflect the title input onto a native title attribute (no whole-bar tooltip)', async () => {
