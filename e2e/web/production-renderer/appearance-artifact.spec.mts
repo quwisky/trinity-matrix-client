@@ -30,6 +30,17 @@ test('renders every shipped Theme and fixed Mode on the production artifact', as
   await expect(
     page.getByRole('heading', { name: 'Sign in to Trinity' }),
   ).toBeVisible({ timeout: 30_000 });
+  const appIcon = page.locator('img.login-card__mark');
+  await expect(appIcon).toHaveAttribute('src', 'assets/icon/icon-plated.svg');
+  await expect
+    .poll(() =>
+      appIcon.evaluate(
+        (element) =>
+          (element as HTMLImageElement).complete &&
+          (element as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
 
   const appearanceTriplets = new Set<string>();
   for (const combination of THEME_CATALOG.preview.combinations) {

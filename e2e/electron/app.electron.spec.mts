@@ -237,6 +237,18 @@ test('secureStore round-trips through the main process (or degrades cleanly)', a
 });
 
 test('applies production Appearance through the custom protocol', async () => {
+  const appIcon = page.locator('img.login-card__mark');
+  await expect(appIcon).toHaveAttribute('src', 'assets/icon/icon-plated.svg');
+  await expect
+    .poll(() =>
+      appIcon.evaluate(
+        (element) =>
+          (element as HTMLImageElement).complete &&
+          (element as HTMLImageElement).naturalWidth > 0,
+      ),
+    )
+    .toBe(true);
+
   const keys = {
     density: 'CapacitorStorage.trinity.appearance.density',
     mode: 'CapacitorStorage.trinity.appearance.mode',
