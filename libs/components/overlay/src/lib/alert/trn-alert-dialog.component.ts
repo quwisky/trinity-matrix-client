@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { FormField, form, required } from '@angular/forms/signals';
+import { FormField, form, maxLength, required } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import type { TrnAlertVariant } from './trn-alert.service';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
@@ -66,7 +66,6 @@ export type AlertDialogResult = boolean | string | null;
           [attr.aria-label]="data.inputLabel ?? null"
           [attr.aria-describedby]="promptInvalid() ? promptErrorId : null"
           [attr.aria-invalid]="promptInvalid() ? 'true' : null"
-          [attr.maxlength]="data.maxLength ?? null"
           [formField]="promptForm.value"
           (keydown.enter)="onConfirm()"
         />
@@ -111,6 +110,9 @@ export class TrnAlertDialogComponent {
   private readonly promptModel = signal({ value: this.dialogData.value ?? '' });
   protected readonly data = this.dialogData;
   protected readonly promptForm = form(this.promptModel, (path) => {
+    maxLength(path.value, () => this.data.maxLength, {
+      message: `${this.data.inputLabel ?? 'This value'} must be ${this.data.maxLength} characters or fewer.`,
+    });
     required(path.value, {
       message: `${this.data.inputLabel ?? 'This value'} is required.`,
       when: () => this.data.required === true,

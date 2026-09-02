@@ -128,6 +128,14 @@ function compileTemplateContract() {
 }
 
 describe('overlay recipe strict-template contract', () => {
+  it('compiles the overlay entrypoint without template binding errors', () => {
+    const errors = compileTemplateContract();
+
+    expect(
+      errors.filter(({ code }) => code < 0).map(({ code }) => code),
+    ).toEqual([]);
+  });
+
   it('accepts canonical inputs while rejecting unsupported or retired values', () => {
     const errors = compileTemplateContract();
     const messages = errors.map((diagnostic) =>
