@@ -15,7 +15,9 @@ export type { TrnSeparatorVariant } from './trn-separator-recipe';
  * grid child and an extra wrapper would land in that layout. Brain remains the behavior and
  * accessibility substrate while the public directive owns its neutral/accent line recipe.
  *
- * Nothing is listed for re-publication, and `orientation`/`decorative` are still bindable on
+ * Brain's `orientation` and `decorative` inputs are re-published explicitly so call sites keep
+ * the behavior contract on the same element as Trinity's visual treatment.
+ *
  * `decorative` is the interesting one, and its default is upstream's: `true`, so a rule is
  * silent unless asked otherwise and `role` reads `none`. That is right for the common case —
  * most rules are drawn to look like something, not to say something — and it means a caller

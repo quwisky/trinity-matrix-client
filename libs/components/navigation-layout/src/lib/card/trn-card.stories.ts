@@ -1,5 +1,10 @@
 import { type Meta, type StoryObj } from '@storybook/angular-vite';
-import { TrnCard, TrnCardImports } from './trn-card';
+import {
+  TrnCard,
+  TrnCardImports,
+  type TrnCardSize,
+  type TrnCardVariant,
+} from './trn-card';
 
 const meta: Meta<TrnCard> = {
   title: 'Components/Card',
@@ -23,7 +28,7 @@ const meta: Meta<TrnCard> = {
 export default meta;
 type Story = StoryObj<TrnCard>;
 
-const card = (variant: 'neutral' | 'muted', size: 'sm' | 'md') => `
+const card = (variant: TrnCardVariant, size: TrnCardSize) => `
   <section trnCard variant="${variant}" size="${size}" data-testid="card-${variant}-${size}" class="w-80">
     <div trnCardHeader>
       <h2 trnCardTitle>${variant === 'neutral' ? 'Account' : 'Workspace'}</h2>

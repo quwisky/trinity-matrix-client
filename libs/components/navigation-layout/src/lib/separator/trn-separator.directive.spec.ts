@@ -34,9 +34,8 @@ describe('TrnSeparatorDirective', () => {
   });
 
   it('announces itself when the caller says it means something', async () => {
-    // The bindings reach BrnSeparator through TWO layers of hostDirectives, which is the
-    // thing worth pinning here: neither is re-published by name, so a wrong list would leave
-    // both silently inert rather than failing to compile.
+    // The public directive explicitly re-publishes Brain's behavior inputs. This runtime
+    // assertion complements the strict-template contract that rejects unsupported values.
     const { container } = await render(HostComponent);
 
     const rule = container.querySelector('[data-t="announced"]')!;

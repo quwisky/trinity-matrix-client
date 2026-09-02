@@ -1,15 +1,10 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { renderedColour, renderedRecipeStyle } from './recipe-appearance.mts';
 import {
   STORYBOOK_THEME_PREVIEWS,
   expectStorybookThemeRoot,
   storybookThemeGlobals,
 } from './theme-preview.mts';
-
-interface Srgb {
-  readonly r: number;
-  readonly g: number;
-  readonly b: number;
-}
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 
@@ -24,20 +19,6 @@ const renderedBox = (locator: Locator) =>
     };
   });
 
-const recipeStyle = (locator: Locator) =>
-  locator.evaluate((element) => {
-    const style = getComputedStyle(element);
-    return {
-      backgroundColor: style.backgroundColor,
-      borderColor: style.borderColor,
-      borderRadius: style.borderRadius,
-      color: style.color,
-      height: style.height,
-      paddingBlock: style.paddingBlock,
-      paddingInline: style.paddingInline,
-    };
-  });
-
 const computedDimensions = (locator: Locator) =>
   locator.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -46,38 +27,6 @@ const computedDimensions = (locator: Locator) =>
       width: Number.parseFloat(style.width),
     };
   });
-
-const renderedColour = (
-  locator: Locator,
-  source: 'backgroundColor' | 'color' | `--${string}`,
-): Promise<Srgb> =>
-  locator.evaluate((element: HTMLElement, name) => {
-    const style = getComputedStyle(element);
-    const value = name.startsWith('--')
-      ? style.getPropertyValue(name).trim()
-      : name === 'backgroundColor'
-        ? style.backgroundColor
-        : style.color;
-    if (!value) {
-      throw new Error(`content recipe: ${name} is empty`);
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 1;
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) {
-      throw new Error('content recipe: no 2d canvas context');
-    }
-    const sentinel = '#010203';
-    context.fillStyle = sentinel;
-    context.fillStyle = value;
-    if (context.fillStyle === sentinel && value !== sentinel) {
-      throw new Error(`content recipe: browser rejected ${name}="${value}"`);
-    }
-    context.fillRect(0, 0, 1, 1);
-    const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
-    return { r, g, b };
-  }, source);
 
 test('canonical recipes preserve valid compatibility rendering', async ({
   page,
@@ -103,25 +52,33 @@ test('canonical recipes preserve valid compatibility rendering', async ({
   await page.goto(story('components-badge--compatibility-default'));
   await expect(page.getByTestId('badge-canonical-neutral')).toBeVisible();
   expect(
-    await recipeStyle(page.getByTestId('badge-canonical-neutral')),
-  ).toEqual(await recipeStyle(page.getByTestId('badge-legacy-default')));
+    await renderedRecipeStyle(page.getByTestId('badge-canonical-neutral')),
+  ).toEqual(
+    await renderedRecipeStyle(page.getByTestId('badge-legacy-default')),
+  );
 
   await page.goto(story('components-banner--compatibility-tone'));
   await expect(page.getByTestId('banner-canonical')).toBeVisible();
   expect(
-    await recipeStyle(page.getByTestId('banner-canonical').locator('.banner')),
+    await renderedRecipeStyle(
+      page.getByTestId('banner-canonical').locator('.banner'),
+    ),
   ).toEqual(
-    await recipeStyle(page.getByTestId('banner-legacy').locator('.banner')),
+    await renderedRecipeStyle(
+      page.getByTestId('banner-legacy').locator('.banner'),
+    ),
   );
 
   await page.goto(story('components-empty-state--compatibility-names'));
   await expect(page.getByTestId('empty-canonical')).toBeVisible();
   expect(
-    await recipeStyle(
+    await renderedRecipeStyle(
       page.getByTestId('empty-canonical').locator(':scope > div'),
     ),
   ).toEqual(
-    await recipeStyle(page.getByTestId('empty-legacy').locator(':scope > div')),
+    await renderedRecipeStyle(
+      page.getByTestId('empty-legacy').locator(':scope > div'),
+    ),
   );
 });
 

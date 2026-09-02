@@ -99,6 +99,14 @@ export const CompatibilityAliases: Story = {
   }),
 };
 
+/** Arrow keys move focus; Enter or Space commits the focused tab. */
+export const ManualActivation: Story = {
+  render: () => ({
+    props: { tabs: TABS },
+    template: `<trn-tabs tab="general" [tabs]="tabs" activationMode="manual">${body}</trn-tabs>`,
+  }),
+};
+
 /** A tab can be turned off without leaving the row — the arrow keys step over it. */
 export const WithDisabledTab: Story = {
   args: {

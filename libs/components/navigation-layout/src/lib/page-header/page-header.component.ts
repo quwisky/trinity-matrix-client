@@ -83,7 +83,7 @@ export class PageHeaderComponent {
     trnPageHeaderRecipe(this.resolvedVariant(), this.resolvedLayout()),
   );
 
-  /** Classes for the single `<h1>`. The chat recipe is a flex row so a `#`hash +
+  /** Classes for the single `<h1>`. The toolbar recipe is a flex row so a `#`hash +
    * name + lock icon sit inline and truncate; its color is inherited from the
    * header (matching the pre-migration markup, where the h1 had no color class). */
   protected readonly titleClass = computed(() =>

@@ -74,6 +74,13 @@ describe('PageHeaderComponent', () => {
 
     expect(header().className).toContain('safe-top');
     expect(header().className).toContain('min-h-14');
+    expect(header().className).toContain('border-border');
+    expect(header().className).not.toContain(
+      'bg-[var(--trinity-surface-workspace)]',
+    );
+    expect(header().className).not.toContain(
+      'text-[var(--trinity-text-bright)]',
+    );
     expect(header().getAttribute('data-trn-layout')).toBe('page');
     const legacyPageClass = header().className;
 
@@ -90,6 +97,7 @@ describe('PageHeaderComponent', () => {
     );
     expect(header().className).not.toContain('safe-top');
     expect(header().className).not.toContain('min-h-14');
+    expect(header().className).toContain('text-[var(--trinity-text-bright)]');
     expect(header().getAttribute('data-trn-layout')).toBe('toolbar');
 
     fixture.componentRef.setInput('variant', 'neutral');

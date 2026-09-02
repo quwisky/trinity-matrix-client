@@ -10,15 +10,15 @@ export type TrnPageHeaderVariantInput =
   TrnPageHeaderVariant | LegacyPageHeaderVariant;
 
 const variantRecipe = {
-  neutral:
-    'bg-[var(--trinity-surface-workspace)] text-[var(--trinity-text-bright)]',
+  neutral: '',
   accent:
     'bg-[var(--trinity-state-attention-surface)] text-[var(--trinity-state-attention-foreground)]',
 } as const;
 
 const layoutRecipe = {
-  page: 'safe-top min-h-14 gap-2 px-3',
-  toolbar: 'h-14 gap-1 px-2',
+  page: 'safe-top min-h-14 gap-2 border-border px-3',
+  toolbar:
+    'h-14 gap-1 border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-workspace)] px-2 text-[var(--trinity-text-bright)]',
 } as const;
 
 const titleLayoutRecipe = {
@@ -52,9 +52,9 @@ export function trnPageHeaderRecipe(
   layout: TrnPageHeaderLayout,
 ): string {
   return hlm(
-    'flex shrink-0 items-center border-b border-solid border-[var(--trinity-border-subtle)]',
-    variantRecipe[variant],
+    'flex shrink-0 items-center border-b border-solid',
     layoutRecipe[layout],
+    variantRecipe[variant],
   );
 }
 
