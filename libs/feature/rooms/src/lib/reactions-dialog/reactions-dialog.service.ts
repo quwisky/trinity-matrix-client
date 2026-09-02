@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { defer, EMPTY, finalize, map, type Observable } from 'rxjs';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
 
 /**
@@ -14,19 +15,22 @@ export class ReactionsDialogService {
   private readonly dialog = inject(TrnDialogService);
   private showing = false;
 
-  /** Show who reacted to `eventId`, opening on its first reaction. */
-  async open(eventId: string): Promise<void> {
-    if (this.showing) {
-      return; // already open — ignore the repeat trigger
-    }
-    this.showing = true;
-    try {
-      await this.dialog.openAndWait<void, ReactionsDialogComponent>(
-        ReactionsDialogComponent,
-        { ariaLabel: 'Reactions', inputs: { eventId } },
-      );
-    } finally {
-      this.showing = false;
-    }
+  /** Cold command showing who reacted to `eventId`, opening on its first reaction. */
+  open$(eventId: string): Observable<void> {
+    return defer(() => {
+      if (this.showing) {
+        return EMPTY; // already open — ignore the repeat subscription
+      }
+      this.showing = true;
+      return this.dialog
+        .openAndWait$<void, ReactionsDialogComponent>(
+          ReactionsDialogComponent,
+          { ariaLabel: 'Reactions', inputs: { eventId } },
+        )
+        .pipe(
+          map(() => undefined),
+          finalize(() => (this.showing = false)),
+        );
+    });
   }
 }

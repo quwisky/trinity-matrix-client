@@ -5,7 +5,10 @@ import {
   output,
 } from '@angular/core';
 import type { TrnEmojiSuggestion } from '@trinity/components/controls';
-import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
+import {
+  TrnAnchoredOverlayDirective,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { type MentionMember } from '../mention-autocomplete';
 import { type SlashCommand } from '@trinity/util/matrix';
 
@@ -34,7 +37,7 @@ import { type SlashCommand } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-composer-suggestions',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnAnchoredOverlayDirective],
+  imports: [TrnAnchoredOverlayDirective, TrnOverlaySurfaceDirective],
   templateUrl: './composer-suggestions.component.html',
   styleUrl: './composer-suggestions.component.scss',
 })

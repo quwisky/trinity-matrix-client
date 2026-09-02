@@ -1,2 +1,6 @@
 // The simple (non-windowed) list is entirely the shared timeline chrome.
-@use '../message-list-shared';
+@use '../message-list-shared' as shared;
+
+@layer components {
+  @include shared.message-list-shared;
+}

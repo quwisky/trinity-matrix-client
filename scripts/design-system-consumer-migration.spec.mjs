@@ -9,7 +9,7 @@ import {
 } from './source-style-blocks.mjs';
 
 /**
- * Freeze the completed application-consumer migrations from #397 through #399.
+ * Freeze the completed application-consumer migrations from #397 through #400.
  *
  * Public components still accept a few expansion aliases while the remaining slices move.
  * This guard makes authentication, Trust, Settings, Rooms workspace navigation, startup,
@@ -19,19 +19,42 @@ import {
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
+const migratedRoomNavigationRoots = [
+  'libs/feature/rooms/src/lib/account-picker',
+  'libs/feature/rooms/src/lib/channel-sidebar',
+  'libs/feature/rooms/src/lib/server-rail',
+];
+const migratedConversationRoots = [
+  'libs/feature/rooms/src/lib/encryption-banner',
+  'libs/feature/rooms/src/lib/message-actions',
+  'libs/feature/rooms/src/lib/message-composer',
+  'libs/feature/rooms/src/lib/message-list',
+  'libs/feature/rooms/src/lib/message-reactions',
+  'libs/feature/rooms/src/lib/message-reply-preview',
+  'libs/feature/rooms/src/lib/message-row',
+  'libs/feature/rooms/src/lib/message-thread-summary',
+  'libs/feature/rooms/src/lib/message-toolbar',
+  'libs/feature/rooms/src/lib/media-attachment',
+  'libs/feature/rooms/src/lib/media-bubble',
+  'libs/feature/rooms/src/lib/pinned',
+  'libs/feature/rooms/src/lib/reaction-picker',
+  'libs/feature/rooms/src/lib/reactions-dialog',
+  'libs/feature/rooms/src/lib/thread',
+  'libs/feature/rooms/src/lib/voice-message',
+];
 const migratedRoots = [
   'apps/trinity/src/app',
   'libs/application/runtime/src/lib',
   'libs/feature/auth/src/lib',
   'libs/feature/crypto/src/lib',
-  'libs/feature/rooms/src/lib/account-picker',
-  'libs/feature/rooms/src/lib/channel-sidebar',
-  'libs/feature/rooms/src/lib/server-rail',
+  ...migratedRoomNavigationRoots,
+  ...migratedConversationRoots,
   'libs/feature/settings/src/lib',
   'libs/feature/shell/src/lib',
 ];
 const migratedRoomNavigationFiles = [
   'libs/feature/rooms/src/lib/rooms/room-actions.service.ts',
+  'libs/feature/rooms/src/lib/rooms/message-actions.service.ts',
   'libs/feature/rooms/src/lib/rooms/rooms.page.html',
   'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
   'libs/feature/rooms/src/lib/rooms/rooms.page.ts',
@@ -64,10 +87,11 @@ const settingsTemplates = templates.filter((file) =>
 );
 const roomNavigationTemplates = templates.filter(
   (file) =>
-    migratedRoots
-      .filter((root) => root.startsWith('libs/feature/rooms/'))
-      .some((root) => file.startsWith(`${root}/`)) ||
+    migratedRoomNavigationRoots.some((root) => file.startsWith(`${root}/`)) ||
     file === 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+);
+const conversationTemplates = templates.filter((file) =>
+  migratedConversationRoots.some((root) => file.startsWith(`${root}/`)),
 );
 const typescript = productionSources.filter((file) => file.endsWith('.ts'));
 const componentStyles = productionSources.filter(
@@ -164,6 +188,61 @@ describe('migrated application design-system consumers', () => {
       );
     }
 
+    const conversationAvatars = tagsFrom(
+      conversationTemplates,
+      /<trn-avatar\b[^>]*>/gu,
+    );
+    expect(conversationAvatars.length).toBeGreaterThan(3);
+    for (const [file, tag] of conversationAvatars) {
+      expect(tag, file).not.toMatch(
+        /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,
+      );
+    }
+
+    const conversationIcons = tagsFrom(
+      conversationTemplates,
+      /<trn-icon\b[^>]*>/gu,
+    );
+    expect(conversationIcons.length).toBeGreaterThan(25);
+    for (const [file, tag] of conversationIcons) {
+      expect(tag, file).not.toMatch(
+        /\bsize\s*=\s*['"]\d+(?:\.\d+)?(?:px|rem|em)['"]/u,
+      );
+    }
+
+    for (const [file, tag] of tagsFrom(
+      conversationTemplates,
+      /<trn-banner\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(/\btone\s*=/u);
+    }
+
+    for (const [file, tag] of tagsFrom(
+      conversationTemplates,
+      /<trn-spinner\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(
+        /\bclass\s*=\s*['"][^'"]*\btext-(?:base|\[[^\]]+\])\b/u,
+      );
+    }
+
+    for (const [file, tag] of tagsFrom(
+      conversationTemplates,
+      /<trn-empty-state\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(/\bsize\s*=/u);
+    }
+
+    // The chat composer is a single-line input that grows, while the public textarea recipe is
+    // deliberately multi-line. Reapplying it makes its utility-layer minimum override the
+    // feature-owned geometry and leaves the recording replacement 21px shorter.
+    const composerInputs = tagsFrom(
+      conversationTemplates,
+      /<textarea\b[^>]*\bclass\s*=\s*['"][^'"]*\bcomposer__input\b[^'"]*['"][^>]*>/gu,
+    );
+    expect(composerInputs).toHaveLength(1);
+    expect(composerInputs[0]?.[1]).not.toMatch(/\btrnTextarea\b/u);
+
     for (const [file, tag] of tagsFrom(
       roomNavigationTemplates,
       /<trn-empty-state\b[^>]*>/gu,
@@ -178,6 +257,14 @@ describe('migrated application design-system consumers', () => {
     }
     for (const [file, tag] of tagsFrom(
       roomNavigationTemplates,
+      /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(
+        /\bvariant\s*=\s*['"](?:default|destructive)['"]/u,
+      );
+    }
+    for (const [file, tag] of tagsFrom(
+      conversationTemplates,
       /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
     )) {
       expect(tag, file).not.toMatch(
@@ -223,16 +310,70 @@ describe('migrated application design-system consumers', () => {
     );
 
     const surfaces = tags(/<[^>]*\btrnOverlaySurface\b[^>]*>/gu);
-    expect(surfaces).toHaveLength(5);
+    expect(surfaces).toHaveLength(12);
     for (const [file, tag] of surfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
     }
     expect(
       surfaces.map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1]).sort(),
-    ).toEqual(['2xl', 'lg', 'md', 'md', 'sm']);
+    ).toEqual([
+      '2xl',
+      'lg',
+      'md',
+      'md',
+      'md',
+      'md',
+      'md',
+      'md',
+      'md',
+      'md',
+      'md',
+      'sm',
+    ]);
     expect(
       surfaces.map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1]).sort(),
-    ).toEqual(['dialog', 'dialog', 'dialog', 'dialog', 'workspace']);
+    ).toEqual([
+      'dialog',
+      'dialog',
+      'dialog',
+      'dialog',
+      'dialog',
+      'fullscreen',
+      'fullscreen',
+      'fullscreen',
+      'popover',
+      'popover',
+      'popover',
+      'workspace',
+    ]);
+
+    const conversationSurfaces = tagsFrom(
+      conversationTemplates,
+      /<[^>]*\btrnOverlaySurface\b[^>]*>/gu,
+    );
+    expect(conversationSurfaces).toHaveLength(7);
+    for (const [file, tag] of conversationSurfaces) {
+      expect(tag, file).toMatch(/\bvariant="neutral"/u);
+      expect(tag, file).toMatch(/\bsize="md"/u);
+    }
+    expect(
+      conversationSurfaces
+        .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1])
+        .sort(),
+    ).toEqual([
+      'dialog',
+      'fullscreen',
+      'fullscreen',
+      'fullscreen',
+      'popover',
+      'popover',
+      'popover',
+    ]);
+    for (const [file, tag] of conversationSurfaces.filter(([, tag]) =>
+      /\blayout="fullscreen"/u.test(tag),
+    )) {
+      expect(tag, file).toMatch(/\bclass="[^"]*\bflex\b[^"]*\bflex-col\b/u);
+    }
   });
 
   it('uses cold finite alert commands and canonical danger variants', () => {
@@ -244,10 +385,12 @@ describe('migrated application design-system consumers', () => {
     expect(authored).not.toMatch(/\.openAndWait\s*\(/u);
     expect(authored).not.toMatch(/\bdestructive\s*:\s*true\b/u);
     expect(authored).not.toMatch(/\bvariant\s*:\s*['"]destructive['"]/u);
+    expect(authored).not.toMatch(/\brole\s*:\s*['"]destructive['"]/u);
+    expect(authored).not.toMatch(/\bside\s*:/u);
   });
 
   it('keeps every component stylesheet in the named components layer', () => {
-    expect(componentStyles.length).toBeGreaterThanOrEqual(21);
+    expect(componentStyles.length).toBeGreaterThanOrEqual(40);
     for (const file of componentStyles) {
       const blocks = topLevelStyleBlocks(read(file));
       expect(
@@ -265,5 +408,18 @@ describe('migrated application design-system consumers', () => {
       return productionSources.includes(sourceFile);
     });
     expect(migratedExceptions).toEqual([]);
+
+    const conversationStyles = componentStyles
+      .filter((file) =>
+        migratedConversationRoots.some((root) => file.startsWith(`${root}/`)),
+      )
+      .map(source)
+      .join('\n');
+    expect(conversationStyles).not.toMatch(
+      /var\(--(?:background|foreground|card|popover|primary|secondary|muted|accent|destructive|success|warning|border|input|ring)\b/u,
+    );
+    expect(conversationStyles).not.toMatch(
+      /#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\(/iu,
+    );
   });
 });

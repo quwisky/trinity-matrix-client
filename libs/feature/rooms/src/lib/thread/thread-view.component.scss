@@ -1,36 +1,39 @@
-// The scrollable replies area matches the chat surface (was ion-content's
-// --background); the card header/footer keep the panel background.
-.thread {
-  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-3);
-  background: var(--trinity-surface-workspace);
-}
-
-// "Load older replies" affordance / loading note, centered above the replies.
-.thread__load-older {
-  display: block;
-  width: 100%;
-  padding: var(--trinity-space-3) 0 var(--trinity-space-4);
-  border: none;
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-control-size);
-  line-height: var(--trinity-type-control-line-height);
-  text-align: center;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
+@layer components {
+  // The scrollable replies area matches the chat surface (was ion-content's
+  // --background); the card header/footer keep the panel background.
+  .thread {
+    padding: var(--trinity-space-5) var(--trinity-space-5)
+      var(--trinity-space-3);
+    background: var(--trinity-surface-workspace);
   }
 
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-}
+  // "Load older replies" affordance / loading note, centered above the replies.
+  .thread__load-older {
+    display: block;
+    width: 100%;
+    padding: var(--trinity-space-3) 0 var(--trinity-space-4);
+    border: none;
+    background: none;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    text-align: center;
+    cursor: pointer;
 
-// The composer footer stays pinned (flex sibling) while the replies scroll;
-// match the chat surface so it blends with the messages above.
-.thread__footer {
-  background: var(--trinity-surface-workspace);
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+  }
+
+  // The composer footer stays pinned (flex sibling) while the replies scroll;
+  // match the chat surface so it blends with the messages above.
+  .thread__footer {
+    background: var(--trinity-surface-workspace);
+  }
 }

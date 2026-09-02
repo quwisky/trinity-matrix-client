@@ -1,397 +1,398 @@
-:host {
-  // One 0.9375rem line at 1.4 leading + 11px block padding on both sides + the field border.
-  // Kept as a construction rather than a literal 45px so Appearance text scaling grows the
-  // voice replacement with the textarea it stands in for.
-  --composer-resting-field-height: calc(1.3125rem + 24px);
+@layer components {
+  :host {
+    // One 0.9375rem line at 1.4 leading + 11px block padding on both sides + the field border.
+    // Kept as a construction rather than a literal 45px so Appearance text scaling grows the
+    // voice replacement with the textarea it stands in for.
+    --composer-resting-field-height: calc(1.3125rem + 24px);
 
-  display: block;
-  background: var(--trinity-surface-workspace);
-}
-
-.composer__banner {
-  display: flex;
-  align-items: center;
-  gap: var(--trinity-density-item-gap);
-  min-height: calc(
-    var(--trinity-density-control-size) + 2 * var(--trinity-space-2)
-  );
-  margin-inline: var(--trinity-density-composer-padding-inline);
-  padding: var(--trinity-space-2) var(--trinity-space-3);
-  border-left: 2px solid var(--trinity-accent);
-  border-radius: var(--trinity-shape-control-radius)
-    var(--trinity-shape-control-radius) 0 0;
-  background: var(--trinity-surface-raised);
-  font-size: var(--trinity-type-metadata-size);
-  line-height: var(--trinity-type-metadata-line-height);
-  color: var(--trinity-text-muted);
-
-  kbd {
-    padding: 1px 4px;
-    border-radius: var(--trinity-radius-sm);
-    background: var(--trinity-surface-frame);
-    font-family: inherit;
-    font-size: 11px;
+    display: block;
+    background: var(--trinity-surface-workspace);
   }
 
-  strong {
-    color: var(--trinity-text-bright);
-  }
-}
-
-.composer__cancel {
-  margin-left: auto;
-  min-width: var(--trinity-density-control-size);
-  min-height: var(--trinity-density-control-size);
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-  cursor: pointer;
-
-  &:hover:where(:not(:disabled)) {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-}
-
-.composer {
-  // A column of [formatting toolbar, input row].
-  // No `position: relative` any more, and the toolbar is no longer trapped in here by it.
-  // The four floating layers used to be `position: absolute` children anchored against this
-  // element, which is what made it their containing block AND what forced the toolbar inside
-  // it — anything outside would have been covered. They render in the CDK overlay container
-  // now, anchored to `.composer__field`, so this is a plain column again.
-  display: flex;
-  flex-direction: column;
-
-  // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
-  // off notched devices and, with the keyboard's native resize mode, while the soft
-  // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
-  // flush above the keyboard when typing and above the indicator otherwise.
-  padding: var(--trinity-space-3) var(--trinity-density-composer-padding-inline)
-    calc(var(--trinity-space-5) + env(safe-area-inset-bottom));
-}
-
-// The field: one box with the insert button, the input and the emoji/send buttons inside it.
-// A GRID rather than a flex row, and the reason is the preview. As flex children the preview
-// and the textarea were siblings that had to be told to look alike — a `min-height` guessed at
-// the textarea's resting height, which was 3px out, so toggling preview resized the composer.
-// In a grid they occupy the SAME CELL, so the drift cannot exist: whichever is showing is
-// measured by the same track.
-// `align-items: end` is what commit 4b489ebb bought and must not be given back: the buttons pin
-// to the last line as the textarea grows, with no hand-measured offsets. The moment anything
-// here gets a `position: absolute` or a fixed `height`, that regression is back.
-// Four columns because the trailing side has two buttons. The fourth is dropped outright in
-// the recording state (below) rather than left to size to nothing, because an empty track
-// still gets its gutter.
-.composer__field {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: end;
-  gap: var(--trinity-density-composer-field-gap);
-
-  // The box lives here now rather than on the textarea, which is what puts the buttons INSIDE
-  // it. The textarea keeps only its vertical padding; the horizontal inset is this padding
-  // plus the button beside it, so nothing encodes a button's width as a number.
-  // 6px is breathing room for the buttons against the box's edge, not a measurement of
-  // anything: the 40px buttons carry their own hit area and the radius needs a little space
-  // inside it. It is also what the formatting toolbar indents itself by, so the two rows line
-  // up on their controls — the one number this file publishes by being copied, and the reason
-  // it is worth keeping at one.
-  // The text consequently starts 50px into the FIELD (6 + 40 + the 4px gap) where it started
-  // 58px into the old row (40 + 4 + the textarea's own 14px). Both measured from the same
-  // edge, that is an 8px shift left — the visible half of moving the buttons inside.
-  padding-inline: var(--trinity-density-composer-field-inset);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-container-radius);
-  background: var(--trinity-surface-raised);
-
-  // The field's own area is a press target for the input it draws (see `onFieldPress`), and
-  // it shares the input's fill, so it has to read as one: without this the dead zone shows an
-  // arrow while the textarea a pixel away shows an I-beam. The three buttons inside set their
-  // own `cursor`, so only the forwarded area changes.
-  cursor: text;
-
-  // The ring moves with the box. `trnTextarea` draws one on the textarea itself, which would
-  // now outline a bare input sitting inside a filled box; it is suppressed below and redrawn
-  // here, so focus outlines the thing that looks like the control.
-  // `:has(input:focus-visible)`, NOT `:focus-within`: the ring says "you are typing here", and
-  // `:focus-within` would draw it for anything focused inside the field — tabbing to Send would
-  // outline the whole input as well as the button, which is a claim the old ring on the
-  // textarea could not make.
-  &:has(.composer__input:focus-visible) {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-
-  // Send is withheld while recording, and an empty fourth track is still a track: `gap` lays
-  // out the gutter between columns 3 and 4 whether or not anything is in column 4, so the
-  // trailing inset would be 10px against a 6px leading one. Declare three columns for that
-  // one state instead — the three auto items still land in 1, 3 and (with the input placed at
-  // 2) nothing wraps. Shortening the base template is not an option: with three columns
-  // declared and four items, the fourth would wrap to an implicit row 2.
-  &:not(:has(.composer__send)) {
-    grid-template-columns: auto 1fr auto;
-  }
-}
-
-// Voice capture is a replacement state for the field, not an extra row above it. Keep the
-// textarea in the DOM so its draft and caret survive, but remove its box while the recording
-// control owns this plane. Both rows derive from the same action-size token, so their resting
-// heights remain equal in precise- and coarse-pointer layouts.
-.composer:has(.composer__recording) .composer__field {
-  display: none;
-}
-
-// The preview and the textarea share one grid cell, so the preview needs no box of its own —
-// the field's is already around it. It used to carry a `min-height`, a padding and a border
-// that approximated the textarea's; the approximation was 3px out and toggling preview shrank
-// the composer by that much. Matching by construction rather than by number.
-.composer__preview,
-.composer__input {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-}
-
-.composer__preview {
-  overflow-y: auto;
-  max-height: 200px;
-  padding-block: 11px;
-
-  // One line of floor. An empty draft renders `html: ''` — no line box at all, so the cell
-  // would be 22px of padding and the row would fall back to the 40px buttons: the same 43->40
-  // toggle drift, arriving from the other side. `em` resolves against this rule's own
-  // `font-size`, so the line tracks the type rather than restating it; the padding has to be
-  // added because `box-sizing` is `border-box` (preflight), which makes a bare `1.4em` floor
-  // inert — 22px of padding already clears it.
-  min-height: calc(1.4em + 2 * 11px);
-
-  // The timeline breaks an unbreakable token (`message-row.component.scss:283`) and so does a
-  // textarea (the UA sheet gives it `overflow-wrap: break-word`). A plain div does neither, so
-  // without this a long URL or hash scrolls sideways here and wraps once sent — the one thing
-  // a preview may not do.
-  overflow-wrap: anywhere;
-
-  // Deliberately no border of its own. It used to have one, which was the only cue that a
-  // toggle had happened; the cue is now the toolbar's own pressed state on the preview button,
-  // and a second box inside the field's would read as a control within a control. The rendered
-  // markdown is itself the difference the reader is looking for.
-
-  color: var(--trinity-text);
-
-  // The same type as the textarea, because it stands in for it: a different size or leading
-  // would change the cell's height on toggle, which is the drift this arrangement removes.
-  font-size: 0.9375rem;
-  line-height: 1.4;
-}
-
-// A plain message keeps its line breaks; rendered markdown carries its own block structure and
-// must stay `normal`. Written as `:not()` rather than a later overriding rule for the reason
-// message-row.component.scss:271 records — two single-class selectors on the same element are
-// decided purely by source order.
-.composer__preview:not(.msg__text--html) {
-  white-space: pre-wrap;
-}
-
-// Kept in the DOM rather than removed so its value, caret and draft survive the round trip.
-// Doubled class on purpose: `.composer__input` sets `display: block`, and at equal specificity
-// the winner would be whichever rule came later in the file — the same order-dependence the
-// timeline's white-space rules had.
-.composer__input.composer__input--hidden {
-  display: none;
-}
-
-// Voice-recording bar, shown in place of the input row while capturing a clip.
-.composer__recording {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: var(--trinity-density-row-gap);
-  width: 100%;
-  min-height: var(--composer-resting-field-height);
-  padding-inline: var(--trinity-density-composer-field-inset);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-container-radius);
-  background: var(--trinity-surface-raised);
-}
-
-.composer__recording-cancel,
-.composer__recording-send {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--trinity-density-composer-action-size);
-  height: var(--trinity-density-composer-action-size);
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: 18px;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-}
-
-.composer__recording-send {
-  color: var(--trinity-link);
-}
-
-.composer__recording-dot {
-  flex: 0 0 auto;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-
-  // A filled shape, not text, so it takes the solid fill rather than the
-  // `--trinity-danger` text/icon role.
-  background: var(--trinity-danger-solid);
-  animation: composer-recording-pulse var(--trinity-duration-pulse) ease-in-out
-    infinite;
-}
-
-.composer__recording-time {
-  flex: 1;
-  color: var(--trinity-text-bright);
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-@keyframes composer-recording-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.3;
-  }
-}
-
-// Emoji and send are the field's trailing grid items (the `+` matches them from its own
-// stylesheet). Each is sized to the textarea's single-row resting height so its icon centres
-// on one line; the field's `align-items: end` then keeps them on the last line as the textarea
-// grows. Their columns come from auto-placement around the input's explicit `grid-column: 2`,
-// not from any flex behaviour. They carry no background, so the box is just the hit target.
-.composer__emoji,
-.composer__send {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--trinity-density-composer-action-size);
-  height: var(--trinity-density-composer-action-size);
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: 20px;
-  cursor: pointer;
-
-  &:hover:where(:not(:disabled)) {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
-  }
-
-  &:active:where(:not(:disabled)) {
-    background: var(--trinity-state-pressed-surface);
-    color: var(--trinity-state-pressed-foreground);
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-}
-
-// Send sits beside the input at every width and pointer type. It used to be
-// touch-only (Enter sends on a keyboard), but Enter is not always unambiguous —
-// a draft holding newlines, an IME mid-composition — and an always-present target
-// is one less thing to know. Accent-tinted, and dimmed rather than faded when
-// there is nothing to send.
-.composer__send {
-  color: var(--trinity-link);
-
-  &:disabled {
+  .composer__banner {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-item-gap);
+    min-height: calc(
+      var(--trinity-density-control-size) + 2 * var(--trinity-space-2)
+    );
+    margin-inline: var(--trinity-density-composer-padding-inline);
+    padding: var(--trinity-space-2) var(--trinity-space-3);
+    border-left: 2px solid var(--trinity-accent);
+    border-radius: var(--trinity-shape-control-radius)
+      var(--trinity-shape-control-radius) 0 0;
+    background: var(--trinity-surface-raised);
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
     color: var(--trinity-text-muted);
-    opacity: 1;
-  }
-}
 
-.composer__input {
-  resize: none;
-  max-height: 200px;
+    kbd {
+      padding: 1px 4px;
+      border-radius: var(--trinity-radius-sm);
+      background: var(--trinity-surface-frame);
+      font-family: inherit;
+      font-size: 11px;
+    }
 
-  // trnTextarea ships form-textarea sizing (min-h-16, display:flex,
-  // field-sizing:content); the composer is a single-row-that-grows chat input
-  // (height driven by autoGrow()), so neutralise those. This block is unlayered
-  // and so wins over hlm's @layer utilities.
-  min-height: 0;
-  display: block;
-  field-sizing: fixed;
-
-  // Vertical only. The horizontal inset comes from the field's own padding and the button
-  // beside it, so no rule here encodes how wide a button is.
-  padding-block: 11px;
-  padding-inline: 0;
-  border: none;
-  background: transparent;
-  color: var(--trinity-text);
-  font: inherit;
-
-  // rem, not px: this is the one surface where a fixed size is indefensible under the text
-  // size setting — you would read other people's messages at 20px and type your own at 15px.
-  // 0.9375rem is exactly the 15px it used to be at the default root, so nothing moves until
-  // the user asks it to.
-  font-size: 0.9375rem;
-  line-height: 1.4;
-
-  &::placeholder {
-    color: var(--trinity-text-muted);
-  }
-
-  // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). trnTextarea's own
-  // would outline a bare textarea sitting inside a filled box, which reads as two controls.
-  // Unlayered, so it
-  // wins over hlm's `@layer utilities` exactly as the sizing neutralisers above do.
-  &:focus-visible {
-    outline: none;
-    box-shadow: none;
-  }
-}
-
-// Touch targets: enlarge the composer action buttons to the 44px minimum on touch
-// devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
-@media (pointer: coarse) {
-  .composer__emoji,
-  .composer__send,
-  .composer__recording-cancel,
-  .composer__recording-send {
-    min-width: var(--trinity-interaction-target-min-size);
-    min-height: var(--trinity-interaction-target-min-size);
+    strong {
+      color: var(--trinity-text-bright);
+    }
   }
 
   .composer__cancel {
-    min-width: var(--trinity-interaction-target-min-size);
-    min-height: var(--trinity-interaction-target-min-size);
+    margin-left: auto;
+    min-width: var(--trinity-density-control-size);
+    min-height: var(--trinity-density-control-size);
+    border: none;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    cursor: pointer;
+
+    &:hover:where(:not(:disabled)) {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+  }
+
+  .composer {
+    // A column of [formatting toolbar, input row].
+    // No `position: relative` any more, and the toolbar is no longer trapped in here by it.
+    // The four floating layers used to be `position: absolute` children anchored against this
+    // element, which is what made it their containing block AND what forced the toolbar inside
+    // it — anything outside would have been covered. They render in the CDK overlay container
+    // now, anchored to `.composer__field`, so this is a plain column again.
+    display: flex;
+    flex-direction: column;
+
+    // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0
+    // off notched devices and, with the keyboard's native resize mode, while the soft
+    // keyboard is up (the WebView shrinks, hiding the indicator) — so the input sits
+    // flush above the keyboard when typing and above the indicator otherwise.
+    padding: var(--trinity-space-3)
+      var(--trinity-density-composer-padding-inline)
+      calc(var(--trinity-space-5) + env(safe-area-inset-bottom));
+  }
+
+  // The field: one box with the insert button, the input and the emoji/send buttons inside it.
+  // A GRID rather than a flex row, and the reason is the preview. As flex children the preview
+  // and the textarea were siblings that had to be told to look alike — a `min-height` guessed at
+  // the textarea's resting height, which was 3px out, so toggling preview resized the composer.
+  // In a grid they occupy the SAME CELL, so the drift cannot exist: whichever is showing is
+  // measured by the same track.
+  // `align-items: end` is what commit 4b489ebb bought and must not be given back: the buttons pin
+  // to the last line as the textarea grows, with no hand-measured offsets. The moment anything
+  // here gets a `position: absolute` or a fixed `height`, that regression is back.
+  // Four columns because the trailing side has two buttons. The fourth is dropped outright in
+  // the recording state (below) rather than left to size to nothing, because an empty track
+  // still gets its gutter.
+  .composer__field {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    align-items: end;
+    gap: var(--trinity-density-composer-field-gap);
+
+    // The box lives here now rather than on the textarea, which is what puts the buttons INSIDE
+    // it. The textarea keeps only its vertical padding; the horizontal inset is this padding
+    // plus the button beside it, so nothing encodes a button's width as a number.
+    // 6px is breathing room for the buttons against the box's edge, not a measurement of
+    // anything: the 40px buttons carry their own hit area and the radius needs a little space
+    // inside it. It is also what the formatting toolbar indents itself by, so the two rows line
+    // up on their controls — the one number this file publishes by being copied, and the reason
+    // it is worth keeping at one.
+    // The text consequently starts 50px into the FIELD (6 + 40 + the 4px gap) where it started
+    // 58px into the old row (40 + 4 + the textarea's own 14px). Both measured from the same
+    // edge, that is an 8px shift left — the visible half of moving the buttons inside.
+    padding-inline: var(--trinity-density-composer-field-inset);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-raised);
+
+    // The field's own area is a press target for the input it draws (see `onFieldPress`), and
+    // it shares the input's fill, so it has to read as one: without this the dead zone shows an
+    // arrow while the textarea a pixel away shows an I-beam. The three buttons inside set their
+    // own `cursor`, so only the forwarded area changes.
+    cursor: text;
+
+    // The ring moves with the box. The native textarea outline would frame a bare input sitting
+    // inside a filled box; it is suppressed below and redrawn here, so focus outlines the thing
+    // that looks like the control.
+    // `:has(input:focus-visible)`, NOT `:focus-within`: the ring says "you are typing here", and
+    // `:focus-within` would draw it for anything focused inside the field — tabbing to Send would
+    // outline the whole input as well as the button, which is a claim the old ring on the
+    // textarea could not make.
+    &:has(.composer__input:focus-visible) {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+
+    // Send is withheld while recording, and an empty fourth track is still a track: `gap` lays
+    // out the gutter between columns 3 and 4 whether or not anything is in column 4, so the
+    // trailing inset would be 10px against a 6px leading one. Declare three columns for that
+    // one state instead — the three auto items still land in 1, 3 and (with the input placed at
+    // 2) nothing wraps. Shortening the base template is not an option: with three columns
+    // declared and four items, the fourth would wrap to an implicit row 2.
+    &:not(:has(.composer__send)) {
+      grid-template-columns: auto 1fr auto;
+    }
+  }
+
+  // Voice capture is a replacement state for the field, not an extra row above it. Keep the
+  // textarea in the DOM so its draft and caret survive, but remove its box while the recording
+  // control owns this plane. Both rows derive from the same action-size token, so their resting
+  // heights remain equal in precise- and coarse-pointer layouts.
+  .composer:has(.composer__recording) .composer__field {
+    display: none;
+  }
+
+  // The preview and the textarea share one grid cell, so the preview needs no box of its own —
+  // the field's is already around it. It used to carry a `min-height`, a padding and a border
+  // that approximated the textarea's; the approximation was 3px out and toggling preview shrank
+  // the composer by that much. Matching by construction rather than by number.
+  .composer__preview,
+  .composer__input {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  .composer__preview {
+    overflow-y: auto;
+    max-height: 200px;
+    padding-block: 11px;
+
+    // One line of floor. An empty draft renders `html: ''` — no line box at all, so the cell
+    // would be 22px of padding and the row would fall back to the 40px buttons: the same 43->40
+    // toggle drift, arriving from the other side. `em` resolves against this rule's own
+    // `font-size`, so the line tracks the type rather than restating it; the padding has to be
+    // added because `box-sizing` is `border-box` (preflight), which makes a bare `1.4em` floor
+    // inert — 22px of padding already clears it.
+    min-height: calc(1.4em + 2 * 11px);
+
+    // The timeline breaks an unbreakable token (`message-row.component.scss:283`) and so does a
+    // textarea (the UA sheet gives it `overflow-wrap: break-word`). A plain div does neither, so
+    // without this a long URL or hash scrolls sideways here and wraps once sent — the one thing
+    // a preview may not do.
+    overflow-wrap: anywhere;
+
+    // Deliberately no border of its own. It used to have one, which was the only cue that a
+    // toggle had happened; the cue is now the toolbar's own pressed state on the preview button,
+    // and a second box inside the field's would read as a control within a control. The rendered
+    // markdown is itself the difference the reader is looking for.
+
+    color: var(--trinity-text);
+
+    // The same type as the textarea, because it stands in for it: a different size or leading
+    // would change the cell's height on toggle, which is the drift this arrangement removes.
+    font-size: 0.9375rem;
+    line-height: 1.4;
+  }
+
+  // A plain message keeps its line breaks; rendered markdown carries its own block structure and
+  // must stay `normal`. Written as `:not()` rather than a later overriding rule for the reason
+  // message-row.component.scss:271 records — two single-class selectors on the same element are
+  // decided purely by source order.
+  .composer__preview:not(.msg__text--html) {
+    white-space: pre-wrap;
+  }
+
+  // Kept in the DOM rather than removed so its value, caret and draft survive the round trip.
+  // Doubled class on purpose: `.composer__input` sets `display: block`, and at equal specificity
+  // the winner would be whichever rule came later in the file — the same order-dependence the
+  // timeline's white-space rules had.
+  .composer__input.composer__input--hidden {
+    display: none;
+  }
+
+  // Voice-recording bar, shown in place of the input row while capturing a clip.
+  .composer__recording {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--trinity-density-row-gap);
+    width: 100%;
+    min-height: var(--composer-resting-field-height);
+    padding-inline: var(--trinity-density-composer-field-inset);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-raised);
+  }
+
+  .composer__recording-cancel,
+  .composer__recording-send {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trinity-density-composer-action-size);
+    height: var(--trinity-density-composer-action-size);
+    border: none;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: var(--trinity-text-muted);
+    font-size: 18px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+  }
+
+  .composer__recording-send {
+    color: var(--trinity-link);
+  }
+
+  .composer__recording-dot {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+
+    // A filled shape, not text, so it takes the solid fill rather than the
+    // `--trinity-danger` text/icon role.
+    background: var(--trinity-danger-solid);
+    animation: composer-recording-pulse var(--trinity-duration-pulse)
+      ease-in-out infinite;
+  }
+
+  .composer__recording-time {
+    flex: 1;
+    color: var(--trinity-text-bright);
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @keyframes composer-recording-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  // Emoji and send are the field's trailing grid items (the `+` matches them from its own
+  // stylesheet). Each is sized to the textarea's single-row resting height so its icon centres
+  // on one line; the field's `align-items: end` then keeps them on the last line as the textarea
+  // grows. Their columns come from auto-placement around the input's explicit `grid-column: 2`,
+  // not from any flex behaviour. They carry no background, so the box is just the hit target.
+  .composer__emoji,
+  .composer__send {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trinity-density-composer-action-size);
+    height: var(--trinity-density-composer-action-size);
+    border: none;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: var(--trinity-text-muted);
+    font-size: 20px;
+    cursor: pointer;
+
+    &:hover:where(:not(:disabled)) {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
+
+    &:active:where(:not(:disabled)) {
+      background: var(--trinity-state-pressed-surface);
+      color: var(--trinity-state-pressed-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+
+  // Send sits beside the input at every width and pointer type. It used to be
+  // touch-only (Enter sends on a keyboard), but Enter is not always unambiguous —
+  // a draft holding newlines, an IME mid-composition — and an always-present target
+  // is one less thing to know. Accent-tinted, and dimmed rather than faded when
+  // there is nothing to send.
+  .composer__send {
+    color: var(--trinity-link);
+
+    &:disabled {
+      color: var(--trinity-text-muted);
+      opacity: 1;
+    }
+  }
+
+  .composer__input {
+    resize: none;
+    max-height: 200px;
+
+    // This is a purpose-built single-row-that-grows composer input, not a form textarea.
+    // Its feature-owned recipe therefore owns the exact resting geometry rather than applying
+    // `trnTextarea`, whose canonical multi-line minimum would make the recording replacement
+    // shorter than the field it stands in for.
+    min-height: 0;
+    display: block;
+    field-sizing: fixed;
+
+    // Vertical only. The horizontal inset comes from the field's own padding and the button
+    // beside it, so no rule here encodes how wide a button is.
+    padding-block: 11px;
+    padding-inline: 0;
+    border: none;
+    background: transparent;
+    color: var(--trinity-text);
+    font: inherit;
+
+    // rem, not px: this is the one surface where a fixed size is indefensible under the text
+    // size setting — you would read other people's messages at 20px and type your own at 15px.
+    // 0.9375rem is exactly the 15px it used to be at the default root, so nothing moves until
+    // the user asks it to.
+    font-size: 0.9375rem;
+    line-height: 1.4;
+
+    &::placeholder {
+      color: var(--trinity-text-muted);
+    }
+
+    // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). Suppress the native
+    // textarea ring so a bare input inside the filled field does not read as two controls.
+    &:focus-visible {
+      outline: none;
+      box-shadow: none;
+    }
+  }
+
+  // Touch targets: enlarge the composer action buttons to the 44px minimum on touch
+  // devices only (inert on a mouse, so desktop keeps its 36/40px buttons).
+  @media (pointer: coarse) {
+    .composer__emoji,
+    .composer__send,
+    .composer__recording-cancel,
+    .composer__recording-send {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+
+    .composer__cancel {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
   }
 }

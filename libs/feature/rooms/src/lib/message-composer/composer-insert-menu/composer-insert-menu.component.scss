@@ -1,63 +1,65 @@
-// No box of its own, so the `+` stays a direct GRID item of `.composer__field` — a host that
-// generated a box would take the field's first column for itself and leave the button laid out
-// inside it. The field's `align-items: end` is what keeps it on the last line as the textarea
-// grows.
-:host {
-  display: contents;
-}
-
-// Sized to the textarea's single-row resting height so the icon centres on one line. Mirrors
-// `.composer__emoji`/`.composer__send` rather than sharing with them — those are a comma group
-// in the composer's own stylesheet, and there is no icon-button mixin in the repo (the same
-// call `composer-toolbar` documents). It carries no background, so the box is just the hit
-// target. No `flex` shorthand: with `:host { display: contents }` this button is a GRID item
-// of `.composer__field`, and its column comes from auto-placement.
-.composer__attach {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--trinity-density-composer-action-size);
-  height: var(--trinity-density-composer-action-size);
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: 20px;
-  cursor: pointer;
-
-  &:hover:where(:not(:disabled)) {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
+@layer components {
+  // No box of its own, so the `+` stays a direct GRID item of `.composer__field` — a host that
+  // generated a box would take the field's first column for itself and leave the button laid out
+  // inside it. The field's `align-items: end` is what keeps it on the last line as the textarea
+  // grows.
+  :host {
+    display: contents;
   }
 
-  &:active:where(:not(:disabled)) {
-    background: var(--trinity-state-pressed-surface);
-    color: var(--trinity-state-pressed-foreground);
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-}
-
-// The tray's items render through a CDK overlay at the document root, so this is
-// deliberately not nested — Angular still stamps this component's encapsulation
-// attribute on them, but they are not descendants at runtime.
-// Helm's own item padding (`px-3 py-2`) computes to ~36px, under the 44px this
-// project holds itself to on touch; the rest of the composer already does this.
-@media (pointer: coarse) {
-  .composer__insert-item {
-    min-height: 44px;
-  }
-
+  // Sized to the textarea's single-row resting height so the icon centres on one line. Mirrors
+  // `.composer__emoji`/`.composer__send` rather than sharing with them — those are a comma group
+  // in the composer's own stylesheet, and there is no icon-button mixin in the repo (the same
+  // call `composer-toolbar` documents). It carries no background, so the box is just the hit
+  // target. No `flex` shorthand: with `:host { display: contents }` this button is a GRID item
+  // of `.composer__field`, and its column comes from auto-placement.
   .composer__attach {
-    min-width: var(--trinity-interaction-target-min-size);
-    min-height: var(--trinity-interaction-target-min-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trinity-density-composer-action-size);
+    height: var(--trinity-density-composer-action-size);
+    border: none;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: var(--trinity-text-muted);
+    font-size: 20px;
+    cursor: pointer;
+
+    &:hover:where(:not(:disabled)) {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
+
+    &:active:where(:not(:disabled)) {
+      background: var(--trinity-state-pressed-surface);
+      color: var(--trinity-state-pressed-foreground);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+
+    &:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+  }
+
+  // The tray's items render through a CDK overlay at the document root, so this is
+  // deliberately not nested — Angular still stamps this component's encapsulation
+  // attribute on them, but they are not descendants at runtime.
+  // Helm's own item padding (`px-3 py-2`) computes to ~36px, under the 44px this
+  // project holds itself to on touch; the rest of the composer already does this.
+  @media (pointer: coarse) {
+    .composer__insert-item {
+      min-height: 44px;
+    }
+
+    .composer__attach {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
   }
 }

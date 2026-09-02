@@ -9,35 +9,39 @@
   side="top"
   align="start"
 >
-  <ul
-    id="emoji-suggestions"
-    class="composer__emoji-menu"
-    role="listbox"
-    aria-label="Emoji suggestions"
-    data-testid="emoji-autocomplete"
-  >
-    @for (m of emojiMatches(); track m.id; let i = $index) {
-      <li role="presentation">
-        <button
-          type="button"
-          tabindex="-1"
-          [id]="'emoji-suggestion-' + i"
-          class="composer__emoji-suggestion"
-          [class.composer__emoji-suggestion--active]="i === emojiActiveIndex()"
-          role="option"
-          [attr.aria-selected]="i === emojiActiveIndex()"
-          (mousedown)="$event.preventDefault()"
-          (mouseenter)="emojiHighlight.emit(i)"
-          (click)="emojiAccept.emit(i)"
-        >
-          <span class="composer__emoji-suggestion-char" aria-hidden="true">{{
-            m.native
-          }}</span>
-          <span class="composer__emoji-suggestion-code">{{ m.colons }}</span>
-        </button>
-      </li>
-    }
-  </ul>
+  <div trnOverlaySurface variant="neutral" size="md" layout="popover">
+    <ul
+      id="emoji-suggestions"
+      class="composer__emoji-menu"
+      role="listbox"
+      aria-label="Emoji suggestions"
+      data-testid="emoji-autocomplete"
+    >
+      @for (m of emojiMatches(); track m.id; let i = $index) {
+        <li role="presentation">
+          <button
+            type="button"
+            tabindex="-1"
+            [id]="'emoji-suggestion-' + i"
+            class="composer__emoji-suggestion"
+            [class.composer__emoji-suggestion--active]="
+              i === emojiActiveIndex()
+            "
+            role="option"
+            [attr.aria-selected]="i === emojiActiveIndex()"
+            (mousedown)="$event.preventDefault()"
+            (mouseenter)="emojiHighlight.emit(i)"
+            (click)="emojiAccept.emit(i)"
+          >
+            <span class="composer__emoji-suggestion-char" aria-hidden="true">{{
+              m.native
+            }}</span>
+            <span class="composer__emoji-suggestion-code">{{ m.colons }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </div>
 </ng-template>
 <ng-template
   [trnAnchoredOverlay]="anchor()"
@@ -47,36 +51,38 @@
   side="top"
   align="start"
 >
-  <ul
-    id="mention-suggestions"
-    class="composer__emoji-menu"
-    role="listbox"
-    aria-label="Member suggestions"
-    data-testid="mention-autocomplete"
-  >
-    @for (member of mentionMatches(); track member.userId; let i = $index) {
-      <li role="presentation">
-        <button
-          type="button"
-          tabindex="-1"
-          [id]="'mention-suggestion-' + i"
-          class="composer__emoji-suggestion"
-          [class.composer__emoji-suggestion--active]="
-            i === mentionActiveIndex()
-          "
-          role="option"
-          [attr.aria-selected]="i === mentionActiveIndex()"
-          (mousedown)="$event.preventDefault()"
-          (mouseenter)="mentionHighlight.emit(i)"
-          (click)="mentionAccept.emit(i)"
-        >
-          <span class="composer__emoji-suggestion-code">{{
-            member.roomDisplayName
-          }}</span>
-        </button>
-      </li>
-    }
-  </ul>
+  <div trnOverlaySurface variant="neutral" size="md" layout="popover">
+    <ul
+      id="mention-suggestions"
+      class="composer__emoji-menu"
+      role="listbox"
+      aria-label="Member suggestions"
+      data-testid="mention-autocomplete"
+    >
+      @for (member of mentionMatches(); track member.userId; let i = $index) {
+        <li role="presentation">
+          <button
+            type="button"
+            tabindex="-1"
+            [id]="'mention-suggestion-' + i"
+            class="composer__emoji-suggestion"
+            [class.composer__emoji-suggestion--active]="
+              i === mentionActiveIndex()
+            "
+            role="option"
+            [attr.aria-selected]="i === mentionActiveIndex()"
+            (mousedown)="$event.preventDefault()"
+            (mouseenter)="mentionHighlight.emit(i)"
+            (click)="mentionAccept.emit(i)"
+          >
+            <span class="composer__emoji-suggestion-code">{{
+              member.roomDisplayName
+            }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </div>
 </ng-template>
 
 <!-- The `/command` menu. Same shape as the two above — the composer's textarea points
@@ -90,36 +96,40 @@
   side="top"
   align="start"
 >
-  <ul
-    id="slash-suggestions"
-    class="composer__emoji-menu"
-    role="listbox"
-    aria-label="Commands"
-    data-testid="slash-autocomplete"
-  >
-    @for (command of slashMatches(); track command.name; let i = $index) {
-      <li role="presentation">
-        <button
-          type="button"
-          tabindex="-1"
-          [id]="'slash-suggestion-' + i"
-          class="composer__emoji-suggestion"
-          [class.composer__emoji-suggestion--active]="i === slashActiveIndex()"
-          role="option"
-          [attr.aria-selected]="i === slashActiveIndex()"
-          (mousedown)="$event.preventDefault()"
-          (mouseenter)="slashHighlight.emit(i)"
-          (click)="slashAccept.emit(i)"
-        >
-          <span class="composer__emoji-suggestion-code"
-            >/{{ command.name
-            }}{{ command.argument ? ' ' + command.argument : '' }}</span
+  <div trnOverlaySurface variant="neutral" size="md" layout="popover">
+    <ul
+      id="slash-suggestions"
+      class="composer__emoji-menu"
+      role="listbox"
+      aria-label="Commands"
+      data-testid="slash-autocomplete"
+    >
+      @for (command of slashMatches(); track command.name; let i = $index) {
+        <li role="presentation">
+          <button
+            type="button"
+            tabindex="-1"
+            [id]="'slash-suggestion-' + i"
+            class="composer__emoji-suggestion"
+            [class.composer__emoji-suggestion--active]="
+              i === slashActiveIndex()
+            "
+            role="option"
+            [attr.aria-selected]="i === slashActiveIndex()"
+            (mousedown)="$event.preventDefault()"
+            (mouseenter)="slashHighlight.emit(i)"
+            (click)="slashAccept.emit(i)"
           >
-          <span class="composer__slash-description">{{
-            command.description
-          }}</span>
-        </button>
-      </li>
-    }
-  </ul>
+            <span class="composer__emoji-suggestion-code"
+              >/{{ command.name
+              }}{{ command.argument ? ' ' + command.argument : '' }}</span
+            >
+            <span class="composer__slash-description">{{
+              command.description
+            }}</span>
+          </button>
+        </li>
+      }
+    </ul>
+  </div>
 </ng-template>

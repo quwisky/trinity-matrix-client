@@ -12,6 +12,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
 import { ReactionPickerService } from '../reaction-picker/reaction-picker.service';
@@ -63,6 +64,7 @@ import {
 } from '../message-composer/message-composer.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { observeScrollerHeight } from './scroller-height-anchor';
+import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
 
 /**
  * How long after a jump a width change still counts as "the same jump".
@@ -770,7 +772,10 @@ export abstract class MessageListBase {
         void this.showEditHistory(row.id);
         break;
       case 'reactors':
-        void this.reactionsDialog.open(row.id);
+        this.reactionsDialog
+          .open$(row.id)
+          .pipe(takeUntilDestroyed(this.listDestroyRef))
+          .subscribe({ error: () => undefined });
         break;
       default: {
         // Exhaustiveness guard: adding a MessageRowAction variant without a case
@@ -800,23 +805,17 @@ export abstract class MessageListBase {
   }
 
   /** Open the full emoji picker and, on a pick, react to the message with it. */
-  private async pickReaction(id: string): Promise<void> {
-    const key = await this.reactionPicker.pick();
-    if (key) {
-      this.react.emit({ id, key });
-    }
+  private pickReaction(id: string): void {
+    this.reactionPicker
+      .pick$()
+      .pipe(takeUntilDestroyed(this.listDestroyRef))
+      .subscribe((key) => this.react.emit({ id, key }));
   }
 
-  async onDelete(row: MessageRow): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Delete message',
-      message: 'Delete this message? This cannot be undone.',
-      confirmText: 'Delete',
-      destructive: true,
-    });
-    if (confirmed) {
-      this.deleteMessage.emit(row.id);
-    }
+  onDelete(row: MessageRow): void {
+    confirmMessageDeletion$(this.alert)
+      .pipe(takeUntilDestroyed(this.listDestroyRef))
+      .subscribe(() => this.deleteMessage.emit(row.id));
   }
 
   /**

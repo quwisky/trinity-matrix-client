@@ -457,7 +457,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       setPower: false,
       myPower: 0,
     }));
-    dialogOpen = vi.fn().mockResolvedValue(null);
+    dialogOpen = vi.fn(() => of(null));
     resolveRoomId = vi.fn(() => of('!linked:hs'));
     pending = signal<PendingInvite[]>([]);
     TestBed.configureTestingModule({
@@ -512,8 +512,7 @@ describe('RoomsPage room / DM / invite actions', () => {
           ).asReadonly(),
         }),
         MockProvider(TrnDialogService, {
-          openAndWait: dialogOpen,
-          openAndWait$: () => of(null),
+          openAndWait$: dialogOpen,
         }),
         MockProvider(TrnAlertService, { prompt$: alertPrompt }),
         MockProvider(TrnToastService, { show: toastShow }),
@@ -611,7 +610,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(dialogOpen).toHaveBeenCalledWith(RoomLinkPreviewComponent, {
       ariaLabel: 'Room information',
       autoFocus: 'first-heading',
-      side: 'center',
+      placement: 'center',
       inputs: {
         target: {
           kind: 'room',
@@ -657,11 +656,13 @@ describe('RoomsPage room / DM / invite actions', () => {
   it('routes a newly joined room without waiting for the sidebar sync', async () => {
     const shell = build();
     const openConfirmed = vi.spyOn(shell.routing, 'openConfirmedLinkedRoom');
-    dialogOpen.mockResolvedValue({
-      roomId: '!joined:remote',
-      isSpace: false,
-      membershipChanged: true,
-    });
+    dialogOpen.mockReturnValue(
+      of({
+        roomId: '!joined:remote',
+        isSpace: false,
+        membershipChanged: true,
+      }),
+    );
 
     shell.messages.onMatrixLink({
       target: { kind: 'room', roomIdOrAlias: '#linked:remote' },

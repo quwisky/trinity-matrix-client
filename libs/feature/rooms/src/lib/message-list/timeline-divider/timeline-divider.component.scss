@@ -1,77 +1,79 @@
 @use '../../styles/mixins' as *;
 
-// `display: contents` so the host takes no slot in the list's flex column — the divider
-// inside it is what participates in the layout. Here rather than as an inline host style
-// because every sibling (drop-overlay, message-row, the composer parts) does it this way,
-// and this component HAS a stylesheet, so `:host` is stamped and matches. (A style-LESS
-// component would not stamp it — see the note below, which is the same trap from the
-// other side.)
-:host {
-  display: contents;
-}
-
-// These rules live HERE, with the markup, and not in `_message-list-shared.scss` where they
-// used to sit.
-
-// That is not tidiness — it is the difference between styled and unstyled. Angular's emulated
-// encapsulation rewrites a component's rules to `.day-divider[_ngcontent-<id>]` and stamps the
-// matching attribute onto the elements that component's own template creates. When the divider
-// markup moved into this component while its rules stayed in the two list stylesheets, the
-// selectors kept the LISTS' id and the elements carried the divider's, so nothing matched and
-// both dividers rendered with no styling at all. (A style-less component is downgraded to
-// `ViewEncapsulation.None` and stamps no attribute whatsoever, which is why the rendered
-// element had none.)
-
-// Nothing caught it: jsdom applies no CSS, and every spec here asserts `data-testid` and text.
-// `e2e/browser/journeys/conversations/message-unread.spec.mts` measures this in Chromium.
-
-// Marks where the local calendar day changes. Neutral tokens deliberately: this is
-// wayfinding chrome, not an alert, and it has to sit quieter than the accent-coloured
-// unread divider it can appear directly above. Extra top margin so the day reads as
-// opening the block below it rather than floating between two rows.
-.day-divider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 16px 0 8px;
-
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--trinity-border-subtle);
+@layer components {
+  // `display: contents` so the host takes no slot in the list's flex column — the divider
+  // inside it is what participates in the layout. Here rather than as an inline host style
+  // because every sibling (drop-overlay, message-row, the composer parts) does it this way,
+  // and this component HAS a stylesheet, so `:host` is stamped and matches. (A style-LESS
+  // component would not stamp it — see the note below, which is the same trap from the
+  // other side.)
+  :host {
+    display: contents;
   }
-}
 
-.day-divider__label {
-  @include category-label;
+  // These rules live HERE, with the markup, and not in `_message-list-shared.scss` where they
+  // used to sit.
 
-  flex: 0 0 auto;
-}
+  // That is not tidiness — it is the difference between styled and unstyled. Angular's emulated
+  // encapsulation rewrites a component's rules to `.day-divider[_ngcontent-<id>]` and stamps the
+  // matching attribute onto the elements that component's own template creates. When the divider
+  // markup moved into this component while its rules stayed in the two list stylesheets, the
+  // selectors kept the LISTS' id and the elements carried the divider's, so nothing matched and
+  // both dividers rendered with no styling at all. (A style-less component is downgraded to
+  // `ViewEncapsulation.None` and stamps no attribute whatsoever, which is why the rendered
+  // element had none.)
 
-.new-divider {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0;
-  color: var(--trinity-link);
-  font-size: var(--trinity-type-caption-size);
-  line-height: var(--trinity-type-caption-line-height);
-  font-weight: var(--trinity-type-control-weight);
+  // Nothing caught it: jsdom applies no CSS, and every spec here asserts `data-testid` and text.
+  // `e2e/browser/journeys/conversations/message-unread.spec.mts` measures this in Chromium.
 
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--trinity-accent);
-    opacity: 0.5;
+  // Marks where the local calendar day changes. Neutral tokens deliberately: this is
+  // wayfinding chrome, not an alert, and it has to sit quieter than the accent-coloured
+  // unread divider it can appear directly above. Extra top margin so the day reads as
+  // opening the block below it rather than floating between two rows.
+  .day-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 8px;
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--trinity-border-subtle);
+    }
   }
-}
 
-.new-divider__label {
-  flex: 0 0 auto;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  .day-divider__label {
+    @include category-label;
+
+    flex: 0 0 auto;
+  }
+
+  .new-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    color: var(--trinity-link);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-control-weight);
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--trinity-accent);
+      opacity: 0.5;
+    }
+  }
+
+  .new-divider__label {
+    flex: 0 0 auto;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
 }

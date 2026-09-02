@@ -2,6 +2,7 @@ import { inject, signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
+  TrnAlertService,
   TrnActionSheetService,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -124,6 +125,8 @@ async function build(
   const replyInThread = vi.fn().mockReturnValue(of(void 0));
   const toggleReactionInThread = vi.fn().mockReturnValue(of(void 0));
   const retryInThread = vi.fn().mockReturnValue(of(void 0));
+  const redactInThread = vi.fn();
+  const confirm$ = vi.fn(() => of(false));
   const sendMediaToThread = vi
     .fn()
     .mockReturnValue(of({ kind: 'sent' as const, eventId: '$media' }));
@@ -220,7 +223,10 @@ async function build(
                     toggleReactionInThread(id, reaction);
                     return applied('reaction');
                   }),
-                  redact: vi.fn(() => applied('redaction')),
+                  redact: vi.fn((id: string) => {
+                    redactInThread(id);
+                    return applied('redaction');
+                  }),
                   retry: vi.fn((id: string) => {
                     retryInThread(id);
                     return applied('retry');
@@ -240,6 +246,7 @@ async function build(
       MockProvider(TimelineActionsService),
       MockProvider(RoomMembersService, { membersFor }),
       MockProvider(MessageSourceService, { open: sourceOpen }),
+      MockProvider(TrnAlertService, { confirm$ }),
       MockProvider(TrnToastService, { show: toastShow }),
       { provide: TrnActionSheetService, useValue: { open: sheetOpen } },
       // Seeded to a real direction. Left unprovided, the root service returns its `off`
@@ -271,6 +278,8 @@ async function build(
     replyInThread,
     toggleReactionInThread,
     retryInThread,
+    redactInThread,
+    confirm$,
     sendMediaToThread,
     sentRoots,
     releasedRoots,
@@ -493,6 +502,21 @@ describe('ThreadViewComponent', () => {
     const target = { ...msg('$1', '@a:hs', 'hi'), showHeader: true };
 
     expect(fixture.componentInstance.rowCaps(target).deletable).toBe(false);
+  });
+
+  it('deletes a thread message only after a reactive confirmation', async () => {
+    const { fixture, confirm$, redactInThread } = await build([
+      msg('$1', '@me:hs', 'mine'),
+    ]);
+    const target = row('$1', '@me:hs', 'mine');
+
+    confirm$.mockReturnValueOnce(of(false));
+    fixture.componentInstance.onDelete(target);
+    expect(redactInThread).not.toHaveBeenCalled();
+
+    confirm$.mockReturnValueOnce(of(true));
+    fixture.componentInstance.onDelete(target);
+    expect(redactInThread).toHaveBeenCalledWith('$1');
   });
 
   it('shows a "Load older" affordance and paginates when it can load older', async () => {

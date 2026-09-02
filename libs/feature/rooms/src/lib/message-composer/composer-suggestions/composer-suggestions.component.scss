@@ -1,65 +1,63 @@
-// No box of its own. Both menus render in the CDK overlay container now, so this host has
-// nothing left in the composer's column to lay out — but it is still a flex item, and one
-// that generated a box would put a gap in that column.
-:host {
-  display: contents;
-}
-
-// `:shortcode` suggestion list. Width and position come from the anchored overlay (matched to
-// the input row), so what is left here is the surface: how tall it may get, and what it looks
-// like.
-.composer__emoji-menu {
-  max-height: 220px;
-  margin: 0;
-  padding: 4px;
-  overflow-y: auto;
-  list-style: none;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
-}
-
-.composer__emoji-suggestion {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  border: none;
-  border-radius: var(--trinity-radius-md);
-  background: none;
-  color: var(--trinity-text);
-  font: inherit;
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-
-  &:hover,
-  &--active {
-    background: var(--trinity-hover);
+@layer components {
+  // No box of its own. Both menus render in the CDK overlay container now, so this host has
+  // nothing left in the composer's column to lay out — but it is still a flex item, and one
+  // that generated a box would put a gap in that column.
+  :host {
+    display: contents;
   }
-}
 
-.composer__emoji-suggestion-char {
-  flex-shrink: 0;
-  font-size: 18px;
-  line-height: 1;
-}
+  // `:shortcode` suggestion list. Width and position come from the anchored overlay (matched to
+  // the input row). The public overlay recipe owns the surrounding surface; this list owns
+  // only its scrolling content.
+  .composer__emoji-menu {
+    max-height: 220px;
+    margin: 0;
+    padding: 4px;
+    overflow-y: auto;
+    list-style: none;
+  }
 
-.composer__emoji-suggestion-code {
-  overflow: hidden;
-  color: var(--trinity-text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  .composer__emoji-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 8px;
+    border: none;
+    border-radius: var(--trinity-radius-md);
+    background: none;
+    color: var(--trinity-text);
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
 
-// The command's description, beside its name. Muted and pushed to the end, so the list reads
-// as a column of commands with an explanation rather than two columns of equal weight.
-.composer__slash-description {
-  margin-left: auto;
-  padding-left: 12px;
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-  text-align: right;
+    &:hover,
+    &--active {
+      background: var(--trinity-hover);
+    }
+  }
+
+  .composer__emoji-suggestion-char {
+    flex-shrink: 0;
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .composer__emoji-suggestion-code {
+    overflow: hidden;
+    color: var(--trinity-text-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // The command's description, beside its name. Muted and pushed to the end, so the list reads
+  // as a column of commands with an explanation rather than two columns of equal weight.
+  .composer__slash-description {
+    margin-left: auto;
+    padding-left: 12px;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    text-align: right;
+  }
 }

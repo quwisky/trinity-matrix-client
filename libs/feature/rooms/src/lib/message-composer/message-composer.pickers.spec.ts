@@ -336,7 +336,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     const toast = TestBed.inject(TrnToastService);
     expect(toast.show).toHaveBeenCalledWith(
       expect.stringContaining('Could not load'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(cmp.gifDownloading()).toBe(false);
   });
@@ -686,7 +686,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       expect(cmp.recordingVoice()).toBe(false);
       expect(TestBed.inject(TrnToastService).show).toHaveBeenCalledWith(
         expect.stringContaining('microphone'),
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       );
     });
 

@@ -40,7 +40,11 @@ import {
 } from '../message-row/message-row.component';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
@@ -72,6 +76,7 @@ import { MessageSourceService } from '../message-source/message-source.service';
 import { EditHistoryDialogService } from '../edit-history/edit-history.service';
 import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
 import {
   scrollBehavior,
   BELOW_MEMBERS_QUERY,
@@ -117,6 +122,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     TrnTooltip,
     MessageRowComponent,
     MessageComposerComponent,
+    TrnOverlaySurfaceDirective,
   ],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
@@ -511,11 +517,11 @@ export class ThreadViewComponent implements OnDestroy {
   }
 
   /** Open the full emoji picker and, on a pick, react to the thread message with it. */
-  private async pickReaction(messageId: string): Promise<void> {
-    const key = await this.reactionPicker.pick();
-    if (key) {
-      this.onReact(messageId, key);
-    }
+  private pickReaction(messageId: string): void {
+    this.reactionPicker
+      .pick$()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((key) => this.onReact(messageId, key));
   }
 
   onRetry(messageId: string): void {
@@ -528,22 +534,18 @@ export class ThreadViewComponent implements OnDestroy {
     }
   }
 
-  async onDelete(row: MessageRow): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Delete message',
-      message: 'Delete this message? This cannot be undone.',
-      confirmText: 'Delete',
-      destructive: true,
-    });
-    if (confirmed) {
-      const thread = this.openedThread();
-      if (thread) {
-        this.runThreadAction(
-          thread.redact(row.id),
-          'Could not delete the message.',
-        );
-      }
-    }
+  onDelete(row: MessageRow): void {
+    confirmMessageDeletion$(this.alert)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        const thread = this.openedThread();
+        if (thread) {
+          this.runThreadAction(
+            thread.redact(row.id),
+            'Could not delete the message.',
+          );
+        }
+      });
   }
 
   /**
@@ -617,7 +619,10 @@ export class ThreadViewComponent implements OnDestroy {
         this.jumpTo(action.id);
         break;
       case 'reactors':
-        void this.reactionsDialog.open(row.id);
+        this.reactionsDialog
+          .open$(row.id)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({ error: () => undefined });
         break;
       case 'edit-history':
         // The thread panel routes no permalinks (its rows don't bind matrixLink either),
@@ -665,6 +670,6 @@ export class ThreadViewComponent implements OnDestroy {
   }
 
   private showError(message: string): void {
-    this.toast.show(message, { duration: 4000, variant: 'destructive' });
+    this.toast.show(message, { duration: 4000, variant: 'danger' });
   }
 }

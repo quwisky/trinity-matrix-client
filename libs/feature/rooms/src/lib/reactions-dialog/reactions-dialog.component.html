@@ -1,17 +1,28 @@
 <div
-  class="flex max-h-[80vh] w-[min(90vw,26rem)] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  layout="dialog"
+  class="flex flex-col gap-3 p-4"
   data-testid="reactions-dialog"
 >
   <div class="flex items-center gap-2">
     <h2 class="flex-1 text-lg font-semibold">Reactions</h2>
-    <button trnBtn type="button" variant="ghost" size="sm" (click)="close()">
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="ghost"
+      size="sm"
+      (click)="close()"
+    >
       Close
     </button>
   </div>
 
   @if (sections().length === 0) {
     <trn-empty-state
-      size="line"
+      layout="line"
       body="Nobody has reacted to this message."
       data-testid="reactions-empty"
     />
@@ -45,7 +56,7 @@
               [mxc]="reactor.avatarMxc"
               [initial]="reactor.initial"
               [name]="reactor.name"
-              [size]="32"
+              size="lg"
             />
             <span class="reactor__name">{{ reactor.name }}</span>
           </li>

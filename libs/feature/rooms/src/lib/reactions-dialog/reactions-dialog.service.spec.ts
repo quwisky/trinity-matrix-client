@@ -4,6 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReactionsDialogComponent } from './reactions-dialog.component';
 import { ReactionsDialogService } from './reactions-dialog.service';
+import { of, Subject } from 'rxjs';
 
 describe('ReactionsDialogService', () => {
   let dialog: TrnDialogService;
@@ -17,30 +18,30 @@ describe('ReactionsDialogService', () => {
     svc = TestBed.inject(ReactionsDialogService);
   });
 
-  it('opens the dialog for the message', async () => {
-    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
+  it('opens the dialog for the message', () => {
+    vi.mocked(dialog.openAndWait$).mockReturnValue(of(void 0));
 
-    await svc.open('$m');
+    const command$ = svc.open$('$m');
+    expect(dialog.openAndWait$).not.toHaveBeenCalled();
+    command$.subscribe();
 
-    expect(dialog.openAndWait).toHaveBeenCalledWith(ReactionsDialogComponent, {
+    expect(dialog.openAndWait$).toHaveBeenCalledWith(ReactionsDialogComponent, {
       ariaLabel: 'Reactions',
       inputs: { eventId: '$m' },
     });
   });
 
-  it('ignores a repeat trigger while one is already open', async () => {
-    let release!: (value: null) => void;
-    vi.mocked(dialog.openAndWait).mockReturnValue(
-      new Promise<null>((resolve) => {
-        release = resolve;
-      }),
-    );
+  it('ignores a repeat trigger while one is already open', () => {
+    const closed = new Subject<void>();
+    vi.mocked(dialog.openAndWait$).mockReturnValue(closed);
 
-    const first = svc.open('$m');
-    await svc.open('$m'); // re-entrant: no second dialog
+    const first = svc.open$('$m').subscribe();
+    const second = svc.open$('$m').subscribe();
 
-    expect(dialog.openAndWait).toHaveBeenCalledTimes(1);
-    release(null);
-    await first;
+    expect(dialog.openAndWait$).toHaveBeenCalledTimes(1);
+    closed.next();
+    closed.complete();
+    first.unsubscribe();
+    second.unsubscribe();
   });
 });

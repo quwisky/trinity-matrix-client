@@ -291,7 +291,7 @@ describe('MessageListBase — the mobile action sheet', () => {
     expect(labels).not.toContain('Pin message');
   });
 
-  it('marks Delete destructive and rules it off from the rest', () => {
+  it('marks Delete as danger and rules it off from the rest', () => {
     // Two 44px targets flush against each other, one of them irreversible, is the shape
     // this separator exists to break up.
     //
@@ -306,9 +306,9 @@ describe('MessageListBase — the mobile action sheet', () => {
 
     const remove = lastSheet(open).buttons.find(
       (b) => b.text === 'Delete message',
-    ) as { role?: string; separatorBefore?: boolean } | undefined;
+    ) as { variant?: string; separatorBefore?: boolean } | undefined;
     expect(remove).toBeDefined();
-    expect(remove?.role).toBe('destructive');
+    expect(remove?.variant).toBe('danger');
     expect(remove?.separatorBefore).toBe(true);
   });
 

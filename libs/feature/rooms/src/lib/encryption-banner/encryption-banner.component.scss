@@ -1,8 +1,10 @@
-:host {
-  display: block;
-}
+@layer components {
+  :host {
+    display: block;
+  }
 
-// Layout comes from trn-banner; only the action buttons stay component-scoped.
-.banner__action {
-  flex: 0 0 auto;
+  // Layout comes from trn-banner; only the action buttons stay component-scoped.
+  .banner__action {
+    flex: 0 0 auto;
+  }
 }

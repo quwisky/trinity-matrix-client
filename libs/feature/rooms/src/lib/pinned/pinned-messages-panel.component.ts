@@ -10,7 +10,10 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
-import { TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
@@ -30,7 +33,13 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 @Component({
   selector: 'trn-pinned-messages-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EmptyStateComponent, TrnIconComponent, TrnButton, TrnTooltip],
+  imports: [
+    EmptyStateComponent,
+    TrnIconComponent,
+    TrnButton,
+    TrnTooltip,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './pinned-messages-panel.component.html',
   styleUrl: './pinned-messages-panel.component.scss',
 })
@@ -75,7 +84,7 @@ export class PinnedMessagesPanelComponent {
   private showFailure(): void {
     this.toast.show('Could not unpin the message.', {
       duration: 4000,
-      variant: 'destructive',
+      variant: 'danger',
     });
   }
 

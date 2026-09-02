@@ -151,6 +151,10 @@
     // QR modules require a stable light quiet zone regardless of Mode or Theme.
     --trinity-qr-surface: #fff;
 
+    // Video letterboxing is protocol media, not application chrome. Keep the matte neutral and
+    // Theme-invariant so media with a different aspect ratio never inherits a branded surface.
+    --trinity-media-matte: #000;
+
     // --- Z-index layers -----------------------------------------------------------
     // Named because the bare numbers in the tree (5, 20, 30, 40) carry no relation to
     // each other and nothing said which was meant to sit over which. These govern

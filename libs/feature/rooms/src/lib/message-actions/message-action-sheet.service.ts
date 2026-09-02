@@ -197,7 +197,7 @@ export class MessageActionSheetService {
       buttons.push({
         text: 'Delete message',
         icon: 'trash-2',
-        role: 'destructive',
+        variant: 'danger',
         separatorBefore: true,
         testId: 'sheet-delete',
         handler: act('delete'),

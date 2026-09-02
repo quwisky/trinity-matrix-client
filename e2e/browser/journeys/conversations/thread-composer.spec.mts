@@ -81,6 +81,9 @@ test.describe('Thread composer', () => {
 
     const thread = page.getByTestId('thread-view');
     await expect(thread).toBeVisible({ timeout: 15_000 });
+    await expect(thread).toHaveAttribute('data-trn-variant', 'neutral');
+    await expect(thread).toHaveAttribute('data-trn-size', 'md');
+    await expect(thread).toHaveAttribute('data-trn-layout', 'fullscreen');
 
     // The room-only actions (poll/location/voice) post to the main room, so the thread
     // composer never offers them: with only attach left and no GIF provider it collapses
