@@ -41,6 +41,26 @@ describe('TrnToastService → <hlm-toaster/> (shared brain sonner state)', () =>
     expect(document.body.textContent).toContain('regression-toast-marker');
   });
 
+  it('keeps the toast list and live-region roles valid after Brain renders', async () => {
+    await render(ToasterHostComponent);
+
+    TestBed.inject(TrnToastService).show('semantic-toast-marker', {
+      duration: 0,
+    });
+    await settle();
+
+    const region = document.querySelector('brn-sonner-toaster section');
+    const list = document.querySelector('[data-sonner-toaster]');
+    const toastHost = document.querySelector('brn-sonner-toast');
+    const toast = document.querySelector('[data-sonner-toast]');
+    expect(region?.getAttribute('role')).toBe('region');
+    expect(list?.getAttribute('role')).toBe('group');
+    expect(toastHost?.getAttribute('role')).toBe('status');
+    expect(toastHost?.getAttribute('aria-live')).toBe('polite');
+    expect(toast?.getAttribute('role')).toBe('none');
+    expect(toast?.getAttribute('aria-live')).toBeNull();
+  });
+
   it('renders an action button and runs its handler on click', async () => {
     // The same class of bug as the store mismatch above, one layer up: an `action`
     // the service accepts but never forwards produces a toast that looks right and

@@ -2,6 +2,14 @@
   <button
     trnBtn
     type="button"
+    data-testid="alert-neutral"
+    (click)="neutralAlert()"
+  >
+    Neutral alert
+  </button>
+  <button
+    trnBtn
+    type="button"
     data-testid="alert-canonical"
     (click)="canonicalAlert()"
   >
@@ -10,10 +18,34 @@
   <button
     trnBtn
     type="button"
+    data-testid="alert-prompt"
+    (click)="canonicalPrompt()"
+  >
+    Canonical prompt
+  </button>
+  <button
+    trnBtn
+    type="button"
     data-testid="sheet-canonical"
     (click)="canonicalSheet()"
   >
     Canonical action sheet
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="toast-neutral"
+    (click)="neutralToast()"
+  >
+    Neutral toast
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="toast-success"
+    (click)="successToast()"
+  >
+    Success toast
   </button>
   <button
     trnBtn
@@ -30,6 +62,14 @@
     (click)="dangerToast()"
   >
     Danger toast
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="toast-action"
+    (click)="actionToast()"
+  >
+    Action toast
   </button>
 </div>
 <trn-toaster />

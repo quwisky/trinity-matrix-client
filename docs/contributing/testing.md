@@ -338,6 +338,24 @@ check that the mutation would actually change what you are asserting.
     perfectly good teardown test looked vacuous. A mutation that does not fail is only
     evidence once you have confirmed it landed where you meant.
 
+## Playwright: component catalogs
+
+The Storybook component target owns browser-rendered recipe, accessibility and interaction
+evidence. Focus a catalog through Nx rather than starting a separate Storybook process:
+
+```bash
+pnpm nx run trinity-e2e-components:storybook -- navigation-overlay-catalog.spec.mts --project=chromium
+```
+
+Catalog Axe scans require zero violations and zero incomplete results. Axe cannot resolve an
+`aria-controls` relationship across an `aria-haspopup` popup, so omit only the dropdown trigger
+after asserting that its `aria-controls` exactly matches the live menu ID. Where CDK deliberately
+hides the background canvas and inserts focus-trap sentinels, scan the live portal around those
+framework nodes and separately assert backdrop, initial focus, containment and restoration. The
+vendored Sonner wrapper repairs Brain's generated list/live-region roles, so toast variants remain
+inside the ordinary zero-exclusion Axe scan. These are narrow documented resolutions, not general
+rule exclusions.
+
 ## Playwright: the app journeys
 
 The spec files under `e2e/browser/journeys/` run in Chromium against the disposable

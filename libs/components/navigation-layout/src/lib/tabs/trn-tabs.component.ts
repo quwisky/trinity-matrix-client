@@ -6,6 +6,7 @@ import {
 } from '@angular/core';
 import { HlmTabs, HlmTabsList, HlmTabsTrigger } from '@trinity/helm/tabs';
 import {
+  trnTabsTriggerRecipe,
   type TrnTabsPresentation,
   type TrnTabsVariant,
 } from './trn-tabs-recipe';
@@ -103,8 +104,6 @@ export class TrnTabsComponent {
   readonly presentation = input<TrnTabsPresentation>('pill');
 
   protected readonly triggerToneClass = computed(() =>
-    this.variant() === 'accent'
-      ? 'data-active:bg-[var(--trinity-state-attention-surface)] data-active:text-[var(--trinity-state-attention-foreground)] group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-[variant=line]/tabs-list:data-active:text-[var(--trinity-link)] group-data-[variant=line]/tabs-list:data-active:after:bg-[var(--trinity-state-attention-surface)]'
-      : '',
+    trnTabsTriggerRecipe(this.variant()),
   );
 }

@@ -37,6 +37,8 @@ export interface PromptOptions extends ConfirmOptions {
   /** Initial input value. */
   value?: string;
   maxLength?: number;
+  /** Keep the prompt open and announce an error until a non-empty value is entered. */
+  required?: boolean;
 }
 
 /**
@@ -86,6 +88,7 @@ export class TrnAlertService {
       inputType: opts.inputType,
       value: opts.value,
       maxLength: opts.maxLength,
+      required: opts.required,
     };
     return defer(() => {
       const ref = this.dialog.open<string | null>(TrnAlertDialogComponent, {

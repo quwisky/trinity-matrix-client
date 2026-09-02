@@ -38,6 +38,13 @@ const meta: Meta<TrnAnchoredOverlayDirective> = {
       },
     },
   },
+  argTypes: {
+    side: { control: 'select', options: ['top', 'bottom', 'left', 'right'] },
+    align: { control: 'select', options: ['start', 'center', 'end'] },
+    matchAnchorWidth: { control: 'boolean' },
+    closeOnOutsidePress: { control: 'boolean' },
+    open: { control: 'boolean' },
+  },
 };
 
 export default meta;
@@ -97,6 +104,88 @@ export const MatchingTheAnchorWidth: Story = {
         >
           ${layer('😀 :smile: &nbsp; 😃 :smiley: &nbsp; 😏 :smirk:')}
         </ng-template>
+      </div>`,
+  }),
+};
+
+/** Every side/alignment pair is available through the story controls and URL args. */
+export const PositionCatalog: Story = {
+  args: {
+    side: 'bottom',
+    align: 'center',
+    matchAnchorWidth: false,
+    closeOnOutsidePress: true,
+    open: true,
+  },
+  render: (args) => ({
+    props: args,
+    template: `
+      <div class="grid h-80 place-items-center p-24">
+        <button #anchor type="button" class="rounded-md border border-border p-3">
+          Position anchor
+        </button>
+        <ng-template
+          [trnAnchoredOverlay]="anchor"
+          [(open)]="open"
+          [side]="side"
+          [align]="align"
+          [matchAnchorWidth]="matchAnchorWidth"
+          [closeOnOutsidePress]="closeOnOutsidePress"
+        >
+          ${layer('Positioned portal surface')}
+        </ng-template>
+      </div>`,
+  }),
+};
+
+/** Both outside-press policies, including their model write-back, in one driven story. */
+export const OutsidePressPolicyCatalog: Story = {
+  render: () => ({
+    props: {
+      dismissibleOpen: true,
+      persistentOpen: true,
+    },
+    template: `
+      <div class="grid min-h-96 place-items-center gap-24 p-20">
+        <button type="button" data-testid="outside-press-target">
+          Outside both surfaces
+        </button>
+        <div class="flex gap-64">
+          <div>
+            <button #dismissibleAnchor type="button" class="rounded-md border border-border p-3">
+              Dismissible anchor
+            </button>
+            <span data-testid="dismissible-model-state">
+              {{ dismissibleOpen ? 'open' : 'closed' }}
+            </span>
+            <ng-template
+              [trnAnchoredOverlay]="dismissibleAnchor"
+              [(open)]="dismissibleOpen"
+              [closeOnOutsidePress]="true"
+              side="top"
+              align="center"
+            >
+              ${layer('Closes on an outside press')}
+            </ng-template>
+          </div>
+          <div>
+            <button #persistentAnchor type="button" class="rounded-md border border-border p-3">
+              Derived-state anchor
+            </button>
+            <span data-testid="persistent-model-state">
+              {{ persistentOpen ? 'open' : 'closed' }}
+            </span>
+            <ng-template
+              [trnAnchoredOverlay]="persistentAnchor"
+              [(open)]="persistentOpen"
+              [closeOnOutsidePress]="false"
+              side="top"
+              align="center"
+            >
+              ${layer('Stays open on an outside press')}
+            </ng-template>
+          </div>
+        </div>
       </div>`,
   }),
 };
@@ -170,7 +259,7 @@ export const Clipped: Story = {
     template: `
       <div class="h-40 w-96 overflow-hidden border border-border p-2">
         <p class="text-sm">An ancestor with overflow: hidden.</p>
-        <div class="relative mt-24">
+        <div class="relative mt-2">
           <div class="w-80 rounded-md border border-border p-2 text-sm">Message #general</div>
           <div class="absolute bottom-[calc(100%+4px)] right-0">
             ${layer('Clipped: only the bottom of this is visible.')}

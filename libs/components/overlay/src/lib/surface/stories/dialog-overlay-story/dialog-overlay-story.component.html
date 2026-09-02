@@ -19,5 +19,46 @@
   >
     Canonical inline end
   </button>
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-canonical-bottom"
+    (click)="openCanonical('bottom', 'sheet')"
+  >
+    Canonical bottom sheet
+  </button>
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-canonical-fullscreen"
+    (click)="openCanonical('fullscreen', 'fullscreen')"
+  >
+    Canonical fullscreen
+  </button>
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-canonical-workspace"
+    (click)="openCanonical('center', 'workspace')"
+  >
+    Canonical workspace
+  </button>
+  <button
+    #anchor
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-canonical-anchor"
+    (click)="openCanonical('center', 'popover', anchor)"
+  >
+    Canonical anchored dialog
+  </button>
   <p role="status" data-testid="dialog-result">{{ result() }}</p>
 </div>

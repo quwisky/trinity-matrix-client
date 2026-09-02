@@ -1,9 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
+  AA_NORMAL_TEXT,
   contrastRatio,
   resolveTokenSrgb,
   type Srgb,
 } from '../../browser/support/contrast.mts';
+import { disabledContrast } from './catalog-accessibility.mts';
 import {
   type ResolvedThemeMode,
   type ThemeId,
@@ -223,31 +225,55 @@ test.describe('semantic design foundations', () => {
     expect(opacity).toBe(token);
   });
 
-  test('failed file interactions retain an error-aware surface', async ({
-    page,
-  }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    await openStory(page, 'components-media-bubble--error');
-    const file = page.getByRole('button', {
-      name: /modern-interface-review\.pdf/i,
-    });
-    await file.evaluate((element) =>
-      element.setAttribute('data-testid', 'error-file'),
-    );
-    const initial = await computedColour(file, 'background-color');
-    await file.hover();
-    await expect
-      .poll(() => computedColour(file, 'background-color'))
-      .not.toEqual(initial);
-    const hovered = await computedColour(file, 'background-color');
-    const neutralHover = await resolveTokenSrgb(
+  for (const { theme, mode } of STORYBOOK_THEME_PREVIEWS) {
+    test(`${theme.id} ${mode.id} failed file metadata stays readable on its error surface`, async ({
       page,
-      'error-file',
-      '--trinity-state-hover-surface',
-    );
-    expect(hovered).not.toEqual(initial);
-    expect(hovered).not.toEqual(neutralHover);
-  });
+    }) => {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await openStory(
+        page,
+        'components-media-bubble--error',
+        theme.id,
+        mode.id,
+      );
+      const file = page.getByRole('button', {
+        name: /modern-interface-review\.pdf/i,
+      });
+      const metadata = file.locator('.media__sub');
+      await file.evaluate((element) =>
+        element.setAttribute('data-testid', 'error-file'),
+      );
+      expect(
+        await disabledContrast(page, metadata, file),
+        'resting metadata',
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+
+      const initial = await computedColour(file, 'background-color');
+      await file.hover();
+      await expect
+        .poll(() => computedColour(file, 'background-color'))
+        .not.toEqual(initial);
+      const hovered = await computedColour(file, 'background-color');
+      const neutralHover = await resolveTokenSrgb(
+        page,
+        'error-file',
+        '--trinity-state-hover-surface',
+      );
+      expect(hovered).not.toEqual(initial);
+      expect(hovered).not.toEqual(neutralHover);
+      expect(
+        await disabledContrast(page, metadata, file),
+        'hovered metadata',
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+
+      await page.mouse.down();
+      expect(
+        await disabledContrast(page, metadata, file),
+        'pressed metadata',
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+      await page.mouse.up();
+    });
+  }
 
   for (const [story, label] of [
     ['components-input--default', 'Room name'],

@@ -1,10 +1,12 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   signal,
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { FormField, form, required } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import type { TrnAlertVariant } from './trn-alert.service';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
@@ -21,6 +23,7 @@ export interface AlertDialogData {
   inputLabel?: string;
   value?: string;
   maxLength?: number;
+  required?: boolean;
   inputType?: 'text' | 'password';
 }
 
@@ -36,7 +39,7 @@ export type AlertDialogResult = boolean | string | null;
   selector: 'trn-alert-dialog',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnInput, TrnOverlaySurfaceDirective],
+  imports: [FormField, TrnButton, TrnInput, TrnOverlaySurfaceDirective],
   template: `
     <div
       trnOverlaySurface
@@ -61,11 +64,22 @@ export type AlertDialogResult = boolean | string | null;
           [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"
           [attr.aria-label]="data.inputLabel ?? null"
+          [attr.aria-describedby]="promptInvalid() ? promptErrorId : null"
+          [attr.aria-invalid]="promptInvalid() ? 'true' : null"
           [attr.maxlength]="data.maxLength ?? null"
-          [value]="value()"
-          (input)="onInput($event)"
+          [formField]="promptForm.value"
           (keydown.enter)="onConfirm()"
         />
+        @if (promptInvalid()) {
+          <p
+            [id]="promptErrorId"
+            class="mt-2 text-sm text-danger"
+            role="alert"
+            data-testid="alert-prompt-error"
+          >
+            {{ promptError() }}
+          </p>
+        }
       }
       <div class="mt-6 flex justify-end gap-2">
         <button
@@ -93,18 +107,35 @@ export type AlertDialogResult = boolean | string | null;
 export class TrnAlertDialogComponent {
   private readonly ref =
     inject<DialogRef<AlertDialogResult, TrnAlertDialogComponent>>(DialogRef);
-  protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
-  protected readonly value = signal(this.data.value ?? '');
-
-  protected onInput(event: Event): void {
-    this.value.set((event.target as HTMLInputElement).value);
-  }
+  private readonly dialogData = inject<AlertDialogData>(DIALOG_DATA);
+  private readonly promptModel = signal({ value: this.dialogData.value ?? '' });
+  protected readonly data = this.dialogData;
+  protected readonly promptForm = form(this.promptModel, (path) => {
+    required(path.value, {
+      message: `${this.data.inputLabel ?? 'This value'} is required.`,
+      when: () => this.data.required === true,
+    });
+  });
+  protected readonly promptInvalid = computed(
+    () =>
+      this.promptForm.value().touched() && this.promptForm.value().invalid(),
+  );
+  protected readonly promptError = computed(
+    () => this.promptForm.value().errors()[0]?.message ?? '',
+  );
+  protected readonly promptErrorId = 'trn-alert-prompt-error';
 
   protected onCancel(): void {
     this.ref.close(this.data.kind === 'prompt' ? null : false);
   }
 
   protected onConfirm(): void {
-    this.ref.close(this.data.kind === 'prompt' ? this.value() : true);
+    if (this.data.kind === 'prompt') {
+      this.promptForm.value().markAsTouched();
+      if (this.promptForm().invalid()) return;
+    }
+    this.ref.close(
+      this.data.kind === 'prompt' ? this.promptModel().value : true,
+    );
   }
 }

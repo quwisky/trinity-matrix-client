@@ -476,6 +476,7 @@ step with the banner in
 | `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                                           | `kit-reduced-motion.spec.mjs`                                |
 | `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` and explicit invalid state to the inner focusable combobox button instead of leaving them on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                     | `trn-select.component.spec.ts`; Settings Playwright journeys |
 | `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in Theme Foundation's private Tailwind adapter — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`                                |
+| `sonner` · `HlmSonnerSemantics`                              | Keeps Brain Sonner's generated `<ol>`/`<li>` structure valid and moves live-region semantics from the list item to the containing notification section                                                                                                                                                    | `trn-toast-render.spec.ts`; component-catalog Playwright     |
 | Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                                        | `host-directives.spec.mjs`                                   |
 
 The two `.spec.ts` files live in
@@ -751,6 +752,14 @@ and the QR scanner's deterministic error path. Long labels and descriptions, inv
 disabled, loading, selected and indeterminate states live in the complete canvas so theme or
 density changes cannot hide a missing recipe.
 
+The **Components / Navigation and layout recipe matrix / Complete catalog** and
+**Components / Overlay recipes / Complete catalog** stories close the public tier. Navigation
+inventories every tabs, card, page-header and separator axis plus long, disabled and manually
+activated tab states. Overlay inventories every surface treatment, size and layout; document and
+portal rendering; every anchored side/alignment pair; clipped controls; dialogs, dropdowns,
+prompts, action sheets and all toast variants. Browser checks drive open, selected, invalid and
+danger states rather than treating their presence in a template as evidence.
+
 `trinity-e2e-components:storybook` runs the complete catalog and every emoji-picker size canvas in
 every Theme/Mode combination. Axe must report no violations and no incomplete findings;
 browser-composited checks enforce 4.5:1 for active text and 3:1 for essential graphics, while
@@ -780,6 +789,13 @@ combinations and compact density, checking that:
 - keyboard focus, toggle-group roving focus and select open/close behavior remain predictable;
 - long labels, descriptions and options wrap without clipping or horizontal page overflow;
 - coarse-pointer targets remain comfortably operable without making compact density look sparse.
+
+Before merging Navigation, Overlay or shipped feature-state treatment changes, review both
+complete catalogs in all six Theme/Mode combinations. Check that inactive navigation remains
+readable, layer elevation and backdrops remain distinct, long labels do not create page overflow,
+portal surfaces escape clipping, destructive choices remain unmistakable, and every close path
+restores focus to its trigger. Feature-owned states stay in their feature story; the shared catalog
+may demonstrate them but must not absorb their semantic paint.
 
 ### Two token families
 

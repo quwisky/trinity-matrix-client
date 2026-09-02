@@ -1,7 +1,41 @@
 import { expect, test } from '@playwright/test';
+import {
+  AA_NORMAL_TEXT,
+  measureLocatorContrast,
+} from '../../browser/support/contrast.mts';
 import { renderedColour } from './recipe-appearance.mts';
+import {
+  STORYBOOK_THEME_PREVIEWS,
+  storybookThemeGlobals,
+} from './theme-preview.mts';
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
+
+for (const preview of STORYBOOK_THEME_PREVIEWS) {
+  test(`${preview.theme.id} ${preview.mode.id} enabled tabs keep readable inactive text`, async ({
+    page,
+  }) => {
+    for (const storyId of [
+      'components-tabs--neutral-pill',
+      'components-tabs--line',
+      'components-tabs--accent-line',
+    ]) {
+      await page.goto(
+        `${story(storyId)}&globals=${storybookThemeGlobals(preview)}`,
+      );
+
+      const inactiveTab = page.getByRole('tab', { name: 'Access' });
+      await expect(inactiveTab).toBeEnabled();
+      expect(await renderedColour(inactiveTab, 'color')).toEqual(
+        await renderedColour(inactiveTab, '--trinity-text-muted'),
+      );
+      expect(
+        (await measureLocatorContrast(inactiveTab)).ratio,
+        storyId,
+      ).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    }
+  });
+}
 
 test('tabs preserve keyboard, focus, disabled, and selected behavior', async ({
   page,
