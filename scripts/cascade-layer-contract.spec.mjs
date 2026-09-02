@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { inlineStyleSheets } from './inline-styles.mjs';
@@ -29,6 +29,8 @@ const LAYERS = [
   'overrides',
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
+const IMPORTANT_DECLARATION =
+  /([a-z-]+)\s*:\s*([^;{}]*!important)\s*(?:;|(?=\}))/gu;
 
 function documentStyles() {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
@@ -93,24 +95,28 @@ const layerBodies = (file, layer) =>
     .map(({ body }) => body)
     .join('\n');
 
+const resolveSassModule = (owner, specifier) => {
+  if (!specifier.startsWith('.')) return specifier;
+  const unresolved = resolve(dirname(join(workspaceRoot, owner)), specifier);
+  const candidates = [
+    unresolved,
+    `${unresolved}.scss`,
+    join(dirname(unresolved), `_${basename(unresolved)}.scss`),
+    join(unresolved, 'index.scss'),
+    join(unresolved, '_index.scss'),
+  ];
+  const resolved = candidates.find((candidate) => existsSync(candidate));
+  return resolved ? relative(workspaceRoot, resolved) : specifier;
+};
+
+const sassModules = (file) =>
+  topLevelStyleStatements(read(file))
+    .map((statement) => statement.match(/^@(use|forward)\s+['"]([^'"]+)['"]/u))
+    .filter(Boolean)
+    .map(([, , specifier]) => resolveSassModule(file, specifier));
+
 const sharedPartialConsumers = (partial, componentSources) =>
-  componentSources.filter((file) => {
-    const source = stripSourceComments(read(file));
-    return [...source.matchAll(/@use\s+['"]([^'"]+)['"]/gu)].some(
-      ([, specifier]) => {
-        if (!specifier.startsWith('.')) return false;
-        const unresolved = resolve(
-          dirname(join(workspaceRoot, file)),
-          specifier,
-        );
-        const resolved = relative(
-          workspaceRoot,
-          join(dirname(unresolved), `_${basename(unresolved)}.scss`),
-        );
-        return resolved === partial;
-      },
-    );
-  });
+  componentSources.filter((file) => sassModules(file).includes(partial));
 
 describe('cascade layer contract', () => {
   it('declares the one supported order and classifies every static stylesheet', () => {
@@ -122,6 +128,9 @@ describe('cascade layer contract', () => {
       'data-trn-boot-style',
     ]);
     expect(documentStyle('data-trn-cascade-contract').trim()).toBe(LAYER_ORDER);
+    expect(
+      topLevelStyleStatements(documentStyle('data-trn-boot-style')),
+    ).toEqual([]);
     expect(topLevelStyleStatements(adapter)).toEqual([
       LAYER_ORDER.slice(0, -1),
       "@import 'tailwindcss/theme.css' layer(theme)",
@@ -142,6 +151,15 @@ describe('cascade layer contract', () => {
       'apps/trinity/src/global.scss',
       'apps/trinity/src/rendered-markdown.scss',
     ]);
+    expect(
+      topLevelStyleStatements(read('libs/theme-foundation/styles/theme.scss')),
+    ).toEqual([
+      "@use './internal/variables'",
+      "@use './internal/tailwind-adapter.css'",
+    ]);
+    expect(
+      topLevelStyleBlocks(read('libs/theme-foundation/styles/theme.scss')),
+    ).toEqual([]);
     expect(
       stripSourceComments(read('apps/trinity/src/vendor.css')).trim(),
     ).toBe(
@@ -284,18 +302,30 @@ describe('cascade layer contract', () => {
     expect(inlineSources.map(({ file }) => file)).toEqual(inlineLedger);
     expect(
       inlineSources
-        .filter(({ css }) => isComponentLayered(css))
+        .filter(
+          ({ css }) =>
+            isComponentLayered(css) &&
+            topLevelStyleStatements(css).length === 0,
+        )
         .map(({ file }) => file),
     ).toEqual(inlineLedger);
 
     for (const file of componentSources) {
       expect(isComponentLayered(read(file)), file).toBe(true);
+      expect(
+        sassModules(file).every((module) => sharedPartials.includes(module)),
+        `${file} must use only audited non-emitting Sass modules`,
+      ).toBe(true);
     }
 
     for (const file of sharedPartials) {
       expect(
         isNonEmittingPartial(read(file)),
         `${file} must define only non-emitting Sass helpers`,
+      ).toBe(true);
+      expect(
+        sassModules(file).every((module) => sharedPartials.includes(module)),
+        `${file} must use only audited non-emitting Sass modules`,
       ).toBe(true);
       const consumers = sharedPartialConsumers(file, componentSources);
       expect(
@@ -310,6 +340,12 @@ describe('cascade layer contract', () => {
   });
 
   it('allows only the audited reduced-motion important bridge', () => {
+    expect(
+      [
+        ...':host { color: red !important }'.matchAll(IMPORTANT_DECLARATION),
+      ].map(([, property, value]) => `${property}:${value.trim()}`),
+    ).toEqual(['color:red !important']);
+
     const declarations = [];
     const sources = globSync(['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'], {
       cwd: workspaceRoot,
@@ -330,7 +366,7 @@ describe('cascade layer contract', () => {
     for (const [file, rawSource] of sources) {
       const source = stripSourceComments(rawSource);
       for (const [, property, value] of source.matchAll(
-        /([a-z-]+)\s*:\s*([^;{}]*!important)\s*;/gu,
+        IMPORTANT_DECLARATION,
       )) {
         declarations.push(`${file}:${property}:${value.trim()}`);
       }
