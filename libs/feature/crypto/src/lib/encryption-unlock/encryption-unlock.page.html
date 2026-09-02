@@ -1,8 +1,16 @@
 @if (asModal()) {
-  <div class="crypto-modal">
+  <div
+    trnOverlaySurface
+    variant="neutral"
+    size="md"
+    layout="dialog"
+    class="crypto-modal flex flex-col"
+  >
     <div class="crypto-modal__header">
       <h2 class="crypto-modal__title">{{ title() }}</h2>
-      <button trnBtn variant="ghost" size="sm" (click)="close()">Close</button>
+      <button trnBtn presentation="ghost" size="sm" (click)="close()">
+        Close
+      </button>
     </div>
     <div class="crypto-modal__body">
       <ng-container [ngTemplateOutlet]="body" />
@@ -36,12 +44,11 @@
       set up encryption to unlock your encrypted messages here.
     </p>
 
-    <div class="mt-4">
-      <label trnLabel for="recovery-key">Recovery key</label>
+    <trn-field class="mt-4">
+      <trn-field-label controlId="recovery-key"> Recovery key </trn-field-label>
       <input
         id="recovery-key"
         trnInput
-        class="mt-1"
         autocapitalize="off"
         autocorrect="off"
         autocomplete="off"
@@ -53,7 +60,7 @@
       <p class="mt-1 text-xs text-muted-foreground">
         Paste the key you saved during setup. Spaces don't matter.
       </p>
-    </div>
+    </trn-field>
 
     <button
       trnBtn
@@ -81,7 +88,7 @@
     @if (providerResetUrl(); as providerUrl) {
       <a
         trnBtn
-        variant="outline"
+        presentation="outline"
         class="mt-2 w-full"
         [href]="providerUrl"
         target="_blank"
@@ -96,9 +103,10 @@
        alternative to entering one. -->
     <button
       trnBtn
-      variant="ghost"
+      variant="secondary"
+      presentation="ghost"
       size="sm"
-      class="mt-4 w-full text-muted-foreground"
+      class="mt-4 w-full"
       [disabled]="busy()"
       (click)="resetRecovery()"
       data-testid="reset-recovery"

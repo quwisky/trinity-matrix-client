@@ -3,7 +3,6 @@ import {
   TrnCard,
   TrnCardContent,
   TrnCardHeader,
-  TrnCardTitle,
 } from '@trinity/components/navigation-layout';
 
 /**
@@ -23,7 +22,7 @@ import {
 @Component({
   selector: 'trn-auth-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnCard, TrnCardHeader, TrnCardTitle, TrnCardContent],
+  imports: [TrnCard, TrnCardHeader, TrnCardContent],
   templateUrl: './auth-card.component.html',
   styleUrl: './auth-card.component.scss',
   host: { class: 'login-page block flex-1 overflow-y-auto' },

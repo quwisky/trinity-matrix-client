@@ -1,8 +1,14 @@
 @if (asModal()) {
-  <div class="crypto-modal">
+  <div
+    trnOverlaySurface
+    variant="neutral"
+    size="md"
+    layout="dialog"
+    class="crypto-modal flex flex-col"
+  >
     <div class="crypto-modal__header">
       <h2 class="crypto-modal__title">Verify device</h2>
-      <button trnBtn variant="ghost" size="sm" (click)="cancelAndLeave()">
+      <button trnBtn presentation="ghost" size="sm" (click)="cancelAndLeave()">
         Close
       </button>
     </div>
@@ -15,7 +21,7 @@
     <button
       trnHeaderActions
       trnBtn
-      variant="ghost"
+      presentation="ghost"
       size="sm"
       (click)="cancelAndLeave()"
     >
@@ -81,7 +87,7 @@
             </button>
             <button
               trnBtn
-              variant="ghost"
+              presentation="ghost"
               class="mt-2 w-full"
               [disabled]="busy()"
               (click)="cancelAndLeave()"
@@ -155,11 +161,11 @@
             }
             <button
               trnBtn
-              [variant]="
+              [presentation]="
                 v.isSelfVerification &&
                 (v.qrShowAvailable || (v.qrScanAvailable && cameraSupported))
                   ? 'ghost'
-                  : 'default'
+                  : 'solid'
               "
               class="mt-2 w-full"
               data-testid="verify-start-sas"
@@ -200,7 +206,12 @@
               Waiting for the other device to scan this code…
             </p>
           </div>
-          <button trnBtn variant="ghost" class="mt-2 w-full" (click)="hideQr()">
+          <button
+            trnBtn
+            presentation="ghost"
+            class="mt-2 w-full"
+            (click)="hideQr()"
+          >
             Choose another method
           </button>
         }
@@ -223,7 +234,7 @@
           </button>
           <button
             trnBtn
-            variant="ghost"
+            presentation="ghost"
             class="mt-2 w-full"
             [disabled]="busy()"
             (click)="cancelAndLeave()"

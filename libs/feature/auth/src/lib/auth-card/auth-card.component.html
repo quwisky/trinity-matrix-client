@@ -1,9 +1,14 @@
 <main class="login-wrapper">
-  <section trnCard class="login-card">
+  <section
+    trnCard
+    variant="muted"
+    size="md"
+    class="login-card min-h-0 overflow-y-auto"
+  >
     <div trnCardHeader class="login-card__brand">
       <div class="login-card__brand-lockup">
         <span class="login-card__mark" aria-hidden="true">T</span>
-        <div trnCardTitle class="login-card__wordmark">Trinity</div>
+        <div class="login-card__wordmark">Trinity</div>
       </div>
       <ng-content select="[trnAuthCardSubtitle]" />
     </div>

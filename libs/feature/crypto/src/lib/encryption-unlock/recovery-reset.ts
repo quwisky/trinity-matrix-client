@@ -1,6 +1,7 @@
 import type { PasswordPrompt } from '@trinity/util/matrix';
 import type { TrnAlertService } from '@trinity/components/overlay';
 import { TrustOperationError } from '@trinity/data-access/trust';
+import { firstValueFrom, map, type Observable } from 'rxjs';
 
 /** The word the user has to type before an irreversible reset will run. */
 export const RESET_CONFIRMATION_WORD = 'RESET';
@@ -32,24 +33,29 @@ export const RESET_MISTYPED_MESSAGE = `Nothing was reset. Type ${RESET_CONFIRMAT
  * it states the cost first and demands the word: a mis-tap is not an acceptable way to
  * reach it.
  */
-export async function confirmResetIntent(
+export function confirmResetIntent(
   alert: TrnAlertService,
-): Promise<ResetIntent> {
-  const typed = await alert.prompt({
-    header: 'Reset encryption',
-    message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
-    placeholder: RESET_CONFIRMATION_WORD,
-    inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
-    confirmText: 'Reset',
-    cancelText: 'Cancel',
-    destructive: true,
-  });
-  if (typed === null) {
-    return 'cancelled';
-  }
-  return typed.trim().toUpperCase() === RESET_CONFIRMATION_WORD
-    ? 'confirmed'
-    : 'mistyped';
+): Observable<ResetIntent> {
+  return alert
+    .prompt$({
+      header: 'Reset encryption',
+      message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
+      placeholder: RESET_CONFIRMATION_WORD,
+      inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
+      confirmText: 'Reset',
+      cancelText: 'Cancel',
+      variant: 'danger',
+    })
+    .pipe(
+      map((typed) => {
+        if (typed === null) {
+          return 'cancelled';
+        }
+        return typed.trim().toUpperCase() === RESET_CONFIRMATION_WORD
+          ? 'confirmed'
+          : 'mistyped';
+      }),
+    );
 }
 
 /**
@@ -58,13 +64,15 @@ export async function confirmResetIntent(
  */
 export function resetPasswordPrompt(alert: TrnAlertService): PasswordPrompt {
   return () =>
-    alert.prompt({
-      header: 'Confirm your password',
-      message: 'Your homeserver needs your password to reset encryption.',
-      placeholder: 'Password',
-      confirmText: 'Confirm',
-      inputType: 'password',
-    });
+    firstValueFrom(
+      alert.prompt$({
+        header: 'Confirm your password',
+        message: 'Your homeserver needs your password to reset encryption.',
+        placeholder: 'Password',
+        confirmText: 'Confirm',
+        inputType: 'password',
+      }),
+    );
 }
 
 /** What to tell the user about a reset that did not happen. */

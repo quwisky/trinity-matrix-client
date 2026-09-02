@@ -48,19 +48,6 @@
   }
 }
 
-@mixin modal {
-  display: flex;
-  width: min(92vw, 500px);
-  max-height: min(90vh, 720px);
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-overlay-radius);
-  background: var(--trinity-surface-floating);
-  color: var(--trinity-text);
-  box-shadow: var(--trinity-shadow-overlay);
-}
-
 @mixin modal-header {
   display: flex;
   min-height: 56px;

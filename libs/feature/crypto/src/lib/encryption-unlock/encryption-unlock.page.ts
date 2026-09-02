@@ -14,16 +14,20 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable, finalize, firstValueFrom } from 'rxjs';
+import { Observable, finalize, firstValueFrom, take } from 'rxjs';
 import { TrustService } from '@trinity/data-access/trust';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnLabel } from '@trinity/components/controls';
+import { TrnFieldImports } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { RecoveryKeySaveComponent } from '../recovery-key-save/recovery-key-save.component';
 import {
   confirmLeaving,
@@ -53,8 +57,9 @@ import {
     PageHeaderComponent,
     RecoveryKeySaveComponent,
     TrnButton,
+    TrnFieldImports,
     TrnInput,
-    TrnLabel,
+    TrnOverlaySurfaceDirective,
     TrnSpinnerComponent,
   ],
 })
@@ -148,7 +153,7 @@ export class EncryptionUnlockPage {
         this.offerReset() ||
         this.route.snapshot.queryParamMap.get('reset') === '1';
       if (asked) {
-        void this.resetRecovery();
+        this.resetRecovery();
       }
     });
   }
@@ -173,15 +178,22 @@ export class EncryptionUnlockPage {
    * backup, and a mis-tap is not an acceptable way to reach it. Cancelling and mistyping
    * are the same answer — no.
    */
-  async resetRecovery(): Promise<void> {
-    const intent = await confirmResetIntent(this.alert);
-    if (intent === 'cancelled') {
-      return; // they said no, and that needs no explanation
-    }
-    if (intent === 'mistyped') {
-      this.error.set(RESET_MISTYPED_MESSAGE);
-      return;
-    }
+  resetRecovery(): void {
+    confirmResetIntent(this.alert)
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((intent) => {
+        if (intent === 'cancelled') {
+          return; // they said no, and that needs no explanation
+        }
+        if (intent === 'mistyped') {
+          this.error.set(RESET_MISTYPED_MESSAGE);
+          return;
+        }
+        this.beginRecoveryReset();
+      });
+  }
+
+  private beginRecoveryReset(): void {
     // Deliberately NOT runWithBusy: it turns a failure into EMPTY, so an error handler
     // never runs — and this is the one path that has to inspect WHY it failed.
     this.busy.set(true);
@@ -254,20 +266,24 @@ export class EncryptionUnlockPage {
    * is dismissed by the browser's own back button and would otherwise throw a shown-once
    * key away without a word — which is the path most users are on.
    */
-  confirmLeave(): Promise<boolean> {
+  confirmLeave(): Observable<boolean> {
     return confirmLeaving(this.alert, this.closeWouldDiscard());
   }
 
   /** Close without unlocking (modal Close / return on the routed page). */
-  async close(): Promise<void> {
-    if (!(await this.confirmLeave())) {
-      return;
-    }
-    this.clearKey();
-    // The shown-once key is the more sensitive of the two; dropping it here keeps this
-    // symmetrical with finishReset(), which has always cleared it.
-    this.newRecoveryKey.set(null);
-    this.leave();
+  close(): void {
+    this.confirmLeave()
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        this.clearKey();
+        // The shown-once key is the more sensitive of the two; dropping it here keeps this
+        // symmetrical with finishReset(), which has always cleared it.
+        this.newRecoveryKey.set(null);
+        this.leave();
+      });
   }
 
   /**

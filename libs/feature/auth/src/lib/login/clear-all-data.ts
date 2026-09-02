@@ -1,4 +1,5 @@
 import type { TrnAlertService } from '@trinity/components/overlay';
+import { map, type Observable } from 'rxjs';
 
 /**
  * The word the user has to type before everything on this device is erased.
@@ -95,23 +96,28 @@ export const CLEAR_DATA_RESIDUE_WARNING =
  * flow needs the difference between "changed my mind" and "typed it wrong" to say something
  * useful either way.
  */
-export async function confirmClearDataIntent(
+export function confirmClearDataIntent(
   alert: TrnAlertService,
   signedInUserIds: readonly string[] | null,
-): Promise<ClearDataIntent> {
-  const typed = await alert.prompt({
-    header: 'Erase all Trinity data',
-    message: clearDataMessage(signedInUserIds),
-    placeholder: CLEAR_DATA_CONFIRMATION_WORD,
-    inputLabel: `Type ${CLEAR_DATA_CONFIRMATION_WORD} to confirm`,
-    confirmText: 'Erase everything',
-    cancelText: 'Cancel',
-    destructive: true,
-  });
-  if (typed === null) {
-    return 'cancelled';
-  }
-  return typed.trim().toUpperCase() === CLEAR_DATA_CONFIRMATION_WORD
-    ? 'confirmed'
-    : 'mistyped';
+): Observable<ClearDataIntent> {
+  return alert
+    .prompt$({
+      header: 'Erase all Trinity data',
+      message: clearDataMessage(signedInUserIds),
+      placeholder: CLEAR_DATA_CONFIRMATION_WORD,
+      inputLabel: `Type ${CLEAR_DATA_CONFIRMATION_WORD} to confirm`,
+      confirmText: 'Erase everything',
+      cancelText: 'Cancel',
+      variant: 'danger',
+    })
+    .pipe(
+      map((typed) => {
+        if (typed === null) {
+          return 'cancelled';
+        }
+        return typed.trim().toUpperCase() === CLEAR_DATA_CONFIRMATION_WORD
+          ? 'confirmed'
+          : 'mistyped';
+      }),
+    );
 }

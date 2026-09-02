@@ -4,7 +4,7 @@ import { render, screen } from '@trinity/testing';
 import { TrustService } from '@trinity/data-access/trust';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { Observable, Subject, of, throwError } from 'rxjs';
+import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { EncryptionSetupPage } from './encryption-setup.page';
 
@@ -21,12 +21,12 @@ async function setup(options: SetupOptions = {}): Promise<{
   router: Router;
   confirm: Mock;
 }> {
-  const confirm = vi.fn().mockResolvedValue(options.confirmLeave ?? true);
+  const confirm = vi.fn(() => of(options.confirmLeave ?? true));
   const { fixture } = await render(EncryptionSetupPage, {
     providers: [
       MockProvider(TrustService),
       MockProvider(Router),
-      MockProvider(TrnAlertService, { confirm }),
+      MockProvider(TrnAlertService, { confirm$: confirm }),
     ],
   });
   const crypto = TestBed.inject(TrustService);
@@ -115,9 +115,9 @@ describe('EncryptionSetupPage', () => {
       const { fixture, crypto, confirm } = await setup({ confirmLeave: false });
       showKey(fixture, crypto);
 
-      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
-        false,
-      );
+      await expect(
+        firstValueFrom(fixture.componentInstance.confirmLeave()),
+      ).resolves.toBe(false);
       expect(confirm).toHaveBeenCalledOnce();
     });
 
@@ -125,9 +125,9 @@ describe('EncryptionSetupPage', () => {
       const { fixture, crypto } = await setup({ confirmLeave: true });
       showKey(fixture, crypto);
 
-      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
-        true,
-      );
+      await expect(
+        firstValueFrom(fixture.componentInstance.confirmLeave()),
+      ).resolves.toBe(true);
     });
 
     it('stays put if the question itself cannot be asked', async () => {
@@ -135,11 +135,13 @@ describe('EncryptionSetupPage', () => {
       // leaving loses a key that is shown once.
       const { fixture, crypto, confirm } = await setup();
       showKey(fixture, crypto);
-      confirm.mockRejectedValue(new Error('no overlay container'));
-
-      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
-        false,
+      confirm.mockReturnValue(
+        throwError(() => new Error('no overlay container')),
       );
+
+      await expect(
+        firstValueFrom(fixture.componentInstance.confirmLeave()),
+      ).resolves.toBe(false);
     });
   });
 
@@ -153,9 +155,9 @@ describe('EncryptionSetupPage', () => {
       startSetUp(fixture, crypto);
       expect(fixture.componentInstance.busy()).toBe(true);
 
-      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
-        false,
-      );
+      await expect(
+        firstValueFrom(fixture.componentInstance.confirmLeave()),
+      ).resolves.toBe(false);
       expect(confirm).toHaveBeenCalledOnce();
       // Copy has to describe setup, not the unlock page's reset.
       expect(confirm).toHaveBeenCalledWith(
@@ -167,9 +169,9 @@ describe('EncryptionSetupPage', () => {
       const { fixture, crypto, confirm } = await setup({ confirmLeave: true });
       startSetUp(fixture, crypto);
 
-      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
-        true,
-      );
+      await expect(
+        firstValueFrom(fixture.componentInstance.confirmLeave()),
+      ).resolves.toBe(true);
       expect(confirm).toHaveBeenCalledOnce();
     });
 
@@ -184,7 +186,7 @@ describe('EncryptionSetupPage', () => {
       fixture.detectChanges();
       expect(fixture.componentInstance.busy()).toBe(true);
 
-      await fixture.componentInstance.confirmLeave();
+      await firstValueFrom(fixture.componentInstance.confirmLeave());
 
       expect(confirm).toHaveBeenCalledWith(
         expect.objectContaining({ header: 'Leave without saving your key?' }),
@@ -195,7 +197,9 @@ describe('EncryptionSetupPage', () => {
   it('leaves without a word before anything has started', async () => {
     const { fixture, confirm } = await setup();
 
-    await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(true);
+    await expect(
+      firstValueFrom(fixture.componentInstance.confirmLeave()),
+    ).resolves.toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
@@ -210,7 +214,9 @@ describe('EncryptionSetupPage', () => {
 
     expect(fixture.componentInstance.busy()).toBe(false);
     expect(fixture.componentInstance.recoveryKey()).toBeNull();
-    await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(true);
+    await expect(
+      firstValueFrom(fixture.componentInstance.confirmLeave()),
+    ).resolves.toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 

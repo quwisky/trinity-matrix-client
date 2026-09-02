@@ -126,6 +126,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Authentication, Trust, startup, and host-shell surfaces now use Trinity's public recipes.**
+  Their buttons, fields, cards, alerts, toasts, and modal surfaces use canonical semantic axes
+  instead of vendor-shaped aliases or local appearance overrides. Alert results stay cold RxJS
+  commands, component styles now participate in the named cascade, and focused interaction tests
+  preserve the existing recovery, verification, routing, and startup behavior.
+
 - **Runtime vendor styling now has named, audited seams.** The advanced configuration editor uses
   CodeMirror's supported theme extension instead of a global component override. CDK overlays,
   ng-icons, and the Sonner toaster remain behind Trinity's public wrappers, while a versioned

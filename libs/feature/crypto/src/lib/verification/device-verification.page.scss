@@ -1,86 +1,84 @@
 @use '../styles/mixins' as *;
 
-.heading {
-  @include heading;
-}
-
-.crypto-route {
-  @include route;
-}
-
-.crypto-surface {
-  @include surface;
-}
-
-.crypto-modal {
-  @include modal;
-}
-
-.crypto-modal__header {
-  @include modal-header;
-}
-
-.crypto-modal__title {
-  flex: 1;
-  margin: 0;
-  color: var(--trinity-text-bright);
-  font-size: var(--trinity-type-control-size);
-  font-weight: 700;
-}
-
-.crypto-modal__body {
-  @include modal-body;
-}
-
-.crypto-flow > .text-muted-foreground,
-.center p {
-  @include lead;
-}
-
-.center {
-  text-align: center;
-  padding: 12px 0;
-
-  p {
-    margin: 8px 0 16px;
+@layer components {
+  .heading {
+    @include heading;
   }
-}
 
-.result {
-  width: 64px;
-  height: 64px;
-  margin: 8px auto 12px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 32px;
-  color: var(--trinity-green-foreground);
-}
+  .crypto-route {
+    @include route;
+  }
 
-.result--ok {
-  background: var(--trinity-green);
-}
+  .crypto-surface {
+    @include surface;
+  }
 
-.result--bad {
-  // Caution-toned so the glyph keeps contrast even when ⚠️ falls back to text
-  // presentation (no colour-emoji font) rather than inheriting the base on-green colour.
-  background: var(--warning);
-  color: var(--warning-foreground);
-}
+  .crypto-modal__header {
+    @include modal-header;
+  }
 
-.privacy-warning {
-  @include warning;
-}
+  .crypto-modal__title {
+    flex: 1;
+    margin: 0;
+    color: var(--trinity-text-bright);
+    font-size: var(--trinity-type-control-size);
+    font-weight: 700;
+  }
 
-.qr-code {
-  display: block;
-  width: min(100%, 320px);
-  height: auto;
-  margin: 16px auto;
-  padding: var(--trinity-space-3);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-container-radius);
-  background: var(--trinity-qr-surface);
-  image-rendering: pixelated;
+  .crypto-modal__body {
+    @include modal-body;
+  }
+
+  .crypto-flow > .text-muted-foreground,
+  .center p {
+    @include lead;
+  }
+
+  .center {
+    text-align: center;
+    padding: 12px 0;
+
+    p {
+      margin: 8px 0 16px;
+    }
+  }
+
+  .result {
+    width: 64px;
+    height: 64px;
+    margin: 8px auto 12px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--trinity-green-foreground);
+  }
+
+  .result--ok {
+    background: var(--trinity-green);
+  }
+
+  .result--bad {
+    // Caution-toned so the glyph keeps contrast even when ⚠️ falls back to text
+    // presentation (no colour-emoji font) rather than inheriting the base on-green colour.
+    background: var(--warning);
+    color: var(--warning-foreground);
+  }
+
+  .privacy-warning {
+    @include warning;
+  }
+
+  .qr-code {
+    display: block;
+    width: min(100%, 320px);
+    height: auto;
+    margin: 16px auto;
+    padding: var(--trinity-space-3);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-qr-surface);
+    image-rendering: pixelated;
+  }
 }

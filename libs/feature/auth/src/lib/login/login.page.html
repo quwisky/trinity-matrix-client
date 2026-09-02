@@ -52,6 +52,7 @@
 
     <button
       trnBtn
+      size="lg"
       class="login-card__submit w-full"
       [disabled]="busy()"
       (click)="discover()"
@@ -81,21 +82,21 @@
         <trn-field-label controlId="password" emphasis="strong">
           Password
         </trn-field-label>
-        <div class="relative">
+        <div class="flex items-center gap-2">
           <input
             trnInput
             id="password"
             [type]="passwordVisible() ? 'text' : 'password'"
-            class="pr-10"
+            class="min-w-0 flex-1"
             [formField]="credentialsForm.password"
             (keyup.enter)="loginPassword()"
           />
           <button
             trnBtn
-            variant="ghost"
-            size="icon"
+            presentation="ghost"
+            shape="icon"
+            size="md"
             type="button"
-            class="absolute inset-y-0 right-0 text-muted-foreground"
             [attr.aria-label]="
               passwordVisible() ? 'Hide password' : 'Show password'
             "
@@ -113,6 +114,7 @@
 
       <button
         trnBtn
+        size="lg"
         class="login-card__submit w-full"
         [disabled]="busy()"
         (click)="loginPassword()"
@@ -125,7 +127,8 @@
     @if (ssoSupported()) {
       <button
         trnBtn
-        variant="outline"
+        presentation="outline"
+        size="lg"
         class="login-card__sso w-full"
         [disabled]="busy()"
         (click)="startSso()"
@@ -139,7 +142,8 @@
     @if (registrationAvailability() === 'open' && !reauthUserId()) {
       <button
         trnBtn
-        variant="outline"
+        presentation="outline"
+        size="lg"
         class="login-card__sso w-full"
         [disabled]="busy()"
         (click)="startRegistration()"
@@ -153,6 +157,7 @@
     @if (oidcSupported()) {
       <button
         trnBtn
+        size="lg"
         class="login-card__submit w-full"
         [disabled]="busy()"
         (click)="startOidc()"
@@ -164,7 +169,8 @@
       @if (oidcRegistrationSupported() && !reauthUserId()) {
         <button
           trnBtn
-          variant="outline"
+          presentation="outline"
+          size="lg"
           class="w-full"
           [disabled]="busy()"
           (click)="startOidc('create')"
@@ -195,7 +201,7 @@
   @if (addMode || reauthUserId()) {
     <button
       trnBtn
-      variant="ghost"
+      presentation="ghost"
       class="login-card__cancel w-full"
       [disabled]="busy()"
       (click)="cancelAdd()"
@@ -205,35 +211,15 @@
     </button>
   }
 
-  <!-- ── The way out of a wedged install ─────────────────
-             Styled destructive because it is: it erases every account, key and cached
-             message on this device. Kept ghost and `sm` beneath the sign-in actions so it
-             reads as the last resort rather than this screen's primary action.
-
-             Deliberately NOT `variant="destructive"`, but no longer for the reason this
-             comment first gave. That variant's tint used to take whatever surface it sat
-             on, and on this card — `--trinity-sidebar`, not `--card`; see login.page.scss —
-             it put the label at 4.26-4.29:1 on hover, under AA. The tint is pinned opaque
-             now (`--trinity-danger-tint-*`), so it would pass here too.
-             What stands is the weighting: a tinted, filled control reads as this screen's
-             primary action, and the thing someone came here to do is sign in. Ghost keeps
-             the escape hatch unmistakably red without competing with the button above it.
-             Untinted, the worst of the eight Theme × Mode × rest/hover states is 4.99:1
-             (amethyst, light, hover).
-
-             `hover:text-danger` is load-bearing: without it ghost's own
-             `hover:text-foreground` wins and repaints the label to rgb(9,9,11) in light and
-             rgb(250,250,250) in dark, on hover.
-
-             Every figure is composited pixels rather than token arithmetic, because the
-             tint is emitted as `color-mix(in oklab, …)`: read those three components as if
-             they were sRGB and the resting tint comes out ~4.41:1, which is both wrong and
-             plausible. Pinned by clear-all-data.spec.mts. -->
+  <!-- The way out of a wedged installation. Danger carries meaning while ghost keeps
+       this last-resort action subordinate to signing in. The public recipe owns every
+       rest, hover, focus and disabled colour. -->
   <button
     trnBtn
-    variant="ghost"
+    variant="danger"
+    presentation="ghost"
     size="sm"
-    class="mt-4 w-full text-danger hover:text-danger"
+    class="mt-4 w-full"
     [disabled]="erasing()"
     (click)="clearAllData()"
     data-testid="clear-all-data"

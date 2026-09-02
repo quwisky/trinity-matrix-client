@@ -143,6 +143,18 @@ pins those imports and selectors; unit and browser tests pin the interaction and
 name. Subsequent feature migrations should add or replace proof screens only when they exercise
 a genuinely new public contract, rather than turning the ledger into a list of every consumer.
 
+The first consumer-migration slice extends that proof through authentication, Trust, application
+startup, routing surfaces, and the host shell. Those consumers use canonical button
+`variant`/`presentation`/`size` axes, public fields and labels, muted cards, `danger` feedback,
+and neutral dialog surfaces. Consumer classes now arrange only surrounding layout; visual chrome
+belongs to the public recipes. Alert confirmations and prompts use the cold finite RxJS APIs, with
+`firstValueFrom` limited to SDK callback boundaries that require a Promise. Every component
+stylesheet in the slice is in `@layer components`, and
+`design-system-consumer-migration.spec.mjs` keeps the migrated roots non-vacuous while rejecting
+legacy values, vendor imports, local appearance overrides, Promise alert calls, and cascade
+exceptions. Compatibility remains available only for the consumer slices assigned to the later
+migration tickets.
+
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
 `shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
 the common pointer, hover and pressed states. A purpose-built control whose geometry carries
@@ -377,8 +389,9 @@ compatibility methods, implemented by delegating to those Observable commands.
     **A CDK dialog panel is transparent.** Every dialog component paints its own surface with
     `trnOverlaySurface`, and one that forgets renders as text floating over the timeline — easy
     to miss in review because the layout is correct in isolation and only the background is
-    wrong. Feature-local `dialog-surface()` remains compatibility code only until #397-#401
-    migrate the existing consumers.
+    wrong. Trust portals from #397 now use the public surface recipe. Feature-local
+    `dialog-surface()` remains compatibility code only for the consumer slices still migrating in
+    #398-#401.
 
     **`autoFocus` defaults to CDK's `'first-tabbable'`**, which is wrong for any dialog whose
     header carries a Cancel or Close button ahead of the field the user came to type in — the

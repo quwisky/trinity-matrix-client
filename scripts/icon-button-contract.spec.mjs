@@ -8,8 +8,9 @@ const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 /**
  * Mechanical coverage for Trinity's icon-action entry points.
  *
- * `trnBtn shape="icon"` owns standard square geometry; legacy `icon*` sizes remain in the
- * migration inventory. `trnIconButton` is the explicit
+ * `trnBtn shape="icon"` owns standard square geometry; legacy `icon*` sizes and
+ * `variant="ghost"` remain in the migration inventory while canonical consumers use
+ * `presentation="ghost"`. `trnIconButton` is the explicit
  * opt-in for a purpose-built control whose shape communicates context (for example a reaction
  * chip or server-rail pill). `trnToggle` and `trnToggleGroupItem` own pressed actions; when
  * their content is an icon, they belong to this contract too. All receive the same cursor,
@@ -131,7 +132,7 @@ describe('icon-button contract', () => {
       .filter(
         ({ file, openingTag }) =>
           !contextualVariants.has(file) &&
-          !/\bvariant="ghost"/.test(openingTag),
+          !/\b(?:presentation|variant)="ghost"/.test(openingTag),
       )
       .map(({ file, line }) => `${file}:${line}`);
 

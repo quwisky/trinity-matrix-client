@@ -1,14 +1,16 @@
-:host {
-  display: block;
-}
+@layer components {
+  :host {
+    display: block;
+  }
 
-// Optional capabilities can produce several long diagnostics at once. Keep the status visible
-// without letting it displace the routed application surface: at most one quarter of the visual
-// viewport belongs to warnings, and the focusable region above remains keyboard-scrollable when
-// its complete list needs more room.
-.runtime-warnings {
-  min-block-size: 0;
-  max-block-size: 25dvh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  // Optional capabilities can produce several long diagnostics at once. Keep the status visible
+  // without letting it displace the routed application surface: at most one quarter of the visual
+  // viewport belongs to warnings, and the focusable region above remains keyboard-scrollable when
+  // its complete list needs more room.
+  .runtime-warnings {
+    min-block-size: 0;
+    max-block-size: 25dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }

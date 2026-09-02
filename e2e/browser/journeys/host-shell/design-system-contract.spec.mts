@@ -40,6 +40,14 @@ test.describe('public design-system tracer', () => {
     await mockPasswordHomeserver(page);
     await page.goto('/login');
 
+    const authCard = page.locator('[trncard]');
+    await expect(authCard).toHaveAttribute('data-variant', 'muted');
+    await expect(authCard).toHaveAttribute('data-size', 'md');
+    await expect(authCard).toHaveCSS('flex-grow', '0');
+    const wordmark = authCard.locator('.login-card__wordmark');
+    await expect(wordmark).toHaveCSS('font-size', '24px');
+    await expect(wordmark).toHaveCSS('font-weight', '800');
+
     const homeserver = page.getByRole('textbox', { name: 'Homeserver' });
     await expect(homeserver).toHaveAttribute('id', 'homeserver');
     await expect(

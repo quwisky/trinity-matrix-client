@@ -19,13 +19,12 @@ import {
 } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { finalize, forkJoin, map, switchMap, throwError } from 'rxjs';
-import { TrnButton } from '@trinity/components/controls';
+import { TrnButton, TrnFieldImports } from '@trinity/components/controls';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { TrnCardImports } from '@trinity/components/navigation-layout';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnLabel } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   AuthService,
@@ -45,11 +44,11 @@ import { ExternalBrowserService } from '@trinity/platform-native';
     AuthCardComponent,
     FormField,
     TrnButton,
+    TrnFieldImports,
     TrnCardImports,
     TrnCheckboxComponent,
     TrnIconComponent,
     TrnInput,
-    TrnLabel,
     TrnSpinnerComponent,
   ],
 })

@@ -8,6 +8,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { TrnToasterComponent } from '@trinity/components/overlay';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
@@ -24,6 +25,7 @@ import { VerificationHostComponent } from '../verification-host/verification-hos
   styleUrl: './application-root.component.scss',
   imports: [
     RouterOutlet,
+    TrnButton,
     VerificationHostComponent,
     TrnToasterComponent,
     TrnSpinnerComponent,

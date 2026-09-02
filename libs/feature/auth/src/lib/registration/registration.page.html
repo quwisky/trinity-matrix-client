@@ -21,14 +21,23 @@
     </div>
   } @else if (baseUrl()) {
     @if (!started() || stage().kind === 'credentials') {
-      <div class="registration-card__field">
-        <label
-          trnLabel
-          for="registration-username"
-          class="registration-card__label"
+      <trn-field
+        class="registration-card__field"
+        [invalid]="
+          credentialsForm.username().touched() &&
+          credentialsForm.username().errors().length > 0
+        "
+      >
+        <trn-field-label
+          controlId="registration-username"
+          emphasis="strong"
+          [invalid]="
+            credentialsForm.username().touched() &&
+            credentialsForm.username().errors().length > 0
+          "
         >
           Username
-        </label>
+        </trn-field-label>
         <input
           trnInput
           id="registration-username"
@@ -56,23 +65,32 @@
             {{ validation.message }}
           </p>
         }
-      </div>
+      </trn-field>
 
-      <div class="registration-card__field">
-        <label
-          trnLabel
-          for="registration-password"
-          class="registration-card__label"
+      <trn-field
+        class="registration-card__field"
+        [invalid]="
+          credentialsForm.password().touched() &&
+          credentialsForm.password().errors().length > 0
+        "
+      >
+        <trn-field-label
+          controlId="registration-password"
+          emphasis="strong"
+          [invalid]="
+            credentialsForm.password().touched() &&
+            credentialsForm.password().errors().length > 0
+          "
         >
           Password
-        </label>
-        <div class="relative">
+        </trn-field-label>
+        <div class="flex items-center gap-2">
           <input
             trnInput
             id="registration-password"
             autocomplete="new-password"
             [type]="passwordVisible() ? 'text' : 'password'"
-            class="pr-10"
+            class="min-w-0 flex-1"
             [formField]="credentialsForm.password"
             [attr.aria-describedby]="
               credentialsForm.password().touched() &&
@@ -83,10 +101,10 @@
           />
           <button
             trnBtn
-            variant="ghost"
-            size="icon"
+            presentation="ghost"
+            shape="icon"
+            size="md"
             type="button"
-            class="absolute inset-y-0 right-0 text-muted-foreground"
             [attr.aria-label]="
               passwordVisible() ? 'Hide password' : 'Show password'
             "
@@ -112,16 +130,25 @@
             {{ validation.message }}
           </p>
         }
-      </div>
+      </trn-field>
 
-      <div class="registration-card__field">
-        <label
-          trnLabel
-          for="registration-confirm-password"
-          class="registration-card__label"
+      <trn-field
+        class="registration-card__field"
+        [invalid]="
+          credentialsForm.confirmPassword().touched() &&
+          credentialsForm.confirmPassword().errors().length > 0
+        "
+      >
+        <trn-field-label
+          controlId="registration-confirm-password"
+          emphasis="strong"
+          [invalid]="
+            credentialsForm.confirmPassword().touched() &&
+            credentialsForm.confirmPassword().errors().length > 0
+          "
         >
           Confirm password
-        </label>
+        </trn-field-label>
         <input
           trnInput
           id="registration-confirm-password"
@@ -148,10 +175,11 @@
             {{ validation.message }}
           </p>
         }
-      </div>
+      </trn-field>
 
       <button
         trnBtn
+        size="lg"
         class="registration-card__submit w-full"
         [disabled]="busy()"
         (click)="createAccount()"
@@ -171,14 +199,23 @@
             This homeserver requires an email address to verify your
             registration.
           </p>
-          <div class="registration-card__field">
-            <label
-              trnLabel
-              for="registration-email"
-              class="registration-card__label"
+          <trn-field
+            class="registration-card__field"
+            [invalid]="
+              emailForm.email().touched() &&
+              emailForm.email().errors().length > 0
+            "
+          >
+            <trn-field-label
+              controlId="registration-email"
+              emphasis="strong"
+              [invalid]="
+                emailForm.email().touched() &&
+                emailForm.email().errors().length > 0
+              "
             >
               Email address
-            </label>
+            </trn-field-label>
             <input
               trnInput
               id="registration-email"
@@ -203,7 +240,7 @@
                 {{ validation.message }}
               </p>
             }
-          </div>
+          </trn-field>
           <button
             trnBtn
             class="w-full"
@@ -222,7 +259,7 @@
           </button>
           <button
             trnBtn
-            variant="ghost"
+            presentation="ghost"
             class="mt-2 w-full"
             [disabled]="busy()"
             (click)="resendEmail()"
@@ -249,8 +286,9 @@
                 </label>
                 <button
                   trnBtn
-                  variant="link"
-                  class="ml-8 h-auto p-0"
+                  presentation="link"
+                  size="xs"
+                  class="ml-8"
                   (click)="openPolicy(policy)"
                 >
                   Read {{ policy.name }}
@@ -271,14 +309,23 @@
           <p class="registration-card__copy">
             This homeserver requires an invitation or registration token.
           </p>
-          <div class="registration-card__field">
-            <label
-              trnLabel
-              for="registration-token"
-              class="registration-card__label"
+          <trn-field
+            class="registration-card__field"
+            [invalid]="
+              tokenForm.token().touched() &&
+              tokenForm.token().errors().length > 0
+            "
+          >
+            <trn-field-label
+              controlId="registration-token"
+              emphasis="strong"
+              [invalid]="
+                tokenForm.token().touched() &&
+                tokenForm.token().errors().length > 0
+              "
             >
               Registration token
-            </label>
+            </trn-field-label>
             <input
               trnInput
               id="registration-token"
@@ -302,7 +349,7 @@
                 {{ validation.message }}
               </p>
             }
-          </div>
+          </trn-field>
           <button
             trnBtn
             class="w-full"
@@ -328,7 +375,7 @@
           </button>
           <button
             trnBtn
-            variant="outline"
+            presentation="outline"
             class="mt-2 w-full"
             [disabled]="busy() || !fallbackOpened()"
             (click)="poll()"
@@ -376,7 +423,7 @@
 
   <button
     trnBtn
-    variant="ghost"
+    presentation="ghost"
     class="mt-4 w-full"
     [disabled]="busy()"
     (click)="backToLogin()"
