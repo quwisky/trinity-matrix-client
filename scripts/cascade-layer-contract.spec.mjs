@@ -30,7 +30,7 @@ const LAYERS = [
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
 const IMPORTANT_DECLARATION =
-  /([a-z-]+)\s*:\s*([^;{}]*!important)\s*(?:;|(?=\}))/gu;
+  /([a-z-]+)\s*:\s*([^;{}]*!\s*important)\s*(?:;|(?=\}))/giu;
 
 function documentStyles() {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
@@ -140,6 +140,19 @@ describe('cascade layer contract', () => {
       "@source '../../../../libs'",
       "@source '../../../../apps'",
       '@custom-variant dark (&:where(.dark, .dark *))',
+    ]);
+    expect(topLevelStyleBlocks(adapter).map(({ prelude }) => prelude)).toEqual([
+      '@custom-variant data-checked',
+      '@custom-variant data-unchecked',
+      '@custom-variant data-active',
+      '@custom-variant data-open',
+      '@custom-variant data-closed',
+      '@custom-variant data-horizontal',
+      '@custom-variant data-vertical',
+      '@utility no-scrollbar',
+      '@theme inline',
+      '@layer theme',
+      '@layer overrides',
     ]);
 
     expect(
@@ -262,6 +275,16 @@ describe('cascade layer contract', () => {
     expect(styleFingerprint(overrides)).toBe(
       '08842dda4bb13e91b6bda85351b92ce367faf43cdf774dabe1f5e8212d210fa5',
     );
+    expect(
+      styleFingerprint(
+        topLevelStyleBlocks(
+          read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
+        )
+          .filter(({ prelude }) => prelude === '@layer overrides')
+          .map(({ body }) => body)
+          .join('\n'),
+      ),
+    ).toBe('45628b69ccf1517a414ba072300c498e136a62819b54c4c455fd1070655c3d40');
   });
 
   it('assigns every authored component ruleset to the components layer', () => {
@@ -342,9 +365,19 @@ describe('cascade layer contract', () => {
   it('allows only the audited reduced-motion important bridge', () => {
     expect(
       [
-        ...':host { color: red !important }'.matchAll(IMPORTANT_DECLARATION),
-      ].map(([, property, value]) => `${property}:${value.trim()}`),
-    ).toEqual(['color:red !important']);
+        ':host { color: red !important }',
+        ':host { COLOR: red !IMPORTANT; }',
+        ':host { color: red ! important }',
+      ].flatMap((source) =>
+        [...source.matchAll(IMPORTANT_DECLARATION)].map(
+          ([, property, value]) => `${property}:${value.trim()}`,
+        ),
+      ),
+    ).toEqual([
+      'color:red !important',
+      'COLOR:red !IMPORTANT',
+      'color:red ! important',
+    ]);
 
     const declarations = [];
     const sources = globSync(['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'], {
