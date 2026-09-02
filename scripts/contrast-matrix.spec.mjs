@@ -146,6 +146,18 @@ const ROLES = [
     text: '--trinity-status-neutral-foreground',
     on: ['--trinity-status-neutral-surface'],
   },
+  {
+    text: '--trinity-status-success-surface-foreground',
+    on: ['--trinity-status-success-surface'],
+  },
+  {
+    text: '--trinity-status-warning-surface-foreground',
+    on: ['--trinity-status-warning-surface'],
+  },
+  {
+    text: '--trinity-status-danger-surface-foreground',
+    on: ['--trinity-status-danger-surface'],
+  },
 ];
 
 /** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */
@@ -174,8 +186,17 @@ const NON_TEXT_ROLES = [
     '--trinity-status-warning-surface',
   ].map((foreground) => ({
     foreground,
-    on: ['--trinity-chat', '--trinity-sidebar', '--trinity-rail'],
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-rail',
+      '--trinity-surface-canvas',
+    ],
   })),
+  {
+    foreground: '--trinity-control-muted-foreground',
+    on: ['--trinity-surface-canvas'],
+  },
 ];
 
 /**
