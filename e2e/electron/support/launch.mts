@@ -23,7 +23,7 @@ function electronExecutable(): string {
   return requireFromElectron('electron') as unknown as string;
 }
 
-/** Launch the built Trinity desktop app for an e2e run. */
+/** Allocate a profile path a journey can retain across Electron process restarts. */
 export function createElectronProfile(): string {
   return mkdtempSync(path.join(tmpdir(), 'trinity-e2e-'));
 }
