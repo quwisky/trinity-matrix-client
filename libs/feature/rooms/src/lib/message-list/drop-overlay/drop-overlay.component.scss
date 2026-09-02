@@ -19,10 +19,9 @@
 
     // Tint, not a curtain: the conversation stays legible underneath, which is what tells the
     // user WHICH room they are about to drop into. `--trinity-chat` because that is what the
-    // message list paints itself with — mixing toward a token the theme does not define makes
-    // the whole `color-mix()` invalid, and an invalid value drops the declaration silently, so
-    // the overlay renders with no background at all.
-    background: color-mix(in srgb, var(--trinity-chat) 82%, transparent);
+    // message list paints itself with. The Theme authors the translucent stop explicitly so a
+    // changing workspace colour cannot alter this state at runtime.
+    background: var(--trinity-surface-drop-overlay);
   }
 
   // The dashed frame spans the whole droppable area rather than boxing a label in the middle:

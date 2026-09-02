@@ -56,11 +56,7 @@
   // A failed row has to be tellable from a pending one at a glance; the tint is the cue, and
   // the "Not sent" text is what carries it to a screen reader and past a colour deficiency.
   .composer__pending--failed {
-    background: color-mix(
-      in srgb,
-      var(--trinity-danger) 12%,
-      var(--trinity-surface-raised)
-    );
+    background: var(--trinity-danger-tint-10);
   }
 
   .composer__pending-failed {

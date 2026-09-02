@@ -128,13 +128,13 @@
   }
 
   .pill.add {
-    color: var(--trinity-green);
+    color: var(--trinity-success);
     font-weight: 400;
   }
 
   .pill.add:hover {
-    background: var(--trinity-green);
-    color: var(--trinity-text-bright);
+    background: var(--trinity-success-solid);
+    color: var(--trinity-success-solid-foreground);
   }
 
   // Home + Rooms pills: accent-filled on hover and while their view is active

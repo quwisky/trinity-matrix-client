@@ -84,7 +84,7 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
     borderLeftColor: 'var(--trinity-danger)',
   },
   '.cm-diagnostic-warning': {
-    borderLeftColor: 'var(--trinity-status-warning-surface)',
+    borderLeftColor: 'var(--trinity-warning)',
   },
   '.cm-lintRange-error': {
     background:
@@ -92,13 +92,13 @@ const TRINITY_CONFIG_EDITOR_THEME = EditorView.theme({
   },
   '.cm-lintRange-warning': {
     background:
-      'linear-gradient(var(--trinity-status-warning-surface), var(--trinity-status-warning-surface)) 0 100% / 100% 2px no-repeat',
+      'linear-gradient(var(--trinity-warning), var(--trinity-warning)) 0 100% / 100% 2px no-repeat',
   },
   '.cm-lint-marker-error': {
     color: 'var(--trinity-danger)',
   },
   '.cm-lint-marker-warning': {
-    color: 'var(--trinity-status-warning-surface)',
+    color: 'var(--trinity-warning)',
   },
   '.cm-tooltip': {
     background: 'var(--trinity-surface-card)',

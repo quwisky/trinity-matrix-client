@@ -112,9 +112,6 @@ describe('trinity design tokens', () => {
       '--trinity-surface-raised': '--trinity-surface',
       '--trinity-surface-floating': '--trinity-sidebar',
       '--trinity-surface-panel': '--trinity-members',
-      '--trinity-state-hover-surface': '--trinity-hover',
-      '--trinity-state-pressed-surface': '--trinity-active',
-      '--trinity-status-neutral-surface': '--trinity-active',
       '--trinity-focus-ring': '--trinity-link',
       '--trinity-focus-ring-on-attention':
         '--trinity-state-attention-foreground',

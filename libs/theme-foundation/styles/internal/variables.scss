@@ -120,7 +120,7 @@
     --trinity-scrollbar-size: 8px;
     --trinity-scrollbar-radius: var(--trinity-radius-sm);
     --trinity-scrollbar-thumb: var(--trinity-rail);
-    --trinity-scrollbar-track: transparent;
+    --trinity-scrollbar-track: oklch(0% 0 0deg / 0%);
 
     // Component-density roles. Compact mode re-cuts their source spacing steps below; the
     // physical control size is separately reduced only for pointer-precise desktop layouts.
@@ -141,19 +141,19 @@
     --trinity-density-composer-action-size: 40px;
 
     // --- Elevation ----------------------------------------------------------------
-    // Overridden per mode: a shadow that reads on white is invisible on #313338, which
-    // is why the dark block below raises the alpha rather than reusing these.
-    --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 8%);
-    --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 12%);
-    --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 18%);
-    --trinity-camera-scrim: rgb(0 0 0 / 35%);
+    // Overridden per mode: a shadow tuned for the light canvas carries too little weight on
+    // the dark neutral ramp, which is why the dark block raises the alpha.
+    --trinity-shadow-raised: 0 1px 2px oklch(0% 0 0deg / 8%);
+    --trinity-shadow-floating: 0 4px 12px oklch(0% 0 0deg / 12%);
+    --trinity-shadow-overlay: 0 12px 32px oklch(0% 0 0deg / 18%);
+    --trinity-camera-scrim: oklch(0% 0 0deg / 35%);
 
     // QR modules require a stable light quiet zone regardless of Mode or Theme.
-    --trinity-qr-surface: #fff;
+    --trinity-qr-surface: oklch(100% 0 0deg);
 
     // Video letterboxing is protocol media, not application chrome. Keep the matte neutral and
     // Theme-invariant so media with a different aspect ratio never inherits a branded surface.
-    --trinity-media-matte: #000;
+    --trinity-media-matte: oklch(0% 0 0deg);
 
     // --- Z-index layers -----------------------------------------------------------
     // Named because the bare numbers in the tree (5, 20, 30, 40) carry no relation to
@@ -206,112 +206,77 @@
     --trinity-tooltip-surface: var(--trinity-control-foreground);
     --trinity-tooltip-foreground: var(--trinity-surface-canvas);
 
-    // --- Trinity brand (constant across Modes in this Theme) ----------------------
-    --trinity-accent: #5865f2; // blurple — a FILL. Not readable as text; see --trinity-link.
-    --trinity-accent-hover: #4752c4;
+    // --- Trinity accent ------------------------------------------------------------
+    // One indigo family, deliberately authored in sRGB-safe OKLCH. Fill, hover and readable
+    // text are separate stops; mechanically darkening one hex value cannot satisfy all three
+    // roles across the neutral ramp.
+    --trinity-accent: oklch(55% 0.22 275deg);
+    --trinity-accent-hover: oklch(49% 0.2 275deg);
 
-    // Accent-coloured TEXT, split from the fill because the two cannot be the same colour and
-    // both clear AA: blurple on the light row grounds is 3.19:1. Every `color:` that used to
-    // read the accent reads this instead; borders and fills still use the accent.
-    --trinity-link: #3f49b8; // 5.09:1 on the worst light surface (--trinity-active)
+    // Accent-coloured text is darker than the fill so it clears AA on every light interaction
+    // surface. Borders and fills keep using the accent stop.
+    --trinity-link: oklch(47% 0.19 275deg);
 
     // Readable text/icon colour on an accent fill. The private Helm adapter maps its
     // on-primary token outward from the same Trinity semantic role.
     // A light-accent Theme (e.g. Amethyst dark) gets dark on-accent text, not unreadable white.
-    --trinity-accent-foreground: hsl(0deg 0% 100%);
-    --trinity-green: #23a55a;
+    --trinity-accent-foreground: oklch(99% 0.004 265deg);
+    --trinity-accent-tint-20: oklch(94% 0.025 275deg);
+    --trinity-accent-tint-30: oklch(91% 0.04 275deg);
 
-    // On-green text/icon — mirrors the accent pairing so a Theme that lightens
-    // --trinity-green can darken this too. White on #23a55a is 3.18:1: it passes AA only
-    // as large text, which is what the sole consumer is (a 32px aria-hidden checkmark).
-    --trinity-green-foreground: var(--trinity-accent-foreground);
+    // Conventional status families share one structure: a readable text/icon stop and a
+    // separately paired solid fill. Success used to expose one green for both jobs, leaving
+    // small badge text below AA; the split makes the two contrast obligations independent.
+    --trinity-success: oklch(43% 0.12 148deg);
+    --trinity-success-solid: oklch(56% 0.145 148deg);
+    --trinity-success-solid-foreground: oklch(0% 0 0deg);
+    --trinity-success-tint-20: oklch(95% 0.025 148deg);
+    --trinity-warning: oklch(43% 0.09 75deg);
+    --trinity-warning-solid: oklch(57% 0.11 75deg);
+    --trinity-warning-solid-foreground: oklch(0% 0 0deg);
+    --trinity-warning-tint-10: oklch(96% 0.015 75deg);
+    --trinity-danger: oklch(47% 0.18 25deg);
+    --trinity-danger-solid: oklch(55% 0.2 25deg);
+    --trinity-danger-solid-foreground: oklch(99% 0.004 265deg);
 
-    // Danger splits into two roles because one colour cannot serve both in dark mode.
-    //   --trinity-danger              — alert TEXT/ICONS drawn straight on a surface.
-    //   --trinity-danger-solid (+ -foreground) — a FILLED badge and the text on it.
-    // Deliberately NOT aliased to --destructive: shadcn treats that as a fill-only token
-    // (paired with near-white --destructive-foreground for Helm's destructive buttons) and
-    // in dark it is a near-black maroon, #7f1d1d — 1.26:1 as text on --trinity-chat, i.e.
-    // invisible. The values below are measured instead, against the WORST backdrop the role
-    // lands on. One of those is easy to miss: --trinity-hover, since a row that recolours on
-    // :hover is where a danger label is usually read. #bf1e24 clears 4.5:1 on
-    // --trinity-chat/-sidebar/-rail/-hover in both Themes — worst case 4.83:1, on the rail.
-    // NOT swept: --trinity-active, the selected-row tone, where it is only 4.11–4.25:1 — no
-    // danger text lands on a selected row today, so do not put one there without re-measuring.
-    // This sweep covers the token drawn straight on a surface. It does NOT cover the
-    // translucent `bg-destructive/10..30` tint Helm paints under its own destructive text:
-    // being translucent, that tint takes whatever surface it lands on, so the same button
-    // measured 5.37:1 over a card and 4.28:1 at rest over the rail. A colour cannot fix that,
-    // and it is not fixed here — the tint is pinned opaque instead; see --trinity-danger-tint-10.
-    // The fill only owes 3:1 as a graphic, so it keeps the brighter #d92b31 — 4.02:1
-    // against hover, 4.36:1 against the sidebar — with #fff on it at 4.84:1.
-    --trinity-danger: #bf1e24;
-    --trinity-danger-solid: #d92b31;
-    --trinity-danger-solid-foreground: #fff;
+    // Helm emits three destructive tint strengths. They stay opaque so the contrast does not
+    // change with the surface below, but each is now an authored Theme stop rather than a
+    // runtime color-mix whose result depends on two independently changing tokens.
+    --trinity-danger-tint-10: oklch(96% 0.012 25deg);
+    --trinity-danger-tint-20: oklch(93% 0.024 25deg);
+    --trinity-danger-tint-30: oklch(90% 0.036 25deg);
 
-    // The backdrop under Helm's destructive buttons, badges and menu items. OPAQUE, mixed
-    // over --card, because the generated `bg-destructive/10..30` is translucent and so takes
-    // whatever it is placed on: the same button measured 5.37:1 on a card and 4.28:1 on the
-    // rail, where the surface is already dark enough that the tint pushed the label under AA.
-    // Pinning the mix means a destructive control reads identically wherever it sits.
-    // Named by PERCENTAGE, not by role. Helm's strengths are per-component rather than
-    // per-state — a button lifts /10 to /20 on hover in light and /20 to /30 in dark, while a
-    // menu item and a badge stay put — so a rest/hover pair would have to be re-decided for
-    // every selector, and getting it wrong is invisible. This way each override maps to the
-    // number it literally declares. See the private Tailwind adapter.
-    // `in srgb`, NOT `in oklab`, and that is the point rather than a detail: mixing a colour
-    // with `transparent` yields that colour at N% alpha, which the browser then composites in
-    // gamma-encoded sRGB. An sRGB mix over --card therefore reproduces today's pixels exactly
-    // — #fdecec / #fcdada / #fac7c7 light, #332b2f / #3c2a2d / #44282b dark — where oklab
-    // lands somewhere perceptually even but visibly different, and drops the dark ratios by
-    // about 0.2. Matches the existing precedent in media-bubble.component.scss.
-    // No dark override: --destructive and --card are both mode-aware, so one definition
-    // serves both modes and there is nothing to keep in step.
-    --trinity-danger-tint-10: color-mix(
-      in srgb,
-      var(--trinity-status-danger-surface) 10%,
-      var(--trinity-surface-card)
-    );
-    --trinity-danger-tint-20: color-mix(
-      in srgb,
-      var(--trinity-status-danger-surface) 20%,
-      var(--trinity-surface-card)
-    );
-    --trinity-danger-tint-30: color-mix(
-      in srgb,
-      var(--trinity-status-danger-surface) 30%,
-      var(--trinity-surface-card)
-    );
+    // The drag surface intentionally remains translucent so the destination stays visible.
+    // Its coordinates are authored directly rather than mixed from a changing workspace token.
+    --trinity-surface-drop-overlay: oklch(99% 0.004 265deg / 82%);
 
     // --- Syntax highlighting ------------------------------------------------------
     // Consumed only by rendered-markdown.scss, on the `tok-*` classes the sanitizer's
     // highlighter emits inside `pre > code`. Eight roles, matching TOKEN_ROLES in
     // libs/feature/rooms/src/lib/message-presentation/code-highlight.ts — keep the lists in step.
-    // Measured against --trinity-rail, which is the `pre` background in BOTH Themes:
-    // #e3e5e8 (default light) and #e7e2f0 (amethyst light). Every value below clears
-    // 4.5:1 on both — worst case 4.61:1 — so a Theme inherits these rather than
-    // restating them. Re-measure before adding a Theme whose rail departs from these
-    // tones. One Light hues, darkened until they passed: the published values sit
-    // around 2.5–3.8:1 here and are not usable as body text.
+    // The One Light-derived hues remain independently legible on every light rail. Their
+    // OKLCH coordinates are sRGB-safe, so a browser never has to gamut-map them differently.
     --trinity-syntax-plain: var(--trinity-text);
-    --trinity-syntax-keyword: #a626a4; // 4.81:1
-    --trinity-syntax-string: #387137; // 4.61:1
-    --trinity-syntax-number: #935601; // 4.63:1
-    --trinity-syntax-comment: #5d656e; // 4.65:1
-    --trinity-syntax-function: #1055ec; // 4.68:1
-    --trinity-syntax-type: #875c01; // 4.64:1
-    --trinity-syntax-variable: #bf2a1c; // 4.64:1
+    --trinity-syntax-keyword: oklch(52.36% 0.2108 328.78deg);
+    --trinity-syntax-string: oklch(48.5% 0.105 143.42deg);
+    --trinity-syntax-number: oklch(50.2% 0.112 64.46deg);
+    --trinity-syntax-comment: oklch(50.3% 0.0174 251.3deg);
+    --trinity-syntax-function: oklch(51.68% 0.2355 262.83deg);
+    --trinity-syntax-type: oklch(50.81% 0.1057 76.99deg);
+    --trinity-syntax-variable: oklch(52.63% 0.187 29.93deg);
     --trinity-syntax-punctuation: var(--trinity-text-muted);
 
     // --- Trinity surfaces (lightest → most-recessed) ------------------------------
-    --trinity-rail: #e3e5e8; // server rail
-    --trinity-sidebar: #f2f3f5; // channel + member columns
-    --trinity-sidebar-header: #ebedef;
-    --trinity-chat: #fff; // main content
+    // A cool-neutral family at 265deg. Lightness carries the hierarchy; chroma stays low
+    // enough that the surfaces read as neutral beside the indigo accent.
+    --trinity-rail: oklch(91% 0.014 265deg);
+    --trinity-sidebar: oklch(96.5% 0.008 265deg);
+    --trinity-sidebar-header: oklch(94.5% 0.01 265deg);
+    --trinity-chat: oklch(99% 0.004 265deg);
     --trinity-members: var(--trinity-sidebar);
-    --trinity-hover: #e9eaec; // row hover
-    --trinity-active: #d4d7dc; // selected row
-    --trinity-divider: #e0e1e4;
+    --trinity-hover: oklch(93.5% 0.012 265deg);
+    --trinity-active: oklch(88% 0.024 265deg);
+    --trinity-divider: oklch(89.5% 0.014 265deg);
 
     // Elevated surface for floating controls (e.g. the jump-to-latest pill); follows
     // the sidebar tone in both modes.
@@ -329,57 +294,59 @@
     --trinity-border-subtle: var(--trinity-divider);
     --trinity-border-strong: var(--trinity-active);
 
-    // Interaction-state contract. A state always carries both surface and foreground even when
-    // today's pair aliases another role; that keeps future Theme tuning atomic. Focus uses the
-    // measured text-link colour rather than the accent fill, which falls below 3:1 on some dark
-    // interactive grounds. scripts/contrast-matrix.spec.mjs enforces the non-text threshold.
-    --trinity-state-hover-surface: var(--trinity-hover);
+    // Each state carries a paired surface and foreground. Trinity authors distinct hover,
+    // pressed, selected and selected-hover stops; no browser-side mixing derives interaction
+    // paint. Named Themes keep their current aliases until their dedicated redesign tickets.
+    --trinity-state-hover-surface: oklch(93.5% 0.012 265deg);
     --trinity-state-hover-foreground: var(--trinity-text-bright);
-    --trinity-state-pressed-surface: var(--trinity-active);
+    --trinity-state-pressed-surface: oklch(86.5% 0.03 265deg);
     --trinity-state-pressed-foreground: var(--trinity-text-bright);
-    --trinity-state-selected-surface: var(--trinity-active);
+    --trinity-state-selected-surface: oklch(88% 0.024 265deg);
     --trinity-state-selected-foreground: var(--trinity-text-bright);
-    --trinity-state-selected-hover-surface: var(--trinity-active);
+    --trinity-state-selected-hover-surface: oklch(84.5% 0.032 265deg);
     --trinity-state-selected-hover-foreground: var(--trinity-text-bright);
     --trinity-state-attention-surface: var(--trinity-accent);
     --trinity-state-attention-foreground: var(--trinity-accent-foreground);
-    --trinity-status-neutral-surface: var(--trinity-active);
-    --trinity-status-neutral-foreground: var(--trinity-text);
+    --trinity-status-neutral-surface: oklch(88% 0.024 265deg);
+    --trinity-status-neutral-foreground: oklch(30% 0.018 265deg);
     --trinity-focus-ring: var(--trinity-link);
     --trinity-focus-ring-on-attention: var(
       --trinity-state-attention-foreground
     );
-    --trinity-focus-ring-halo: #000;
+    --trinity-focus-ring-halo: oklch(0% 0 0deg);
     --trinity-focus-ring-width: 2px;
     --trinity-focus-ring-offset: 2px;
     --trinity-disabled-opacity: 0.48;
 
     // --- Trinity text -------------------------------------------------------------
-    --trinity-text: #313338;
-    --trinity-text-muted: #5b5d65; // 4.55:1 on --trinity-active (was #5c5e66, 4.48:1)
-    --trinity-text-bright: #060607;
+    --trinity-text: oklch(30% 0.018 265deg);
+    --trinity-text-muted: oklch(43% 0.018 265deg);
+    --trinity-text-bright: oklch(16% 0.014 265deg);
 
     // --- Semantic control roles (light) ------------------------------------------
     // Theme authors own these values. Vendor names are mapped only in the private adapter
     // below, so a Theme never needs to understand Helm or Tailwind component vocabulary.
-    --trinity-surface-canvas: var(--trinity-chat); // #fff
+    --trinity-surface-canvas: var(--trinity-chat);
     --trinity-surface-card: var(--trinity-chat);
     --trinity-surface-popover: var(--trinity-chat);
-    --trinity-surface-control: hsl(240deg 4.8% 95.9%);
-    --trinity-control-foreground: hsl(240deg 10% 3.9%);
-    --trinity-control-secondary-foreground: hsl(240deg 5.9% 10%);
-    --trinity-control-accent-foreground: hsl(240deg 5.9% 10%);
-    --trinity-control-muted-foreground: hsl(
-      240deg 3.8% 38%
-    ); // 4.52:1 on the lightest row ground (was 3.35:1)
-
-    --trinity-border-control: hsl(240deg 5.9% 90%);
-    --trinity-status-danger-surface: hsl(0deg 84.2% 60.2%);
-    --trinity-status-danger-surface-foreground: hsl(0deg 0% 98%);
-    --trinity-status-success-surface: hsl(145deg 63% 42%);
-    --trinity-status-success-surface-foreground: hsl(0deg 0% 100%);
-    --trinity-status-warning-surface: hsl(38deg 92% 50%);
-    --trinity-status-warning-surface-foreground: hsl(20deg 14% 4%);
+    --trinity-surface-control: oklch(95% 0.008 265deg);
+    --trinity-control-foreground: oklch(20% 0.016 265deg);
+    --trinity-control-secondary-foreground: var(--trinity-control-foreground);
+    --trinity-control-accent-foreground: var(--trinity-control-foreground);
+    --trinity-control-muted-foreground: oklch(43% 0.018 265deg);
+    --trinity-border-control: oklch(89% 0.014 265deg);
+    --trinity-status-danger-surface: var(--trinity-danger-solid);
+    --trinity-status-danger-surface-foreground: var(
+      --trinity-danger-solid-foreground
+    );
+    --trinity-status-success-surface: var(--trinity-success-solid);
+    --trinity-status-success-surface-foreground: var(
+      --trinity-success-solid-foreground
+    );
+    --trinity-status-warning-surface: var(--trinity-warning-solid);
+    --trinity-status-warning-surface-foreground: var(
+      --trinity-warning-solid-foreground
+    );
 
     // --- Private Helm adapter -----------------------------------------------------
     // Product and Theme code consumes `--trinity-*`. These compatibility mappings are an
@@ -413,72 +380,82 @@
   // Default Theme — dark
   // -----------------------------------------------------------------------------
   :root.dark {
-    --trinity-focus-ring-halo: #fff;
+    --trinity-focus-ring-halo: oklch(100% 0 0deg);
 
-    // Syntax highlighting. Measured against the dark rails — #1e1f22 (default) and
-    // #1c1826 (amethyst) — where One Dark's published values clear 4.5:1 unchanged;
-    // worst case 5.16:1. `-plain`/`-punctuation` are var() references and follow the
-    // mode automatically, so they are not restated here.
-    --trinity-syntax-keyword: #c678dd; // 5.60:1
-    --trinity-syntax-string: #98c379; // 8.17:1
-    --trinity-syntax-number: #d19a66; // 6.69:1
-    --trinity-syntax-comment: #8b949e; // 5.36:1
-    --trinity-syntax-function: #61afef; // 6.97:1
-    --trinity-syntax-type: #e5c07b; // 9.54:1
-    --trinity-syntax-variable: #e06c75; // 5.16:1
+    // One Dark-derived syntax colours, expressed as sRGB-safe OKLCH. Plain and punctuation
+    // remain aliases so they follow the text ramp automatically.
+    --trinity-syntax-keyword: oklch(69.36% 0.1633 318.21deg);
+    --trinity-syntax-string: oklch(76.83% 0.1101 133deg);
+    --trinity-syntax-number: oklch(72.73% 0.0947 63.82deg);
+    --trinity-syntax-comment: oklch(66.25% 0.0181 250.92deg);
+    --trinity-syntax-function: oklch(73.04% 0.1211 245.3deg);
+    --trinity-syntax-type: oklch(82.49% 0.0968 82.26deg);
+    --trinity-syntax-variable: oklch(67.09% 0.1446 17deg);
 
-    // Trinity surfaces
-    --trinity-rail: #1e1f22;
-    --trinity-sidebar: #2b2d31;
-    --trinity-sidebar-header: #232428;
-    --trinity-chat: #313338;
-    --trinity-hover: #35373c;
-    --trinity-active: #404249;
-    --trinity-divider: #1f2023;
+    // The same 265deg neutral family as light Mode, with enough lightness separation to keep
+    // frame, navigation, workspace and interaction states distinct without a grey wash.
+    --trinity-rail: oklch(18% 0.014 265deg);
+    --trinity-sidebar: oklch(24% 0.016 265deg);
+    --trinity-sidebar-header: oklch(21% 0.015 265deg);
+    --trinity-chat: oklch(28% 0.016 265deg);
+    --trinity-hover: oklch(32% 0.018 265deg);
+    --trinity-active: oklch(37% 0.03 265deg);
+    --trinity-divider: oklch(20% 0.014 265deg);
 
     // Trinity text
-    --trinity-text: #dbdee1;
+    --trinity-text: oklch(90% 0.012 265deg);
 
     // Shadows carry no weight on a dark ground at the light alphas, so dark raises them
     // and leans on a hairline highlight rather than trying to out-darken the surface.
-    --trinity-shadow-raised: 0 1px 2px rgb(0 0 0 / 30%);
-    --trinity-shadow-floating: 0 4px 12px rgb(0 0 0 / 40%);
-    --trinity-shadow-overlay: 0 12px 32px rgb(0 0 0 / 55%);
-    --trinity-camera-scrim: rgb(0 0 0 / 45%);
-    --trinity-text-muted: #aab0b7; // 4.59:1 on --trinity-active (was #949ba4, 3.57:1)
-    --trinity-link: #a4abf8; // 4.66:1 on the worst dark surface (blurple was 2.18:1)
-    --trinity-text-bright: #f2f3f5;
+    --trinity-shadow-raised: 0 1px 2px oklch(0% 0 0deg / 30%);
+    --trinity-shadow-floating: 0 4px 12px oklch(0% 0 0deg / 40%);
+    --trinity-shadow-overlay: 0 12px 32px oklch(0% 0 0deg / 55%);
+    --trinity-camera-scrim: oklch(0% 0 0deg / 45%);
+    --trinity-text-muted: oklch(74% 0.018 265deg);
+    --trinity-text-bright: oklch(97% 0.006 265deg);
 
-    // Danger, lightened for the dark canvas (see :root for why --destructive is not used).
-    // #fc8181 as text is 4.88:1 on --trinity-hover, the lightest surface it lands on, and
-    // 5.77:1 / 6.29:1 on chat / sidebar. The badge fill needs more saturation to stay
-    // distinct, so it keeps shadcn's *light* destructive red (#ef4444) — 3.67:1 against the
-    // sidebar, 4.38:1 against the rail — under near-black text at 4.62:1, rather than white,
-    // which would only reach 3.8:1.
-    --trinity-danger: #fc8181;
-    --trinity-danger-solid: #ef4444; // shadcn's *light* destructive red, reused as a fill
-    --trinity-danger-solid-foreground: #1a1a1a;
+    // Dark Mode lifts the indigo family rather than reusing the light fill. On-accent ink
+    // moves to a dark indigo neutral so the pair remains AA without desaturating the fill.
+    --trinity-accent: oklch(68% 0.145 275deg);
+    --trinity-accent-hover: oklch(62% 0.17 275deg);
+    --trinity-link: oklch(76% 0.105 275deg);
+    --trinity-accent-foreground: oklch(18% 0.025 275deg);
+    --trinity-accent-tint-20: oklch(34% 0.035 275deg);
+    --trinity-accent-tint-30: oklch(37% 0.06 275deg);
+    --trinity-success: oklch(78% 0.13 148deg);
+    --trinity-success-solid: oklch(68% 0.15 148deg);
+    --trinity-success-solid-foreground: oklch(17% 0.025 148deg);
+    --trinity-success-tint-20: oklch(31% 0.035 148deg);
+    --trinity-warning: oklch(82% 0.12 75deg);
+    --trinity-warning-solid: oklch(76% 0.14 75deg);
+    --trinity-warning-solid-foreground: oklch(18% 0.025 75deg);
+    --trinity-warning-tint-10: oklch(30% 0.025 75deg);
+    --trinity-danger: oklch(76% 0.11 25deg);
+    --trinity-danger-solid: oklch(66% 0.18 25deg);
+    --trinity-danger-solid-foreground: oklch(17% 0.025 25deg);
+    --trinity-danger-tint-10: oklch(30% 0.035 25deg);
+    --trinity-danger-tint-20: oklch(33% 0.055 25deg);
+    --trinity-danger-tint-30: oklch(36% 0.075 25deg);
+    --trinity-surface-drop-overlay: oklch(28% 0.016 265deg / 82%);
+    --trinity-state-hover-surface: oklch(32% 0.018 265deg);
+    --trinity-state-pressed-surface: oklch(39% 0.035 265deg);
+    --trinity-state-selected-surface: oklch(37% 0.03 265deg);
+    --trinity-state-selected-hover-surface: oklch(41% 0.038 265deg);
+    --trinity-status-neutral-surface: oklch(37% 0.03 265deg);
+    --trinity-status-neutral-foreground: oklch(90% 0.012 265deg);
 
     // Semantic control roles (dark). Elevated surfaces track the active Theme: cards and
     // popovers use navigation, while muted/secondary/accent use the hover surface.
-    --trinity-surface-canvas: hsl(240deg 10% 3.9%);
-    --trinity-control-foreground: hsl(0deg 0% 98%);
+    --trinity-control-foreground: oklch(97% 0.006 265deg);
     --trinity-control-secondary-foreground: var(--trinity-control-foreground);
     --trinity-control-accent-foreground: var(--trinity-control-foreground);
-    --trinity-surface-card: var(--trinity-sidebar); // #2b2d31
+    --trinity-surface-card: var(--trinity-sidebar);
     --trinity-surface-popover: var(--trinity-sidebar);
     --trinity-tooltip-surface: var(--trinity-surface-popover);
     --trinity-tooltip-foreground: var(--trinity-control-foreground);
-    --trinity-surface-control: var(--trinity-hover); // #35373c
-    --trinity-control-muted-foreground: hsl(
-      240deg 5% 70%
-    ); // 4.60:1 on --trinity-active (was 3.91:1)
-
-    --trinity-status-danger-surface: hsl(0deg 62.8% 30.6%);
-    --trinity-status-danger-surface-foreground: hsl(0deg 0% 98%);
-    --trinity-status-success-surface: hsl(145deg 58% 45%);
-    --trinity-status-success-surface-foreground: hsl(0deg 0% 100%);
-    --trinity-border-control: hsl(240deg 3.7% 15.9%);
+    --trinity-surface-control: oklch(32% 0.018 265deg);
+    --trinity-control-muted-foreground: oklch(74% 0.018 265deg);
+    --trinity-border-control: oklch(34% 0.02 265deg);
   }
 
   // =============================================================================
@@ -490,12 +467,12 @@
   :root[data-theme='amethyst']:not(.dark) {
     --trinity-accent: #7c3aed;
     --trinity-accent-hover: #6d28d9;
+    --trinity-accent-tint-20: #7c3aed33;
+    --trinity-accent-tint-30: #7c3aed4d;
 
-    // Violet-800, two steps down the same scale the accent is violet-600 of — the same
-    // derivation the default Theme makes when it darkens blurple to #3f49b8. Without it this
-    // block inherited the DEFAULT link, so amethyst light painted violet fills beside indigo
-    // text: `.settings__item--active` draws both on one row. 6.08:1 on --trinity-active
-    // #dccfef, the darkest ground this Theme puts text on.
+    // Violet-800 keeps Amethyst text distinct from its violet-600 fill. Without it this block
+    // inherits the Trinity indigo link, so `.settings__item--active` paints two unrelated hues
+    // on one row. The dedicated Amethyst redesign replaces these legacy coordinates later.
     --trinity-link: #5b21b6;
     --trinity-rail: #e7e2f0;
     --trinity-sidebar: #f4f1fa;
@@ -507,6 +484,12 @@
     --trinity-text: #2b2438;
     --trinity-text-muted: #5d5470; // 4.90:1 on --trinity-active (was #635a74, 4.38:1)
     --trinity-text-bright: #120a1e;
+    --trinity-state-hover-surface: var(--trinity-hover);
+    --trinity-state-pressed-surface: var(--trinity-active);
+    --trinity-state-selected-surface: var(--trinity-active);
+    --trinity-state-selected-hover-surface: var(--trinity-active);
+    --trinity-status-neutral-surface: var(--trinity-active);
+    --trinity-status-neutral-foreground: var(--trinity-text);
 
     // Control roles that differ from the complete default Theme.
     --trinity-control-foreground: hsl(260deg 22% 14%);
@@ -518,11 +501,14 @@
     ); // 4.77:1 on --trinity-active (was 3.84:1)
 
     --trinity-border-control: #e6ddf2;
+    --trinity-surface-drop-overlay: #fdfcffd1;
   }
 
   :root[data-theme='amethyst'].dark {
     --trinity-accent: #a78bfa; // lighter violet reads better on the dark canvas
     --trinity-accent-hover: #8b5cf6;
+    --trinity-accent-tint-20: #a78bfa33;
+    --trinity-accent-tint-30: #a78bfa4d;
     --trinity-link: #b9a3fc; // 5.32:1 on the worst amethyst-dark surface (was 4.23:1)
 
     // The light accent needs dark on-accent text: white would be 2.7:1 (fails WCAG AA);
@@ -538,6 +524,12 @@
     --trinity-text: #ddd8e6;
     --trinity-text-muted: #aaa3bd; // 4.76:1 on the worst amethyst-dark surface (was 4.22:1)
     --trinity-text-bright: #f5f2fa;
+    --trinity-state-hover-surface: var(--trinity-hover);
+    --trinity-state-pressed-surface: var(--trinity-active);
+    --trinity-state-selected-surface: var(--trinity-active);
+    --trinity-state-selected-hover-surface: var(--trinity-active);
+    --trinity-status-neutral-surface: var(--trinity-active);
+    --trinity-status-neutral-foreground: var(--trinity-text);
     --trinity-surface-canvas: hsl(260deg 20% 8%);
     --trinity-control-foreground: hsl(260deg 20% 96%);
     --trinity-control-muted-foreground: hsl(
@@ -545,13 +537,15 @@
     ); // 5.06:1 on the worst amethyst-dark ground
 
     --trinity-border-control: #322c42;
+    --trinity-surface-drop-overlay: #2b2735d1;
   }
 
   // -----------------------------------------------------------------------------
   // Onyx — an achromatic Theme; dark is AMOLED (a true-black rail)
   // -----------------------------------------------------------------------------
-  // Deliberately SURFACES ONLY. Every text role, the link, the danger colours, the accent and
-  // the whole syntax set are left unset and fall through to the `:root` / `:root.dark` defaults
+  // Deliberately authors surface colours only. Every text role, the link, the danger colours,
+  // the accent and the whole syntax set fall through to the `:root` / `:root.dark` defaults;
+  // the state declarations below only rebind semantic aliases to those Onyx surfaces
   // — which is the Theme contract doing its job, and the reason this Theme is worth
   // shipping: it is the proof that adding a theme is a data change. If it needed a component
   // edited, or a role redefined to stay legible, the token layer would be incomplete.
@@ -571,7 +565,14 @@
     --trinity-hover: #efeff1;
     --trinity-active: #dcdce0;
     --trinity-divider: #e4e4e6;
+    --trinity-state-hover-surface: var(--trinity-hover);
+    --trinity-state-pressed-surface: var(--trinity-active);
+    --trinity-state-selected-surface: var(--trinity-active);
+    --trinity-state-selected-hover-surface: var(--trinity-active);
+    --trinity-status-neutral-surface: var(--trinity-active);
+    --trinity-status-neutral-foreground: var(--trinity-text);
     --trinity-border-control: #e4e4e6;
+    --trinity-surface-drop-overlay: #ffffffd1;
   }
 
   :root[data-theme='onyx'].dark {
@@ -585,8 +586,15 @@
     --trinity-hover: #1c1c20;
     --trinity-active: #26262b;
     --trinity-divider: #1f1f24;
+    --trinity-state-hover-surface: var(--trinity-hover);
+    --trinity-state-pressed-surface: var(--trinity-active);
+    --trinity-state-selected-surface: var(--trinity-active);
+    --trinity-state-selected-hover-surface: var(--trinity-active);
+    --trinity-status-neutral-surface: var(--trinity-active);
+    --trinity-status-neutral-foreground: var(--trinity-text);
     --trinity-surface-canvas: #000;
     --trinity-border-control: #1f1f24;
+    --trinity-surface-drop-overlay: #141417d1;
   }
 
   // -----------------------------------------------------------------------------

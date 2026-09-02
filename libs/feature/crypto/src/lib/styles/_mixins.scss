@@ -76,11 +76,7 @@
   border: 1px solid var(--warning);
   border-inline-start-width: 4px;
   border-radius: var(--trinity-shape-container-radius);
-  background: color-mix(
-    in srgb,
-    var(--warning) 12%,
-    var(--trinity-surface-raised)
-  );
+  background: var(--trinity-warning-tint-10);
   color: var(--trinity-text-bright);
   font-size: var(--trinity-type-body-size);
   font-weight: 600;

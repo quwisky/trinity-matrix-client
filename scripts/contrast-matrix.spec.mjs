@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -73,7 +73,33 @@ const ROLES = [
   },
   {
     text: '--trinity-danger',
-    on: ['--trinity-chat', '--trinity-sidebar', '--trinity-hover'],
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-rail',
+      '--trinity-hover',
+      '--trinity-active',
+    ],
+  },
+  {
+    text: '--trinity-success',
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-rail',
+      '--trinity-hover',
+      '--trinity-active',
+    ],
+  },
+  {
+    text: '--trinity-warning',
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-rail',
+      '--trinity-hover',
+      '--trinity-active',
+    ],
   },
   // Accent-coloured text. Deliberately NOT `--trinity-accent`: that is a fill, and a fill and
   // a readable text colour cannot be the same value and both clear AA — blurple is 3.19:1 on
@@ -118,7 +144,7 @@ const ROLES = [
   },
 ];
 
-/** Focus is a non-text visual indicator, so WCAG's 3:1 component threshold applies. */
+/** Essential graphics and focus indicators use WCAG's 3:1 non-text threshold. */
 const NON_TEXT_ROLES = [
   {
     foreground: '--trinity-focus-ring',
@@ -137,6 +163,15 @@ const NON_TEXT_ROLES = [
     foreground: '--trinity-focus-ring-on-attention',
     on: ['--trinity-state-attention-surface'],
   },
+  ...[
+    '--trinity-state-attention-surface',
+    '--trinity-status-danger-surface',
+    '--trinity-status-success-surface',
+    '--trinity-status-warning-surface',
+  ].map((foreground) => ({
+    foreground,
+    on: ['--trinity-chat', '--trinity-sidebar', '--trinity-rail'],
+  })),
 ];
 
 /**
@@ -167,6 +202,9 @@ const HELM_ROLES = [
   { text: '--card-foreground', on: ['--card'] },
   { text: '--popover-foreground', on: ['--popover'] },
   { text: '--secondary-foreground', on: ['--secondary'] },
+  { text: '--destructive-foreground', on: ['--destructive'] },
+  { text: '--success-foreground', on: ['--success'] },
+  { text: '--warning-foreground', on: ['--warning'] },
 ];
 
 /** Syntax highlighting always renders on the code ground. */
@@ -261,12 +299,11 @@ function resolve(token, theme, mode, seen = new Set()) {
 /**
  * An opaque CSS colour -> [r, g, b], or null if this parser cannot measure it safely.
  *
- * Both notations in use are handled, and that is deliberate rather than incidental: half the
- * token system is authored in `hsl()` (`--foreground`, `--muted-foreground`, `--destructive`)
- * and the `--trinity-*` roles in hex. A parser that quietly returned null for one of them would
- * drop those pairs out of the matrix and still report a clean run — which is why what it cannot
- * parse is asserted below rather than filtered away. Alpha is fail-closed too: discarding it
- * would let transparent text or surfaces report the contrast of their invisible RGB channels.
+ * OKLCH, HSL, RGB and hex are all handled. Trinity now authors OKLCH while the named Themes keep
+ * legacy notation until their own redesign tickets; silently dropping either family would make
+ * the matrix report a false clean run. What cannot be parsed is asserted below rather than
+ * filtered away. Alpha is fail-closed too: discarding it would let transparent text or surfaces
+ * report the contrast of their invisible RGB channels.
  */
 function toRgb(value) {
   if (!value) return null;
@@ -303,6 +340,12 @@ function toRgb(value) {
     return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
   }
 
+  const oklch = parseOklch(text);
+  if (oklch) {
+    if (oklch.alpha !== 1 || !oklch.inSrgb) return null;
+    return oklch.srgb.map((channel) => Math.round(channel * 255));
+  }
+
   // `hsl(240deg 5% 64.9%)` and `hsl(240, 5%, 64.9%)`; `deg` and the commas are optional.
   const hsl = /^hsla?\(\s*([\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%/i.exec(
     text,
@@ -317,6 +360,56 @@ function toRgb(value) {
   }
 
   return null;
+}
+
+/** Parse one absolute OKLCH value and resolve it through the CSS Color 4 matrices. */
+function parseOklch(value) {
+  const match =
+    /^oklch\(\s*([\d.]+)(%)?\s+([\d.]+)\s+(-?[\d.]+)(?:deg)?(?:\s*\/\s*([\d.]+)(%)?)?\s*\)$/iu.exec(
+      value,
+    );
+  if (!match) return null;
+  const lightness = Number(match[1]) / (match[2] ? 100 : 1);
+  const chroma = Number(match[3]);
+  const hue = (Number(match[4]) * Math.PI) / 180;
+  const alpha = match[5] ? Number(match[5]) / (match[6] ? 100 : 1) : 1;
+  if (
+    ![lightness, chroma, hue, alpha].every(Number.isFinite) ||
+    lightness < 0 ||
+    lightness > 1 ||
+    chroma < 0 ||
+    alpha < 0 ||
+    alpha > 1
+  ) {
+    return null;
+  }
+
+  const a = chroma * Math.cos(hue);
+  const b = chroma * Math.sin(hue);
+  const lRoot = lightness + 0.3963377774 * a + 0.2158037573 * b;
+  const mRoot = lightness - 0.1055613458 * a - 0.0638541728 * b;
+  const sRoot = lightness - 0.0894841775 * a - 1.291485548 * b;
+  const l = lRoot ** 3;
+  const m = mRoot ** 3;
+  const s = sRoot ** 3;
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+  const epsilon = 0.000_001;
+  const inSrgb = linear.every(
+    (channel) => channel >= -epsilon && channel <= 1 + epsilon,
+  );
+  const encode = (channel) =>
+    channel <= 0.0031308
+      ? 12.92 * channel
+      : 1.055 * channel ** (1 / 2.4) - 0.055;
+  return {
+    alpha,
+    inSrgb,
+    srgb: linear.map((channel) => encode(Math.min(1, Math.max(0, channel)))),
+  };
 }
 
 /** The CSS Color spec's hsl-to-rgb, so the two notations agree to the rounded byte. */
@@ -405,6 +498,49 @@ function* nonTextPairs() {
 const measuredNonText = [...nonTextPairs()];
 
 describe('contrast matrix', () => {
+  it('keeps product state colours on governed Theme roles', () => {
+    const productStyles = globSync(
+      ['apps/trinity/src/**/*.scss', 'libs/feature/**/*.scss'],
+      { cwd: workspaceRoot },
+    );
+    const runtimeMixes = productStyles.filter((path) => {
+      const authoredSource = readFileSync(join(workspaceRoot, path), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//gu, '')
+        .replace(/\/\/.*$/gmu, '');
+      return /color-mix\s*\(/u.test(authoredSource);
+    });
+
+    expect(productStyles.length).toBeGreaterThan(0);
+    expect(runtimeMixes).toEqual([]);
+  });
+
+  it('keeps every authored Trinity colour in explicit sRGB-safe OKLCH', () => {
+    const trinityBlocks = blocks.filter(({ selector }) =>
+      [':root', ':root.dark'].includes(selector),
+    );
+    const legacy = [];
+    const outOfGamut = [];
+    let authoredColours = 0;
+    for (const { selector, tokens } of trinityBlocks) {
+      for (const [token, value] of tokens) {
+        if (/#|(?:rgb|hsl|color-mix)\s*\(|\btransparent\b/iu.test(value)) {
+          legacy.push(`${selector}: ${token} = ${value}`);
+        }
+        for (const match of value.matchAll(/oklch\([^)]*\)/giu)) {
+          authoredColours += 1;
+          const colour = parseOklch(match[0]);
+          if (!colour?.inSrgb) {
+            outOfGamut.push(`${selector}: ${token} = ${match[0]}`);
+          }
+        }
+      }
+    }
+
+    expect(authoredColours).toBeGreaterThan(50);
+    expect(legacy).toEqual([]);
+    expect(outOfGamut).toEqual([]);
+  });
+
   it('measures something, so an empty matrix cannot pass as a clean one', () => {
     // A parser change that stopped matching the theme blocks would otherwise report every
     // combination compliant.
@@ -423,6 +559,8 @@ describe('contrast matrix', () => {
     expect(toRgb('rgb(0 0 0 / 1e-1)')).toBeNull();
     expect(toRgb('rgba(255, 255, 255, 50%)')).toBeNull();
     expect(toRgb('hsl(240deg 5% 10% / 1)')).toEqual(hslToRgb(240, 0.05, 0.1));
+    expect(toRgb('oklch(0.5 0.5 0)')).toBeNull();
+    expect(toRgb('oklch(0.5 0.1 240 / 0.5)')).toBeNull();
   });
 
   it('can actually measure every role it was given', () => {
@@ -479,7 +617,7 @@ describe('contrast matrix', () => {
     expect(failures).toEqual([]);
   });
 
-  it('keeps the focus indicator above the non-text contrast floor on every surface', () => {
+  it('keeps essential graphics and focus above the non-text contrast floor', () => {
     expect(measuredNonText.length).toBe(
       themes.length *
         2 *

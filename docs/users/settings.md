@@ -75,7 +75,7 @@ normal arrow-key and screen-reader behavior. The page states which one is curren
 matters when you have chosen "system".
 
 **Theme.** The visual token set, independent of light and dark. Three ship: Trinity
-(blurple), Amethyst (violet), and Onyx (neutral, with true black in dark Mode). Mode and Theme are
+(indigo), Amethyst (violet), and Onyx (neutral, with true black in dark Mode). Mode and Theme are
 genuinely orthogonal — each Theme defines both a light and a dark set. A choice appears only after
 it is saved; if saving fails, the previous choice remains visible with Retry beside the control.
 

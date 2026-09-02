@@ -13,6 +13,8 @@
 # Resolved, that query is exactly the set below — the build warns on any browser configured
 # here that falls outside it. Re-resolve and re-check after an Angular major upgrade:
 #   node -e "console.log(require('browserslist')('baseline widely available on <BASELINE_DATE>').join('\n'))"
+# Firefox first shipped OKLCH in 113 (Firefox Android mirrors it). The Angular 22.1 floor of
+# 119 is stricter, so the authored OKLCH palette needs no fallback syntax.
 #
 # The Android entries are not redundant: browserslist treats `and_chr`/`and_ff` as separate
 # from desktop Chrome/Firefox, so without them the Android WebView Trinity ships through

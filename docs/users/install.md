@@ -45,11 +45,11 @@ policy:
 
 | Browser               | Minimum |
 | --------------------- | ------- |
-| Chrome and Edge       | 111     |
-| Chrome for Android    | 111     |
-| Firefox               | 112     |
-| Firefox for Android   | 112     |
-| Safari and iOS Safari | 16.4    |
+| Chrome and Edge       | 119     |
+| Chrome for Android    | 119     |
+| Firefox               | 119     |
+| Firefox for Android   | 119     |
+| Safari and iOS Safari | 17      |
 
 Anything older is outside the compiled output's target set and is not expected to work.
 

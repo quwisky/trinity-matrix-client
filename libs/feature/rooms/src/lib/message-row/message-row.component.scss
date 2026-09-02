@@ -61,7 +61,7 @@
 
   @keyframes msg-flash {
     from {
-      background: color-mix(in srgb, var(--trinity-accent) 28%, transparent);
+      background: var(--trinity-accent-tint-30);
     }
 
     to {

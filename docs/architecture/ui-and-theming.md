@@ -744,18 +744,17 @@ hand-authored component SCSS.
 | Group               | Tokens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Surface primitives  | Theme values: `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`, `--trinity-hover`, `--trinity-active`, `--trinity-divider`, `--trinity-surface`. Existing consumers keep working while feature phases migrate.                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Semantic surfaces   | Component-facing aliases: `--trinity-surface-frame`, `-navigation`, `-navigation-header`, `-workspace`, `-panel`, `-raised`, `-floating`; `--trinity-border-subtle` / `-strong`. These point inward to the Theme primitives, never the other way round.                                                                                                                                                                                                                                                                                                                                                                                              |
+| Semantic surfaces   | Component-facing aliases: `--trinity-surface-frame`, `-navigation`, `-navigation-header`, `-workspace`, `-panel`, `-raised`, `-floating`, and the translucent `-drop-overlay`; `--trinity-border-subtle` / `-strong`. These point inward to the Theme primitives, never the other way round.                                                                                                                                                                                                                                                                                                                                                         |
 | Interaction states  | Paired `--trinity-state-{hover,pressed,selected,selected-hover,attention}-{surface,foreground}` roles, plus the paired `--trinity-status-neutral-*` recipe, `--trinity-focus-ring` / `-on-attention` / `-halo` / `-width` / `-offset`, and `--trinity-disabled-opacity`. A state is a pair so Theme tuning cannot change its fill without its ink.                                                                                                                                                                                                                                                                                                   |
 | Text                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Brand               | `--trinity-accent`, `--trinity-accent-foreground`, `--trinity-green`, `--trinity-green-foreground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| Link                | `--trinity-link` — accent-coloured **text**. Split from `--trinity-accent`, which is a fill: a fill and a readable text colour cannot be the same value and both clear AA (blurple is 3.19:1 on the light row grounds). Every `color:` that reads as accent uses this; borders and backgrounds use the accent.                                                                                                                                                                                                                                                                                                                                       |
-| Danger              | `--trinity-danger`, `--trinity-danger-solid`, `--trinity-danger-solid-foreground`, and the opaque `--trinity-danger-tint-{10,20,30}` ramp                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Accent              | `--trinity-accent`, `--trinity-accent-hover`, `--trinity-accent-foreground`, `--trinity-accent-tint-{20,30}` and `--trinity-link`. Link is the readable text stop; accent is the fill stop, so text never relies on a fill colour meeting AA.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Status              | Readable text/icon roles `--trinity-{success,warning,danger}`; paired fill roles `--trinity-{success,warning,danger}-solid` / `-solid-foreground`; and authored `--trinity-success-tint-20`, `--trinity-warning-tint-10` and `--trinity-danger-tint-{10,20,30}` stops. The `--trinity-status-*-surface` compatibility vocabulary aliases the corresponding solid pair.                                                                                                                                                                                                                                                                               |
 | Radii               | Measurement scale: `--trinity-radius` (8px), `-sm` (4px), `-md` (6px), `-xl` (12px), `-pill` (9999px). Component roles: `--trinity-shape-control-radius`, `-container-radius`, `-overlay-radius`. Identity roles: `--trinity-shape-person-radius` (circle) and `--trinity-shape-place-radius` (squircle).                                                                                                                                                                                                                                                                                                                                            |
 | Syntax              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | Typography          | Measurement scale: `--trinity-text-xs` / `-sm` / `-base` / `-md` / `-lg`, each with matching leading. Semantic `--trinity-type-{caption,metadata,body,message,control,title}-{size,line-height,weight}` roles keep the three decisions together; metadata also exposes tabular-number treatment. The message role is 1rem with 1.5 leading, while smaller conversation chrome stays on the compact roles. Sizes remain in `rem`, so Appearance → Text size scales them.                                                                                                                                                                              |
 | Spacing and density | `--trinity-space-1`…`-7` — a 4px rhythm (2, 4, 8, 12, 16, 24, 32). Shared components consume `--trinity-density-item-gap`, `-row-gap`, `-row-padding-*` and `-control-size`; the room shell adds `-shell-gap`, `-shell-padding-inline` and `-channel-padding-block`, while the conversation adds `-message-column-gap` and `-composer-{padding-inline,field-gap,field-inset,action-size}`. Compact re-cuts these while `--trinity-interaction-target-min-size` enforces the global 44px coarse-pointer floor. Member rows and role headers deliberately do not use vertical density roles: their fixed 44px/34px boxes are inputs to virtualization. |
 | Scrollbars          | `--trinity-scrollbar-size`, `-radius`, `-thumb` and `-track` apply the former room-container treatment to every visible vertical and horizontal scrollbar. The thumb aliases the active Theme's `--trinity-rail`; Blink/WebKit use the fixed 8px rounded geometry, while Firefox shares the rail colour with its platform-defined `thin` geometry.                                                                                                                                                                                                                                                                                                   |
-| Elevation           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode: a shadow tuned for white is invisible on `#313338`, so dark raises the alpha.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Elevation           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode because the dark neutral ramp needs stronger alpha than the light canvas.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Protocol media      | `--trinity-qr-surface` is the Theme-invariant light quiet zone around QR modules; `--trinity-media-matte` is the invariant neutral letterbox behind video. Neither is a general card/background role.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40), plus `-feedback` (10000) for the transient unavailable-action reason that must remain visible above a CDK dialog. **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits at 1000.                                                                                                                                                                                                                                                                                                                    |
 | Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
@@ -790,24 +789,48 @@ Theme only has to set the value once:
 --input: var(--border);
 ```
 
-The opaque focus role deliberately resolves to the measured link colour rather than the accent
-fill. The fill drops below the 3:1 non-text threshold on some dark interactive surfaces. Attention
-surfaces override it with `--trinity-focus-ring-on-attention`, whose value is paired to that fill.
+The opaque focus role deliberately resolves to the measured link colour rather than coupling its
+contract to an accent fill. Attention surfaces override it with
+`--trinity-focus-ring-on-attention`, whose value is paired to that fill.
 Helm controls draw a 50%-alpha halo, so `--trinity-focus-ring-halo` supplies black in light mode and
 white in dark mode; the browser suite measures the composited halo rather than trusting its source
 colour. Every focus recipe is checked against its semantic surface across all Themes and Modes.
 
 Mode-invariant bindings are declared once in the base `:root` block. Three Themes ship:
-`trinity` (blurple `#5865f2`), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED
-true black).
+`trinity` (indigo), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED true black).
 
-`onyx` is worth reading as the worked example of the contract: it overrides **surfaces only**.
-Every text role, the link, the danger colours, the accent and the whole syntax set are left
-unset and fall through to the `:root` / `:root.dark` defaults — and `contrast-matrix.spec.mjs`
+`onyx` is worth reading as the worked example of the contract: it authors **surface colours
+only**. Its state roles explicitly rebind semantic aliases to those surfaces; every text role,
+the link, the danger colours, the accent and the whole syntax set remain inherited from the
+`:root` / `:root.dark` defaults — and `contrast-matrix.spec.mjs`
 picks the Theme up automatically and proves those inherited values still clear AA against the
 new grounds, which is exactly where an inherited colour is most likely to stop working. A
 Theme that needed a component edited, or a role redefined to stay legible, would be telling
 you the token layer is incomplete.
+
+### Trinity's sRGB OKLCH Theme colours
+
+Every colour authored directly by the Trinity Theme uses absolute `oklch()` coordinates that
+resolve inside the sRGB gamut. This is deliberate: browsers still differ in how they map
+out-of-gamut OKLCH, and a contrast claim is only portable when no browser has to clip or remap the
+source colour. `contrast-matrix.spec.mjs` rejects legacy colour notation, runtime `color-mix()`
+inside the Trinity Theme, invalid coordinates, and any OKLCH value outside sRGB.
+
+The families are coordinated by role rather than converted mechanically from the previous hex
+values:
+
+| Family              | Light Mode                                                                                              | Dark Mode                                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Cool neutral 265deg | Near-white surfaces descend to distinct hover, selected and pressed stops.                              | The same hue ascends from frame through workspace, hover, selected and pressed stops.           |
+| Indigo 275deg       | A mid-lightness accent fill, darker hover and link stops, two pale tints, and near-white on-accent ink. | Lifted fills, links and two dark tints use dark indigo ink, retaining identity and AA contrast. |
+| Success 148deg      | Dark green text/icons are separate from a brighter solid fill, black ink and pale tint.                 | Light green text/icons are separate from a mid-green solid fill, dark ink and tint.             |
+| Warning 75deg       | Brown-amber text/icons are separate from an amber solid fill, black ink and pale tint.                  | Light amber text/icons are separate from the stronger amber solid pair and dark tint.           |
+| Danger 25deg        | Dark red text/icons, a stronger solid pair, and three explicit pale tint stops.                         | Light red text/icons, a stronger solid pair, and three explicit dark tint stops.                |
+
+Hover, pressed, selected, selected-hover, focus, solid status, accent and status tint roles all
+resolve to governed Theme values. Named Themes temporarily keep their existing interaction
+aliases until their own redesign tickets replace those values; they still inherit the corrected
+status pairs and remain covered by the full contrast matrix.
 
 ### The danger versus destructive rule
 
@@ -818,55 +841,37 @@ This is the trap that has bitten repeatedly. Read it before writing any alert co
     In a template the alert-text utility is **`text-danger`**, never `text-destructive`. In
     SCSS the alert text and icon token is **`--trinity-danger`**, never `--destructive`.
 
-    shadcn treats `--destructive` as a **fill-only** token, always paired with a near-white
-    `--destructive-foreground` drawn on top of it. In dark mode its value is
-    `hsl(0deg 62.8% 30.6%)` — `#7f1d1d`, a near-black maroon. Measured as text, that is
-    **1.26:1** on the chat canvas and **1.38:1** on the dark popover surface. Alert copy, the
-    E2EE warning shield, send-failed retry, and kick, ban and "Leave room" labels all render
-    as an empty strip in dark mode, which is the app's default mode.
+    shadcn treats `--destructive` as a **fill-only** token, always paired with
+    `--destructive-foreground` drawn on top of it. Trinity therefore maps it to the danger
+    solid pair. It may happen to be readable as standalone text in one Mode, but that is not
+    its contract and a later Theme may choose a different solid pair.
 
 Trinity splits danger into three roles instead:
 
-| Token                               | Role                                        | Light     | Dark      |
-| ----------------------------------- | ------------------------------------------- | --------- | --------- |
-| `--trinity-danger`                  | Alert **text and icons** drawn on a surface | `#bf1e24` | `#fc8181` |
-| `--trinity-danger-solid`            | A **filled** badge                          | `#d92b31` | `#ef4444` |
-| `--trinity-danger-solid-foreground` | The text on that fill                       | `#fff`    | `#1a1a1a` |
+| Token                               | Role                                        | Light OKLCH      | Dark OKLCH      |
+| ----------------------------------- | ------------------------------------------- | ---------------- | --------------- |
+| `--trinity-danger`                  | Alert **text and icons** drawn on a surface | `0.47 0.18 25`   | `0.76 0.11 25`  |
+| `--trinity-danger-solid`            | A **filled** badge                          | `0.55 0.20 25`   | `0.66 0.18 25`  |
+| `--trinity-danger-solid-foreground` | The text on that fill                       | `0.99 0.004 265` | `0.17 0.025 25` |
 
 Theme Foundation's private Tailwind adapter maps
 `--color-danger: var(--trinity-danger)`, which is what makes the `text-danger` utility exist.
 
-Each value was measured against the **worst backdrop the role actually lands on**. One of
-those is easy to overlook: `--trinity-hover`, because a row that recolours on hover is where a
-danger label is usually read. `#bf1e24` clears 4.5:1 on chat, sidebar, rail and hover in both
-Themes — worst case 4.83:1, on the rail.
-
-`--trinity-active`, the selected-row tone, was **not** swept and reaches only 4.11–4.25:1. No
-danger text lands on a selected row today; do not put one there without re-measuring.
+The executable matrix measures danger text on chat, sidebar, rail, hover and active surfaces in
+every Theme and Mode. The solid foreground pair is independently measured at 4.5:1, while the
+solid fill itself is measured as a non-text graphic against the surfaces where it appears.
 
 !!! warning "A translucent tint has no fixed contrast"
 
-    That sweep covers the token drawn straight onto a surface. It does **not** cover the
-    `bg-destructive/10..30` tint Helm paints under its own destructive text, and no choice of
-    colour could: the tint is translucent, so it takes whatever it is placed on. The same
-    button measured **5.37:1 over `--card` and 4.28:1 at rest over `--trinity-rail`**, where
-    the surface is already dark enough in light mode to push the label under AA.
+    Helm emits translucent `bg-destructive/10..30` utilities. A translucent tint has no fixed
+    contrast because the surface below participates in the pixel. The private adapter therefore
+    replaces those utilities with three opaque `--trinity-danger-tint-*` stops.
 
-    Nothing was actually failing: every destructive control today is a dropdown-menu item,
-    which renders on `--popover`, or a button on `--card`. What was wrong is that the trap
-    was invisible — putting one on the sidebar or the room list would have shipped a sub-AA
-    label with nothing to catch it, and the token comment positively invited that by claiming
-    the red cleared 4.5:1 "on every tint".
+    Those stops used to be runtime sRGB mixes over `--card`. Trinity now authors each light and
+    dark stop directly in sRGB-safe OKLCH, so changing the solid red or card cannot silently
+    change a destructive control's contrast.
 
-    So the tint is pinned **opaque**, as `--trinity-danger-tint-*` mixed over `--card` — `in
-    srgb`, which reproduces the composited pixels exactly, rather than `in oklab`, which does
-    not. The tokens are named by percentage rather than by role because Helm's strengths are
-    per-component, not per-state. Every destructive control now reads at the value the card
-    was measured at wherever it is placed, so the check that matters is that the ratio is
-    *the same on every surface*, not merely above 4.5 on the one you happened to try.
-
-`--destructive` itself is left alone and stays the border and ring source, and the colour the
-tint is mixed from. That is exactly what the token is for.
+`--destructive` stays the solid border and ring source. The tint ramp is independent by design.
 
 #### The invariant override layer, and how to regenerate its selector list
 
@@ -882,10 +887,10 @@ semantic invariant win without a specificity war or an unlayered escape.
 
 !!! warning "The selector list must cover every emitted variant"
 
-    An unmatched variant does not degrade gracefully — it produces a *half-styled* control: a
-    legible "Leave room" label beside an icon still sitting at roughly 1.3:1. The dropdown
-    menu colours its child icon through a **separate** rule targeting the `ng-icon`
-    descendant, so fixing the item alone leaves the glyph behind.
+    An unmatched variant does not degrade gracefully — it produces a *half-styled* control whose
+    label and icon consume different semantic roles. The dropdown menu colours its child icon
+    through a **separate** rule targeting the `ng-icon` descendant, so fixing the item alone
+    leaves the glyph behind.
 
     After running the spartan CLI, re-derive **both** lists mechanically from the built CSS
     rather than by reading Helm's class strings — there are two, one for the text and one for
@@ -911,14 +916,13 @@ stay in step with `TOKEN_ROLES` in
 [`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/feature/rooms/src/lib/message-presentation/code-highlight.ts).
 
 The backdrop is `--trinity-rail`, not the chat canvas — that is the `pre` background — and
-every value clears 4.5:1 against it in both shipped Themes (worst case 4.61:1 light,
-5.16:1 dark). The light set is One Light's hues _darkened until they passed_; the published
-values sit at 2.5–3.8:1 on this rail and are not usable as body text. One Dark's values pass
-unchanged. `-plain` and `-punctuation` are `var()` references to `--trinity-text` and
-`--trinity-text-muted`, so they follow the mode automatically.
+every value clears 4.5:1 against it in all shipped Themes and Modes. The light set keeps One
+Light's hues at darker accessible stops; the dark set keeps the One Dark relationships. Both are
+authored as sRGB-safe OKLCH. `-plain` and `-punctuation` are `var()` references to
+`--trinity-text` and `--trinity-text-muted`, so they follow the mode automatically.
 
-A new Theme inherits all eight, and nothing checks them. If your rail departs from
-`#e3e5e8` or `#e7e2f0` (light) or `#1e1f22` or `#1c1826` (dark), re-measure.
+A new Theme inherits all eight, and the contrast matrix measures them automatically against that
+Theme's rail. A failing inherited pair must be retuned before the Theme ships.
 
 Highlighting itself is Shiki with thirty-one statically imported grammars — the chunk they
 land in measures 3.5 MB raw and 513 kB gzipped, against 1.6 MB / 315 kB for the thirteen it

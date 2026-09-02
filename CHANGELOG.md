@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Trinity light and dark now use a coordinated sRGB-safe OKLCH palette.** Neutral, indigo,
+  success, warning and danger families provide explicit interaction, solid and tint stops;
+  success and warning text/icons no longer share their filled-status colours. Local contracts
+  enforce gamut, text contrast, graphic contrast and focus contrast across every Theme and Mode.
+
 - **The authored cascade migration is complete.** Every component stylesheet and inline rule now
   emits through the named `components` layer, while static vendor CSS and the narrow invariant
   override allowlist remain explicit. The temporary unlayered-rule fingerprint ledger is removed,
