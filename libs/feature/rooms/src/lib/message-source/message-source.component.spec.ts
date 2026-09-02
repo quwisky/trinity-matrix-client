@@ -44,15 +44,15 @@ describe('MessageSourceComponent', () => {
     expect(TestBed.inject(TrnDialogRef).close).toHaveBeenCalled();
   });
 
-  // The CDK overlay is a bare positioned box: a dialog that doesn't paint its own card
-  // renders transparent over the timeline. jsdom can't see that, so assert the classes
-  // that produce it — the closest a unit test gets to "it looks like a dialog".
-  it('paints itself as a card rather than floating transparent', async () => {
+  // The CDK overlay is a bare positioned box: the public surface directive must paint
+  // the dialog rather than leaving it transparent over the timeline. jsdom cannot see
+  // the result, so pin the canonical raised-surface recipe it emits.
+  it('paints itself as a canonical raised surface', async () => {
     const { container } = await build('{}');
     const card = container.querySelector('[data-testid=message-source]');
 
-    expect(card?.className).toContain('bg-card');
-    expect(card?.className).toContain('text-card-foreground');
+    expect(card?.className).toContain('bg-[var(--trinity-surface-raised)]');
+    expect(card?.className).toContain('text-[var(--trinity-text-bright)]');
     expect(card?.className).toContain('border');
   });
 

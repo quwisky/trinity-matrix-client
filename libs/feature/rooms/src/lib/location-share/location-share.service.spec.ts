@@ -12,13 +12,13 @@ function setup(
     current?: Mock;
     supportsPrecise?: boolean;
     sendLocation?: Mock;
-    openAndWait?: Mock;
+    openAndWait$?: Mock;
   } = {},
 ) {
   const current = over.current ?? vi.fn(() => of({ lat: 1.5, lng: 2.5 }));
   const sendLocation = over.sendLocation ?? vi.fn(() => of(undefined));
-  const openAndWait =
-    over.openAndWait ?? vi.fn(() => Promise.resolve({ lat: 3.5, lng: 4.5 }));
+  const openAndWait$ =
+    over.openAndWait$ ?? vi.fn(() => of({ lat: 3.5, lng: 4.5 }));
   const toastShow = vi.fn();
   TestBed.configureTestingModule({
     providers: [
@@ -28,7 +28,7 @@ function setup(
         supportsPrecise: () => over.supportsPrecise ?? true,
       }),
       MockProvider(TimelineActionsService, { sendLocation }),
-      MockProvider(TrnDialogService, { openAndWait }),
+      MockProvider(TrnDialogService, { openAndWait$ }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -36,7 +36,7 @@ function setup(
     svc: TestBed.inject(LocationShareService),
     current,
     sendLocation,
-    openAndWait,
+    openAndWait$,
     toastShow,
   };
 }
@@ -49,12 +49,12 @@ describe('LocationShareService', () => {
 
   describe('web / mobile (device geolocation)', () => {
     it('resolves the location and sends it to the active room', () => {
-      const { svc, current, sendLocation, openAndWait } = setup();
+      const { svc, current, sendLocation, openAndWait$ } = setup();
 
       svc.share();
 
       expect(current).toHaveBeenCalled();
-      expect(openAndWait).not.toHaveBeenCalled();
+      expect(openAndWait$).not.toHaveBeenCalled();
       expect(sendLocation).toHaveBeenCalledWith(1.5, 2.5);
     });
 
@@ -69,7 +69,7 @@ describe('LocationShareService', () => {
       expect(sendLocation).not.toHaveBeenCalled();
       expect(toastShow).toHaveBeenCalledWith(
         'Permission denied.',
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       );
     });
 
@@ -90,7 +90,7 @@ describe('LocationShareService', () => {
 
   describe('desktop (manual dialog)', () => {
     it('opens the manual dialog instead of device geolocation', async () => {
-      const { svc, current, openAndWait, sendLocation } = setup({
+      const { svc, current, openAndWait$, sendLocation } = setup({
         supportsPrecise: false,
       });
 
@@ -98,14 +98,14 @@ describe('LocationShareService', () => {
       await Promise.resolve();
 
       expect(current).not.toHaveBeenCalled();
-      expect(openAndWait).toHaveBeenCalled();
+      expect(openAndWait$).toHaveBeenCalled();
       expect(sendLocation).toHaveBeenCalledWith(3.5, 4.5);
     });
 
     it('sends nothing when the dialog is dismissed', async () => {
-      const openAndWait = vi.fn(() => Promise.resolve(null));
+      const openAndWait$ = vi.fn(() => of(null));
       const { svc, sendLocation } = setup({
-        openAndWait,
+        openAndWait$,
         supportsPrecise: false,
       });
 

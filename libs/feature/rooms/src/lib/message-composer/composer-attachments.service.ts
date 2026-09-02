@@ -297,7 +297,10 @@ export class ComposerAttachmentsService {
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
   openPollDialog(): void {
-    void this.createPollSvc.open();
+    this.createPollSvc
+      .open$()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Share the device's current location to the active room. */

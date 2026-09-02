@@ -92,7 +92,7 @@ export class BannedMembersComponent {
           this.setPending(member.userId, false);
           this.toast.show(`Could not unban ${member.roomDisplayName}.`, {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });

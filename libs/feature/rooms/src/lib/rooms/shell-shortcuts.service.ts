@@ -1,5 +1,6 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { MruRoomsService } from '../shortcuts/mru-rooms.service';
@@ -177,18 +178,18 @@ export class ShellShortcutsService {
    * while a panel is open, and a button that silently does nothing is worse than a switch.
    * Picking a room takes the slot with it — `rightPanel` is keyed on the open room.
    */
-  async openSwitcher(): Promise<void> {
+  openSwitcher(): void {
     if (this.dialog.hasOpen()) {
       return; // an overlay owns the screen — don't stack the switcher over it
     }
-    const selection = await this.switcher.pick();
-    if (!selection) {
-      return; // cancelled / already open
-    }
     this.status.error.set(null);
-    this.workspace
-      .openSearchIntent(selection)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.switcher
+      .pick$()
+      .pipe(
+        filter((selection) => selection !== null),
+        switchMap((selection) => this.workspace.openSearchIntent(selection)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (outcome) => {
           if (outcome.kind !== 'ready') {

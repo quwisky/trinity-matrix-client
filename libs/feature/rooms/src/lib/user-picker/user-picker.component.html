@@ -1,6 +1,20 @@
-<div class="picker">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="lg"
+  layout="dialog"
+  class="picker flex flex-col"
+>
   <div class="picker__header">
-    <button trnBtn variant="ghost" size="sm" (click)="cancel()">Cancel</button>
+    <button
+      trnBtn
+      variant="secondary"
+      presentation="ghost"
+      size="sm"
+      (click)="cancel()"
+    >
+      Cancel
+    </button>
     <h2 class="picker__title">
       {{ title() }}
     </h2>
@@ -41,7 +55,7 @@
           [mxc]="user.avatarMxc"
           [initial]="initialOf(user.displayName)"
           [name]="user.displayName"
-          [size]="36"
+          [exactSize]="36"
         />
         <span class="min-w-0 flex-1">
           <span class="block truncate text-sm font-medium">{{
@@ -54,7 +68,7 @@
       </button>
     } @empty {
       @if (!searching()) {
-        <trn-empty-state size="line" [body]="emptyHint()" />
+        <trn-empty-state layout="line" [body]="emptyHint()" />
       }
     }
   </div>

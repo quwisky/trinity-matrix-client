@@ -122,6 +122,6 @@ export class AvatarFieldComponent {
   }
 
   private showError(message: string): void {
-    this.toast.show(message, { duration: 4000, variant: 'destructive' });
+    this.toast.show(message, { duration: 4000, variant: 'danger' });
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { type Observable } from 'rxjs';
 import { UserCardComponent } from './user-card.component';
 
 /**
@@ -20,8 +21,8 @@ export class UserCardService {
    * permalink, whose dialog has already closed) it stays centred, and so does every touch
    * pointer: see `DialogOptions.anchor`.
    */
-  open(userId: string, anchor?: HTMLElement): Promise<string | null> {
-    return this.dialog.openAndWait<string, UserCardComponent>(
+  open$(userId: string, anchor?: HTMLElement): Observable<string | null> {
+    return this.dialog.openAndWait$<string, UserCardComponent>(
       UserCardComponent,
       { ariaLabel: 'User', inputs: { userId }, anchor },
     );

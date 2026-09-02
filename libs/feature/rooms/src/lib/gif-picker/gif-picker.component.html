@@ -1,4 +1,10 @@
-<div class="gif-picker">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="sm"
+  layout="popover"
+  class="gif-picker flex flex-col"
+>
   <input
     #searchInput
     trnInput
@@ -19,7 +25,8 @@
         <button
           trnBtn
           type="button"
-          variant="outline"
+          variant="secondary"
+          presentation="outline"
           size="sm"
           (click)="retry()"
           data-testid="gif-retry"

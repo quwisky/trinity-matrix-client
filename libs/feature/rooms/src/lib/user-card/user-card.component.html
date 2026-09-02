@@ -1,10 +1,17 @@
-<div class="user-card" data-testid="user-card">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="sm"
+  layout="popover"
+  class="user-card flex flex-col"
+  data-testid="user-card"
+>
   <trn-avatar
     class="user-card__avatar"
     [mxc]="profile()?.avatarMxc ?? null"
     [initial]="initial()"
     [name]="displayName()"
-    [size]="64"
+    [exactSize]="64"
     [presence]="presenceState()"
   />
   <div class="user-card__id">

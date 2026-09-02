@@ -1,9 +1,19 @@
 <div
-  class="flex h-[60vh] max-h-[70vh] w-[92vw] max-w-140 flex-col overflow-hidden rounded-xl border border-solid border-border bg-card text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="lg"
+  layout="dialog"
+  class="flex h-[60vh] max-h-[70vh] flex-col"
 >
   <div class="flex items-center gap-2 border-b border-solid border-border p-3">
     <h2 class="flex-1 text-base font-semibold">Jump to…</h2>
-    <button trnBtn variant="ghost" size="sm" (click)="dismiss(null)">
+    <button
+      trnBtn
+      variant="secondary"
+      presentation="ghost"
+      size="sm"
+      (click)="dismiss(null)"
+    >
       Cancel
     </button>
   </div>
@@ -57,7 +67,7 @@
           [accountId]="result.accountId ?? null"
           [initial]="result.initial"
           [name]="result.title"
-          [size]="40"
+          size="xl"
           [shape]="avatarShape(result)"
           [accountBadge]="badgeFor(result)"
         />

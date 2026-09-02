@@ -11,12 +11,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { switchMap, type Observable } from 'rxjs';
+import { filter, switchMap, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
   TrnAlertService,
+  TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
@@ -56,9 +57,19 @@ import { TrnIconComponent } from '@trinity/components/foundations';
     TrnTooltip,
     TrnIconComponent,
   ],
+  hostDirectives: [
+    {
+      directive: TrnOverlaySurfaceDirective,
+      inputs: ['size: surfaceSize', 'layout: surfaceLayout'],
+      outputs: [],
+    },
+  ],
   templateUrl: './member-info.component.html',
   styleUrl: './member-info.component.scss',
   host: {
+    // The public `panel` recipe also serves viewport-pinned overlays. In the document slot,
+    // the shell row owns the height, so its surface composes the same recipe with `h-full`.
+    class: 'flex h-full flex-col',
     // Drives the panel presentation in the stylesheet — see the note on {@link isPanel}.
     '[class.member-info--panel]': 'isPanel',
   },
@@ -186,7 +197,7 @@ export class MemberInfoComponent {
         error: () =>
           this.toast.show('Could not start verification.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           }),
       });
   }
@@ -214,7 +225,7 @@ export class MemberInfoComponent {
         this.selectUserId();
         this.toast.show(
           'Could not copy the user ID. It is selected above; copy it manually.',
-          { duration: 5000, variant: 'destructive' },
+          { duration: 5000, variant: 'danger' },
         );
       },
     );
@@ -252,86 +263,94 @@ export class MemberInfoComponent {
       error: () =>
         this.toast.show('Could not update the block.', {
           duration: 4000,
-          variant: 'destructive',
+          variant: 'danger',
         }),
     });
   }
 
   /** Remove the member from the room (with an optional reason), on confirmation. */
-  async kick(): Promise<void> {
+  kick(): void {
     if (!this.permissions().kick.available) {
       return;
     }
-    const reason = await this.alert.prompt({
-      header: 'Remove from room',
-      message: `Remove ${this.member().roomDisplayName} from this room? They can rejoin if invited (or if the room is public).`,
-      confirmText: 'Remove',
-      destructive: true,
-      placeholder: 'Reason (optional)',
-    });
-    if (reason === null) {
-      return; // cancelled
-    }
-    this.run(
-      this.moderation.kick(
-        this.roomId(),
-        this.member().userId,
-        reason || undefined,
-      ),
-      'Could not remove them.',
-    );
+    this.alert
+      .prompt$({
+        header: 'Remove from room',
+        message: `Remove ${this.member().roomDisplayName} from this room? They can rejoin if invited (or if the room is public).`,
+        confirmText: 'Remove',
+        variant: 'danger',
+        placeholder: 'Reason (optional)',
+      })
+      .pipe(
+        filter((reason): reason is string => reason !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((reason) =>
+        this.run(
+          this.moderation.kick(
+            this.roomId(),
+            this.member().userId,
+            reason || undefined,
+          ),
+          'Could not remove them.',
+        ),
+      );
   }
 
   /** Ban the member from the room (with an optional reason), on confirmation. */
-  async ban(): Promise<void> {
+  ban(): void {
     if (!this.permissions().ban.available) {
       return;
     }
-    const reason = await this.alert.prompt({
-      header: 'Ban from room',
-      message: `Ban ${this.member().roomDisplayName}? They won't be able to rejoin until they're unbanned.`,
-      confirmText: 'Ban',
-      destructive: true,
-      placeholder: 'Reason (optional)',
-    });
-    if (reason === null) {
-      return;
-    }
-    this.run(
-      this.moderation.ban(
-        this.roomId(),
-        this.member().userId,
-        reason || undefined,
-      ),
-      'Could not ban them.',
-    );
+    this.alert
+      .prompt$({
+        header: 'Ban from room',
+        message: `Ban ${this.member().roomDisplayName}? They won't be able to rejoin until they're unbanned.`,
+        confirmText: 'Ban',
+        variant: 'danger',
+        placeholder: 'Reason (optional)',
+      })
+      .pipe(
+        filter((reason): reason is string => reason !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((reason) =>
+        this.run(
+          this.moderation.ban(
+            this.roomId(),
+            this.member().userId,
+            reason || undefined,
+          ),
+          'Could not ban them.',
+        ),
+      );
   }
 
   /** Promote / demote the member to a preset role, on confirmation. */
-  async setRole(
-    option: Pick<AssignableMemberRole, 'label' | 'level'>,
-  ): Promise<void> {
+  setRole(option: Pick<AssignableMemberRole, 'label' | 'level'>): void {
     if (!this.rolePermission(option.level).available) {
       return;
     }
-    const confirmed = await this.alert.confirm({
-      header: 'Change role',
-      message: `Change ${this.member().roomDisplayName}'s role to ${option.label}?`,
-      confirmText: 'Change',
-      // A demotion is the weightier direction — style its confirm as destructive.
-      destructive: option.level < this.permissions().targetPower,
-    });
-    if (!confirmed) {
-      return;
-    }
-    this.run(
-      this.moderation.setPowerLevel(
-        this.roomId(),
-        this.member().userId,
-        option.level,
-      ),
-      'Could not change their role.',
-    );
+    this.alert
+      .confirm$({
+        header: 'Change role',
+        message: `Change ${this.member().roomDisplayName}'s role to ${option.label}?`,
+        confirmText: 'Change',
+        // A demotion is the weightier direction.
+        variant:
+          option.level < this.permissions().targetPower ? 'danger' : 'neutral',
+      })
+      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() =>
+        this.run(
+          this.moderation.setPowerLevel(
+            this.roomId(),
+            this.member().userId,
+            option.level,
+          ),
+          'Could not change their role.',
+        ),
+      );
   }
 
   close(): void {
@@ -359,7 +378,7 @@ export class MemberInfoComponent {
     action.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => this.finish(null),
       error: () =>
-        this.toast.show(failure, { duration: 4000, variant: 'destructive' }),
+        this.toast.show(failure, { duration: 4000, variant: 'danger' }),
     });
   }
 }

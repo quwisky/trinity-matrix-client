@@ -60,7 +60,7 @@ async function build(
   const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
   const canManage = signal(over.canManage ?? false);
   const remove = over.remove ?? vi.fn(() => of(undefined));
-  const confirm = over.confirm ?? vi.fn().mockResolvedValue(true);
+  const confirm = over.confirm ?? vi.fn(() => of(true));
   const toastShow = vi.fn();
   const dialogClosed = new Subject<void>();
   const dialogRef = {
@@ -80,7 +80,7 @@ async function build(
       }),
       MockProvider(ExternalBrowserService, { open: openExternal }),
       MockProvider(TrnToastService, { show: toastShow }),
-      MockProvider(TrnAlertService, { confirm }),
+      MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnDialogService, { open: openDialog }),
       MockProvider(WidgetManagementService, {
         create: () => of('created'),
@@ -179,7 +179,7 @@ describe('RoomWidgetsComponent', () => {
       expect.objectContaining({
         header: 'Remove widget',
         message: expect.stringContaining('every member and Matrix client'),
-        destructive: true,
+        variant: 'danger',
       }),
     );
 
@@ -223,7 +223,7 @@ describe('RoomWidgetsComponent', () => {
     await vi.waitFor(() =>
       expect(toastShow).toHaveBeenCalledWith(
         expect.stringContaining('changed'),
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       ),
     );
     fixture.detectChanges();
@@ -248,7 +248,7 @@ describe('RoomWidgetsComponent', () => {
     await vi.waitFor(() =>
       expect(toastShow).toHaveBeenCalledWith(
         expect.stringContaining('replaced while removal was in progress'),
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       ),
     );
     expect(button?.disabled).toBe(false);
@@ -281,7 +281,7 @@ describe('RoomWidgetsComponent', () => {
     expect(openDialog).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({
-        side: 'full-screen',
+        placement: 'fullscreen',
         ariaLabel: 'Planning board widget',
         inputs: expect.objectContaining({
           roomId: '!r:hs',
@@ -338,7 +338,7 @@ describe('RoomWidgetsComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not open this widget in a browser.',
-      { duration: 4000, variant: 'destructive' },
+      { duration: 4000, variant: 'danger' },
     );
   });
 

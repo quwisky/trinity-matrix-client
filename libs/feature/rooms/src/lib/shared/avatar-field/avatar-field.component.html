@@ -3,13 +3,14 @@
     [mxc]="avatarMxc()"
     [name]="name()"
     [initial]="initial()"
-    [size]="64"
+    [exactSize]="64"
     [shape]="shape()"
   />
   <button
     trnBtn
     type="button"
-    variant="outline"
+    variant="secondary"
+    presentation="outline"
     size="sm"
     (click)="pickAvatar()"
     [trnActionAllowed]="editable()"

@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
+import { type Observable } from 'rxjs';
 import { MemberInfoComponent } from './member-info.component';
 
 /**
@@ -17,13 +18,13 @@ export class MemberInfoService {
    * Open the info panel for `member` in `roomId`. Live room state decides which
    * moderation actions are available. Resolves their id to message, or null.
    */
-  open(
+  open$(
     member: MemberSummary,
     roomId: string,
     /** True for a direct message, where nobody is the owner. */
     direct = false,
-  ): Promise<string | null> {
-    return this.dialog.openAndWait<string, MemberInfoComponent>(
+  ): Observable<string | null> {
+    return this.dialog.openAndWait$<string, MemberInfoComponent>(
       MemberInfoComponent,
       {
         ariaLabel: 'Member info',
@@ -31,6 +32,8 @@ export class MemberInfoService {
           member,
           roomId,
           direct,
+          surfaceSize: 'sm',
+          surfaceLayout: 'dialog',
         },
       },
     );

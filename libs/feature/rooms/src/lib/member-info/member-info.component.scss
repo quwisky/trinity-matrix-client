@@ -1,97 +1,93 @@
 @use '../styles/mixins' as *;
 
-.member-info {
-  @include profile-card;
-
-  // Mounted outside .members either way — the CDK overlay as a dialog, the shell's slot as
-  // a panel — so tell the avatar's presence dot what surface it rings against, else the ring
-  // halos (see member-list).
-  --trn-presence-ring: var(--card);
-}
-
-// Two presentations, one component (see `isPanel`). A dialog is the centred profile card
-// above; the shell's right-hand slot needs a full-height panel like the four beside it.
-// `.chat-panel` supplies only position and size, so without this the slot renders a
-// transparent 480px column with a small card floating in it — the timeline showing through,
-// the shadow drawn around nothing, and every click in the empty part swallowed.
-:host(.member-info--panel) {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--card);
-  color: var(--card-foreground);
-  border-left: 1px solid var(--border);
-
+@layer components {
   .member-info {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    @include profile-card;
+
+    // Mounted outside .members either way — the CDK overlay as a dialog, the shell's slot as
+    // a panel — so tell the avatar's presence dot what surface it rings against, else the ring
+    // halos (see member-list).
+    --trn-presence-ring: var(--trinity-surface-raised);
+  }
+
+  // Two presentations, one component (see `isPanel`). A dialog is the centred profile card
+  // above; the shell's right-hand slot needs a full-height panel like the four beside it.
+  // `.chat-panel` supplies only position and size, so without this the slot renders a
+  // transparent 480px column with a small card floating in it — the timeline showing through,
+  // the shadow drawn around nothing, and every click in the empty part swallowed.
+  :host.member-info--panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+
+    .member-info {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      width: 100%;
+      max-width: none;
+    }
+  }
+
+  .member-info__avatar {
+    flex: 0 0 auto;
+  }
+
+  .member-info__id {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
     width: 100%;
-    max-width: none;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
   }
-}
 
-.member-info__avatar {
-  flex: 0 0 auto;
-}
-
-.member-info__id {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  width: 100%;
-}
-
-.member-info__name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-  overflow-wrap: anywhere;
-}
-
-.member-info__handle {
-  font-size: 12px;
-  color: var(--trinity-text-muted);
-  overflow-wrap: anywhere;
-  cursor: text;
-  user-select: text;
-
-  &:focus-visible {
-    outline: 2px solid var(--trinity-focus-ring);
-    outline-offset: 2px;
-    border-radius: 2px;
+  .member-info__name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+    overflow-wrap: anywhere;
   }
-}
 
-.member-info__role {
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--trinity-text-muted);
-}
+  .member-info__handle {
+    font-size: 12px;
+    color: var(--trinity-text-muted);
+    overflow-wrap: anywhere;
+    cursor: text;
+    user-select: text;
 
-.member-info__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  margin-top: 4px;
-}
+    &:focus-visible {
+      outline: 2px solid var(--trinity-focus-ring);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+  }
 
-// The moderation actions sit below a divider so they read as a separate, weightier group.
-.member-info__moderation {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--trinity-divider);
-}
+  .member-info__role {
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--trinity-text-muted);
+  }
 
-.member-info__danger {
-  color: var(--trinity-danger);
+  .member-info__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  // The moderation actions sit below a divider so they read as a separate, weightier group.
+  .member-info__moderation {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--trinity-divider);
+  }
+
+  .member-info__danger {
+    color: var(--trinity-danger);
+  }
 }

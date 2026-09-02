@@ -120,7 +120,7 @@ describe('BannedMembersComponent', () => {
     expect(cmp.isPending('@bob:hs')).toBe(false); // cleared
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not unban'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 

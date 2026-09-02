@@ -81,7 +81,7 @@ describe('RoomsPage quick switcher', () => {
   let waitForRoom: Mock;
 
   function build() {
-    pick = vi.fn();
+    pick = vi.fn(() => of(null));
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     acceptInvite = vi.fn(() => of(undefined));
     openSpace = vi.fn(() => of(void 0));
@@ -113,7 +113,7 @@ describe('RoomsPage quick switcher', () => {
           acceptInvite,
         }),
         MockProvider(UserPickerService),
-        MockProvider(QuickSwitcherService, { pick }),
+        MockProvider(QuickSwitcherService, { pick$: pick }),
         {
           provide: RoomsTimelineStub,
           useFactory: () => {
@@ -149,11 +149,13 @@ describe('RoomsPage quick switcher', () => {
 
   it('opens the selected room', async () => {
     const shell = build();
-    pick.mockResolvedValue({
-      kind: 'conversation',
-      accountId: '@me:hs',
-      roomId: '!r:hs',
-    });
+    pick.mockReturnValue(
+      of({
+        kind: 'conversation',
+        accountId: '@me:hs',
+        roomId: '!r:hs',
+      }),
+    );
 
     await shell.shortcuts.openSwitcher();
     TestBed.tick(); // the projections follow the URL from an effect
@@ -164,11 +166,13 @@ describe('RoomsPage quick switcher', () => {
 
   it('opens a DM result like a room', async () => {
     const shell = build();
-    pick.mockResolvedValue({
-      kind: 'conversation',
-      accountId: '@me:hs',
-      roomId: '!d:hs',
-    });
+    pick.mockReturnValue(
+      of({
+        kind: 'conversation',
+        accountId: '@me:hs',
+        roomId: '!d:hs',
+      }),
+    );
 
     await shell.shortcuts.openSwitcher();
 
@@ -177,11 +181,13 @@ describe('RoomsPage quick switcher', () => {
 
   it('selects a space in the rail (loading its hierarchy)', async () => {
     const shell = build();
-    pick.mockResolvedValue({
-      kind: 'space',
-      accountId: '@me:hs',
-      spaceId: '!s:hs',
-    });
+    pick.mockReturnValue(
+      of({
+        kind: 'space',
+        accountId: '@me:hs',
+        spaceId: '!s:hs',
+      }),
+    );
 
     await shell.shortcuts.openSwitcher();
 
@@ -207,11 +213,13 @@ describe('RoomsPage quick switcher', () => {
         }),
       ),
     );
-    pick.mockResolvedValue({
-      kind: 'person',
-      accountId: '@me:hs',
-      userId: '@bob:hs',
-    });
+    pick.mockReturnValue(
+      of({
+        kind: 'person',
+        accountId: '@me:hs',
+        userId: '@bob:hs',
+      }),
+    );
 
     await shell.shortcuts.openSwitcher();
 
@@ -234,12 +242,14 @@ describe('RoomsPage quick switcher', () => {
         isDirect: false,
       },
     ]);
-    pick.mockResolvedValue({
-      kind: 'invitation',
-      accountId: '@me:hs',
-      roomId: '!i:hs',
-      target: 'conversation',
-    });
+    pick.mockReturnValue(
+      of({
+        kind: 'invitation',
+        accountId: '@me:hs',
+        roomId: '!i:hs',
+        target: 'conversation',
+      }),
+    );
 
     await shell.shortcuts.openSwitcher();
 
@@ -249,7 +259,7 @@ describe('RoomsPage quick switcher', () => {
 
   it('does nothing when the switcher is cancelled', async () => {
     const shell = build();
-    pick.mockResolvedValue(null);
+    pick.mockReturnValue(of(null));
 
     await shell.shortcuts.openSwitcher();
     TestBed.tick(); // flush, so "nothing opened" outlives the projection effect
@@ -260,7 +270,7 @@ describe('RoomsPage quick switcher', () => {
 
   it('Ctrl/Cmd+K prevents default and opens the switcher', async () => {
     const shell = build();
-    pick.mockResolvedValue(null);
+    pick.mockReturnValue(of(null));
     const preventDefault = vi.fn();
 
     // Cmd+K resolves to the `switcher.open` shortcut through the registry.

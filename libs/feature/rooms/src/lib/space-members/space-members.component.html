@@ -1,4 +1,11 @@
-<div class="space-members" data-testid="space-members">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  layout="dialog"
+  class="space-members flex flex-col"
+  data-testid="space-members"
+>
   <h2 class="space-members__title">Members of {{ spaceName() }}</h2>
 
   <ul class="space-members__list">
@@ -15,7 +22,7 @@
             [mxc]="member.roomAvatarMxc"
             [initial]="member.roomInitial"
             [name]="member.roomDisplayName"
-            [size]="28"
+            size="md"
           />
           <span class="space-members__name" [title]="member.userId">{{
             member.roomDisplayName
@@ -27,7 +34,10 @@
       </li>
     } @empty {
       <li>
-        <trn-empty-state size="line" body="Nobody else is in this space yet." />
+        <trn-empty-state
+          layout="line"
+          body="Nobody else is in this space yet."
+        />
       </li>
     }
   </ul>

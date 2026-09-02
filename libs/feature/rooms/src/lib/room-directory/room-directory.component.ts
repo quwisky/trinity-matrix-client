@@ -13,7 +13,11 @@ import { Subscription, finalize } from 'rxjs';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
@@ -40,7 +44,14 @@ export interface DirectoryJoin {
   selector: 'trn-room-directory',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './room-directory.component.html',
-  imports: [FormField, FormRoot, TrnButton, TrnInput, AvatarComponent],
+  imports: [
+    FormField,
+    FormRoot,
+    TrnButton,
+    TrnInput,
+    AvatarComponent,
+    TrnOverlaySurfaceDirective,
+  ],
 })
 export class RoomDirectoryComponent implements OnInit {
   private readonly dialogRef =
@@ -123,7 +134,7 @@ export class RoomDirectoryComponent implements OnInit {
           handling.reportError(error);
           this.toast.show(handling.formatError(error), {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });

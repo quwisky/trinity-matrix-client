@@ -144,26 +144,26 @@ name. Subsequent feature migrations should add or replace proof screens only whe
 a genuinely new public contract, rather than turning the ledger into a list of every consumer.
 
 The completed consumer-migration slices extend that proof through authentication, Trust,
-application startup, routing surfaces, the host shell, Settings, Rooms workspace navigation, and
-the live Conversation. Those consumers use canonical button
+application startup, routing surfaces, the host shell, Settings, and every Rooms surface. Those
+consumers use canonical button
 `variant`/`presentation`/`shape`/`size` axes, public fields and labels, named icon and avatar sizes,
 muted cards, `danger` feedback, neutral dialog surfaces, and the neutral toolbar page header.
-Settings, Appearance, Advanced configuration, Rooms navigation, timeline lists and rows, the
-composer and its suggestion popovers, reaction pickers and details, media and voice attachments,
-replies, typing, message actions, threads, and pinned-message panels retain their feature-owned
-geometry, virtualization, touch targets, and safe-area layout while public recipes own control
-and overlay chrome. Purpose-built reaction chips, toolbar controls, server-rail pills, and
-account or room navigation rows keep their product semantics, but compose public foundations and
-interaction-state recipes rather than vendor contracts.
+Settings, Appearance, Advanced configuration, Rooms navigation, governance and member management,
+widgets, search, timelines, the composer and its suggestion popovers, reaction and content pickers,
+media and voice attachments, polls, location, replies, typing, message actions, threads, and pinned
+messages retain their feature-owned geometry, virtualization, touch targets, and safe-area layout
+while public recipes own control and overlay chrome. Purpose-built reaction chips, toolbar
+controls, server-rail pills, and account or room navigation rows keep their product semantics, but
+compose public foundations and interaction-state recipes rather than vendor contracts.
 
-Alert confirmations, prompts, dialog results, lazy configuration loading, and one-shot Settings,
-Rooms navigation, and Conversation overlay actions use cold finite RxJS pipelines, with
+Alert confirmations, prompts, dialog results, lazy configuration loading, and one-shot Settings
+and Rooms actions use cold finite RxJS pipelines, with
 `firstValueFrom` limited to SDK or framework callback boundaries that require a Promise. Every
 component stylesheet in the migrated slices is in `@layer components`, and
 `design-system-consumer-migration.spec.mjs` keeps the roots non-vacuous while rejecting legacy
 values, vendor imports, local appearance overrides, Promise alert calls, and cascade exceptions.
-Compatibility remains available only for the consumer slices assigned to the later migration
-tickets.
+No Rooms consumer uses an expansion alias or remains on a cascade migration ledger. The bounded
+compatibility inputs stay in the public components only until the contraction ticket removes them.
 
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
 `shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
@@ -369,8 +369,8 @@ const ref = this.dialog.open(MyComponent, {
 
 `placement: 'inline-end'` pins a full-height logical-end panel. Dialog placement, anchored
 `side`/`align`, focus and lifecycle are behavior choices; they never select a visual treatment.
-The temporary `side: 'end'|'full-screen'` spellings remain equivalent while the feature
-consumers migrate in #397-#401.
+The temporary `side: 'end'|'full-screen'` spellings remain accepted by the public service only
+until the contraction ticket removes them; no application consumer uses those aliases.
 
 Every overlay surface uses `trnOverlaySurface`, whose three bounded axes stay independent:
 
@@ -403,9 +403,9 @@ compatibility methods, implemented by delegating to those Observable commands.
     **A CDK dialog panel is transparent.** Every dialog component paints its own surface with
     `trnOverlaySurface`, and one that forgets renders as text floating over the timeline — easy
     to miss in review because the layout is correct in isolation and only the background is
-    wrong. Trust portals from #397 now use the public surface recipe. Feature-local
-    `dialog-surface()` remains compatibility code only for the consumer slices still migrating in
-    #398-#401.
+    wrong. Trust portals and every Rooms overlay now use the public surface recipe. A source guard
+    rejects feature-local overlay paint and prevents `dialog-surface()` from returning to a
+    migrated consumer.
 
     **`autoFocus` defaults to CDK's `'first-tabbable'`**, which is wrong for any dialog whose
     header carries a Cancel or Close button ahead of the field the user came to type in — the

@@ -9,16 +9,17 @@ import {
 } from './source-style-blocks.mjs';
 
 /**
- * Freeze the completed application-consumer migrations from #397 through #400.
+ * Freeze the completed application-consumer migrations from #397 through #401.
  *
  * Public components still accept a few expansion aliases while the remaining slices move.
- * This guard makes authentication, Trust, Settings, Rooms workspace navigation, startup,
- * routing and host-shell consumers a closed set: comments cannot satisfy it, vendor imports
- * cannot bypass the public tier, and aliases or unlayered component rules cannot quietly return
- * after these slices leave the migration ledgers.
+ * This guard makes authentication, Trust, Settings, every Rooms consumer, startup, routing and
+ * host-shell consumers a closed set: comments cannot satisfy it, vendor imports cannot bypass the
+ * public tier, and aliases or unlayered component rules cannot quietly return after these slices
+ * leave the migration ledgers.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
+const migratedRoomsRoot = 'libs/feature/rooms/src/lib';
 const migratedRoomNavigationRoots = [
   'libs/feature/rooms/src/lib/account-picker',
   'libs/feature/rooms/src/lib/channel-sidebar',
@@ -47,20 +48,9 @@ const migratedRoots = [
   'libs/application/runtime/src/lib',
   'libs/feature/auth/src/lib',
   'libs/feature/crypto/src/lib',
-  ...migratedRoomNavigationRoots,
-  ...migratedConversationRoots,
+  migratedRoomsRoot,
   'libs/feature/settings/src/lib',
   'libs/feature/shell/src/lib',
-];
-const migratedRoomNavigationFiles = [
-  'libs/feature/rooms/src/lib/rooms/room-actions.service.ts',
-  'libs/feature/rooms/src/lib/rooms/message-actions.service.ts',
-  'libs/feature/rooms/src/lib/rooms/rooms.page.html',
-  'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
-  'libs/feature/rooms/src/lib/rooms/rooms.page.ts',
-  'libs/feature/rooms/src/lib/rooms/session-actions.service.ts',
-  'libs/feature/rooms/src/lib/rooms/shell-status.service.ts',
-  'libs/feature/rooms/src/lib/rooms/space-actions.service.ts',
 ];
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 const productionSources = [
@@ -72,7 +62,6 @@ const productionSources = [
     ]),
     { cwd: workspaceRoot },
   ),
-  ...migratedRoomNavigationFiles,
 ]
   .filter(
     (file) =>
@@ -82,6 +71,9 @@ const productionSources = [
   )
   .sort();
 const templates = productionSources.filter((file) => file.endsWith('.html'));
+const roomTemplates = templates.filter((file) =>
+  file.startsWith(`${migratedRoomsRoot}/`),
+);
 const settingsTemplates = templates.filter((file) =>
   file.startsWith('libs/feature/settings/src/lib/'),
 );
@@ -188,37 +180,31 @@ describe('migrated application design-system consumers', () => {
       );
     }
 
-    const conversationAvatars = tagsFrom(
-      conversationTemplates,
-      /<trn-avatar\b[^>]*>/gu,
-    );
-    expect(conversationAvatars.length).toBeGreaterThan(3);
-    for (const [file, tag] of conversationAvatars) {
+    const roomAvatars = tagsFrom(roomTemplates, /<trn-avatar\b[^>]*>/gu);
+    expect(roomAvatars.length).toBeGreaterThan(15);
+    for (const [file, tag] of roomAvatars) {
       expect(tag, file).not.toMatch(
         /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,
       );
     }
 
-    const conversationIcons = tagsFrom(
-      conversationTemplates,
-      /<trn-icon\b[^>]*>/gu,
-    );
-    expect(conversationIcons.length).toBeGreaterThan(25);
-    for (const [file, tag] of conversationIcons) {
+    const roomIcons = tagsFrom(roomTemplates, /<trn-icon\b[^>]*>/gu);
+    expect(roomIcons.length).toBeGreaterThan(50);
+    for (const [file, tag] of roomIcons) {
       expect(tag, file).not.toMatch(
         /\bsize\s*=\s*['"]\d+(?:\.\d+)?(?:px|rem|em)['"]/u,
       );
     }
 
     for (const [file, tag] of tagsFrom(
-      conversationTemplates,
+      roomTemplates,
       /<trn-banner\b[^>]*>/gu,
     )) {
       expect(tag, file).not.toMatch(/\btone\s*=/u);
     }
 
     for (const [file, tag] of tagsFrom(
-      conversationTemplates,
+      roomTemplates,
       /<trn-spinner\b[^>]*>/gu,
     )) {
       expect(tag, file).not.toMatch(
@@ -227,17 +213,18 @@ describe('migrated application design-system consumers', () => {
     }
 
     for (const [file, tag] of tagsFrom(
-      conversationTemplates,
+      roomTemplates,
       /<trn-empty-state\b[^>]*>/gu,
     )) {
       expect(tag, file).not.toMatch(/\bsize\s*=/u);
+      expect(tag, file).not.toMatch(/\btone\s*=/u);
     }
 
     // The chat composer is a single-line input that grows, while the public textarea recipe is
     // deliberately multi-line. Reapplying it makes its utility-layer minimum override the
     // feature-owned geometry and leaves the recording replacement 21px shorter.
     const composerInputs = tagsFrom(
-      conversationTemplates,
+      roomTemplates,
       /<textarea\b[^>]*\bclass\s*=\s*['"][^'"]*\bcomposer__input\b[^'"]*['"][^>]*>/gu,
     );
     expect(composerInputs).toHaveLength(1);
@@ -264,7 +251,21 @@ describe('migrated application design-system consumers', () => {
       );
     }
     for (const [file, tag] of tagsFrom(
+      roomTemplates,
+      /<trn-page-header\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(/\bvariant\s*=\s*['"](?:page|chat)['"]/u);
+    }
+    for (const [file, tag] of tagsFrom(
       conversationTemplates,
+      /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(
+        /\bvariant\s*=\s*['"](?:default|destructive)['"]/u,
+      );
+    }
+    for (const [file, tag] of tagsFrom(
+      roomTemplates,
       /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
     )) {
       expect(tag, file).not.toMatch(
@@ -310,42 +311,74 @@ describe('migrated application design-system consumers', () => {
     );
 
     const surfaces = tags(/<[^>]*\btrnOverlaySurface\b[^>]*>/gu);
-    expect(surfaces).toHaveLength(12);
+    expect(surfaces).toHaveLength(29);
     for (const [file, tag] of surfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
     }
     expect(
-      surfaces.map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1]).sort(),
+      surfaces
+        .map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1] ?? 'dynamic')
+        .sort(),
     ).toEqual([
       '2xl',
-      'lg',
-      'md',
-      'md',
-      'md',
-      'md',
-      'md',
-      'md',
-      'md',
-      'md',
-      'md',
-      'sm',
+      '2xl',
+      ...Array(5).fill('lg'),
+      ...Array(15).fill('md'),
+      ...Array(6).fill('sm'),
+      'xl',
     ]);
     expect(
-      surfaces.map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1]).sort(),
+      surfaces
+        .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
+        .sort(),
     ).toEqual([
-      'dialog',
-      'dialog',
-      'dialog',
-      'dialog',
-      'dialog',
-      'fullscreen',
-      'fullscreen',
-      'fullscreen',
-      'popover',
-      'popover',
-      'popover',
+      ...Array(17).fill('dialog'),
+      'dynamic',
+      ...Array(4).fill('fullscreen'),
+      ...Array(6).fill('popover'),
       'workspace',
     ]);
+
+    expect(
+      surfaces.find(([file]) =>
+        file.endsWith('room-link-preview.component.html'),
+      )?.[1],
+    ).toMatch(/\[layout\]="sheet\(\) \? 'sheet' : 'dialog'"/u);
+
+    // Member info is the one overlay whose public surface directive belongs on the component
+    // host: in panel mode that host is the actual in-flow pane measured beside the timeline.
+    const memberInfo = source(
+      'libs/feature/rooms/src/lib/member-info/member-info.component.ts',
+    );
+    expect(memberInfo).toMatch(
+      /hostDirectives:[\s\S]{0,180}TrnOverlaySurfaceDirective[\s\S]{0,180}size: surfaceSize[\s\S]{0,80}layout: surfaceLayout/u,
+    );
+    const memberInfoPanel = tagsFrom(
+      ['libs/feature/rooms/src/lib/rooms/rooms.page.html'],
+      /<trn-member-info\b[^>]*>/gu,
+    );
+    expect(memberInfoPanel).toHaveLength(1);
+    expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceSize="lg"/u);
+    expect(memberInfoPanel[0]?.[1]).toMatch(/\bsurfaceLayout="panel"/u);
+    const memberInfoService = source(
+      'libs/feature/rooms/src/lib/member-info/member-info.service.ts',
+    );
+    expect(memberInfoService).toMatch(
+      /surfaceSize:\s*['"]sm['"][\s\S]{0,80}surfaceLayout:\s*['"]dialog['"]/u,
+    );
+
+    // Message source uses a deliberately small inline template, so it is not part of the
+    // external-markup collection above. Pin its complete public surface vocabulary here rather
+    // than letting that one remaining Room overlay fall outside the migration guard.
+    const messageSource = source(
+      'libs/feature/rooms/src/lib/message-source/message-source.component.ts',
+    );
+    expect(messageSource).toMatch(
+      /trnOverlaySurface[\s\S]{0,160}\bvariant="neutral"[\s\S]{0,80}\bsize="xl"[\s\S]{0,80}\blayout="dialog"/u,
+    );
+    expect(messageSource).not.toMatch(
+      /\bvariant="(?:default|destructive|outline|ghost|link)"|\bsize="(?:default|icon(?:-(?:xs|sm|lg))?)"/u,
+    );
 
     const conversationSurfaces = tagsFrom(
       conversationTemplates,
@@ -409,17 +442,16 @@ describe('migrated application design-system consumers', () => {
     });
     expect(migratedExceptions).toEqual([]);
 
-    const conversationStyles = componentStyles
-      .filter((file) =>
-        migratedConversationRoots.some((root) => file.startsWith(`${root}/`)),
+    const roomStyles = productionSources
+      .filter(
+        (file) =>
+          file.startsWith(`${migratedRoomsRoot}/`) && file.endsWith('.scss'),
       )
       .map(source)
       .join('\n');
-    expect(conversationStyles).not.toMatch(
+    expect(roomStyles).not.toMatch(
       /var\(--(?:background|foreground|card|popover|primary|secondary|muted|accent|destructive|success|warning|border|input|ring)\b/u,
     );
-    expect(conversationStyles).not.toMatch(
-      /#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\(/iu,
-    );
+    expect(roomStyles).not.toMatch(/#[\da-f]{3,8}\b|\b(?:rgb|hsl)a?\(/iu);
   });
 });

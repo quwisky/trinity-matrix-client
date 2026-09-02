@@ -670,7 +670,7 @@ describe('RoomSettingsComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(close).not.toHaveBeenCalledWith(true);
   });
@@ -690,7 +690,7 @@ describe('RoomSettingsComponent', () => {
     const [message, options] = toastShow.mock.calls[0];
     expect(message).toContain('name');
     expect(message).toContain('topic');
-    expect(options).toMatchObject({ variant: 'destructive' });
+    expect(options).toMatchObject({ variant: 'danger' });
     expect(close).not.toHaveBeenCalledWith(true);
   });
 });

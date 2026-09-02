@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { type SwitcherSelection } from '@trinity/application/search';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { defer, finalize, of, type Observable } from 'rxjs';
 import { QuickSwitcherComponent } from './quick-switcher.component';
 
 /**
@@ -25,26 +26,26 @@ export class QuickSwitcherService {
    * that ACTS on the target without switching (forwarding a message) must not be offered a
    * room the active account isn't in.
    */
-  async pick(
+  pick$(
     opts: { activeAccountOnly?: boolean } = {},
-  ): Promise<SwitcherSelection | null> {
-    if (this.open) {
-      return null; // already showing — ignore the repeat trigger
-    }
-    this.open = true;
-    try {
-      return await this.dialog.openAndWait<
-        SwitcherSelection,
-        QuickSwitcherComponent
-      >(QuickSwitcherComponent, {
-        ariaLabel: 'Jump to a room',
-        inputs: { activeAccountOnly: opts.activeAccountOnly ?? false },
-        // Open-and-type is the whole point of a quick switcher, so focus lands on the
-        // search field rather than CDK's first tabbable element (the Cancel button).
-        autoFocus: '[data-autofocus]',
-      });
-    } finally {
-      this.open = false;
-    }
+  ): Observable<SwitcherSelection | null> {
+    return defer(() => {
+      if (this.open) {
+        return of(null); // already showing — ignore the repeat subscription
+      }
+      this.open = true;
+      return this.dialog
+        .openAndWait$<SwitcherSelection, QuickSwitcherComponent>(
+          QuickSwitcherComponent,
+          {
+            ariaLabel: 'Jump to a room',
+            inputs: { activeAccountOnly: opts.activeAccountOnly ?? false },
+            // Open-and-type is the whole point of a quick switcher, so focus lands on the
+            // search field rather than CDK's first tabbable element (the Cancel button).
+            autoFocus: '[data-autofocus]',
+          },
+        )
+        .pipe(finalize(() => (this.open = false)));
+    });
   }
 }

@@ -8,7 +8,10 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /** The poll a {@link CreatePollDialogComponent} resolves with. */
@@ -29,7 +32,13 @@ const MAX_OPTIONS = 8;
 @Component({
   selector: 'trn-create-poll-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnInput, TrnLabel, TrnIconComponent],
+  imports: [
+    TrnButton,
+    TrnInput,
+    TrnLabel,
+    TrnIconComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './create-poll-dialog.component.html',
 })
 export class CreatePollDialogComponent {

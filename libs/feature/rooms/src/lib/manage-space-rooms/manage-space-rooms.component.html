@@ -1,4 +1,11 @@
-<div class="manage-rooms" data-testid="manage-space-rooms">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="lg"
+  layout="dialog"
+  class="manage-rooms flex flex-col"
+  data-testid="manage-space-rooms"
+>
   <h2 class="manage-rooms__title">Organise {{ spaceName() }}</h2>
   <p class="manage-rooms__hint">
     The order here is what everyone in the space sees. Suggested rooms are
@@ -15,7 +22,7 @@
           [mxc]="child.avatarMxc"
           [initial]="child.initial"
           [name]="child.name"
-          [size]="24"
+          size="sm"
           shape="place"
         />
         <span class="manage-rooms__name" [title]="child.name">{{
@@ -35,8 +42,10 @@
         <button
           trnBtn
           type="button"
-          variant="ghost"
-          size="icon"
+          variant="secondary"
+          presentation="ghost"
+          size="md"
+          shape="icon"
           [disabled]="isFirst(child.childId) || writeLocked()"
           (click)="move(child.childId, 'up')"
           [attr.aria-label]="'Move ' + child.name + ' up'"
@@ -47,8 +56,10 @@
         <button
           trnBtn
           type="button"
-          variant="ghost"
-          size="icon"
+          variant="secondary"
+          presentation="ghost"
+          size="md"
+          shape="icon"
           [disabled]="isLast(child.childId) || writeLocked()"
           (click)="move(child.childId, 'down')"
           [attr.aria-label]="'Move ' + child.name + ' down'"
@@ -62,7 +73,7 @@
            panel goes inside it. -->
       <li>
         <trn-empty-state
-          size="line"
+          layout="line"
           body="This space has no rooms in it yet."
         />
       </li>

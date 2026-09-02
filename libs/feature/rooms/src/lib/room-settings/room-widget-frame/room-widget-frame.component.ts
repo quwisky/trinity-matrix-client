@@ -10,7 +10,10 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import {
   WidgetBridgeService,
   type RoomWidget,
@@ -22,7 +25,7 @@ import { TrnButton } from '@trinity/components/controls';
 @Component({
   selector: 'trn-room-widget-frame',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton],
+  imports: [TrnButton, TrnOverlaySurfaceDirective],
   templateUrl: './room-widget-frame.component.html',
   styleUrl: './room-widget-frame.component.scss',
 })

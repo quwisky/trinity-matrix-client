@@ -1,4 +1,11 @@
-<div class="space-settings" data-testid="space-settings">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="sm"
+  layout="dialog"
+  class="space-settings flex flex-col"
+  data-testid="space-settings"
+>
   <h2 class="space-settings__title">Space settings</h2>
 
   <form [formRoot]="form" class="space-settings__form" (submit)="save()">
@@ -10,7 +17,8 @@
 
     <trn-tabs
       tab="general"
-      variant="line"
+      variant="neutral"
+      presentation="line"
       [tabs]="settingsTabs()"
       class="space-settings__tabs"
     >
@@ -87,7 +95,8 @@
       <button
         trnBtn
         type="button"
-        variant="ghost"
+        variant="secondary"
+        presentation="ghost"
         (click)="close()"
         data-testid="space-settings-cancel"
       >

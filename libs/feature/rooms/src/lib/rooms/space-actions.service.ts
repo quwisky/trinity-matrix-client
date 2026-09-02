@@ -368,7 +368,7 @@ export class SpaceActionsService {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((member) => {
-        void this.memberActions.openMemberInfo(member, spaceId);
+        this.memberActions.openMemberInfo(member, spaceId);
       });
   }
 }

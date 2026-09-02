@@ -1,17 +1,22 @@
 <div
-  class="flex max-h-[80vh] w-[min(90vw,40rem)] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="xl"
+  layout="dialog"
+  class="flex flex-col gap-3 p-4"
   data-testid="edit-history"
 >
   <div class="flex items-center gap-2">
     <h2 class="flex-1 text-lg font-semibold">Edit history</h2>
     @if (!busy() && !error() && entries().length > 1) {
-      <!-- Variant carries the pressed state visually, as the room-directory tabs do;
+      <!-- Variant and presentation carry the pressed state visually, as the room-directory tabs do;
            aria-pressed alone would leave a sighted user unable to tell it apart. -->
       <button
         trnBtn
         type="button"
         size="sm"
-        [variant]="showDiff() ? 'default' : 'outline'"
+        [variant]="showDiff() ? 'primary' : 'secondary'"
+        [presentation]="showDiff() ? 'solid' : 'outline'"
         data-testid="edit-history-toggle"
         [attr.aria-pressed]="showDiff()"
         (click)="showDiff.set(!showDiff())"
@@ -50,9 +55,10 @@
               <button
                 trnBtn
                 type="button"
-                variant="ghost"
+                variant="danger"
+                presentation="ghost"
                 size="sm"
-                class="revision__remove text-danger hover:text-danger"
+                class="revision__remove"
                 data-testid="revision-remove"
                 [attr.aria-label]="
                   'Remove this version, sent ' +
@@ -92,7 +98,8 @@
   <div class="flex justify-end">
     <button
       trnBtn
-      variant="ghost"
+      variant="secondary"
+      presentation="ghost"
       size="sm"
       data-testid="edit-history-close"
       (click)="close()"

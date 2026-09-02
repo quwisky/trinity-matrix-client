@@ -222,7 +222,7 @@ describe('ManageSpaceRoomsComponent', () => {
     expect(cmp.busyChildId()).toBeNull();
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -237,7 +237,7 @@ describe('ManageSpaceRoomsComponent', () => {
     expect(cmp.busyChildId()).toBeNull();
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 

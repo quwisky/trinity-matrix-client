@@ -7,7 +7,10 @@ import {
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import {
   MEMBER_ROLE_LABEL,
   type MemberSummary,
@@ -34,7 +37,12 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 @Component({
   selector: 'trn-space-members',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [EmptyStateComponent, TrnButton, AvatarComponent],
+  imports: [
+    EmptyStateComponent,
+    TrnButton,
+    AvatarComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './space-members.component.html',
   styleUrl: './space-members.component.scss',
 })

@@ -12,6 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter, switchMap, tap } from 'rxjs';
 import {
   TrnAlertService,
   TrnDialogRef,
@@ -117,7 +118,7 @@ export class RoomWidgetsComponent implements OnInit {
         if (!opened) {
           this.toast.show('Could not open this widget in a browser.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         }
       });
@@ -130,7 +131,7 @@ export class RoomWidgetsComponent implements OnInit {
     if (!embed.url) {
       this.toast.show('This widget cannot be embedded safely.', {
         duration: 4000,
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }
@@ -138,7 +139,7 @@ export class RoomWidgetsComponent implements OnInit {
     const frameRef = this.dialog.open<void, RoomWidgetFrameComponent>(
       RoomWidgetFrameComponent,
       {
-        side: 'full-screen',
+        placement: 'fullscreen',
         ariaLabel: `${widget.name} widget`,
         autoFocus: '[data-autofocus]',
         inputs: {
@@ -169,28 +170,29 @@ export class RoomWidgetsComponent implements OnInit {
   }
 
   /** Confirm the named cross-client impact, then tombstone only that projected revision. */
-  async removeWidget(widget: RoomWidget, origin: string | null): Promise<void> {
+  removeWidget(widget: RoomWidget, origin: string | null): void {
     if (!this.canRemove(widget) || this.isRemoving(widget.id)) {
       return;
     }
     this.removing.update((pending) => new Set(pending).add(widget.id));
     this.removalRevisions.set(widget.id, widget.sourceEventId as string);
-    const confirmed = await this.alert.confirm({
-      header: 'Remove widget',
-      message:
-        `Remove “${widget.name}”${origin ? ` (${origin})` : ''} from this room? ` +
-        'It will disappear for every member and Matrix client.',
-      confirmText: 'Remove',
-      destructive: true,
-    });
-    if (!confirmed) {
-      this.clearRemoving(widget.id);
-      return;
-    }
-
-    this.management
-      .remove(this.roomId(), widget)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.alert
+      .confirm$({
+        header: 'Remove widget',
+        message:
+          `Remove “${widget.name}”${origin ? ` (${origin})` : ''} from this room? ` +
+          'It will disappear for every member and Matrix client.',
+        confirmText: 'Remove',
+        variant: 'danger',
+      })
+      .pipe(
+        tap((confirmed) => {
+          if (!confirmed) this.clearRemoving(widget.id);
+        }),
+        filter(Boolean),
+        switchMap(() => this.management.remove(this.roomId(), widget)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
           this.focusAfterRemoval.add(widget.id);
@@ -205,7 +207,7 @@ export class RoomWidgetsComponent implements OnInit {
           this.clearRemoving(widget.id);
           this.toast.show(removalFailureText(error), {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -258,7 +260,7 @@ export class RoomWidgetsComponent implements OnInit {
       this.clearRemoving(widgetId);
       this.toast.show(
         'The widget was replaced while removal was in progress. Review it before trying again.',
-        { duration: 4000, variant: 'destructive' },
+        { duration: 4000, variant: 'danger' },
       );
     }
   }

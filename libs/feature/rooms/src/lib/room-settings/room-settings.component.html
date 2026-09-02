@@ -1,4 +1,11 @@
-<div class="room-settings" data-testid="room-settings">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="sm"
+  layout="dialog"
+  class="room-settings flex flex-col"
+  data-testid="room-settings"
+>
   <h2 class="room-settings__title">Room settings</h2>
 
   <form [formRoot]="form" class="room-settings__form" (submit)="save()">
@@ -10,7 +17,8 @@
 
     <trn-tabs
       tab="general"
-      variant="line"
+      variant="neutral"
+      presentation="line"
       [tabs]="settingsTabs()"
       class="room-settings__tabs"
     >
@@ -133,7 +141,8 @@
       <button
         trnBtn
         type="button"
-        variant="ghost"
+        variant="secondary"
+        presentation="ghost"
         (click)="close()"
         data-testid="room-settings-cancel"
       >

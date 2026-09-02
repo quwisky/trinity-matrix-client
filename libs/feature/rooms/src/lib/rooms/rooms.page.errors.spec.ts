@@ -105,7 +105,7 @@ describe('RoomsPage action error feedback', () => {
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
     canCurate = vi.fn(() => true);
-    spaceMemberInfoOpen = vi.fn().mockResolvedValue(null);
+    spaceMemberInfoOpen = vi.fn(() => of(null));
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
     currentIdentity = vi.fn(() => ({
@@ -137,7 +137,7 @@ describe('RoomsPage action error feedback', () => {
           supportsRestricted,
           currentIdentity,
         }),
-        MockProvider(MemberInfoService, { open: spaceMemberInfoOpen }),
+        MockProvider(MemberInfoService, { open$: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {

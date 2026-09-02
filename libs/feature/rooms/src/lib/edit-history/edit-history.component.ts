@@ -12,6 +12,7 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   TrnDialogRef,
   TrnAlertService,
+  TrnOverlaySurfaceDirective,
   TrnToastService,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
@@ -21,7 +22,7 @@ import {
   annotateRevision,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
-import { switchMap, timer } from 'rxjs';
+import { filter, switchMap, timer } from 'rxjs';
 import { runWithBusy } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
@@ -58,6 +59,7 @@ const REFRESH_DELAY_MS = 600;
   imports: [
     TrnButton,
     TrnSpinnerComponent,
+    TrnOverlaySurfaceDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
     InlineMxcImagesDirective,
@@ -182,34 +184,40 @@ export class EditHistoryComponent {
    * The row goes on the server's word rather than on the refetch — `/relations` can still
    * return a just-redacted edit intact, so waiting for it would look like a failure.
    */
-  async remove(revisionId: string): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Remove version',
-      message: 'Remove this version of your message? This cannot be undone.',
-      confirmText: 'Remove',
-      destructive: true,
-    });
-    if (!confirmed) {
-      return;
-    }
-    this.removing.set(revisionId);
-    // Deliberately NOT tied to the dialog's lifetime: if it closes mid-flight the
-    // redaction still happens, and a failure the user never hears about is worse than a
-    // subscription that outlives the component by one request.
-    this.history.removeRevision(this.roomId(), revisionId).subscribe({
-      next: () => {
-        this.removed.add(revisionId);
-        this.revisions.update((all) => all.filter((r) => r.id !== revisionId));
-        this.removing.set(null);
-        this.refresh();
-      },
-      // A failure must not blank the list — the dialog's error state replaces everything,
-      // and one row failing is no reason to lose the history.
-      error: () => {
-        this.removing.set(null);
-        this.toast.show('Could not remove that version.');
-      },
-    });
+  remove(revisionId: string): void {
+    this.alert
+      .confirm$({
+        header: 'Remove version',
+        message: 'Remove this version of your message? This cannot be undone.',
+        confirmText: 'Remove',
+        variant: 'danger',
+      })
+      .pipe(
+        filter(Boolean),
+        switchMap(() => {
+          this.removing.set(revisionId);
+          return this.history.removeRevision(this.roomId(), revisionId);
+        }),
+      )
+      // Deliberately NOT tied to the dialog's lifetime: if it closes mid-flight the
+      // redaction still happens, and a failure the user never hears about is worse than a
+      // subscription that outlives the component by one request.
+      .subscribe({
+        next: () => {
+          this.removed.add(revisionId);
+          this.revisions.update((all) =>
+            all.filter((r) => r.id !== revisionId),
+          );
+          this.removing.set(null);
+          this.refresh();
+        },
+        // A failure must not blank the list — the dialog's error state replaces everything,
+        // and one row failing is no reason to lose the history.
+        error: () => {
+          this.removing.set(null);
+          this.toast.show('Could not remove that version.');
+        },
+      });
   }
 
   /**

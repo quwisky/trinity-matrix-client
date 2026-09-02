@@ -23,6 +23,7 @@ import {
 } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
+import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 import {
   GIF_PROVIDERS,
   GifService,
@@ -43,7 +44,7 @@ const SEARCH_DEBOUNCE_MS = 350;
 @Component({
   selector: 'trn-gif-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnInput, GifThumbComponent],
+  imports: [TrnButton, TrnInput, GifThumbComponent, TrnOverlaySurfaceDirective],
   templateUrl: './gif-picker.component.html',
   styleUrl: './gif-picker.component.scss',
 })

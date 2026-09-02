@@ -1,8 +1,8 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
   type Observable,
+  filter,
   finalize,
-  of,
   switchMap,
   throwError,
   timeout,
@@ -38,7 +38,7 @@ export class LocationShareService {
   /** Resolve a location and send it to the active room. */
   share(): void {
     if (!this.geo.supportsPrecise()) {
-      void this.shareViaDialog();
+      this.shareViaDialog();
       return;
     }
     // Bound the whole request: the browser's own `timeout` clock only starts once
@@ -59,14 +59,15 @@ export class LocationShareService {
   }
 
   /** Desktop: pick a location by hand (Chromium can't resolve one), then send it. */
-  private async shareViaDialog(): Promise<void> {
-    const point = await this.dialog.openAndWait<
-      GeoPoint | null,
-      ManualLocationDialogComponent
-    >(ManualLocationDialogComponent, {});
-    if (point) {
-      this.send(of(point));
-    }
+  private shareViaDialog(): void {
+    this.send(
+      this.dialog
+        .openAndWait$<GeoPoint, ManualLocationDialogComponent>(
+          ManualLocationDialogComponent,
+          { ariaLabel: 'Share location' },
+        )
+        .pipe(filter((point): point is GeoPoint => point !== null)),
+    );
   }
 
   /** Send the resolved point to the room, tracking busy state and toasting failures. */
@@ -85,7 +86,7 @@ export class LocationShareService {
             err instanceof Error
               ? err.message
               : 'Could not share your location.',
-            { duration: 4000, variant: 'destructive' },
+            { duration: 4000, variant: 'danger' },
           ),
       });
   }

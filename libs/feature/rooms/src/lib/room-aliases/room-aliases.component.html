@@ -29,7 +29,8 @@
               <button
                 trnBtn
                 type="button"
-                variant="ghost"
+                variant="secondary"
+                presentation="ghost"
                 size="sm"
                 (click)="setMain(alias)"
                 [trnActionAllowed]="permission.available"
@@ -43,7 +44,8 @@
             <button
               trnBtn
               type="button"
-              variant="outline"
+              variant="secondary"
+              presentation="outline"
               size="sm"
               [disabled]="isRemoving(alias)"
               (click)="remove(alias)"
@@ -79,7 +81,8 @@
     <button
       trnBtn
       type="button"
-      variant="outline"
+      variant="secondary"
+      presentation="outline"
       size="sm"
       [disabled]="adding()"
       (click)="add()"

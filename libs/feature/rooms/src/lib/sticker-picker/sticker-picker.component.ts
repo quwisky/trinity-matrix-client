@@ -11,12 +11,13 @@ import {
 } from '@angular/core';
 import { StickerImageComponent } from '../sticker-image/sticker-image.component';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
+import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
 
 /** Searchable, keyboard-native picker for sticker-capable MSC2545 pack entries. */
 @Component({
   selector: 'trn-sticker-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [StickerImageComponent],
+  imports: [StickerImageComponent, TrnOverlaySurfaceDirective],
   templateUrl: './sticker-picker.component.html',
   styleUrl: './sticker-picker.component.scss',
 })

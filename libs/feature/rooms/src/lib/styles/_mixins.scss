@@ -54,58 +54,32 @@ $below-md: '(max-width: 767.98px)';
   color: var(--trinity-text-muted);
 }
 
-/// Profile-card container (user card, member-info panel).
-///
-/// Carries the overlay shadow because the user card is presented as a POPOVER pinned to
-/// the mention that was clicked, over a transparent backdrop — nothing dims the timeline
-/// behind it, so the border alone leaves it reading as part of the message rather than
-/// above it. The token, not a literal: it is re-cut per mode (18% on light, 55% on dark),
-/// and a fixed rgba that reads on white disappears on #313338.
+/// Profile-card content layout (user card, member-info panel).
+/// Overlay chrome belongs to the public `trnOverlaySurface` recipe at each consumer.
 @mixin profile-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  width: 260px;
-  max-width: 92vw;
+  width: 100%;
   padding: 20px 16px 16px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-xl);
-  background: var(--card);
-  box-shadow: var(--trinity-shadow-overlay);
   text-align: center;
 }
 
-/// The opaque panel a dialog paints for itself.
-///
-/// The CDK dialog panel is transparent — every dialog component is responsible for its
-/// own surface, and one that forgets renders as floating text over the timeline. That is
-/// easy to miss, because the layout looks correct in isolation and only the background is
-/// wrong. Matches the block room-settings and space-settings already spell out inline.
-@mixin dialog-surface($width: 340px) {
+/// Shared content layout for compact dialogs. Surface chrome and width come from the
+/// public `trnOverlaySurface` recipe.
+@mixin dialog-surface {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: $width;
-  max-width: 92vw;
   padding: 20px 18px 16px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-xl);
-  background: var(--trinity-sidebar);
 }
 
-/// Anchored picker surface shared by GIF, sticker and other composer trays.
-@mixin picker-surface($width) {
+/// Anchored picker content layout shared by GIF, sticker and other composer trays.
+@mixin picker-surface {
   display: flex;
-  width: $width;
-  max-width: calc(100vw - 2rem);
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-overlay-radius);
-  background: var(--trinity-surface-floating);
-  color: var(--trinity-text);
-  box-shadow: var(--trinity-shadow-overlay);
 }
 
 @mixin picker-status {

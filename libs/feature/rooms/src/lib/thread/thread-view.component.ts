@@ -601,10 +601,16 @@ export class ThreadViewComponent implements OnDestroy {
         this.sourceSvc.open(this.roomId(), row.id);
         break;
       case 'forward':
-        void this.forwardSvc.forward(this.roomId(), row.id);
+        this.forwardSvc
+          .forward$(this.roomId(), row.id)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe();
         break;
       case 'report':
-        void this.reportSvc.report(this.roomId(), row.id);
+        this.reportSvc
+          .report$(this.roomId(), row.id)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe();
         break;
       case 'edit':
         this.startEdit(row);
@@ -627,7 +633,10 @@ export class ThreadViewComponent implements OnDestroy {
       case 'edit-history':
         // The thread panel routes no permalinks (its rows don't bind matrixLink either),
         // so a link followed out of the dialog just closes it.
-        void this.editHistorySvc.openHistory(this.roomId(), row.id);
+        this.editHistorySvc
+          .openHistory$(this.roomId(), row.id)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe();
         break;
       // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
       case 'pin':

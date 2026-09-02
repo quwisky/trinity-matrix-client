@@ -107,7 +107,7 @@ describe('RoomsPage panels, pins and media', () => {
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
     canCurate = vi.fn(() => true);
-    spaceMemberInfoOpen = vi.fn().mockResolvedValue(null);
+    spaceMemberInfoOpen = vi.fn(() => of(null));
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
     currentIdentity = vi.fn(() => ({
@@ -141,7 +141,7 @@ describe('RoomsPage panels, pins and media', () => {
           supportsRestricted,
           currentIdentity,
         }),
-        MockProvider(MemberInfoService, { open: spaceMemberInfoOpen }),
+        MockProvider(MemberInfoService, { open$: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {
@@ -272,7 +272,10 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.rooms.onExploreRooms();
 
-    expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent, {
+      ariaLabel: 'Explore rooms and spaces',
+      autoFocus: '[data-autofocus]',
+    });
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!joined:hs');
     await vi.waitFor(() =>
       expect(shell.store.activeRoomId()).toBe('!joined:hs'),
@@ -668,7 +671,7 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
     const picker = TestBed.inject(JumpToDateService);
     const timeline = TestBed.inject(RoomsTimelineStub);
-    vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
+    vi.mocked(picker.pick$).mockReturnValue(of(1_700_000_000_000));
     vi.mocked(timeline.jumpToDate).mockReturnValue(
       of({ kind: 'found', eventId: '$day:hs' }),
     );
@@ -687,7 +690,7 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
     const picker = TestBed.inject(JumpToDateService);
     const timeline = TestBed.inject(RoomsTimelineStub);
-    vi.mocked(picker.pick).mockResolvedValue(null);
+    vi.mocked(picker.pick$).mockReturnValue(of(null));
     vi.mocked(timeline.jumpToDate).mockClear();
 
     await shell.messages.jumpToDate();
@@ -713,7 +716,7 @@ describe('RoomsPage panels, pins and media', () => {
       await settleWorkspace();
       const picker = TestBed.inject(JumpToDateService);
       const timeline = TestBed.inject(RoomsTimelineStub);
-      vi.mocked(picker.pick).mockResolvedValue(1_700_000_000_000);
+      vi.mocked(picker.pick$).mockReturnValue(of(1_700_000_000_000));
       vi.mocked(timeline.jumpToDate).mockReturnValue(of({ kind }));
 
       await shell.messages.jumpToDate();

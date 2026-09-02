@@ -5,7 +5,10 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { FormField, FormRoot, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
@@ -25,7 +28,13 @@ import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-jump-to-date',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, FormRoot, TrnButton, TrnInput],
+  imports: [
+    FormField,
+    FormRoot,
+    TrnButton,
+    TrnInput,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './jump-to-date.component.html',
   styleUrl: './jump-to-date.component.scss',
 })

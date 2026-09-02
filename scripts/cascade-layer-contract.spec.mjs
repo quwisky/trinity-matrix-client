@@ -233,7 +233,9 @@ describe('cascade layer contract', () => {
       ),
     ].sort(([left], [right]) => left.localeCompare(right));
 
-    expect(actualExceptions.length).toBeGreaterThan(25);
+    // Keep the sweep non-vacuous while the final shared-control exceptions remain.
+    // Once their migration removes the ledger entirely, delete this assertion too.
+    expect(actualExceptions.length).toBeGreaterThan(0);
     expect(actualExceptions).toEqual(
       [...UNLAYERED_RULESET_LEDGER].sort(([left], [right]) =>
         left.localeCompare(right),

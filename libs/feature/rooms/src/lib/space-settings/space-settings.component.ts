@@ -20,7 +20,11 @@ import {
   type TrnTabOption,
 } from '@trinity/components/navigation-layout';
 import { TrnInput, TrnTextarea } from '@trinity/components/controls';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { JoinRule } from '@trinity/data-access/room-administration';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
 import { initialOf } from '@trinity/util/matrix';
@@ -73,6 +77,7 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
     TrnSelectComponent,
     TrnTabsComponent,
     TrnTabPanelComponent,
+    TrnOverlaySurfaceDirective,
     FormField,
     FormRoot,
     TrnButton,
@@ -249,7 +254,7 @@ export class SpaceSettingsComponent implements OnInit {
           saved.length
             ? `Saved the ${saved.join(' and ')}, but couldn't update the ${failed.join(' and ')}.`
             : 'Could not save space settings.',
-          { duration: 4000, variant: 'destructive' },
+          { duration: 4000, variant: 'danger' },
         );
       });
   }

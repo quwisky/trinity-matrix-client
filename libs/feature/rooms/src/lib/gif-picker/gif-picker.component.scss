@@ -1,58 +1,60 @@
 @use '../styles/mixins' as *;
 
-:host {
-  display: block;
-}
-
-.gif-picker {
-  @include picker-surface(320px);
-
-  height: 360px;
-  max-height: 60vh;
-  padding: var(--trinity-space-3);
-}
-
-.gif-picker__search {
-  flex-shrink: 0;
-}
-
-.gif-picker__body {
-  flex: 1;
-  min-height: 0;
-  margin-top: var(--trinity-space-3);
-
-  @include scrollable;
-}
-
-.gif-picker__grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--trinity-space-2);
-}
-
-.gif-picker__item {
-  padding: 0;
-  overflow: hidden;
-  aspect-ratio: 1 / 1;
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: var(--trinity-surface-workspace);
-  cursor: pointer;
-
-  &:hover {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-offset));
+@layer components {
+  :host {
+    display: block;
   }
-}
 
-.gif-picker__status {
-  @include picker-status;
-}
+  .gif-picker {
+    @include picker-surface;
 
-.gif-picker__attribution {
-  flex-shrink: 0;
-  padding-top: var(--trinity-space-2);
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-caption-size);
-  text-align: right;
+    height: 360px;
+    max-height: 60vh;
+    padding: var(--trinity-space-3);
+  }
+
+  .gif-picker__search {
+    flex-shrink: 0;
+  }
+
+  .gif-picker__body {
+    flex: 1;
+    min-height: 0;
+    margin-top: var(--trinity-space-3);
+
+    @include scrollable;
+  }
+
+  .gif-picker__grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--trinity-space-2);
+  }
+
+  .gif-picker__item {
+    padding: 0;
+    overflow: hidden;
+    aspect-ratio: 1 / 1;
+    border: none;
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-workspace);
+    cursor: pointer;
+
+    &:hover {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-offset));
+    }
+  }
+
+  .gif-picker__status {
+    @include picker-status;
+  }
+
+  .gif-picker__attribution {
+    flex-shrink: 0;
+    padding-top: var(--trinity-space-2);
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    text-align: right;
+  }
 }

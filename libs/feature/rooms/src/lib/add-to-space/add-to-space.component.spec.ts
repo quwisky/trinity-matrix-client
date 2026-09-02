@@ -221,7 +221,7 @@ describe('AddToSpaceComponent', () => {
     expect(cmp.adding()).toBe(false);
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Alpha'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 

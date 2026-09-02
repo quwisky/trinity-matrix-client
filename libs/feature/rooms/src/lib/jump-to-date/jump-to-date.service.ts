@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { defer, finalize, of, type Observable } from 'rxjs';
 import { JumpToDateComponent } from './jump-to-date.component';
 
 /**
@@ -16,19 +17,18 @@ export class JumpToDateService {
   private open = false;
 
   /** Ask for a date; resolves its local midnight in epoch ms, or null. */
-  async pick(): Promise<number | null> {
-    if (this.open) {
-      return null;
-    }
-    this.open = true;
-    try {
-      const chosen = await this.dialog.openAndWait<number, JumpToDateComponent>(
-        JumpToDateComponent,
-        { ariaLabel: 'Jump to date', autoFocus: '[data-autofocus]' },
-      );
-      return chosen ?? null;
-    } finally {
-      this.open = false;
-    }
+  pick$(): Observable<number | null> {
+    return defer(() => {
+      if (this.open) {
+        return of(null);
+      }
+      this.open = true;
+      return this.dialog
+        .openAndWait$<number, JumpToDateComponent>(JumpToDateComponent, {
+          ariaLabel: 'Jump to date',
+          autoFocus: '[data-autofocus]',
+        })
+        .pipe(finalize(() => (this.open = false)));
+    });
   }
 }

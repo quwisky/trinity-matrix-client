@@ -1,5 +1,9 @@
 <section
-  class="room-preview"
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  [layout]="sheet() ? 'sheet' : 'dialog'"
+  class="room-preview flex flex-col"
   data-testid="room-link-preview"
   [attr.aria-busy]="loading() || acting()"
 >
@@ -9,8 +13,10 @@
       #closeButton
       trnBtn
       type="button"
-      variant="ghost"
-      size="icon-sm"
+      variant="secondary"
+      presentation="ghost"
+      size="sm"
+      shape="icon"
       aria-label="Close room information"
       data-testid="room-link-close"
       (click)="close()"
@@ -31,11 +37,17 @@
         role="alert"
         data-testid="room-link-load-error"
       >
-        <trn-icon name="cloud-off" size="2rem" />
+        <trn-icon name="cloud-off" size="2xl" />
         <h3>{{ failure.title }}</h3>
         <p>{{ failure.message }}</p>
         @if (failure.retryable) {
-          <button trnBtn type="button" variant="outline" (click)="retry()">
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="outline"
+            (click)="retry()"
+          >
             Retry
           </button>
         }
@@ -46,7 +58,7 @@
           [mxc]="room.avatarMxc"
           [name]="room.name"
           [initial]="room.initial"
-          [size]="64"
+          [exactSize]="64"
           shape="place"
         />
         <div class="room-preview__identity-copy">
@@ -116,7 +128,13 @@
 
   @if (preview(); as room) {
     <footer class="room-preview__actions">
-      <button trnBtn type="button" variant="ghost" (click)="close()">
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        (click)="close()"
+      >
         Close
       </button>
       @if (primaryAction() !== 'none') {

@@ -7,14 +7,16 @@
     <h2 class="flex-1 text-base font-semibold">Member info</h2>
     <button
       trnBtn
-      variant="ghost"
-      size="icon"
+      variant="secondary"
+      presentation="ghost"
+      size="md"
+      shape="icon"
       (click)="close()"
       aria-label="Close member info"
       data-testid="member-info-close"
       data-right-panel-focus
     >
-      <trn-icon name="x" size="1.25rem" motion="rotate" />
+      <trn-icon name="x" size="lg" motion="rotate" />
     </button>
   </div>
 }
@@ -24,7 +26,7 @@
     [mxc]="member().roomAvatarMxc"
     [initial]="member().roomInitial"
     [name]="member().roomDisplayName"
-    [size]="64"
+    [exactSize]="64"
     [presence]="presenceState()"
   />
   <div class="member-info__id">
@@ -60,7 +62,8 @@
     }
     <button
       trnBtn
-      variant="ghost"
+      variant="secondary"
+      presentation="ghost"
       class="w-full"
       (click)="copyId()"
       data-testid="member-info-copy"
@@ -71,7 +74,8 @@
     @if (!isSelf()) {
       <button
         trnBtn
-        variant="ghost"
+        variant="secondary"
+        presentation="ghost"
         class="w-full"
         (click)="verify()"
         data-testid="member-info-verify"
@@ -80,7 +84,8 @@
       </button>
       <button
         trnBtn
-        variant="ghost"
+        variant="secondary"
+        presentation="ghost"
         class="w-full"
         (click)="toggleIgnore()"
         data-testid="member-info-ignore"
@@ -95,7 +100,8 @@
           @let permission = rolePermission(option.level);
           <button
             trnBtn
-            variant="outline"
+            variant="secondary"
+            presentation="outline"
             class="w-full"
             (click)="setRole(option)"
             [trnActionAllowed]="permission.available"
@@ -108,7 +114,8 @@
         }
         <button
           trnBtn
-          variant="outline"
+          variant="secondary"
+          presentation="outline"
           class="member-info__danger w-full"
           (click)="kick()"
           [trnActionAllowed]="permissions().kick.available"
@@ -120,7 +127,7 @@
         </button>
         <button
           trnBtn
-          variant="destructive"
+          variant="danger"
           class="w-full"
           (click)="ban()"
           [trnActionAllowed]="permissions().ban.available"

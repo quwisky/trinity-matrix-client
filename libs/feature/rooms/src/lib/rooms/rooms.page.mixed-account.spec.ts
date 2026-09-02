@@ -399,8 +399,8 @@ describe('RoomsPage mixed-account view', () => {
   it('switches accounts when jumping to a foreign room from the quick switcher', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
-      Promise.resolve({
+    TestBed.inject(QuickSwitcherService).pick$ = vi.fn(() =>
+      of({
         kind: 'conversation' as const,
         accountId: '@alt:hs',
         roomId: '!theirs:hs',
@@ -421,8 +421,8 @@ describe('RoomsPage mixed-account view', () => {
   it('switches accounts when jumping to a foreign space from the quick switcher', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    TestBed.inject(QuickSwitcherService).pick = vi.fn(() =>
-      Promise.resolve({
+    TestBed.inject(QuickSwitcherService).pick$ = vi.fn(() =>
+      of({
         kind: 'space' as const,
         accountId: '@alt:hs',
         spaceId: '!s-alt:hs',

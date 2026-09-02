@@ -7,12 +7,14 @@
     <h2 class="flex-1 text-base font-semibold">Search messages</h2>
     <button
       trnBtn
-      variant="ghost"
-      size="icon"
+      variant="secondary"
+      presentation="ghost"
+      size="md"
+      shape="icon"
       aria-label="Close search"
       (click)="dismiss()"
     >
-      <trn-icon name="x" size="1.25rem" motion="rotate" />
+      <trn-icon name="x" size="lg" motion="rotate" />
     </button>
   </div>
 
@@ -41,7 +43,8 @@
         </span>
         <button
           trnBtn
-          variant="outline"
+          variant="secondary"
+          presentation="outline"
           size="sm"
           [disabled]="loadingHistory()"
           (click)="loadOlderHistory()"
@@ -64,7 +67,8 @@
         } @else {
           <button
             trnBtn
-            variant="outline"
+            variant="secondary"
+            presentation="outline"
             size="sm"
             [disabled]="searching()"
             (click)="searchServer()"
@@ -93,7 +97,7 @@
             [mxc]="hit.senderAvatarMxc"
             [initial]="initialOf(hit.senderName)"
             [name]="hit.senderName"
-            [size]="36"
+            [exactSize]="36"
           />
           <span class="min-w-0 flex-1">
             <span class="flex items-baseline gap-2">
@@ -122,7 +126,8 @@
       <div class="ms-more">
         <button
           trnBtn
-          variant="ghost"
+          variant="secondary"
+          presentation="ghost"
           size="sm"
           [disabled]="searching()"
           (click)="loadMoreServer()"

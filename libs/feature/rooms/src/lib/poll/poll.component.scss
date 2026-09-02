@@ -1,94 +1,96 @@
-:host {
-  display: block;
-  margin-top: 4px;
-}
+@layer components {
+  :host {
+    display: block;
+    margin-top: 4px;
+  }
 
-.poll {
-  max-width: 440px;
-  padding: 10px 12px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-sidebar);
-}
+  .poll {
+    max-width: 440px;
+    padding: 10px 12px;
+    border: 1px solid var(--trinity-divider);
+    border-radius: var(--trinity-radius);
+    background: var(--trinity-sidebar);
+  }
 
-.poll__question {
-  margin-bottom: 8px;
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-}
+  .poll__question {
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+  }
 
-.poll__options {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+  .poll__options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 
-.poll__option {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-md);
-  background: var(--trinity-chat);
-  color: var(--trinity-text);
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
+  .poll__option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--trinity-divider);
+    border-radius: var(--trinity-radius-md);
+    background: var(--trinity-chat);
+    color: var(--trinity-text);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
 
-  &:hover:not(:disabled) {
+    &:hover:not(:disabled) {
+      border-color: var(--trinity-accent);
+    }
+
+    &:disabled {
+      cursor: default;
+    }
+  }
+
+  // The share bar fills behind the option content.
+  .poll__bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: color-mix(in srgb, var(--trinity-accent) 22%, transparent);
+    transition: width var(--trinity-duration-base) var(--trinity-ease-standard);
+  }
+
+  .poll__option--chosen {
     border-color: var(--trinity-accent);
   }
 
-  &:disabled {
-    cursor: default;
+  .poll__option-text {
+    position: relative;
+    flex: 1;
+    min-width: 0;
   }
-}
 
-// The share bar fills behind the option content.
-.poll__bar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: color-mix(in srgb, var(--trinity-accent) 22%, transparent);
-  transition: width var(--trinity-duration-base) var(--trinity-ease-standard);
-}
+  .poll__option-count {
+    position: relative;
+    flex: 0 0 auto;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
 
-.poll__option--chosen {
-  border-color: var(--trinity-accent);
-}
+  .poll__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+  }
 
-.poll__option-text {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-}
-
-.poll__option-count {
-  position: relative;
-  flex: 0 0 auto;
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.poll__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-}
-
-// Touch targets: poll options are tapped to vote — give them a 44px minimum on
-// touch only (desktop keeps its current height).
-@media (pointer: coarse) {
-  .poll__option {
-    min-height: 44px;
+  // Touch targets: poll options are tapped to vote — give them a 44px minimum on
+  // touch only (desktop keeps its current height).
+  @media (pointer: coarse) {
+    .poll__option {
+      min-height: 44px;
+    }
   }
 }

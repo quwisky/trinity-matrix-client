@@ -100,7 +100,7 @@ export class RoomAliasesComponent implements OnInit {
     if (!this.serverName || !localpart || INVALID_LOCALPART.test(localpart)) {
       this.toast.show('Enter a valid address (letters, digits, no spaces).', {
         duration: 4000,
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }
@@ -108,7 +108,7 @@ export class RoomAliasesComponent implements OnInit {
     if (this.aliases().includes(alias)) {
       this.toast.show('That address already exists.', {
         duration: 3000,
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }
@@ -130,7 +130,7 @@ export class RoomAliasesComponent implements OnInit {
           this.adding.set(false);
           this.toast.show(`Could not add ${alias}.`, {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -161,7 +161,7 @@ export class RoomAliasesComponent implements OnInit {
           this.setRemoving(alias, false);
           this.toast.show(`Could not remove ${alias}.`, {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -186,7 +186,7 @@ export class RoomAliasesComponent implements OnInit {
         error: () =>
           this.toast.show('Could not set the main address.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           }),
       });
   }

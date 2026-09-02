@@ -54,7 +54,8 @@
           }
           <a
             trnBtn
-            variant="outline"
+            variant="secondary"
+            presentation="outline"
             [href]="entry.launch.url"
             target="_blank"
             rel="noopener noreferrer"
@@ -83,7 +84,7 @@
         <button
           trnBtn
           type="button"
-          variant="destructive"
+          variant="danger"
           [disabled]="isRemoving(entry.widget.id)"
           (click)="removeWidget(entry.widget, entry.launch.origin)"
           [attr.aria-label]="'Remove ' + entry.widget.name + ' from this room'"

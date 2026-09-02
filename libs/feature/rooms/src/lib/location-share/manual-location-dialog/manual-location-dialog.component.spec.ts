@@ -112,7 +112,7 @@ describe('ManualLocationDialogComponent', () => {
     expect(cmp.locating()).toBe(false);
     expect(toastShow).toHaveBeenCalledWith(
       'offline',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 });

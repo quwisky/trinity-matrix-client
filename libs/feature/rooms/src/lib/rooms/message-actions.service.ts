@@ -17,7 +17,16 @@ import {
 } from '@trinity/data-access/timeline';
 import { type Mention } from '@trinity/util/matrix';
 import type { ImagePackImage } from '@trinity/data-access/media';
-import { Observable, filter, mergeMap, of, take, tap, throwError } from 'rxjs';
+import {
+  Observable,
+  filter,
+  mergeMap,
+  of,
+  switchMap,
+  take,
+  tap,
+  throwError,
+} from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import {
@@ -88,7 +97,7 @@ export class MessageActionsService {
     if (target.kind === 'user') {
       // The anchor travels through so the card is pinned to the mention that was clicked
       // rather than centred over the conversation it is about.
-      void this.memberActions.openUserCard(target.userId, anchor);
+      this.memberActions.openUserCard(target.userId, anchor);
       return;
     }
     if (!target.eventId) {
@@ -439,17 +448,17 @@ export class MessageActionsService {
    * and neither is "your server cannot do this" — collapsing them into one message would
    * send people looking for a problem that is not theirs.
    */
-  async jumpToDate(): Promise<void> {
+  jumpToDate(): void {
     if (!this.store.activeRoomId()) {
       return;
     }
-    const at = await this.jumpToDateSvc.pick();
-    if (at === null) {
-      return; // cancelled / already open
-    }
-    this.timeline
-      .jumpToDate(at)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.jumpToDateSvc
+      .pick$()
+      .pipe(
+        filter((at): at is number => at !== null),
+        switchMap((at) => this.timeline.jumpToDate(at)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (result) => {
           if (result.kind === 'found') {

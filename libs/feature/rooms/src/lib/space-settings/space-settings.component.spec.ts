@@ -245,7 +245,7 @@ describe('SpaceSettingsComponent', () => {
     expect(cmp.saving()).toBe(false);
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('topic'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
