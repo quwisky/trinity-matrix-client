@@ -10,7 +10,7 @@ test('WebKit renders and dismisses portal surfaces with focus restoration', asyn
   await page.getByTestId('document-overlay-surface').click();
   await expect(portal).toHaveCount(0);
 
-  await page.goto(overlayRecipeStory('dialog-compatibility'));
+  await page.goto(overlayRecipeStory('dialogs'));
   const trigger = page.getByTestId('dialog-canonical-center');
   await trigger.click();
   const surface = page.getByTestId('story-dialog-surface');

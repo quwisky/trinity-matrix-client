@@ -3,10 +3,8 @@
      wrong in the other. -->
 <div
   [class]="layoutClass()"
-  [attr.data-variant]="resolvedVariant()"
-  [attr.data-layout]="resolvedLayout()"
-  [attr.data-tone]="resolvedVariant()"
-  [attr.data-size]="resolvedLayout()"
+  [attr.data-variant]="variant()"
+  [attr.data-layout]="layout()"
 >
   @if (badge(); as glyph) {
     <!-- The disc the hero already drew, moved off `.hero__badge`. A `<span>` with

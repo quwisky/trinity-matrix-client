@@ -1,9 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  input,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import type { TrnVariant } from '@trinity/components/foundations';
 
 export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
@@ -32,11 +27,5 @@ export type TrnBannerVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
 })
 export class BannerComponent {
   /** Semantic treatment: `neutral` status or `accent` call-to-action. */
-  readonly variant = input<TrnBannerVariant | null>(null);
-  /** Compatibility alias retained while existing templates migrate to `variant`. */
-  readonly tone = input<TrnBannerVariant>('neutral');
-
-  protected readonly resolvedVariant = computed(
-    () => this.variant() ?? this.tone(),
-  );
+  readonly variant = input<TrnBannerVariant>('neutral');
 }

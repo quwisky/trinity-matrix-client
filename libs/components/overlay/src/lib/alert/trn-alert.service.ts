@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
 import type { TrnVariant } from '@trinity/components/foundations';
-import { defer, firstValueFrom, map, take, type Observable } from 'rxjs';
+import { defer, map, take, type Observable } from 'rxjs';
 import {
   TrnAlertDialogComponent,
   type AlertDialogData,
@@ -22,8 +22,6 @@ export interface ConfirmOptions {
   cancelText?: string;
   /** Semantic treatment for the confirmation action. */
   variant?: TrnAlertVariant;
-  /** Temporary compatibility alias for `variant="danger"`. */
-  destructive?: boolean;
 }
 
 export interface PromptOptions extends ConfirmOptions {
@@ -45,7 +43,7 @@ export interface PromptOptions extends ConfirmOptions {
  * Confirm / prompt dialogs — the spartan replacement for Ionic's
  * `AlertController`. Opens {@link TrnAlertDialogComponent} in a CDK dialog (focus
  * trap, backdrop, escape-to-cancel) and exposes cold finite RxJS commands for
- * the user's choice. Promise methods remain temporarily for feature migration.
+ * the user's choice.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnAlertService {
@@ -59,7 +57,7 @@ export class TrnAlertService {
       message: opts.message,
       confirmText: opts.confirmText ?? 'OK',
       cancelText: opts.cancelText ?? 'Cancel',
-      variant: opts.variant ?? (opts.destructive ? 'danger' : 'neutral'),
+      variant: opts.variant ?? 'neutral',
     };
     return defer(() => {
       const ref = this.dialog.open<boolean>(TrnAlertDialogComponent, {
@@ -82,7 +80,7 @@ export class TrnAlertService {
       message: opts.message,
       confirmText: opts.confirmText ?? 'OK',
       cancelText: opts.cancelText ?? 'Cancel',
-      variant: opts.variant ?? (opts.destructive ? 'danger' : 'neutral'),
+      variant: opts.variant ?? 'neutral',
       placeholder: opts.placeholder,
       inputLabel: opts.inputLabel,
       inputType: opts.inputType,
@@ -100,15 +98,5 @@ export class TrnAlertService {
         map((value) => value ?? null),
       );
     });
-  }
-
-  /** Temporary Promise compatibility. Prefer the cold, finite `confirm$` command. */
-  confirm(opts: ConfirmOptions): Promise<boolean> {
-    return firstValueFrom(this.confirm$(opts));
-  }
-
-  /** Temporary Promise compatibility. Prefer the cold, finite `prompt$` command. */
-  prompt(opts: PromptOptions): Promise<string | null> {
-    return firstValueFrom(this.prompt$(opts));
   }
 }

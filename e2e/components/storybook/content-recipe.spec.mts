@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
-import { renderedColour, renderedRecipeStyle } from './recipe-appearance.mts';
+import { renderedColour } from './recipe-appearance.mts';
 import {
   STORYBOOK_THEME_PREVIEWS,
   expectStorybookThemeRoot,
@@ -27,60 +27,6 @@ const computedDimensions = (locator: Locator) =>
       width: Number.parseFloat(style.width),
     };
   });
-
-test('canonical recipes preserve valid compatibility rendering', async ({
-  page,
-}) => {
-  await page.goto(story('components-icon--compatibility-length'));
-  await expect(page.getByTestId('icon-canonical-lg')).toBeVisible();
-  expect(await renderedBox(page.getByTestId('icon-canonical-lg'))).toEqual(
-    await renderedBox(page.getByTestId('icon-legacy-lg')),
-  );
-
-  await page.goto(story('components-avatar--compatibility-geometry'));
-  await expect(page.getByTestId('avatar-canonical')).toBeVisible();
-  const canonicalAvatar = await renderedBox(
-    page.getByTestId('avatar-canonical').locator('hlm-avatar'),
-  );
-  expect(canonicalAvatar).toEqual(
-    await renderedBox(page.getByTestId('avatar-legacy').locator('hlm-avatar')),
-  );
-  expect(canonicalAvatar).toEqual(
-    await renderedBox(page.getByTestId('avatar-exact').locator('hlm-avatar')),
-  );
-
-  await page.goto(story('components-badge--compatibility-default'));
-  await expect(page.getByTestId('badge-canonical-neutral')).toBeVisible();
-  expect(
-    await renderedRecipeStyle(page.getByTestId('badge-canonical-neutral')),
-  ).toEqual(
-    await renderedRecipeStyle(page.getByTestId('badge-legacy-default')),
-  );
-
-  await page.goto(story('components-banner--compatibility-tone'));
-  await expect(page.getByTestId('banner-canonical')).toBeVisible();
-  expect(
-    await renderedRecipeStyle(
-      page.getByTestId('banner-canonical').locator('.banner'),
-    ),
-  ).toEqual(
-    await renderedRecipeStyle(
-      page.getByTestId('banner-legacy').locator('.banner'),
-    ),
-  );
-
-  await page.goto(story('components-empty-state--compatibility-names'));
-  await expect(page.getByTestId('empty-canonical')).toBeVisible();
-  expect(
-    await renderedRecipeStyle(
-      page.getByTestId('empty-canonical').locator(':scope > div'),
-    ),
-  ).toEqual(
-    await renderedRecipeStyle(
-      page.getByTestId('empty-legacy').locator(':scope > div'),
-    ),
-  );
-});
 
 test('canonical ordinal sizes render the bounded component subsets', async ({
   page,

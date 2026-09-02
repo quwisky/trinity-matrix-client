@@ -108,28 +108,13 @@ describe('EmptyStateComponent', () => {
     });
     expect(container.querySelector('.text-muted-foreground')).not.toBeNull();
 
-    fixture.componentRef.setInput('tone', 'danger');
+    fixture.componentRef.setInput('variant', 'danger');
     fixture.detectChanges();
 
     expect(container.querySelector('.text-danger')?.textContent).toContain(
       "Couldn't load rooms",
     );
     expect(container.querySelector('.text-destructive')).toBeNull();
-  });
-
-  it('lets the canonical variant override the compatibility tone', async () => {
-    const { container } = await render(EmptyStateComponent, {
-      inputs: {
-        body: 'No results',
-        tone: 'danger',
-        variant: 'muted',
-      },
-    });
-
-    const layout = container.querySelector('[data-variant]');
-    expect(layout?.getAttribute('data-variant')).toBe('muted');
-    expect(layout?.getAttribute('data-tone')).toBe('muted');
-    expect(container.querySelector('.text-muted-foreground')).not.toBeNull();
   });
 
   it('leaves nothing inside the body paragraph when there is neither a string nor projected content', async () => {
@@ -189,14 +174,6 @@ describe('EmptyStateComponent', () => {
     expect(column()?.className).toContain('py-2');
     expect(column()?.className).not.toContain('py-6');
     expect(column()?.getAttribute('data-layout')).toBe('line');
-  });
-
-  it('keeps the legacy size input valid during expansion', async () => {
-    const { container } = await render(EmptyStateComponent, {
-      inputs: { body: 'nothing', size: 'hero' },
-    });
-
-    expect(container.querySelector('[data-layout=hero]')).not.toBeNull();
   });
 
   it('renders the title as an h2 when the call site asks for one', async () => {

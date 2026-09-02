@@ -6,17 +6,11 @@ import {
 } from '@angular/core';
 import { HlmTabs, HlmTabsList, HlmTabsTrigger } from '@trinity/helm/tabs';
 import {
-  normalizeTrnTabsPresentation,
-  normalizeTrnTabsVariant,
   type TrnTabsPresentation,
-  type TrnTabsVariantInput,
+  type TrnTabsVariant,
 } from './trn-tabs-recipe';
 
-export type {
-  TrnTabsPresentation,
-  TrnTabsVariant,
-  TrnTabsVariantInput,
-} from './trn-tabs-recipe';
+export type { TrnTabsPresentation, TrnTabsVariant } from './trn-tabs-recipe';
 
 /** One tab in a {@link TrnTabsComponent}: the trigger, and the panel it reveals. */
 export interface TrnTabOption {
@@ -68,8 +62,6 @@ export interface TrnTabOption {
  * a projected element, and panel content stays where it is written.
  *
  * Semantic treatment (`variant`) and structure (`presentation`) are independent.
- * The former `default` and `line` variant values remain temporary compatibility
- * inputs and normalize to neutral pill and neutral line recipes respectively.
  *
  * `tab` (the initially active one) is listed below and keeps its name for the same
  * one-level rule. `orientation`, `activationMode` and `(tabActivated)` are not listed and are
@@ -83,9 +75,9 @@ export interface TrnTabOption {
   hostDirectives: [{ directive: HlmTabs, inputs: ['tab'], outputs: [] }],
   template: `
     <hlm-tabs-list
-      [variant]="resolvedPresentation() === 'pill' ? 'default' : 'line'"
-      [attr.data-trn-variant]="resolvedVariant()"
-      [attr.data-trn-presentation]="resolvedPresentation()"
+      [variant]="presentation() === 'pill' ? 'default' : 'line'"
+      [attr.data-trn-variant]="variant()"
+      [attr.data-trn-presentation]="presentation()"
     >
       @for (tab of tabs(); track tab.value) {
         <button
@@ -104,22 +96,14 @@ export interface TrnTabOption {
 export class TrnTabsComponent {
   readonly tabs = input.required<readonly TrnTabOption[]>();
 
-  /** Semantic treatment. `default|line` remain temporary structural aliases. */
-  readonly variant = input<TrnTabsVariantInput>('neutral');
+  /** Semantic treatment. */
+  readonly variant = input<TrnTabsVariant>('neutral');
 
   /** Filled pills or a line-marked navigation row. */
   readonly presentation = input<TrnTabsPresentation>('pill');
 
-  protected readonly resolvedVariant = computed(() =>
-    normalizeTrnTabsVariant(this.variant()),
-  );
-
-  protected readonly resolvedPresentation = computed(() =>
-    normalizeTrnTabsPresentation(this.variant(), this.presentation()),
-  );
-
   protected readonly triggerToneClass = computed(() =>
-    this.resolvedVariant() === 'accent'
+    this.variant() === 'accent'
       ? 'data-active:bg-[var(--trinity-state-attention-surface)] data-active:text-[var(--trinity-state-attention-foreground)] group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-[variant=line]/tabs-list:data-active:text-[var(--trinity-link)] group-data-[variant=line]/tabs-list:data-active:after:bg-[var(--trinity-state-attention-surface)]'
       : '',
   );

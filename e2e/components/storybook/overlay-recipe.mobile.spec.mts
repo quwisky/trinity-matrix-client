@@ -26,7 +26,7 @@ test('document and portal overlay surfaces stay inside a real mobile viewport', 
 test('the action sheet stays bottom-bound, scrollable, touch-sized, and disabled-aware', async ({
   page,
 }) => {
-  await page.goto(overlayRecipeStory('feedback-compatibility'));
+  await page.goto(overlayRecipeStory('feedback'));
   await page.getByTestId('sheet-canonical').tap();
 
   const sheet = page.getByTestId('action-sheet-surface');
@@ -49,7 +49,7 @@ test('the action sheet stays bottom-bound, scrollable, touch-sized, and disabled
 test('the inline-end dialog becomes a viewport panel on mobile', async ({
   page,
 }) => {
-  await page.goto(overlayRecipeStory('dialog-compatibility'));
+  await page.goto(overlayRecipeStory('dialogs'));
   await page.getByTestId('dialog-canonical-end').tap();
 
   const surface = page.getByTestId('story-dialog-surface');

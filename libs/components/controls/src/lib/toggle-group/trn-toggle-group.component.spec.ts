@@ -2,11 +2,6 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
-import {
-  normalizeTrnTogglePresentation,
-  normalizeTrnToggleSize,
-  normalizeTrnToggleVariant,
-} from '../toggle/trn-toggle-recipe';
 import { TrnToggleGroupComponent } from './trn-toggle-group.component';
 import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
 
@@ -73,13 +68,6 @@ const tabbable = (container: HTMLElement) =>
     .map((el) => el.dataset['t']);
 
 describe('TrnToggleGroupComponent', () => {
-  it('normalizes the group values accepted by the former public wrapper', () => {
-    expect(normalizeTrnToggleVariant('default')).toBe('neutral');
-    expect(normalizeTrnToggleVariant('outline')).toBe('neutral');
-    expect(normalizeTrnTogglePresentation('outline', 'plain')).toBe('outline');
-    expect(normalizeTrnToggleSize('default')).toBe('md');
-  });
-
   it('publishes canonical recipe state without exposing the Helm spelling', async () => {
     const { group, button } = await build();
 

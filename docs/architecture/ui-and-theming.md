@@ -62,20 +62,18 @@ Structural choices are separate axes. For `trnBtn`, `variant="primary|secondary|
 semantic intent, `size="xs|sm|md|lg"` selects an ordinal size, `presentation` selects
 `solid|outline|ghost|link`, and `shape="label|icon"` owns geometry. The recipe that maps those
 concepts to Helm classes is private to Controls; neither Helm nor CVA types cross the public
-entrypoint. The expansion window still accepts Helm-shaped button values such as `default`,
-`destructive` and `icon-sm`, but canonical `primary`, `danger`, `md`, and `shape="icon"` render
-equivalently. Those aliases exist only until the consumer-migration and contract tickets remove
-them.
+entrypoint. Helm-shaped button values such as `default`, `destructive`, and `icon-sm` are not
+public inputs; callers use `primary`, `danger`, ordinal sizes, and `shape="icon"`.
 
 Choice controls use the same bounded vocabulary while keeping native semantics authoritative:
 
-| Component          | Canonical contract                                                                                                        | Expansion compatibility                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `trn-checkbox`     | Variants `neutral`, `accent`; sizes `sm`, `md`; checked, indeterminate, invalid and disabled stay native checkbox states. | None; the former wrapper had no styling inputs.                             |
-| `trn-switch`       | Variants `neutral`, `accent`; sizes `sm`, `md`; a native checkbox with `role="switch"` owns activation.                   | None; the former wrapper had no styling inputs.                             |
-| `trn-radio-group`  | Variants `neutral`, `accent`; sizes `sm`, `md`; list or segmented layout is a separate structural axis.                   | `variant="list"` and `variant="segmented"` remain temporary layout aliases. |
-| `trnToggle`        | Variants `neutral`, `accent`; sizes `sm`, `md`, `lg`; presentations `plain`, `outline`; read-only remains focusable.      | None; this is a new public control.                                         |
-| `trn-toggle-group` | The toggle recipe plus joined or separated arrangement and horizontal/vertical toolbar behavior.                          | Former `default`/`outline` variants and `default` size normalize privately. |
+| Component          | Public contract                                                                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `trn-checkbox`     | Variants `neutral`, `accent`; sizes `sm`, `md`; checked, indeterminate, invalid and disabled stay native checkbox states. |
+| `trn-switch`       | Variants `neutral`, `accent`; sizes `sm`, `md`; a native checkbox with `role="switch"` owns activation.                   |
+| `trn-radio-group`  | Variants `neutral`, `accent`; sizes `sm`, `md`; list or segmented layout is a separate structural axis.                   |
+| `trnToggle`        | Variants `neutral`, `accent`; sizes `sm`, `md`, `lg`; presentations `plain`, `outline`; read-only remains focusable.      |
+| `trn-toggle-group` | The toggle recipe plus joined or separated arrangement and horizontal/vertical toolbar behavior.                          |
 
 Checkboxes, switches and radios render native inputs next to recipe-owned visual spans. Invalid,
 disabled, focus and checked state therefore live on the element the browser and assistive
@@ -86,14 +84,14 @@ colour, elevation and interaction states belong to these recipes.
 
 Fields and rich controls expose only the axes their native or vendor substrate can implement:
 
-| Component                      | Canonical contract                                                                              | Expansion compatibility                                                   |
-| ------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `trn-field`                    | Groups a native control and supporting content; `invalid` marks the field state.                | None; layout is not a semantic variant.                                   |
-| `trn-field-label` / `trnLabel` | Emphasis `normal`, `strong`; validation remains the independent `invalid` state.                | `trn-field-label` variants `default`, `eyebrow` temporarily map emphasis. |
-| `trnInput` / `trnTextarea`     | Sizes `sm`, `md`, `lg`; explicit or form-derived invalid state; exact native-element selectors. | None; vendor `forceInvalid` is private.                                   |
-| `trn-select`                   | Sizes `sm`, `md`; invalid and disabled states; the focusable trigger fills its block host.      | None; repeated `triggerClass="w-full"` copies were removed.               |
-| `trn-emoji-picker`             | Sizes `sm`, `md`, `lg`; the vendor glyph measurement is a private adapter.                      | None; the raw numeric `emojiSize` input was removed.                      |
-| `trn-qr-scanner`               | One tokenized, layered scanner surface whose actions compose `trnBtn`.                          | None; one surface does not justify styling inputs.                        |
+| Component                      | Public contract                                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `trn-field`                    | Groups a native control and supporting content; `invalid` marks the field state.                |
+| `trn-field-label` / `trnLabel` | Emphasis `normal`, `strong`; validation remains the independent `invalid` state.                |
+| `trnInput` / `trnTextarea`     | Sizes `sm`, `md`, `lg`; explicit or form-derived invalid state; exact native-element selectors. |
+| `trn-select`                   | Sizes `sm`, `md`; invalid and disabled states; the focusable trigger fills its block host.      |
+| `trn-emoji-picker`             | Sizes `sm`, `md`, `lg`; the vendor glyph measurement is a private adapter.                      |
+| `trn-qr-scanner`               | One tokenized, layered scanner surface whose actions compose `trnBtn`.                          |
 
 Labels keep native `for`/`id` associations, text controls retain native focus and keyboard
 behavior, and descriptions remain attached through `aria-describedby`. The select routes its
@@ -103,38 +101,38 @@ values belong to the owning recipe.
 
 Navigation and Layout follows the same separation between semantic treatment and structure:
 
-| Component         | Canonical contract                                                                                          | Expansion compatibility                                                   |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `trn-tabs`        | Variants `neutral`, `accent`; presentations `pill`, `line`; orientation and activation stay Brain behavior. | Former variants `default`, `line` normalize to neutral pill/line recipes. |
-| `trn-page-header` | Variants `neutral`, `accent`; layouts `page`, `toolbar`; the native header owns one page-level `h1`.        | Former variants `page`, `chat` normalize to neutral page/toolbar recipes. |
-| `[trnCard]`       | Variants `neutral`, `muted`; sizes `sm`, `md`; the call site retains its section and heading semantics.     | None; Helm card size and recipe types stay private.                       |
-| `[trnSeparator]`  | Variants `neutral`, `accent`; horizontal/vertical geometry and decorative/announced meaning stay separate.  | None; no size axis is invented for a one-pixel rule.                      |
+| Component         | Public contract                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `trn-tabs`        | Variants `neutral`, `accent`; presentations `pill`, `line`; orientation and activation stay Brain behavior. |
+| `trn-page-header` | Variants `neutral`, `accent`; layouts `page`, `toolbar`; the native header owns one page-level `h1`.        |
+| `[trnCard]`       | Variants `neutral`, `muted`; sizes `sm`, `md`; the call site retains its section and heading semantics.     |
+| `[trnSeparator]`  | Variants `neutral`, `accent`; horizontal/vertical geometry and decorative/announced meaning stay separate.  |
 
 Tab triggers retain Brain's roving focus, arrow-key activation, disabled state, ARIA ownership and
 non-submitting button type. Structural card slots keep their semantic host elements, and separator
-orientation continues to drive both geometry and the accessible role. Compatibility and canonical
-forms resolve through the same private normalizers; public entrypoints export only Trinity types.
-The category's authored inline panel rule is explicitly classified in `@layer components`, while
-recipe classes use the governed Tailwind utility layer rather than unlayered CSS.
+orientation continues to drive both geometry and the accessible role. Tab-panel stack spacing is
+owned internally instead of exposed as an arbitrary class-string input. Public entrypoints export
+only Trinity types. The category's authored inline panel rule is explicitly classified in
+`@layer components`, while recipe classes use the governed Tailwind utility layer rather than
+unlayered CSS.
 
 Foundations and Generic Content apply the same rule to the narrower vocabulary each component
 can actually render:
 
-| Component         | Canonical contract                                                                                | Expansion compatibility                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `trn-icon`        | Sizes `2xs`, `xs`, `sm`, `md`, `lg`, `xl`, `2xl`; variants `neutral`, `accent`, `muted`, `danger` | Exact `px`, `rem`, or `em` lengths remain accepted.                    |
-| `trn-avatar`      | Named `2xs`–`2xl` sizes; `exactSize` is a bounded 16–256 px escape hatch.                         | Numeric `size` values keep their geometry; `exactSize` wins if set.    |
-| `trnBadge`        | Variants `neutral`, `success`, `warning`; sizes `xs`, `sm`, `md`                                  | `variant="default"` maps to `neutral`.                                 |
-| `trn-banner`      | Variants `neutral`, `accent`                                                                      | `tone` remains an alias; canonical `variant` wins when both are bound. |
-| `trn-empty-state` | Variants `muted`, `danger`; layouts `panel`, `line`, `hero`                                       | `tone` and `size` remain aliases for the corresponding axes.           |
-| `trn-progress`    | Variants `accent`, `success`, `warning`, `danger`; sizes `xs`, `sm`, `md`                         | Determinate and indeterminate are behavior, not appearance variants.   |
-| `trn-spinner`     | Variants `neutral`, `muted`, `accent`, `danger`; sizes `xs`, `sm`, `md`, `lg`                     | An omitted variant inherits the surrounding control ink.               |
-| `trnTooltip`      | Positions `top`, `right`, `bottom`, `left`                                                        | Position remains behavior; the tooltip has one semantic surface.       |
+| Component         | Public contract                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| `trn-icon`        | Sizes `2xs`, `xs`, `sm`, `md`, `lg`, `xl`, `2xl`; variants `neutral`, `accent`, `muted`, `danger` |
+| `trn-avatar`      | Named `2xs`–`2xl` sizes; `exactSize` is a bounded 16–256 px escape hatch.                         |
+| `trnBadge`        | Variants `neutral`, `success`, `warning`; sizes `xs`, `sm`, `md`                                  |
+| `trn-banner`      | Variants `neutral`, `accent`                                                                      |
+| `trn-empty-state` | Variants `muted`, `danger`; layouts `panel`, `line`, `hero`                                       |
+| `trn-progress`    | Variants `accent`, `success`, `warning`, `danger`; sizes `xs`, `sm`, `md`                         |
+| `trn-spinner`     | Variants `neutral`, `muted`, `accent`, `danger`; sizes `xs`, `sm`, `md`, `lg`; may inherit ink    |
+| `trnTooltip`      | Positions `top`, `right`, `bottom`, `left`; one semantic surface                                  |
 
 Recipe classes and vendor adapters stay private. Public entrypoints export only Trinity names,
 and semantic statuses resolve through Theme tokens rather than local colours or Helm variants.
-Canonical and compatibility stories coexist during this expansion window; strict template
-fixtures reject values outside the bounded subsets.
+Strict template fixtures reject values outside the bounded subsets, including retired aliases.
 
 The login page is the first production proof screen. It composes labels, inputs, buttons,
 cards, icons, overlays and progress only through Trinity entrypoints, including
@@ -162,16 +160,16 @@ and Rooms actions use cold finite RxJS pipelines, with
 component stylesheet in the migrated slices is in `@layer components`, and
 `design-system-consumer-migration.spec.mjs` keeps the roots non-vacuous while rejecting legacy
 values, vendor imports, local appearance overrides, Promise alert calls, and cascade exceptions.
-No Rooms consumer uses an expansion alias or remains on a cascade migration ledger. The bounded
-compatibility inputs stay in the public components only until the contraction ticket removes them.
+No Rooms consumer uses a retired alias or remains on a cascade migration ledger. Source guards
+keep the removed aliases, Promise wrappers, and arbitrary inner-appearance inputs from returning.
 
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
 `shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
 the common pointer, hover and pressed states. A purpose-built control whose geometry carries
 meaning—a reaction chip, server-rail pill, avatar action or compact toolbar button—uses
 `trnIconButton` instead. It keeps that geometry but receives the same interaction states; the
-owning component must explicitly centre its glyph within that custom box. Legacy `icon*` sizes
-remain equivalent during migration. In both forms the inner `<trn-icon>` must
+owning component must explicitly centre its glyph within that custom box. In both forms the inner
+`<trn-icon>` must
 choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
 `pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
 transform while retaining colour and focus feedback.
@@ -369,8 +367,8 @@ const ref = this.dialog.open(MyComponent, {
 
 `placement: 'inline-end'` pins a full-height logical-end panel. Dialog placement, anchored
 `side`/`align`, focus and lifecycle are behavior choices; they never select a visual treatment.
-The temporary `side: 'end'|'full-screen'` spellings remain accepted by the public service only
-until the contraction ticket removes them; no application consumer uses those aliases.
+Dialog placement uses only `center|inline-end|bottom|fullscreen`; the former `side` option is not
+part of the public service.
 
 Every overlay surface uses `trnOverlaySurface`, whose three bounded axes stay independent:
 
@@ -387,16 +385,15 @@ cascade layer as the application, so a recipe resolves identically in either hos
 
 The imperative wrappers expose the same Trinity vocabulary instead of vendor variants:
 
-- dropdown items are `neutral|danger` (`default|destructive` are temporary aliases);
+- dropdown items are `neutral|danger`;
 - guaranteed checked values use `trnLockedSelection`; dropdown checkboxes expose the same state as
   `lockedSelection`, preserving disabled semantics without making the included value look excluded;
 - alerts and action-sheet buttons are `neutral|danger`, with cancellation behavior separate
   from appearance; and
-- toasts are `neutral|success|warning|danger` (`default|destructive` remain aliases).
+- toasts are `neutral|success|warning|danger`.
 
 One-shot result APIs are cold, finite Observables: `openAndWait$()`, `confirm$()` and `prompt$()`
-do not open an overlay until subscribed and emit once. Their Promise counterparts are temporary
-compatibility methods, implemented by delegating to those Observable commands.
+do not open an overlay until subscribed and emit once. No Promise compatibility methods remain.
 
 !!! warning "Two dialog traps"
 

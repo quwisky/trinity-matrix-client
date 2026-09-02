@@ -9,7 +9,7 @@ import type { TrnIconName } from '../trn-icon-name';
 import type { TrnIconMotion } from '../trn-icon-motion';
 import {
   resolveTrnIconSize,
-  type TrnIconSizeInput,
+  type TrnIconSize,
   type TrnIconVariant,
 } from '../trn-icon-recipe';
 
@@ -63,7 +63,7 @@ export class TrnIconComponent {
    */
   readonly label = input<string | null>(null);
   /**
-   * Glyph size as a CSS length (`'1.25rem'`), forwarded to the inner element's
+   * Glyph size from Trinity's ordinal scale, forwarded to the inner element's
    * `--ng-icon__size`. Leave unset to keep inheriting from font-size, which is what the
    * ~100 icons sitting inside a button already do correctly. Set it — rather than reaching
    * for `class="text-xl"` — whenever an icon must be BIGGER than its context: see the note
@@ -74,7 +74,7 @@ export class TrnIconComponent {
    * coercion returns it untouched, Angular drops the custom property, and `1em` applies as
    * before.
    */
-  readonly size = input<TrnIconSizeInput | null>(null);
+  readonly size = input<TrnIconSize | null>(null);
   /** Optional semantic ink. Leave unset when the surrounding control supplies the colour. */
   readonly variant = input<TrnIconVariant | null>(null);
   /**

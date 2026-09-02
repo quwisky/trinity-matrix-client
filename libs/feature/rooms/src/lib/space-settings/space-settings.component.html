@@ -22,11 +22,7 @@
       [tabs]="settingsTabs()"
       class="space-settings__tabs"
     >
-      <trn-tab-panel
-        value="general"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="space-settings-panel-general"
-      >
+      <trn-tab-panel value="general" data-testid="space-settings-panel-general">
         <trn-avatar-field
           [roomId]="spaceId()"
           [name]="name()"
@@ -60,11 +56,7 @@
         </label>
       </trn-tab-panel>
 
-      <trn-tab-panel
-        value="access"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="space-settings-panel-access"
-      >
+      <trn-tab-panel value="access" data-testid="space-settings-panel-access">
         <label class="space-settings__field">
           <span class="space-settings__label">Who can join</span>
           <trn-select
@@ -82,11 +74,7 @@
         <trn-room-aliases [roomId]="spaceId()" />
       </trn-tab-panel>
 
-      <trn-tab-panel
-        value="bans"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="space-settings-panel-bans"
-      >
+      <trn-tab-panel value="bans" data-testid="space-settings-panel-bans">
         <trn-banned-members [roomId]="spaceId()" />
       </trn-tab-panel>
     </trn-tabs>

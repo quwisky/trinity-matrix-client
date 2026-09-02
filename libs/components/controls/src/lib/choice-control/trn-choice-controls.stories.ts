@@ -154,33 +154,3 @@ export const CanonicalStates: Story = {
     `,
   }),
 };
-
-/** Temporary aliases keep existing templates operational while consumers migrate. */
-export const CompatibilityAliases: Story = {
-  render: () => ({
-    props: { options: OPTIONS },
-    template: `
-      <div class="grid max-w-lg gap-5 p-4">
-        <trn-radio-group
-          data-testid="radio-legacy-layout"
-          variant="segmented"
-          aria-label="Compatibility theme"
-          [options]="options"
-          value="system"
-        />
-        <trn-toggle-group
-          data-testid="toggle-group-legacy"
-          type="single"
-          value="week"
-          variant="outline"
-          size="default"
-          aria-label="Compatibility range"
-        >
-          <button trnToggleGroupItem value="day">Day</button>
-          <button trnToggleGroupItem value="week">Week</button>
-          <button trnToggleGroupItem value="month">Month</button>
-        </trn-toggle-group>
-      </div>
-    `,
-  }),
-};

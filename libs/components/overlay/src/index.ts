@@ -33,9 +33,7 @@ export { TrnActionSheetRef } from './lib/action-sheet/trn-action-sheet-ref';
 export {
   TrnToastService,
   type ToastOptions,
-  type ToastVariant,
   type TrnToastVariant,
-  type TrnToastVariantInput,
 } from './lib/toast/trn-toast.service';
 export { TrnToasterComponent } from './lib/toast/trn-toaster.component';
 export { TrnOverlaySurfaceDirective } from './lib/surface/trn-overlay-surface.directive';
@@ -60,7 +58,6 @@ export {
   TrnDropdownMenuSubTrigger,
   TrnDropdownMenuTrigger,
   type TrnDropdownMenuItemVariant,
-  type TrnDropdownMenuItemVariantInput,
 } from './lib/dropdown/trn-dropdown-menu';
 export {
   TrnAnchoredOverlayDirective,

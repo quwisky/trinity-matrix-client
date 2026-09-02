@@ -11,7 +11,7 @@ import {
 } from './theme-preview.mts';
 
 const STORY =
-  '/iframe.html?id=components-button--canonical-and-compatibility&viewMode=story';
+  '/iframe.html?id=components-button--canonical-states&viewMode=story';
 
 const recipeStyle = (control: Locator) =>
   control.evaluate((element) => {
@@ -28,7 +28,7 @@ const recipeStyle = (control: Locator) =>
     };
   });
 
-test('canonical button recipes render like their compatibility inputs', async ({
+test('canonical button recipes preserve independent semantic axes', async ({
   page,
 }) => {
   await page.goto(STORY);
@@ -40,16 +40,6 @@ test('canonical button recipes render like their compatibility inputs', async ({
   await expect(canonicalDanger).toBeVisible();
   await expect(canonicalIcon).toBeVisible();
 
-  await expect
-    .poll(() => recipeStyle(canonicalPrimary))
-    .toEqual(await recipeStyle(page.getByTestId('legacy-primary')));
-  await expect
-    .poll(() => recipeStyle(canonicalDanger))
-    .toEqual(await recipeStyle(page.getByTestId('legacy-danger')));
-  await expect
-    .poll(() => recipeStyle(canonicalIcon))
-    .toEqual(await recipeStyle(page.getByTestId('legacy-icon')));
-
   expect(await recipeStyle(canonicalDanger)).not.toEqual(
     await recipeStyle(canonicalPrimary),
   );
@@ -58,6 +48,7 @@ test('canonical button recipes render like their compatibility inputs', async ({
   ).not.toBe(
     (await recipeStyle(page.getByTestId('canonical-primary-ghost'))).color,
   );
+  await expect(canonicalIcon).toHaveAttribute('data-trn-icon-button', '');
 });
 
 for (const preview of STORYBOOK_THEME_PREVIEWS.filter(

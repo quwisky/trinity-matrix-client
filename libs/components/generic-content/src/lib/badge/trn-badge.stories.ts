@@ -34,15 +34,3 @@ export const CanonicalRecipes: Story = {
     `,
   }),
 };
-
-/** The former vendor-shaped name resolves to the canonical neutral status. */
-export const CompatibilityDefault: Story = {
-  render: () => ({
-    template: `
-      <div class="flex items-center gap-3 p-4">
-        <span data-testid="badge-canonical-neutral" trnBadge variant="neutral">Neutral</span>
-        <span data-testid="badge-legacy-default" trnBadge variant="default">Default</span>
-      </div>
-    `,
-  }),
-};

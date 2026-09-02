@@ -6,21 +6,27 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Public components now expose only canonical Trinity contracts.** Removed temporary styling
+  aliases, numeric and CSS-length size inputs, overlay Promise wrappers, legacy dialog placement,
+  and the tab panel's arbitrary inner-class input. Strict template and source guards reject the
+  retired vocabulary; tab panels now own their shared stack layout internally.
+
 ### Added
 
 - **Overlays now expose one bounded Trinity vocabulary.** Dialogs, panels, sheets and popovers
   share semantic surface, ordinal size and structural layout recipes while placement remains a
   separate behavior choice. Dropdown items, alerts, action sheets and toasts use canonical
-  neutral, status and danger variants with existing spellings retained during migration; dialog,
-  confirm and prompt results also have cold, finite RxJS commands. Storybook and the application
-  resolve the same recipes inside both document and CDK portal layers.
+  neutral, status and danger variants; dialog, confirm and prompt results use cold, finite RxJS
+  commands. Storybook and the application resolve the same recipes inside both document and CDK
+  portal layers.
 
 - **Navigation and layout primitives now separate meaning from structure.** Tabs expose neutral or
   accent treatment independently from pill or line presentation; page headers expose the same
   semantic treatments independently from page or toolbar layout; cards offer only neutral/muted
   surfaces and compact/default spacing; and separators offer neutral/accent lines while retaining
-  native orientation and accessibility behavior. Existing tab `default|line` and header
-  `page|chat` inputs remain visually equivalent while consumers migrate.
+  native orientation and accessibility behavior.
 
 - **Fields and rich controls now use bounded Trinity recipes.** Labels separate normal or strong
   emphasis from validation; native inputs and textareas expose `sm`–`lg` sizes; selects own their
@@ -32,20 +38,17 @@ All notable changes to this project are documented here. The format is based on
   groups, standalone toggles and toggle groups expose only the semantic variants, ordinal sizes
   and structural axes they implement. Native inputs own checked, invalid, disabled and keyboard
   semantics; toolbars retain one roving tab stop; buttons announce loading; and the composer no
-  longer restyles control internals. Existing segmented-radio and outline-toggle spellings
-  remain compatible while consumers migrate.
+  longer restyles control internals.
 
 - **Foundations and generic content now use bounded Trinity recipes.** Icons, avatars, badges,
   banners, empty states, progress and spinners expose only the semantic variants and ordinal
-  sizes they support, while tooltip position stays a behavior choice. Existing exact sizes and
-  renamed inputs remain compatible during migration, stories cover both forms, and browser
-  checks prove the recipes resolve through Theme tokens without leaking vendor types.
+  sizes they support, while tooltip position stays a behavior choice. Browser checks prove the
+  recipes resolve through Theme tokens without leaking vendor types.
 
 - **Buttons now speak Trinity's design language instead of the underlying UI kit's.** Public
   button recipes introduce semantic `primary`, `secondary` and `danger` variants, ordinal
-  `xs`–`lg` sizes, and separate presentation and icon-shape choices. Existing button inputs keep
-  rendering the same during migration, while unsupported design-system values now fail template
-  type-checking rather than falling through to an accidental style.
+  `xs`–`lg` sizes, and separate presentation and icon-shape choices. Unsupported design-system
+  values fail template type-checking rather than falling through to an accidental style.
 
 - **Room links now open a safe information preview before anything changes.** Links in both
   `matrix.to` and `matrix:` form show the room name, address, topic, member count, encryption and

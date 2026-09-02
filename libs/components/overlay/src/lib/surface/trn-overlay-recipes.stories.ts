@@ -27,7 +27,7 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          'Trinity-owned overlay treatment, placement, lifecycle, and temporary compatibility forms across document and portal surfaces.',
+          'Trinity-owned overlay treatment, placement, and lifecycle across document and portal surfaces.',
       },
     },
   },
@@ -40,14 +40,14 @@ export const LayeredSurfaces: Story = {
   render: () => ({ template: '<trn-layered-overlay-story />' }),
 };
 
-export const DropdownCompatibility: Story = {
+export const Dropdowns: Story = {
   render: () => ({ template: '<trn-dropdown-overlay-story />' }),
 };
 
-export const DialogCompatibility: Story = {
+export const Dialogs: Story = {
   render: () => ({ template: '<trn-dialog-overlay-story />' }),
 };
 
-export const FeedbackCompatibility: Story = {
+export const Feedback: Story = {
   render: () => ({ template: '<trn-feedback-overlay-story />' }),
 };

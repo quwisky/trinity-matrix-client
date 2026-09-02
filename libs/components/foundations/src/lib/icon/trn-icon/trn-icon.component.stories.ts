@@ -50,15 +50,3 @@ export const SemanticVariants: Story = {
     `,
   }),
 };
-
-/** Exact CSS lengths remain valid until the existing templates finish migrating. */
-export const CompatibilityLength: Story = {
-  render: () => ({
-    template: `
-      <div class="flex items-center gap-4 p-4">
-        <trn-icon data-testid="icon-canonical-lg" name="search" size="lg" label="Canonical large" />
-        <trn-icon data-testid="icon-legacy-lg" name="search" size="1.25rem" label="Legacy large" />
-      </div>
-    `,
-  }),
-};

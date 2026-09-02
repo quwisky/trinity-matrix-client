@@ -22,7 +22,6 @@ export type TrnRadioGroupVariant = TrnChoiceVariant;
 export type { TrnRadioGroupLayout } from './trn-radio-group-recipe';
 export type TrnRadioGroupSize = TrnChoiceSize;
 
-type TrnRadioGroupVariantInput = TrnRadioGroupVariant | TrnRadioGroupLayout;
 let nextRadioGroupId = 0;
 
 /** One choice in a {@link TrnRadioGroupComponent}. */
@@ -79,9 +78,9 @@ export interface TrnRadioOption<T> {
     // Routed to the inner group below; a duplicate here would name an element with no role.
     '[attr.aria-label]': 'null',
     '[attr.aria-labelledby]': 'null',
-    '[attr.data-layout]': 'resolvedLayout()',
+    '[attr.data-layout]': 'layout()',
     '[attr.data-size]': 'size()',
-    '[attr.data-variant]': 'resolvedVariant()',
+    '[attr.data-variant]': 'variant()',
     '[attr.data-invalid]': 'invalid() ? "true" : null',
   },
   template: `
@@ -122,43 +121,19 @@ export interface TrnRadioOption<T> {
 })
 export class TrnRadioGroupComponent<T> {
   protected readonly controlName = `trn-radio-${nextRadioGroupId++}`;
-  protected readonly resolvedRecipe = computed<{
-    readonly layout: TrnRadioGroupLayout;
-    readonly variant: TrnRadioGroupVariant;
-  }>(() => {
-    const variant = this.variant();
-    if (variant === 'list' || variant === 'segmented') {
-      return { layout: variant, variant: 'neutral' };
-    }
-    return { layout: this.layout(), variant };
-  });
-  protected readonly resolvedLayout = computed(
-    () => this.resolvedRecipe().layout,
-  );
-  protected readonly resolvedVariant = computed(
-    () => this.resolvedRecipe().variant,
-  );
   protected readonly groupClass = computed(() =>
-    trnRadioGroupRecipe(this.resolvedLayout(), this.size()),
+    trnRadioGroupRecipe(this.layout(), this.size()),
   );
   protected readonly indicatorClass = computed(() =>
-    trnRadioIndicatorRecipe(this.resolvedLayout(), this.size(), this.invalid()),
+    trnRadioIndicatorRecipe(this.layout(), this.size(), this.invalid()),
   );
 
   protected optionClass(): string {
-    return trnRadioOptionRecipe(
-      this.resolvedLayout(),
-      this.size(),
-      this.resolvedVariant(),
-    );
+    return trnRadioOptionRecipe(this.layout(), this.size(), this.variant());
   }
 
   protected indicatorDotClass(selected: boolean): string {
-    return trnRadioIndicatorDotRecipe(
-      selected,
-      this.size(),
-      this.resolvedVariant(),
-    );
+    return trnRadioIndicatorDotRecipe(selected, this.size(), this.variant());
   }
 
   /** Native change events always identify the concrete option that was chosen. */
@@ -166,8 +141,8 @@ export class TrnRadioGroupComponent<T> {
     this.valueChange.emit(value);
   }
 
-  /** Semantic tone. `list`/`segmented` remain temporary layout aliases. */
-  readonly variant = input<TrnRadioGroupVariantInput>('neutral');
+  /** Semantic tone. */
+  readonly variant = input<TrnRadioGroupVariant>('neutral');
   readonly layout = input<TrnRadioGroupLayout>('list');
   readonly size = input<TrnChoiceSize>('md');
   readonly options = input.required<readonly TrnRadioOption<T>[]>();

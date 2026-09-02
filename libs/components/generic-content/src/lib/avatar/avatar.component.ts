@@ -14,10 +14,7 @@ import {
 } from '@trinity/helm/avatar';
 import { type PresenceState, presenceLabel } from '@trinity/util/matrix';
 import { AVATAR_RESOLVER } from './avatar-resolver';
-import {
-  resolveTrnAvatarSize,
-  type TrnAvatarSizeInput,
-} from './trn-avatar-size';
+import { resolveTrnAvatarSize, type TrnAvatarSize } from './trn-avatar-size';
 
 /**
  * Owning-account badge for the mixed-account corner overlay: the account's real avatar
@@ -123,8 +120,8 @@ export class AvatarComponent {
   readonly accountId = input<string | null>(null);
   readonly name = input('');
   readonly initial = input('?');
-  /** Named geometry. Numeric values remain accepted while existing callers migrate. */
-  readonly size = input<TrnAvatarSizeInput>('xl');
+  /** Named geometry from Trinity's ordinal scale. */
+  readonly size = input<TrnAvatarSize>('xl');
   /** Bounded 16–256px escape for layouts whose geometry cannot use an ordinal size. */
   readonly exactSize = input<number | null>(null);
   readonly shape = input<AvatarShape>('person');
@@ -142,19 +139,8 @@ export class AvatarComponent {
   readonly resolvedSize = computed(() =>
     resolveTrnAvatarSize(this.size(), this.exactSize()),
   );
-  protected readonly canonicalSize = computed(() => {
-    const size = this.size();
-    return typeof size === 'string' ? size : null;
-  });
-  protected readonly requestedExactSize = computed(() => {
-    const exact = this.exactSize();
-    if (exact !== null) {
-      return exact;
-    }
-
-    const size = this.size();
-    return typeof size === 'number' ? size : null;
-  });
+  protected readonly canonicalSize = this.size;
+  protected readonly requestedExactSize = this.exactSize;
 
   /** One inherited radius drives the Helm host, image, fallback and outline together. */
   readonly shapeRadius = computed(() =>

@@ -8,14 +8,10 @@ export type TrnToastVariant = Extract<
   TrnVariant,
   'neutral' | 'success' | 'warning' | 'danger'
 >;
-export type TrnToastVariantInput = TrnToastVariant | 'default' | 'destructive';
-/** Temporary name retained while feature consumers migrate. */
-export type ToastVariant = TrnToastVariantInput;
-
 export interface ToastOptions {
   /** Auto-dismiss after this many ms; 0 keeps it until tapped. Default 3000. */
   duration?: number;
-  variant?: TrnToastVariantInput;
+  variant?: TrnToastVariant;
   /**
    * Renders a button on the toast; clicking it runs `onClick` and dismisses.
    *
@@ -46,7 +42,7 @@ export class TrnToastService {
 
   show(message: string, opts: ToastOptions = {}): void {
     const duration = opts.duration ?? 3000;
-    const variant = normalizeToastVariant(opts.variant);
+    const variant = opts.variant ?? 'neutral';
     // sonner keeps a toast until dismissed when the duration is Infinity; our `0`
     // (Ionic "stay until tapped") maps to that.
     // The `action` key is added only when one was passed, rather than spelled out as
@@ -91,19 +87,5 @@ export class TrnToastService {
         variant === 'danger' ? 'assertive' : 'polite',
       );
     }
-  }
-}
-
-function normalizeToastVariant(
-  variant: TrnToastVariantInput | undefined,
-): TrnToastVariant {
-  switch (variant) {
-    case 'destructive':
-      return 'danger';
-    case 'default':
-    case undefined:
-      return 'neutral';
-    default:
-      return variant;
   }
 }

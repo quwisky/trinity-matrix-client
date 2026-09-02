@@ -12,11 +12,6 @@ export type TrnIconSize = Extract<
   '2xs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 >;
 
-type CssLengthUnit = 'px' | 'rem' | 'em';
-type LegacyIconSize = `${number}${CssLengthUnit}`;
-
-export type TrnIconSizeInput = TrnIconSize | LegacyIconSize;
-
 const iconSize = {
   '2xs': '0.75rem',
   xs: '0.875rem',
@@ -27,15 +22,6 @@ const iconSize = {
   '2xl': '2rem',
 } as const satisfies Record<TrnIconSize, string>;
 
-function isTrnIconSize(size: TrnIconSizeInput): size is TrnIconSize {
-  return size in iconSize;
-}
-
-/** Resolves canonical sizes while retaining exact CSS-length inputs during expansion. */
-export function resolveTrnIconSize(size: TrnIconSizeInput | null): string {
-  if (size === null) {
-    return '';
-  }
-
-  return isTrnIconSize(size) ? iconSize[size] : size;
+export function resolveTrnIconSize(size: TrnIconSize | null): string {
+  return size === null ? '' : iconSize[size];
 }

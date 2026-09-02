@@ -2,9 +2,6 @@ import { expect, test, type Locator } from '@playwright/test';
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 const CANONICAL = story('components-choice-controls--canonical-states');
-const COMPATIBILITY = story(
-  'components-choice-controls--compatibility-aliases',
-);
 
 const box = (locator: Locator) =>
   locator.evaluate((element) => {
@@ -91,9 +88,7 @@ test('toggle groups keep one tab stop and move it with arrow keys', async ({
   await expect(buttons.nth(0)).toBeFocused();
 });
 
-test('ordinal sizes and real compatibility aliases resolve canonically', async ({
-  page,
-}) => {
+test('ordinal sizes resolve canonically', async ({ page }) => {
   await page.goto(CANONICAL);
   const smallCheckbox = page
     .getByTestId('checkbox-invalid')
@@ -103,22 +98,12 @@ test('ordinal sizes and real compatibility aliases resolve canonically', async (
     .locator(':scope > span');
   expect(await box(smallCheckbox)).toEqual({ height: 14, width: 14 });
   expect(await box(mediumCheckbox)).toEqual({ height: 16, width: 16 });
-
-  await page.goto(COMPATIBILITY);
-  await expect(page.getByTestId('radio-legacy-layout')).toHaveAttribute(
-    'data-layout',
-    'segmented',
-  );
-  await expect(page.getByTestId('toggle-group-legacy')).toHaveAttribute(
-    'data-trn-presentation',
-    'outline',
-  );
 });
 
 test('buttons announce loading while native disabled remains authoritative', async ({
   page,
 }) => {
-  await page.goto(story('components-button--canonical-and-compatibility'));
+  await page.goto(story('components-button--canonical-states'));
   const loading = page.getByTestId('canonical-loading');
 
   await expect(loading).toHaveAttribute('aria-busy', 'true');

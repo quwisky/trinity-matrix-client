@@ -30,7 +30,7 @@ export const CanonicalRecipes: Story = {
 };
 
 /** Omitting variant retains the surrounding text colour, matching existing call sites. */
-export const CompatibilityInheritedInk: Story = {
+export const InheritedInk: Story = {
   render: () => ({
     template: `
       <div class="p-4 text-[var(--trinity-link)]">

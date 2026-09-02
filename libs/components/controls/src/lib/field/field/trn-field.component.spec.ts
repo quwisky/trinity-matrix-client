@@ -25,16 +25,6 @@ import { TrnFieldComponent } from './trn-field.component';
 })
 class HostComponent {}
 
-@Component({
-  imports: [TrnFieldLabelComponent],
-  template: `
-    <trn-field-label controlId="legacy" variant="eyebrow">
-      Legacy
-    </trn-field-label>
-  `,
-})
-class LegacyHostComponent {}
-
 describe('TrnFieldComponent', () => {
   it('keeps the native label associated with the projected control', async () => {
     const { container } = await render(HostComponent);
@@ -62,13 +52,5 @@ describe('TrnFieldComponent', () => {
     expect(field?.getAttribute('data-invalid')).toBe('true');
     expect(control?.getAttribute('aria-invalid')).toBe('true');
     expect(control?.getAttribute('aria-describedby')).toBe('email-error');
-  });
-
-  it('keeps the eyebrow alias equivalent during the migration window', async () => {
-    const { container } = await render(LegacyHostComponent);
-
-    expect(
-      container.querySelector('label')?.getAttribute('data-emphasis'),
-    ).toBe('strong');
   });
 });

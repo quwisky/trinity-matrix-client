@@ -54,16 +54,6 @@ describe('TrnToastService', () => {
     });
   });
 
-  it('preserves temporary default and destructive aliases', () => {
-    svc.show('Legacy neutral', { variant: 'default' });
-    expect(toast).toHaveBeenCalledWith('Legacy neutral', { duration: 3000 });
-
-    svc.show('Legacy danger', { variant: 'destructive' });
-    expect(toast.error).toHaveBeenCalledWith('Legacy danger', {
-      duration: 3000,
-    });
-  });
-
   it('maps duration 0 (keep until dismissed) to Infinity', () => {
     svc.show('Persistent', { duration: 0 });
     expect(toast).toHaveBeenCalledWith('Persistent', {
@@ -87,7 +77,7 @@ describe('TrnToastService', () => {
     svc.show('Plain', { action: withAction });
     svc.show('Saved', { variant: 'success', action: withAction });
     svc.show('Check this', { variant: 'warning', action: withAction });
-    svc.show('Failed', { variant: 'destructive', action: withAction });
+    svc.show('Failed', { variant: 'danger', action: withAction });
 
     for (const spy of [toast, toast.success, toast.warning, toast.error]) {
       expect(spy).toHaveBeenCalledWith(

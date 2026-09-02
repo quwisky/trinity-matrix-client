@@ -8,10 +8,10 @@ import type {
 
 /** Private styling context shared with projected group items. */
 export interface TrnToggleGroupStyleContext {
-  readonly resolvedArrangement: Signal<TrnToggleArrangement>;
-  readonly resolvedPresentation: Signal<TrnTogglePresentation>;
-  readonly resolvedSize: Signal<TrnToggleSize>;
-  readonly resolvedVariant: Signal<TrnToggleVariant>;
+  readonly arrangement: Signal<TrnToggleArrangement>;
+  readonly presentation: Signal<TrnTogglePresentation>;
+  readonly size: Signal<TrnToggleSize>;
+  readonly variant: Signal<TrnToggleVariant>;
 }
 
 export const TRN_TOGGLE_GROUP_STYLE =

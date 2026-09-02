@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { validateDesignSystemCatalog } from './design-system-contract.mjs';
@@ -15,6 +16,29 @@ const categories = {
   'navigation-layout': [],
   'generic-content': [],
 };
+
+const publicComponentRoots = [
+  'foundations',
+  'controls',
+  'generic-content',
+  'navigation-layout',
+  'overlay',
+];
+
+function authoredSources(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return authoredSources(path);
+    if (!/\.(?:ts|html)$/u.test(entry.name)) return [];
+    if (/\.(?:spec|stories)\.ts$/u.test(entry.name)) return [];
+    return [
+      readFileSync(path, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//gu, '')
+        .replace(/<!--[\s\S]*?-->/gu, '')
+        .replace(/(^|\s)\/\/.*$/gmu, '$1'),
+    ];
+  });
+}
 
 describe('design-system contract', () => {
   it('validates the public taxonomy and production proof screen', () => {
@@ -199,6 +223,34 @@ describe('design-system contract', () => {
         expect.stringContaining('public entrypoint must use named exports'),
       ]),
     );
+  });
+
+  it('keeps retired public styling and Promise compatibility APIs deleted', () => {
+    const authored = publicComponentRoots
+      .flatMap((root) =>
+        authoredSources(join(workspaceRoot, 'libs/components', root, 'src')),
+      )
+      .join('\n');
+
+    for (const retired of [
+      'TrnButtonVariantInput',
+      'TrnButtonSizeInput',
+      'TrnToggleVariantInput',
+      'TrnToggleSizeInput',
+      'TrnFieldLabelVariant',
+      'TrnTabsVariantInput',
+      'TrnPageHeaderVariantInput',
+      'TrnIconSizeInput',
+      'TrnAvatarSizeInput',
+      'TrnBadgeVariantInput',
+      'TrnDropdownMenuItemVariantInput',
+      'TrnToastVariantInput',
+    ]) {
+      expect(authored, retired).not.toContain(retired);
+    }
+    expect(authored).not.toMatch(/\bToastVariant\b/u);
+    expect(authored).not.toMatch(/readonly\s+(?:tone|panelClass)\s*=\s*input/u);
+    expect(authored).not.toMatch(/role\??\s*:\s*['"]cancel['"]\s*\|/u);
   });
 
   it('ignores imports in comments and rejects selectors found only in comments', () => {

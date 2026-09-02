@@ -50,10 +50,10 @@ export class TrnToggleGroupItemDirective {
     const style = inject(TRN_TOGGLE_GROUP_STYLE);
     classes(() =>
       trnToggleRecipe({
-        arrangement: style.resolvedArrangement(),
-        presentation: style.resolvedPresentation(),
-        size: style.resolvedSize(),
-        variant: style.resolvedVariant(),
+        arrangement: style.arrangement(),
+        presentation: style.presentation(),
+        size: style.size(),
+        variant: style.variant(),
       }),
     );
   }

@@ -28,17 +28,3 @@ export const Toolbar: Story = {
 export const Accent: Story = {
   args: { title: 'Security attention', variant: 'accent', layout: 'page' },
 };
-
-/** Temporary legacy layout variants beside their canonical equivalents. */
-export const CompatibilityAliases: Story = {
-  render: () => ({
-    template: `
-      <div class="grid gap-4">
-        <trn-page-header data-testid="header-canonical-page" title="Canonical page" variant="neutral" layout="page" />
-        <trn-page-header data-testid="header-legacy-page" title="Legacy page" variant="page" />
-        <trn-page-header data-testid="header-canonical-toolbar" title="Canonical toolbar" variant="neutral" layout="toolbar" />
-        <trn-page-header data-testid="header-legacy-toolbar" title="Legacy toolbar" variant="chat" />
-      </div>
-    `,
-  }),
-};

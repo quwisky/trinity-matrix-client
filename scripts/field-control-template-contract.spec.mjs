@@ -45,7 +45,6 @@ const OPTIONS: readonly TrnSelectOption<string>[] = [
       <input trnInput id="name" size="sm" invalid aria-describedby="name-error" />
       <span id="name-error">Required.</span>
     </trn-field>
-    <trn-field-label controlId="legacy" variant="eyebrow">Legacy</trn-field-label>
     <label trnLabel emphasis="normal" invalid for="topic">Topic</label>
     <textarea trnTextarea id="topic" size="lg"></textarea>
     <trn-select aria-label="Choice" size="md" invalid [options]="options" />
@@ -60,6 +59,7 @@ export class ValidFieldControlHost {
   imports: [TrnFieldLabelComponent, TrnInput, TrnLabel, TrnSelectComponent, TrnTextarea, TrnEmojiPickerComponent],
   template: \`
     <trn-field-label controlId="bad" emphasis="muted">Bad label</trn-field-label>
+    <trn-field-label controlId="old" variant="eyebrow">Old label</trn-field-label>
     <label trnLabel emphasis="danger">Bad native label</label>
     <input trnInput size="xs" [variant]="'neutral'" [forceInvalid]="true" />
     <textarea trnTextarea size="2xl"></textarea>

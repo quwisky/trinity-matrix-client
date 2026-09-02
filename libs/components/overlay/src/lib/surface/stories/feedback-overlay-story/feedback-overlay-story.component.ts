@@ -34,14 +34,6 @@ export class FeedbackOverlayStoryComponent {
       .subscribe();
   }
 
-  protected legacyAlert(): void {
-    void this.alerts.confirm({
-      header: 'Legacy delete?',
-      confirmText: 'Delete',
-      destructive: true,
-    });
-  }
-
   protected canonicalSheet(): void {
     this.sheets.open(
       {
@@ -60,35 +52,11 @@ export class FeedbackOverlayStoryComponent {
     );
   }
 
-  protected legacySheet(): void {
-    this.sheets.open(
-      {
-        header: 'Legacy actions',
-        buttons: [
-          { text: 'Cancel', role: 'cancel' },
-          {
-            text: 'Legacy delete',
-            role: 'destructive',
-            testId: 'sheet-legacy-danger',
-          },
-        ],
-      },
-      'Legacy actions',
-    );
-  }
-
   protected warningToast(): void {
     this.toasts.show('Canonical warning', { variant: 'warning', duration: 0 });
   }
 
   protected dangerToast(): void {
     this.toasts.show('Canonical danger', { variant: 'danger', duration: 0 });
-  }
-
-  protected legacyToast(): void {
-    this.toasts.show('Legacy destructive', {
-      variant: 'destructive',
-      duration: 0,
-    });
   }
 }

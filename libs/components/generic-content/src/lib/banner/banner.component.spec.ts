@@ -5,7 +5,7 @@ import { BannerComponent } from './banner.component';
 @Component({
   imports: [BannerComponent],
   template: `
-    <trn-banner [tone]="tone">
+    <trn-banner [variant]="variant">
       <span trnBannerIcon class="icon">i</span>
       Hello there
       <span trnBannerActions><button>Do it</button></span>
@@ -13,7 +13,7 @@ import { BannerComponent } from './banner.component';
   `,
 })
 class HostComponent {
-  tone: 'neutral' | 'accent' = 'neutral';
+  variant: 'neutral' | 'accent' = 'neutral';
 }
 
 describe('BannerComponent', () => {
@@ -32,31 +32,13 @@ describe('BannerComponent', () => {
     ).toBe('Do it');
   });
 
-  it('reflects the canonical variant while retaining the legacy data hook', async () => {
+  it('reflects the canonical variant', async () => {
     const { fixture, container } = await render(BannerComponent);
     const banner = () => container.querySelector('.banner');
     expect(banner()?.getAttribute('data-variant')).toBe('neutral');
-    expect(banner()?.getAttribute('data-tone')).toBe('neutral');
 
     fixture.componentRef.setInput('variant', 'accent');
     fixture.detectChanges();
     expect(banner()?.getAttribute('data-variant')).toBe('accent');
-    expect(banner()?.getAttribute('data-tone')).toBe('accent');
-  });
-
-  it('keeps the legacy tone input valid during expansion', async () => {
-    const { fixture, container } = await render(BannerComponent, {
-      inputs: { tone: 'accent' },
-    });
-
-    expect(
-      container.querySelector('.banner')?.getAttribute('data-variant'),
-    ).toBe('accent');
-
-    fixture.componentRef.setInput('variant', 'neutral');
-    fixture.detectChanges();
-    expect(
-      container.querySelector('.banner')?.getAttribute('data-variant'),
-    ).toBe('neutral');
   });
 });

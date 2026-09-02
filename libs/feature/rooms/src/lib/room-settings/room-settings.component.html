@@ -22,11 +22,7 @@
       [tabs]="settingsTabs()"
       class="room-settings__tabs"
     >
-      <trn-tab-panel
-        value="general"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="room-settings-panel-general"
-      >
+      <trn-tab-panel value="general" data-testid="room-settings-panel-general">
         <trn-avatar-field
           [roomId]="roomId()"
           [name]="name()"
@@ -60,11 +56,7 @@
         </label>
       </trn-tab-panel>
 
-      <trn-tab-panel
-        value="access"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="room-settings-panel-access"
-      >
+      <trn-tab-panel value="access" data-testid="room-settings-panel-access">
         <label class="room-settings__field">
           <span class="room-settings__label">Who can join</span>
           <trn-select
@@ -109,19 +101,11 @@
         <trn-room-aliases [roomId]="roomId()" />
       </trn-tab-panel>
 
-      <trn-tab-panel
-        value="widgets"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="room-settings-panel-widgets"
-      >
+      <trn-tab-panel value="widgets" data-testid="room-settings-panel-widgets">
         <trn-room-widgets [roomId]="roomId()" />
       </trn-tab-panel>
 
-      <trn-tab-panel
-        value="bans"
-        panelClass="flex flex-col gap-3 pt-3"
-        data-testid="room-settings-panel-bans"
-      >
+      <trn-tab-panel value="bans" data-testid="room-settings-panel-bans">
         <trn-banned-members [roomId]="roomId()" />
       </trn-tab-panel>
     </trn-tabs>
