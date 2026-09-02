@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Onyx now has a fully achromatic sRGB-safe OKLCH palette in both modes.** Neutral surfaces,
+  text, controls and interaction states lose their remaining blue cast, while the dark rail and
+  canvas retain true black for OLED displays. Inherited accent, status and syntax colours keep
+  their established meanings and remain readable across every Onyx surface.
+
 - **Amethyst light and dark now use a coordinated sRGB-safe OKLCH palette.** A sparse violet
   accent and violet-neutral surface family replaces the legacy hex and HSL values while inherited
   success, warning, danger, and syntax colours retain their established meaning. Text, controls,

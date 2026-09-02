@@ -799,22 +799,20 @@ colour. Every focus recipe is checked against its semantic surface across all Th
 Mode-invariant bindings are declared once in the base `:root` block. Three Themes ship:
 `trinity` (indigo), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED true black).
 
-`onyx` is worth reading as the worked example of the contract: it authors **surface colours
-only**. Its state roles explicitly rebind semantic aliases to those surfaces; every text role,
-the link, the danger colours, the accent and the whole syntax set remain inherited from the
-`:root` / `:root.dark` defaults — and `contrast-matrix.spec.mjs`
-picks the Theme up automatically and proves those inherited values still clear AA against the
-new grounds, which is exactly where an inherited colour is most likely to stop working. A
-Theme that needed a component edited, or a role redefined to stay legible, would be telling
-you the token layer is incomplete.
+`onyx` is worth reading as the worked example of the contract: it authors one achromatic neutral
+family for surfaces, text, interactions and controls, while the link, accent, conventional status
+hues and syntax colours remain inherited from the `:root` / `:root.dark` defaults.
+`contrast-matrix.spec.mjs` picks the Theme up automatically and proves those inherited values still
+clear their contrast floors against the new grounds. A Theme that needed a component edited would
+be telling you the token layer is incomplete.
 
-### Trinity and Amethyst sRGB OKLCH Theme colours
+### sRGB OKLCH Theme colours
 
-Every colour authored directly by the redesigned Trinity and Amethyst Themes uses absolute
-`oklch()` coordinates that resolve inside the sRGB gamut. This is deliberate: browsers still
-differ in how they map out-of-gamut OKLCH, and a contrast claim is only portable when no browser
-has to clip or remap the source colour. `contrast-matrix.spec.mjs` rejects legacy colour notation,
-runtime `color-mix()`, invalid coordinates, and any OKLCH value outside sRGB in those Themes.
+Every colour authored directly by Trinity, Amethyst and Onyx uses absolute `oklch()` coordinates
+that resolve inside the sRGB gamut. This is deliberate: browsers still differ in how they map
+out-of-gamut OKLCH, and a contrast claim is only portable when no browser has to clip or remap the
+source colour. `contrast-matrix.spec.mjs` rejects legacy colour notation, runtime `color-mix()`,
+invalid coordinates, and any OKLCH value outside sRGB in the Theme blocks.
 
 The families are coordinated by role rather than converted mechanically from the previous hex
 values:
@@ -830,9 +828,10 @@ values:
 Hover, pressed, selected, selected-hover, focus, solid status, accent and status tint roles all
 resolve to governed Theme values. Amethyst replaces the indigo and cool-neutral families with a
 sparse 300deg violet accent and violet-neutral surface, text, interaction, and control family. It
-inherits the base syntax and conventional success, warning, and danger families, then the full
-contrast matrix re-measures those inherited roles on every Amethyst surface. Onyx temporarily
-keeps its existing interaction aliases until its redesign ticket replaces them.
+inherits the base syntax and conventional success, warning, and danger families. Onyx replaces
+only the neutral family with zero-chroma values, including a true-black dark rail and canvas, and
+inherits the same accent, status and syntax meanings. The full contrast matrix re-measures every
+inherited role on every Theme surface.
 
 ### The danger versus destructive rule
 
