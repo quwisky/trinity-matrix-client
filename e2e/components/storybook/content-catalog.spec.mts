@@ -1,6 +1,6 @@
 import axe from 'axe-core';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { contrastRatio } from '../../browser/support/contrast.mts';
+import { contrastRatio, type Srgb } from '../../browser/support/contrast.mts';
 import { renderedColour } from './recipe-appearance.mts';
 import {
   DEFAULT_STORYBOOK_THEME_PREVIEW,
@@ -11,6 +11,7 @@ import {
 
 const CATALOG_STORY =
   '/iframe.html?id=components-content-recipe-matrix--complete-catalog&viewMode=story';
+const DISABLED_READABILITY = 2;
 
 interface AxeNodeResult {
   readonly html: string;
@@ -30,6 +31,16 @@ interface AxeScan {
 }
 
 type ColourSource = 'backgroundColor' | 'color' | `--${string}`;
+
+function composite(foreground: Srgb, background: Srgb, opacity: number): Srgb {
+  const channel = (ink: number, surface: number) =>
+    Math.round(ink * opacity + surface * (1 - opacity));
+  return {
+    r: channel(foreground.r, background.r),
+    g: channel(foreground.g, background.g),
+    b: channel(foreground.b, background.b),
+  };
+}
 
 interface AxeBrowserApi {
   configure(config: {
@@ -114,6 +125,31 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       await expectContrast(banner, 'color', banner, 'backgroundColor', 4.5);
     }
 
+    const disabledBanner = page
+      .getByTestId('catalog-banner-disabled')
+      .locator('.banner');
+    const disabledAction = disabledBanner.getByRole('button');
+    const disabledOpacity = await disabledAction.evaluate((element) =>
+      Number.parseFloat(getComputedStyle(element).opacity),
+    );
+    const disabledSurface = await renderedColour(
+      disabledBanner,
+      'backgroundColor',
+    );
+    const disabledBackground = composite(
+      await renderedColour(disabledAction, 'backgroundColor'),
+      disabledSurface,
+      disabledOpacity,
+    );
+    const disabledInk = composite(
+      await renderedColour(disabledAction, 'color'),
+      disabledSurface,
+      disabledOpacity,
+    );
+    expect(
+      contrastRatio(disabledInk, disabledBackground),
+    ).toBeGreaterThanOrEqual(DISABLED_READABILITY);
+
     await expectContrast(
       page.getByTestId('catalog-empty-muted-line').locator('p').last(),
       'color',
@@ -151,13 +187,43 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
 
     await expectContrast(tooltip, 'color', tooltip, 'backgroundColor', 4.5);
 
-    await expect(
-      page.getByTestId('catalog-banner-disabled').getByRole('button'),
-    ).toBeDisabled();
-    await expect(
-      page.getByTestId('catalog-banner-disabled').getByRole('button'),
-    ).toHaveAccessibleName('Retry');
+    for (const avatarId of [
+      'catalog-avatar-online',
+      'catalog-avatar-unavailable',
+      'catalog-avatar-offline',
+    ]) {
+      await expectContrast(
+        page.getByTestId(avatarId).locator('.presence-dot'),
+        'backgroundColor',
+        canvas,
+        'backgroundColor',
+        3,
+      );
+    }
+
+    const accountBadge = page
+      .getByTestId('catalog-avatar-offline')
+      .getByTestId('account-badge');
+    // The hashed hue is decorative: identity is carried by this AA initial and
+    // the accessible account name asserted below, never by colour alone.
+    await expectContrast(
+      accountBadge,
+      'color',
+      accountBadge,
+      'backgroundColor',
+      4.5,
+    );
+
+    await expect(disabledAction).toBeDisabled();
+    await expect(disabledAction).toHaveAccessibleName('Retry');
     await expect(page.getByRole('img', { name: 'Online' })).toBeVisible();
+    await expect(page.getByRole('img', { name: 'Away' })).toBeVisible();
+    await expect(page.getByRole('img', { name: 'Offline' })).toBeVisible();
+    await expect(
+      page.getByRole('img', {
+        name: 'Account: Ada account (@ada:example.org)',
+      }),
+    ).toBeVisible();
     await expect(
       page.getByRole('progressbar', { name: 'accent xs progress' }),
     ).toBeVisible();

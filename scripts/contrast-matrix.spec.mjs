@@ -186,8 +186,17 @@ const NON_TEXT_ROLES = [
     '--trinity-status-warning-surface',
   ].map((foreground) => ({
     foreground,
-    on: ['--trinity-chat', '--trinity-sidebar', '--trinity-rail'],
+    on: [
+      '--trinity-chat',
+      '--trinity-sidebar',
+      '--trinity-rail',
+      '--trinity-surface-canvas',
+    ],
   })),
+  {
+    foreground: '--trinity-control-muted-foreground',
+    on: ['--trinity-surface-canvas'],
+  },
 ];
 
 /**

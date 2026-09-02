@@ -244,9 +244,9 @@ export const CompleteCatalog: Story = {
             <trn-avatar data-testid="catalog-avatar-exact" name="Exact" initial="E" size="2xs" [exactSize]="72" />
           </div>
           <div class="flex flex-wrap items-end gap-5">
-            <trn-avatar name="Person fallback" initial="P" shape="person" presence="online" />
-            <trn-avatar name="Place fallback" initial="R" shape="place" presence="unavailable" />
-            <trn-avatar name="Offline account" initial="O" presence="offline" [accountBadge]="accountBadge" />
+            <trn-avatar data-testid="catalog-avatar-online" name="Person fallback" initial="P" shape="person" presence="online" />
+            <trn-avatar data-testid="catalog-avatar-unavailable" name="Place fallback" initial="R" shape="place" presence="unavailable" />
+            <trn-avatar data-testid="catalog-avatar-offline" name="Offline account" initial="O" presence="offline" [accountBadge]="accountBadge" />
           </div>
         </section>
 

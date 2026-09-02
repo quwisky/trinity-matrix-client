@@ -746,9 +746,9 @@ ordinary component stories remain the focused explanation of each state.
 `trinity-e2e-components:storybook` runs that catalog in every Theme/Mode combination. Axe must
 report no violations and no incomplete findings; browser-composited checks enforce 4.5:1 for
 active text and 3:1 for essential graphics, while `contrast-matrix.spec.mjs` independently checks
-the corresponding semantic token pairs. Disabled controls keep native semantics and an accessible
-name; their reduced contrast is the agreed WCAG exemption, and state is never communicated by
-colour alone.
+the corresponding semantic token pairs. Disabled controls keep native semantics, an accessible
+name and an internal 2:1 composited readability floor. Their reduced contrast remains the agreed
+WCAG exemption, and state is never communicated by colour alone.
 
 Automation cannot decide whether the complete set still reads as one coherent visual language.
 Before merging a Foundations or Generic Content treatment change, review the complete catalog in
