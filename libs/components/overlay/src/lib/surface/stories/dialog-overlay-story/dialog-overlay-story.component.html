@@ -1,0 +1,33 @@
+<div class="grid max-w-sm gap-3 p-6">
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-canonical-center"
+    (click)="openCanonical('center', 'dialog')"
+  >
+    Canonical center
+  </button>
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-canonical-end"
+    (click)="openCanonical('inline-end', 'panel')"
+  >
+    Canonical inline end
+  </button>
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="dialog-legacy-end"
+    (click)="openLegacyEnd()"
+  >
+    Legacy end
+  </button>
+  <p role="status" data-testid="dialog-result">{{ result() }}</p>
+</div>

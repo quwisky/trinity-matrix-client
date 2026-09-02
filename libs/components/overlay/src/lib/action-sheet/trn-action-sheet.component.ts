@@ -150,6 +150,7 @@ export interface ActionSheetData {
             presentation="ghost"
             class="min-h-11 w-full justify-start gap-3"
             [disabled]="button.disabled"
+            [attr.data-trn-variant]="buttonVariant(button)"
             [attr.data-testid]="button.testId"
             (click)="onClick(button)"
           >
@@ -165,9 +166,9 @@ export interface ActionSheetData {
 })
 export class TrnActionSheetComponent {
   private readonly host = inject(ElementRef<HTMLElement>);
-  protected readonly data = inject<ActionSheetData>(DIALOG_DATA);
   private readonly ref =
     inject<DialogRef<void, TrnActionSheetComponent>>(DialogRef);
+  protected readonly data = inject<ActionSheetData>(DIALOG_DATA);
 
   /** The concrete sheet box for invocation-scoped positioning work. */
   get surface(): HTMLElement | null {

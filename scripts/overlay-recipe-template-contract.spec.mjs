@@ -6,6 +6,32 @@ import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 
+function stripComments(sourceText) {
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    false,
+    ts.LanguageVariant.Standard,
+    sourceText,
+  );
+  let result = '';
+  let copiedThrough = 0;
+  for (
+    let token = scanner.scan();
+    token !== ts.SyntaxKind.EndOfFileToken;
+    token = scanner.scan()
+  ) {
+    if (
+      token !== ts.SyntaxKind.SingleLineCommentTrivia &&
+      token !== ts.SyntaxKind.MultiLineCommentTrivia
+    ) {
+      continue;
+    }
+    result += sourceText.slice(copiedThrough, scanner.getTokenPos());
+    copiedThrough = scanner.getTextPos();
+  }
+  return result + sourceText.slice(copiedThrough);
+}
+
 const source = `
 import { Component } from '@angular/core';
 import {
@@ -118,23 +144,29 @@ describe('overlay recipe strict-template contract', () => {
   });
 
   it('keeps vendor configuration and recipe-library types private', () => {
-    const entrypoint = readFileSync(
-      join(workspaceRoot, 'libs/components/overlay/src/index.ts'),
-      'utf8',
-    );
-    const dialog = readFileSync(
-      join(
-        workspaceRoot,
-        'libs/components/overlay/src/lib/dialog/trn-dialog.service.ts',
+    const entrypoint = stripComments(
+      readFileSync(
+        join(workspaceRoot, 'libs/components/overlay/src/index.ts'),
+        'utf8',
       ),
-      'utf8',
     );
-    const alert = readFileSync(
-      join(
-        workspaceRoot,
-        'libs/components/overlay/src/lib/alert/trn-alert.service.ts',
+    const dialog = stripComments(
+      readFileSync(
+        join(
+          workspaceRoot,
+          'libs/components/overlay/src/lib/dialog/trn-dialog.service.ts',
+        ),
+        'utf8',
       ),
-      'utf8',
+    );
+    const alert = stripComments(
+      readFileSync(
+        join(
+          workspaceRoot,
+          'libs/components/overlay/src/lib/alert/trn-alert.service.ts',
+        ),
+        'utf8',
+      ),
     );
 
     expect(entrypoint).not.toMatch(

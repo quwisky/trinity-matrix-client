@@ -1,0 +1,46 @@
+<div class="grid max-w-sm gap-4 p-6">
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    [trnDropdownMenuTrigger]="menu"
+    side="bottom"
+    align="end"
+    data-testid="dropdown-trigger"
+  >
+    Open actions
+  </button>
+  <p role="status" data-testid="dropdown-result">{{ result() }}</p>
+</div>
+
+<ng-template #menu>
+  <div trnDropdownMenu aria-label="Overlay actions">
+    <button
+      trnDropdownMenuItem
+      data-testid="dropdown-neutral"
+      (triggered)="result.set('Neutral chosen')"
+    >
+      Neutral action
+    </button>
+    <button
+      trnDropdownMenuItem
+      variant="danger"
+      data-testid="dropdown-danger"
+      (triggered)="result.set('Danger chosen')"
+    >
+      Canonical danger
+    </button>
+    <button
+      trnDropdownMenuItem
+      variant="destructive"
+      data-testid="dropdown-legacy-danger"
+      (triggered)="result.set('Legacy danger chosen')"
+    >
+      Legacy destructive
+    </button>
+    <button trnDropdownMenuItem disabled data-testid="dropdown-disabled">
+      Disabled action
+    </button>
+  </div>
+</ng-template>

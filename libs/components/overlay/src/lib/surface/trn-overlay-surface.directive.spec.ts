@@ -1,3 +1,5 @@
+import { Component } from '@angular/core';
+import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   trnOverlaySurfaceRecipe,
@@ -5,6 +7,21 @@ import {
   type TrnOverlaySurfaceSize,
   type TrnOverlaySurfaceVariant,
 } from './trn-overlay-surface-recipe';
+import { TrnOverlaySurfaceDirective } from './trn-overlay-surface.directive';
+
+@Component({
+  imports: [TrnOverlaySurfaceDirective],
+  template: `
+    <section
+      trnOverlaySurface
+      variant="accent"
+      size="lg"
+      layout="panel"
+      data-testid="surface"
+    ></section>
+  `,
+})
+class HostComponent {}
 
 describe('Trinity overlay surface recipe', () => {
   it('keeps semantic treatment independent from size and layout', () => {
@@ -30,5 +47,14 @@ describe('Trinity overlay surface recipe', () => {
     expectTypeOf<TrnOverlaySurfaceLayout>().toEqualTypeOf<
       'dialog' | 'sheet' | 'popover' | 'panel' | 'fullscreen'
     >();
+  });
+
+  it('renders the directive vocabulary as stable host metadata', async () => {
+    const { getByTestId } = await render(HostComponent);
+    const surface = getByTestId('surface');
+
+    expect(surface.getAttribute('data-trn-variant')).toBe('accent');
+    expect(surface.getAttribute('data-trn-size')).toBe('lg');
+    expect(surface.getAttribute('data-trn-layout')).toBe('panel');
   });
 });

@@ -7,6 +7,7 @@ import {
   TrnDropdownMenuItem,
   TrnDropdownMenuTrigger,
 } from './trn-dropdown-menu';
+import { trnDropdownMenuItemRecipe } from './trn-dropdown-menu-recipe';
 
 @Component({
   imports: [TrnDropdownMenu, TrnDropdownMenuItem, TrnDropdownMenuTrigger],
@@ -86,8 +87,7 @@ describe('Trinity dropdown menu', () => {
 
     expect(canonical?.dataset['trnVariant']).toBe('danger');
     expect(legacy?.dataset['trnVariant']).toBe('danger');
-    expect(canonical?.classList.contains('text-danger')).toBe(true);
-    expect(legacy?.classList.contains('text-danger')).toBe(true);
+    expect(trnDropdownMenuItemRecipe('danger')).toContain('text-danger');
     expect(disabled?.getAttribute('data-disabled')).not.toBeNull();
   });
 });

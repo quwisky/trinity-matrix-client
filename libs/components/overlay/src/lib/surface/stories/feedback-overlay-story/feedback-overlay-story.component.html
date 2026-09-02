@@ -1,0 +1,59 @@
+<div class="grid max-w-md gap-3 p-6">
+  <button
+    trnBtn
+    type="button"
+    data-testid="alert-canonical"
+    (click)="canonicalAlert()"
+  >
+    Canonical danger alert
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="alert-legacy"
+    (click)="legacyAlert()"
+  >
+    Legacy destructive alert
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="sheet-canonical"
+    (click)="canonicalSheet()"
+  >
+    Canonical action sheet
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="sheet-legacy"
+    (click)="legacySheet()"
+  >
+    Legacy action sheet
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="toast-warning"
+    (click)="warningToast()"
+  >
+    Warning toast
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="toast-danger"
+    (click)="dangerToast()"
+  >
+    Danger toast
+  </button>
+  <button
+    trnBtn
+    type="button"
+    data-testid="toast-legacy"
+    (click)="legacyToast()"
+  >
+    Legacy destructive toast
+  </button>
+</div>
+<trn-toaster />

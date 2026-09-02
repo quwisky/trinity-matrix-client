@@ -78,6 +78,9 @@ export class TrnDropdownMenu {}
 })
 export class TrnDropdownMenuTrigger {
   private readonly cdkTrigger = inject(CdkMenuTrigger, { host: true });
+  private readonly positions = computed(() =>
+    createMenuPosition(this.align(), this.side()),
+  );
 
   readonly trnDropdownMenuTrigger = input<TemplateRef<unknown> | null>(null);
   readonly trnDropdownMenuTriggerData = input<unknown>();
@@ -85,10 +88,6 @@ export class TrnDropdownMenuTrigger {
   readonly trnDropdownMenuClosed = output<void>();
   readonly align = input<TrnOverlayAlign>('start');
   readonly side = input<TrnOverlaySide>('bottom');
-
-  private readonly positions = computed(() =>
-    createMenuPosition(this.align(), this.side()),
-  );
 
   constructor() {
     effect(() => {
@@ -127,10 +126,10 @@ export class TrnDropdownMenuTrigger {
   },
 })
 export class TrnDropdownMenuItem {
-  readonly variant = input<TrnDropdownMenuItemVariantInput>('neutral');
   protected readonly normalizedVariant = computed(() =>
     normalizeTrnDropdownMenuItemVariant(this.variant()),
   );
+  readonly variant = input<TrnDropdownMenuItemVariantInput>('neutral');
 
   constructor() {
     classes(() => trnDropdownMenuItemRecipe(this.normalizedVariant()));
@@ -233,6 +232,9 @@ export class TrnDropdownMenuCheckbox {
 })
 export class TrnDropdownMenuSubTrigger {
   private readonly cdkTrigger = inject(CdkMenuTrigger, { host: true });
+  private readonly positions = computed(() =>
+    createMenuPosition(this.align(), this.side()),
+  );
 
   readonly trnDropdownMenuSubTrigger = input<TemplateRef<unknown> | null>(null);
   readonly trnDropdownMenuTriggerData = input<unknown>();
@@ -240,10 +242,6 @@ export class TrnDropdownMenuSubTrigger {
   readonly trnDropdownMenuSubClosed = output<void>();
   readonly align = input<TrnOverlayAlign>('start');
   readonly side = input<TrnOverlaySide>('right');
-
-  private readonly positions = computed(() =>
-    createMenuPosition(this.align(), this.side()),
-  );
 
   constructor() {
     effect(() => {

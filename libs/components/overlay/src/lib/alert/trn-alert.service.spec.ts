@@ -131,7 +131,7 @@ describe('TrnAlertService', () => {
     const canonicalButton = document.querySelector<HTMLElement>(
       '[data-testid=alert-confirm]',
     );
-    expect(canonicalButton?.className).toContain('bg-destructive');
+    expect(canonicalButton?.dataset['trnVariant']).toBe('danger');
     clickButton('Cancel');
     await canonical;
 
@@ -143,7 +143,7 @@ describe('TrnAlertService', () => {
     const legacyButton = document.querySelector<HTMLElement>(
       '[data-testid=alert-confirm]',
     );
-    expect(legacyButton?.className).toContain('bg-destructive');
+    expect(legacyButton?.dataset['trnVariant']).toBe('danger');
     clickButton('Cancel');
     await legacy;
   });
@@ -160,8 +160,7 @@ describe('TrnAlertService', () => {
     const button = document.querySelector<HTMLElement>(
       '[data-testid=alert-confirm]',
     );
-    expect(button?.className).toContain('bg-primary');
-    expect(button?.className).not.toContain('bg-destructive');
+    expect(button?.dataset['trnVariant']).toBe('neutral');
 
     clickButton('Cancel');
     await result;

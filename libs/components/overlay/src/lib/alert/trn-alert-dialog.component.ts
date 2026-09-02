@@ -80,6 +80,7 @@ export type AlertDialogResult = boolean | string | null;
         <button
           trnBtn
           [variant]="data.variant === 'danger' ? 'danger' : 'primary'"
+          [attr.data-trn-variant]="data.variant"
           (click)="onConfirm()"
           data-testid="alert-confirm"
         >
@@ -90,9 +91,9 @@ export type AlertDialogResult = boolean | string | null;
   `,
 })
 export class TrnAlertDialogComponent {
-  protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
   private readonly ref =
     inject<DialogRef<AlertDialogResult, TrnAlertDialogComponent>>(DialogRef);
+  protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
   protected readonly value = signal(this.data.value ?? '');
 
   protected onInput(event: Event): void {

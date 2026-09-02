@@ -170,7 +170,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     render();
 
     const row = document.querySelector('[data-testid=danger-cancel]');
-    expect(row?.classList.contains('text-danger')).toBe(true);
+    expect(row?.getAttribute('data-trn-variant')).toBe('danger');
     clickButton('Discard');
     expect(handler).not.toHaveBeenCalled();
   });
@@ -190,7 +190,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     render();
 
     const row = document.querySelector('[data-testid=neutral-legacy]');
-    expect(row?.classList.contains('text-danger')).toBe(false);
+    expect(row?.getAttribute('data-trn-variant')).toBe('neutral');
   });
 
   it('puts every row in a scroller rather than clipping the list', () => {

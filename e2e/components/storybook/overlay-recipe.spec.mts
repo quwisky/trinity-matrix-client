@@ -1,8 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { overlayRecipeStory } from './overlay-recipe-story-url.mts';
 import { renderedRecipeStyle } from './recipe-appearance.mts';
-
-const story = (name: string) =>
-  `/iframe.html?id=components-overlay-recipes--${name}&viewMode=story`;
 
 const overlayStyle = (locator: Locator) =>
   locator.evaluate((element) => {
@@ -19,7 +17,7 @@ const overlayStyle = (locator: Locator) =>
 test('one layered surface recipe renders identically in the document and portal', async ({
   page,
 }) => {
-  await page.goto(story('layered-surfaces'));
+  await page.goto(overlayRecipeStory('layered-surfaces'));
 
   const documentSurface = page.getByTestId('document-overlay-surface');
   const portalSurface = page.getByTestId('portal-overlay-surface');
@@ -46,7 +44,7 @@ test('one layered surface recipe renders identically in the document and portal'
 test('dropdowns preserve keyboard, focus, disabled, danger, and compatibility behavior', async ({
   page,
 }) => {
-  await page.goto(story('dropdown-compatibility'));
+  await page.goto(overlayRecipeStory('dropdown-compatibility'));
   const trigger = page.getByTestId('dropdown-trigger');
 
   await trigger.focus();
@@ -80,7 +78,7 @@ test('dropdowns preserve keyboard, focus, disabled, danger, and compatibility be
 test('canonical and legacy dialog placements share geometry and restore focus', async ({
   page,
 }) => {
-  await page.goto(story('dialog-compatibility'));
+  await page.goto(overlayRecipeStory('dialog-compatibility'));
 
   const centerTrigger = page.getByTestId('dialog-canonical-center');
   await centerTrigger.click();
@@ -117,7 +115,7 @@ test('canonical and legacy dialog placements share geometry and restore focus', 
 test('alerts, sheets, and toasts normalize canonical and temporary legacy forms', async ({
   page,
 }) => {
-  await page.goto(story('feedback-compatibility'));
+  await page.goto(overlayRecipeStory('feedback-compatibility'));
 
   await page.getByTestId('alert-canonical').click();
   const canonicalAlert = page.getByTestId('alert-surface');
@@ -165,24 +163,36 @@ test('alerts, sheets, and toasts normalize canonical and temporary legacy forms'
   await page.getByRole('button', { name: 'Cancel' }).click();
 
   await page.getByTestId('toast-warning').click();
-  await expect(
-    page.getByText('Canonical warning', { exact: true }),
-  ).toBeVisible();
+  const warningToast = page
+    .locator('[data-sonner-toast]')
+    .filter({ hasText: 'Canonical warning' });
+  await expect(warningToast).toBeVisible();
+  await expect(warningToast).toHaveAttribute('data-type', 'warning');
+
   await page.getByTestId('toast-danger').click();
-  await expect(
-    page.getByText('Canonical danger', { exact: true }),
-  ).toBeVisible();
+  const dangerToast = page
+    .locator('[data-sonner-toast]')
+    .filter({ hasText: 'Canonical danger' });
+  await expect(dangerToast).toBeVisible();
+  await expect(dangerToast).toHaveAttribute('data-type', 'error');
+  const dangerToastStyle = await overlayStyle(dangerToast);
+
   await page.getByTestId('toast-legacy').click();
-  await expect(
-    page.getByText('Legacy destructive', { exact: true }),
-  ).toBeVisible();
+  const legacyDangerToast = page
+    .locator('[data-sonner-toast]')
+    .filter({ hasText: 'Legacy destructive' });
+  await expect(legacyDangerToast).toBeVisible();
+  await expect(legacyDangerToast).toHaveAttribute('data-type', 'error');
+  await expect
+    .poll(() => overlayStyle(legacyDangerToast))
+    .toEqual(dangerToastStyle);
 });
 
 test('overlay behavior stays immediate under reduced motion', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(story('dropdown-compatibility'));
+  await page.goto(overlayRecipeStory('dropdown-compatibility'));
 
   await page.getByTestId('dropdown-trigger').click();
   const menu = page.locator('[trnDropdownMenu]');
@@ -198,7 +208,7 @@ test('overlay behavior stays immediate under reduced motion', async ({
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
 
-  await page.goto(story('dialog-compatibility'));
+  await page.goto(overlayRecipeStory('dialog-compatibility'));
   await page.getByTestId('dialog-canonical-center').click();
   const surface = page.getByTestId('story-dialog-surface');
   await expect(surface).toBeVisible();
