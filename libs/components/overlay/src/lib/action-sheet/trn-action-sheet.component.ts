@@ -5,16 +5,26 @@ import {
   inject,
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '@trinity/components/controls';
 import {
   TrnIconComponent,
   type TrnIconName,
+  type TrnVariant,
 } from '@trinity/components/foundations';
+import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
+
+export type TrnActionSheetButtonVariant = Extract<
+  TrnVariant,
+  'neutral' | 'danger'
+>;
 
 export interface ActionSheetButton {
   text: string;
   /** A disabled row stays visible for context but cannot receive focus or run its handler. */
   disabled?: boolean;
+  /** Semantic treatment, independent of cancellation behavior. */
+  variant?: TrnActionSheetButtonVariant;
+  /** Temporary behavior/appearance compatibility. Prefer `variant="danger"`. */
   role?: 'cancel' | 'destructive';
   handler?: () => void;
   /** Leading icon, for a sheet standing in for a menu that had one. */
@@ -68,7 +78,7 @@ export interface ActionSheetData {
   selector: 'trn-action-sheet',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, TrnIconComponent],
+  imports: [TrnButton, TrnIconComponent, TrnOverlaySurfaceDirective],
   styles: [
     `
       /*
@@ -86,7 +96,11 @@ export interface ActionSheetData {
   ],
   template: `
     <div
-      class="sheet mb-3 flex max-h-[80svh] w-[min(96vw,26rem)] flex-col overflow-hidden rounded-xl border border-solid border-border bg-card px-1.5 pt-1.5 shadow-lg"
+      trnOverlaySurface
+      variant="neutral"
+      size="md"
+      layout="sheet"
+      class="sheet flex flex-col px-1.5 pt-1.5"
       data-testid="action-sheet-surface"
     >
       @if (data.header) {
@@ -105,8 +119,12 @@ export interface ActionSheetData {
         >
           @for (reaction of data.reactions; track reaction.key) {
             <button
+              trnBtn
               type="button"
-              class="flex size-11 items-center justify-center rounded-lg text-xl hover:bg-accent"
+              variant="secondary"
+              presentation="ghost"
+              size="lg"
+              class="min-h-11 min-w-11 px-0 text-xl"
               [attr.aria-label]="'React with ' + reaction.key"
               [attr.data-testid]="'sheet-react-' + reaction.key"
               (click)="onReact(reaction)"
@@ -125,10 +143,12 @@ export interface ActionSheetData {
             <div class="my-1 h-px bg-border" role="separator"></div>
           }
           <button
-            hlmBtn
-            variant="ghost"
+            trnBtn
+            [variant]="
+              buttonVariant(button) === 'danger' ? 'danger' : 'secondary'
+            "
+            presentation="ghost"
             class="min-h-11 w-full justify-start gap-3"
-            [class.text-danger]="button.role === 'destructive'"
             [disabled]="button.disabled"
             [attr.data-testid]="button.testId"
             (click)="onClick(button)"
@@ -164,6 +184,14 @@ export class TrnActionSheetComponent {
     if (button.role !== 'cancel') {
       button.handler?.();
     }
+  }
+
+  protected buttonVariant(
+    button: ActionSheetButton,
+  ): TrnActionSheetButtonVariant {
+    return (
+      button.variant ?? (button.role === 'destructive' ? 'danger' : 'neutral')
+    );
   }
 
   /** Same close-then-run order as a button: the handler often opens another overlay. */

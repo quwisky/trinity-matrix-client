@@ -1,5 +1,6 @@
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { firstValueFrom } from 'rxjs';
 import { describe, expect, it } from 'vitest';
 import { TrnAlertService } from './trn-alert.service';
 
@@ -11,12 +12,25 @@ function render(): void {
 
 function clickButton(text: string): void {
   const btns = [
-    ...document.querySelectorAll<HTMLButtonElement>('button[hlmBtn]'),
+    ...document.querySelectorAll<HTMLButtonElement>('button[trnBtn]'),
   ];
   btns.find((b) => b.textContent?.trim() === text)?.click();
 }
 
 describe('TrnAlertService', () => {
+  it('keeps the reactive confirmation command cold', async () => {
+    const svc = TestBed.inject(TrnAlertService);
+    const command = svc.confirm$({ header: 'Leave space?' });
+
+    expect(document.querySelector('trn-alert-dialog')).toBeNull();
+    const result = firstValueFrom(command);
+    render();
+    expect(document.querySelector('trn-alert-dialog')).not.toBeNull();
+    clickButton('OK');
+
+    expect(await result).toBe(true);
+  });
+
   it('confirm resolves true when confirmed', async () => {
     const svc = TestBed.inject(TrnAlertService);
     const result = svc.confirm({
@@ -41,7 +55,7 @@ describe('TrnAlertService', () => {
     const svc = TestBed.inject(TrnAlertService);
     const result = svc.prompt({ header: 'Name', confirmText: 'Create' });
     render();
-    const input = document.querySelector<HTMLInputElement>('input[hlmInput]')!;
+    const input = document.querySelector<HTMLInputElement>('input[trnInput]')!;
     input.value = 'My Space';
     input.dispatchEvent(new Event('input'));
     clickButton('Create');
@@ -68,7 +82,7 @@ describe('TrnAlertService', () => {
     });
     render();
 
-    const input = document.querySelector<HTMLInputElement>('input[hlmInput]');
+    const input = document.querySelector<HTMLInputElement>('input[trnInput]');
     expect(input?.getAttribute('aria-label')).toBe('Type RESET to confirm');
 
     clickButton('Cancel');
@@ -80,7 +94,7 @@ describe('TrnAlertService', () => {
     void svc.prompt({ header: 'New display name', placeholder: 'Name' });
     render();
 
-    const input = document.querySelector<HTMLInputElement>('input[hlmInput]');
+    const input = document.querySelector<HTMLInputElement>('input[trnInput]');
     expect(input?.hasAttribute('aria-label')).toBe(false);
 
     clickButton('Cancel');
@@ -104,5 +118,52 @@ describe('TrnAlertService', () => {
     expect(paragraph?.textContent).toContain('\n');
 
     clickButton('Cancel');
+  });
+
+  it('normalizes canonical and temporary destructive appearances', async () => {
+    const svc = TestBed.inject(TrnAlertService);
+
+    const canonical = svc.confirm({
+      header: 'Canonical danger',
+      variant: 'danger',
+    });
+    render();
+    const canonicalButton = document.querySelector<HTMLElement>(
+      '[data-testid=alert-confirm]',
+    );
+    expect(canonicalButton?.className).toContain('bg-destructive');
+    clickButton('Cancel');
+    await canonical;
+
+    const legacy = svc.confirm({
+      header: 'Legacy danger',
+      destructive: true,
+    });
+    render();
+    const legacyButton = document.querySelector<HTMLElement>(
+      '[data-testid=alert-confirm]',
+    );
+    expect(legacyButton?.className).toContain('bg-destructive');
+    clickButton('Cancel');
+    await legacy;
+  });
+
+  it('lets the canonical variant win over temporary compatibility', async () => {
+    const svc = TestBed.inject(TrnAlertService);
+    const result = svc.confirm({
+      header: 'Neutral confirmation',
+      variant: 'neutral',
+      destructive: true,
+    });
+    render();
+
+    const button = document.querySelector<HTMLElement>(
+      '[data-testid=alert-confirm]',
+    );
+    expect(button?.className).toContain('bg-primary');
+    expect(button?.className).not.toContain('bg-destructive');
+
+    clickButton('Cancel');
+    await result;
   });
 });

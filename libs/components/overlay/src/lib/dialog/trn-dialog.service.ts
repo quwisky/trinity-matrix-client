@@ -1,19 +1,30 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, type Type } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { Dialog, DialogConfig, DialogRef } from '@angular/cdk/dialog';
+import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
-import type { ComponentType } from '@angular/cdk/portal';
-import { firstValueFrom, map, merge } from 'rxjs';
+import { defer, firstValueFrom, map, merge, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from './trn-dialog-ref';
+
+/** Structural position for a component dialog. Appearance belongs to its surface. */
+export type TrnDialogPlacement =
+  'center' | 'inline-end' | 'bottom' | 'fullscreen';
+
+/** Trinity's focus target vocabulary, independent of CDK's configuration type. */
+export type TrnDialogAutoFocus = string | false;
 
 export interface DialogOptions {
   /** Set on the opened component as @Inputs after creation (Ionic componentProps). */
   inputs?: Record<string, unknown>;
   /**
    * Where the panel sits. `'center'` (default) is a centered modal card;
-   * `'end'` pins it full-height against the inline-end (right) edge — the
-   * split-pane side panel (the panel supplies its own width/height). Replaces the
-   * Ionic `justify-content: flex-end` modal css.
+   * `'inline-end'` pins it full-height against the logical end edge — the
+   * split-pane side panel (the surface recipe supplies its own bounded geometry).
+   * Replaces the Ionic `justify-content: flex-end` modal css.
+   */
+  placement?: TrnDialogPlacement;
+  /**
+   * Temporary placement compatibility for existing feature dialogs.
+   * Prefer `placement`; when both are present, `placement` wins.
    */
   side?: 'center' | 'end' | 'bottom' | 'full-screen';
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
@@ -32,7 +43,7 @@ export interface DialogOptions {
    * simply overrides the earlier call. Name the element instead — a CSS selector
    * (`'[data-autofocus]'`), `'first-heading'`, `'dialog'` or `false`.
    */
-  autoFocus?: DialogConfig['autoFocus'];
+  autoFocus?: TrnDialogAutoFocus;
   /**
    * Present beside this element instead of centred — a popover rather than a modal.
    *
@@ -95,12 +106,29 @@ function prefersCentred(): boolean {
   );
 }
 
+function normalizePlacement(opts: DialogOptions): TrnDialogPlacement {
+  if (opts.placement) {
+    return opts.placement;
+  }
+  switch (opts.side) {
+    case 'end':
+      return 'inline-end';
+    case 'full-screen':
+      return 'fullscreen';
+    case 'bottom':
+      return 'bottom';
+    default:
+      return 'center';
+  }
+}
+
 /**
  * Component dialogs / modals — the spartan replacement for Ionic's
  * `ModalController`. `open()` mounts a component in a CDK dialog and returns the
  * {@link TrnDialogRef}; the component closes itself with a result via
  * `inject(TrnDialogRef).close(value)` (replacing `modalCtrl.dismiss(data)`), and the
- * opener reads that value with `openAndWait()` (replacing `onWillDismiss()`).
+ * opener reads that value from the cold, finite `openAndWait$()` command (replacing
+ * `onWillDismiss()`). The Promise method remains temporarily for feature migration.
  * `inputs` map to the component's signal `input()`s (Ionic `componentProps`).
  */
 @Injectable({ providedIn: 'root' })
@@ -128,17 +156,20 @@ export class TrnDialogService {
   );
 
   open<R = unknown, C = object>(
-    component: ComponentType<C>,
+    component: Type<C>,
     opts: DialogOptions = {},
   ): TrnDialogRef<R> {
     // No `panelClass`. The option and its `trn-dialog-panel` default were both dead: no
     // call site ever passed one, and the class name occurred exactly once in the whole
     // workspace — here, styled by nothing. Same reason `DialogOptions.data` went in #151.
-    // Every dialog paints its own surface (see the `dialog-surface()` mixin), so there is
-    // no shared panel styling for a hook to carry. Re-add it with a real consumer.
+    // Dialog content owns its surface through `trnOverlaySurface`; the CDK pane stays
+    // transparent and behavior-only, so there is no shared panel styling for a hook to
+    // carry. Compatibility consumers migrate in #397-#401. Re-add a hook only with a
+    // real behavior consumer.
     const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
-    const fullScreen = opts.side === 'full-screen';
-    const bottomSheet = opts.side === 'bottom';
+    const placement = normalizePlacement(opts);
+    const fullScreen = placement === 'fullscreen';
+    const bottomSheet = placement === 'bottom';
     const ref = this.dialog.open<R, unknown, C>(component, {
       backdropClass: anchor
         ? ['cdk-overlay-transparent-backdrop']
@@ -161,8 +192,8 @@ export class TrnDialogService {
         : bottomSheet
           ? 'calc(100dvh - 12px)'
           : undefined,
-      // Default (undefined) lets CDK center the card; `'end'` pins it top-right
-      // and full-height (the panel's own h-screen fills the axis).
+      // Default (undefined) lets CDK center the card; `'inline-end'` pins it to
+      // the logical end edge (currently right in Trinity's supported direction).
       positionStrategy: anchor
         ? this.overlay
             .position()
@@ -170,7 +201,7 @@ export class TrnDialogService {
             .withPositions(POPOVER_POSITIONS)
             .withFlexibleDimensions(false)
             .withPush(true)
-        : opts.side === 'end'
+        : placement === 'inline-end'
           ? this.overlay.position().global().top('0').right('0')
           : bottomSheet
             ? this.overlay.position().global().centerHorizontally().bottom('0')
@@ -225,12 +256,24 @@ export class TrnDialogService {
   }
 
   /** Open and resolve the component's close value (null if dismissed without one). */
-  async openAndWait<R = unknown, C = object>(
-    component: ComponentType<C>,
+  openAndWait$<R = unknown, C = object>(
+    component: Type<C>,
+    opts: DialogOptions = {},
+  ): Observable<R | null> {
+    return defer(() =>
+      this.open<R, C>(component, opts).closed.pipe(
+        take(1),
+        map((value) => value ?? null),
+      ),
+    );
+  }
+
+  /** Temporary Promise compatibility. Prefer the cold, finite `openAndWait$` command. */
+  openAndWait<R = unknown, C = object>(
+    component: Type<C>,
     opts: DialogOptions = {},
   ): Promise<R | null> {
-    const ref = this.open<R, C>(component, opts);
-    return (await firstValueFrom(ref.closed)) ?? null;
+    return firstValueFrom(this.openAndWait$<R, C>(component, opts));
   }
 
   /**

@@ -2,13 +2,20 @@ import { DOCUMENT } from '@angular/common';
 import { Injectable, inject } from '@angular/core';
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { toast } from '@spartan-ng/brain/sonner';
+import type { TrnVariant } from '@trinity/components/foundations';
 
-export type ToastVariant = 'default' | 'destructive' | 'success';
+export type TrnToastVariant = Extract<
+  TrnVariant,
+  'neutral' | 'success' | 'warning' | 'danger'
+>;
+export type TrnToastVariantInput = TrnToastVariant | 'default' | 'destructive';
+/** Temporary name retained while feature consumers migrate. */
+export type ToastVariant = TrnToastVariantInput;
 
 export interface ToastOptions {
   /** Auto-dismiss after this many ms; 0 keeps it until tapped. Default 3000. */
   duration?: number;
-  variant?: ToastVariant;
+  variant?: TrnToastVariantInput;
   /**
    * Renders a button on the toast; clicking it runs `onClick` and dismisses.
    *
@@ -21,13 +28,13 @@ export interface ToastOptions {
 
 /**
  * Transient toast notifications over spartan's helm **sonner** — the replacement for
- * Ionic's `ToastController`. A single `<hlm-toaster/>` mounted at the app root renders
+ * Ionic's `ToastController`. A single `<trn-toaster/>` mounted at the app root renders
  * them; this thin service maps our `{ variant, duration }` options onto sonner's
  * imperative `toast()` API so call sites (and their test mocks) stay unchanged. Call
  * `show(message, { variant, duration })`.
  *
  * IMPORTANT: `toast` must come from `@spartan-ng/brain/sonner`, NOT `ngx-sonner`.
- * `<hlm-toaster/>` wraps brain's `<brn-sonner-toaster/>`, which reads brain's own
+ * `<trn-toaster/>` wraps brain's `<brn-sonner-toaster/>`, which reads brain's own
  * `toastState`. Since spartan 1.1 brain ships its own sonner port (it does not depend
  * on ngx-sonner), so calling ngx-sonner's `toast()` pushes into a *different* store the
  * mounted toaster never observes — the toast is dropped silently, with no error.
@@ -39,6 +46,7 @@ export class TrnToastService {
 
   show(message: string, opts: ToastOptions = {}): void {
     const duration = opts.duration ?? 3000;
+    const variant = normalizeToastVariant(opts.variant);
     // sonner keeps a toast until dismissed when the duration is Infinity; our `0`
     // (Ionic "stay until tapped") maps to that.
     // The `action` key is added only when one was passed, rather than spelled out as
@@ -58,11 +66,14 @@ export class TrnToastService {
           }
         : {}),
     };
-    switch (opts.variant) {
+    switch (variant) {
       case 'success':
         toast.success(message, options);
         break;
-      case 'destructive':
+      case 'warning':
+        toast.warning(message, options);
+        break;
+      case 'danger':
         toast.error(message, options);
         break;
       default:
@@ -77,8 +88,22 @@ export class TrnToastService {
     if (this.document.querySelector('body > trn-root[aria-hidden="true"]')) {
       void this.liveAnnouncer.announce(
         message,
-        opts.variant === 'destructive' ? 'assertive' : 'polite',
+        variant === 'danger' ? 'assertive' : 'polite',
       );
     }
+  }
+}
+
+function normalizeToastVariant(
+  variant: TrnToastVariantInput | undefined,
+): TrnToastVariant {
+  switch (variant) {
+    case 'destructive':
+      return 'danger';
+    case 'default':
+    case undefined:
+      return 'neutral';
+    default:
+      return variant;
   }
 }

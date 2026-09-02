@@ -85,7 +85,6 @@ const expectedBespokeCounts = {
 
 const expectedCompositeCounts = {
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 9,
-  'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts#template-1': 1,
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 9,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 8,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 5,

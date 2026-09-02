@@ -1,8 +1,10 @@
 // The app's authored stylesheets, in the order `apps/trinity/project.json` loads them.
-// Theme Foundation declares the cascade before Storybook adds app-wide defaults. Static
-// application-only vendor sheets are omitted because Storybook loads each component itself.
+// Theme Foundation declares the cascade before Storybook adds app-wide defaults. CDK's
+// positioning sheet is global by design, so the catalog mirrors the app's vendor seam.
 @use '../../../theme-foundation/styles/theme';
 @use '../../../../apps/trinity/src/global';
+@import '../../../../node_modules/@angular/cdk/overlay-prebuilt.css'
+  layer(vendor);
 
 // The application shell paints these semantic tokens on its own root, but an isolated story
 // has no shell. Paint the preview body itself so transparent component hosts are reviewed on
