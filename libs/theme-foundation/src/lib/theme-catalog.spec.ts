@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { THEME_CATALOG } from './theme-catalog';
+import { THEME_CATALOG, themePreviewCombinations } from './theme-catalog';
 
 const projectRoot = join(import.meta.dirname, '../..');
 const variablesPath = join(projectRoot, 'styles/internal/variables.scss');
@@ -60,19 +60,25 @@ function authoredStatements(body: string): readonly string[] {
 }
 
 describe('Theme Foundation catalog', () => {
-  it('is deeply read-only and carries exactly six fixed Theme and Mode previews', () => {
+  it('is deeply read-only and carries every fixed Theme and Mode preview', () => {
     expect(THEME_CATALOG.defaults).toEqual({
       theme: 'trinity',
       mode: 'system',
     });
-    expect(THEME_CATALOG.preview.combinations).toEqual([
-      { theme: 'trinity', mode: 'light' },
-      { theme: 'trinity', mode: 'dark' },
-      { theme: 'amethyst', mode: 'light' },
-      { theme: 'amethyst', mode: 'dark' },
-      { theme: 'onyx', mode: 'light' },
-      { theme: 'onyx', mode: 'dark' },
-    ]);
+    const fixedModes = THEME_CATALOG.modes.filter(
+      ({ previewClass }) => previewClass !== null,
+    );
+    expect(THEME_CATALOG.preview.combinations).toHaveLength(
+      THEME_CATALOG.themes.length * fixedModes.length,
+    );
+    for (const { id: theme } of THEME_CATALOG.themes) {
+      for (const { id: mode } of fixedModes) {
+        expect(THEME_CATALOG.preview.combinations).toContainEqual({
+          theme,
+          mode,
+        });
+      }
+    }
     expect(
       [
         THEME_CATALOG,
@@ -90,6 +96,26 @@ describe('Theme Foundation catalog', () => {
         THEME_CATALOG.authoring.elevationRoles,
       ].every(Object.isFrozen),
     ).toBe(true);
+  });
+
+  it('derives previews for a sparse synthetic Theme from metadata alone', () => {
+    const syntheticTheme = Object.freeze({
+      id: 'contract-proof',
+      label: 'Contract proof',
+      dataTheme: 'contract-proof',
+    });
+
+    const previews = themePreviewCombinations(
+      [...THEME_CATALOG.themes, syntheticTheme],
+      THEME_CATALOG.modes,
+    );
+
+    expect(previews.filter(({ theme }) => theme === syntheticTheme.id)).toEqual(
+      [
+        { theme: 'contract-proof', mode: 'light' },
+        { theme: 'contract-proof', mode: 'dark' },
+      ],
+    );
   });
 
   it('keeps resolved CSS values out of TypeScript metadata', () => {
@@ -170,8 +196,14 @@ describe('Theme Foundation stylesheet interface', () => {
         ...THEME_CATALOG.authoring.elevationRoles,
       ].every((role) => baseRoles.has(role)),
     ).toBe(true);
-    expect(source).not.toMatch(
-      /\[data-theme='(?:amethyst|onyx)'\][\s\S]*?var\(--(?:amethyst|onyx)-/u,
-    );
+    for (const { dataTheme } of THEME_CATALOG.themes) {
+      if (dataTheme === null) continue;
+      expect(source).not.toMatch(
+        new RegExp(
+          `\\[data-theme='${dataTheme}'\\][\\s\\S]*?var\\(--${dataTheme}-`,
+          'u',
+        ),
+      );
+    }
   });
 });

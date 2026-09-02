@@ -189,18 +189,28 @@ describe('Theme Foundation repository contract', () => {
   });
 
   it('pins the semantic roles carried by local Helm divergences', () => {
-    const expected = {
-      'libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts':
+    const expected = [
+      [
+        'libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts',
         'shadow-overlay',
-      'libs/spartan/select/src/lib/hlm-select-content.ts': 'shadow-overlay',
-      'libs/spartan/radio-group/src/lib/hlm-radio-indicator.ts':
+        2,
+      ],
+      [
+        'libs/spartan/select/src/lib/hlm-select-content.ts',
+        'shadow-overlay',
+        1,
+      ],
+      [
+        'libs/spartan/radio-group/src/lib/hlm-radio-indicator.ts',
         'shadow-raised',
-      'libs/spartan/tabs/src/lib/hlm-tabs-trigger.ts': 'shadow-raised',
-      'libs/spartan/badge/src/lib/hlm-badge.ts': 'rounded-full',
-    };
+        1,
+      ],
+      ['libs/spartan/tabs/src/lib/hlm-tabs-trigger.ts', 'shadow-raised', 1],
+      ['libs/spartan/badge/src/lib/hlm-badge.ts', 'rounded-full', 1],
+    ];
 
-    for (const [file, token] of Object.entries(expected)) {
-      expect(authored(file), file).toContain(token);
+    for (const [file, token, count] of expected) {
+      expect(authored(file).split(token).length - 1, file).toBe(count);
     }
   });
 });

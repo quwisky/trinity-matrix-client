@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { THEME_CATALOG } from '@trinity/theme-foundation';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BrowserAppearanceDocumentAdapter } from './appearance-document.adapter';
 import type { ResolvedAppearance } from './appearance-resolution';
@@ -71,4 +72,19 @@ describe('BrowserAppearanceDocumentAdapter', () => {
     expect(root.style.getPropertyValue('--trinity-code-scale')).toBe('');
     expect(root.hasAttribute('data-code-lines')).toBe(false);
   });
+
+  for (const theme of THEME_CATALOG.themes) {
+    it(`activates ${theme.id} from Theme catalog metadata`, () => {
+      adapter().apply({
+        mode: 'light',
+        theme: theme.id,
+        textSize: 'default',
+        density: 'cosy',
+        codeSize: 'default',
+        codeLinePresentation: 'auto',
+      });
+
+      expect(root.getAttribute('data-theme')).toBe(theme.dataTheme);
+    });
+  }
 });

@@ -12,8 +12,8 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
  *
  * Seven deliberate local overrides live in this file. A regenerate drops all seven; each is
- * commented at its site and pinned by a test in libs/spartan/overlay (the only spartan lib
- * with a Vitest target), so a lost override fails the suite rather than shipping.
+ * commented at its site and pinned by a focused spartan test or repository source-shape guard,
+ * so a lost override fails the suite rather than shipping.
  *
  *   1. HlmDropdownMenuSubTrigger — `_handleClick` shadowed so a sub-trigger click OPENS the
  *      submenu instead of toggling it closed under zoneless CD. See docs/architecture/state-and-reactivity.md.

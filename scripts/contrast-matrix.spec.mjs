@@ -44,19 +44,20 @@ const catalogSource = readFileSync(
  */
 const SYNTHETIC_THEME = Object.freeze({
   id: 'contract-proof',
+  label: 'Contract proof',
   dataTheme: 'contract-proof',
-  css: `
-    :root[data-theme='contract-proof']:not(.dark) {
+});
+const SYNTHETIC_THEME_CSS = `
+    :root[data-theme='${SYNTHETIC_THEME.dataTheme}']:not(.dark) {
       --trinity-link: oklch(47% 0.19 275deg);
     }
 
-    :root[data-theme='contract-proof'].dark {
+    :root[data-theme='${SYNTHETIC_THEME.dataTheme}'].dark {
       --trinity-link: oklch(76% 0.105 275deg);
     }
-  `,
-});
+  `;
 
-const source = `${productionSource}\n${SYNTHETIC_THEME.css}`;
+const source = `${productionSource}\n${SYNTHETIC_THEME_CSS}`;
 
 /** WCAG AA for body text. Large text may use 3:1; nothing here is guaranteed large. */
 const AA = 4.5;
@@ -580,24 +581,25 @@ describe('contrast matrix', () => {
       ),
     ].sort();
 
-    expect(productionThemes.map(({ id }) => id)).toEqual([
-      'trinity',
-      'amethyst',
-      'onyx',
-    ]);
+    const catalogIds = productionThemes.map(({ id }) => id);
+    expect(new Set(catalogIds).size).toBe(catalogIds.length);
+    expect(
+      productionThemes.filter(({ dataTheme }) => dataTheme === null),
+    ).toHaveLength(1);
+    expect(new Set(catalogCarriers).size).toBe(catalogCarriers.length);
     expect(cssCarriers).toEqual(catalogCarriers);
   });
 
   it('proves a sparse synthetic Theme needs only metadata and governed overrides', () => {
-    const syntheticBlocks = parseBlocks(SYNTHETIC_THEME.css);
+    const syntheticBlocks = parseBlocks(SYNTHETIC_THEME_CSS);
     const allowed = new Set([
       ...catalogRoles('colorRoles'),
       ...catalogRoles('elevationRoles'),
     ]);
 
     expect(syntheticBlocks.map(({ selector }) => selector)).toEqual([
-      ":root[data-theme='contract-proof']:not(.dark)",
-      ":root[data-theme='contract-proof'].dark",
+      `:root[data-theme='${SYNTHETIC_THEME.dataTheme}']:not(.dark)`,
+      `:root[data-theme='${SYNTHETIC_THEME.dataTheme}'].dark`,
     ]);
     expect(
       syntheticBlocks.every(
