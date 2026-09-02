@@ -19,7 +19,8 @@ import {
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { filter, firstValueFrom } from 'rxjs';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with
@@ -76,32 +77,35 @@ export class DevicesSectionComponent {
   }
 
   /** Prompt for a new display name, then rename. */
-  async rename(device: DeviceInfo): Promise<void> {
+  rename(device: DeviceInfo): void {
     this.error.set(null); // don't carry a stale error into a fresh action
-    const name = await this.alert.prompt({
-      header: 'Rename device',
-      placeholder: 'Device name',
-      confirmText: 'Save',
-      value: device.displayName,
-      maxLength: 100,
-    });
-    if (name !== null) {
-      this.applyRename(device.id, name);
-    }
+    this.alert
+      .prompt$({
+        header: 'Rename device',
+        placeholder: 'Device name',
+        confirmText: 'Save',
+        value: device.displayName,
+        maxLength: 100,
+      })
+      .pipe(
+        filter((name): name is string => name !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((name) => this.applyRename(device.id, name));
   }
 
   /** Confirm, then sign the device out (password UIA handled by the service). */
-  async remove(device: DeviceInfo): Promise<void> {
+  remove(device: DeviceInfo): void {
     this.error.set(null);
-    const confirmed = await this.alert.confirm({
-      header: 'Sign out device',
-      message: `“${device.displayName}” will be signed out and lose access to your account.`,
-      confirmText: 'Sign out',
-      destructive: true,
-    });
-    if (confirmed) {
-      this.applyRemove(device.id);
-    }
+    this.alert
+      .confirm$({
+        header: 'Sign out device',
+        message: `“${device.displayName}” will be signed out and lose access to your account.`,
+        confirmText: 'Sign out',
+        variant: 'danger',
+      })
+      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.applyRemove(device.id));
   }
 
   /**
@@ -152,12 +156,16 @@ export class DevicesSectionComponent {
 
   /** Ask for the account password during a delete UIA (null = cancelled). */
   private promptPassword(): Promise<string | null> {
-    return this.alert.prompt({
-      header: 'Confirm your password',
-      message: 'Signing out a device requires your account password.',
-      placeholder: 'Password',
-      confirmText: 'Confirm',
-      inputType: 'password',
-    });
+    // Matrix UIA owns this callback and requires a Promise. Keep the conversion at that
+    // boundary while the Settings-facing command stays a cold finite Observable.
+    return firstValueFrom(
+      this.alert.prompt$({
+        header: 'Confirm your password',
+        message: 'Signing out a device requires your account password.',
+        placeholder: 'Password',
+        confirmText: 'Confirm',
+        inputType: 'password',
+      }),
+    );
   }
 }

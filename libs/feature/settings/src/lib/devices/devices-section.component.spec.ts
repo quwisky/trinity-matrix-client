@@ -47,8 +47,8 @@ describe('DevicesSectionComponent', () => {
     connect.mockClear();
     disconnect.mockClear();
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
-    alertConfirm = vi.fn().mockResolvedValue(true);
-    alertPrompt = vi.fn().mockResolvedValue('Tablet');
+    alertConfirm = vi.fn(() => of(true));
+    alertPrompt = vi.fn(() => of('Tablet'));
     open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
       of({ kind: 'presented' as const, surface: request.surface }),
     );
@@ -66,8 +66,8 @@ describe('DevicesSectionComponent', () => {
           disconnect,
         }),
         MockProvider(TrnAlertService, {
-          confirm: alertConfirm,
-          prompt: alertPrompt,
+          confirm$: alertConfirm,
+          prompt$: alertPrompt,
         }),
         MockProvider(WorkspaceApplicationSurfaceService, { open }),
       ],
@@ -97,7 +97,7 @@ describe('DevicesSectionComponent', () => {
   });
 
   it('renames a device via the alert', async () => {
-    alertPrompt.mockResolvedValue('Tablet');
+    alertPrompt.mockReturnValue(of('Tablet'));
     const { fixture } = await renderSection();
 
     await fixture.componentInstance.rename(OTHER);
@@ -107,7 +107,7 @@ describe('DevicesSectionComponent', () => {
   });
 
   it('does not rename when the prompt is cancelled', async () => {
-    alertPrompt.mockResolvedValue(null);
+    alertPrompt.mockReturnValue(of(null));
     const { fixture } = await renderSection();
 
     await fixture.componentInstance.rename(OTHER);
@@ -116,19 +116,19 @@ describe('DevicesSectionComponent', () => {
   });
 
   it('signs out a device via the destructive alert', async () => {
-    alertConfirm.mockResolvedValue(true);
+    alertConfirm.mockReturnValue(of(true));
     const { fixture } = await renderSection();
 
     await fixture.componentInstance.remove(OTHER);
 
     expect(alertConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({ destructive: true }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(del).toHaveBeenCalledWith('B', expect.any(Function));
   });
 
   it('does not sign out a device when the confirm is cancelled', async () => {
-    alertConfirm.mockResolvedValue(false);
+    alertConfirm.mockReturnValue(of(false));
     const { fixture } = await renderSection();
 
     await fixture.componentInstance.remove(OTHER);

@@ -8,7 +8,7 @@
     @if (hasCustomBindings()) {
       <button
         trnBtn
-        variant="ghost"
+        presentation="ghost"
         size="sm"
         (click)="resetAll()"
         data-testid="shortcuts-reset-all"
@@ -49,7 +49,12 @@
             >
               Press a combination… (Esc to cancel)
             </span>
-            <button trnBtn variant="ghost" size="sm" (click)="cancelCapture()">
+            <button
+              trnBtn
+              presentation="ghost"
+              size="sm"
+              (click)="cancelCapture()"
+            >
               Cancel
             </button>
           } @else {
@@ -84,7 +89,7 @@
             @if (row.rebindable) {
               <button
                 trnBtn
-                variant="outline"
+                presentation="outline"
                 size="sm"
                 (click)="edit(row)"
                 [attr.data-testid]="'shortcut-edit-' + row.id"
@@ -94,7 +99,7 @@
               @if (!row.isDefault) {
                 <button
                   trnBtn
-                  variant="ghost"
+                  presentation="ghost"
                   size="sm"
                   (click)="reset(row.id)"
                   [attr.data-testid]="'shortcut-reset-' + row.id"

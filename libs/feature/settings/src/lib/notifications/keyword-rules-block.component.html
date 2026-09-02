@@ -55,7 +55,7 @@
             <button
               trnBtn
               type="button"
-              variant="outline"
+              presentation="outline"
               size="sm"
               [disabled]="isBusy(keyword.ruleId)"
               (click)="remove(keyword)"
@@ -84,7 +84,7 @@
     <button
       trnBtn
       type="button"
-      variant="outline"
+      presentation="outline"
       size="sm"
       [disabled]="adding() || nothingTyped() || isLoading()"
       (click)="add()"

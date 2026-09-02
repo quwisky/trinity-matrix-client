@@ -15,7 +15,7 @@ import {
   runWithBusy,
 } from '@trinity/util/ui';
 import { HomeserverBlockComponent } from './homeserver-block.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /**
  * Server section: one block per signed-in account, saying what that account's homeserver is

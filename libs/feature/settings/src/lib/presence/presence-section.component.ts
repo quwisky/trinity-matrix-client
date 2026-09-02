@@ -16,7 +16,7 @@ import {
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { presenceLabel, type PresenceState } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /** The presence states a user can set for themselves (Matrix has no "invisible"). */
 const PRESENCE_OPTIONS: readonly PresenceState[] = [

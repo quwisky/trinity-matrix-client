@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { desktopBridgeFixture } from '@trinity/testing';
+import { firstValueFrom } from 'rxjs';
 import {
   CONFIG_EDITOR_LOADER,
   provideConfigEditor,
@@ -63,7 +64,7 @@ describe('config editor loader', () => {
     TestBed.configureTestingModule({ providers: [provideConfigEditor()] });
 
     const load = TestBed.inject(CONFIG_EDITOR_LOADER);
-    const component = await load?.();
+    const component = load ? await firstValueFrom(load()) : undefined;
 
     // Resolves the import for real, so renaming the module or its export fails here rather
     // than at runtime on the one page that uses it.

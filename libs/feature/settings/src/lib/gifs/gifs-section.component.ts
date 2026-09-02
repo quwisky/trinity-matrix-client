@@ -19,7 +19,7 @@ import {
   isGifProviderId,
   type GifProviderId,
 } from '@trinity/data-access/gif';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /**
  * GIF-picker settings: choose a provider (KLIPY / GIPHY) and paste its API key.

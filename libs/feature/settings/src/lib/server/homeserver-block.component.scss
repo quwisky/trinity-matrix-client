@@ -2,95 +2,97 @@
 // stays invisible until the day its parent becomes flex or grid — at which point every
 // block becomes a flex item and they lay out side by side. Same reason every sibling
 // section component that ships SCSS opens this way.
-:host {
-  display: block;
-}
+@layer components {
+  :host {
+    display: block;
+  }
 
-.hs-block {
-  padding: 8px 16px 16px;
-}
+  .hs-block {
+    padding: 8px 16px 16px;
+  }
 
-.hs-block__account {
-  margin-bottom: 4px;
-  overflow-wrap: anywhere;
-  font-size: 14px;
-  font-weight: 600;
-}
+  .hs-block__account {
+    margin-bottom: 4px;
+    overflow-wrap: anywhere;
+    font-size: 14px;
+    font-weight: 600;
+  }
 
-// Label / value pairs. A grid rather than a flex row per pair so the values line up down
-// the block, and `max-content` so a long version string wraps in the value column instead
-// of pushing the labels around.
-.hs-block__rows {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 2px 12px;
-  font-size: 13px;
+  // Label / value pairs. A grid rather than a flex row per pair so the values line up down
+  // the block, and `max-content` so a long version string wraps in the value column instead
+  // of pushing the labels around.
+  .hs-block__rows {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 2px 12px;
+    font-size: 13px;
 
-  dt {
+    dt {
+      color: var(--trinity-text-muted);
+    }
+
+    dd {
+      // matrix.org answers `1.158.0 (b=matrix-org-hotfixes-priv,5569b9e479)`, and a
+      // homeserver URL has no spaces at all — both must wrap rather than widen the page.
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  // Stacks the pairs on narrow screens, where a two-column grid leaves the value column too
+  // thin for a URL to wrap into.
+  @media (max-width: 419.98px) {
+    .hs-block__rows {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+
+      dd {
+        margin-bottom: 6px;
+      }
+    }
+  }
+
+  .hs-block__unknown,
+  .hs-block__note {
     color: var(--trinity-text-muted);
   }
 
-  dd {
-    // matrix.org answers `1.158.0 (b=matrix-org-hotfixes-priv,5569b9e479)`, and a
-    // homeserver URL has no spaces at all — both must wrap rather than widen the page.
-    min-width: 0;
-    overflow-wrap: anywhere;
+  // The only hand-authored `<details>` in the app; `rendered-markdown.scss` sets the same
+  // thing for the other one. Without it the one expandable row in the block is
+  // indistinguishable from the static values above and below it.
+  summary {
+    cursor: pointer;
   }
-}
 
-// Stacks the pairs on narrow screens, where a two-column grid leaves the value column too
-// thin for a URL to wrap into.
-@media (max-width: 419.98px) {
-  .hs-block__rows {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
+  // Wrapped rather than one flag per line. A server advertises a dozen or more of these, and
+  // at a line each the disclosure added ~256px to the block — enough to push the settings
+  // detail pane into its own scrollbar beside the submenu's on any window under ~610px tall.
+  // Two panes each scrolling is the two-pane layout working, but not for a list nobody opened
+  // the page for.
+  .hs-block__flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    margin-top: 4px;
+    color: var(--trinity-text-muted);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
 
-    dd {
-      margin-bottom: 6px;
+    li {
+      // The long ones (`org.matrix.msc4445.initial_sync_timeline_topological_ordering`) are
+      // wider than the value column, so they must be able to break rather than widen it.
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
   }
-}
 
-.hs-block__unknown,
-.hs-block__note {
-  color: var(--trinity-text-muted);
-}
-
-// The only hand-authored `<details>` in the app; `rendered-markdown.scss` sets the same
-// thing for the other one. Without it the one expandable row in the block is
-// indistinguishable from the static values above and below it.
-summary {
-  cursor: pointer;
-}
-
-// Wrapped rather than one flag per line. A server advertises a dozen or more of these, and
-// at a line each the disclosure added ~256px to the block — enough to push the settings
-// detail pane into its own scrollbar beside the submenu's on any window under ~610px tall.
-// Two panes each scrolling is the two-pane layout working, but not for a list nobody opened
-// the page for.
-.hs-block__flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
-  margin-top: 4px;
-  color: var(--trinity-text-muted);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-
-  li {
-    // The long ones (`org.matrix.msc4445.initial_sync_timeline_topological_ordering`) are
-    // wider than the value column, so they must be able to break rather than widen it.
-    max-width: 100%;
-    overflow-wrap: anywhere;
+  .hs-block__status {
+    padding-top: 4px;
+    color: var(--trinity-text-muted);
+    font-size: 13px;
   }
-}
 
-.hs-block__status {
-  padding-top: 4px;
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-}
-
-.hs-block__status--error {
-  color: var(--trinity-danger);
+  .hs-block__status--error {
+    color: var(--trinity-danger);
+  }
 }

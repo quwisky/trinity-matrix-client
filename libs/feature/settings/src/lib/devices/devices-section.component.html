@@ -37,29 +37,31 @@
       <div class="ml-auto flex shrink-0 items-center gap-1">
         <button
           trnBtn
-          variant="ghost"
-          size="icon"
+          presentation="ghost"
+          shape="icon"
+          size="md"
           [disabled]="busy()"
           [trnTooltip]="'Rename ' + device.displayName"
           [attr.aria-label]="'Rename ' + device.displayName"
           data-testid="rename-device"
           (click)="rename(device)"
         >
-          <trn-icon name="pencil" size="1.125rem" motion="nudge-up-right" />
+          <trn-icon name="pencil" size="md" motion="nudge-up-right" />
         </button>
         @if (!device.isCurrent) {
           <button
             trnBtn
-            variant="ghost"
-            size="icon"
-            class="text-danger hover:text-danger"
+            variant="danger"
+            presentation="ghost"
+            shape="icon"
+            size="md"
             [disabled]="busy()"
             [trnTooltip]="'Sign out ' + device.displayName"
             [attr.aria-label]="'Sign out ' + device.displayName"
             data-testid="remove-device"
             (click)="remove(device)"
           >
-            <trn-icon name="trash-2" size="1.125rem" motion="nudge-down" />
+            <trn-icon name="trash-2" size="md" motion="nudge-down" />
           </button>
         }
       </div>
@@ -86,12 +88,12 @@
     <div class="px-4 py-2">
       <button
         trnBtn
-        variant="ghost"
+        presentation="ghost"
         size="sm"
         data-testid="verify-devices"
         (click)="verifyDevices()"
       >
-        <trn-icon name="shield-check" size="1.125rem" />
+        <trn-icon name="shield-check" size="md" />
         Verify another session
       </button>
     </div>

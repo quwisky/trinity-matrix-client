@@ -10,6 +10,7 @@
  * same check a hand edit does, so an imported document is never applied on a path a typed one
  * could not reach.
  */
+import { catchError, defer, from, of, type Observable } from 'rxjs';
 
 /** Said when the clipboard cannot be read — silence is indistinguishable from a dead button. */
 export const CLIPBOARD_UNREADABLE_MESSAGE =
@@ -21,13 +22,13 @@ export const CLIPBOARD_UNREADABLE_MESSAGE =
  * Clears the input's value first so picking the *same* file twice still fires a change event
  * — otherwise a failed import cannot be retried without choosing a different file.
  */
-export async function readPickedConfigFile(
-  event: Event,
-): Promise<string | null> {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = '';
-  return file ? await file.text() : null;
+export function readPickedConfigFile$(event: Event): Observable<string | null> {
+  return defer(() => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    return file ? from(file.text()) : of(null);
+  });
 }
 
 /**
@@ -37,10 +38,9 @@ export async function readPickedConfigFile(
  * refused the permission prompt: from here they are the same event, and the caller says the
  * same thing either way.
  */
-export async function readClipboardConfig(): Promise<string | null> {
-  try {
-    return await (navigator.clipboard?.readText() ?? Promise.reject());
-  } catch {
-    return null;
-  }
+export function readClipboardConfig$(): Observable<string | null> {
+  return defer(() => {
+    const readText = navigator.clipboard?.readText.bind(navigator.clipboard);
+    return readText ? from(readText()) : of(null);
+  }).pipe(catchError(() => of(null)));
 }

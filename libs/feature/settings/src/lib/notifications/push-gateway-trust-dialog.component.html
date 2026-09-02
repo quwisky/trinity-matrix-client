@@ -1,5 +1,9 @@
 <div
-  class="w-[min(90vw,30rem)] rounded-lg border border-solid border-border bg-card p-6 text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="lg"
+  layout="dialog"
+  class="p-6"
   role="alertdialog"
   aria-labelledby="push-gateway-trust-heading"
   aria-describedby="push-gateway-trust-body"
@@ -47,7 +51,7 @@
   <div class="mt-6 flex justify-end gap-2">
     <button
       trnBtn
-      variant="outline"
+      presentation="outline"
       (click)="cancel()"
       data-testid="push-gateway-trust-cancel"
     >
@@ -55,7 +59,7 @@
     </button>
     <button
       trnBtn
-      variant="destructive"
+      variant="danger"
       (click)="confirm()"
       data-testid="push-gateway-trust-confirm"
     >

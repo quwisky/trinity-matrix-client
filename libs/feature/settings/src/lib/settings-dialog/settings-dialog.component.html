@@ -1,10 +1,18 @@
-<section class="settings-dialog" data-testid="settings-dialog">
+<section
+  trnOverlaySurface
+  variant="neutral"
+  size="2xl"
+  layout="workspace"
+  class="settings-dialog"
+  data-testid="settings-dialog"
+>
   <header class="settings-dialog__header">
     @if (!wide() && selectedPath()) {
       <button
         trnBtn
-        variant="ghost"
-        size="icon"
+        presentation="ghost"
+        shape="icon"
+        size="md"
         aria-label="Back to settings sections"
         (click)="goBackOrClose()"
       >
@@ -14,8 +22,9 @@
     <h1 data-settings-autofocus tabindex="-1">Settings</h1>
     <button
       trnBtn
-      variant="ghost"
-      size="icon"
+      presentation="ghost"
+      shape="icon"
+      size="md"
       aria-label="Close settings"
       data-testid="close-settings"
       (click)="close()"
@@ -37,17 +46,23 @@
         }
         <button
           trnBtn
-          variant="ghost"
-          class="settings-nav__item"
+          [variant]="selectedPath() === item.path ? 'secondary' : 'primary'"
+          [presentation]="selectedPath() === item.path ? 'solid' : 'ghost'"
+          size="md"
+          class="settings-nav__item w-full justify-start"
           [class.is-active]="selectedPath() === item.path"
           [attr.aria-current]="selectedPath() === item.path ? 'page' : null"
           [attr.data-testid]="'settings-nav-' + item.path"
           (click)="selectSection(item); clearRouteFocusTargets()"
         >
-          <trn-icon [name]="item.icon" class="settings-nav__icon" />
+          <trn-icon
+            [name]="item.icon"
+            size="md"
+            [variant]="selectedPath() === item.path ? 'accent' : 'muted'"
+          />
           <span class="settings-nav__label">{{ item.label }}</span>
           @if (!wide()) {
-            <trn-icon name="chevron-right" class="settings-nav__chevron" />
+            <trn-icon name="chevron-right" size="md" variant="muted" />
           }
         </button>
       }

@@ -65,8 +65,11 @@
       }
 
       <button
+        trnBtn
         type="button"
-        class="mt-2 text-13 text-muted-foreground hover:text-foreground"
+        presentation="link"
+        size="sm"
+        class="mt-2"
         (click)="toggleAdvanced()"
         [attr.aria-expanded]="advancedOpen()"
         data-testid="push-gateway-advanced-toggle"
@@ -115,7 +118,7 @@
           <button
             trnBtn
             size="sm"
-            variant="outline"
+            presentation="outline"
             (click)="clear()"
             data-testid="push-gateway-clear"
           >

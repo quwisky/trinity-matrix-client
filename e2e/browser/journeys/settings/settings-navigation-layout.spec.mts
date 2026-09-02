@@ -90,12 +90,17 @@ test.describe('Settings', () => {
         .locator('trn-icon[name="chevron-right"]'),
     ).toHaveCount(0);
 
-    // The active cue is an inset accent bar, and it has to differ from plain hover —
-    // which uses the same background token, so background alone would say nothing.
-    const shadow = await page
-      .getByTestId('settings-nav-profile')
-      .evaluate((el) => getComputedStyle(el).boxShadow);
-    expect(shadow).not.toBe('none');
+    // The public button recipe owns the active cue. Compare it with an idle peer so this
+    // proves the selected surface is visibly distinct without pinning a private recipe class.
+    const [activeBackground, idleBackground] = await Promise.all([
+      page
+        .getByTestId('settings-nav-profile')
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+      page
+        .getByTestId('settings-nav-presence')
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    ]);
+    expect(activeBackground).not.toBe(idleBackground);
   });
 
   test('desktop: settings content uses the shared grouped hierarchy', async ({
@@ -119,7 +124,7 @@ test.describe('Settings', () => {
     await pointerOption.click();
     expect(
       await pointerOption.evaluate(
-        (element) => getComputedStyle(element).outlineStyle,
+        (element) => getComputedStyle(element).boxShadow,
       ),
     ).toBe('none');
 
@@ -129,22 +134,15 @@ test.describe('Settings', () => {
     await expect(lightRadio).toBeFocused();
     const focusPaint = await pointerOption.evaluate((element) => {
       const style = getComputedStyle(element);
-      // Android WebView quantizes a 2 CSS-pixel outline onto the emulator's
-      // 2.625 DPR grid, so Chromium reports 1.90476 CSS px (5 device px).
-      // Compare in device pixels and allow only normal half-pixel rounding.
-      const devicePixelRatio = window.devicePixelRatio;
       return {
-        style: style.outlineStyle,
-        devicePixelWidth:
-          Number.parseFloat(style.outlineWidth) * devicePixelRatio,
-        expectedDevicePixelWidth: 2 * devicePixelRatio,
+        outline: style.outlineStyle,
+        shadow: style.boxShadow,
       };
     });
-    expect(focusPaint.style).not.toBe('none');
-    expect(focusPaint.devicePixelWidth).toBeCloseTo(
-      focusPaint.expectedDevicePixelWidth,
-      0,
-    );
+    // The canonical radio recipe paints keyboard focus as a shadow on the option label;
+    // the native radio remains the focused semantic control.
+    expect(focusPaint.outline).toBe('none');
+    expect(focusPaint.shadow).not.toBe('none');
 
     const densityRow = page.getByTestId('density-select').locator('..');
     const densityLabel = page.locator('#appearance-density-heading');

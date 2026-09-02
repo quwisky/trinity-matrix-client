@@ -1,0 +1,15 @@
+<header
+  class="settings-section-intro"
+  [class.settings-section-intro--primary]="primary()"
+>
+  <h2
+    class="settings-section-heading"
+    [class.settings-section-heading--primary]="primary()"
+    [id]="headingId()"
+  >
+    {{ title() }}
+  </h2>
+  @if (description()) {
+    <p class="settings-section-description">{{ description() }}</p>
+  }
+</header>

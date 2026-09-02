@@ -237,26 +237,6 @@ export const UNLAYERED_RULESET_LEDGER = [
     '12b53744651ada7b966b03cf094b7661f1f40dcade2228e3613b8546acbe0a5a',
   ],
   [
-    'libs/feature/settings/src/lib/appearance/appearance-preview.component.scss',
-    '9c0fb5b4fdce56af0522db11275fbcd53148d77d27eac17eedc4a12c2c9dc258',
-  ],
-  [
-    'libs/feature/settings/src/lib/image-packs/image-packs-section.component.scss',
-    '3897e6112a39b81c20d462b69935687f87b89a94a0e1105ce82b91ca0cac366f',
-  ],
-  [
-    'libs/feature/settings/src/lib/server/homeserver-block.component.scss',
-    '40781914fead07dfaed77194ba2ef6c328ca88be8a3f2d757c1971e8760a892f',
-  ],
-  [
-    'libs/feature/settings/src/lib/settings-dialog/settings-dialog.component.scss',
-    '918cd0cd0229e20accf96bf22a5a9b3b6a15208f328d8a1b189f10f8001ae025',
-  ],
-  [
-    'libs/feature/settings/src/lib/settings/settings.page.scss',
-    '33faee7f788b03682bda03bf701ae9bbd08a2d0087cd57e3d96b121cf1e7de59',
-  ],
-  [
     'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
     '4ea26f2dc4e87f40aee8d004666dc0145f078bc0c54703cda9c59fc3c85e561c',
   ],

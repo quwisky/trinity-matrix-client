@@ -5,33 +5,25 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // A switch has to LOOK like the value it holds, and that claim can only be made in a
 // browser.
 //
-// It was false. Every Brn control publishes its state as `data-state="checked"` or
-// `data-state="unchecked"`, while the Helm classes styling it are written
-// `data-checked:bg-primary` and `data-unchecked:bg-input`. Tailwind reads a bare `data-foo:`
-// as an attribute PRESENCE test and compiled `[data-checked]`, which nothing in the tree
-// carries — so fourteen rules were emitted, matched nothing, and the switch rendered
-// identically on and off. Theme Foundation's Tailwind adapter declares the two variants.
-//
 // No unit test can see this and none ever will: jsdom applies no CSS, so `className`
 // contains exactly the tokens the author wrote and every assertion about them passes
 // whether or not a single rule matches. The measurement has to be `getComputedStyle` in a
 // real engine, which is what this file is for.
 //
-// Two things about WHERE to measure, both of which cost a wrong first draft:
-//
-//  - `brn-switch` is `display: contents` and carries no class of its own. The kit puts the
-//    styling AND the `data-state` on the `button[role=switch]` inside it, so that is the
-//    element with a background. Measuring the custom element returns `rgba(0, 0, 0, 0)` in
-//    every state and the test fails against correct code.
-//  - Tailwind v4 emits its translate utilities as the `translate` PROPERTY, not as
-//    `transform`. A thumb that has moved still reports `transform: none`.
+// The public control keeps semantics on a native checkbox with `role="switch"`; its
+// following presentational span owns track paint, and that span's child owns thumb travel.
+// Measure those exact owners while asserting state through the native control.
 const session = synapseSession();
 
-/** The element the kit actually styles: `brn-switch` is `display: contents`. */
-const track = (row: Locator): Locator => row.locator('button[role="switch"]');
+/** The native control that owns checked, disabled, focus and keyboard semantics. */
+const control = (row: Locator): Locator => row.getByRole('switch');
+
+/** The presentational sibling that owns the track background. */
+const track = (row: Locator): Locator =>
+  row.locator('trn-switch > span[aria-hidden="true"]');
 
 /** The thumb, whose travel is what a reader actually reads the state from. */
-const thumb = (row: Locator): Locator => row.locator('brn-switch-thumb');
+const thumb = (row: Locator): Locator => track(row).locator(':scope > span');
 
 const styleOf = (locator: Locator, property: string): Promise<string> =>
   locator.evaluate(
@@ -69,7 +61,7 @@ async function thumbOffset(row: Locator): Promise<number> {
 /**
  * A computed value read after it has stopped moving.
  *
- * The track carries `transition-all`, so an immediate read catches the colour part-way and
+ * The track carries a colour transition, so an immediate read catches the colour part-way and
  * returns a different alpha every run — two probes of the same checked switch gave
  * `rgba(88, 101, 242, 0.03)` and `rgba(88, 101, 242, 0.176)`. Polling until two consecutive
  * reads AT LEAST ONE INTERVAL APART agree is what makes the comparison about state rather
@@ -112,21 +104,21 @@ test.describe('Switch reflects its value', () => {
     page,
   }) => {
     const row = page.getByTestId('privacy-send-read-receipts');
-    await expect(track(row)).toBeVisible({ timeout: 20_000 });
+    await expect(control(row)).toBeVisible({ timeout: 20_000 });
 
     // Whatever it starts as — the preference persists, so this must not assume.
-    const wasChecked = await track(row).getAttribute('data-state');
+    const wasChecked = await control(row).isChecked();
     const before = {
       background: await settled(track(row), 'background-color'),
       offset: await thumbOffset(row),
     };
 
     await row.click();
-    await expect(track(row)).not.toHaveAttribute(
-      'data-state',
-      wasChecked ?? '',
-      { timeout: 10_000 },
-    );
+    if (wasChecked) {
+      await expect(control(row)).not.toBeChecked({ timeout: 10_000 });
+    } else {
+      await expect(control(row)).toBeChecked({ timeout: 10_000 });
+    }
 
     const after = {
       background: await settled(track(row), 'background-color'),
@@ -134,7 +126,7 @@ test.describe('Switch reflects its value', () => {
     };
 
     // The two claims that were false. Both are asserted because they are two separate
-    // rules on two separate elements: the track's fill lives on the button, the thumb's
+    // rules on two separate elements: the track's fill lives on its span, the thumb's
     // travel on the thumb, and either can break without the other.
     expect(after.background).not.toBe(before.background);
 
@@ -152,16 +144,16 @@ test.describe('Switch reflects its value', () => {
     // does not say which value it holds.
     const receipts = page.getByTestId('privacy-send-read-receipts');
     const previews = page.getByTestId('privacy-link-previews');
-    await expect(track(receipts)).toBeVisible({ timeout: 20_000 });
+    await expect(control(receipts)).toBeVisible({ timeout: 20_000 });
 
-    const receiptsState = await track(receipts).getAttribute('data-state');
-    if ((await track(previews).getAttribute('data-state')) === receiptsState) {
+    const receiptsState = await control(receipts).isChecked();
+    if ((await control(previews).isChecked()) === receiptsState) {
       await previews.click();
-      await expect(track(previews)).not.toHaveAttribute(
-        'data-state',
-        receiptsState ?? '',
-        { timeout: 10_000 },
-      );
+      if (receiptsState) {
+        await expect(control(previews)).not.toBeChecked({ timeout: 10_000 });
+      } else {
+        await expect(control(previews)).toBeChecked({ timeout: 10_000 });
+      }
     }
 
     expect(await settled(track(receipts), 'background-color')).not.toBe(

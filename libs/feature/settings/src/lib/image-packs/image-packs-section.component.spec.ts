@@ -32,7 +32,7 @@ describe('ImagePacksSectionComponent', () => {
   const install = vi.fn(() => of(void 0));
   const uninstall = vi.fn(() => of(void 0));
   const setEnabledUsage = vi.fn(() => of(void 0));
-  const confirm = vi.fn(async () => true);
+  const confirm = vi.fn(() => of(true));
 
   beforeEach(() => {
     installed.set([]);
@@ -52,7 +52,7 @@ describe('ImagePacksSectionComponent', () => {
             setEnabledUsage,
           },
         },
-        { provide: TrnAlertService, useValue: { confirm } },
+        { provide: TrnAlertService, useValue: { confirm$: confirm } },
         {
           provide: ActivatedRoute,
           useValue: {

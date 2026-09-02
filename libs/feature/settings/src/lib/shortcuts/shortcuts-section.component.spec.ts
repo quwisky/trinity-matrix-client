@@ -2,6 +2,7 @@ import { render } from '@trinity/testing';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -30,7 +31,7 @@ describe('ShortcutsSectionComponent', () => {
   let toast: Mock;
 
   beforeEach(() => {
-    confirm = vi.fn().mockResolvedValue(true);
+    confirm = vi.fn(() => of(true));
     toast = vi.fn();
     delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
   });
@@ -42,7 +43,7 @@ describe('ShortcutsSectionComponent', () => {
   async function setup() {
     const rendered = await render(ShortcutsSectionComponent, {
       providers: [
-        MockProvider(TrnAlertService, { confirm }),
+        MockProvider(TrnAlertService, { confirm$: confirm }),
         MockProvider(TrnToastService, { show: toast }),
       ],
     });

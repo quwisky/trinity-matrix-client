@@ -3,6 +3,7 @@ import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { APP_CONFIG_ENTRIES, type ConfigEntry } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdvancedSettingsComponent } from './advanced-settings.component';
 import {
@@ -82,13 +83,13 @@ describe('AdvancedSettingsComponent — the rich editor', () => {
   function providers(withEditor: boolean) {
     return [
       { provide: APP_CONFIG_ENTRIES, multi: true, useValue: ENTRIES },
-      MockProvider(TrnAlertService, { prompt: vi.fn() }),
+      MockProvider(TrnAlertService, { prompt$: vi.fn() }),
       MockProvider(TrnToastService, { show: vi.fn() }),
       ...(withEditor
         ? [
             {
               provide: CONFIG_EDITOR_LOADER,
-              useValue: () => Promise.resolve(StubConfigEditorComponent),
+              useValue: () => of(StubConfigEditorComponent),
             },
           ]
         : []),
@@ -191,7 +192,7 @@ describe('AdvancedSettingsComponent — the mobile app', () => {
     return await render(AdvancedSettingsComponent, {
       providers: [
         { provide: APP_CONFIG_ENTRIES, multi: true, useValue: ENTRIES },
-        MockProvider(TrnAlertService, { prompt: vi.fn() }),
+        MockProvider(TrnAlertService, { prompt$: vi.fn() }),
         MockProvider(TrnToastService, { show: vi.fn() }),
       ],
     });

@@ -5,9 +5,12 @@ export type TrnOverlaySurfaceVariant = Extract<
   TrnVariant,
   'neutral' | 'accent'
 >;
-export type TrnOverlaySurfaceSize = Extract<TrnSize, 'sm' | 'md' | 'lg' | 'xl'>;
+export type TrnOverlaySurfaceSize = Extract<
+  TrnSize,
+  'sm' | 'md' | 'lg' | 'xl' | '2xl'
+>;
 export type TrnOverlaySurfaceLayout =
-  'dialog' | 'sheet' | 'popover' | 'panel' | 'fullscreen';
+  'dialog' | 'sheet' | 'popover' | 'panel' | 'workspace' | 'fullscreen';
 
 const variantRecipe = {
   neutral:
@@ -21,6 +24,7 @@ const sizeRecipe = {
   md: '[--trn-overlay-inline-size:26rem]',
   lg: '[--trn-overlay-inline-size:32rem]',
   xl: '[--trn-overlay-inline-size:40rem]',
+  '2xl': '[--trn-overlay-inline-size:72rem]',
 } as const;
 
 const layoutRecipe = {
@@ -32,6 +36,8 @@ const layoutRecipe = {
     'max-h-[calc(100dvh-1rem)] min-w-full w-max max-w-[min(92vw,var(--trn-overlay-inline-size))] rounded-[var(--trinity-shape-overlay-radius)]',
   panel:
     'h-dvh w-screen rounded-none border-y-0 border-e-0 md:w-[var(--trn-overlay-inline-size)]',
+  workspace:
+    'flex h-[min(48rem,calc(100dvh-2*var(--trinity-space-4)))] w-[min(var(--trn-overlay-inline-size),calc(100vw-2*var(--trinity-space-4)))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
   fullscreen: 'h-full w-full rounded-none border-0 shadow-none',
 } as const;
 

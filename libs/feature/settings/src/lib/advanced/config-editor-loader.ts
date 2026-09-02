@@ -6,6 +6,7 @@ import {
   type Type,
 } from '@angular/core';
 import { supportsRichConfigEditing } from '@trinity/platform-native';
+import { defer, map, type Observable } from 'rxjs';
 
 /**
  * What the Advanced section needs of the rich editor, without importing it.
@@ -21,7 +22,7 @@ export interface ConfigEditorHost {
 }
 
 /** Fetch the editor's chunk and hand back the component in it. */
-export type ConfigEditorLoader = () => Promise<Type<ConfigEditorHost>>;
+export type ConfigEditorLoader = () => Observable<Type<ConfigEditorHost>>;
 
 /**
  * The rich editor, or `null` where it is not offered.
@@ -56,9 +57,10 @@ export function supportsConfigEditor(): boolean {
  * The only reference to the editor module in the workspace — a dynamic import, so the bundler
  * splits it off and nothing loads it until the Advanced section is actually opened.
  */
-const loadConfigEditor: ConfigEditorLoader = async () =>
-  (await import('./config-editor/config-editor.component'))
-    .ConfigEditorComponent;
+const loadConfigEditor: ConfigEditorLoader = () =>
+  defer(() => import('./config-editor/config-editor.component')).pipe(
+    map((module) => module.ConfigEditorComponent),
+  );
 
 /**
  * Offer the rich editor to the Advanced route, on the platforms that get it.

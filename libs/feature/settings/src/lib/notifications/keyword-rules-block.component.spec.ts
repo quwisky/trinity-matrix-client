@@ -185,7 +185,7 @@ describe('KeywordRulesBlockComponent', () => {
     expect(add).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('already in your keywords'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -243,7 +243,7 @@ describe('KeywordRulesBlockComponent', () => {
     expect(keywords).toHaveBeenCalledTimes(2); // seed + error reload
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not add'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -262,7 +262,7 @@ describe('KeywordRulesBlockComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('cannot contain'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -289,7 +289,7 @@ describe('KeywordRulesBlockComponent', () => {
     expect(rows(fixture)).toHaveLength(2);
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not remove'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
