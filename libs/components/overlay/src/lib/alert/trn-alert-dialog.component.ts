@@ -107,8 +107,9 @@ export type AlertDialogResult = boolean | string | null;
 export class TrnAlertDialogComponent {
   private readonly ref =
     inject<DialogRef<AlertDialogResult, TrnAlertDialogComponent>>(DialogRef);
-  protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
-  private readonly promptModel = signal({ value: this.data.value ?? '' });
+  private readonly dialogData = inject<AlertDialogData>(DIALOG_DATA);
+  private readonly promptModel = signal({ value: this.dialogData.value ?? '' });
+  protected readonly data = this.dialogData;
   protected readonly promptForm = form(this.promptModel, (path) => {
     required(path.value, {
       message: `${this.data.inputLabel ?? 'This value'} is required.`,
