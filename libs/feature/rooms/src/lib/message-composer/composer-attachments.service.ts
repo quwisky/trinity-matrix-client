@@ -289,7 +289,7 @@ export class ComposerAttachmentsService {
           this.gifDownloading.set(false);
           this.toast.show('Could not load that GIF.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -321,7 +321,7 @@ export class ComposerAttachmentsService {
       this.voiceStarting = false;
       this.toast.show('Could not access the microphone.', {
         duration: 4000,
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }
@@ -366,7 +366,7 @@ export class ComposerAttachmentsService {
             error: () =>
               this.toast.show('Could not send that voice message.', {
                 duration: 4000,
-                variant: 'destructive',
+                variant: 'danger',
               }),
           });
       })
@@ -374,7 +374,7 @@ export class ComposerAttachmentsService {
       .catch(() =>
         this.toast.show('Could not finish that voice recording.', {
           duration: 4000,
-          variant: 'destructive',
+          variant: 'danger',
         }),
       );
   }
@@ -425,7 +425,7 @@ export class ComposerAttachmentsService {
     if (!added.length) {
       this.toast.show('Empty attachments cannot be sent.', {
         duration: 4000,
-        variant: 'destructive',
+        variant: 'danger',
       });
       return [];
     }
@@ -438,7 +438,7 @@ export class ComposerAttachmentsService {
   private showAttachError(err: unknown): void {
     this.toast.show(
       err instanceof Error ? err.message : 'Could not open the gallery.',
-      { duration: 4000, variant: 'destructive' },
+      { duration: 4000, variant: 'danger' },
     );
   }
 }

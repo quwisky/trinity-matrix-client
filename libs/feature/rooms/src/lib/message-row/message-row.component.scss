@@ -1,479 +1,485 @@
-// Transparent wrapper: the row participates in the list's layout as if `.msg`
-// were a direct child (so the full-width hover bleed and padding are unchanged).
-:host {
-  display: contents;
-}
-
-.msg {
-  --message-body-indent: calc(40px + var(--trinity-density-message-column-gap));
-
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--trinity-density-message-column-gap);
-
-  // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
-  // The fallback is `none`, not `0`: `0` is a valid length, so every untouched row in the
-  // timeline would compute a non-`none` `translate` — which opens a stacking context AND
-  // makes the row a containing block for any `position: fixed` descendant. That is the trap
-  // the lightbox was moved into a CDK dialog to escape, and it would have been re-armed for
-  // every future row descendant. `none` interpolates as 0, so the spring-back still animates.
-  translate: var(--swipe-drag, none);
-
-  // Only the spring-back is animated. While the finger is down the row must track it 1:1 —
-  // an eased follow reads as lag — so `.msg--swiping` turns the transition off for the drag
-  // and it comes back for the release. No reduced-motion block of its own: the token
-  // collapses to 0.01ms in `variables.scss`, which is the whole point of using it.
-  transition: translate var(--trinity-duration-fast)
-    var(--trinity-ease-standard);
-
-  // Bleed into the scroll's horizontal padding so the hover highlight spans
-  // the full width (Discord-style); content position is unchanged.
-  // The top value is the GROUP GAP, and it is padding rather than margin on purpose:
-  // `virtual-message-list` measures each row with `entry.borderBoxSize[0].blockSize`, which
-  // margins sit outside of. A `margin-top` here would be invisible to that measurement, so
-  // every group start would be undercounted by the gap and the windowed scroll would drift
-  // by 16px per group. `:host { display: contents }` means there is no host box to observe
-  // instead. Continuations reset it to 0 below, which is what makes a group read as a group.
-  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-1);
-  margin: 0 calc(-1 * var(--trinity-space-5));
-
-  &:hover {
-    background: var(--trinity-state-hover-surface);
-  }
-}
-
-// While a finger is on the row it must track 1:1 — an eased follow reads as lag — so the
-// spring-back transition above is suspended for the duration of the drag.
-.msg--swiping {
-  transition: none;
-}
-
-// Brief attention flash when a jump (reply / search / pinned panel) lands on a row.
-.msg--flash {
-  animation: msg-flash var(--trinity-duration-flash)
-    var(--trinity-ease-decelerate);
-}
-
-@keyframes msg-flash {
-  from {
-    background: color-mix(in srgb, var(--trinity-accent) 28%, transparent);
+@layer components {
+  // Transparent wrapper: the row participates in the list's layout as if `.msg`
+  // were a direct child (so the full-width hover bleed and padding are unchanged).
+  :host {
+    display: contents;
   }
 
-  to {
-    background: transparent;
-  }
-}
+  .msg {
+    --message-body-indent: calc(
+      40px + var(--trinity-density-message-column-gap)
+    );
 
-.msg--cont {
-  padding-top: 0;
-}
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--trinity-density-message-column-gap);
 
-// A room state / membership change: a compact, centered, muted system line.
-.msg--event {
-  justify-content: center;
+    // The swipe offset, written straight to the element by `paintSwipe` on every pointermove.
+    // The fallback is `none`, not `0`: `0` is a valid length, so every untouched row in the
+    // timeline would compute a non-`none` `translate` — which opens a stacking context AND
+    // makes the row a containing block for any `position: fixed` descendant. That is the trap
+    // the lightbox was moved into a CDK dialog to escape, and it would have been re-armed for
+    // every future row descendant. `none` interpolates as 0, so the spring-back still animates.
+    translate: var(--swipe-drag, none);
 
-  // No group gap. `.msg--event` never gets `.msg--cont` — a state change is not somebody's
-  // message and has no sender to be grouped with — so without this it takes the full 16px
-  // meant to separate one person's run from the next, and a room where several people join
-  // and leave becomes a loose column of system lines with more space than the conversation.
-  padding-top: var(--trinity-space-1);
-}
+    // Only the spring-back is animated. While the finger is down the row must track it 1:1 —
+    // an eased follow reads as lag — so `.msg--swiping` turns the transition off for the drag
+    // and it comes back for the release. No reduced-motion block of its own: the token
+    // collapses to 0.01ms in `variables.scss`, which is the whole point of using it.
+    transition: translate var(--trinity-duration-fast)
+      var(--trinity-ease-standard);
 
-.msg__event-text {
-  min-width: 0;
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-metadata-size);
-  line-height: var(--trinity-type-metadata-line-height);
-  text-align: center;
-  overflow-wrap: anywhere;
-}
+    // Bleed into the scroll's horizontal padding so the hover highlight spans
+    // the full width (Discord-style); content position is unchanged.
+    // The top value is the GROUP GAP, and it is padding rather than margin on purpose:
+    // `virtual-message-list` measures each row with `entry.borderBoxSize[0].blockSize`, which
+    // margins sit outside of. A `margin-top` here would be invisible to that measurement, so
+    // every group start would be undercounted by the gap and the windowed scroll would drift
+    // by 16px per group. `:host { display: contents }` means there is no host box to observe
+    // instead. Continuations reset it to 0 below, which is what makes a group read as a group.
+    padding: var(--trinity-space-5) var(--trinity-space-5)
+      var(--trinity-space-1);
+    margin: 0 calc(-1 * var(--trinity-space-5));
 
-// The "(edited)" marker opens the message's edit history. It keeps the muted, 12px
-// look of the label it replaced — the negative margins buy a ~44px touch target out of
-// the surrounding padding without moving the baseline, which matters because on a
-// touchscreen there is no hover toolbar and this is the only way in.
-.msg__edited {
-  margin: -8px 0 -8px 4px;
-  padding: 8px 4px;
-  border: none;
-  background: none;
-  color: var(--trinity-text-muted);
-  font: inherit;
-  min-height: var(--trinity-interaction-target-min-size);
-  font-size: var(--trinity-type-metadata-size);
-  line-height: var(--trinity-type-metadata-line-height);
-  cursor: pointer;
-
-  &:hover {
-    color: var(--trinity-text);
-    text-decoration: underline;
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+    }
   }
 
-  &:focus-visible {
+  // While a finger is on the row it must track 1:1 — an eased follow reads as lag — so the
+  // spring-back transition above is suspended for the duration of the drag.
+  .msg--swiping {
+    transition: none;
+  }
+
+  // Brief attention flash when a jump (reply / search / pinned panel) lands on a row.
+  .msg--flash {
+    animation: msg-flash var(--trinity-duration-flash)
+      var(--trinity-ease-decelerate);
+  }
+
+  @keyframes msg-flash {
+    from {
+      background: color-mix(in srgb, var(--trinity-accent) 28%, transparent);
+    }
+
+    to {
+      background: transparent;
+    }
+  }
+
+  .msg--cont {
+    padding-top: 0;
+  }
+
+  // A room state / membership change: a compact, centered, muted system line.
+  .msg--event {
+    justify-content: center;
+
+    // No group gap. `.msg--event` never gets `.msg--cont` — a state change is not somebody's
+    // message and has no sender to be grouped with — so without this it takes the full 16px
+    // meant to separate one person's run from the next, and a room where several people join
+    // and leave becomes a loose column of system lines with more space than the conversation.
+    padding-top: var(--trinity-space-1);
+  }
+
+  .msg__event-text {
+    min-width: 0;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+
+  // The "(edited)" marker opens the message's edit history. It keeps the muted, 12px
+  // look of the label it replaced — the negative margins buy a ~44px touch target out of
+  // the surrounding padding without moving the baseline, which matters because on a
+  // touchscreen there is no hover toolbar and this is the only way in.
+  .msg__edited {
+    margin: -8px 0 -8px 4px;
+    padding: 8px 4px;
+    border: none;
+    background: none;
+    color: var(--trinity-text-muted);
+    font: inherit;
+    min-height: var(--trinity-interaction-target-min-size);
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    cursor: pointer;
+
+    &:hover {
+      color: var(--trinity-text);
+      text-decoration: underline;
+    }
+
+    &:focus-visible {
+      border-radius: var(--trinity-shape-control-radius);
+    }
+  }
+
+  // Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
+  // message rather than any run of text, so it owns the body's trailing grid cell, top-aligned
+  // with the first line in both header and grouped layouts. It stays in flow so long content
+  // wraps before the icon and virtual row measurement includes every painted control.
+  .msg__shield {
+    grid-row: 1;
+    grid-column: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+    margin-inline-start: var(--trinity-space-3);
+    color: var(--trinity-text-muted);
+    font-size: 13px;
+    cursor: help;
+  }
+
+  .msg__shield--red {
+    color: var(--trinity-danger);
+  }
+
+  // Focusable so the tooltip is reachable without a mouse; show that focus.
+  .msg__shield:focus-visible {
     border-radius: var(--trinity-shape-control-radius);
   }
-}
 
-// Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
-// message rather than any run of text, so it owns the body's trailing grid cell, top-aligned
-// with the first line in both header and grouped layouts. It stays in flow so long content
-// wraps before the icon and virtual row measurement includes every painted control.
-.msg__shield {
-  grid-row: 1;
-  grid-column: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 2px;
-  margin-inline-start: var(--trinity-space-3);
-  color: var(--trinity-text-muted);
-  font-size: 13px;
-  cursor: help;
-}
-
-.msg__shield--red {
-  color: var(--trinity-danger);
-}
-
-// Focusable so the tooltip is reachable without a mouse; show that focus.
-.msg__shield:focus-visible {
-  border-radius: var(--trinity-shape-control-radius);
-}
-
-// The tooltip body renders in a CDK overlay, detached from this row — but it is an
-// embedded view of a template declared here, so it keeps this component's style
-// scoping and these rules still reach it. Layout only; helm's tooltip classes own
-// the surface and ink.
-.msg__shield-tip {
-  display: block;
-  max-width: 260px;
-  text-align: left;
-}
-
-.msg__shield-tip-reason {
-  display: block;
-  font-weight: 600;
-}
-
-.msg__shield-tip-detail {
-  display: block;
-  margin-top: 2px;
-  opacity: 0.85;
-}
-
-// Float across the row's upper boundary instead of reserving a permanent trailing gutter.
-// The raised position leaves every message the full content width while limiting the
-// overlap on a continuation row to one compact corner. It is intentionally out of flow:
-// showing actions must not change the ResizeObserver height that drives virtual scrolling.
-// Mobile does not render this toolbar at all; its actions use the long-press sheet below.
-.msg__toolbar {
-  position: absolute;
-  top: 0;
-  inset-inline-end: var(--trinity-space-6);
-  z-index: var(--trinity-z-sticky);
-  opacity: 0;
-  pointer-events: none;
-  translate: 0 var(--message-toolbar-translate-y, calc(-50% - 4px));
-  transition: opacity var(--trinity-duration-fast) var(--trinity-ease-standard);
-}
-
-.msg:is(:hover, :focus-within, .msg--revealed) .msg__toolbar {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-// Mobile OSes use the action sheet and never render this bar. A hybrid desktop can still accept
-// touch even when its primary pointer is fine, so preserve a non-overlapping 44px action track in
-// that capability case. Precise-pointer desktop/web keeps the full-width floating treatment.
-@media (any-pointer: coarse) {
-  .msg:has(.msg__toolbar) {
-    min-height: 46px;
-    padding-inline-end: calc(var(--trinity-space-6) + 178px);
+  // The tooltip body renders in a CDK overlay, detached from this row — but it is an
+  // embedded view of a template declared here, so it keeps this component's style
+  // scoping and these rules still reach it. Layout only; helm's tooltip classes own
+  // the surface and ink.
+  .msg__shield-tip {
+    display: block;
+    max-width: 260px;
+    text-align: left;
   }
 
+  .msg__shield-tip-reason {
+    display: block;
+    font-weight: 600;
+  }
+
+  .msg__shield-tip-detail {
+    display: block;
+    margin-top: 2px;
+    opacity: 0.85;
+  }
+
+  // Float across the row's upper boundary instead of reserving a permanent trailing gutter.
+  // The raised position leaves every message the full content width while limiting the
+  // overlap on a continuation row to one compact corner. It is intentionally out of flow:
+  // showing actions must not change the ResizeObserver height that drives virtual scrolling.
+  // Mobile does not render this toolbar at all; its actions use the long-press sheet below.
   .msg__toolbar {
-    translate: none;
+    position: absolute;
+    top: 0;
+    inset-inline-end: var(--trinity-space-6);
+    z-index: var(--trinity-z-sticky);
+    opacity: 0;
+    pointer-events: none;
+    translate: 0 var(--message-toolbar-translate-y, calc(-50% - 4px));
+    transition: opacity var(--trinity-duration-fast)
+      var(--trinity-ease-standard);
   }
-}
 
-// `.msg--revealed` is what replaced the old `@media (hover: none)` override.
-
-// That override forced the bar open on EVERY row of a touch device, because otherwise the
-// actions were unreachable — so every message permanently wore a toolbar. Removing it is what
-// made the timeline quiet, but it cannot simply go: a touchscreen has no hover, and the long
-// press that stands in for right-click opens the OVERFLOW menu, which does not contain Reply,
-// Add reaction or Reply in thread. Those are the bar's own buttons. So a long press reveals
-// the bar for that one row (see `revealToolbar`), and its "⋯" still reaches the rest.
-// Keyboard users get there via `:focus-within` above.
-
-.msg__avatar {
-  flex: 0 0 auto;
-  margin-top: 2px;
-}
-
-// Stands in for the avatar on a grouped row, so it must measure exactly as wide as
-// one (40px) or the body lands out of line with the message above it.
-
-// min-width is load-bearing: `shortTime` joins the meridiem with U+202F (a narrow
-// NO-BREAK space), making "6:16 PM" a single unbreakable ~44px word. A flex item's
-// automatic minimum size is its min-content, which would override the 40px basis and
-// push the row right. Pinning it to 0 keeps the box at 40px and lets the timestamp —
-// hover-only, and right-aligned — spill into the row's own 16px padding instead.
-.msg__gutter {
-  flex: 0 0 40px;
-  min-width: 0;
-  align-self: center;
-  text-align: right;
-  white-space: nowrap;
-  font-size: var(--trinity-type-metadata-size);
-  line-height: var(--trinity-type-metadata-line-height);
-  font-variant-numeric: var(--trinity-type-metadata-numeric);
-  color: var(--trinity-text-muted);
-  opacity: 0;
-}
-
-.msg--cont:hover .msg__gutter {
-  opacity: 1;
-}
-
-.msg__body {
-  min-width: 0;
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-}
-
-// The content alone reserves the trailing authenticity column. Read receipts sit on the next
-// grid row and span both columns, so a shield cannot move their inline edge toward the middle.
-.msg__content {
-  min-width: 0;
-}
-
-.msg__head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--trinity-density-row-gap);
-}
-
-.msg__author {
-  font-size: var(--trinity-type-control-size);
-  line-height: var(--trinity-type-control-line-height);
-  font-weight: var(--trinity-type-control-weight);
-  color: var(--trinity-text-bright);
-}
-
-.msg__time {
-  font-size: var(--trinity-type-metadata-size);
-  line-height: var(--trinity-type-metadata-line-height);
-  font-variant-numeric: var(--trinity-type-metadata-numeric);
-  color: var(--trinity-text-muted);
-}
-
-.msg__text {
-  margin: 2px 0 0;
-  color: var(--trinity-text);
-  font-size: var(--trinity-type-message-size);
-  line-height: var(--trinity-type-message-line-height);
-  font-weight: var(--trinity-type-message-weight);
-  overflow-wrap: anywhere;
-}
-
-// Plain-text bodies carry their own newlines and runs of spaces — there is no
-// formatted_body to encode them — so they must be preserved literally. Rendered
-// markdown must NOT be: its line breaks arrive as <br> (marked's `breaks: true`), and
-// `linkifyText` emits <br> too, so pre-wrap there would double every gap and honour
-// the insignificant newlines marked leaves between block elements.
-// Scoped with :not() rather than overridden by a later `.msg__text--html` rule: both
-// are single-class selectors landing on the SAME element, so that version was decided
-// purely by source order — a file reorder would have silently flipped every formatted
-// message.
-.msg__text:not(.msg__text--html) {
-  white-space: pre-wrap;
-}
-
-// Was a `msg__text--cont` class hand-applied at four sites in the continuation copy of the
-// body. Selecting on the row's own modifier instead is what let the two copies collapse into
-// one: the markup is now genuinely identical, so there is nothing left to keep in sync.
-.msg--cont .msg__text {
-  margin: 0;
-  flex: 1;
-}
-
-// Decryption-failure / redacted fallback: a distinct bordered container so the
-// state is perceivable, not just italic-muted text that blends into the timeline.
-.msg--failed .msg__text {
-  display: inline-block;
-  padding: 8px 12px;
-  border-left: 3px solid var(--trinity-accent);
-  border-radius: var(--trinity-shape-control-radius);
-  background: var(--trinity-surface-raised);
-  color: var(--trinity-text);
-  font-style: italic;
-}
-
-.msg--sticker .msg__media {
-  display: block;
-  max-width: 12rem;
-}
-
-// Rendered-markdown (`.msg__text--html` innerHTML) styling is global — see
-// apps/trinity/src/rendered-markdown.scss (kept out of this component's style budget
-// and free of the deprecated `::ng-deep`).
-
-// Local-echo send states.
-.msg--sending {
-  opacity: 0.55;
-}
-
-.msg--sendfailed {
-  flex-wrap: wrap;
-}
-
-.msg__retry {
-  flex-basis: 100%;
-  margin-left: var(--message-body-indent);
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--trinity-danger);
-  min-height: var(--trinity-interaction-target-min-size);
-  border-radius: var(--trinity-shape-control-radius);
-  font-size: var(--trinity-type-control-size);
-  line-height: var(--trinity-type-control-line-height);
-  text-align: left;
-  cursor: pointer;
-
-  &:hover {
-    text-decoration: underline;
+  .msg:is(:hover, :focus-within, .msg--revealed) .msg__toolbar {
+    opacity: 1;
+    pointer-events: auto;
   }
-}
 
-// "Seen by" read-receipt avatars, at the message's trailing edge.
+  // Mobile OSes use the action sheet and never render this bar. A hybrid desktop can still accept
+  // touch even when its primary pointer is fine, so preserve a non-overlapping 44px action track in
+  // that capability case. Precise-pointer desktop/web keeps the full-width floating treatment.
+  @media (any-pointer: coarse) {
+    .msg:has(.msg__toolbar) {
+      min-height: 46px;
+      padding-inline-end: calc(var(--trinity-space-6) + 178px);
+    }
 
-// IN FLOW, which is where they started. Taking them out of flow was tried in this branch and
-// withdrawn, and the reason is worth keeping so it is not tried again the same way.
-
-// The goal was real: in flow the cluster is a block that adds ~19px wherever it lands, so a
-// reader part-way through a sender's run splits the run and the group rhythm the rest of this
-// phase builds disappears. Absolutely positioning it at `bottom: 0` removes that height — and
-// then paints the avatars ON TOP of the row's own last line, because `.msg` has 2px of bottom
-// padding and the cluster is ~16px tall. Any message whose final line reaches the trailing
-// edge is partly hidden behind them. Hidden text is worse than a gap. A float does not help
-// either: declared after the body, as it must be for reading order, it lands below the text
-// and costs exactly the height it was meant to save.
-
-// What actually solves it is a permanent right gutter — a fixed column reserved on EVERY row,
-// which is what the mature clients do precisely because of this. That is a timeline-wide
-// layout change rather than a receipt tweak, so it is not smuggled in here.
-
-// The alternative the redesign issue offered was to fold every reader onto the group's LAST
-// row. That was rejected on correctness, not layout: a Matrix receipt means "read up to THIS
-// event", so moving it would claim someone had read messages they had not — the app would be
-// stating something false about who saw what. Receipts stay on the event they belong to.
-.msg__receipts {
-  grid-column: 1 / -1;
-  justify-self: end;
-  display: flex;
-  gap: 2px;
-  margin-top: 3px;
-  padding: 0;
-  border: none;
-  border-radius: var(--trinity-radius-pill);
-  background: none;
-  opacity: 0.85;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--trinity-state-hover-surface);
+    .msg__toolbar {
+      translate: none;
+    }
   }
-}
 
-.msg__target:focus-visible {
-  outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-  outline-offset: var(--trinity-focus-ring-offset);
-}
+  // `.msg--revealed` is what replaced the old `@media (hover: none)` override.
 
-.msg__seen-by {
-  grid-column: 1 / -1;
-  margin-top: 2px;
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-metadata-size);
-  line-height: var(--trinity-type-metadata-line-height);
-  text-align: end;
-}
+  // That override forced the bar open on EVERY row of a touch device, because otherwise the
+  // actions were unreachable — so every message permanently wore a toolbar. Removing it is what
+  // made the timeline quiet, but it cannot simply go: a touchscreen has no hover, and the long
+  // press that stands in for right-click opens the OVERFLOW menu, which does not contain Reply,
+  // Add reaction or Reply in thread. Those are the bar's own buttons. So a long press reveals
+  // the bar for that one row (see `revealToolbar`), and its "⋯" still reaches the rest.
+  // Keyboard users get there via `:focus-within` above.
 
-// The action revealed behind a row as it slides. Counter-translated by the same custom property, so it holds still while the row moves over
-// it — the alternative, a sibling of `.msg`, does not exist: `:host { display: contents }`
-// means there is no box to put one in, and adding a wrapper would break both the
-// `[data-mid]` height measurement in `virtual-message-list` and `.msg`'s negative margin.
-.msg__swipe {
-  position: absolute;
-  inset-block: 0;
-
-  // Spans the row, and the icon is parked at whichever end the row is about to uncover. The
-  // first version said "both edges are given a box; only the one the row uncovers is seen" —
-  // which was wrong twice over: there is one child, and `space-between` puts a lone child at
-  // the inline START whichever way the row moves. Measured in Chromium at 390px: on a
-  // leftward drag the icon stayed at the row's original left edge, painting over the message
-  // text, while the strip that actually opened on the right got nothing.
-  inset-inline: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  translate: calc(-1 * var(--swipe-drag, 0));
-  color: var(--trinity-text-muted);
-  pointer-events: none;
-
-  // Nothing to reveal until the row has actually moved. `.msg` is transparent except on
-  // hover, so an always-visible icon would sit in the timeline's margin on every row.
-  // Tied to the drag's PROGRESS rather than switched on: `--swipe-progress` runs 0 → 1 as
-  // the row approaches the commit threshold, so the action fades up as it becomes available
-  // instead of arriving whole at the first pixel. No transition on it — a transition would
-  // be chasing the finger, and this has to track it exactly.
-  opacity: var(--swipe-progress, 0);
-}
-
-.msg__swipe trn-icon {
-  transition: color var(--trinity-duration-fast) var(--trinity-ease-standard);
-}
-
-// Scoped to an active drag, not left on every row. `calc(0.66 + …)` resolves to `0.66` — a
-// real scale, not `none` — so an unscoped rule would open a stacking context on every icon
-// in the timeline, which is the trap the `--swipe-drag` fallback above exists to avoid.
-// Nothing is visible when the class comes off: opacity goes to 0 in the same write.
-.msg--swiping .msg__swipe trn-icon {
-  // Grows into place on the same progress, from two thirds to full size. Small enough to
-  // read as the action arriving rather than as something bouncing.
-  scale: calc(0.66 + (0.34 * var(--swipe-progress, 0)));
-}
-
-// The one thing here the duration tokens cannot reach: the scale is written per pointermove
-// by JS with no transition, so neither the token collapse in `variables.scss` nor the
-// blanket in `global.scss` touches it. The OPACITY carries the progress information; the
-// growth is decoration, so it is the growth that goes.
-@media (prefers-reduced-motion: reduce) {
-  .msg--swiping .msg__swipe trn-icon {
-    scale: 1;
+  .msg__avatar {
+    flex: 0 0 auto;
+    margin-top: 2px;
   }
-}
 
-// Past the commit threshold — releasing now WILL act, and the icon says so before the reader
-// finds out by letting go. Colour carries it rather than more movement: the row is already
-// travelling, and a second moving thing at the same moment reads as noise.
-.msg--swipe-armed .msg__swipe {
-  color: var(--trinity-link);
-}
+  // Stands in for the avatar on a grouped row, so it must measure exactly as wide as
+  // one (40px) or the body lands out of line with the message above it.
 
-// A leftward drag uncovers the right-hand end, so the icon waits there instead.
-.msg__swipe--end {
-  justify-content: flex-end;
-}
+  // min-width is load-bearing: `shortTime` joins the meridiem with U+202F (a narrow
+  // NO-BREAK space), making "6:16 PM" a single unbreakable ~44px word. A flex item's
+  // automatic minimum size is its min-content, which would override the 40px basis and
+  // push the row right. Pinning it to 0 keeps the box at 40px and lets the timestamp —
+  // hover-only, and right-aligned — spill into the row's own 16px padding instead.
+  .msg__gutter {
+    flex: 0 0 40px;
+    min-width: 0;
+    align-self: center;
+    text-align: right;
+    white-space: nowrap;
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    font-variant-numeric: var(--trinity-type-metadata-numeric);
+    color: var(--trinity-text-muted);
+    opacity: 0;
+  }
 
-@media (pointer: coarse) {
-  .msg__target {
-    min-width: var(--trinity-interaction-target-min-size);
+  .msg--cont:hover .msg__gutter {
+    opacity: 1;
+  }
+
+  .msg__body {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  // The content alone reserves the trailing authenticity column. Read receipts sit on the next
+  // grid row and span both columns, so a shield cannot move their inline edge toward the middle.
+  .msg__content {
+    min-width: 0;
+  }
+
+  .msg__head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--trinity-density-row-gap);
+  }
+
+  .msg__author {
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    font-weight: var(--trinity-type-control-weight);
+    color: var(--trinity-text-bright);
+  }
+
+  .msg__time {
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    font-variant-numeric: var(--trinity-type-metadata-numeric);
+    color: var(--trinity-text-muted);
+  }
+
+  .msg__text {
+    margin: 2px 0 0;
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-message-size);
+    line-height: var(--trinity-type-message-line-height);
+    font-weight: var(--trinity-type-message-weight);
+    overflow-wrap: anywhere;
+  }
+
+  // Plain-text bodies carry their own newlines and runs of spaces — there is no
+  // formatted_body to encode them — so they must be preserved literally. Rendered
+  // markdown must NOT be: its line breaks arrive as <br> (marked's `breaks: true`), and
+  // `linkifyText` emits <br> too, so pre-wrap there would double every gap and honour
+  // the insignificant newlines marked leaves between block elements.
+  // Scoped with :not() rather than overridden by a later `.msg__text--html` rule: both
+  // are single-class selectors landing on the SAME element, so that version was decided
+  // purely by source order — a file reorder would have silently flipped every formatted
+  // message.
+  .msg__text:not(.msg__text--html) {
+    white-space: pre-wrap;
+  }
+
+  // Was a `msg__text--cont` class hand-applied at four sites in the continuation copy of the
+  // body. Selecting on the row's own modifier instead is what let the two copies collapse into
+  // one: the markup is now genuinely identical, so there is nothing left to keep in sync.
+  .msg--cont .msg__text {
+    margin: 0;
+    flex: 1;
+  }
+
+  // Decryption-failure / redacted fallback: a distinct bordered container so the
+  // state is perceivable, not just italic-muted text that blends into the timeline.
+  .msg--failed .msg__text {
+    display: inline-block;
+    padding: 8px 12px;
+    border-left: 3px solid var(--trinity-accent);
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+    font-style: italic;
+  }
+
+  .msg--sticker .msg__media {
+    display: block;
+    max-width: 12rem;
+  }
+
+  // Rendered-markdown (`.msg__text--html` innerHTML) styling is global — see
+  // apps/trinity/src/rendered-markdown.scss (kept out of this component's style budget
+  // and free of the deprecated `::ng-deep`).
+
+  // Local-echo send states.
+  .msg--sending {
+    opacity: 0.55;
+  }
+
+  .msg--sendfailed {
+    flex-wrap: wrap;
+  }
+
+  .msg__retry {
+    flex-basis: 100%;
+    margin-left: var(--message-body-indent);
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--trinity-danger);
     min-height: var(--trinity-interaction-target-min-size);
+    border-radius: var(--trinity-shape-control-radius);
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+
+  // "Seen by" read-receipt avatars, at the message's trailing edge.
+
+  // IN FLOW, which is where they started. Taking them out of flow was tried in this branch and
+  // withdrawn, and the reason is worth keeping so it is not tried again the same way.
+
+  // The goal was real: in flow the cluster is a block that adds ~19px wherever it lands, so a
+  // reader part-way through a sender's run splits the run and the group rhythm the rest of this
+  // phase builds disappears. Absolutely positioning it at `bottom: 0` removes that height — and
+  // then paints the avatars ON TOP of the row's own last line, because `.msg` has 2px of bottom
+  // padding and the cluster is ~16px tall. Any message whose final line reaches the trailing
+  // edge is partly hidden behind them. Hidden text is worse than a gap. A float does not help
+  // either: declared after the body, as it must be for reading order, it lands below the text
+  // and costs exactly the height it was meant to save.
+
+  // What actually solves it is a permanent right gutter — a fixed column reserved on EVERY row,
+  // which is what the mature clients do precisely because of this. That is a timeline-wide
+  // layout change rather than a receipt tweak, so it is not smuggled in here.
+
+  // The alternative the redesign issue offered was to fold every reader onto the group's LAST
+  // row. That was rejected on correctness, not layout: a Matrix receipt means "read up to THIS
+  // event", so moving it would claim someone had read messages they had not — the app would be
+  // stating something false about who saw what. Receipts stay on the event they belong to.
+  .msg__receipts {
+    grid-column: 1 / -1;
+    justify-self: end;
+    display: flex;
+    gap: 2px;
+    margin-top: 3px;
+    padding: 0;
+    border: none;
+    border-radius: var(--trinity-radius-pill);
+    background: none;
+    opacity: 0.85;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+    }
+  }
+
+  .msg__target:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: var(--trinity-focus-ring-offset);
+  }
+
+  .msg__seen-by {
+    grid-column: 1 / -1;
+    margin-top: 2px;
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    text-align: end;
+  }
+
+  // The action revealed behind a row as it slides. Counter-translated by the same custom property, so it holds still while the row moves over
+  // it — the alternative, a sibling of `.msg`, does not exist: `:host { display: contents }`
+  // means there is no box to put one in, and adding a wrapper would break both the
+  // `[data-mid]` height measurement in `virtual-message-list` and `.msg`'s negative margin.
+  .msg__swipe {
+    position: absolute;
+    inset-block: 0;
+
+    // Spans the row, and the icon is parked at whichever end the row is about to uncover. The
+    // first version said "both edges are given a box; only the one the row uncovers is seen" —
+    // which was wrong twice over: there is one child, and `space-between` puts a lone child at
+    // the inline START whichever way the row moves. Measured in Chromium at 390px: on a
+    // leftward drag the icon stayed at the row's original left edge, painting over the message
+    // text, while the strip that actually opened on the right got nothing.
+    inset-inline: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    translate: calc(-1 * var(--swipe-drag, 0));
+    color: var(--trinity-text-muted);
+    pointer-events: none;
+
+    // Nothing to reveal until the row has actually moved. `.msg` is transparent except on
+    // hover, so an always-visible icon would sit in the timeline's margin on every row.
+    // Tied to the drag's PROGRESS rather than switched on: `--swipe-progress` runs 0 → 1 as
+    // the row approaches the commit threshold, so the action fades up as it becomes available
+    // instead of arriving whole at the first pixel. No transition on it — a transition would
+    // be chasing the finger, and this has to track it exactly.
+    opacity: var(--swipe-progress, 0);
+  }
+
+  .msg__swipe trn-icon {
+    transition: color var(--trinity-duration-fast) var(--trinity-ease-standard);
+  }
+
+  // Scoped to an active drag, not left on every row. `calc(0.66 + …)` resolves to `0.66` — a
+  // real scale, not `none` — so an unscoped rule would open a stacking context on every icon
+  // in the timeline, which is the trap the `--swipe-drag` fallback above exists to avoid.
+  // Nothing is visible when the class comes off: opacity goes to 0 in the same write.
+  .msg--swiping .msg__swipe trn-icon {
+    // Grows into place on the same progress, from two thirds to full size. Small enough to
+    // read as the action arriving rather than as something bouncing.
+    scale: calc(0.66 + (0.34 * var(--swipe-progress, 0)));
+  }
+
+  // The one thing here the duration tokens cannot reach: the scale is written per pointermove
+  // by JS with no transition, so neither the token collapse in `variables.scss` nor the
+  // blanket in `global.scss` touches it. The OPACITY carries the progress information; the
+  // growth is decoration, so it is the growth that goes.
+  @media (prefers-reduced-motion: reduce) {
+    .msg--swiping .msg__swipe trn-icon {
+      scale: 1;
+    }
+  }
+
+  // Past the commit threshold — releasing now WILL act, and the icon says so before the reader
+  // finds out by letting go. Colour carries it rather than more movement: the row is already
+  // travelling, and a second moving thing at the same moment reads as noise.
+  .msg--swipe-armed .msg__swipe {
+    color: var(--trinity-link);
+  }
+
+  // A leftward drag uncovers the right-hand end, so the icon waits there instead.
+  .msg__swipe--end {
+    justify-content: flex-end;
+  }
+
+  @media (pointer: coarse) {
+    .msg__target {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
   }
 }

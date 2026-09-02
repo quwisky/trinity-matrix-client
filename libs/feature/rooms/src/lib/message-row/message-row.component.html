@@ -57,7 +57,7 @@
         [mxc]="r.senderAvatarMxc"
         [initial]="r.senderInitial"
         [name]="r.senderName"
-        [size]="40"
+        size="xl"
       />
     } @else {
       <span class="msg__gutter">{{ fmt.time(r.timestamp) }}</span>
@@ -189,7 +189,7 @@
               [mxc]="receipt.avatarMxc"
               [initial]="receipt.initial"
               [name]="receipt.name"
-              [size]="16"
+              size="2xs"
             />
           }
         </button>

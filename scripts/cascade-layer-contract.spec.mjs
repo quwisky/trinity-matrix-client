@@ -233,7 +233,7 @@ describe('cascade layer contract', () => {
       ),
     ].sort(([left], [right]) => left.localeCompare(right));
 
-    expect(actualExceptions.length).toBeGreaterThan(50);
+    expect(actualExceptions.length).toBeGreaterThan(25);
     expect(actualExceptions).toEqual(
       [...UNLAYERED_RULESET_LEDGER].sort(([left], [right]) =>
         left.localeCompare(right),

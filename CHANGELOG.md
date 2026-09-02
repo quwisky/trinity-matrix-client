@@ -126,6 +126,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Live Conversation surfaces now compose canonical design-system recipes.** Timelines, message
+  rows, the composer and its suggestion popovers, reactions and their picker/dialog, media and
+  voice attachments, reply and thread summaries, the message toolbar, typing, thread views,
+  pinned messages, and the encryption prompt use named foundation sizes, canonical controls,
+  neutral surfaces, and `danger` feedback while preserving virtualization, message and composer
+  geometry, touch targets, and safe areas. Conversation confirmations and dialog results now use
+  cold RxJS commands, and the slice's component styles participate in the named cascade.
+
 - **Rooms workspace navigation now composes canonical design-system recipes.** The account picker,
   server rail, channel sidebar, room list, user panel, and workspace header use named avatar and
   icon sizes, canonical toolbar, button, menu, empty-state, overlay, and danger inputs while

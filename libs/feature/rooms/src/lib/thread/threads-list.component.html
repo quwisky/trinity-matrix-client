@@ -1,5 +1,9 @@
 <div
-  class="safe-bottom flex h-full flex-col overflow-hidden border-l border-solid border-border bg-card text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  layout="fullscreen"
+  class="safe-bottom flex flex-col"
 >
   <div
     class="panel-header flex items-center gap-2 border-b border-solid border-border"
@@ -7,13 +11,15 @@
     <h2 class="flex-1 text-base font-semibold">Threads</h2>
     <button
       trnBtn
-      variant="ghost"
-      size="icon"
+      variant="secondary"
+      presentation="ghost"
+      shape="icon"
+      size="md"
       (click)="close()"
       trnTooltip="Close threads"
       aria-label="Close threads"
     >
-      <trn-icon name="x" size="1.25rem" motion="rotate" />
+      <trn-icon name="x" size="lg" motion="rotate" />
     </button>
   </div>
 
@@ -32,7 +38,7 @@
               [mxc]="p.avatarMxc"
               [initial]="p.initial"
               [name]="p.name"
-              [size]="24"
+              size="sm"
             />
           }
           @if (t.participants.length > maxAvatars) {

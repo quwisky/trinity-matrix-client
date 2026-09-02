@@ -92,7 +92,7 @@ export class MessageActionsService {
       return;
     }
     if (!target.eventId) {
-      void this.openRoomLinkPreview(target);
+      this.openRoomLinkPreview(target);
       return;
     }
     this.rooms
@@ -104,32 +104,36 @@ export class MessageActionsService {
       });
   }
 
-  private async openRoomLinkPreview(
+  private openRoomLinkPreview(
     target: Extract<
       Exclude<MatrixLinkClick['target'], { kind: 'invalid' }>,
       { kind: 'room' }
     >,
-  ): Promise<void> {
+  ): void {
     const mobile = isMobileOs();
-    const result = await this.dialog.openAndWait<
-      RoomLinkPreviewResult | null,
-      RoomLinkPreviewComponent
-    >(RoomLinkPreviewComponent, {
-      ariaLabel: 'Room information',
-      autoFocus: 'first-heading',
-      side: mobile ? 'bottom' : 'center',
-      inputs: { target, sheet: mobile },
-    });
-    if (!result) return;
-    if (result.membershipChanged) {
-      this.routing.openConfirmedLinkedRoom(result.roomId, result.isSpace);
-      return;
-    }
-    if (result.isSpace) {
-      this.routing.onSelectSpaceRow(result.roomId);
-      return;
-    }
-    this.routing.openLinkedRoom(result.roomId);
+    this.dialog
+      .openAndWait$<RoomLinkPreviewResult | null, RoomLinkPreviewComponent>(
+        RoomLinkPreviewComponent,
+        {
+          ariaLabel: 'Room information',
+          autoFocus: 'first-heading',
+          placement: mobile ? 'bottom' : 'center',
+          inputs: { target, sheet: mobile },
+        },
+      )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (!result) return;
+        if (result.membershipChanged) {
+          this.routing.openConfirmedLinkedRoom(result.roomId, result.isSpace);
+          return;
+        }
+        if (result.isSpace) {
+          this.routing.onSelectSpaceRow(result.roomId);
+          return;
+        }
+        this.routing.openLinkedRoom(result.roomId);
+      });
   }
 
   /**

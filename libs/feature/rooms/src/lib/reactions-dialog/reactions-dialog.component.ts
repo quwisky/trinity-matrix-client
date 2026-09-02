@@ -8,7 +8,10 @@ import {
   signal,
 } from '@angular/core';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import {
   ConversationRuntime,
@@ -29,7 +32,12 @@ import { AvatarComponent } from '@trinity/components/generic-content';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './reactions-dialog.component.html',
   styleUrl: './reactions-dialog.component.scss',
-  imports: [EmptyStateComponent, AvatarComponent, TrnButton],
+  imports: [
+    EmptyStateComponent,
+    AvatarComponent,
+    TrnButton,
+    TrnOverlaySurfaceDirective,
+  ],
 })
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(ConversationRuntime).timeline;

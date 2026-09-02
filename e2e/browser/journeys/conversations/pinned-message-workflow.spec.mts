@@ -429,6 +429,9 @@ test.describe('Pin messages', () => {
     await page.getByTestId('open-pinned').click();
     const panel = page.getByTestId('pinned-panel');
     await expect(panel).toBeVisible({ timeout: 10_000 });
+    await expect(panel).toHaveAttribute('data-trn-variant', 'neutral');
+    await expect(panel).toHaveAttribute('data-trn-size', 'md');
+    await expect(panel).toHaveAttribute('data-trn-layout', 'fullscreen');
     await expect(divider).toBeVisible();
 
     // 2. Below the `members` breakpoint the panel is an overlay drawer, and it is NOT the

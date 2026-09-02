@@ -17,7 +17,7 @@
       (click)="openMobileSheet()"
     >
       @if (locationSharing() || gifDownloading()) {
-        <trn-spinner class="text-base" />
+        <trn-spinner size="md" />
       } @else {
         <trn-icon name="plus" motion="rotate" />
       }
@@ -34,7 +34,7 @@
       [disabled]="editing()"
     >
       @if (locationSharing() || gifDownloading()) {
-        <trn-spinner class="text-base" />
+        <trn-spinner size="md" />
       } @else {
         <trn-icon name="plus" motion="rotate" />
       }

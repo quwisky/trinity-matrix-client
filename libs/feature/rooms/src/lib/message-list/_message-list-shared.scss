@@ -4,125 +4,128 @@
 // contrast fix lives in one place.
 @use '../styles/mixins' as *;
 
-:host {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--trinity-surface-workspace);
-}
+@mixin message-list-shared {
+  :host {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--trinity-surface-workspace);
+  }
 
-// Anchors the jump-to-latest pill just above the composer (the scroll region's
-// bottom edge) rather than the host's, so it floats over the newest messages.
-.list {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
+  // Anchors the jump-to-latest pill just above the composer (the scroll region's
+  // bottom edge) rather than the host's, so it floats over the newest messages.
+  .list {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
 
-.scroll {
-  // A swiped row translates past the scroller's right edge, which `overflow-x: auto` — the
-  // computed value when only `overflow-y` is set — turns into a real horizontal pan. What
-  // this prevents is the USER-driven scroll: measured, a wheel `deltaX: 120` moved
-  // `scrollLeft` to 40 without it and 0 with. It does NOT change `scrollWidth`, which stays
-  // 450 either way; an earlier version of this comment cited that as the evidence and was
-  // describing the symptom rather than the fix.
-  // `clip` and not `hidden` is a preference, not a mechanism: with a non-`visible` other
-  // axis `clip` COMPUTES to `hidden` (CSS Overflow 3), and Chromium reports it as such — the
-  // spelling says what is meant, the behaviour is identical. Code blocks inside messages
-  // keep their own horizontal scroll either way, being their own scroll containers: verified
-  // that `pre` `scrollLeft` still reaches 300 with this in place.
-  overflow-x: clip;
+  .scroll {
+    // A swiped row translates past the scroller's right edge, which `overflow-x: auto` — the
+    // computed value when only `overflow-y` is set — turns into a real horizontal pan. What
+    // this prevents is the USER-driven scroll: measured, a wheel `deltaX: 120` moved
+    // `scrollLeft` to 40 without it and 0 with. It does NOT change `scrollWidth`, which stays
+    // 450 either way; an earlier version of this comment cited that as the evidence and was
+    // describing the symptom rather than the fix.
+    // `clip` and not `hidden` is a preference, not a mechanism: with a non-`visible` other
+    // axis `clip` COMPUTES to `hidden` (CSS Overflow 3), and Chromium reports it as such — the
+    // spelling says what is meant, the behaviour is identical. Code blocks inside messages
+    // keep their own horizontal scroll either way, being their own scroll containers: verified
+    // that `pre` `scrollLeft` still reaches 300 with this in place.
+    overflow-x: clip;
 
-  @include scrollable;
-  @include swipe-through;
+    @include scrollable;
+    @include swipe-through;
 
-  // Allow the flex child to shrink below its content height so it scrolls
-  // instead of growing the column.
-  flex: 1;
-  min-height: 0;
+    // Allow the flex child to shrink below its content height so it scrolls
+    // instead of growing the column.
+    flex: 1;
+    min-height: 0;
 
-  // The horizontal value is the TOKEN because `message-row` bleeds against it: the row
-  // carries `margin: 0 calc(-1 * var(--trinity-space-5))` so its hover highlight spans the
-  // full width. Left hard-coded at 16px, compact density would shrink the row's margin to
-  // -12px while this stayed 16px, and the highlight would stop 4px short on each side.
-  padding: var(--trinity-space-5) var(--trinity-space-5) var(--trinity-space-3);
-}
+    // The horizontal value is the TOKEN because `message-row` bleeds against it: the row
+    // carries `margin: 0 calc(-1 * var(--trinity-space-5))` so its hover highlight spans the
+    // full width. Left hard-coded at 16px, compact density would shrink the row's margin to
+    // -12px while this stayed 16px, and the highlight would stop 4px short on each side.
+    padding: var(--trinity-space-5) var(--trinity-space-5)
+      var(--trinity-space-3);
+  }
 
-.load-older {
-  text-align: center;
-  padding: var(--trinity-space-3) 0 var(--trinity-space-4);
-  font-size: var(--trinity-type-control-size);
-  line-height: var(--trinity-type-control-line-height);
-  color: var(--trinity-text-muted);
-}
+  .load-older {
+    text-align: center;
+    padding: var(--trinity-space-3) 0 var(--trinity-space-4);
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    color: var(--trinity-text-muted);
+  }
 
-// The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.
-// Their rules used to live here; under emulated encapsulation that left them scoped to these
-// two list components while the elements belonged to another, so they matched nothing.
+  // The day and unread dividers are styled by `trn-timeline-divider`, which owns their markup.
+  // Their rules used to live here; under emulated encapsulation that left them scoped to these
+  // two list components while the elements belonged to another, so they matched nothing.
 
-.jump-unread {
-  position: absolute;
-  top: var(--trinity-space-3);
-  left: 50%;
-  z-index: var(--trinity-z-sticky);
-  min-height: var(--trinity-density-control-size);
-  min-width: var(--trinity-interaction-target-min-size);
-  padding: var(--trinity-space-2) var(--trinity-space-4);
-  border: none;
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
-  font-size: var(--trinity-type-control-size);
-  font-weight: var(--trinity-type-control-weight);
-  cursor: pointer;
-  box-shadow: var(--trinity-shadow-floating);
-  transform: translateX(-50%);
-}
-
-@media (pointer: coarse) {
   .jump-unread {
+    position: absolute;
+    top: var(--trinity-space-3);
+    left: 50%;
+    z-index: var(--trinity-z-sticky);
+    min-height: var(--trinity-density-control-size);
+    min-width: var(--trinity-interaction-target-min-size);
+    padding: var(--trinity-space-2) var(--trinity-space-4);
+    border: none;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-accent);
+    color: var(--trinity-accent-foreground);
+    font-size: var(--trinity-type-control-size);
+    font-weight: var(--trinity-type-control-weight);
+    cursor: pointer;
+    box-shadow: var(--trinity-shadow-floating);
+    transform: translateX(-50%);
+  }
+
+  @media (pointer: coarse) {
+    .jump-unread {
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+  }
+
+  .jump-latest {
+    position: absolute;
+    right: var(--trinity-space-5);
+    bottom: var(--trinity-space-4);
+    z-index: var(--trinity-z-sticky);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trinity-density-control-size);
+    height: var(--trinity-density-control-size);
+    min-width: var(--trinity-interaction-target-min-size);
     min-height: var(--trinity-interaction-target-min-size);
-  }
-}
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-surface-floating);
+    color: var(--trinity-text);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: var(--trinity-shadow-floating);
 
-.jump-latest {
-  position: absolute;
-  right: var(--trinity-space-5);
-  bottom: var(--trinity-space-4);
-  z-index: var(--trinity-z-sticky);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--trinity-density-control-size);
-  height: var(--trinity-density-control-size);
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-surface-floating);
-  color: var(--trinity-text);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: var(--trinity-shadow-floating);
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+      color: var(--trinity-state-hover-foreground);
+    }
 
-  &:hover {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
-  }
+    &:active {
+      background: var(--trinity-state-pressed-surface);
+      color: var(--trinity-state-pressed-foreground);
+    }
 
-  &:active {
-    background: var(--trinity-state-pressed-surface);
-    color: var(--trinity-state-pressed-foreground);
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: var(--trinity-focus-ring-offset);
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: var(--trinity-focus-ring-offset);
+    }
   }
 }

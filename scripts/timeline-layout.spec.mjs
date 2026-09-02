@@ -61,8 +61,8 @@ describe('modern timeline layout contracts', () => {
       /\.scroll\s*\{[^}]*padding:\s*var\(--trinity-space-5\) var\(--trinity-space-5\)/s,
     );
     expect(rowCss).toContain('margin: 0 calc(-1 * var(--trinity-space-5));');
-    expect(rowCss).toContain(
-      '--message-body-indent: calc(40px + var(--trinity-density-message-column-gap));',
+    expect(rowCss).toMatch(
+      /--message-body-indent:\s*calc\(\s*40px\s*\+\s*var\(--trinity-density-message-column-gap\)\s*\);/u,
     );
     expect(rowCss.match(/var\(--message-body-indent\)/g)?.length).toBe(1);
     expect(replyPreviewCss.match(/var\(--message-body-indent\)/g)?.length).toBe(

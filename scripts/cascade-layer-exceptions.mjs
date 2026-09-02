@@ -29,10 +29,6 @@ export const UNLAYERED_RULESET_LEDGER = [
     '2c40d783e3a9cd235bd7da4d703aa896f62dc07f41a048b06b2c8f9f1da5e073',
   ],
   [
-    'libs/feature/rooms/src/lib/encryption-banner/encryption-banner.component.scss',
-    '19e7a0c231491ad743010e3661f3a8770a4fff420dc491dadc4301efb61cba54',
-  ],
-  [
     'libs/feature/rooms/src/lib/gif-picker/gif-picker.component.scss',
     '601caac29f57eafdc44d6182edda4d5fad4ff61ad4031331702e297fbe65421b',
   ],
@@ -57,14 +53,6 @@ export const UNLAYERED_RULESET_LEDGER = [
     '10d3551800f2d6eab76746c5e280f2d84639d5f43280e0bde95e6e86acec4d03',
   ],
   [
-    'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',
-    '952ada0c20a077eb619f13a1b8c766ceff9fcfaf5cb4a4208f8e48f56a272233',
-  ],
-  [
-    'libs/feature/rooms/src/lib/media-bubble/media-bubble.component.scss',
-    '7990c3dcbe112654c3be49539a519c918b4059febb6f6a56cd51c679591a2ba2',
-  ],
-  [
     'libs/feature/rooms/src/lib/member-info/member-info.component.scss',
     '8ead265e2ebef309834ed073bf81f53dd4f73f0e5ff65093af44791edd27cb96',
   ],
@@ -73,68 +61,8 @@ export const UNLAYERED_RULESET_LEDGER = [
     '5914ff9629e036b2f5a6d33bf7ff9323ec3fa8df7b40d50055d628564445f8ea',
   ],
   [
-    'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss',
-    'eb98f1c9e425cf266952c356bb54ecf4ad6f9232ca0fc02409106d7cce7d588e',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.scss',
-    'c788f9fa1a90a1f72bcf609c0a9c94711666220282f15e47f9a43bc38821b9ad',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-composer/composer-suggestions/composer-suggestions.component.scss',
-    '5891403c102e7957585d6947136f7fa64fe22afae747e11d7680e827a14bac6a',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.scss',
-    '9403212dd814955880513ac621406bb388dfbfa0b4001c48f2962bdcaed60d11',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
-    'b5b38c934409b9cad763ad69bc397dad84f727c8b9ccc51da6c9463ec5222cf8',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-list/drop-overlay/drop-overlay.component.scss',
-    'b7bcd547fdb2638ec75f1305e528c3c5ee42079aae7ed7f52b3b4420c42236f3',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-list/timeline-divider/timeline-divider.component.scss',
-    '473eb4ec157f7128a73ca97c2da20dab71da0ffc983819971bbc3087b61612a4',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-list/typing-indicator/typing-indicator.component.scss',
-    '1dada5cf1d2b246577bbb7eee7d559d07156e90cf9b519de0c5450bae3127898',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.scss',
-    'a451fe6fa0cfbd130b613a5474e27118eb528dc87641c8138bc2580204a6d1df',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.scss',
-    'e55f252bfaef0bf687d2e7086bb1af10a69c5ca9b2bdba54b848e81417bde673',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss',
-    'feabf926638b3456cb22dd45c6a8ce959df734d918efd5bd417572c9e90bc5c6',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
-    '9b62e28960d9256771f64ab313a8d1e3d34ed5300b1a512b00e34a3ee361d0a0',
-  ],
-  [
     'libs/feature/rooms/src/lib/message-search/message-search.component.scss',
     'ebcac8835b2d106b17d34ecb8f9c99baf83ac0f1980b1420b4f6a2c0fc09f181',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss',
-    '209c5467a48657fa26f0132807f4cc4e37f2dd636ece692f75a89024ec19df3d',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',
-    '412343f221198f4e90bc176dcd689b58ff1ef145633230813c0d602dd7e4c26a',
-  ],
-  [
-    'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.scss',
-    '3b392256bf0c0084221345a8303843f6a65e8e3ce36d5947ec8a851e051774fd',
   ],
   [
     'libs/feature/rooms/src/lib/poll/poll.component.scss',
@@ -143,14 +71,6 @@ export const UNLAYERED_RULESET_LEDGER = [
   [
     'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.scss',
     '8af1497dd946f1fd60e44ec53f0fa09fdb850f18da0d59e542e2131f3c75ca8a',
-  ],
-  [
-    'libs/feature/rooms/src/lib/reaction-picker/reaction-picker.component.scss',
-    '13f248fa68ff8c4e89ac5f6a539e69f87af6f5cdc424dafc346506a29bf6a9ff',
-  ],
-  [
-    'libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss',
-    'df27676756c05e5adeeaa9076463c5422321ecc684e6a8ff9612e5efb8c03c77',
   ],
   [
     'libs/feature/rooms/src/lib/room-link-preview/room-link-preview.component.scss',
@@ -193,28 +113,12 @@ export const UNLAYERED_RULESET_LEDGER = [
     '4c7eeb4780175292d37f10ba25ffd9c02e0f376f14441a8b345ea9071f69c660',
   ],
   [
-    'libs/feature/rooms/src/lib/thread/thread-view.component.scss',
-    'e8a42e9ffd2b0027487150571388c71976d1b223b93784917faedfd758be2e73',
-  ],
-  [
-    'libs/feature/rooms/src/lib/thread/threads-list.component.scss',
-    'b715b2c8703b619652aabfd9bc24b4596f0cff328b9b95d8fe6d48974b738dc3',
-  ],
-  [
     'libs/feature/rooms/src/lib/user-card/user-card.component.scss',
     '893ab5ef72130f1a732cb2856aed05f65c18f460058dbdde1bca916131b8b447',
   ],
   [
     'libs/feature/rooms/src/lib/user-picker/user-picker.component.scss',
     'e12c5b99f7e4432432239a485294a215e8649f517e79d4c3d5d0085f503cf262',
-  ],
-  [
-    'libs/feature/rooms/src/lib/voice-message/voice-message.component.scss',
-    '12b53744651ada7b966b03cf094b7661f1f40dcade2228e3613b8546acbe0a5a',
-  ],
-  [
-    'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',
-    '4ea26f2dc4e87f40aee8d004666dc0145f078bc0c54703cda9c59fc3c85e561c',
   ],
   [
     'libs/feature/rooms/src/lib/styles/_mixins.scss',

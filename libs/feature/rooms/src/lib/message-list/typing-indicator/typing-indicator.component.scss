@@ -1,99 +1,102 @@
 @use '../../styles/mixins' as *;
 
-// Own stylesheet rather than the shared partial: the markup moved into this component,
-// and under emulated encapsulation a rule left behind in `_message-list-shared.scss`
-// would be scoped to the two lists while the elements belong here — matching nothing.
-// That exact mistake shipped once already for `trn-timeline-divider`.
-// The host display is stated rather than inherited, matching `trn-spinner` and
-// `trn-progress`. It is DEFENSIVE, not load-bearing: measured in Chromium, removing it
-// changes nothing today, because `.typing-slot` below is a block-level child that
-// generates its own box whatever the host does. It earns its place the moment any
-// geometry moves onto the host — the shape that has caught this repo before.
-:host {
-  display: block;
-}
-
-// Always present, so the scroll region does not resize when someone starts or stops
-// typing. Inserting the row used to change `.scroll`'s clientHeight by 25.2px, which
-// the flex column absorbs by shrinking `.list` — the composer never moved, the newest
-// messages did. The @if lives INSIDE this, which is also what keeps "removed when
-// nobody types" true of `.typing-indicator` itself.
-// Note `calc(1.2rem + 6px)` and not `1.2rem`: Tailwind preflight sets `box-sizing:
-// border-box`, so min-height is the BORDER-box height and has to include this rule's
-// own padding. Written as `1.2rem` the slot is 19.2px idle against 25.2px occupied,
-// and 6px of the jump survives the fix.
-.typing-slot {
-  min-height: calc(1.2rem + 6px);
-  padding: var(--trinity-space-1) var(--trinity-space-5) var(--trinity-space-2);
-}
-
-.typing-indicator {
-  display: flex;
-  align-items: center;
-  gap: var(--trinity-space-2);
-  font-size: var(--trinity-type-body-size);
-  font-style: italic;
-  line-height: 1.2rem;
-  color: var(--trinity-text-muted);
-}
-
-// `min-height` on the slot is a FLOOR, so reserving one line is only half the job: an
-// unclamped sentence wraps and the slot grows anyway. Measured at 360/390/412px — the
-// common phone widths — two ordinary display names took the row from 25.19px to 44.41px,
-// which is the jump this component exists to remove, and it also made `Alice` → `Alice and
-// Bob` resize the scroller mid-conversation. One line, ellipsised.
-.typing-indicator__text {
-  @include ellipsis;
-
-  min-width: 0;
-}
-
-// `flex: 0 0 auto` for the same reason the composer's recording dot carries it: an empty
-// span is a shrinkable flex item whose `min-width: auto` resolves to 0, so without this the
-// dots collapse once the text stops wrapping and starts competing for the line.
-.typing-dots {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-// A filled shape, not text, so it takes `currentcolor` from the muted line above
-// rather than a text-role token of its own — the same reasoning as the composer's
-// recording dot.
-.typing-dots__dot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentcolor;
-  animation: typing-dot var(--trinity-duration-pulse) ease-in-out infinite;
-}
-
-// Staggered so the three read as a travelling wave rather than one blinking group.
-// The delays are deliberately literal. `styling-tokens.spec.mjs` polices hand-picked
-// animation DURATIONS, and a delay is not one — there is no token for it, and the
-// reduced-motion collapse does not need one: the blanket `animation-iteration-count:
-// 1` in `global.scss` ends the animation inside a single iteration either way.
-.typing-dots__dot:nth-child(2) {
-  animation-delay: 150ms;
-}
-
-.typing-dots__dot:nth-child(3) {
-  animation-delay: 300ms;
-}
-
-// 0% must equal the dot's resting style. Collapsing `--trinity-duration-pulse` under
-// reduced motion does NOT stop an infinite animation (see the note in variables.scss:
-// measured at 29 iterations in half a second) — `animation-iteration-count: 1` does,
-// and the dot then reverts to its base style, which declares no opacity and so
-// computes to 1. Dimming at 0% instead would leave those users on faded dots.
-@keyframes typing-dot {
-  0%,
-  100% {
-    opacity: 1;
+@layer components {
+  // Own stylesheet rather than the shared partial: the markup moved into this component,
+  // and under emulated encapsulation a rule left behind in `_message-list-shared.scss`
+  // would be scoped to the two lists while the elements belong here — matching nothing.
+  // That exact mistake shipped once already for `trn-timeline-divider`.
+  // The host display is stated rather than inherited, matching `trn-spinner` and
+  // `trn-progress`. It is DEFENSIVE, not load-bearing: measured in Chromium, removing it
+  // changes nothing today, because `.typing-slot` below is a block-level child that
+  // generates its own box whatever the host does. It earns its place the moment any
+  // geometry moves onto the host — the shape that has caught this repo before.
+  :host {
+    display: block;
   }
 
-  50% {
-    opacity: 0.3;
+  // Always present, so the scroll region does not resize when someone starts or stops
+  // typing. Inserting the row used to change `.scroll`'s clientHeight by 25.2px, which
+  // the flex column absorbs by shrinking `.list` — the composer never moved, the newest
+  // messages did. The @if lives INSIDE this, which is also what keeps "removed when
+  // nobody types" true of `.typing-indicator` itself.
+  // Note `calc(1.2rem + 6px)` and not `1.2rem`: Tailwind preflight sets `box-sizing:
+  // border-box`, so min-height is the BORDER-box height and has to include this rule's
+  // own padding. Written as `1.2rem` the slot is 19.2px idle against 25.2px occupied,
+  // and 6px of the jump survives the fix.
+  .typing-slot {
+    min-height: calc(1.2rem + 6px);
+    padding: var(--trinity-space-1) var(--trinity-space-5)
+      var(--trinity-space-2);
+  }
+
+  .typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    font-size: var(--trinity-type-body-size);
+    font-style: italic;
+    line-height: 1.2rem;
+    color: var(--trinity-text-muted);
+  }
+
+  // `min-height` on the slot is a FLOOR, so reserving one line is only half the job: an
+  // unclamped sentence wraps and the slot grows anyway. Measured at 360/390/412px — the
+  // common phone widths — two ordinary display names took the row from 25.19px to 44.41px,
+  // which is the jump this component exists to remove, and it also made `Alice` → `Alice and
+  // Bob` resize the scroller mid-conversation. One line, ellipsised.
+  .typing-indicator__text {
+    @include ellipsis;
+
+    min-width: 0;
+  }
+
+  // `flex: 0 0 auto` for the same reason the composer's recording dot carries it: an empty
+  // span is a shrinkable flex item whose `min-width: auto` resolves to 0, so without this the
+  // dots collapse once the text stops wrapping and starts competing for the line.
+  .typing-dots {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  // A filled shape, not text, so it takes `currentcolor` from the muted line above
+  // rather than a text-role token of its own — the same reasoning as the composer's
+  // recording dot.
+  .typing-dots__dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: currentcolor;
+    animation: typing-dot var(--trinity-duration-pulse) ease-in-out infinite;
+  }
+
+  // Staggered so the three read as a travelling wave rather than one blinking group.
+  // The delays are deliberately literal. `styling-tokens.spec.mjs` polices hand-picked
+  // animation DURATIONS, and a delay is not one — there is no token for it, and the
+  // reduced-motion collapse does not need one: the blanket `animation-iteration-count:
+  // 1` in `global.scss` ends the animation inside a single iteration either way.
+  .typing-dots__dot:nth-child(2) {
+    animation-delay: 150ms;
+  }
+
+  .typing-dots__dot:nth-child(3) {
+    animation-delay: 300ms;
+  }
+
+  // 0% must equal the dot's resting style. Collapsing `--trinity-duration-pulse` under
+  // reduced motion does NOT stop an infinite animation (see the note in variables.scss:
+  // measured at 29 iterations in half a second) — `animation-iteration-count: 1` does,
+  // and the dot then reverts to its base style, which declares no opacity and so
+  // computes to 1. Dimming at 0% instead would leave those users on faded dots.
+  @keyframes typing-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.3;
+    }
   }
 }

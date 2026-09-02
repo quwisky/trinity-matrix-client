@@ -1,14 +1,18 @@
 // The virtual list adds windowing on top of the shared timeline chrome.
-@use '../message-list-shared';
+@use '../message-list-shared' as shared;
 
-.scroll {
-  // Windowing keeps the read position via manual scrollTop math, so disable native
-  // scroll anchoring rather than letting it fight the changing spacer heights.
-  overflow-anchor: none;
-}
+@layer components {
+  @include shared.message-list-shared;
 
-// Spacers standing in for the off-screen rows above/below the window. Must not
-// shrink in the flex column.
-.vpad {
-  flex: 0 0 auto;
+  .scroll {
+    // Windowing keeps the read position via manual scrollTop math, so disable native
+    // scroll anchoring rather than letting it fight the changing spacer heights.
+    overflow-anchor: none;
+  }
+
+  // Spacers standing in for the off-screen rows above/below the window. Must not
+  // shrink in the flex column.
+  .vpad {
+    flex: 0 0 auto;
+  }
 }

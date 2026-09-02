@@ -14,6 +14,7 @@ import { MessageComposerComponent } from '../../message-composer/message-compose
 import { DayBoundaryService } from '../day-boundary.service';
 import { ReactionPickerService } from '../../reaction-picker/reaction-picker.service';
 import { MessageSourceService } from '../../message-source/message-source.service';
+import { EMPTY, of } from 'rxjs';
 import {
   ConversationComposeStub,
   ConversationMessagesStub,
@@ -693,7 +694,7 @@ describe('SimpleMessageListComponent', () => {
         providers: [
           MockProvider(TrnAlertService),
           MockProvider(ReactionPickerService, {
-            pick: () => Promise.resolve('🚀'),
+            pick$: () => of('🚀'),
           }),
         ],
       });
@@ -702,7 +703,6 @@ describe('SimpleMessageListComponent', () => {
       cmp.react.subscribe((r) => (reacted = r));
 
       cmp.onRowAction(row('$7'), { type: 'react-more' });
-      await Promise.resolve(); // let the picker promise settle
 
       expect(reacted).toEqual({ id: '$7', key: '🚀' });
     });
@@ -712,7 +712,7 @@ describe('SimpleMessageListComponent', () => {
         providers: [
           MockProvider(TrnAlertService),
           MockProvider(ReactionPickerService, {
-            pick: () => Promise.resolve(null),
+            pick$: () => EMPTY,
           }),
         ],
       });
@@ -721,7 +721,6 @@ describe('SimpleMessageListComponent', () => {
       cmp.react.subscribe(() => (reacted = true));
 
       cmp.onRowAction(row('$7'), { type: 'react-more' });
-      await Promise.resolve();
 
       expect(reacted).toBe(false);
     });
@@ -844,16 +843,16 @@ describe('SimpleMessageListComponent', () => {
 
     it('deletes only when the confirm dialog is accepted', async () => {
       const cmp = await make();
-      const confirm = TestBed.inject(TrnAlertService).confirm;
+      const confirm = TestBed.inject(TrnAlertService).confirm$;
       const deleted: string[] = [];
       cmp.deleteMessage.subscribe((id) => deleted.push(id));
 
-      vi.mocked(confirm).mockResolvedValueOnce(false);
-      await cmp.onDelete(row('$1'));
+      vi.mocked(confirm).mockReturnValueOnce(of(false));
+      cmp.onDelete(row('$1'));
       expect(deleted).toEqual([]);
 
-      vi.mocked(confirm).mockResolvedValueOnce(true);
-      await cmp.onDelete(row('$2'));
+      vi.mocked(confirm).mockReturnValueOnce(of(true));
+      cmp.onDelete(row('$2'));
       expect(deleted).toEqual(['$2']);
     });
 

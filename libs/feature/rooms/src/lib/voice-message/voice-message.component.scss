@@ -1,79 +1,81 @@
-:host {
-  display: block;
-}
-
-.voice {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 220px;
-  max-width: 320px;
-  padding: 8px 12px;
-  border-radius: var(--trinity-radius-xl);
-  background: var(--trinity-rail);
-}
-
-.voice__play {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: none;
-  border-radius: 50%;
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
-  font-size: 18px;
-  cursor: pointer;
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: default;
+@layer components {
+  :host {
+    display: block;
   }
-}
 
-.voice__wave {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 2px;
-  height: 28px;
-}
+  .voice {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 220px;
+    max-width: 320px;
+    padding: 8px 12px;
+    border-radius: var(--trinity-radius-xl);
+    background: var(--trinity-rail);
+  }
 
-.voice__wave--empty {
-  border-top: 2px solid var(--trinity-text-muted);
-  opacity: 0.4;
-}
-
-.voice__bar {
-  flex: 1;
-  min-width: 2px;
-  border-radius: 1px;
-  background: var(--trinity-text-muted);
-  opacity: 0.5;
-}
-
-.voice__bar--played {
-  background: var(--trinity-accent);
-  opacity: 1;
-}
-
-.voice__time {
-  flex: 0 0 auto;
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.voice__audio {
-  display: none;
-}
-
-// Touch targets: the voice-message play button on touch only (desktop keeps 34px).
-@media (pointer: coarse) {
   .voice__play {
-    min-width: 44px;
-    min-height: 44px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: var(--trinity-accent);
+    color: var(--trinity-accent-foreground);
+    font-size: 18px;
+    cursor: pointer;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+  }
+
+  .voice__wave {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 2px;
+    height: 28px;
+  }
+
+  .voice__wave--empty {
+    border-top: 2px solid var(--trinity-text-muted);
+    opacity: 0.4;
+  }
+
+  .voice__bar {
+    flex: 1;
+    min-width: 2px;
+    border-radius: 1px;
+    background: var(--trinity-text-muted);
+    opacity: 0.5;
+  }
+
+  .voice__bar--played {
+    background: var(--trinity-accent);
+    opacity: 1;
+  }
+
+  .voice__time {
+    flex: 0 0 auto;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .voice__audio {
+    display: none;
+  }
+
+  // Touch targets: the voice-message play button on touch only (desktop keeps 34px).
+  @media (pointer: coarse) {
+    .voice__play {
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 }

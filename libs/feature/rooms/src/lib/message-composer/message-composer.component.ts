@@ -17,7 +17,6 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconButton } from '@trinity/components/controls';
-import { TrnTextarea } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   ComposerSettingsService,
@@ -113,7 +112,6 @@ let nextPickerId = 0;
     TrnIconButton,
     TrnIconComponent,
     TrnTooltip,
-    TrnTextarea,
     TrnEmojiPickerComponent,
     GifPickerComponent,
     StickerPickerComponent,

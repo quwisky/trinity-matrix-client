@@ -127,7 +127,7 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     const toast = TestBed.inject(TrnToastService);
     expect(toast.show).toHaveBeenCalledWith(
       expect.stringContaining('Photo access is denied'),
-      expect.objectContaining({ variant: 'destructive', duration: 4000 }),
+      expect.objectContaining({ variant: 'danger', duration: 4000 }),
     );
   });
 
