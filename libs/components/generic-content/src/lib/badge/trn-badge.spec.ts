@@ -3,7 +3,6 @@ import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 import { TrnBadge } from './trn-badge';
 import {
-  normalizeTrnBadgeVariant,
   trnBadgeRecipe,
   type TrnBadgeSize,
   type TrnBadgeVariant,
@@ -31,13 +30,6 @@ describe('TrnBadge', () => {
     const rendered = ours.map((variant) => trnBadgeRecipe(variant, 'sm'));
 
     expect(new Set(rendered).size).toBe(ours.length);
-  });
-
-  it('normalizes the legacy default name onto neutral', () => {
-    expect(normalizeTrnBadgeVariant('default')).toBe('neutral');
-    expect(trnBadgeRecipe('default', 'sm')).toBe(
-      trnBadgeRecipe('neutral', 'sm'),
-    );
   });
 
   it('keeps badge geometry to the compact subset', () => {

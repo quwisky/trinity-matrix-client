@@ -144,7 +144,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     // Alert text is `--trinity-danger`, which the `text-danger` utility maps to.
     const svc = TestBed.inject(TrnActionSheetService);
     svc.open({
-      buttons: [{ text: 'Delete message', role: 'destructive', testId: 'del' }],
+      buttons: [{ text: 'Delete message', variant: 'danger', testId: 'del' }],
     });
     render();
 
@@ -175,24 +175,6 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('lets the canonical variant override temporary destructive appearance', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
-    svc.open({
-      buttons: [
-        {
-          text: 'Keep neutral',
-          role: 'destructive',
-          variant: 'neutral',
-          testId: 'neutral-legacy',
-        },
-      ],
-    });
-    render();
-
-    const row = document.querySelector('[data-testid=neutral-legacy]');
-    expect(row?.getAttribute('data-trn-variant')).toBe('neutral');
-  });
-
   it('puts every row in a scroller rather than clipping the list', () => {
     // Thirteen rows is what a message sheet actually offers. The component was one
     // `overflow-hidden` box with no height bound, and CDK clamps the pane to the
@@ -221,7 +203,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     svc.open({
       buttons: [
         { text: 'Edit message' },
-        { text: 'Delete message', role: 'destructive', separatorBefore: true },
+        { text: 'Delete message', variant: 'danger', separatorBefore: true },
       ],
     });
     render();

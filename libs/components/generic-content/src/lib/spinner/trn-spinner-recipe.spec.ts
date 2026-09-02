@@ -13,7 +13,7 @@ describe('Trinity spinner recipe', () => {
     ).toBe(sizes.length);
   });
 
-  it('maps semantic inks while retaining inherited ink as the compatibility default', () => {
+  it('maps semantic inks while allowing inherited surrounding ink', () => {
     const variants: TrnSpinnerVariant[] = [
       'neutral',
       'muted',

@@ -50,8 +50,10 @@ const motionButton = (
       <button
         type="button"
         trnBtn
-        variant="ghost"
-        size="icon"
+        variant="primary"
+        presentation="ghost"
+        shape="icon"
+        size="md"
         aria-label="${label}"
         data-testid="motion-button"
         ${disabled ? 'disabled' : ''}
@@ -106,22 +108,22 @@ export const AllVariants: Story = {
   render: () => ({
     template: `
       <div class="flex flex-wrap gap-3 p-4">
-        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Back">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="md" aria-label="Back">
           <trn-icon name="arrow-left" motion="nudge-left" />
         </button>
-        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Move up">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="md" aria-label="Move up">
           <trn-icon name="chevron-up" motion="nudge-up" />
         </button>
-        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Move down">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="md" aria-label="Move down">
           <trn-icon name="chevron-down" motion="nudge-down" />
         </button>
-        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Send">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="md" aria-label="Send">
           <trn-icon name="send" motion="nudge-up-right" />
         </button>
-        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Search">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="md" aria-label="Search">
           <trn-icon name="search" motion="pop" />
         </button>
-        <button type="button" trnBtn variant="ghost" size="icon" aria-label="Settings">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="md" aria-label="Settings">
           <trn-icon name="settings" motion="rotate" />
         </button>
       </div>`,
@@ -133,15 +135,16 @@ export const Treatments: Story = {
   render: () => ({
     template: `
       <div class="flex flex-wrap items-center gap-3 p-4">
-        <button type="button" trnBtn variant="ghost" size="icon-xs" aria-label="Small action">
+        <button type="button" trnBtn variant="primary" presentation="ghost" shape="icon" size="xs" aria-label="Small action">
           <trn-icon name="search" motion="pop" />
         </button>
         <button
           type="button"
           trnBtn
-          variant="ghost"
-          size="icon-sm"
-          class="text-danger hover:text-danger"
+          variant="danger"
+          presentation="ghost"
+          shape="icon"
+          size="sm"
           aria-label="Destructive action"
         >
           <trn-icon name="trash-2" motion="nudge-down" />
@@ -150,7 +153,8 @@ export const Treatments: Story = {
           type="button"
           trnBtn
           variant="secondary"
-          size="icon-lg"
+          shape="icon"
+          size="lg"
           class="border border-border shadow-sm"
           aria-label="Floating action"
         >
@@ -159,14 +163,16 @@ export const Treatments: Story = {
         <button
           type="button"
           trnBtn
-          variant="ghost"
-          size="icon"
+          variant="primary"
+          presentation="ghost"
+          shape="icon"
+          size="md"
           aria-label="Unavailable action"
           disabled
         >
           <trn-icon name="settings" motion="rotate" />
         </button>
-        <a trnBtn variant="ghost" size="icon" href="#target" aria-label="Linked action">
+        <a trnBtn variant="primary" presentation="ghost" shape="icon" size="md" href="#target" aria-label="Linked action">
           <trn-icon name="arrow-left" motion="nudge-left" />
         </a>
         <button

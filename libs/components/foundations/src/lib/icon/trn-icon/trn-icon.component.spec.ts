@@ -81,7 +81,7 @@ describe('TrnIconComponent', () => {
     // its font-size, so no font-size utility can outrank it. jsdom does no layout, so a
     // size assertion is the strongest thing available here — the pixel result is checked in
     // a real browser instead.
-    const { fixture } = await setup({ name: 'lock', size: '1.25rem' });
+    const { fixture } = await setup({ name: 'lock', size: 'lg' });
     const inner = (fixture.nativeElement as HTMLElement).querySelector(
       'ng-icon',
     ) as HTMLElement;

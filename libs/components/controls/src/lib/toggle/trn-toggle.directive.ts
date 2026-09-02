@@ -9,9 +9,6 @@ import {
 } from '@angular/core';
 import { classes } from '@trinity/helm/utils';
 import {
-  normalizeTrnTogglePresentation,
-  normalizeTrnToggleSize,
-  normalizeTrnToggleVariant,
   trnToggleRecipe,
   type TrnTogglePresentation,
   type TrnToggleSize,
@@ -55,12 +52,9 @@ export class TrnToggleDirective {
   constructor() {
     classes(() =>
       trnToggleRecipe({
-        presentation: normalizeTrnTogglePresentation(
-          this.variant(),
-          this.presentation(),
-        ),
-        size: normalizeTrnToggleSize(this.size()),
-        variant: normalizeTrnToggleVariant(this.variant()),
+        presentation: this.presentation(),
+        size: this.size(),
+        variant: this.variant(),
       }),
     );
 

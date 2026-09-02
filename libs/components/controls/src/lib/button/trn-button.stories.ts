@@ -22,7 +22,7 @@ const meta: Meta<TrnButton> = {
       description: {
         component:
           'Trinity-owned semantic variants and ordinal sizes. Presentation and icon ' +
-          'geometry are separate axes; Helm-shaped inputs remain temporary compatibility aliases.',
+          'geometry are separate axes.',
       },
     },
   },
@@ -31,8 +31,8 @@ const meta: Meta<TrnButton> = {
 export default meta;
 type Story = StoryObj<TrnButton>;
 
-/** Canonical recipes beside their temporary compatibility equivalents. */
-export const CanonicalAndCompatibility: Story = {
+/** Canonical recipes across semantic treatment, presentation, state, and geometry. */
+export const CanonicalStates: Story = {
   render: () => ({
     template: `
       <div class="grid gap-4 p-4">
@@ -41,9 +41,6 @@ export const CanonicalAndCompatibility: Story = {
             Saving…
           </button>
           <button data-testid="canonical-primary" type="button" trnBtn variant="primary" size="md">
-            Continue
-          </button>
-          <button data-testid="legacy-primary" type="button" trnBtn variant="default" size="default">
             Continue
           </button>
         </div>
@@ -79,9 +76,6 @@ export const CanonicalAndCompatibility: Story = {
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <button data-testid="canonical-danger" type="button" trnBtn variant="danger" size="md">
-            Remove
-          </button>
-          <button data-testid="legacy-danger" type="button" trnBtn variant="destructive" size="default">
             Remove
           </button>
         </div>
@@ -124,16 +118,6 @@ export const CanonicalAndCompatibility: Story = {
             shape="icon"
             size="md"
             aria-label="Canonical search"
-          >
-            <trn-icon name="search" motion="pop" />
-          </button>
-          <button
-            data-testid="legacy-icon"
-            type="button"
-            trnBtn
-            variant="ghost"
-            size="icon"
-            aria-label="Compatibility search"
           >
             <trn-icon name="search" motion="pop" />
           </button>

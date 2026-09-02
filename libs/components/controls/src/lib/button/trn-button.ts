@@ -11,12 +11,11 @@ import { DOCUMENT } from '@angular/common';
 import { HlmButton, provideBrnButtonConfig } from '@trinity/helm/button';
 import { classes } from '@trinity/helm/utils';
 import {
-  isTrnButtonIconSize,
   trnButtonRecipe,
   type TrnButtonPresentation,
   type TrnButtonShape,
-  type TrnButtonSizeInput,
-  type TrnButtonVariantInput,
+  type TrnButtonSize,
+  type TrnButtonVariant,
 } from './trn-button-recipe';
 
 /**
@@ -52,14 +51,11 @@ export class TrnButton {
   /**
    * Icon shape opts into Trinity's shared icon-button interaction contract.
    *
-   * Legacy icon sizes keep the same marker until their callers migrate to `shape="icon"`.
    */
-  protected readonly iconButton = computed(
-    () => this.shape() === 'icon' || isTrnButtonIconSize(this.size()),
-  );
+  protected readonly iconButton = computed(() => this.shape() === 'icon');
 
-  readonly variant = input<TrnButtonVariantInput>('primary');
-  readonly size = input<TrnButtonSizeInput>('md');
+  readonly variant = input<TrnButtonVariant>('primary');
+  readonly size = input<TrnButtonSize>('md');
   readonly presentation = input<TrnButtonPresentation>('solid');
   readonly shape = input<TrnButtonShape>('label');
   readonly loading = input(false, { transform: booleanAttribute });

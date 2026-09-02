@@ -107,18 +107,6 @@ export const CanonicalStates: Story = {
   }),
 };
 
-/** The former eyebrow name resolves to the canonical strong emphasis during expansion. */
-export const CompatibilityAlias: Story = {
-  render: () => ({
-    template: `
-      <trn-field class="w-[360px] p-4">
-        <trn-field-label controlId="legacy-field" variant="eyebrow">Legacy label</trn-field-label>
-        <input trnInput id="legacy-field" />
-      </trn-field>
-    `,
-  }),
-};
-
 /** Emoji glyph measurement is selected through Trinity's ordinal vocabulary. */
 export const RichControlSize: Story = {
   render: () => ({

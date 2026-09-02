@@ -54,7 +54,7 @@ const body = `
 `;
 
 export const Default: Story = {
-  args: { tabs: TABS, variant: 'default' },
+  args: { tabs: TABS, variant: 'neutral', presentation: 'pill' },
   render: (args) => ({
     props: args,
     template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant">${body}</trn-tabs>`,
@@ -62,7 +62,7 @@ export const Default: Story = {
 };
 
 export const Line: Story = {
-  args: { tabs: TABS, variant: 'line' },
+  args: { tabs: TABS, variant: 'neutral', presentation: 'line' },
   render: (args) => ({
     props: args,
     template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant">${body}</trn-tabs>`,
@@ -85,20 +85,6 @@ export const AccentLine: Story = {
   }),
 };
 
-/** Legacy variants beside the canonical recipes they normalize to. */
-export const CompatibilityAliases: Story = {
-  render: () => ({
-    props: { tabs: TABS },
-    template: `
-      <div class="grid gap-5">
-        <trn-tabs data-testid="tabs-canonical-pill" tab="general" [tabs]="tabs" variant="neutral" presentation="pill">${body}</trn-tabs>
-        <trn-tabs data-testid="tabs-legacy-pill" tab="general" [tabs]="tabs" variant="default">${body}</trn-tabs>
-        <trn-tabs data-testid="tabs-canonical-line" tab="general" [tabs]="tabs" variant="neutral" presentation="line">${body}</trn-tabs>
-        <trn-tabs data-testid="tabs-legacy-line" tab="general" [tabs]="tabs" variant="line">${body}</trn-tabs>
-      </div>`,
-  }),
-};
-
 /** Arrow keys move focus; Enter or Space commits the focused tab. */
 export const ManualActivation: Story = {
   render: () => ({
@@ -115,19 +101,20 @@ export const WithDisabledTab: Story = {
       { value: 'access', label: 'Access', disabled: true },
       { value: 'members', label: 'Members' },
     ],
-    variant: 'line',
+    variant: 'neutral',
+    presentation: 'line',
   },
   render: (args) => ({
     props: args,
-    template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant">${body}</trn-tabs>`,
+    template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant" [presentation]="presentation">${body}</trn-tabs>`,
   }),
 };
 
 /** Vertical puts the triggers down the side; the arrow keys follow the layout. */
 export const Vertical: Story = {
-  args: { tabs: TABS, variant: 'line' },
+  args: { tabs: TABS, variant: 'neutral', presentation: 'line' },
   render: (args) => ({
     props: args,
-    template: `<trn-tabs tab="general" orientation="vertical" [tabs]="tabs" [variant]="variant">${body}</trn-tabs>`,
+    template: `<trn-tabs tab="general" orientation="vertical" [tabs]="tabs" [variant]="variant" [presentation]="presentation">${body}</trn-tabs>`,
   }),
 };

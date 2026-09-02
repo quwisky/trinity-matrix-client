@@ -33,10 +33,9 @@ describe('TrnAlertService', () => {
 
   it('confirm resolves true when confirmed', async () => {
     const svc = TestBed.inject(TrnAlertService);
-    const result = svc.confirm({
-      header: 'Leave space?',
-      confirmText: 'Leave',
-    });
+    const result = firstValueFrom(
+      svc.confirm$({ header: 'Leave space?', confirmText: 'Leave' }),
+    );
     render();
     expect(document.body.textContent).toContain('Leave space?');
     clickButton('Leave');
@@ -45,7 +44,9 @@ describe('TrnAlertService', () => {
 
   it('confirm resolves false when cancelled', async () => {
     const svc = TestBed.inject(TrnAlertService);
-    const result = svc.confirm({ header: 'Leave?', cancelText: 'Cancel' });
+    const result = firstValueFrom(
+      svc.confirm$({ header: 'Leave?', cancelText: 'Cancel' }),
+    );
     render();
     clickButton('Cancel');
     expect(await result).toBe(false);
@@ -53,7 +54,9 @@ describe('TrnAlertService', () => {
 
   it('prompt resolves the typed value', async () => {
     const svc = TestBed.inject(TrnAlertService);
-    const result = svc.prompt({ header: 'Name', confirmText: 'Create' });
+    const result = firstValueFrom(
+      svc.prompt$({ header: 'Name', confirmText: 'Create' }),
+    );
     render();
     const input = document.querySelector<HTMLInputElement>('input[trnInput]')!;
     input.value = 'My Space';
@@ -64,7 +67,9 @@ describe('TrnAlertService', () => {
 
   it('prompt resolves null on cancel', async () => {
     const svc = TestBed.inject(TrnAlertService);
-    const result = svc.prompt({ header: 'Name', cancelText: 'Cancel' });
+    const result = firstValueFrom(
+      svc.prompt$({ header: 'Name', cancelText: 'Cancel' }),
+    );
     render();
     clickButton('Cancel');
     expect(await result).toBeNull();
@@ -75,11 +80,13 @@ describe('TrnAlertService', () => {
     // is not obliged to announce it. A prompt whose expected input is not obvious from
     // the header has to say so somewhere a screen reader will find it.
     const svc = TestBed.inject(TrnAlertService);
-    const result = svc.prompt({
-      header: 'Reset encryption',
-      placeholder: 'RESET',
-      inputLabel: 'Type RESET to confirm',
-    });
+    const result = firstValueFrom(
+      svc.prompt$({
+        header: 'Reset encryption',
+        placeholder: 'RESET',
+        inputLabel: 'Type RESET to confirm',
+      }),
+    );
     render();
 
     const input = document.querySelector<HTMLInputElement>('input[trnInput]');
@@ -91,13 +98,16 @@ describe('TrnAlertService', () => {
 
   it('leaves the input unlabelled when the header already says it', () => {
     const svc = TestBed.inject(TrnAlertService);
-    void svc.prompt({ header: 'New display name', placeholder: 'Name' });
+    const result = firstValueFrom(
+      svc.prompt$({ header: 'New display name', placeholder: 'Name' }),
+    );
     render();
 
     const input = document.querySelector<HTMLInputElement>('input[trnInput]');
     expect(input?.hasAttribute('aria-label')).toBe(false);
 
     clickButton('Cancel');
+    void result;
   });
 
   it('renders a multi-line message as separate lines, not one run-on', () => {
@@ -105,10 +115,12 @@ describe('TrnAlertService', () => {
     // needs `whitespace-pre-line` — otherwise the reset's three consequences arrive as a
     // single 300-character sentence on the last screen before an irreversible action.
     const svc = TestBed.inject(TrnAlertService);
-    void svc.confirm({
-      header: 'Reset encryption',
-      message: 'first\n\nsecond',
-    });
+    const result = firstValueFrom(
+      svc.confirm$({
+        header: 'Reset encryption',
+        message: 'first\n\nsecond',
+      }),
+    );
     render();
 
     const paragraph = [...document.querySelectorAll('p')].find((p) =>
@@ -118,15 +130,15 @@ describe('TrnAlertService', () => {
     expect(paragraph?.textContent).toContain('\n');
 
     clickButton('Cancel');
+    void result;
   });
 
-  it('normalizes canonical and temporary destructive appearances', async () => {
+  it('renders the canonical danger appearance', async () => {
     const svc = TestBed.inject(TrnAlertService);
 
-    const canonical = svc.confirm({
-      header: 'Canonical danger',
-      variant: 'danger',
-    });
+    const canonical = firstValueFrom(
+      svc.confirm$({ header: 'Canonical danger', variant: 'danger' }),
+    );
     render();
     const canonicalButton = document.querySelector<HTMLElement>(
       '[data-testid=alert-confirm]',
@@ -134,35 +146,5 @@ describe('TrnAlertService', () => {
     expect(canonicalButton?.dataset['trnVariant']).toBe('danger');
     clickButton('Cancel');
     await canonical;
-
-    const legacy = svc.confirm({
-      header: 'Legacy danger',
-      destructive: true,
-    });
-    render();
-    const legacyButton = document.querySelector<HTMLElement>(
-      '[data-testid=alert-confirm]',
-    );
-    expect(legacyButton?.dataset['trnVariant']).toBe('danger');
-    clickButton('Cancel');
-    await legacy;
-  });
-
-  it('lets the canonical variant win over temporary compatibility', async () => {
-    const svc = TestBed.inject(TrnAlertService);
-    const result = svc.confirm({
-      header: 'Neutral confirmation',
-      variant: 'neutral',
-      destructive: true,
-    });
-    render();
-
-    const button = document.querySelector<HTMLElement>(
-      '[data-testid=alert-confirm]',
-    );
-    expect(button?.dataset['trnVariant']).toBe('neutral');
-
-    clickButton('Cancel');
-    await result;
   });
 });

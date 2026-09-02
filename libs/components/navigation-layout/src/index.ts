@@ -13,7 +13,6 @@ export {
   PageHeaderComponent,
   type TrnPageHeaderLayout,
   type TrnPageHeaderVariant,
-  type TrnPageHeaderVariantInput,
 } from './lib/page-header/page-header.component';
 export {
   TrnSeparatorDirective,
@@ -25,5 +24,4 @@ export {
   type TrnTabOption,
   type TrnTabsPresentation,
   type TrnTabsVariant,
-  type TrnTabsVariantInput,
 } from './lib/tabs/trn-tabs.component';

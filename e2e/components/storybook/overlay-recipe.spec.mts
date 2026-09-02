@@ -1,6 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { overlayRecipeStory } from './overlay-recipe-story-url.mts';
-import { renderedRecipeStyle } from './recipe-appearance.mts';
 
 const overlayStyle = (locator: Locator) =>
   locator.evaluate((element) => {
@@ -41,32 +40,25 @@ test('one layered surface recipe renders identically in the document and portal'
   await expect(portalSurface).toBeVisible();
 });
 
-test('dropdowns preserve keyboard, focus, disabled, danger, and compatibility behavior', async ({
+test('dropdowns preserve keyboard, focus, disabled, and danger behavior', async ({
   page,
 }) => {
-  await page.goto(overlayRecipeStory('dropdown-compatibility'));
+  await page.goto(overlayRecipeStory('dropdowns'));
   const trigger = page.getByTestId('dropdown-trigger');
 
   await trigger.focus();
   await trigger.press('Enter');
   const neutral = page.getByTestId('dropdown-neutral');
   const danger = page.getByTestId('dropdown-danger');
-  const legacyDanger = page.getByTestId('dropdown-legacy-danger');
   const disabled = page.getByTestId('dropdown-disabled');
   await expect(neutral).toBeFocused();
   await expect(disabled).toBeDisabled();
   await expect(danger).toHaveAttribute('data-trn-variant', 'danger');
-  await expect(legacyDanger).toHaveAttribute('data-trn-variant', 'danger');
-  expect(await overlayStyle(danger)).toEqual(await overlayStyle(legacyDanger));
 
   await page.keyboard.press('ArrowDown');
   await expect(danger).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(legacyDanger).toBeFocused();
   await page.keyboard.press('Enter');
-  await expect(page.getByTestId('dropdown-result')).toHaveText(
-    'Legacy danger chosen',
-  );
+  await expect(page.getByTestId('dropdown-result')).toHaveText('Danger chosen');
   await expect(trigger).toBeFocused();
 
   await trigger.press('Enter');
@@ -75,10 +67,10 @@ test('dropdowns preserve keyboard, focus, disabled, danger, and compatibility be
   await expect(trigger).toBeFocused();
 });
 
-test('canonical and legacy dialog placements share geometry and restore focus', async ({
+test('canonical dialog placements render and restore focus', async ({
   page,
 }) => {
-  await page.goto(overlayRecipeStory('dialog-compatibility'));
+  await page.goto(overlayRecipeStory('dialogs'));
 
   const centerTrigger = page.getByTestId('dialog-canonical-center');
   await centerTrigger.click();
@@ -96,71 +88,39 @@ test('canonical and legacy dialog placements share geometry and restore focus', 
   const canonicalTrigger = page.getByTestId('dialog-canonical-end');
   await canonicalTrigger.click();
   const canonicalSurface = page.getByTestId('story-dialog-surface');
-  const canonicalBounds = await canonicalSurface.boundingBox();
-  const canonicalStyle = await overlayStyle(canonicalSurface);
+  await expect(canonicalSurface).toHaveAttribute('data-trn-layout', 'panel');
   await page.getByTestId('story-dialog-close').click();
   await expect(canonicalSurface).toHaveCount(0);
-
-  const legacyTrigger = page.getByTestId('dialog-legacy-end');
-  await legacyTrigger.click();
-  const legacySurface = page.getByTestId('story-dialog-surface');
-  await expect(legacySurface).toHaveAttribute('data-trn-layout', 'panel');
-  await expect.poll(() => legacySurface.boundingBox()).toEqual(canonicalBounds);
-  await expect.poll(() => overlayStyle(legacySurface)).toEqual(canonicalStyle);
-  await page.getByTestId('story-dialog-close').click();
-  await expect(page.getByTestId('dialog-result')).toHaveText('Legacy end');
-  await expect(legacyTrigger).toBeFocused();
+  await expect(page.getByTestId('dialog-result')).toHaveText(
+    'Canonical inline-end',
+  );
+  await expect(canonicalTrigger).toBeFocused();
 });
 
-test('alerts, sheets, and toasts normalize canonical and temporary legacy forms', async ({
+test('alerts, sheets, and toasts render canonical semantic variants', async ({
   page,
 }) => {
-  await page.goto(overlayRecipeStory('feedback-compatibility'));
+  await page.goto(overlayRecipeStory('feedback'));
 
   await page.getByTestId('alert-canonical').click();
   const canonicalAlert = page.getByTestId('alert-surface');
-  const canonicalAlertStyle = await overlayStyle(canonicalAlert);
-  const canonicalConfirmStyle = await renderedRecipeStyle(
-    page.getByTestId('alert-confirm'),
+  await expect(page.getByTestId('alert-confirm')).toHaveAttribute(
+    'data-trn-variant',
+    'danger',
   );
   await expect(page.getByTestId('alert-cancel')).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(canonicalAlert).toHaveCount(0);
 
-  await page.getByTestId('alert-legacy').click();
-  const legacyAlert = page.getByTestId('alert-surface');
-  await expect(legacyAlert).toHaveAttribute('data-trn-layout', 'dialog');
-  await expect
-    .poll(() => overlayStyle(legacyAlert))
-    .toEqual(canonicalAlertStyle);
-  await expect
-    .poll(() => renderedRecipeStyle(page.getByTestId('alert-confirm')))
-    .toEqual(canonicalConfirmStyle);
-  await page
-    .locator('.cdk-overlay-backdrop')
-    .click({ position: { x: 1, y: 1 } });
-  await expect(legacyAlert).toHaveCount(0);
-
   await page.getByTestId('sheet-canonical').click();
   const canonicalSheet = page.getByTestId('action-sheet-surface');
-  const canonicalSheetStyle = await overlayStyle(canonicalSheet);
-  const canonicalDangerStyle = await renderedRecipeStyle(
-    page.getByTestId('sheet-danger'),
+  await expect(page.getByTestId('sheet-danger')).toHaveAttribute(
+    'data-trn-variant',
+    'danger',
   );
   await expect(page.getByTestId('sheet-disabled')).toBeDisabled();
   await page.getByRole('button', { name: 'Cancel' }).click();
   await expect(canonicalSheet).toHaveCount(0);
-
-  await page.getByTestId('sheet-legacy').click();
-  const legacySheet = page.getByTestId('action-sheet-surface');
-  await expect(legacySheet).toHaveAttribute('data-trn-layout', 'sheet');
-  await expect
-    .poll(() => overlayStyle(legacySheet))
-    .toEqual(canonicalSheetStyle);
-  await expect
-    .poll(() => renderedRecipeStyle(page.getByTestId('sheet-legacy-danger')))
-    .toEqual(canonicalDangerStyle);
-  await page.getByRole('button', { name: 'Cancel' }).click();
 
   await page.getByTestId('toast-warning').click();
   const warningToast = page
@@ -175,24 +135,13 @@ test('alerts, sheets, and toasts normalize canonical and temporary legacy forms'
     .filter({ hasText: 'Canonical danger' });
   await expect(dangerToast).toBeVisible();
   await expect(dangerToast).toHaveAttribute('data-type', 'error');
-  const dangerToastStyle = await overlayStyle(dangerToast);
-
-  await page.getByTestId('toast-legacy').click();
-  const legacyDangerToast = page
-    .locator('[data-sonner-toast]')
-    .filter({ hasText: 'Legacy destructive' });
-  await expect(legacyDangerToast).toBeVisible();
-  await expect(legacyDangerToast).toHaveAttribute('data-type', 'error');
-  await expect
-    .poll(() => overlayStyle(legacyDangerToast))
-    .toEqual(dangerToastStyle);
 });
 
 test('overlay behavior stays immediate under reduced motion', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(overlayRecipeStory('dropdown-compatibility'));
+  await page.goto(overlayRecipeStory('dropdowns'));
 
   await page.getByTestId('dropdown-trigger').click();
   const menu = page.locator('[trnDropdownMenu]');
@@ -208,7 +157,7 @@ test('overlay behavior stays immediate under reduced motion', async ({
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
 
-  await page.goto(overlayRecipeStory('dialog-compatibility'));
+  await page.goto(overlayRecipeStory('dialogs'));
   await page.getByTestId('dialog-canonical-center').click();
   const surface = page.getByTestId('story-dialog-surface');
   await expect(surface).toBeVisible();

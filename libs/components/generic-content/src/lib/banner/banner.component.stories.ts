@@ -102,20 +102,3 @@ export const Compact: Story = {
       </trn-banner>`,
   }),
 };
-
-/** The former `tone` name remains valid while call sites move to `variant`. */
-export const CompatibilityTone: Story = {
-  render: () => ({
-    template: `
-      <div class="grid gap-4">
-        <trn-banner data-testid="banner-canonical" variant="accent">
-          <trn-icon trnBannerIcon name="lock" />
-          Canonical variant.
-        </trn-banner>
-        <trn-banner data-testid="banner-legacy" tone="accent">
-          <trn-icon trnBannerIcon name="lock" />
-          Compatibility tone.
-        </trn-banner>
-      </div>`,
-  }),
-};

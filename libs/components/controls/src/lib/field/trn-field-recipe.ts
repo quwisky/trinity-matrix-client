@@ -3,16 +3,6 @@ import { hlm } from '@trinity/helm/utils';
 /** Typographic prominence for a field label; validation is a separate state. */
 export type TrnFieldLabelEmphasis = 'normal' | 'strong';
 
-/** Temporary pre-recipe vocabulary retained until the consumer migration closes. */
-export type TrnFieldLabelVariant = 'default' | 'eyebrow';
-
-export function resolveTrnFieldLabelEmphasis(
-  emphasis: TrnFieldLabelEmphasis | null,
-  variant: TrnFieldLabelVariant,
-): TrnFieldLabelEmphasis {
-  return emphasis ?? (variant === 'eyebrow' ? 'strong' : 'normal');
-}
-
 export function trnFieldLabelRecipe(
   emphasis: TrnFieldLabelEmphasis,
   invalid: boolean,

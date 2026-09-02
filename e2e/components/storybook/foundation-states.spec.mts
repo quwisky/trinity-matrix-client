@@ -120,7 +120,7 @@ test.describe('semantic design foundations', () => {
       expect(contrastRatio(focus, floating)).toBeGreaterThanOrEqual(3);
 
       await openStory(page, 'components-banner--accent', theme.id, mode.id);
-      const banner = page.locator('[data-tone="accent"]');
+      const banner = page.locator('[data-variant="accent"]');
       const bannerAction = page.getByRole('button', { name: 'Set up' });
       await bannerAction.evaluate((element) =>
         element.setAttribute('data-testid', 'attention-action'),

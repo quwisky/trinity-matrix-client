@@ -17,4 +17,3 @@ export {
   type TrnSize,
   type TrnVariant,
 } from './lib/style/trn-recipe-vocabulary';
-export { classes, hlm as trn } from '@trinity/helm/utils';

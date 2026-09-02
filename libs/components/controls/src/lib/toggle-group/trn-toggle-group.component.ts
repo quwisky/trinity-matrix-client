@@ -3,7 +3,6 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  computed,
   contentChildren,
   effect,
   forwardRef,
@@ -14,14 +13,11 @@ import {
 import { BrnToggleGroup } from '@spartan-ng/brain/toggle-group';
 import { classes } from '@trinity/helm/utils';
 import {
-  normalizeTrnTogglePresentation,
-  normalizeTrnToggleSize,
-  normalizeTrnToggleVariant,
   trnToggleGroupRecipe,
   type TrnToggleArrangement,
   type TrnTogglePresentation,
-  type TrnToggleSizeInput,
-  type TrnToggleVariantInput,
+  type TrnToggleSize,
+  type TrnToggleVariant,
 } from '../toggle/trn-toggle-recipe';
 import { TrnToggleGroupItemDirective } from './trn-toggle-group-item.directive';
 import { TRN_TOGGLE_GROUP_STYLE } from './trn-toggle-group-style.token';
@@ -71,10 +67,10 @@ import { TRN_TOGGLE_GROUP_STYLE } from './trn-toggle-group-style.token';
     '[attr.aria-orientation]': 'orientation()',
     '[attr.data-orientation]': 'orientation()',
     '[attr.data-trn-orientation]': 'orientation()',
-    '[attr.data-trn-arrangement]': 'resolvedArrangement()',
-    '[attr.data-trn-presentation]': 'resolvedPresentation()',
-    '[attr.data-trn-size]': 'resolvedSize()',
-    '[attr.data-trn-variant]': 'resolvedVariant()',
+    '[attr.data-trn-arrangement]': 'arrangement()',
+    '[attr.data-trn-presentation]': 'presentation()',
+    '[attr.data-trn-size]': 'size()',
+    '[attr.data-trn-variant]': 'variant()',
     '(keydown)': 'onKeydown($event)',
   },
   template: '<ng-content />',
@@ -82,30 +78,14 @@ import { TRN_TOGGLE_GROUP_STYLE } from './trn-toggle-group-style.token';
 export class TrnToggleGroupComponent {
   private readonly items = contentChildren(TrnToggleGroupItemDirective);
 
-  /** Canonical styling inputs. Helm-shaped values remain accepted but are not exported. */
-  readonly variant = input<TrnToggleVariantInput>('neutral');
-  readonly size = input<TrnToggleSizeInput>('md');
+  readonly variant = input<TrnToggleVariant>('neutral');
+  readonly size = input<TrnToggleSize>('md');
   readonly presentation = input<TrnTogglePresentation>('plain');
   readonly arrangement = input<TrnToggleArrangement>('separated');
   readonly orientation = input<'horizontal' | 'vertical'>('horizontal');
 
-  readonly resolvedVariant = computed(() =>
-    normalizeTrnToggleVariant(this.variant()),
-  );
-  readonly resolvedSize = computed(() => normalizeTrnToggleSize(this.size()));
-  readonly resolvedPresentation = computed(() =>
-    normalizeTrnTogglePresentation(this.variant(), this.presentation()),
-  );
-  readonly resolvedArrangement = computed<TrnToggleArrangement>(() =>
-    this.variant() === 'default' || this.variant() === 'outline'
-      ? 'joined'
-      : this.arrangement(),
-  );
-
   constructor() {
-    classes(() =>
-      trnToggleGroupRecipe(this.resolvedArrangement(), this.orientation()),
-    );
+    classes(() => trnToggleGroupRecipe(this.arrangement(), this.orientation()));
 
     // Keyed on the ITEM SET, not on the first render. A contextual bar's buttons live behind
     // `@if`, so the set changes while the group is alive — and seeding once meant that

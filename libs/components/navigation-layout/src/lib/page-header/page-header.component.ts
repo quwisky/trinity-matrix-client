@@ -5,18 +5,15 @@ import {
   input,
 } from '@angular/core';
 import {
-  normalizeTrnPageHeaderLayout,
-  normalizeTrnPageHeaderVariant,
   trnPageHeaderRecipe,
   trnPageHeaderTitleRecipe,
   type TrnPageHeaderLayout,
-  type TrnPageHeaderVariantInput,
+  type TrnPageHeaderVariant,
 } from './trn-page-header-recipe';
 
 export type {
   TrnPageHeaderLayout,
   TrnPageHeaderVariant,
-  TrnPageHeaderVariantInput,
 } from './trn-page-header-recipe';
 
 /**
@@ -28,9 +25,6 @@ export type {
  *    `.main` column already pads the safe-area top).
  *  - `variant="neutral|accent"`: the semantic surface treatment independent
  *    of that geometry.
- *
- * `variant="page|chat"` remains temporarily valid and normalizes to the
- * equivalent neutral page or toolbar recipe during the expansion window.
  *
  * Everything caller-specific is projected, so this shell imports nothing from
  * helm or the feature libs: consumers supply `hlmBtn` / `trnTooltip` / `<trn-icon>`
@@ -45,7 +39,8 @@ export type {
  *
  * ```html
  * <trn-page-header title="Settings">
- *   <button trnHeaderLeading hlmBtn variant="ghost" size="icon"
+ *   <button trnHeaderLeading trnBtn variant="primary" presentation="ghost"
+ *           shape="icon" size="md"
  *           trnTooltip="Back" aria-label="Back" (click)="goBack()">
  *     <trn-icon name="arrow-left" />
  *   </button>
@@ -61,8 +56,8 @@ export type {
   templateUrl: './page-header.component.html',
 })
 export class PageHeaderComponent {
-  /** Semantic treatment. `page|chat` remain temporary layout aliases. */
-  readonly variant = input<TrnPageHeaderVariantInput>('neutral');
+  /** Semantic treatment. */
+  readonly variant = input<TrnPageHeaderVariant>('neutral');
 
   /** Standard routed-page geometry or compact toolbar geometry. */
   readonly layout = input<TrnPageHeaderLayout>('page');
@@ -70,23 +65,15 @@ export class PageHeaderComponent {
   /** Plain-text title. Omit to project a complex title into `[trnHeaderTitle]`. */
   readonly title = input<string>();
 
-  protected readonly resolvedVariant = computed(() =>
-    normalizeTrnPageHeaderVariant(this.variant()),
-  );
-
-  protected readonly resolvedLayout = computed(() =>
-    normalizeTrnPageHeaderLayout(this.variant(), this.layout()),
-  );
-
   /** The recipe targets the rendered native header, not the box-less host. */
   protected readonly headerClass = computed(() =>
-    trnPageHeaderRecipe(this.resolvedVariant(), this.resolvedLayout()),
+    trnPageHeaderRecipe(this.variant(), this.layout()),
   );
 
   /** Classes for the single `<h1>`. The toolbar recipe is a flex row so a `#`hash +
    * name + lock icon sit inline and truncate; its color is inherited from the
    * header (matching the pre-migration markup, where the h1 had no color class). */
   protected readonly titleClass = computed(() =>
-    trnPageHeaderTitleRecipe(this.resolvedLayout()),
+    trnPageHeaderTitleRecipe(this.layout()),
   );
 }

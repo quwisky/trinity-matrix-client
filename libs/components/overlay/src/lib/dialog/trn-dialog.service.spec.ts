@@ -80,11 +80,10 @@ describe('TrnDialogService', () => {
     expect(svc.hasOpen()).toBe(false);
   });
 
-  it('uses canonical placement ahead of temporary side compatibility', () => {
+  it('opens a centered dialog without viewport geometry', () => {
     const svc = TestBed.inject(TrnDialogService);
     const ref = svc.open(TestDialogComponent, {
       placement: 'center',
-      side: 'full-screen',
     });
     TestBed.inject(ApplicationRef).tick();
 
@@ -105,10 +104,10 @@ describe('TrnDialogService', () => {
     ref.close();
   });
 
-  it('opens an end-aligned side panel (side: "end") that still renders and closes', async () => {
+  it('opens an inline-end panel that still renders and closes', async () => {
     const svc = TestBed.inject(TrnDialogService);
     const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {
-      side: 'end',
+      placement: 'inline-end',
       inputs: { label: 'Side' },
     });
     TestBed.inject(ApplicationRef).tick();
@@ -125,7 +124,7 @@ describe('TrnDialogService', () => {
 
   it('gives a full-screen dialog the complete viewport pane', () => {
     const svc = TestBed.inject(TrnDialogService);
-    const ref = svc.open(TestDialogComponent, { side: 'full-screen' });
+    const ref = svc.open(TestDialogComponent, { placement: 'fullscreen' });
     TestBed.inject(ApplicationRef).tick();
 
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
@@ -139,7 +138,7 @@ describe('TrnDialogService', () => {
 
   it('opens a content dialog as a bottom sheet with bounded mobile geometry', () => {
     const svc = TestBed.inject(TrnDialogService);
-    const ref = svc.open(TestDialogComponent, { side: 'bottom' });
+    const ref = svc.open(TestDialogComponent, { placement: 'bottom' });
     TestBed.inject(ApplicationRef).tick();
 
     const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
@@ -286,10 +285,12 @@ describe('TrnDialogService', () => {
     const beneath = svc.open<string, TestDialogComponent>(TestDialogComponent, {
       inputs: { label: 'Beneath' },
     });
-    const confirmed = alerts.confirm({
-      header: 'Delete this room?',
-      confirmText: 'Delete',
-    });
+    const confirmed = firstValueFrom(
+      alerts.confirm$({
+        header: 'Delete this room?',
+        confirmText: 'Delete',
+      }),
+    );
     TestBed.inject(ApplicationRef).tick();
 
     expect(svc.closeTopmost()).toBe(true);

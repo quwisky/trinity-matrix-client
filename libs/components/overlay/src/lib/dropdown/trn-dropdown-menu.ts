@@ -40,15 +40,11 @@ import type {
   TrnOverlaySide,
 } from '../position/trn-overlay-position';
 import {
-  normalizeTrnDropdownMenuItemVariant,
   trnDropdownMenuItemRecipe,
-  type TrnDropdownMenuItemVariantInput,
+  type TrnDropdownMenuItemVariant,
 } from './trn-dropdown-menu-recipe';
 
-export type {
-  TrnDropdownMenuItemVariant,
-  TrnDropdownMenuItemVariantInput,
-} from './trn-dropdown-menu-recipe';
+export type { TrnDropdownMenuItemVariant } from './trn-dropdown-menu-recipe';
 
 /** Trinity-owned dropdown surface. */
 @Directive({
@@ -122,17 +118,14 @@ export class TrnDropdownMenuTrigger {
     },
   ],
   host: {
-    '[attr.data-trn-variant]': 'normalizedVariant()',
+    '[attr.data-trn-variant]': 'variant()',
   },
 })
 export class TrnDropdownMenuItem {
-  protected readonly normalizedVariant = computed(() =>
-    normalizeTrnDropdownMenuItemVariant(this.variant()),
-  );
-  readonly variant = input<TrnDropdownMenuItemVariantInput>('neutral');
+  readonly variant = input<TrnDropdownMenuItemVariant>('neutral');
 
   constructor() {
-    classes(() => trnDropdownMenuItemRecipe(this.normalizedVariant()));
+    classes(() => trnDropdownMenuItemRecipe(this.variant()));
   }
 }
 

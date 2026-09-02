@@ -25,16 +25,13 @@ test('tabs remain operable in a real mobile device profile', async ({
 test('page and toolbar headers retain their mobile geometry', async ({
   page,
 }) => {
-  await page.goto(story('components-page-header--compatibility-aliases'));
-
-  const pageHeader = page
-    .getByTestId('header-canonical-page')
-    .locator('header');
-  const toolbar = page
-    .getByTestId('header-canonical-toolbar')
-    .locator('header');
+  await page.goto(story('components-page-header--page'));
+  const pageHeader = page.locator('header');
   await expect(pageHeader).toHaveAttribute('data-trn-layout', 'page');
-  await expect(toolbar).toHaveAttribute('data-trn-layout', 'toolbar');
   await expect(pageHeader).toHaveCSS('min-height', '56px');
+
+  await page.goto(story('components-page-header--toolbar'));
+  const toolbar = page.locator('header');
+  await expect(toolbar).toHaveAttribute('data-trn-layout', 'toolbar');
   await expect(toolbar).toHaveCSS('height', '56px');
 });

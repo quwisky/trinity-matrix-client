@@ -1,9 +1,6 @@
-import {
-  trn,
-  type TrnSize,
-  type TrnVariant,
-} from '@trinity/components/foundations';
+import type { TrnSize, TrnVariant } from '@trinity/components/foundations';
 import { badgeVariants } from '@trinity/helm/badge';
+import { hlm as trn } from '@trinity/helm/utils';
 
 /** Semantic status treatments supported by Trinity badges. */
 export type TrnBadgeVariant = Extract<
@@ -13,8 +10,6 @@ export type TrnBadgeVariant = Extract<
 
 /** Compact badge geometry; badges never grow to control or display sizes. */
 export type TrnBadgeSize = Extract<TrnSize, 'xs' | 'sm' | 'md'>;
-
-export type TrnBadgeVariantInput = TrnBadgeVariant | 'default';
 
 const variantClasses = {
   neutral:
@@ -31,23 +26,14 @@ const sizeClasses = {
   md: 'h-6 gap-1 px-2.5 py-1 text-xs',
 } as const satisfies Record<TrnBadgeSize, string>;
 
-/** Maps the pre-recipe vendor name onto Trinity's semantic status vocabulary. */
-export function normalizeTrnBadgeVariant(
-  variant: TrnBadgeVariantInput,
-): TrnBadgeVariant {
-  return variant === 'default' ? 'neutral' : variant;
-}
-
 /** Private vendor adapter: callers receive only Trinity variant and size names. */
 export function trnBadgeRecipe(
-  variant: TrnBadgeVariantInput,
+  variant: TrnBadgeVariant,
   size: TrnBadgeSize,
 ): string {
-  const semanticVariant = normalizeTrnBadgeVariant(variant);
-
   return trn(
     badgeVariants({ variant: 'outline' }),
-    variantClasses[semanticVariant],
+    variantClasses[variant],
     sizeClasses[size],
   );
 }

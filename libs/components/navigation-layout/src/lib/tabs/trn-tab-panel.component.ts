@@ -30,29 +30,11 @@ import { HlmTabsContent } from '@trinity/helm/tabs';
     `,
   ],
   template: `
-    <div [hlmTabsContent]="value()" [class]="panelClass()">
+    <div [hlmTabsContent]="value()" class="flex flex-col gap-3 pt-3">
       <ng-content />
     </div>
   `,
 })
 export class TrnTabPanelComponent {
   readonly value = input.required<string>();
-
-  /**
-   * Classes for the panel element itself.
-   *
-   * Usually a display utility, which raises the obvious worry: the kit hides an inactive
-   * panel with the `hidden` ATTRIBUTE, and a bare UA `[hidden] { display: none }` carries the
-   * same specificity as one class, so `flex` would win on source order and both panels would
-   * paint at once. It does not happen here, and the reason is worth recording so nobody
-   * "fixes" it twice: Tailwind v4's preflight ships
-   * `[hidden]:where(:not([hidden='until-found'])) { display: none !important }`, which
-   * settles it globally. A duplicate `!important` rule was written here first and then
-   * removed — with it deleted, the Chromium assertion in `room-settings.spec.mts` still
-   * passes, which is what proves the preflight rule is the one doing the work.
-   *
-   * Not `class` on the host: the host is `display: contents` and boxes nothing, so a layout
-   * class there would do nothing at all. Same shape as `trn-select`'s `triggerClass`.
-   */
-  readonly panelClass = input<string>('');
 }

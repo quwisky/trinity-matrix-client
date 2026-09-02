@@ -68,14 +68,3 @@ test('ordinal text sizes and owned select layout resolve in the browser', async 
   await select.press('Escape');
   await expect(select).toBeFocused();
 });
-
-test('field-label compatibility resolves to canonical emphasis', async ({
-  page,
-}) => {
-  await page.goto(story('components-field-controls--compatibility-alias'));
-
-  await expect(page.getByText('Legacy label')).toHaveAttribute(
-    'data-emphasis',
-    'strong',
-  );
-});

@@ -4,11 +4,6 @@ import { hlm } from '@trinity/helm/utils';
 export type TrnPageHeaderVariant = Extract<TrnVariant, 'neutral' | 'accent'>;
 export type TrnPageHeaderLayout = 'page' | 'toolbar';
 
-type LegacyPageHeaderVariant = 'page' | 'chat';
-
-export type TrnPageHeaderVariantInput =
-  TrnPageHeaderVariant | LegacyPageHeaderVariant;
-
 const variantRecipe = {
   neutral: '',
   accent:
@@ -26,26 +21,6 @@ const titleLayoutRecipe = {
   toolbar:
     'flex min-w-0 flex-1 items-center gap-1 px-1 text-base font-semibold',
 } as const;
-
-export function normalizeTrnPageHeaderVariant(
-  variant: TrnPageHeaderVariantInput,
-): TrnPageHeaderVariant {
-  return variant === 'accent' ? 'accent' : 'neutral';
-}
-
-export function normalizeTrnPageHeaderLayout(
-  variant: TrnPageHeaderVariantInput,
-  layout: TrnPageHeaderLayout,
-): TrnPageHeaderLayout {
-  switch (variant) {
-    case 'page':
-      return 'page';
-    case 'chat':
-      return 'toolbar';
-    default:
-      return layout;
-  }
-}
 
 export function trnPageHeaderRecipe(
   variant: TrnPageHeaderVariant,

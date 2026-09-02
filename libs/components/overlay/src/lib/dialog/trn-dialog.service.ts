@@ -2,7 +2,7 @@ import { Injectable, inject, type Type } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
 import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
-import { defer, firstValueFrom, map, merge, take, type Observable } from 'rxjs';
+import { defer, map, merge, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from './trn-dialog-ref';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
@@ -22,11 +22,6 @@ export interface DialogOptions {
    * Replaces the Ionic `justify-content: flex-end` modal css.
    */
   placement?: TrnDialogPlacement;
-  /**
-   * Temporary placement compatibility for existing feature dialogs.
-   * Prefer `placement`; when both are present, `placement` wins.
-   */
-  side?: 'center' | 'end' | 'bottom' | 'full-screen';
   /** Prevent backdrop/escape close (Ionic backdropDismiss: false). */
   disableClose?: boolean;
   /**
@@ -106,29 +101,13 @@ function prefersCentred(): boolean {
   );
 }
 
-function normalizePlacement(opts: DialogOptions): TrnDialogPlacement {
-  if (opts.placement) {
-    return opts.placement;
-  }
-  switch (opts.side) {
-    case 'end':
-      return 'inline-end';
-    case 'full-screen':
-      return 'fullscreen';
-    case 'bottom':
-      return 'bottom';
-    default:
-      return 'center';
-  }
-}
-
 /**
  * Component dialogs / modals — the spartan replacement for Ionic's
  * `ModalController`. `open()` mounts a component in a CDK dialog and returns the
  * {@link TrnDialogRef}; the component closes itself with a result via
  * `inject(TrnDialogRef).close(value)` (replacing `modalCtrl.dismiss(data)`), and the
  * opener reads that value from the cold, finite `openAndWait$()` command (replacing
- * `onWillDismiss()`). The Promise method remains temporarily for feature migration.
+ * `onWillDismiss()`).
  * `inputs` map to the component's signal `input()`s (Ionic `componentProps`).
  */
 @Injectable({ providedIn: 'root' })
@@ -164,10 +143,10 @@ export class TrnDialogService {
     // workspace — here, styled by nothing. Same reason `DialogOptions.data` went in #151.
     // Dialog content owns its surface through `trnOverlaySurface`; the CDK pane stays
     // transparent and behavior-only, so there is no shared panel styling for a hook to
-    // carry. Compatibility consumers migrate in #397-#401. Re-add a hook only with a
+    // carry. Consumers migrated in #397-#401. Re-add a hook only with a
     // real behavior consumer.
     const anchor = opts.anchor && !prefersCentred() ? opts.anchor : null;
-    const placement = normalizePlacement(opts);
+    const placement = opts.placement ?? 'center';
     const fullScreen = placement === 'fullscreen';
     const bottomSheet = placement === 'bottom';
     const ref = this.dialog.open<R, unknown, C>(component, {
@@ -266,14 +245,6 @@ export class TrnDialogService {
         map((value) => value ?? null),
       ),
     );
-  }
-
-  /** Temporary Promise compatibility. Prefer the cold, finite `openAndWait$` command. */
-  openAndWait<R = unknown, C = object>(
-    component: Type<C>,
-    opts: DialogOptions = {},
-  ): Promise<R | null> {
-    return firstValueFrom(this.openAndWait$<R, C>(component, opts));
   }
 
   /**

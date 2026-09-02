@@ -15,9 +15,6 @@ import { TrnButton } from '@trinity/components/controls';
     <button trnBtn variant="primary" size="md">Primary</button>
     <button trnBtn variant="danger" size="md">Danger</button>
     <button trnBtn variant="primary" presentation="ghost" shape="icon" size="md">Icon</button>
-    <button trnBtn variant="primary" shape="icon" size="default">Mixed migration icon</button>
-    <button trnBtn variant="default" size="default">Legacy default</button>
-    <button trnBtn variant="destructive" size="icon">Legacy icon</button>
   \`,
 })
 export class ValidButtonRecipeHost {}
@@ -33,6 +30,16 @@ export class InvalidButtonVariantHost {}
   template: \`<button trnBtn size="xl">Unsupported size</button>\`,
 })
 export class InvalidButtonSizeHost {}
+
+@Component({
+  imports: [TrnButton],
+  template: \`
+    <button trnBtn variant="default" size="default">Old default</button>
+    <button trnBtn variant="destructive" size="icon">Old danger</button>
+    <button trnBtn variant="ghost">Old presentation</button>
+  \`,
+})
+export class InvalidLegacyButtonHost {}
 `;
 
 function compileTemplateContract() {
@@ -76,16 +83,23 @@ function compileTemplateContract() {
 }
 
 describe('button recipe strict-template contract', () => {
-  it('accepts the component subset and rejects unsupported global values', () => {
+  it('accepts canonical inputs and rejects unsupported or retired values', () => {
     const errors = compileTemplateContract();
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-
-    expect(errors.map(({ code }) => code)).toEqual([2322, 2322]);
-    expect(messages).toEqual([
-      expect.stringContaining('"success"'),
-      expect.stringContaining('"xl"'),
-    ]);
+    expect(errors.map(({ code }) => code)).toEqual(Array(7).fill(2322));
+    for (const unsupported of [
+      'success',
+      'xl',
+      'default',
+      'destructive',
+      'icon',
+      'ghost',
+    ]) {
+      expect(messages, unsupported).toEqual(
+        expect.arrayContaining([expect.stringContaining(`"${unsupported}"`)]),
+      );
+    }
   });
 });

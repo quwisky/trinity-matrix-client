@@ -17,7 +17,7 @@ import type {
   `,
 })
 class TitleHostComponent {
-  variant: 'neutral' | 'accent' | 'page' | 'chat' = 'page';
+  variant: TrnPageHeaderVariant = 'neutral';
   layout: TrnPageHeaderLayout = 'page';
   title: string | undefined = 'Settings';
 }
@@ -25,7 +25,7 @@ class TitleHostComponent {
 @Component({
   imports: [PageHeaderComponent],
   template: `
-    <trn-page-header variant="chat">
+    <trn-page-header layout="toolbar">
       <span trnHeaderTitle class="projected-title"># general</span>
     </trn-page-header>
   `,
@@ -66,9 +66,9 @@ describe('PageHeaderComponent', () => {
     expect(container.querySelectorAll('h1')).toHaveLength(1);
   });
 
-  it('keeps legacy layouts equivalent to canonical inputs', async () => {
+  it('applies canonical page and toolbar layouts', async () => {
     const { fixture, container } = await render(PageHeaderComponent, {
-      inputs: { title: 'X', variant: 'page' },
+      inputs: { title: 'X', variant: 'neutral', layout: 'page' },
     });
     const header = () => container.querySelector('header')!;
 
@@ -82,16 +82,8 @@ describe('PageHeaderComponent', () => {
       'text-[var(--trinity-text-bright)]',
     );
     expect(header().getAttribute('data-trn-layout')).toBe('page');
-    const legacyPageClass = header().className;
-
-    fixture.componentRef.setInput('variant', 'neutral');
-    fixture.componentRef.setInput('layout', 'page');
+    fixture.componentRef.setInput('layout', 'toolbar');
     await fixture.whenStable();
-    expect(header().className).toBe(legacyPageClass);
-
-    fixture.componentRef.setInput('variant', 'chat');
-    await fixture.whenStable();
-    const legacyToolbarClass = header().className;
     expect(header().className).toContain(
       'bg-[var(--trinity-surface-workspace)]',
     );
@@ -99,11 +91,6 @@ describe('PageHeaderComponent', () => {
     expect(header().className).not.toContain('min-h-14');
     expect(header().className).toContain('text-[var(--trinity-text-bright)]');
     expect(header().getAttribute('data-trn-layout')).toBe('toolbar');
-
-    fixture.componentRef.setInput('variant', 'neutral');
-    fixture.componentRef.setInput('layout', 'toolbar');
-    await fixture.whenStable();
-    expect(header().className).toBe(legacyToolbarClass);
   });
 
   it('applies accent without changing page geometry', async () => {

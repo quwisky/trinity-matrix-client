@@ -18,8 +18,7 @@ describe('Trinity icon recipe', () => {
     expect(new Set(resolved).size).toBe(sizes.length);
   });
 
-  it('retains exact CSS lengths and inherited sizing during expansion', () => {
-    expect(resolveTrnIconSize('1.25rem')).toBe('1.25rem');
+  it('retains inherited sizing when no ordinal size is set', () => {
     expect(resolveTrnIconSize(null)).toBe('');
   });
 });

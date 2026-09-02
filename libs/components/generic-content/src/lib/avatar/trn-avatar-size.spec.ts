@@ -16,12 +16,4 @@ describe('Trinity avatar size recipe', () => {
     expect(resolveTrnAvatarSize('sm', 400)).toBe(256);
     expect(resolveTrnAvatarSize('sm', Number.NaN)).toBe(40);
   });
-
-  it('keeps numeric size inputs valid during expansion', () => {
-    expect(resolveTrnAvatarSize(36, null)).toBe(36);
-    expect(resolveTrnAvatarSize(20.5, null)).toBe(20.5);
-    expect(resolveTrnAvatarSize(12, null)).toBe(12);
-    expect(resolveTrnAvatarSize(300, null)).toBe(300);
-    expect(resolveTrnAvatarSize(Number.NaN, null)).toBe(40);
-  });
 });

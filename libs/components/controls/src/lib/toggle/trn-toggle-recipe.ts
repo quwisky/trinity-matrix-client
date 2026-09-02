@@ -6,12 +6,6 @@ export type TrnToggleSize = Extract<TrnSize, 'sm' | 'md' | 'lg'>;
 export type TrnTogglePresentation = 'plain' | 'outline';
 export type TrnToggleArrangement = 'joined' | 'separated';
 
-type LegacyToggleVariant = 'default' | 'outline';
-type LegacyToggleSize = 'default';
-
-export type TrnToggleVariantInput = TrnToggleVariant | LegacyToggleVariant;
-export type TrnToggleSizeInput = TrnToggleSize | LegacyToggleSize;
-
 interface TrnToggleRecipeOptions {
   arrangement?: TrnToggleArrangement;
   presentation: TrnTogglePresentation;
@@ -40,25 +34,6 @@ const presentationRecipe = {
 
 const joinedRecipe =
   'rounded-none first:rounded-s-[var(--trinity-shape-control-radius)] last:rounded-e-[var(--trinity-shape-control-radius)] group-data-[trn-orientation=vertical]/trn-toggle-group:first:rounded-s-none group-data-[trn-orientation=vertical]/trn-toggle-group:last:rounded-e-none group-data-[trn-orientation=vertical]/trn-toggle-group:first:rounded-t-[var(--trinity-shape-control-radius)] group-data-[trn-orientation=vertical]/trn-toggle-group:last:rounded-b-[var(--trinity-shape-control-radius)] group-data-[trn-presentation=outline]/trn-toggle-group:[&:not(:first-child)]:border-s-0 group-data-[trn-orientation=vertical]/trn-toggle-group:group-data-[trn-presentation=outline]/trn-toggle-group:[&:not(:first-child)]:border-s group-data-[trn-orientation=vertical]/trn-toggle-group:group-data-[trn-presentation=outline]/trn-toggle-group:[&:not(:first-child)]:border-t-0';
-
-export function normalizeTrnToggleVariant(
-  variant: TrnToggleVariantInput,
-): TrnToggleVariant {
-  return variant === 'accent' ? 'accent' : 'neutral';
-}
-
-export function normalizeTrnTogglePresentation(
-  variant: TrnToggleVariantInput,
-  presentation: TrnTogglePresentation,
-): TrnTogglePresentation {
-  return variant === 'outline' ? 'outline' : presentation;
-}
-
-export function normalizeTrnToggleSize(
-  size: TrnToggleSizeInput,
-): TrnToggleSize {
-  return size === 'default' ? 'md' : size;
-}
 
 export function trnToggleRecipe(options: TrnToggleRecipeOptions): string {
   return hlm(

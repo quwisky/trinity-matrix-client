@@ -31,16 +31,11 @@ import {
   ],
   template: \`
     <trn-icon name="lock" size="lg" variant="muted" />
-    <trn-icon name="lock" size="1.25rem" />
     <trn-avatar name="Ada" initial="A" size="xl" />
     <trn-avatar name="Ada" initial="A" size="sm" [exactSize]="64" />
-    <trn-avatar name="Ada" initial="A" [size]="36" />
     <span trnBadge variant="neutral" size="sm">Neutral</span>
-    <span trnBadge variant="default">Compatibility</span>
     <trn-banner variant="accent">Attention</trn-banner>
-    <trn-banner tone="accent">Compatibility</trn-banner>
     <trn-empty-state variant="danger" layout="line" body="Failed" />
-    <trn-empty-state tone="danger" size="line" body="Compatibility" />
     <trn-progress variant="success" size="md" [value]="40" />
     <trn-progress variant="accent" size="sm" [value]="null" />
     <trn-spinner variant="accent" size="lg" />
@@ -76,6 +71,18 @@ export class InvalidSpinnerVariantHost {}
 export class InvalidSpinnerSizeHost {}
 @Component({ imports: [TrnTooltip], template: \`<button trnTooltip="No" position="above">No</button>\` })
 export class InvalidTooltipPositionHost {}
+
+@Component({
+  imports: [AvatarComponent, BannerComponent, EmptyStateComponent, TrnBadge, TrnIconComponent],
+  template: \`
+    <trn-icon name="lock" size="1.25rem" />
+    <trn-avatar name="Ada" [size]="36" />
+    <span trnBadge variant="default">Old badge</span>
+    <trn-banner [tone]="'accent'">Old banner</trn-banner>
+    <trn-empty-state [tone]="'danger'" [size]="'line'" />
+  \`,
+})
+export class InvalidLegacyGenericContentHost {}
 `;
 
 function compileTemplateContract() {
@@ -122,27 +129,34 @@ function compileTemplateContract() {
 }
 
 describe('generic content recipe strict-template contract', () => {
-  it('accepts canonical and compatibility inputs while rejecting unsupported values', () => {
+  it('accepts canonical inputs while rejecting unsupported or retired values', () => {
     const errors = compileTemplateContract();
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-
-    expect(errors.map(({ code }) => code)).toEqual(Array(13).fill(2322));
-    expect(messages).toEqual([
-      expect.stringContaining('"3xl"'),
-      expect.stringContaining('"primary"'),
-      expect.stringContaining('"3xl"'),
-      expect.stringContaining('"danger"'),
-      expect.stringContaining('"lg"'),
-      expect.stringContaining('"danger"'),
-      expect.stringContaining('"accent"'),
-      expect.stringContaining('"md"'),
-      expect.stringContaining('"neutral"'),
-      expect.stringContaining('"lg"'),
-      expect.stringContaining('"success"'),
-      expect.stringContaining('"xl"'),
-      expect.stringContaining('"above"'),
+    expect(errors.map(({ code }) => code)).toEqual([
+      ...Array(16).fill(2322),
+      ...Array(3).fill(-998002),
     ]);
+    for (const unsupported of [
+      '3xl',
+      'primary',
+      'danger',
+      'lg',
+      'accent',
+      'md',
+      'neutral',
+      'success',
+      'xl',
+      'above',
+      '1.25rem',
+      'default',
+      'tone',
+      'size',
+    ]) {
+      expect(messages, unsupported).toEqual(
+        expect.arrayContaining([expect.stringContaining(unsupported)]),
+      );
+    }
   });
 });

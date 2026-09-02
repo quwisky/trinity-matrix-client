@@ -13,9 +13,7 @@ import {
 
 @Component({
   imports: [TrnButton, TrnIconButton],
-  template: `<button trnBtn variant="destructive" size="sm" disabled>
-    Erase
-  </button>`,
+  template: `<button trnBtn variant="danger" size="sm" disabled>Erase</button>`,
 })
 class HostComponent {}
 
@@ -28,20 +26,18 @@ class LoadingHostComponent {}
 @Component({
   imports: [TrnButton, TrnIconButton],
   template: `
-    @for (size of iconSizes; track size) {
-      <button trnBtn [size]="size">Icon</button>
-    }
     <button trnBtn size="md">Label</button>
     <button trnBtn shape="icon" size="md">Canonical icon</button>
     <button data-testid="dynamic" trnBtn [shape]="dynamicShape()">
       Dynamic
     </button>
-    <a data-testid="icon-link" trnBtn size="icon" href="#target">Link</a>
+    <a data-testid="icon-link" trnBtn shape="icon" size="md" href="#target"
+      >Link</a
+    >
     <button data-testid="bespoke" trnIconButton>Bespoke</button>
   `,
 })
 class IconHostComponent {
-  readonly iconSizes = ['icon', 'icon-xs', 'icon-sm', 'icon-lg'] as const;
   readonly dynamicShape = signal<TrnButtonShape>('label');
 }
 
@@ -90,54 +86,6 @@ describe('TrnButton', () => {
     >();
   });
 
-  it('renders canonical and compatibility inputs through equivalent recipes', () => {
-    expect(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'label',
-        size: 'md',
-        variant: 'primary',
-      }),
-    ).toBe(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'label',
-        size: 'default',
-        variant: 'default',
-      }),
-    );
-    expect(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'label',
-        size: 'md',
-        variant: 'danger',
-      }),
-    ).toBe(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'label',
-        size: 'default',
-        variant: 'destructive',
-      }),
-    );
-    expect(
-      trnButtonRecipe({
-        presentation: 'ghost',
-        shape: 'icon',
-        size: 'md',
-        variant: 'primary',
-      }),
-    ).toBe(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'label',
-        size: 'icon',
-        variant: 'ghost',
-      }),
-    );
-  });
-
   it('preserves semantic tone across non-solid presentations', () => {
     const primaryGhost = trnButtonRecipe({
       presentation: 'ghost',
@@ -169,77 +117,13 @@ describe('TrnButton', () => {
     );
   });
 
-  it('combines compatibility semantic aliases with canonical presentations', () => {
-    expect(
-      trnButtonRecipe({
-        presentation: 'outline',
-        shape: 'label',
-        size: 'md',
-        variant: 'default',
-      }),
-    ).toBe(
-      trnButtonRecipe({
-        presentation: 'outline',
-        shape: 'label',
-        size: 'md',
-        variant: 'primary',
-      }),
-    );
-    expect(
-      trnButtonRecipe({
-        presentation: 'ghost',
-        shape: 'label',
-        size: 'md',
-        variant: 'destructive',
-      }),
-    ).toBe(
-      trnButtonRecipe({
-        presentation: 'ghost',
-        shape: 'label',
-        size: 'md',
-        variant: 'danger',
-      }),
-    );
-  });
-
-  it('normalizes mixed canonical and compatibility icon inputs', () => {
-    const canonicalIcon = trnButtonRecipe({
-      presentation: 'solid',
-      shape: 'icon',
-      size: 'md',
-      variant: 'primary',
-    });
-
-    expect(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'icon',
-        size: 'default',
-        variant: 'primary',
-      }),
-    ).toBe(canonicalIcon);
-    expect(
-      trnButtonRecipe({
-        presentation: 'solid',
-        shape: 'label',
-        size: 'icon',
-        variant: 'primary',
-      }),
-    ).toBe(canonicalIcon);
-  });
-
-  it('marks canonical and compatibility icon recipes without marking labels', async () => {
+  it('marks icon recipes without marking labels', async () => {
     const { container, fixture } = await render(IconHostComponent);
     const buttons = [...container.querySelectorAll('button')];
 
-    expect(
-      buttons
-        .slice(0, 4)
-        .every((button) => button.hasAttribute('data-trn-icon-button')),
-    ).toBe(true);
-    expect(buttons[4].hasAttribute('data-trn-icon-button')).toBe(false);
-    expect(buttons[5].hasAttribute('data-trn-icon-button')).toBe(true);
-    expect(buttons[6].hasAttribute('data-trn-icon-button')).toBe(false);
+    expect(buttons[0].hasAttribute('data-trn-icon-button')).toBe(false);
+    expect(buttons[1].hasAttribute('data-trn-icon-button')).toBe(true);
+    expect(buttons[2].hasAttribute('data-trn-icon-button')).toBe(false);
     expect(
       container
         .querySelector('[data-testid="icon-link"]')

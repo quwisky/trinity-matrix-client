@@ -1,10 +1,9 @@
 import { Directive, computed, input } from '@angular/core';
-import { classes } from '@trinity/components/foundations';
+import { classes } from '@trinity/helm/utils';
 import {
-  normalizeTrnBadgeVariant,
   trnBadgeRecipe,
   type TrnBadgeSize,
-  type TrnBadgeVariantInput,
+  type TrnBadgeVariant,
 } from './trn-badge-recipe';
 
 /**
@@ -20,18 +19,14 @@ import {
   selector: '[trnBadge]',
   host: {
     'data-slot': 'badge',
-    '[attr.data-variant]': 'resolvedVariant()',
+    '[attr.data-variant]': 'variant()',
     '[attr.data-size]': 'size()',
   },
 })
 export class TrnBadge {
-  /** `default` remains accepted while pre-recipe templates migrate to `neutral`. */
-  readonly variant = input<TrnBadgeVariantInput>('neutral');
+  readonly variant = input<TrnBadgeVariant>('neutral');
   readonly size = input<TrnBadgeSize>('sm');
 
-  protected readonly resolvedVariant = computed(() =>
-    normalizeTrnBadgeVariant(this.variant()),
-  );
   private readonly recipeClasses = computed(() =>
     trnBadgeRecipe(this.variant(), this.size()),
   );

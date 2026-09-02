@@ -41,17 +41,4 @@ export class DialogOverlayStoryComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((value) => this.result.set(value ?? 'Dismissed'));
   }
-
-  protected openLegacyEnd(): void {
-    void this.dialog
-      .openAndWait<string, OverlayStoryDialogComponent>(
-        OverlayStoryDialogComponent,
-        {
-          side: 'end',
-          ariaLabel: 'Legacy end dialog',
-          inputs: { title: 'Legacy end', layout: 'panel' },
-        },
-      )
-      .then((value) => this.result.set(value ?? 'Dismissed'));
-  }
 }

@@ -1,7 +1,7 @@
 <header
   [class]="headerClass()"
-  [attr.data-trn-layout]="resolvedLayout()"
-  [attr.data-trn-variant]="resolvedVariant()"
+  [attr.data-trn-layout]="layout()"
+  [attr.data-trn-variant]="variant()"
 >
   <ng-content select="[trnHeaderLeading]" />
   <!-- The single, always-rendered page heading. Body is a plain string

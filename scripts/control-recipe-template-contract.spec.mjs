@@ -41,13 +41,9 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
     <trn-checkbox variant="neutral" size="sm" invalid />
     <trn-switch variant="accent" size="md" />
     <trn-radio-group layout="segmented" variant="accent" size="md" [options]="options" />
-    <trn-radio-group variant="segmented" [options]="options" />
     <button trnToggle variant="neutral" presentation="outline" size="lg">Toggle</button>
     <trn-toggle-group variant="accent" presentation="plain" size="sm" arrangement="joined">
       <button trnToggleGroupItem value="all">All</button>
-    </trn-toggle-group>
-    <trn-toggle-group variant="outline" size="default">
-      <button trnToggleGroupItem value="all">Legacy group</button>
     </trn-toggle-group>
   \`,
 })
@@ -86,6 +82,17 @@ export class InvalidToggleHost {}
   template: \`<trn-toggle-group arrangement="packed" orientation="diagonal" />\`,
 })
 export class InvalidToggleGroupHost {}
+
+@Component({
+  imports: [TrnRadioGroupComponent, TrnToggleGroupComponent],
+  template: \`
+    <trn-radio-group variant="segmented" [options]="options" />
+    <trn-toggle-group variant="outline" size="default" />
+  \`,
+})
+export class InvalidLegacyControlHost {
+  protected readonly options = OPTIONS;
+}
 `;
 
 function compileTemplateContract() {
@@ -129,10 +136,12 @@ function compileTemplateContract() {
 }
 
 describe('control recipe strict-template contract', () => {
-  it('accepts canonical and compatibility values, but rejects unsupported recipes', () => {
-    const messages = compileTemplateContract().map((diagnostic) =>
+  it('accepts canonical values and rejects unsupported or retired recipes', () => {
+    const errors = compileTemplateContract();
+    const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
+    expect(errors.map(({ code }) => code)).toEqual(Array(15).fill(2322));
 
     for (const unsupported of [
       'danger',
@@ -142,6 +151,9 @@ describe('control recipe strict-template contract', () => {
       'xl',
       'packed',
       'diagonal',
+      'segmented',
+      'outline',
+      'default',
     ]) {
       expect(messages, unsupported).toEqual(
         expect.arrayContaining([expect.stringContaining(`"${unsupported}"`)]),

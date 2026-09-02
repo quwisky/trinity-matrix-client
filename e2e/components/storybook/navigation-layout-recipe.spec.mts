@@ -1,46 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { renderedColour, renderedRecipeStyle } from './recipe-appearance.mts';
+import { renderedColour } from './recipe-appearance.mts';
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
-
-test('canonical tab and header axes preserve compatibility rendering', async ({
-  page,
-}) => {
-  await page.goto(story('components-tabs--compatibility-aliases'));
-
-  for (const [canonicalId, legacyId] of [
-    ['tabs-canonical-pill', 'tabs-legacy-pill'],
-    ['tabs-canonical-line', 'tabs-legacy-line'],
-  ] as const) {
-    const canonical = page.getByTestId(canonicalId);
-    const legacy = page.getByTestId(legacyId);
-    expect(
-      await renderedRecipeStyle(
-        canonical.getByRole('tab', { name: 'General' }),
-      ),
-    ).toEqual(
-      await renderedRecipeStyle(legacy.getByRole('tab', { name: 'General' })),
-    );
-    await expect(canonical.locator('hlm-tabs-list')).toHaveAttribute(
-      'data-trn-variant',
-      'neutral',
-    );
-  }
-
-  await page.goto(story('components-page-header--compatibility-aliases'));
-  for (const [canonicalId, legacyId, layout] of [
-    ['header-canonical-page', 'header-legacy-page', 'page'],
-    ['header-canonical-toolbar', 'header-legacy-toolbar', 'toolbar'],
-  ] as const) {
-    const canonical = page.getByTestId(canonicalId).locator('header');
-    const legacy = page.getByTestId(legacyId).locator('header');
-    expect(await renderedRecipeStyle(canonical)).toEqual(
-      await renderedRecipeStyle(legacy),
-    );
-    await expect(canonical).toHaveAttribute('data-trn-layout', layout);
-    await expect(canonical).toHaveAttribute('data-trn-variant', 'neutral');
-  }
-});
 
 test('tabs preserve keyboard, focus, disabled, and selected behavior', async ({
   page,

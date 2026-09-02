@@ -21,7 +21,7 @@ const OPTIONS: readonly TrnRadioOption<string>[] = [
     <h2 id="mode-heading">Appearance</h2>
     <trn-radio-group
       aria-labelledby="mode-heading"
-      variant="segmented"
+      layout="segmented"
       [options]="options"
       [value]="value()"
       [disabled]="disabled()"

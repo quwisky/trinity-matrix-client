@@ -56,7 +56,6 @@ import {
     <ng-template #menu>
       <div trnDropdownMenu>
         <button trnDropdownMenuItem variant="danger">Delete</button>
-        <button trnDropdownMenuItem variant="destructive">Legacy delete</button>
       </div>
     </ng-template>
   \`,
@@ -74,6 +73,12 @@ export class InvalidSurfaceHost {}
   template: \`<button trnDropdownMenuItem variant="warning">Unsupported item</button>\`,
 })
 export class InvalidItemHost {}
+
+@Component({
+  imports: [TrnDropdownMenuItem],
+  template: \`<button trnDropdownMenuItem variant="destructive">Retired item</button>\`,
+})
+export class InvalidLegacyItemHost {}
 
 @Component({
   imports: [TrnDropdownMenuTrigger],
@@ -123,13 +128,12 @@ function compileTemplateContract() {
 }
 
 describe('overlay recipe strict-template contract', () => {
-  it('accepts canonical and temporary compatibility inputs while rejecting unsupported values', () => {
+  it('accepts canonical inputs while rejecting unsupported or retired values', () => {
     const errors = compileTemplateContract();
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-
-    expect(errors.map(({ code }) => code)).toEqual(Array(6).fill(2322));
+    expect(errors.map(({ code }) => code)).toEqual(Array(7).fill(2322));
     for (const value of [
       'danger',
       'xs',
@@ -137,6 +141,7 @@ describe('overlay recipe strict-template contract', () => {
       'warning',
       'diagonal',
       'stretch',
+      'destructive',
     ]) {
       expect(messages).toEqual(
         expect.arrayContaining([expect.stringContaining(value)]),
@@ -174,9 +179,13 @@ describe('overlay recipe strict-template contract', () => {
       /@trinity\/helm|@spartan-ng|VariantProps|ClassValue|DialogConfig|ComponentType|MenuSide|MenuAlign|ToasterProps/u,
     );
     expect(dialog).not.toMatch(/import[^;\n]*(?:DialogConfig|ComponentType)/u);
+    expect(dialog).not.toContain('side?:');
     expect(dialog).toContain('type Type');
     expect(dialog).toContain('openAndWait$');
+    expect(dialog).not.toMatch(/\bopenAndWait\s*\(/u);
     expect(alert).toContain('confirm$');
     expect(alert).toContain('prompt$');
+    expect(alert).not.toMatch(/\bconfirm\s*\(/u);
+    expect(alert).not.toMatch(/\bprompt\s*\(/u);
   });
 });

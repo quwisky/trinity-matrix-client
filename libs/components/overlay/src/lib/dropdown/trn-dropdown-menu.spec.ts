@@ -31,13 +31,6 @@ import { trnDropdownMenuItemRecipe } from './trn-dropdown-menu-recipe';
         <button trnDropdownMenuItem variant="danger" data-testid="danger-item">
           Delete
         </button>
-        <button
-          trnDropdownMenuItem
-          variant="destructive"
-          data-testid="legacy-danger-item"
-        >
-          Legacy delete
-        </button>
         <button trnDropdownMenuItem disabled data-testid="disabled-item">
           Disabled
         </button>
@@ -91,7 +84,7 @@ describe('Trinity dropdown menu', () => {
     expect(document.querySelector('[trnDropdownMenuItem]')).not.toBeNull();
   });
 
-  it('normalizes canonical and temporary item appearances without changing disabled behavior', async () => {
+  it('applies semantic item appearance without changing disabled behavior', async () => {
     const { fixture } = await render(HostComponent);
 
     fixture.componentInstance.trigger().open();
@@ -100,15 +93,11 @@ describe('Trinity dropdown menu', () => {
     const canonical = document.querySelector<HTMLElement>(
       '[data-testid=danger-item]',
     );
-    const legacy = document.querySelector<HTMLElement>(
-      '[data-testid=legacy-danger-item]',
-    );
     const disabled = document.querySelector<HTMLButtonElement>(
       '[data-testid=disabled-item]',
     );
 
     expect(canonical?.dataset['trnVariant']).toBe('danger');
-    expect(legacy?.dataset['trnVariant']).toBe('danger');
     expect(trnDropdownMenuItemRecipe('danger')).toContain('text-danger');
     expect(disabled?.getAttribute('data-disabled')).not.toBeNull();
   });

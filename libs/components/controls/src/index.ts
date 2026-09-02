@@ -29,7 +29,6 @@ export { TrnFieldComponent } from './lib/field/field/trn-field.component';
 export {
   TrnFieldLabelComponent,
   type TrnFieldLabelEmphasis,
-  type TrnFieldLabelVariant,
 } from './lib/field/field-label/trn-field-label.component';
 export { TrnInput, type TrnTextControlSize } from './lib/input/trn-input';
 export { TrnLabel } from './lib/label/trn-label';

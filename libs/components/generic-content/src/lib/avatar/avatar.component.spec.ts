@@ -66,7 +66,7 @@ describe('AvatarComponent', () => {
   it('resolves an mxc via the resolver and uses the resolved url', async () => {
     const resolver = vi.fn(() => of('blob:resolved'));
     const { fixture } = await render(AvatarComponent, {
-      inputs: { mxc: 'mxc://hs/a', size: 64 },
+      inputs: { mxc: 'mxc://hs/a', exactSize: 64 },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
 
@@ -130,14 +130,14 @@ describe('AvatarComponent', () => {
 
   it('scales the dot to the avatar size', async () => {
     const { container } = await render(AvatarComponent, {
-      inputs: { initial: 'A', presence: 'offline', size: 64 },
+      inputs: { initial: 'A', presence: 'offline', exactSize: 64 },
     });
     expect(dot(container)?.style.width).toBe('19px'); // round(64 * 0.3)
   });
 
   it('floors the dot at 8px for small avatars', async () => {
     const { container } = await render(AvatarComponent, {
-      inputs: { initial: 'A', presence: 'offline', size: 20 },
+      inputs: { initial: 'A', presence: 'offline', exactSize: 20 },
     });
     expect(dot(container)?.style.width).toBe('8px'); // round(20 * 0.3) = 6 → floored
   });
@@ -180,7 +180,7 @@ describe('AvatarComponent', () => {
   it('resolves through the owning account’s client when one is given', async () => {
     const resolver = vi.fn(() => of('blob:resolved'));
     await render(AvatarComponent, {
-      inputs: { mxc: 'mxc://corp/a', size: 36, accountId: '@work:corp' },
+      inputs: { mxc: 'mxc://corp/a', exactSize: 36, accountId: '@work:corp' },
       providers: [{ provide: AVATAR_RESOLVER, useValue: resolver }],
     });
 

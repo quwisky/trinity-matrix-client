@@ -24,8 +24,8 @@ export interface ActionSheetButton {
   disabled?: boolean;
   /** Semantic treatment, independent of cancellation behavior. */
   variant?: TrnActionSheetButtonVariant;
-  /** Temporary behavior/appearance compatibility. Prefer `variant="danger"`. */
-  role?: 'cancel' | 'destructive';
+  /** A cancel row closes the sheet without running a handler. */
+  role?: 'cancel';
   handler?: () => void;
   /** Leading icon, for a sheet standing in for a menu that had one. */
   icon?: TrnIconName;
@@ -190,9 +190,7 @@ export class TrnActionSheetComponent {
   protected buttonVariant(
     button: ActionSheetButton,
   ): TrnActionSheetButtonVariant {
-    return (
-      button.variant ?? (button.role === 'destructive' ? 'danger' : 'neutral')
-    );
+    return button.variant ?? 'neutral';
   }
 
   /** Same close-then-run order as a button: the handler often opens another overlay. */

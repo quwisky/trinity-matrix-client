@@ -74,13 +74,11 @@ export const SemanticPresence: Story = {
   }),
 };
 
-/** Numeric size and the bounded exact escape remain valid while layouts migrate. */
-export const CompatibilityGeometry: Story = {
+/** The bounded exact escape supports geometry-sensitive layouts. */
+export const ExactGeometry: Story = {
   render: () => ({
     template: `
       <div class="flex items-center gap-4 p-4">
-        <trn-avatar data-testid="avatar-canonical" name="Canonical" initial="C" size="2xl" />
-        <trn-avatar data-testid="avatar-legacy" name="Legacy" initial="L" [size]="48" />
         <trn-avatar data-testid="avatar-exact" name="Exact" initial="E" size="sm" [exactSize]="48" />
       </div>
     `,

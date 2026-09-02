@@ -32,12 +32,12 @@ const TABS: readonly TrnTabOption[] = [
   ],
   template: \`
     <trn-page-header title="Page" variant="neutral" layout="page" />
-    <trn-page-header title="Toolbar" variant="chat" />
+    <trn-page-header title="Toolbar" variant="neutral" layout="toolbar" />
     <trn-tabs tab="general" [tabs]="tabs" variant="accent" presentation="line">
       <trn-tab-panel value="general">General</trn-tab-panel>
       <trn-tab-panel value="access">Access</trn-tab-panel>
     </trn-tabs>
-    <trn-tabs tab="general" [tabs]="tabs" variant="default" />
+    <trn-tabs tab="general" [tabs]="tabs" variant="neutral" />
     <section trnCard variant="muted" size="sm">
       <h2 trnCardTitle>Card</h2>
     </section>
@@ -71,6 +71,17 @@ export class InvalidCardHost {}
   template: \`<div trnSeparator variant="muted" orientation="diagonal"></div>\`,
 })
 export class InvalidSeparatorHost {}
+
+@Component({
+  imports: [PageHeaderComponent, TrnTabPanelComponent, TrnTabsComponent],
+  template: \`
+    <trn-page-header variant="chat" />
+    <trn-tabs tab="general" [tabs]="tabs" variant="default">
+      <trn-tab-panel value="general" [panelClass]="'flex'">General</trn-tab-panel>
+    </trn-tabs>
+  \`,
+})
+export class InvalidLegacyNavigationHost { protected readonly tabs = TABS; }
 `;
 
 function compileTemplateContract() {
@@ -117,23 +128,30 @@ function compileTemplateContract() {
 }
 
 describe('navigation and layout recipe strict-template contract', () => {
-  it('accepts canonical and compatibility inputs while rejecting unsupported values', () => {
+  it('accepts canonical inputs while rejecting unsupported or retired values', () => {
     const errors = compileTemplateContract();
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-
-    expect(errors.map(({ code }) => code)).toEqual(Array(8).fill(2322));
-    expect(messages).toEqual([
-      expect.stringContaining('"danger"'),
-      expect.stringContaining('"segmented"'),
-      expect.stringContaining('"danger"'),
-      expect.stringContaining('"chat"'),
-      expect.stringContaining('"accent"'),
-      expect.stringContaining('"lg"'),
-      expect.stringContaining('"diagonal"'),
-      expect.stringContaining('"muted"'),
+    expect(errors.map(({ code }) => code)).toEqual([
+      ...Array(10).fill(2322),
+      -998002,
     ]);
+    for (const unsupported of [
+      'danger',
+      'segmented',
+      'chat',
+      'accent',
+      'lg',
+      'diagonal',
+      'muted',
+      'default',
+      'panelClass',
+    ]) {
+      expect(messages, unsupported).toEqual(
+        expect.arrayContaining([expect.stringContaining(unsupported)]),
+      );
+    }
   });
 
   it('keeps behavior vendors and recipe-library types private', () => {

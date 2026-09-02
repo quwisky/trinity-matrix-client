@@ -89,18 +89,6 @@ export const CanonicalLayouts: Story = {
   }),
 };
 
-/** The old behavior names remain valid until existing feature templates migrate. */
-export const CompatibilityNames: Story = {
-  render: () => ({
-    template: `
-      <div class="grid gap-4 p-4">
-        <trn-empty-state data-testid="empty-canonical" variant="danger" layout="line" body="Couldn't load rooms" />
-        <trn-empty-state data-testid="empty-legacy" tone="danger" size="line" body="Couldn't load rooms" />
-      </div>
-    `,
-  }),
-};
-
 /**
  * Projected content in place of the body string — the case a string input cannot express, and
  * the reason the default slot wins over `body`.

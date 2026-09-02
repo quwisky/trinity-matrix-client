@@ -8,10 +8,6 @@ import {
   type TrnTabsPresentation,
   type TrnTabsVariant,
 } from './trn-tabs.component';
-import {
-  normalizeTrnTabsPresentation,
-  normalizeTrnTabsVariant,
-} from './trn-tabs-recipe';
 
 /**
  * This wrapper adds no behaviour of its own, so what is worth pinning is the seam: that the
@@ -35,18 +31,10 @@ import {
         [orientation]="orientation()"
         (tabActivated)="activated.push($event)"
       >
-        <trn-tab-panel
-          value="general"
-          panelClass="flex flex-col"
-          data-t="panel-general"
-        >
+        <trn-tab-panel value="general" data-t="panel-general">
           General body
         </trn-tab-panel>
-        <trn-tab-panel
-          value="access"
-          panelClass="flex flex-col"
-          data-t="panel-access"
-        >
+        <trn-tab-panel value="access" data-t="panel-access">
           Access body
         </trn-tab-panel>
       </trn-tabs>
@@ -56,9 +44,7 @@ import {
 class HostComponent {
   readonly tab = signal('general');
   readonly orientation = signal<'horizontal' | 'vertical'>('horizontal');
-  readonly variant = signal<'neutral' | 'accent' | 'default' | 'line'>(
-    'neutral',
-  );
+  readonly variant = signal<TrnTabsVariant>('neutral');
   readonly presentation = signal<TrnTabsPresentation>('pill');
   readonly tabs = signal<readonly TrnTabOption[]>([
     { value: 'general', label: 'General', testId: 'tab-general' },
@@ -89,11 +75,6 @@ describe('TrnTabsComponent', () => {
   it('separates semantic treatment from pill and line presentation', () => {
     expectTypeOf<TrnTabsVariant>().toEqualTypeOf<'neutral' | 'accent'>();
     expectTypeOf<TrnTabsPresentation>().toEqualTypeOf<'pill' | 'line'>();
-
-    expect(normalizeTrnTabsVariant('default')).toBe('neutral');
-    expect(normalizeTrnTabsVariant('line')).toBe('neutral');
-    expect(normalizeTrnTabsPresentation('default', 'line')).toBe('pill');
-    expect(normalizeTrnTabsPresentation('line', 'pill')).toBe('line');
   });
 
   it('shows the panel the active tab names, and hides the rest', async () => {
@@ -101,6 +82,7 @@ describe('TrnTabsComponent', () => {
 
     expect(panel('general').hidden).toBe(false);
     expect(panel('access').hidden).toBe(true);
+    expect(panel('general').className).toContain('flex flex-col gap-3 pt-3');
   });
 
   it('switches panels when a trigger is pressed', async () => {
@@ -213,11 +195,12 @@ describe('TrnTabsComponent', () => {
     expect(trigger('access').tabIndex).toBe(-1);
   });
 
-  it('normalizes compatibility variants onto canonical recipe state', async () => {
+  it('publishes canonical recipe state', async () => {
     const { container, host, fixture } = await build();
     const list = container.querySelector('hlm-tabs-list')!;
 
-    host.variant.set('line');
+    host.variant.set('neutral');
+    host.presentation.set('line');
     await fixture.whenStable();
     expect(list.getAttribute('data-trn-variant')).toBe('neutral');
     expect(list.getAttribute('data-trn-presentation')).toBe('line');

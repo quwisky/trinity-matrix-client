@@ -5,18 +5,6 @@ export type TrnDropdownMenuItemVariant = Extract<
   TrnVariant,
   'neutral' | 'danger'
 >;
-type LegacyDropdownMenuItemVariant = 'default' | 'destructive';
-export type TrnDropdownMenuItemVariantInput =
-  TrnDropdownMenuItemVariant | LegacyDropdownMenuItemVariant;
-
-export function normalizeTrnDropdownMenuItemVariant(
-  variant: TrnDropdownMenuItemVariantInput,
-): TrnDropdownMenuItemVariant {
-  return variant === 'danger' || variant === 'destructive'
-    ? 'danger'
-    : 'neutral';
-}
-
 /** The vendor row supplies structure and behavior; Trinity owns semantic danger ink. */
 export function trnDropdownMenuItemRecipe(
   variant: TrnDropdownMenuItemVariant,

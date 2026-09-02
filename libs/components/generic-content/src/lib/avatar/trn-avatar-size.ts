@@ -5,8 +5,6 @@ export type TrnAvatarSize = Extract<
   '2xs' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 >;
 
-export type TrnAvatarSizeInput = TrnAvatarSize | number;
-
 const avatarSizePx = {
   '2xs': 16,
   xs: 20,
@@ -33,18 +31,11 @@ function boundedExactSize(size: number): number {
 
 /** Resolves the ordinal recipe, with a bounded escape for geometry-sensitive layouts. */
 export function resolveTrnAvatarSize(
-  size: TrnAvatarSizeInput,
+  size: TrnAvatarSize,
   exact: number | null,
 ): number {
   if (exact !== null) {
     return boundedExactSize(exact);
-  }
-
-  if (typeof size === 'number') {
-    // Numeric size predates the recipe scale and historically passed its exact value to
-    // width/height. Preserve every finite value during the expansion window; only the new,
-    // explicitly constrained exactSize escape is rounded and bounded.
-    return Number.isFinite(size) ? size : avatarSizePx.xl;
   }
 
   return avatarSizePx[size];
