@@ -35,6 +35,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Controls now have a complete accessibility catalog.** One Storybook inventory covers every
+  button, choice, toggle, field, select, emoji-picker and QR-scanner recipe across all supported
+  variants, sizes, presentations, states, densities and Theme/Mode combinations. Local browser
+  gates enforce Axe, keyboard, coarse-pointer, text, graphic, focus and disabled-readability
+  contracts; emoji choices are now real named buttons and checkbox boundaries retain 3:1 contrast.
+
 - **Foundations and Generic Content now have a complete accessibility catalog.** One Storybook
   canvas inventories every public treatment, supported recipe axis, meaningful state, density and
   bounded exact-size case. All six Theme/Mode combinations now gate Axe results, browser-composited

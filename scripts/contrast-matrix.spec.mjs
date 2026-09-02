@@ -194,7 +194,7 @@ const NON_TEXT_ROLES = [
     ],
   })),
   {
-    foreground: '--trinity-control-muted-foreground',
+    foreground: '--trinity-border-control',
     on: ['--trinity-surface-canvas'],
   },
 ];

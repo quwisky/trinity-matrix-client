@@ -28,7 +28,7 @@ export function trnRadioGroupRecipe(
   size: TrnChoiceSize,
 ): string {
   if (layout === 'segmented') {
-    return 'grid grid-flow-col auto-cols-fr gap-1 rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-floating)] p-1';
+    return 'grid grid-flow-col auto-cols-fr gap-1 rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-control)] bg-[var(--trinity-surface-floating)] p-1';
   }
 
   return hlm('grid', listGap[size]);
@@ -58,7 +58,7 @@ export function trnRadioIndicatorRecipe(
     'flex shrink-0 items-center justify-center rounded-full border bg-transparent transition-[border-color,box-shadow] peer-focus-visible:border-[var(--trinity-focus-ring)] peer-focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]',
     layout === 'segmented' ? 'hidden' : '',
     size === 'sm' ? 'size-3.5' : 'size-4',
-    invalid ? 'border-danger' : 'border-[var(--trinity-border-strong)]',
+    invalid ? 'border-danger' : 'border-[var(--trinity-border-control)]',
   );
 }
 
@@ -73,7 +73,7 @@ export function trnRadioIndicatorDotRecipe(
     selected
       ? variant === 'accent'
         ? 'bg-[var(--trinity-accent)]'
-        : 'bg-[var(--trinity-state-selected-surface)]'
+        : 'bg-[var(--trinity-state-selected-foreground)]'
       : 'bg-transparent',
   );
 }

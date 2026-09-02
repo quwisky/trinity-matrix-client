@@ -16,7 +16,7 @@ const textareaSize = {
 } as const;
 
 const base =
-  'w-full min-w-0 rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-strong)] bg-transparent text-[var(--trinity-text-bright)] outline-none transition-[background-color,border-color,box-shadow] placeholder:text-[var(--trinity-text-muted)] focus-visible:border-[var(--trinity-focus-ring)] focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[matches-spartan-invalid=true]:border-danger data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-danger)] disabled:cursor-not-allowed disabled:bg-[var(--trinity-surface-raised)] disabled:opacity-[var(--trinity-disabled-opacity)]';
+  'w-full min-w-0 rounded-[var(--trinity-shape-control-radius)] border border-[var(--trinity-border-control)] bg-transparent text-[var(--trinity-text-bright)] outline-none transition-[background-color,border-color,box-shadow] placeholder:text-[var(--trinity-text-muted)] focus-visible:border-[var(--trinity-focus-ring)] focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)] data-[matches-spartan-invalid=true]:border-danger data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-danger)] disabled:cursor-not-allowed disabled:bg-[var(--trinity-surface-raised)] disabled:opacity-[var(--trinity-disabled-opacity)]';
 
 export function trnInputRecipe(
   size: TrnTextControlSize,

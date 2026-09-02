@@ -29,7 +29,7 @@ const selectedTone = {
 const presentationRecipe = {
   plain: 'border border-transparent bg-transparent',
   outline:
-    'border border-[var(--trinity-border-strong)] bg-transparent hover:border-[var(--trinity-accent)]',
+    'border border-[var(--trinity-border-control)] bg-transparent hover:border-[var(--trinity-accent)]',
 } as const;
 
 const joinedRecipe =
