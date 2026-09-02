@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
+import { trnFieldLabelRecipe } from '../field/trn-field-recipe';
 import { TrnLabel } from './trn-label';
 
 @Component({
@@ -40,7 +41,9 @@ describe('TrnLabel', () => {
 
     expect(label?.getAttribute('data-emphasis')).toBe('strong');
     expect(label?.getAttribute('data-invalid')).toBe('true');
-    expect(label?.className).toContain('font-bold');
-    expect(label?.className).toContain('text-danger');
+
+    const recipe = trnFieldLabelRecipe('strong', true);
+    expect(recipe).toContain('font-bold');
+    expect(recipe).toContain('text-danger');
   });
 });

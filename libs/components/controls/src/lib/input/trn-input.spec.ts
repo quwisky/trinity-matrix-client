@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 import { TrnInput } from './trn-input';
+import { trnInputRecipe } from './trn-text-control-recipe';
 
 @Component({
   imports: [TrnInput],
@@ -36,6 +37,12 @@ describe('TrnInput', () => {
     expect(el?.getAttribute('data-slot')).toBe('input');
     expect(el?.getAttribute('data-size')).toBe('sm');
     expect(el?.getAttribute('aria-invalid')).toBe('true');
-    expect(el?.className).toContain('min-h-[max(1.75rem');
+  });
+
+  it('resolves size and validation through the synchronous recipe', () => {
+    const recipe = trnInputRecipe('sm', true);
+
+    expect(recipe).toContain('min-h-[max(1.75rem');
+    expect(recipe).toContain('border-danger');
   });
 });

@@ -17,7 +17,7 @@
 // short of `!important` can outrank, so it is passed through its `color` input instead —
 // see the template.
 
-@layer overrides {
+@layer components {
   .trn-emoji-picker {
     display: block;
 

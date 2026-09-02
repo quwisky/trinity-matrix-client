@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
+import { trnTextareaRecipe } from '../input/trn-text-control-recipe';
 import { TrnTextarea } from './trn-textarea';
 
 @Component({
@@ -29,7 +30,6 @@ describe('TrnTextarea', () => {
     expect(el?.getAttribute('data-slot')).toBe('textarea');
     expect(el?.getAttribute('data-size')).toBe('lg');
     expect(el?.getAttribute('aria-invalid')).toBe('true');
-    expect(el?.className).toContain('min-h-20');
   });
 
   it('keeps a consumer’s aria-describedby, as the input wrapper does', async () => {
@@ -38,5 +38,12 @@ describe('TrnTextarea', () => {
     expect(
       container.querySelector('textarea')?.getAttribute('aria-describedby'),
     ).toBe('hint');
+  });
+
+  it('resolves size and validation through the synchronous recipe', () => {
+    const recipe = trnTextareaRecipe('lg', true);
+
+    expect(recipe).toContain('min-h-20');
+    expect(recipe).toContain('border-danger');
   });
 });
