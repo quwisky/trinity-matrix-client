@@ -7,7 +7,7 @@ import {
   type Navigate,
 } from '../support/app.mts';
 import { passwordLogin, registerUser } from '../support/account.mts';
-import { launchApp } from './support/launch.mts';
+import { createElectronProfile, launchApp } from './support/launch.mts';
 
 const session = synapseSession();
 
@@ -74,7 +74,8 @@ test.describe('Electron first-login notifications', () => {
     );
     expect(sent.ok()).toBe(true);
 
-    const app = await launchApp();
+    const userDataDir = createElectronProfile();
+    let app = await launchApp(userDataDir);
     try {
       // A rejected presentation made each historical event surface as the generic
       // capability warning from #490. Keeping the rejection deterministic makes
@@ -104,9 +105,13 @@ test.describe('Electron first-login notifications', () => {
       ).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('app-runtime-warnings')).toHaveCount(0);
 
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await waitForRooms(page);
-      await expect(page.getByTestId('app-runtime-warnings')).toHaveCount(0);
+      await app.close();
+      app = await launchApp(userDataDir);
+      const restartedPage = await app.firstWindow();
+      await waitForRooms(restartedPage);
+      await expect(
+        restartedPage.getByTestId('app-runtime-warnings'),
+      ).toHaveCount(0);
     } finally {
       await app.close();
     }

@@ -786,7 +786,7 @@ All notable changes to this project are documented here. The format is based on
 ### Fixed
 
 - **A fresh Electron login no longer reports one host-capability failure per historical
-  notification.** Local notification delivery now waits for each Account's first Matrix sync
+  notification.** Local notification delivery now waits for each Account's first successful sync
   transition instead of treating the SDK's initial-history `liveEvent` markers as new messages;
   genuine messages received after readiness still notify normally.
 

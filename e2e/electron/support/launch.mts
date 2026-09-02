@@ -24,11 +24,16 @@ function electronExecutable(): string {
 }
 
 /** Launch the built Trinity desktop app for an e2e run. */
-export function launchApp(): Promise<ElectronApplication> {
-  // Fresh, isolated profile per launch so the app always starts unauthenticated
-  // (the login screen) — without this the suite inherits whatever session was last
-  // persisted in Electron's default userDataDir and boots straight to /rooms.
-  const userDataDir = mkdtempSync(path.join(tmpdir(), 'trinity-e2e-'));
+export function createElectronProfile(): string {
+  return mkdtempSync(path.join(tmpdir(), 'trinity-e2e-'));
+}
+
+/** Launch the built Trinity desktop app with an isolated or explicitly retained profile. */
+export function launchApp(
+  userDataDir = createElectronProfile(),
+): Promise<ElectronApplication> {
+  // The default is a fresh profile so the app starts unauthenticated. A journey may
+  // pass one explicitly when it needs to prove behavior across a process restart.
   return electron.launch({
     args: [
       // Required when running as root / in a container (CI); harmless on a desktop.

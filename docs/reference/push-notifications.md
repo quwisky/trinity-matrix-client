@@ -80,7 +80,7 @@ It listens per account, not just for the active one, and reconciles those listen
 against the live account set, so an account that finishes its background warm start later
 still gets bound. A notification fires only when all of the following hold:
 
-- the event arrives after the Account's first sync transition, because the SDK labels
+- the event arrives after the Account's first successful sync, because the SDK labels
   historical events in the initial `/sync` batch as live while its sync state is still unset,
 - the event is live, not backfill (`data.liveEvent === true`),
 - the sender is not you,
