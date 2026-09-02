@@ -1,9 +1,6 @@
-import {
-  trn,
-  type TrnSize,
-  type TrnVariant,
-} from '@trinity/components/foundations';
+import type { TrnSize, TrnVariant } from '@trinity/components/foundations';
 import { badgeVariants } from '@trinity/helm/badge';
+import { hlm as trn } from '@trinity/helm/utils';
 
 /** Semantic status treatments supported by Trinity badges. */
 export type TrnBadgeVariant = Extract<

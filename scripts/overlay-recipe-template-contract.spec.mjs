@@ -133,8 +133,7 @@ describe('overlay recipe strict-template contract', () => {
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.map(({ code }) => code)).toEqual(Array(7).fill(2322));
     for (const value of [
       'danger',
       'xs',

@@ -134,8 +134,10 @@ describe('generic content recipe strict-template contract', () => {
     const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
-
-    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.map(({ code }) => code)).toEqual([
+      ...Array(16).fill(2322),
+      ...Array(3).fill(-998002),
+    ]);
     for (const unsupported of [
       '3xl',
       'primary',

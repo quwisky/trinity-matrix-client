@@ -1,5 +1,5 @@
 import { Directive, computed, input } from '@angular/core';
-import { classes } from '@trinity/components/foundations';
+import { classes } from '@trinity/helm/utils';
 import {
   trnBadgeRecipe,
   type TrnBadgeSize,

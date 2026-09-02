@@ -139,8 +139,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `card`                            | `libs/spartan/card`                    | role:design-system; capability:design-system    |                   1 |
 | `checkbox`                        | `libs/spartan/checkbox`                | role:design-system; capability:design-system    |                   1 |
 | `components-controls`             | `libs/components/controls`             | role:design-system; capability:design-system    |                   9 |
-| `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   2 |
-| `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                   9 |
+| `components-foundations`          | `libs/components/foundations`          | role:design-system; capability:design-system    |                   1 |
+| `components-generic-content`      | `libs/components/generic-content`      | role:design-system; capability:design-system    |                  10 |
 | `components-navigation-layout`    | `libs/components/navigation-layout`    | role:design-system; capability:design-system    |                   5 |
 | `components-overlay`              | `libs/components/overlay`              | role:design-system; capability:design-system    |                   6 |
 | `components-storybook-host`       | `libs/components/storybook-host`       | role:design-system; capability:design-system    |                   1 |

@@ -99,8 +99,8 @@ function readableInk(hex: string): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     '[attr.data-shape]': 'shape()',
-    '[attr.data-size]': 'canonicalSize()',
-    '[attr.data-exact-size]': 'requestedExactSize()',
+    '[attr.data-size]': 'size()',
+    '[attr.data-exact-size]': 'exactSize()',
     '[style.--trn-avatar-radius]': 'shapeRadius()',
   },
   imports: [HlmAvatar, HlmAvatarImage, HlmAvatarFallback],
@@ -139,9 +139,6 @@ export class AvatarComponent {
   readonly resolvedSize = computed(() =>
     resolveTrnAvatarSize(this.size(), this.exactSize()),
   );
-  protected readonly canonicalSize = this.size;
-  protected readonly requestedExactSize = this.exactSize;
-
   /** One inherited radius drives the Helm host, image, fallback and outline together. */
   readonly shapeRadius = computed(() =>
     this.shape() === 'place'

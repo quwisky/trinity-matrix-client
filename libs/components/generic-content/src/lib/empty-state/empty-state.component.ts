@@ -144,7 +144,7 @@ export class EmptyStateComponent {
   );
 
   /**
-   * The outer column's own padding, which is the whole of what {@link size} decides.
+   * The outer column's own padding, which is the whole of what {@link layout} decides.
    *
    * `py-6` for a panel — 24px, matching the four sites that already used it. Worth naming:
    * the first version of this component shipped `py-8`, which matched none of the fifteen and

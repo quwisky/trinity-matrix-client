@@ -253,6 +253,21 @@ describe('design-system contract', () => {
     expect(authored).not.toMatch(/role\??\s*:\s*['"]cancel['"]\s*\|/u);
   });
 
+  it('keeps vendor utilities out of every public entrypoint', () => {
+    const entrypoints = publicComponentRoots
+      .map((root) =>
+        readFileSync(
+          join(workspaceRoot, 'libs/components', root, 'src/index.ts'),
+          'utf8',
+        ),
+      )
+      .join('\n');
+
+    expect(entrypoints).not.toMatch(
+      /(?:@trinity\/helm|@spartan-ng|@angular\/cdk|@ng-icons|@ctrl\/ngx-emoji-mart|class-variance-authority|clsx)/u,
+    );
+  });
+
   it('ignores imports in comments and rejects selectors found only in comments', () => {
     const errors = [];
     validateDesignSystemCatalog(

@@ -9,7 +9,7 @@ import {
   DEFAULT_TOOLTIP_SVG_CLASS,
   tooltipPositionVariants,
 } from '@trinity/helm/tooltip';
-import { trn } from '@trinity/components/foundations';
+import { hlm as trn } from '@trinity/helm/utils';
 
 /**
  * Trinity owns tooltip colour semantics while Helm continues to own geometry and motion.
