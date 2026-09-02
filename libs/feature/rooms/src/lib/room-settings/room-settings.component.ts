@@ -23,7 +23,7 @@ import {
   type TrnTabOption,
 } from '@trinity/components/navigation-layout';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
-import { TrnInput } from '@trinity/components/controls';
+import { TrnInput, TrnTextarea } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { HistoryVisibility } from '@trinity/data-access/room-administration';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
@@ -103,6 +103,7 @@ const HISTORY_OPTIONS = [
     TrnTooltip,
     TrnCheckboxComponent,
     TrnInput,
+    TrnTextarea,
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,

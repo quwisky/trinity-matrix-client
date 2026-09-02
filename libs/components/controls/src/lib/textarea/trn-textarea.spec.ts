@@ -7,6 +7,8 @@ import { TrnTextarea } from './trn-textarea';
   imports: [TrnTextarea],
   template: `<textarea
     trnTextarea
+    size="lg"
+    invalid
     rows="1"
     aria-describedby="hint"
   ></textarea>`,
@@ -25,6 +27,9 @@ describe('TrnTextarea', () => {
     expect(el?.rows).toBe(1);
     // The defect control: `data-slot` arrives only through the composed kit directive.
     expect(el?.getAttribute('data-slot')).toBe('textarea');
+    expect(el?.getAttribute('data-size')).toBe('lg');
+    expect(el?.getAttribute('aria-invalid')).toBe('true');
+    expect(el?.className).toContain('min-h-20');
   });
 
   it('keeps a consumer’s aria-describedby, as the input wrapper does', async () => {

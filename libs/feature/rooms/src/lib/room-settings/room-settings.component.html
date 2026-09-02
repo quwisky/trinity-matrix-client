@@ -43,7 +43,7 @@
         <label class="room-settings__field">
           <span class="room-settings__label">Topic</span>
           <textarea
-            trnInput
+            trnTextarea
             class="room-settings__topic w-full"
             [formField]="form.topic"
             rows="3"
@@ -62,7 +62,6 @@
           <trn-select
             [options]="joinRuleOptions()"
             [formField]="form.joinRule"
-            triggerClass="w-full"
             data-testid="room-settings-join-rule"
           />
         </label>
@@ -95,7 +94,6 @@
           <trn-select
             [options]="historyOptions"
             [formField]="form.historyVisibility"
-            triggerClass="w-full"
             data-testid="room-settings-history"
           />
         </label>

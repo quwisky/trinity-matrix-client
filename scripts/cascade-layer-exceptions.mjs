@@ -17,27 +17,7 @@ export const UNLAYERED_RULESET_LEDGER = [
     'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
   ],
   [
-    'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
-    '98bbafdc882e7d9a5ab3631f83761cac250b8335e858b49ef798c84810f18ca2',
-  ],
-  [
-    'libs/components/controls/src/lib/field/field-label/trn-field-label.component.scss',
-    '6864b29e42bab3cdedfdc3a46d9b811b5d400c45a72a99c2d5e32a65b9ea39a4',
-  ],
-  [
-    'libs/components/controls/src/lib/field/field/trn-field.component.scss',
-    '68e865e37df7e9074dda4835c7cd5496e1bd96faa8e7c37403b038820bcae1c5',
-  ],
-  [
-    'libs/components/controls/src/lib/qr-scanner/qr-scanner/qr-scanner.component.scss',
-    'ce592baf2a1b21c67cad9d0e654900010bd382d3453d51b967f3644a9c663b68',
-  ],
-  [
     'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts#inline-styles',
-    'c483ff224f1484acb700866912871b7e5c89b6f8fd751c798859cf5ef8b16b4a',
-  ],
-  [
-    'libs/components/controls/src/lib/select/trn-select.component.ts#inline-styles',
     'c483ff224f1484acb700866912871b7e5c89b6f8fd751c798859cf5ef8b16b4a',
   ],
   [

@@ -5,7 +5,9 @@ import { TrnLabel } from './trn-label';
 
 @Component({
   imports: [TrnLabel],
-  template: `<label trnLabel for="pw">Password</label>`,
+  template: `<label trnLabel for="pw" emphasis="strong" invalid
+    >Password</label
+  >`,
 })
 class HostComponent {}
 
@@ -30,5 +32,15 @@ describe('TrnLabel', () => {
     expect(container.querySelector('label')?.getAttribute('data-slot')).toBe(
       'label',
     );
+  });
+
+  it('keeps emphasis separate from validation state', async () => {
+    const { container } = await render(HostComponent);
+    const label = container.querySelector('label');
+
+    expect(label?.getAttribute('data-emphasis')).toBe('strong');
+    expect(label?.getAttribute('data-invalid')).toBe('true');
+    expect(label?.className).toContain('font-bold');
+    expect(label?.className).toContain('text-danger');
   });
 });

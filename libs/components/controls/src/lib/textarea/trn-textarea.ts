@@ -1,18 +1,61 @@
-import { Directive } from '@angular/core';
-import { HlmTextarea } from '@trinity/helm/textarea';
+import {
+  booleanAttribute,
+  computed,
+  Directive,
+  inject,
+  input,
+} from '@angular/core';
+import {
+  BrnFieldControl,
+  BrnFieldControlDescribedBy,
+} from '@spartan-ng/brain/field';
+import { BrnTextarea } from '@spartan-ng/brain/textarea';
+import { classes } from '@trinity/helm/utils';
+import {
+  trnTextareaRecipe,
+  type TrnTextControlSize,
+} from '../input/trn-text-control-recipe';
 
 /**
  * Trinity's multi-line input.
  *
- * Two call sites, both of the awkward kind an element wrapper would break: one is read from
- * TypeScript through a template reference (`#ta`) as a real `HTMLTextAreaElement`, and both
- * bind a spread of native attributes and eight event handlers. So: an attribute directive.
- *
- * `aria-describedby` needs no re-publishing here for the same reason as {@link TrnInput} —
- * the kit's entry publishes it and that reaches this element.
+ * The exact native-textarea selector preserves native focus, value, form and template-reference
+ * behavior. Brain supplies field state and description wiring while this directive owns the
+ * public size and validation vocabulary plus every appearance class. See {@link TrnInput} for
+ * the shared accessibility contract.
  */
 @Directive({
-  selector: '[trnTextarea]',
-  hostDirectives: [{ directive: HlmTextarea, inputs: [], outputs: [] }],
+  selector: 'textarea[trnTextarea]',
+  host: {
+    'data-slot': 'textarea',
+    '[attr.data-size]': 'size()',
+    '[attr.aria-invalid]': 'resolvedInvalid() ? "true" : null',
+    '[attr.data-invalid]': 'resolvedInvalid() ? "true" : null',
+    '[attr.data-matches-spartan-invalid]': 'resolvedInvalid() ? "true" : null',
+  },
+  hostDirectives: [
+    {
+      directive: BrnTextarea,
+      inputs: ['id'],
+      outputs: [],
+    },
+    {
+      directive: BrnFieldControlDescribedBy,
+      inputs: ['aria-describedby'],
+      outputs: [],
+    },
+  ],
 })
-export class TrnTextarea {}
+export class TrnTextarea {
+  private readonly fieldControl = inject(BrnFieldControl);
+
+  readonly size = input<TrnTextControlSize>('md');
+  readonly invalid = input(false, { transform: booleanAttribute });
+  protected readonly resolvedInvalid = computed(
+    () => this.invalid() || Boolean(this.fieldControl.invalid()),
+  );
+
+  constructor() {
+    classes(() => trnTextareaRecipe(this.size(), this.resolvedInvalid()));
+  }
+}

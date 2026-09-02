@@ -6,7 +6,7 @@ import { TrnInput } from './trn-input';
 @Component({
   imports: [TrnInput],
   template: `
-    <input trnInput id="gw" aria-describedby="gw-help" />
+    <input trnInput id="gw" size="sm" invalid aria-describedby="gw-help" />
     <p id="gw-help">Where push notifications are sent.</p>
   `,
 })
@@ -34,5 +34,8 @@ describe('TrnInput', () => {
 
     expect(el?.tagName).toBe('INPUT');
     expect(el?.getAttribute('data-slot')).toBe('input');
+    expect(el?.getAttribute('data-size')).toBe('sm');
+    expect(el?.getAttribute('aria-invalid')).toBe('true');
+    expect(el?.className).toContain('min-h-[max(1.75rem');
   });
 });
