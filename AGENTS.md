@@ -303,12 +303,12 @@ Electron's `trinity://` scheme, which broke the desktop dark theme.
   `text-destructive`). Rendered `[innerHTML]` markdown is styled globally in
   `apps/trinity/src/rendered-markdown.scss` (not `::ng-deep`). See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
 - **Cascade roles are fixed:** `theme, base, vendor, components, utilities, overrides`. Global
-  authored rules use those roles; Angular component style tags remain temporary unlayered
-  exceptions inventoried by `scripts/styling-idiom.spec.mjs` and fingerprinted by
-  `scripts/cascade-layer-exceptions.mjs`. When a utility "does nothing", check those ledgers and
-  the compiled cascade. A `.safe-*` helper and a padding utility still claim the same longhand,
-  so compose the inset and padding in one declaration (see `.panel-header`) rather than stacking
-  them. See [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
+  authored rules and Angular component style tags use those roles. `scripts/styling-idiom.spec.mjs`
+  inventories component sources, and `scripts/cascade-layer-contract.spec.mjs` rejects any
+  unlayered ruleset. When a utility "does nothing", check the compiled cascade. A `.safe-*` helper
+  and a padding utility still claim the same longhand, so compose the inset and padding in one
+  declaration (see `.panel-header`) rather than stacking them. See
+  [docs/architecture/ui-and-theming.md](docs/architecture/ui-and-theming.md).
 - **Platform vs capability are different questions, and both predicates exist.** `isMobileOs()`
   (`@trinity/platform-native`) asks the OS and picks the INTERACTION MODEL — a bottom sheet is an
   iOS/Android convention, and a touchscreen Windows laptop should not be handed one. A

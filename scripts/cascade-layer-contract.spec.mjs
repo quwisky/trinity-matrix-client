@@ -1,8 +1,6 @@
-import { createHash } from 'node:crypto';
 import { globSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { UNLAYERED_RULESET_LEDGER } from './cascade-layer-exceptions.mjs';
 import { inlineStyleSheets } from './inline-styles.mjs';
 import {
   stripMarkupComments,
@@ -13,10 +11,9 @@ import {
 /**
  * The application has one cascade and six responsibilities.
  *
- * Angular component styles are still emitted as unlayered runtime style tags. Their complete
- * source inventory is frozen in `styling-idiom.spec.mjs`; this contract fingerprints the exact
- * comment-free ruleset of every source without an `@layer`. A new or changed unlayered rule
- * therefore fails before it can become a silent seventh precedence tier.
+ * Angular emits component styles as runtime style tags, so every authored source must name its
+ * layer itself. The complete source inventory is frozen in `styling-idiom.spec.mjs`; this
+ * contract rejects any component or inline stylesheet that could become a silent seventh tier.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -31,10 +28,6 @@ const LAYERS = [
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
 
-const normalizedRules = (source) =>
-  stripSourceComments(source).replace(/\s+/gu, ' ').trim();
-const rulesetFingerprint = (source) =>
-  createHash('sha256').update(normalizedRules(source)).digest('hex');
 function documentStyle(attribute) {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
   const body = html.match(
@@ -53,13 +46,11 @@ function ledger(name) {
   return [...body.matchAll(/'([^']+)'/gu)].map(([, file]) => file);
 }
 
-const isFullyLayered = (source) => {
+const isComponentLayered = (source) => {
   const blocks = topLevelStyleBlocks(source);
   return (
     blocks.length > 0 &&
-    blocks.every(({ prelude }) =>
-      /^@layer (?:components|overrides)$/u.test(prelude),
-    )
+    blocks.every(({ prelude }) => prelude === '@layer components')
   );
 };
 
@@ -181,7 +172,7 @@ describe('cascade layer contract', () => {
     expect(overrides).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
-  it('fingerprints every still-unlayered production ruleset as a temporary exception', () => {
+  it('assigns every authored component ruleset to the components layer', () => {
     const componentSources = globSync(
       [
         'libs/**/*.component.scss',
@@ -200,58 +191,43 @@ describe('cascade layer contract', () => {
     expect(inlineSources.map(({ file }) => file)).toEqual(inlineLedger);
     expect(
       inlineSources
-        .filter(({ css }) => isFullyLayered(css))
+        .filter(({ css }) => isComponentLayered(css))
         .map(({ file }) => file),
-    ).toEqual([
-      'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
-      'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
-    ]);
+    ).toEqual(inlineLedger);
 
-    const sharedPartialExceptions = sharedPartials.flatMap((file) => {
+    for (const file of componentSources) {
+      expect(isComponentLayered(read(file)), file).toBe(true);
+    }
+
+    for (const file of sharedPartials) {
       const consumers = sharedPartialConsumers(file, componentSources);
       expect(
         consumers.length,
         `${file} must be consumed by a component stylesheet`,
       ).toBeGreaterThan(0);
-      return consumers.some((consumer) => !isFullyLayered(read(consumer)))
-        ? [[file, rulesetFingerprint(read(file))]]
-        : [];
-    });
-
-    const actualExceptions = [
-      ...componentSources.flatMap((file) => {
-        const css = read(file);
-        return topLevelStyleBlocks(css).length > 0 && !isFullyLayered(css)
-          ? [[file, rulesetFingerprint(css)]]
-          : [];
-      }),
-      ...sharedPartialExceptions,
-      ...inlineSources.flatMap(({ file, css }) =>
-        isFullyLayered(css)
-          ? []
-          : [[`${file}#inline-styles`, rulesetFingerprint(css)]],
-      ),
-    ].sort(([left], [right]) => left.localeCompare(right));
-
-    // Keep the sweep non-vacuous while the final shared-control exceptions remain.
-    // Once their migration removes the ledger entirely, delete this assertion too.
-    expect(actualExceptions.length).toBeGreaterThan(0);
-    expect(actualExceptions).toEqual(
-      [...UNLAYERED_RULESET_LEDGER].sort(([left], [right]) =>
-        left.localeCompare(right),
-      ),
-    );
+      expect(
+        consumers.every((consumer) => isComponentLayered(read(consumer))),
+        `${file} must emit only through layered consumers`,
+      ).toBe(true);
+    }
   });
 
   it('allows only the audited reduced-motion important bridge', () => {
     const declarations = [];
-    for (const file of globSync(
-      ['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'],
-      {
-        cwd: workspaceRoot,
-      },
-    ).sort()) {
-      const source = stripSourceComments(read(file));
+    const sources = globSync(['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'], {
+      cwd: workspaceRoot,
+    })
+      .sort()
+      .map((file) => [file, read(file)]);
+    sources.push(
+      ...inlineStyleSheets().map(({ file, css }) => [
+        `${file}#inline-styles`,
+        css,
+      ]),
+    );
+
+    for (const [file, rawSource] of sources) {
+      const source = stripSourceComments(rawSource);
       for (const [, property, value] of source.matchAll(
         /([a-z-]+)\s*:\s*([^;{}]*!important)\s*;/gu,
       )) {

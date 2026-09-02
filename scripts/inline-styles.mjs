@@ -5,7 +5,7 @@ import { join } from 'node:path';
  * The CSS a component declares in an inline `styles: [...]` array.
  *
  * Trinity's third styling idiom, after a `styleUrl` stylesheet and Tailwind utilities in the
- * template. Ten wrapper components in `libs/components` use it, and every styling guard read
+ * template. Five wrapper components in `libs/components` use it, and every styling guard read
  * `.scss` files only — so those rules were counted by nothing. That is not a hypothetical
  * gap: the action sheet's safe-area rule was one of them, and composed an unlayered author
  * declaration with a layered utility — the exact shape #219 shipped. Its migration is now a
@@ -66,8 +66,7 @@ export function inlineStylesOf(rawSource) {
       if (depth > 0) index++;
     }
     // Only the string contents are CSS; the commas around them are not. All three quote
-    // forms are in the tree — nine components write `styles: [':host { … }']` on one line
-    // and one uses a template literal — and taking backticks alone found three of ten.
+    // forms are supported; taking backticks alone once missed the single-quoted rules.
     const css = [
       ...source
         .slice(start, index)

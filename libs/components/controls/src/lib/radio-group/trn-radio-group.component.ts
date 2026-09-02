@@ -71,9 +71,9 @@ export interface TrnRadioOption<T> {
   // on an inline box whose block-level grid child ignores it, so the options lose their
   // indent and the vertical padding spills into empty line boxes instead of spacing them.
   // Measured in Chromium against the real class strings — first option x=16 -> x=0 and the
-  // section 20px taller — which no test in this repo can see, since jsdom does no layout.
-  // A component STYLE rather than a Tailwind class so the spec below can assert it.
-  styles: [':host { display: block; }'],
+  // section 20px taller. Storybook's real-browser control contract pins the host display;
+  // jsdom cannot evaluate named cascade layers or layout.
+  styles: ['@layer components { :host { display: block; } }'],
   host: {
     // Routed to the inner group below; a duplicate here would name an element with no role.
     '[attr.aria-label]': 'null',
