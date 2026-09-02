@@ -1,51 +1,48 @@
-// Deliberately parallel to room-settings.component.scss rather than sharing it: the two are
-// sibling dialogs with their own BEM blocks, so each can be restyled without disturbing the
-// other. The shared parts live in the child components (see shared/avatar-field).
-.space-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  width: 340px;
-  max-width: 92vw;
-  padding: 20px 18px 16px;
-  border: 1px solid var(--trinity-divider);
-  border-radius: var(--trinity-radius-xl);
-  background: var(--trinity-sidebar);
-}
+@layer components {
+  // Deliberately parallel to room-settings.component.scss rather than sharing it: the two are
+  // sibling dialogs with their own BEM blocks, so each can be restyled without disturbing the
+  // other. The shared parts live in the child components (see shared/avatar-field).
+  .space-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 18px 16px;
+  }
 
-.space-settings__title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-}
+  .space-settings__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+  }
 
-.space-settings__form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+  .space-settings__form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
 
-.space-settings__field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+  .space-settings__field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
 
-.space-settings__label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--trinity-text-muted);
-}
+  .space-settings__label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--trinity-text-muted);
+  }
 
-.space-settings__hint,
-.space-settings__note {
-  font-size: 13px;
-  color: var(--trinity-text-muted);
-}
+  .space-settings__hint,
+  .space-settings__note {
+    font-size: 13px;
+    color: var(--trinity-text-muted);
+  }
 
-.space-settings__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 4px;
+  .space-settings__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
 }

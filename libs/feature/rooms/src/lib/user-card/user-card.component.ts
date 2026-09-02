@@ -8,7 +8,10 @@ import {
 import { toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { catchError, of, switchMap } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import {
   IdentityPresenceService,
   IdentityService,
@@ -24,7 +27,7 @@ import { initialOf } from '@trinity/util/matrix';
 @Component({
   selector: 'trn-user-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton],
+  imports: [AvatarComponent, TrnButton, TrnOverlaySurfaceDirective],
   templateUrl: './user-card.component.html',
   styleUrl: './user-card.component.scss',
 })

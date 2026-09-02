@@ -20,7 +20,10 @@ import {
   type AccountBadge,
   type AvatarShape,
 } from '@trinity/components/generic-content';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
@@ -68,6 +71,7 @@ const KIND_ICON: Record<SwitcherKind, TrnIconName> = {
     EmptyStateComponent,
     TrnIconComponent,
     AvatarComponent,
+    TrnOverlaySurfaceDirective,
     TrnSpinnerComponent,
     TrnButton,
     TrnInput,

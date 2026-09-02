@@ -29,7 +29,7 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
-import { defer, EMPTY, filter, map, switchMap } from 'rxjs';
+import { EMPTY, filter, map, switchMap } from 'rxjs';
 
 /**
  * The life of a room: creating one, starting a DM, joining from the directory, inviting
@@ -128,7 +128,10 @@ export class RoomActionsService {
   /** Browse the public directory; open a room — or select a space — joined from it. */
   onExploreRooms(): void {
     this.dialog
-      .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent)
+      .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent, {
+        ariaLabel: 'Explore rooms and spaces',
+        autoFocus: '[data-autofocus]',
+      })
       .pipe(
         filter((joined): joined is DirectoryJoin => joined !== null),
         switchMap((joined) => {
@@ -199,12 +202,11 @@ export class RoomActionsService {
   /** Pick a user (MXID or directory), open/reuse a DM with them, then select it. */
   onStartDm(): void {
     this.status.error.set(null);
-    defer(() =>
-      this.userPicker.pick({
+    this.userPicker
+      .pick$({
         title: 'Start a direct message',
         confirmLabel: 'Message',
-      }),
-    )
+      })
       .pipe(
         filter((userId): userId is string => Boolean(userId)),
         switchMap((userId) =>
@@ -243,12 +245,11 @@ export class RoomActionsService {
   /** Shared invite flow for a room or space: pick a user, invite, then toast. */
   private invitePeople(targetId: string, label: string): void {
     this.status.error.set(null);
-    defer(() =>
-      this.userPicker.pick({
+    this.userPicker
+      .pick$({
         title: `Invite to ${label}`,
         confirmLabel: 'Invite',
-      }),
-    )
+      })
       .pipe(
         filter((userId): userId is string => Boolean(userId)),
         switchMap((userId) =>

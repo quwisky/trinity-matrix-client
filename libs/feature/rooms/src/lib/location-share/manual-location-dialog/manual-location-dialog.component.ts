@@ -13,7 +13,11 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
@@ -31,6 +35,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
     TrnIconComponent,
     TrnButton,
     TrnInput,
+    TrnOverlaySurfaceDirective,
     TrnLabel,
     TrnSpinnerComponent,
   ],
@@ -77,7 +82,7 @@ export class ManualLocationDialogComponent {
             err instanceof Error
               ? err.message
               : 'Couldn’t estimate your location.',
-            { duration: 4000, variant: 'destructive' },
+            { duration: 4000, variant: 'danger' },
           );
         },
       });

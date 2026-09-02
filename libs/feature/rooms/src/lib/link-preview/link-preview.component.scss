@@ -1,57 +1,59 @@
 @use '../styles/mixins' as *;
 
-.link-preview {
-  display: flex;
-  gap: 10px;
-  margin-top: 6px;
-  max-width: 420px;
-  padding: 8px;
-  border: 1px solid var(--trinity-divider);
-  border-left-width: 3px;
-  border-radius: var(--trinity-radius-md);
-  background: var(--trinity-surface);
-  color: inherit;
-  text-decoration: none;
+@layer components {
+  .link-preview {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+    max-width: 420px;
+    padding: 8px;
+    border: 1px solid var(--trinity-divider);
+    border-left-width: 3px;
+    border-radius: var(--trinity-radius-md);
+    background: var(--trinity-surface);
+    color: inherit;
+    text-decoration: none;
 
-  &:hover {
-    background: var(--trinity-hover);
+    &:hover {
+      background: var(--trinity-hover);
+    }
   }
-}
 
-.link-preview__image {
-  width: 56px;
-  height: 56px;
-  flex-shrink: 0;
-  border-radius: var(--trinity-radius-sm);
-  object-fit: cover;
-}
+  .link-preview__image {
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+    border-radius: var(--trinity-radius-sm);
+    object-fit: cover;
+  }
 
-.link-preview__body {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-}
+  .link-preview__body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+  }
 
-.link-preview__host {
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
+  .link-preview__host {
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
 
-.link-preview__title {
-  font-size: 13px;
-  font-weight: 600;
+  .link-preview__title {
+    font-size: 13px;
+    font-weight: 600;
 
-  @include ellipsis;
-}
+    @include ellipsis;
+  }
 
-.link-preview__desc {
-  color: var(--trinity-text-muted);
-  font-size: 12px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  .link-preview__desc {
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }

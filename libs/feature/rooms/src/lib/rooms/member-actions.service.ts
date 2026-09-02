@@ -1,4 +1,5 @@
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
@@ -26,6 +27,7 @@ export class MemberActionsService {
   private readonly rooms = inject(RoomLibraryService);
   private readonly memberInfo = inject(MemberInfoService);
   private readonly userCard = inject(UserCardService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
   onSelectMember(member: MemberSummary): void {
@@ -34,7 +36,7 @@ export class MemberActionsService {
       // No need to close the list first any more: member info goes into the same slot, so
       // it REPLACES the roster rather than stacking over it. That closing step existed only
       // because the info panel was a dialog that would otherwise sit on top of the drawer.
-      void this.openMemberInfo(member, roomId);
+      this.openMemberInfo(member, roomId);
     }
   }
 
@@ -47,7 +49,7 @@ export class MemberActionsService {
    * show member info for one room while the timeline showed another. Comparing against
    * `activeRoomId` is what keeps the slot meaning "the open room's right-hand panel".
    */
-  async openMemberInfo(member: MemberSummary, roomId: string): Promise<void> {
+  openMemberInfo(member: MemberSummary, roomId: string): void {
     const direct = this.rooms.directRoomIds().has(roomId);
 
     if (roomId === this.store.activeRoomId()) {
@@ -55,10 +57,12 @@ export class MemberActionsService {
       return;
     }
 
-    const messageUserId = await this.memberInfo.open(member, roomId, direct);
-    if (messageUserId) {
-      this.startDirectMessage(messageUserId);
-    }
+    this.memberInfo
+      .open$(member, roomId, direct)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((messageUserId) => {
+        if (messageUserId) this.startDirectMessage(messageUserId);
+      });
   }
 
   /** "Message" picked in the slot's member panel — the dialog path resolves this itself. */
@@ -89,10 +93,12 @@ export class MemberActionsService {
   }
 
   /** Show the user card; if they pick "Message", open (or reuse) a DM with the user. */
-  async openUserCard(userId: string, anchor?: HTMLElement): Promise<void> {
-    const messageUserId = await this.userCard.open(userId, anchor);
-    if (messageUserId) {
-      this.startDirectMessage(messageUserId);
-    }
+  openUserCard(userId: string, anchor?: HTMLElement): void {
+    this.userCard
+      .open$(userId, anchor)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((messageUserId) => {
+        if (messageUserId) this.startDirectMessage(messageUserId);
+      });
   }
 }

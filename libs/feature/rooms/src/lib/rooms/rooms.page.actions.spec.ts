@@ -442,15 +442,15 @@ describe('RoomsPage room / DM / invite actions', () => {
   function build() {
     alertPrompt = vi.fn(() => of(null));
     toastShow = vi.fn();
-    pick = vi.fn();
+    pick = vi.fn(() => of(null));
     createRoom = vi.fn(() => of('!room:hs'));
     directIds = signal<ReadonlySet<string>>(new Set());
     createDirectMessage = vi.fn(() => of('!dm:hs'));
     inviteUser = vi.fn(() => of(undefined));
     acceptInvite = vi.fn(() => of(undefined));
     declineInvite = vi.fn(() => of(undefined));
-    userCardOpen = vi.fn().mockResolvedValue(null);
-    memberInfoOpen = vi.fn().mockResolvedValue(null);
+    userCardOpen = vi.fn(() => of(null));
+    memberInfoOpen = vi.fn(() => of(null));
     canModerate = vi.fn(() => ({
       kick: false,
       ban: false,
@@ -492,9 +492,9 @@ describe('RoomsPage room / DM / invite actions', () => {
           acceptInvite,
           declineInvite,
         }),
-        MockProvider(UserPickerService, { pick }),
-        MockProvider(UserCardService, { open: userCardOpen }),
-        MockProvider(MemberInfoService, { open: memberInfoOpen }),
+        MockProvider(UserPickerService, { pick$: pick }),
+        MockProvider(UserCardService, { open$: userCardOpen }),
+        MockProvider(MemberInfoService, { open$: memberInfoOpen }),
         MockProvider(RoomModerationService, { canModerate }),
         MockProvider(QuickSwitcherService),
         MockProvider(TimelineActionsService),
@@ -542,7 +542,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('starts a DM with the picked user and selects the DM room', async () => {
     const shell = build();
-    pick.mockResolvedValue('@bob:hs');
+    pick.mockReturnValue(of('@bob:hs'));
 
     shell.rooms.onStartDm();
     await settleWorkspace();
@@ -553,7 +553,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('does not start a DM when the picker is cancelled', async () => {
     const shell = build();
-    pick.mockResolvedValue(null);
+    pick.mockReturnValue(of(null));
 
     shell.rooms.onStartDm();
     await settleWorkspace();
@@ -563,7 +563,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('shows a user card for a mention link, starting a DM only if messaged', async () => {
     const shell = build();
-    userCardOpen.mockResolvedValue('@bob:hs'); // the viewer chose "Message"
+    userCardOpen.mockReturnValue(of('@bob:hs')); // the viewer chose "Message"
     const mention = document.createElement('a');
 
     shell.messages.onMatrixLink({
@@ -582,7 +582,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('opens no conversation when the user card is dismissed', async () => {
     const shell = build();
-    userCardOpen.mockResolvedValue(null); // dismissed
+    userCardOpen.mockReturnValue(of(null)); // dismissed
 
     // No anchor — the edit-history route, where the dialog holding the link has closed.
     shell.messages.onMatrixLink({
@@ -859,7 +859,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     const before = shell.store.rightPanel();
-    memberInfoOpen.mockResolvedValue(null);
+    memberInfoOpen.mockReturnValue(of(null));
 
     await shell.members.openMemberInfo(
       {
@@ -901,7 +901,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    pick.mockResolvedValue('@bob:hs');
+    pick.mockReturnValue(of('@bob:hs'));
 
     shell.rooms.onInviteToRoom();
     await Promise.resolve();
@@ -919,7 +919,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    pick.mockResolvedValue('@bob:hs');
+    pick.mockReturnValue(of('@bob:hs'));
     inviteUser.mockReturnValue(throwError(() => new Error('forbidden')));
 
     shell.rooms.onInviteToRoom();
@@ -944,7 +944,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    pick.mockResolvedValue('@bob:remote.example');
+    pick.mockReturnValue(of('@bob:remote.example'));
     inviteUser
       .mockReturnValueOnce(
         throwError(() => new MatrixError({ errcode: 'M_FORBIDDEN' }, 403)),
@@ -992,7 +992,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    pick.mockResolvedValue(null);
+    pick.mockReturnValue(of(null));
 
     shell.rooms.onInviteToRoom();
     await settleWorkspace();
@@ -1004,7 +1004,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
     await settleWorkspace();
-    pick.mockResolvedValue('@bob:hs');
+    pick.mockReturnValue(of('@bob:hs'));
 
     shell.rooms.onInviteToSpace();
     await settleWorkspace();

@@ -69,7 +69,7 @@ describe('AvatarFieldComponent', () => {
     expect(setAvatar).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -83,7 +83,7 @@ describe('AvatarFieldComponent', () => {
     expect(setAvatar).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -113,7 +113,7 @@ describe('AvatarFieldComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not update the space photo.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 

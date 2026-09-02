@@ -24,7 +24,11 @@ import {
 } from '@trinity/components/navigation-layout';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { TrnInput, TrnTextarea } from '@trinity/components/controls';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { HistoryVisibility } from '@trinity/data-access/room-administration';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
 import { initialOf } from '@trinity/util/matrix';
@@ -96,6 +100,7 @@ const HISTORY_OPTIONS = [
     TrnSelectComponent,
     TrnTabsComponent,
     TrnTabPanelComponent,
+    TrnOverlaySurfaceDirective,
     FormField,
     FormRoot,
     TrnButton,
@@ -388,7 +393,7 @@ export class RoomSettingsComponent implements OnInit {
           saved.length
             ? `Saved the ${saved.join(' and ')}, but couldn't update the ${failed.join(' and ')}.`
             : 'Could not save room settings.',
-          { duration: 4000, variant: 'destructive' },
+          { duration: 4000, variant: 'danger' },
         );
       });
   }

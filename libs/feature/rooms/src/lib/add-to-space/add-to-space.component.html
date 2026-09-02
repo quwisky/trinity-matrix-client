@@ -1,4 +1,11 @@
-<div class="add-to-space" data-testid="add-to-space">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  layout="dialog"
+  class="add-to-space flex flex-col"
+  data-testid="add-to-space"
+>
   <h2 class="add-to-space__title">Add rooms to {{ spaceName() }}</h2>
 
   <input
@@ -25,7 +32,7 @@
             [mxc]="candidate.avatarMxc"
             [initial]="candidate.initial"
             [name]="candidate.name"
-            [size]="24"
+            size="sm"
             [shape]="candidate.shape"
           />
           <span class="add-to-space__name" [title]="candidate.name">{{
@@ -41,7 +48,7 @@
         <!-- Two messages rather than one: "nothing matches your search" and "there is
              nothing left to add" are different facts, and the second is the happier one. -->
         <trn-empty-state
-          size="line"
+          layout="line"
           [body]="
             candidates().length
               ? 'No rooms match that search.'
@@ -56,7 +63,8 @@
     <button
       trnBtn
       type="button"
-      variant="ghost"
+      variant="secondary"
+      presentation="ghost"
       (click)="close()"
       data-testid="add-to-space-cancel"
     >

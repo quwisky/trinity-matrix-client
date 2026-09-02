@@ -1,48 +1,50 @@
-.ms-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  font-size: 0.85rem;
-  color: var(--trinity-text-muted);
-  border-bottom: 1px solid var(--trinity-divider);
+@layer components {
+  .ms-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    color: var(--trinity-text-muted);
+    border-bottom: 1px solid var(--trinity-divider);
 
-  // `trn-icon`, not `ng-icon`. The banner renders <trn-icon>, and the <ng-icon> inside it
-  // belongs to that component's template — emulated encapsulation stamps this rule as
-  // `ng-icon[_ngcontent-…]`, which a child component's element never carries, so the old
-  // selector matched nothing and the icon silently fell back to the banner's own 0.85rem.
-  // Styling the host works because nothing here competes: this icon sits in a plain flex
-  // row rather than inside a button, so no cva utility writes font-size onto the inner
-  // element, and `1em` resolves against the size set here.
-  trn-icon {
-    flex: 0 0 auto;
-    font-size: 1rem;
+    // `trn-icon`, not `ng-icon`. The banner renders <trn-icon>, and the <ng-icon> inside it
+    // belongs to that component's template — emulated encapsulation stamps this rule as
+    // `ng-icon[_ngcontent-…]`, which a child component's element never carries, so the old
+    // selector matched nothing and the icon silently fell back to the banner's own 0.85rem.
+    // Styling the host works because nothing here competes: this icon sits in a plain flex
+    // row rather than inside a button, so no cva utility writes font-size onto the inner
+    // element, and `1em` resolves against the size set here.
+    trn-icon {
+      flex: 0 0 auto;
+      font-size: 1rem;
+    }
+
+    span {
+      flex: 1 1 auto;
+    }
   }
 
-  span {
-    flex: 1 1 auto;
+  .ms-time {
+    margin-inline-start: 8px;
+    font-size: 0.75rem;
+    color: var(--trinity-text-muted);
   }
-}
 
-.ms-time {
-  margin-inline-start: 8px;
-  font-size: 0.75rem;
-  color: var(--trinity-text-muted);
-}
+  .ms-snippet {
+    white-space: normal;
 
-.ms-snippet {
-  white-space: normal;
-
-  mark {
-    background: var(--trinity-active);
-    color: inherit;
-    border-radius: 3px;
-    padding: 0 2px;
+    mark {
+      background: var(--trinity-active);
+      color: inherit;
+      border-radius: 3px;
+      padding: 0 2px;
+    }
   }
-}
 
-.ms-more {
-  display: flex;
-  justify-content: center;
-  padding: 8px 16px 16px;
+  .ms-more {
+    display: flex;
+    justify-content: center;
+    padding: 8px 16px 16px;
+  }
 }

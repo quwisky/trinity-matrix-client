@@ -13,7 +13,11 @@ import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   RoomLibraryService,
   SpaceChildrenService,
@@ -59,6 +63,7 @@ export interface AddCandidate {
     EmptyStateComponent,
     FormField,
     TrnButton,
+    TrnOverlaySurfaceDirective,
     TrnCheckboxComponent,
     TrnInput,
     AvatarComponent,
@@ -195,7 +200,7 @@ export class AddToSpaceComponent {
           saved.length
             ? `Added ${saved.join(' and ')}, but couldn’t add ${failed.join(' and ')}.`
             : `Could not add ${failed.join(' and ')}.`,
-          { duration: 4000, variant: 'destructive' },
+          { duration: 4000, variant: 'danger' },
         );
       });
   }

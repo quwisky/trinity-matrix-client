@@ -7,7 +7,7 @@ import {
 } from '@trinity/application/search';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { IdentityService } from '@trinity/data-access/identity';
@@ -124,7 +124,7 @@ describe('QuickSwitcherComponent', () => {
         }),
       ],
     });
-    const picked = TestBed.inject(QuickSwitcherService).pick();
+    const picked = firstValueFrom(TestBed.inject(QuickSwitcherService).pick$());
     const appRef = TestBed.inject(ApplicationRef);
     appRef.tick();
     await appRef.whenStable();

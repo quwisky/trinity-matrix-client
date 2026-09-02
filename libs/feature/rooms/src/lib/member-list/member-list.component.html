@@ -71,7 +71,7 @@
                 [mxc]="row.member.roomAvatarMxc"
                 [initial]="row.member.roomInitial"
                 [name]="row.member.roomDisplayName"
-                [size]="32"
+                size="lg"
                 [presence]="row.presence"
               />
               <span class="member__name">{{ row.member.roomDisplayName }}</span>
@@ -83,7 +83,7 @@
   } @empty {
     @if (filtering()) {
       <trn-empty-state
-        size="line"
+        layout="line"
         body="No members match that."
         data-testid="member-filter-empty"
       />

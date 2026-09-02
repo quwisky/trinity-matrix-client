@@ -1,7 +1,11 @@
 <!-- `[formRoot]` sets novalidate and preventDefaults the submit; a bare <form> whose only
      binding is a control triggers a native submit and a full page reload. -->
 <form
-  class="jump w-[min(90vw,20rem)] rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="sm"
+  layout="dialog"
+  class="jump p-4"
   [formRoot]="dateForm"
   (submit)="jump()"
 >
@@ -18,7 +22,13 @@
     data-testid="jump-to-date-input"
   />
   <div class="jump__actions">
-    <button trnBtn type="button" variant="ghost" (click)="cancel()">
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="ghost"
+      (click)="cancel()"
+    >
       Cancel
     </button>
     <button

@@ -5,16 +5,24 @@ import {
   input,
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 
 /** Dialog that shows a message event's raw JSON ("view source"), with a copy action. */
 @Component({
   selector: 'trn-message-source',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton],
+  imports: [TrnButton, TrnOverlaySurfaceDirective],
   template: `
     <div
-      class="flex max-h-[80vh] w-[min(90vw,40rem)] flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+      trnOverlaySurface
+      variant="neutral"
+      size="xl"
+      layout="dialog"
+      class="flex flex-col gap-3 p-4"
       data-testid="message-source"
     >
       <h2 class="text-lg font-semibold">Message source</h2>
@@ -25,14 +33,21 @@ import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
       <div class="flex justify-end gap-2">
         <button
           trnBtn
-          variant="outline"
+          variant="secondary"
+          presentation="outline"
           size="sm"
           (click)="copy()"
           data-testid="message-source-copy"
         >
           Copy
         </button>
-        <button trnBtn variant="ghost" size="sm" (click)="close()">
+        <button
+          trnBtn
+          variant="secondary"
+          presentation="ghost"
+          size="sm"
+          (click)="close()"
+        >
           Close
         </button>
       </div>

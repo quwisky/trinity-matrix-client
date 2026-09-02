@@ -38,7 +38,7 @@ async function build(
   const close = vi.fn();
   const revisions = vi.fn(() => source);
   const remove = vi.fn(() => of(undefined));
-  const confirm = vi.fn().mockResolvedValue(true);
+  const confirm = vi.fn(() => of(true));
   const toast = vi.fn();
   const media = {
     resolveMedia: vi.fn(() => of('blob:wave')),
@@ -53,7 +53,7 @@ async function build(
         removeRevision: remove,
       }),
       MockProvider(TrnDialogRef, { close }),
-      MockProvider(TrnAlertService, { confirm }),
+      MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnToastService, { show: toast }),
       { provide: MediaService, useValue: media },
     ],
@@ -405,7 +405,7 @@ describe('EditHistoryComponent', () => {
 
     it('asks before removing, and does nothing if you say no', async () => {
       const { container, remove, confirm } = await build(ownThree());
-      confirm.mockResolvedValue(false);
+      confirm.mockReturnValue(of(false));
 
       fireEvent.click(
         container.querySelector('[data-testid=revision-remove]')!,

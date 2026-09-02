@@ -126,6 +126,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room administration, search, media, and auxiliary flows now use canonical design-system
+  recipes.** Governance, members, widgets, pickers, polls, location, edit history, link previews,
+  and the remaining Room dialogs, sheets, panels, and popovers keep their existing behavior while
+  public recipes own their chrome. One-shot prompts and dialog results now use cold RxJS commands,
+  every Room component style participates in the named cascade, and no Room consumer remains on a
+  compatibility or cascade migration ledger.
+
 - **Live Conversation surfaces now compose canonical design-system recipes.** Timelines, message
   rows, the composer and its suggestion popovers, reactions and their picker/dialog, media and
   voice attachments, reply and thread summaries, the message toolbar, typing, thread views,

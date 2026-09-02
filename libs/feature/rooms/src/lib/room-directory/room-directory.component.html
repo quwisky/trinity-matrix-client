@@ -1,5 +1,9 @@
 <div
-  class="flex max-h-[80vh] w-[min(90vw,32rem)] flex-col gap-3 overflow-hidden rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="lg"
+  layout="dialog"
+  class="flex flex-col gap-3 p-4"
   data-testid="room-directory"
 >
   <h2 class="text-base font-semibold">
@@ -11,7 +15,8 @@
       trnBtn
       type="button"
       size="sm"
-      [variant]="mode() === 'rooms' ? 'default' : 'ghost'"
+      [variant]="mode() === 'rooms' ? 'primary' : 'secondary'"
+      [presentation]="mode() === 'rooms' ? 'solid' : 'ghost'"
       [attr.aria-pressed]="mode() === 'rooms'"
       (click)="setMode('rooms')"
       data-testid="directory-mode-rooms"
@@ -22,7 +27,8 @@
       trnBtn
       type="button"
       size="sm"
-      [variant]="mode() === 'spaces' ? 'default' : 'ghost'"
+      [variant]="mode() === 'spaces' ? 'primary' : 'secondary'"
+      [presentation]="mode() === 'spaces' ? 'solid' : 'ghost'"
       [attr.aria-pressed]="mode() === 'spaces'"
       (click)="setMode('spaces')"
       data-testid="directory-mode-spaces"
@@ -47,6 +53,7 @@
       [formField]="searchForm.query"
       placeholder="Search public rooms"
       autocomplete="off"
+      data-autofocus
       data-testid="directory-search"
     />
     <button
@@ -90,7 +97,7 @@
               [mxc]="room.avatarMxc"
               [name]="room.name"
               [initial]="initialFor(room)"
-              [size]="40"
+              size="xl"
               shape="place"
             />
             <span class="flex min-w-0 flex-1 flex-col">
@@ -107,7 +114,8 @@
             <button
               trnBtn
               type="button"
-              variant="outline"
+              variant="secondary"
+              presentation="outline"
               size="sm"
               [disabled]="joining() === room.roomId"
               (click)="join(room)"
@@ -123,7 +131,8 @@
         <button
           trnBtn
           type="button"
-          variant="ghost"
+          variant="secondary"
+          presentation="ghost"
           size="sm"
           class="mt-2 w-full"
           [disabled]="loading()"
@@ -140,7 +149,8 @@
     <button
       trnBtn
       type="button"
-      variant="ghost"
+      variant="secondary"
+      presentation="ghost"
       (click)="close()"
       data-testid="directory-close"
     >

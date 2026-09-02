@@ -212,7 +212,7 @@ describe('RoomDirectoryComponent', () => {
     expect(cmp.joining()).toBeNull(); // cleared for a retry
     expect(toastShow).toHaveBeenCalledWith(
       'Could not join General. Try again.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(warn).toHaveBeenCalledWith(
       '[trinity] Matrix request failed',
@@ -239,7 +239,7 @@ describe('RoomDirectoryComponent', () => {
     expect(cmp.joining()).toBeNull();
     expect(toastShow).toHaveBeenCalledWith(
       'The homeserver is unavailable. Try again.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     warn.mockRestore();
   });

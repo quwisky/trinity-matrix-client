@@ -1,56 +1,65 @@
-<header class="widget-frame__header">
-  <div class="widget-frame__heading">
-    <h2>{{ widget().name }}</h2>
-    <p>{{ embed().origin }}</p>
-  </div>
-  <button
-    trnBtn
-    type="button"
-    variant="outline"
-    data-autofocus
-    data-testid="room-widget-frame-close"
-    (click)="close()"
-  >
-    Close
-  </button>
-</header>
-
-<p class="widget-frame__notice">
-  This third-party site can use its existing cookies and storage. Trinity does
-  not grant it Matrix messages, account data, OpenID, media, client navigation,
-  or TURN access through the Widget API.
-</p>
-
-<p
-  class="widget-frame__status"
-  aria-live="polite"
-  data-testid="widget-frame-status"
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="2xl"
+  layout="fullscreen"
+  class="widget-frame grid"
 >
-  {{ statusText() }}
-</p>
+  <header class="widget-frame__header">
+    <div class="widget-frame__heading">
+      <h2>{{ widget().name }}</h2>
+      <p>{{ embed().origin }}</p>
+    </div>
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="outline"
+      data-autofocus
+      data-testid="room-widget-frame-close"
+      (click)="close()"
+    >
+      Close
+    </button>
+  </header>
 
-<iframe
-  #widgetFrame
-  class="widget-frame__iframe"
-  sandbox="allow-scripts allow-forms allow-same-origin"
-  referrerpolicy="no-referrer"
-  allow="
-    camera 'none';
-    microphone 'none';
-    geolocation 'none';
-    display-capture 'none';
-    clipboard-read 'none';
-    clipboard-write 'none';
-    fullscreen 'none';
-    payment 'none';
-    usb 'none';
-    serial 'none';
-    hid 'none';
-    idle-detection 'none';
-    screen-wake-lock 'none';
-    web-share 'none';
-    publickey-credentials-get 'none';
-    browsing-topics 'none';
-  "
-  [attr.title]="widget().name + ' widget'"
-></iframe>
+  <p class="widget-frame__notice">
+    This third-party site can use its existing cookies and storage. Trinity does
+    not grant it Matrix messages, account data, OpenID, media, client
+    navigation, or TURN access through the Widget API.
+  </p>
+
+  <p
+    class="widget-frame__status"
+    aria-live="polite"
+    data-testid="widget-frame-status"
+  >
+    {{ statusText() }}
+  </p>
+
+  <iframe
+    #widgetFrame
+    class="widget-frame__iframe"
+    sandbox="allow-scripts allow-forms allow-same-origin"
+    referrerpolicy="no-referrer"
+    allow="
+      camera 'none';
+      microphone 'none';
+      geolocation 'none';
+      display-capture 'none';
+      clipboard-read 'none';
+      clipboard-write 'none';
+      fullscreen 'none';
+      payment 'none';
+      usb 'none';
+      serial 'none';
+      hid 'none';
+      idle-detection 'none';
+      screen-wake-lock 'none';
+      web-share 'none';
+      publickey-credentials-get 'none';
+      browsing-topics 'none';
+    "
+    [attr.title]="widget().name + ' widget'"
+  ></iframe>
+</div>

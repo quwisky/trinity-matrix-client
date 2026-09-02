@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { type Observable } from 'rxjs';
 import { UserPickerComponent } from './user-picker.component';
 
-/** Heading / labels for a {@link UserPickerService.pick} presentation. */
+/** Heading / labels for a {@link UserPickerService.pick$} presentation. */
 export interface UserPickerOptions {
   title: string;
   confirmLabel: string;
@@ -21,8 +22,8 @@ export class UserPickerService {
   private readonly dialog = inject(TrnDialogService);
 
   /** Open the picker; resolves the selected MXID, or null if cancelled/dismissed. */
-  pick(options: UserPickerOptions): Promise<string | null> {
-    return this.dialog.openAndWait<string, UserPickerComponent>(
+  pick$(options: UserPickerOptions): Observable<string | null> {
+    return this.dialog.openAndWait$<string, UserPickerComponent>(
       UserPickerComponent,
       {
         ariaLabel: options.title,

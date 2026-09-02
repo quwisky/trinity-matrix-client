@@ -13,7 +13,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnCheckboxComponent } from '@trinity/components/controls';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   RoomLibraryService,
   SpaceChildrenService,
@@ -64,6 +68,7 @@ export interface ManagedChild {
     EmptyStateComponent,
     TrnButton,
     TrnCheckboxComponent,
+    TrnOverlaySurfaceDirective,
     AvatarComponent,
     TrnIconComponent,
   ],
@@ -375,7 +380,7 @@ export class ManageSpaceRoomsComponent {
         rejected?.();
         this.toast.show(failureMessage, {
           duration: 4000,
-          variant: 'destructive',
+          variant: 'danger',
         });
       },
     });

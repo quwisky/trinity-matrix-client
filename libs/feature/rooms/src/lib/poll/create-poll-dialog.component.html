@@ -1,5 +1,9 @@
 <div
-  class="flex w-[92vw] max-w-110 flex-col gap-3 rounded-xl border border-solid border-border bg-card p-4 text-card-foreground shadow-lg"
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  layout="dialog"
+  class="flex flex-col gap-3 p-4"
 >
   <h2 class="text-base font-semibold">Create poll</h2>
 
@@ -31,8 +35,10 @@
           <button
             type="button"
             trnBtn
-            variant="ghost"
-            size="icon"
+            variant="secondary"
+            presentation="ghost"
+            size="md"
+            shape="icon"
             class="shrink-0"
             aria-label="Remove option"
             (click)="removeOption($index)"
@@ -46,7 +52,8 @@
     @if (options().length < maxOptions) {
       <button
         trnBtn
-        variant="ghost"
+        variant="secondary"
+        presentation="ghost"
         size="sm"
         class="self-start"
         (click)="addOption()"
@@ -58,7 +65,9 @@
   </div>
 
   <div class="flex justify-end gap-2">
-    <button trnBtn variant="ghost" (click)="cancel()">Cancel</button>
+    <button trnBtn variant="secondary" presentation="ghost" (click)="cancel()">
+      Cancel
+    </button>
     <button
       trnBtn
       [disabled]="!valid()"

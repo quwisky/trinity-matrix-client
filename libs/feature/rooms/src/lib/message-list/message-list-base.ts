@@ -745,10 +745,16 @@ export abstract class MessageListBase {
         this.sourceSvc.open(this.roomId() ?? '', row.id);
         break;
       case 'forward':
-        void this.forwardSvc.forward(this.roomId() ?? '', row.id);
+        this.forwardSvc
+          .forward$(this.roomId() ?? '', row.id)
+          .pipe(takeUntilDestroyed(this.listDestroyRef))
+          .subscribe();
         break;
       case 'report':
-        void this.reportSvc.report(this.roomId() ?? '', row.id);
+        this.reportSvc
+          .report$(this.roomId() ?? '', row.id)
+          .pipe(takeUntilDestroyed(this.listDestroyRef))
+          .subscribe();
         break;
       case 'edit':
         this.startEdit(row);
@@ -769,7 +775,7 @@ export abstract class MessageListBase {
         this.openThread.emit(row.id);
         break;
       case 'edit-history':
-        void this.showEditHistory(row.id);
+        this.showEditHistory(row.id);
         break;
       case 'reactors':
         this.reactionsDialog
@@ -792,16 +798,17 @@ export abstract class MessageListBase {
    * here rather than being routed there, so it travels the same path as one clicked in
    * the timeline itself.
    */
-  private async showEditHistory(id: string): Promise<void> {
-    const followed = await this.editHistorySvc.openHistory(
-      this.roomId() ?? '',
-      id,
-    );
-    if (followed) {
-      // No anchor: the dialog that held the link has already closed, so a user card from
-      // here is centred rather than pinned to an element that no longer exists.
-      this.matrixLink.emit({ target: followed });
-    }
+  private showEditHistory(id: string): void {
+    this.editHistorySvc
+      .openHistory$(this.roomId() ?? '', id)
+      .pipe(takeUntilDestroyed(this.listDestroyRef))
+      .subscribe((followed) => {
+        if (followed) {
+          // No anchor: the dialog that held the link has already closed, so a user card from
+          // here is centred rather than pinned to an element that no longer exists.
+          this.matrixLink.emit({ target: followed });
+        }
+      });
   }
 
   /** Open the full emoji picker and, on a pick, react to the message with it. */

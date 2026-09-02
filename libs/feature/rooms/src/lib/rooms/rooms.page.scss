@@ -236,7 +236,7 @@
       right: 0;
       z-index: var(--trinity-z-panel);
       flex: none;
-      box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
+      box-shadow: var(--trinity-shadow-overlay);
 
       // NEITHER inset is padded here — both are per-surface now, and which surface needs
       // which is the split below.

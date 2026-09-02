@@ -119,7 +119,7 @@ describe('RoomAliasesComponent', () => {
     expect(addAlias).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -134,7 +134,7 @@ describe('RoomAliasesComponent', () => {
     expect(addAlias).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('already exists'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -212,7 +212,7 @@ describe('RoomAliasesComponent', () => {
     expect(cmp.aliases()).toEqual(['#a:hs.example']); // unchanged on failure
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not remove'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 });

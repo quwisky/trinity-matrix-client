@@ -20,7 +20,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { InvitesService } from '@trinity/data-access/room-library';
 import { describeRoomLinkPreviewFailure } from '@trinity/data-access/discovery';
@@ -42,7 +45,13 @@ export interface RoomLinkPreviewResult {
 @Component({
   selector: 'trn-room-link-preview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AvatarComponent, TrnButton, TrnIconComponent, TrnSpinnerComponent],
+  imports: [
+    AvatarComponent,
+    TrnButton,
+    TrnIconComponent,
+    TrnSpinnerComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './room-link-preview.component.html',
   styleUrl: './room-link-preview.component.scss',
   host: {

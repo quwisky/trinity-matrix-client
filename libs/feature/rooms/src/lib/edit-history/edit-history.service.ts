@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { defer, finalize, of, type Observable } from 'rxjs';
 import { EditHistoryComponent } from './edit-history.component';
 import { type MatrixLinkClickTarget } from '../matrix-link/matrix-link.directive';
 
@@ -19,24 +20,24 @@ export class EditHistoryDialogService {
   private showing = false;
 
   /** Show the versions of `eventId` in `roomId`; resolves a followed permalink, or null. */
-  async openHistory(
+  openHistory$(
     roomId: string,
     eventId: string,
-  ): Promise<MatrixLinkClickTarget | null> {
-    if (this.showing) {
-      return null; // already open — ignore the repeat trigger
-    }
-    this.showing = true;
-    try {
-      return await this.dialog.openAndWait<
-        MatrixLinkClickTarget,
-        EditHistoryComponent
-      >(EditHistoryComponent, {
-        ariaLabel: 'Edit history',
-        inputs: { roomId, eventId },
-      });
-    } finally {
-      this.showing = false;
-    }
+  ): Observable<MatrixLinkClickTarget | null> {
+    return defer(() => {
+      if (this.showing) {
+        return of(null); // already open — ignore the repeat subscription
+      }
+      this.showing = true;
+      return this.dialog
+        .openAndWait$<MatrixLinkClickTarget, EditHistoryComponent>(
+          EditHistoryComponent,
+          {
+            ariaLabel: 'Edit history',
+            inputs: { roomId, eventId },
+          },
+        )
+        .pipe(finalize(() => (this.showing = false)));
+    });
   }
 }

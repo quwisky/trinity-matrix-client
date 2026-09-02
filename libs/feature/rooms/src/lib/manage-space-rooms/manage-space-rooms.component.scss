@@ -1,58 +1,60 @@
 @use '../styles/mixins' as *;
 
-.manage-rooms {
-  @include dialog-surface(480px);
-}
+@layer components {
+  .manage-rooms {
+    @include dialog-surface;
+  }
 
-.manage-rooms__title {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-}
+  .manage-rooms__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+  }
 
-.manage-rooms__hint {
-  font-size: 13px;
-  color: var(--trinity-text-muted);
-}
+  .manage-rooms__hint {
+    font-size: 13px;
+    color: var(--trinity-text-muted);
+  }
 
-.manage-rooms__list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 360px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
+  .manage-rooms__list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 360px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 
-.manage-rooms__row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-  font-size: 14px;
-}
+  .manage-rooms__row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    font-size: 14px;
+  }
 
-.manage-rooms__name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+  .manage-rooms__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-.manage-rooms__suggested {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--trinity-text-muted);
-  cursor: pointer;
-  white-space: nowrap;
-}
+  .manage-rooms__suggested {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--trinity-text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+  }
 
-.manage-rooms__actions {
-  display: flex;
-  justify-content: flex-end;
+  .manage-rooms__actions {
+    display: flex;
+    justify-content: flex-end;
+  }
 }

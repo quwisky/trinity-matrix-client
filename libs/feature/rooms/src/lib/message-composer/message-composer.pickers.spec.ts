@@ -65,12 +65,12 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     setMobilePlatform(true);
     const { fixture, container } = await renderComposer({}, [
       MockProvider(CreatePollService, {
-        open: vi.fn(() => {
+        open$: vi.fn(() => {
           TestBed.inject(TrnDialogService).open(CreatePollDialogComponent, {
             ariaLabel: 'Create poll',
             autoFocus: '[data-testid=poll-question]',
           });
-          return Promise.resolve();
+          return of(void 0);
         }),
       }),
     ]);

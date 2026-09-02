@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { type Observable, of, throwError } from 'rxjs';
+import { lastValueFrom, type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
@@ -11,13 +11,15 @@ function setup(
   result: NewPoll | null,
   createResult: Observable<void> = of(undefined),
 ) {
-  const openAndWait = vi.fn().mockResolvedValue(result);
+  const openAndWait$ = vi.fn(() => of(result));
   const createPoll = vi.fn(() => createResult);
   const show = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       CreatePollService,
-      MockProvider(TrnDialogService, { openAndWait }),
+      MockProvider(TrnDialogService, {
+        openAndWait$: openAndWait$ as TrnDialogService['openAndWait$'],
+      }),
       MockProvider(TimelineActionsService, { createPoll }),
       MockProvider(TrnToastService, { show }),
     ],
@@ -25,19 +27,19 @@ function setup(
   return {
     svc: TestBed.inject(CreatePollService),
     createPoll,
-    openAndWait,
+    openAndWait$,
     show,
   };
 }
 
 describe('CreatePollService', () => {
   it('creates the poll returned by the dialog', async () => {
-    const { svc, createPoll, openAndWait } = setup({
+    const { svc, createPoll, openAndWait$ } = setup({
       question: 'Best fruit?',
       options: ['Apple', 'Pear'],
     });
-    await svc.open();
-    expect(openAndWait).toHaveBeenCalledWith(
+    await lastValueFrom(svc.open$());
+    expect(openAndWait$).toHaveBeenCalledWith(
       expect.any(Function),
       expect.objectContaining({
         ariaLabel: 'Create poll',
@@ -49,7 +51,7 @@ describe('CreatePollService', () => {
 
   it('does nothing when the dialog is cancelled', async () => {
     const { svc, createPoll } = setup(null);
-    await svc.open();
+    await lastValueFrom(svc.open$());
     expect(createPoll).not.toHaveBeenCalled();
   });
 
@@ -58,10 +60,10 @@ describe('CreatePollService', () => {
       { question: 'Q', options: ['A', 'B'] },
       throwError(() => new Error('boom')),
     );
-    await svc.open();
+    await lastValueFrom(svc.open$(), { defaultValue: undefined });
     expect(show).toHaveBeenCalledWith(
       'Could not create the poll.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 });

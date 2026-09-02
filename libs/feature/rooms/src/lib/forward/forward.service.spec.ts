@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { type Observable, of, throwError } from 'rxjs';
+import { lastValueFrom, type Observable, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TrnToastService } from '@trinity/components/overlay';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
@@ -12,13 +12,13 @@ function setup(
   selection: SwitcherSelection | null,
   forwardResult: Observable<void> = of(undefined),
 ) {
-  const pick = vi.fn().mockResolvedValue(selection);
+  const pick = vi.fn(() => of(selection));
   const forwardMessage = vi.fn(() => forwardResult);
   const show = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       ForwardService,
-      MockProvider(QuickSwitcherService, { pick }),
+      MockProvider(QuickSwitcherService, { pick$: pick }),
       MockProvider(TimelineActionsService, { forwardMessage }),
       MockProvider(TrnToastService, { show }),
     ],
@@ -36,7 +36,9 @@ describe('ForwardService', () => {
       roomId: '!t:hs',
     });
 
-    await svc.forward('!s:hs', '$e');
+    await lastValueFrom(svc.forward$('!s:hs', '$e'), {
+      defaultValue: undefined,
+    });
 
     expect(pick).toHaveBeenCalledWith({ activeAccountOnly: true });
   });
@@ -47,7 +49,9 @@ describe('ForwardService', () => {
       accountId: '@me:hs',
       roomId: '!t:hs',
     });
-    await svc.forward('!s:hs', '$e');
+    await lastValueFrom(svc.forward$('!s:hs', '$e'), {
+      defaultValue: undefined,
+    });
     expect(forwardMessage).toHaveBeenCalledWith('!s:hs', '$e', '!t:hs');
     expect(show).toHaveBeenCalledWith(
       'Message forwarded.',
@@ -61,13 +65,17 @@ describe('ForwardService', () => {
       accountId: '@me:hs',
       roomId: '!dm:hs',
     });
-    await svc.forward('!s:hs', '$e');
+    await lastValueFrom(svc.forward$('!s:hs', '$e'), {
+      defaultValue: undefined,
+    });
     expect(forwardMessage).toHaveBeenCalledWith('!s:hs', '$e', '!dm:hs');
   });
 
   it('does nothing when the picker is cancelled', async () => {
     const { svc, forwardMessage } = setup(null);
-    await svc.forward('!s:hs', '$e');
+    await lastValueFrom(svc.forward$('!s:hs', '$e'), {
+      defaultValue: undefined,
+    });
     expect(forwardMessage).not.toHaveBeenCalled();
   });
 
@@ -77,7 +85,9 @@ describe('ForwardService', () => {
       accountId: '@me:hs',
       userId: '@x:hs',
     });
-    await svc.forward('!s:hs', '$e');
+    await lastValueFrom(svc.forward$('!s:hs', '$e'), {
+      defaultValue: undefined,
+    });
     expect(forwardMessage).not.toHaveBeenCalled();
   });
 
@@ -90,10 +100,12 @@ describe('ForwardService', () => {
       },
       throwError(() => new Error('boom')),
     );
-    await svc.forward('!s:hs', '$e');
+    await lastValueFrom(svc.forward$('!s:hs', '$e'), {
+      defaultValue: undefined,
+    });
     expect(show).toHaveBeenCalledWith(
       'Could not forward the message.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 });

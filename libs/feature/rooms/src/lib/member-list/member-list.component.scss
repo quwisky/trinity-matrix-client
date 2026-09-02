@@ -1,142 +1,144 @@
 @use '../styles/mixins' as *;
 
-.members {
-  @include column(var(--trinity-surface-panel));
-  @include scrollable;
-  @include swipe-through;
+@layer components {
+  .members {
+    @include column(var(--trinity-surface-panel));
+    @include scrollable;
+    @include swipe-through;
 
-  width: 240px;
-  padding: 16px var(--trinity-density-shell-padding-inline);
+    width: 240px;
+    padding: 16px var(--trinity-density-shell-padding-inline);
 
-  // Windowing changes the rendered height on every scroll step, and the browser's scroll
-  // anchoring treats that as content shifting under the reader and compensates — which
-  // moves the scroll position, which moves the window again. The timeline's windowed
-  // scroller turns it off for exactly this reason.
-  overflow-anchor: none;
+    // Windowing changes the rendered height on every scroll step, and the browser's scroll
+    // anchoring treats that as content shifting under the reader and compensates — which
+    // moves the scroll position, which moves the window again. The timeline's windowed
+    // scroller turns it off for exactly this reason.
+    overflow-anchor: none;
 
-  // The avatar presence dot rings itself in the surrounding surface so it reads as an
-  // overlay — tell it what this panel's surface actually is (else it halos).
-  --trn-presence-ring: var(--trinity-surface-panel);
-}
-
-// The spacers standing in for the rows outside the window. `.members` is a FLEX column, so
-// a spacer with only an inline `height` has `flex-shrink: 1` and an automatic minimum size
-// of zero — the browser collapses both of them to nothing to fit the rendered rows, and the
-// scrollbar then measures only the slice. The timeline's windowed list guards the same way.
-.members__pad {
-  flex: 0 0 auto;
-}
-
-// The section blocks must not be squeezed either: with the spacers pinned, any remaining
-// negative free space would come out of these instead.
-.members__section {
-  flex: 0 0 auto;
-}
-
-// The filter sits above the sections and does not scroll away with them: it is short, and
-// a filter you have to scroll back up to reach is one people stop using.
-.members__filter {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  display: block;
-  padding-bottom: 8px;
-  margin-bottom: 4px;
-  background: var(--trinity-surface-panel);
-}
-
-.category {
-  @include category-label;
-}
-
-// A role group ("Admin — 2", "Moderator — 1", …). The space between groups lives in the
-// HEADER's own padding rather than in an adjacent-sibling margin, and applies to every
-// header including the first. That is a windowing requirement, not a taste: an
-// `.members__section + .members__section` margin exists only between two RENDERED
-// siblings, so it appeared and disappeared as sections entered and left the window, and
-// no per-row height model could account for it. Uniform padding is one number the model
-// can name — see HEADER_PX.
-.members__section-label {
-  box-sizing: border-box;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px var(--trinity-density-shell-padding-inline) 4px;
-}
-
-// The role icon inherits the label's muted colour (currentColor) and sits a touch
-// larger than the 11px text so it reads as an icon, not a glyph.
-.members__section-icon {
-  flex: 0 0 auto;
-  font-size: 13px;
-}
-
-.members__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.member {
-  box-sizing: border-box;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  gap: var(--trinity-density-shell-gap);
-  width: 100%;
-  padding: 6px var(--trinity-density-shell-padding-inline);
-  border: 0;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
-    color var(--trinity-duration-fast) var(--trinity-ease-standard);
-
-  &:hover {
-    background: var(--trinity-state-hover-surface);
+    // The avatar presence dot rings itself in the surrounding surface so it reads as an
+    // overlay — tell it what this panel's surface actually is (else it halos).
+    --trn-presence-ring: var(--trinity-surface-panel);
   }
 
-  &:active {
-    background: var(--trinity-state-pressed-surface);
+  // The spacers standing in for the rows outside the window. `.members` is a FLEX column, so
+  // a spacer with only an inline `height` has `flex-shrink: 1` and an automatic minimum size
+  // of zero — the browser collapses both of them to nothing to fit the rendered rows, and the
+  // scrollbar then measures only the slice. The timeline's windowed list guards the same way.
+  .members__pad {
+    flex: 0 0 auto;
   }
 
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+  // The section blocks must not be squeezed either: with the spacers pinned, any remaining
+  // negative free space would come out of these instead.
+  .members__section {
+    flex: 0 0 auto;
   }
-}
 
-/* Offline members are de-emphasised (Discord-style): fade the avatar and mute the name
+  // The filter sits above the sections and does not scroll away with them: it is short, and
+  // a filter you have to scroll back up to reach is one people stop using.
+  .members__filter {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: block;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    background: var(--trinity-surface-panel);
+  }
+
+  .category {
+    @include category-label;
+  }
+
+  // A role group ("Admin — 2", "Moderator — 1", …). The space between groups lives in the
+  // HEADER's own padding rather than in an adjacent-sibling margin, and applies to every
+  // header including the first. That is a windowing requirement, not a taste: an
+  // `.members__section + .members__section` margin exists only between two RENDERED
+  // siblings, so it appeared and disappeared as sections entered and left the window, and
+  // no per-row height model could account for it. Uniform padding is one number the model
+  // can name — see HEADER_PX.
+  .members__section-label {
+    box-sizing: border-box;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px var(--trinity-density-shell-padding-inline) 4px;
+  }
+
+  // The role icon inherits the label's muted colour (currentColor) and sits a touch
+  // larger than the 11px text so it reads as an icon, not a glyph.
+  .members__section-icon {
+    flex: 0 0 auto;
+    font-size: 13px;
+  }
+
+  .members__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .member {
+    box-sizing: border-box;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-shell-gap);
+    width: 100%;
+    padding: 6px var(--trinity-density-shell-padding-inline);
+    border: 0;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+      background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      color var(--trinity-duration-fast) var(--trinity-ease-standard);
+
+    &:hover {
+      background: var(--trinity-state-hover-surface);
+    }
+
+    &:active {
+      background: var(--trinity-state-pressed-surface);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+  }
+
+  /* Offline members are de-emphasised (Discord-style): fade the avatar and mute the name
    to a designed muted token (rather than a heavy row opacity that drops the name below
    AA contrast). Hover restores both. */
-.member--offline {
-  trn-avatar {
-    opacity: 0.55;
-  }
-
-  .member__name {
-    color: var(--trinity-text-muted);
-  }
-
-  &:hover {
+  .member--offline {
     trn-avatar {
-      opacity: 1;
+      opacity: 0.55;
     }
 
     .member__name {
-      color: var(--trinity-text);
+      color: var(--trinity-text-muted);
+    }
+
+    &:hover {
+      trn-avatar {
+        opacity: 1;
+      }
+
+      .member__name {
+        color: var(--trinity-text);
+      }
     }
   }
-}
 
-.member__name {
-  @include ellipsis;
+  .member__name {
+    @include ellipsis;
 
-  font-size: 14px;
-  color: var(--trinity-text);
+    font-size: 14px;
+    color: var(--trinity-text);
+  }
 }

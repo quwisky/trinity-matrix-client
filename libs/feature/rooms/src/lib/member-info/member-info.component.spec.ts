@@ -60,8 +60,8 @@ async function build(
   const kick = opts.kick ?? vi.fn(() => of(undefined));
   const ban = opts.ban ?? vi.fn(() => of(undefined));
   const setPowerLevel = opts.setPowerLevel ?? vi.fn(() => of(undefined));
-  const alertPrompt = opts.alertPrompt ?? vi.fn().mockResolvedValue('');
-  const alertConfirm = opts.alertConfirm ?? vi.fn().mockResolvedValue(true);
+  const alertPrompt = opts.alertPrompt ?? vi.fn(() => of(''));
+  const alertConfirm = opts.alertConfirm ?? vi.fn(() => of(true));
   const ignore = opts.ignore ?? vi.fn(() => of(undefined));
   const unignore = opts.unignore ?? vi.fn(() => of(undefined));
   const createDirectMessage =
@@ -120,8 +120,8 @@ async function build(
         unignore,
       }),
       MockProvider(TrnAlertService, {
-        prompt: alertPrompt,
-        confirm: alertConfirm,
+        prompt$: alertPrompt,
+        confirm$: alertConfirm,
       }),
     ],
   });
@@ -269,7 +269,7 @@ describe('MemberInfoComponent', () => {
     expect(close).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not start verification'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -382,7 +382,7 @@ describe('MemberInfoComponent', () => {
     );
     expect(toastShow).toHaveBeenCalledWith(
       'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -396,7 +396,7 @@ describe('MemberInfoComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -410,7 +410,7 @@ describe('MemberInfoComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -430,7 +430,7 @@ describe('MemberInfoComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not copy the user ID. It is selected above; copy it manually.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -494,7 +494,7 @@ describe('MemberInfoComponent', () => {
   });
 
   it('kicks the member with the entered reason and closes on confirm', async () => {
-    const alertPrompt = vi.fn().mockResolvedValue('spam');
+    const alertPrompt = vi.fn(() => of('spam'));
     const { cmp, kick, close } = await build(member(), {
       canKick: true,
       alertPrompt,
@@ -507,7 +507,7 @@ describe('MemberInfoComponent', () => {
   });
 
   it('does not kick when the confirmation is cancelled', async () => {
-    const alertPrompt = vi.fn().mockResolvedValue(null); // cancelled
+    const alertPrompt = vi.fn(() => of(null)); // cancelled
     const { cmp, kick } = await build(member(), { canKick: true, alertPrompt });
 
     await cmp.kick();
@@ -516,7 +516,7 @@ describe('MemberInfoComponent', () => {
   });
 
   it('bans the member (no reason → undefined) and closes on confirm', async () => {
-    const alertPrompt = vi.fn().mockResolvedValue('');
+    const alertPrompt = vi.fn(() => of(''));
     const { cmp, ban, close } = await build(member(), {
       canBan: true,
       alertPrompt,
@@ -530,7 +530,7 @@ describe('MemberInfoComponent', () => {
 
   it('toasts and stays open when a moderation action fails', async () => {
     const kick = vi.fn(() => throwError(() => new Error('nope')));
-    const alertPrompt = vi.fn().mockResolvedValue('');
+    const alertPrompt = vi.fn(() => of(''));
     const { cmp, close, toastShow } = await build(member(), {
       canKick: true,
       kick,
@@ -541,7 +541,7 @@ describe('MemberInfoComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(close).not.toHaveBeenCalled();
   });
@@ -587,8 +587,8 @@ describe('MemberInfoComponent', () => {
     expect(close).toHaveBeenCalledWith(null);
   });
 
-  it('styles a demotion from the live target role as destructive', async () => {
-    const alertConfirm = vi.fn().mockResolvedValue(false);
+  it('styles a demotion from the live target role as danger', async () => {
+    const alertConfirm = vi.fn(() => of(false));
     const { cmp } = await build(member({ powerLevel: 0 }), {
       canSetPower: true,
       myPower: 100,
@@ -599,13 +599,13 @@ describe('MemberInfoComponent', () => {
     await cmp.setRole({ label: 'Moderator', level: 50 });
 
     expect(alertConfirm).toHaveBeenCalledWith(
-      expect.objectContaining({ destructive: true }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
   it('does not change the role when the confirmation is cancelled', async () => {
     const setPowerLevel = vi.fn(() => of(undefined));
-    const alertConfirm = vi.fn().mockResolvedValue(false);
+    const alertConfirm = vi.fn(() => of(false));
     const { cmp } = await build(member({ powerLevel: 0 }), {
       canSetPower: true,
       myPower: 100,
