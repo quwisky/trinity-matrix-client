@@ -93,6 +93,13 @@ describe('cascade layer contract', () => {
       "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);\n" +
         "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
     );
+    expect(
+      stripSourceComments(
+        read('libs/components/storybook-host/.storybook/global-styles.scss'),
+      ),
+    ).toMatch(
+      /@import '\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@angular\/cdk\/overlay-prebuilt\.css'\s+layer\(vendor\);/,
+    );
 
     for (const [file, allowed] of [
       [

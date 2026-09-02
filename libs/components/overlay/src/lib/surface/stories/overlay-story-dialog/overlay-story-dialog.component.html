@@ -1,0 +1,22 @@
+<section
+  trnOverlaySurface
+  variant="neutral"
+  size="md"
+  [layout]="layout()"
+  class="grid gap-5 p-6"
+  data-testid="story-dialog-surface"
+>
+  <h2 class="text-lg font-semibold">{{ title() }}</h2>
+  <p class="text-sm text-muted-foreground">
+    Placement and surface treatment are independent.
+  </p>
+  <button
+    trnBtn
+    variant="primary"
+    type="button"
+    data-testid="story-dialog-close"
+    (click)="close()"
+  >
+    Close dialog
+  </button>
+</section>

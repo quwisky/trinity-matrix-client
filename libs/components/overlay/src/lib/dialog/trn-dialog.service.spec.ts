@@ -63,6 +63,48 @@ describe('TrnDialogService', () => {
     expect(await waited).toBeNull();
   });
 
+  it('keeps the reactive open command cold and finite', async () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const command = svc.openAndWait$<string, TestDialogComponent>(
+      TestDialogComponent,
+      { inputs: { label: 'Cold' } },
+    );
+
+    expect(svc.hasOpen()).toBe(false);
+    const result = firstValueFrom(command);
+    expect(svc.hasOpen()).toBe(true);
+    TestBed.inject(ApplicationRef).tick();
+    clickClose();
+
+    expect(await result).toBe('Cold');
+    expect(svc.hasOpen()).toBe(false);
+  });
+
+  it('uses canonical placement ahead of temporary side compatibility', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open(TestDialogComponent, {
+      placement: 'center',
+      side: 'full-screen',
+    });
+    TestBed.inject(ApplicationRef).tick();
+
+    const pane = document.querySelector<HTMLElement>('.cdk-overlay-pane');
+    expect(pane?.style.width).toBe('');
+    expect(pane?.style.height).toBe('');
+
+    ref.close();
+  });
+
+  it('opens a canonically named inline-end panel', () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const ref = svc.open(TestDialogComponent, { placement: 'inline-end' });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(document.querySelector('.cdk-global-overlay-wrapper')).toBeTruthy();
+
+    ref.close();
+  });
+
   it('opens an end-aligned side panel (side: "end") that still renders and closes', async () => {
     const svc = TestBed.inject(TrnDialogService);
     const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {

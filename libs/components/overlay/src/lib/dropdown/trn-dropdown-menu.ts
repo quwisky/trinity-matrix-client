@@ -8,13 +8,16 @@ import {
   Component,
   Directive,
   booleanAttribute,
+  computed,
   effect,
+  forwardRef,
   inject,
   input,
   output,
   TemplateRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MENU_SIDE, createMenuPosition } from '@spartan-ng/brain/core';
 import {
   HlmDropdownMenu,
   HlmDropdownMenuCheckbox,
@@ -31,6 +34,21 @@ import {
   HlmDropdownMenuSubTrigger,
   HlmDropdownMenuTrigger,
 } from '@trinity/helm/dropdown-menu';
+import { classes } from '@trinity/helm/utils';
+import type {
+  TrnOverlayAlign,
+  TrnOverlaySide,
+} from '../position/trn-overlay-position';
+import {
+  normalizeTrnDropdownMenuItemVariant,
+  trnDropdownMenuItemRecipe,
+  type TrnDropdownMenuItemVariantInput,
+} from './trn-dropdown-menu-recipe';
+
+export type {
+  TrnDropdownMenuItemVariant,
+  TrnDropdownMenuItemVariantInput,
+} from './trn-dropdown-menu-recipe';
 
 /** Trinity-owned dropdown surface. */
 @Directive({
@@ -44,26 +62,40 @@ export class TrnDropdownMenu {}
 /** Trinity-owned dropdown trigger and its open/close lifecycle. */
 @Directive({
   selector: '[trnDropdownMenuTrigger]',
+  providers: [
+    {
+      provide: MENU_SIDE,
+      useExisting: forwardRef(() => TrnDropdownMenuTrigger),
+    },
+  ],
   hostDirectives: [
     {
       directive: HlmDropdownMenuTrigger,
-      inputs: ['align', 'side'],
+      inputs: [],
       outputs: [],
     },
   ],
 })
 export class TrnDropdownMenuTrigger {
   private readonly cdkTrigger = inject(CdkMenuTrigger, { host: true });
+  private readonly positions = computed(() =>
+    createMenuPosition(this.align(), this.side()),
+  );
 
   readonly trnDropdownMenuTrigger = input<TemplateRef<unknown> | null>(null);
   readonly trnDropdownMenuTriggerData = input<unknown>();
   readonly trnDropdownMenuOpened = output<void>();
   readonly trnDropdownMenuClosed = output<void>();
+  readonly align = input<TrnOverlayAlign>('start');
+  readonly side = input<TrnOverlaySide>('bottom');
 
   constructor() {
     effect(() => {
       this.cdkTrigger.menuTemplateRef = this.trnDropdownMenuTrigger();
       this.cdkTrigger.menuData = this.trnDropdownMenuTriggerData();
+    });
+    effect(() => {
+      this.cdkTrigger.menuPosition = this.positions();
     });
     this.cdkTrigger.opened
       .pipe(takeUntilDestroyed())
@@ -85,12 +117,24 @@ export class TrnDropdownMenuTrigger {
   hostDirectives: [
     {
       directive: HlmDropdownMenuItem,
-      inputs: ['disabled', 'variant', 'inset'],
+      inputs: ['disabled', 'inset'],
       outputs: [],
     },
   ],
+  host: {
+    '[attr.data-trn-variant]': 'normalizedVariant()',
+  },
 })
-export class TrnDropdownMenuItem {}
+export class TrnDropdownMenuItem {
+  protected readonly normalizedVariant = computed(() =>
+    normalizeTrnDropdownMenuItemVariant(this.variant()),
+  );
+  readonly variant = input<TrnDropdownMenuItemVariantInput>('neutral');
+
+  constructor() {
+    classes(() => trnDropdownMenuItemRecipe(this.normalizedVariant()));
+  }
+}
 
 @Directive({
   selector: '[trnDropdownMenuLabel]',
@@ -172,26 +216,40 @@ export class TrnDropdownMenuCheckbox {
 
 @Directive({
   selector: '[trnDropdownMenuSubTrigger]',
+  providers: [
+    {
+      provide: MENU_SIDE,
+      useExisting: forwardRef(() => TrnDropdownMenuSubTrigger),
+    },
+  ],
   hostDirectives: [
     {
       directive: HlmDropdownMenuSubTrigger,
-      inputs: ['align', 'side'],
+      inputs: [],
       outputs: [],
     },
   ],
 })
 export class TrnDropdownMenuSubTrigger {
   private readonly cdkTrigger = inject(CdkMenuTrigger, { host: true });
+  private readonly positions = computed(() =>
+    createMenuPosition(this.align(), this.side()),
+  );
 
   readonly trnDropdownMenuSubTrigger = input<TemplateRef<unknown> | null>(null);
   readonly trnDropdownMenuTriggerData = input<unknown>();
   readonly trnDropdownMenuSubOpened = output<void>();
   readonly trnDropdownMenuSubClosed = output<void>();
+  readonly align = input<TrnOverlayAlign>('start');
+  readonly side = input<TrnOverlaySide>('right');
 
   constructor() {
     effect(() => {
       this.cdkTrigger.menuTemplateRef = this.trnDropdownMenuSubTrigger();
       this.cdkTrigger.menuData = this.trnDropdownMenuTriggerData();
+    });
+    effect(() => {
+      this.cdkTrigger.menuPosition = this.positions();
     });
     this.cdkTrigger.opened
       .pipe(takeUntilDestroyed())

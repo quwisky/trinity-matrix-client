@@ -1,4 +1,5 @@
 import { type Meta, type StoryObj } from '@storybook/angular-vite';
+import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 import { TrnAnchoredOverlayDirective } from './trn-anchored-overlay.directive';
 
 /**
@@ -22,7 +23,9 @@ const meta: Meta<TrnAnchoredOverlayDirective> = {
   decorators: [
     (story) => ({
       ...story(),
-      moduleMetadata: { imports: [TrnAnchoredOverlayDirective] },
+      moduleMetadata: {
+        imports: [TrnAnchoredOverlayDirective, TrnOverlaySurfaceDirective],
+      },
     }),
   ],
   parameters: {
@@ -41,7 +44,14 @@ export default meta;
 type Story = StoryObj<TrnAnchoredOverlayDirective>;
 
 const layer = (label: string) => `
-  <div class="rounded-md border border-border bg-card p-3 text-sm shadow-lg">
+  <div
+    trnOverlaySurface
+    variant="neutral"
+    size="sm"
+    layout="popover"
+    class="p-3 text-sm"
+    data-testid="anchored-surface"
+  >
     ${label}
   </div>`;
 

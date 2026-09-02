@@ -8,7 +8,7 @@ function render(): void {
 }
 
 function clickButton(text: string): void {
-  [...document.querySelectorAll<HTMLButtonElement>('button[hlmBtn]')]
+  [...document.querySelectorAll<HTMLButtonElement>('button[trnBtn]')]
     .find((b) => b.textContent?.trim() === text)
     ?.click();
 }
@@ -153,6 +153,46 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(row?.classList.contains('text-destructive')).toBe(false);
   });
 
+  it('keeps semantic appearance separate from cancel behavior', () => {
+    const svc = TestBed.inject(TrnActionSheetService);
+    const handler = vi.fn();
+    svc.open({
+      buttons: [
+        {
+          text: 'Discard',
+          role: 'cancel',
+          variant: 'danger',
+          handler,
+          testId: 'danger-cancel',
+        },
+      ],
+    });
+    render();
+
+    const row = document.querySelector('[data-testid=danger-cancel]');
+    expect(row?.getAttribute('data-trn-variant')).toBe('danger');
+    clickButton('Discard');
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('lets the canonical variant override temporary destructive appearance', () => {
+    const svc = TestBed.inject(TrnActionSheetService);
+    svc.open({
+      buttons: [
+        {
+          text: 'Keep neutral',
+          role: 'destructive',
+          variant: 'neutral',
+          testId: 'neutral-legacy',
+        },
+      ],
+    });
+    render();
+
+    const row = document.querySelector('[data-testid=neutral-legacy]');
+    expect(row?.getAttribute('data-trn-variant')).toBe('neutral');
+  });
+
   it('puts every row in a scroller rather than clipping the list', () => {
     // Thirteen rows is what a message sheet actually offers. The component was one
     // `overflow-hidden` box with no height bound, and CDK clamps the pane to the
@@ -173,7 +213,7 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(last).not.toBeNull();
     const scroller = last?.closest('.overflow-y-auto');
     expect(scroller).not.toBeNull();
-    expect(scroller?.querySelectorAll('button[hlmBtn]').length).toBe(13);
+    expect(scroller?.querySelectorAll('button[trnBtn]').length).toBe(13);
   });
 
   it('draws a rule before a row that asks for one', () => {

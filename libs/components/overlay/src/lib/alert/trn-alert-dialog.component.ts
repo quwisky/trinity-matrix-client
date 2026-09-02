@@ -5,8 +5,9 @@ import {
   signal,
 } from '@angular/core';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HlmButton } from '@trinity/helm/button';
-import { HlmInput } from '@trinity/helm/input';
+import { TrnButton, TrnInput } from '@trinity/components/controls';
+import type { TrnAlertVariant } from './trn-alert.service';
+import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';
 
 /** Payload for {@link TrnAlertDialogComponent}, built by TrnAlertService. */
 export interface AlertDialogData {
@@ -15,7 +16,7 @@ export interface AlertDialogData {
   message?: string;
   confirmText: string;
   cancelText: string;
-  destructive: boolean;
+  variant: TrnAlertVariant;
   placeholder?: string;
   inputLabel?: string;
   value?: string;
@@ -35,10 +36,15 @@ export type AlertDialogResult = boolean | string | null;
   selector: 'trn-alert-dialog',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [HlmButton, HlmInput],
+  imports: [TrnButton, TrnInput, TrnOverlaySurfaceDirective],
   template: `
     <div
-      class="w-[min(90vw,26rem)] rounded-lg border border-solid border-border bg-card p-6 text-card-foreground shadow-lg"
+      trnOverlaySurface
+      variant="neutral"
+      size="md"
+      layout="dialog"
+      class="p-6"
+      data-testid="alert-surface"
     >
       <h2 class="text-lg leading-none font-semibold tracking-tight">
         {{ data.header }}
@@ -50,7 +56,7 @@ export type AlertDialogResult = boolean | string | null;
       }
       @if (data.kind === 'prompt') {
         <input
-          hlmInput
+          trnInput
           class="mt-4"
           [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"
@@ -63,16 +69,18 @@ export type AlertDialogResult = boolean | string | null;
       }
       <div class="mt-6 flex justify-end gap-2">
         <button
-          hlmBtn
-          variant="outline"
+          trnBtn
+          variant="secondary"
+          presentation="outline"
           (click)="onCancel()"
           data-testid="alert-cancel"
         >
           {{ data.cancelText }}
         </button>
         <button
-          hlmBtn
-          [variant]="data.destructive ? 'destructive' : 'default'"
+          trnBtn
+          [variant]="data.variant === 'danger' ? 'danger' : 'primary'"
+          [attr.data-trn-variant]="data.variant"
           (click)="onConfirm()"
           data-testid="alert-confirm"
         >
@@ -83,9 +91,9 @@ export type AlertDialogResult = boolean | string | null;
   `,
 })
 export class TrnAlertDialogComponent {
-  protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
   private readonly ref =
     inject<DialogRef<AlertDialogResult, TrnAlertDialogComponent>>(DialogRef);
+  protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
   protected readonly value = signal(this.data.value ?? '');
 
   protected onInput(event: Event): void {

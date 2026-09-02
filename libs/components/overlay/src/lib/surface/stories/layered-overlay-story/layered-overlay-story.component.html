@@ -1,0 +1,41 @@
+<div class="grid max-w-2xl gap-6 p-6">
+  <section
+    trnOverlaySurface
+    variant="neutral"
+    size="sm"
+    layout="popover"
+    class="p-4"
+    data-testid="document-overlay-surface"
+  >
+    Document surface
+  </section>
+
+  <button
+    #anchor
+    trnBtn
+    variant="secondary"
+    presentation="outline"
+    type="button"
+    data-testid="anchored-overlay-trigger"
+    (click)="open.update((value) => !value)"
+  >
+    Toggle portal surface
+  </button>
+  <ng-template
+    [trnAnchoredOverlay]="anchor"
+    [(open)]="open"
+    side="bottom"
+    align="start"
+  >
+    <section
+      trnOverlaySurface
+      variant="neutral"
+      size="sm"
+      layout="popover"
+      class="p-4"
+      data-testid="portal-overlay-surface"
+    >
+      Portal surface
+    </section>
+  </ng-template>
+</div>

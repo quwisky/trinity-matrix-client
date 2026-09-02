@@ -7,6 +7,14 @@ import { HlmToaster } from '@trinity/helm/sonner';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [HlmToaster],
   host: { class: 'contents' },
-  template: `<hlm-toaster />`,
+  template: `<hlm-toaster [style]="toastStyle" />`,
 })
-export class TrnToasterComponent {}
+export class TrnToasterComponent {
+  /** Keep Sonner's runtime-injected portal on Trinity's governed surface tokens. */
+  protected readonly toastStyle = {
+    '--normal-bg': 'var(--trinity-surface-raised)',
+    '--normal-text': 'var(--trinity-text-bright)',
+    '--normal-border': 'var(--trinity-border-subtle)',
+    '--border-radius': 'var(--trinity-shape-overlay-radius)',
+  };
+}

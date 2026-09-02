@@ -9,7 +9,11 @@ import { TrnToastService } from './trn-toast.service';
 // same module the service imports from (@spartan-ng/brain/sonner, NOT ngx-sonner — see
 // the service header); trn-toast-render.spec.ts covers the real producer→toaster wiring.
 vi.mock('@spartan-ng/brain/sonner', () => ({
-  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+  toast: Object.assign(vi.fn(), {
+    success: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+  }),
 }));
 
 describe('TrnToastService', () => {
@@ -40,9 +44,24 @@ describe('TrnToastService', () => {
     expect(toast).not.toHaveBeenCalled();
   });
 
-  it('routes a destructive variant to toast.error', () => {
-    svc.show('Failed', { variant: 'destructive', duration: 5000 });
+  it('routes canonical danger and warning variants', () => {
+    svc.show('Failed', { variant: 'danger', duration: 5000 });
     expect(toast.error).toHaveBeenCalledWith('Failed', { duration: 5000 });
+
+    svc.show('Check this', { variant: 'warning' });
+    expect(toast.warning).toHaveBeenCalledWith('Check this', {
+      duration: 3000,
+    });
+  });
+
+  it('preserves temporary default and destructive aliases', () => {
+    svc.show('Legacy neutral', { variant: 'default' });
+    expect(toast).toHaveBeenCalledWith('Legacy neutral', { duration: 3000 });
+
+    svc.show('Legacy danger', { variant: 'destructive' });
+    expect(toast.error).toHaveBeenCalledWith('Legacy danger', {
+      duration: 3000,
+    });
   });
 
   it('maps duration 0 (keep until dismissed) to Infinity', () => {
@@ -67,9 +86,10 @@ describe('TrnToastService', () => {
 
     svc.show('Plain', { action: withAction });
     svc.show('Saved', { variant: 'success', action: withAction });
+    svc.show('Check this', { variant: 'warning', action: withAction });
     svc.show('Failed', { variant: 'destructive', action: withAction });
 
-    for (const spy of [toast, toast.success, toast.error]) {
+    for (const spy of [toast, toast.success, toast.warning, toast.error]) {
       expect(spy).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
@@ -100,7 +120,7 @@ describe('TrnToastService', () => {
 
     try {
       svc.show('Could not open Encryption. Please try again.', {
-        variant: 'destructive',
+        variant: 'danger',
       });
 
       expect(announce).toHaveBeenCalledWith(

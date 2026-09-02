@@ -13,11 +13,15 @@ import {
 import { Overlay, type OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
 import { createMenuPosition } from '@spartan-ng/brain/core';
+import type {
+  TrnOverlayAlign,
+  TrnOverlaySide,
+} from '../position/trn-overlay-position';
 
 /** Which side of the anchor the layer sits on. */
-export type TrnAnchoredSide = 'top' | 'bottom' | 'left' | 'right';
+export type TrnAnchoredSide = TrnOverlaySide;
 /** Where along that side it lines up. */
-export type TrnAnchoredAlign = 'start' | 'center' | 'end';
+export type TrnAnchoredAlign = TrnOverlayAlign;
 
 /**
  * A floating layer positioned against an element, rendered outside the DOM it belongs to.

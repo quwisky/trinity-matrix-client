@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Overlays now expose one bounded Trinity vocabulary.** Dialogs, panels, sheets and popovers
+  share semantic surface, ordinal size and structural layout recipes while placement remains a
+  separate behavior choice. Dropdown items, alerts, action sheets and toasts use canonical
+  neutral, status and danger variants with existing spellings retained during migration; dialog,
+  confirm and prompt results also have cold, finite RxJS commands. Storybook and the application
+  resolve the same recipes inside both document and CDK portal layers.
+
 - **Navigation and layout primitives now separate meaning from structure.** Tabs expose neutral or
   accent treatment independently from pill or line presentation; page headers expose the same
   semantic treatments independently from page or toolbar layout; cards offer only neutral/muted

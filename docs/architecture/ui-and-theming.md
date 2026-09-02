@@ -340,21 +340,45 @@ can be given Trinity's semantics, rather than by widening this handle.
 ```ts
 const ref = this.dialog.open(MyComponent, {
   inputs: { roomId },
-  side: 'end',
+  placement: 'inline-end',
   autoFocus: '[data-autofocus]',
 });
 ```
 
-`side: 'end'` pins a full-height right-edge side panel; that is what the thread, pinned and
-message-search panels use, sized `w-screen md:w-[480px]` so they go full-screen on mobile.
+`placement: 'inline-end'` pins a full-height logical-end panel. Dialog placement, anchored
+`side`/`align`, focus and lifecycle are behavior choices; they never select a visual treatment.
+The temporary `side: 'end'|'full-screen'` spellings remain equivalent while the feature
+consumers migrate in #397-#401.
+
+Every overlay surface uses `trnOverlaySurface`, whose three bounded axes stay independent:
+
+- `variant="neutral|accent"` selects semantic color and elevation tokens;
+- `size="sm|md|lg|xl"` selects an ordinal inline-size token; and
+- `layout="dialog|sheet|popover|panel|fullscreen"` selects structural geometry.
+
+The directive owns background, foreground, border, radius and elevation for both document and
+CDK-portal content. Components own only their interior layout, typography and intentionally
+composed safe-area padding. Storybook imports CDK's overlay baseline into the same `vendor`
+cascade layer as the application, so a recipe resolves identically in either host.
+
+The imperative wrappers expose the same Trinity vocabulary instead of vendor variants:
+
+- dropdown items are `neutral|danger` (`default|destructive` are temporary aliases);
+- alerts and action-sheet buttons are `neutral|danger`, with cancellation behavior separate
+  from appearance; and
+- toasts are `neutral|success|warning|danger` (`default|destructive` remain aliases).
+
+One-shot result APIs are cold, finite Observables: `openAndWait$()`, `confirm$()` and `prompt$()`
+do not open an overlay until subscribed and emit once. Their Promise counterparts are temporary
+compatibility methods, implemented by delegating to those Observable commands.
 
 !!! warning "Two dialog traps"
 
-    **A CDK dialog panel is transparent.** Every dialog component paints its own surface, and
-    one that forgets renders as text floating over the timeline — easy to miss in review,
-    because the layout is correct in isolation and only the background is wrong. Use the
-    `dialog-surface($width)` mixin from
-    [`_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss).
+    **A CDK dialog panel is transparent.** Every dialog component paints its own surface with
+    `trnOverlaySurface`, and one that forgets renders as text floating over the timeline — easy
+    to miss in review because the layout is correct in isolation and only the background is
+    wrong. Feature-local `dialog-surface()` remains compatibility code only until #397-#401
+    migrate the existing consumers.
 
     **`autoFocus` defaults to CDK's `'first-tabbable'`**, which is wrong for any dialog whose
     header carries a Cancel or Close button ahead of the field the user came to type in — the

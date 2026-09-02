@@ -1,10 +1,13 @@
 import { Injectable, inject } from '@angular/core';
 import { Dialog } from '@angular/cdk/dialog';
-import { firstValueFrom } from 'rxjs';
+import type { TrnVariant } from '@trinity/components/foundations';
+import { defer, firstValueFrom, map, take, type Observable } from 'rxjs';
 import {
   TrnAlertDialogComponent,
   type AlertDialogData,
 } from './trn-alert-dialog.component';
+
+export type TrnAlertVariant = Extract<TrnVariant, 'neutral' | 'danger'>;
 
 export interface ConfirmOptions {
   header: string;
@@ -17,7 +20,9 @@ export interface ConfirmOptions {
   confirmText?: string;
   /** Cancel button label. Default 'Cancel'. */
   cancelText?: string;
-  /** Style the confirm button as destructive (red). */
+  /** Semantic treatment for the confirmation action. */
+  variant?: TrnAlertVariant;
+  /** Temporary compatibility alias for `variant="danger"`. */
   destructive?: boolean;
 }
 
@@ -39,50 +44,71 @@ export interface PromptOptions extends ConfirmOptions {
 /**
  * Confirm / prompt dialogs — the spartan replacement for Ionic's
  * `AlertController`. Opens {@link TrnAlertDialogComponent} in a CDK dialog (focus
- * trap, backdrop, escape-to-cancel) and resolves the user's choice, so call
- * sites read as `if (await alert.confirm(...))` / `const name = await
- * alert.prompt(...)` instead of Ionic's button-handler callbacks.
+ * trap, backdrop, escape-to-cancel) and exposes cold finite RxJS commands for
+ * the user's choice. Promise methods remain temporarily for feature migration.
  */
 @Injectable({ providedIn: 'root' })
 export class TrnAlertService {
   private readonly dialog = inject(Dialog);
 
-  /** Resolves true when confirmed, false on cancel / backdrop / escape. */
-  async confirm(opts: ConfirmOptions): Promise<boolean> {
+  /** Emits true when confirmed, false on cancel / backdrop / escape. */
+  confirm$(opts: ConfirmOptions): Observable<boolean> {
     const data: AlertDialogData = {
       kind: 'confirm',
       header: opts.header,
       message: opts.message,
       confirmText: opts.confirmText ?? 'OK',
       cancelText: opts.cancelText ?? 'Cancel',
-      destructive: opts.destructive ?? false,
+      variant: opts.variant ?? (opts.destructive ? 'danger' : 'neutral'),
     };
-    const ref = this.dialog.open<boolean>(TrnAlertDialogComponent, {
-      data,
-      backdropClass: ['cdk-overlay-dark-backdrop'],
+    return defer(() => {
+      const ref = this.dialog.open<boolean>(TrnAlertDialogComponent, {
+        data,
+        ariaLabel: data.header,
+        backdropClass: ['cdk-overlay-dark-backdrop'],
+      });
+      return ref.closed.pipe(
+        take(1),
+        map((value) => value ?? false),
+      );
     });
-    return (await firstValueFrom(ref.closed)) ?? false;
   }
 
-  /** Resolves the entered string, or null on cancel / backdrop / escape. */
-  async prompt(opts: PromptOptions): Promise<string | null> {
+  /** Emits the entered string, or null on cancel / backdrop / escape. */
+  prompt$(opts: PromptOptions): Observable<string | null> {
     const data: AlertDialogData = {
       kind: 'prompt',
       header: opts.header,
       message: opts.message,
       confirmText: opts.confirmText ?? 'OK',
       cancelText: opts.cancelText ?? 'Cancel',
-      destructive: opts.destructive ?? false,
+      variant: opts.variant ?? (opts.destructive ? 'danger' : 'neutral'),
       placeholder: opts.placeholder,
       inputLabel: opts.inputLabel,
       inputType: opts.inputType,
       value: opts.value,
       maxLength: opts.maxLength,
     };
-    const ref = this.dialog.open<string | null>(TrnAlertDialogComponent, {
-      data,
-      backdropClass: ['cdk-overlay-dark-backdrop'],
+    return defer(() => {
+      const ref = this.dialog.open<string | null>(TrnAlertDialogComponent, {
+        data,
+        ariaLabel: data.header,
+        backdropClass: ['cdk-overlay-dark-backdrop'],
+      });
+      return ref.closed.pipe(
+        take(1),
+        map((value) => value ?? null),
+      );
     });
-    return (await firstValueFrom(ref.closed)) ?? null;
+  }
+
+  /** Temporary Promise compatibility. Prefer the cold, finite `confirm$` command. */
+  confirm(opts: ConfirmOptions): Promise<boolean> {
+    return firstValueFrom(this.confirm$(opts));
+  }
+
+  /** Temporary Promise compatibility. Prefer the cold, finite `prompt$` command. */
+  prompt(opts: PromptOptions): Promise<string | null> {
+    return firstValueFrom(this.prompt$(opts));
   }
 }

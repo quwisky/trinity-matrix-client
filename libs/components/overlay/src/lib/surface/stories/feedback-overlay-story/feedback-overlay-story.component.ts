@@ -1,0 +1,94 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  inject,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TrnButton } from '@trinity/components/controls';
+import { TrnActionSheetService } from '../../../action-sheet/trn-action-sheet.service';
+import { TrnAlertService } from '../../../alert/trn-alert.service';
+import { TrnToasterComponent } from '../../../toast/trn-toaster.component';
+import { TrnToastService } from '../../../toast/trn-toast.service';
+
+@Component({
+  selector: 'trn-feedback-overlay-story',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TrnButton, TrnToasterComponent],
+  templateUrl: './feedback-overlay-story.component.html',
+})
+export class FeedbackOverlayStoryComponent {
+  private readonly alerts = inject(TrnAlertService);
+  private readonly sheets = inject(TrnActionSheetService);
+  private readonly toasts = inject(TrnToastService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  protected canonicalAlert(): void {
+    this.alerts
+      .confirm$({
+        header: 'Delete this room?',
+        confirmText: 'Delete',
+        variant: 'danger',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
+  protected legacyAlert(): void {
+    void this.alerts.confirm({
+      header: 'Legacy delete?',
+      confirmText: 'Delete',
+      destructive: true,
+    });
+  }
+
+  protected canonicalSheet(): void {
+    this.sheets.open(
+      {
+        header: 'Canonical actions',
+        buttons: [
+          { text: 'Cancel', role: 'cancel' },
+          { text: 'Archive', disabled: true, testId: 'sheet-disabled' },
+          {
+            text: 'Delete',
+            variant: 'danger',
+            testId: 'sheet-danger',
+          },
+        ],
+      },
+      'Canonical actions',
+    );
+  }
+
+  protected legacySheet(): void {
+    this.sheets.open(
+      {
+        header: 'Legacy actions',
+        buttons: [
+          { text: 'Cancel', role: 'cancel' },
+          {
+            text: 'Legacy delete',
+            role: 'destructive',
+            testId: 'sheet-legacy-danger',
+          },
+        ],
+      },
+      'Legacy actions',
+    );
+  }
+
+  protected warningToast(): void {
+    this.toasts.show('Canonical warning', { variant: 'warning', duration: 0 });
+  }
+
+  protected dangerToast(): void {
+    this.toasts.show('Canonical danger', { variant: 'danger', duration: 0 });
+  }
+
+  protected legacyToast(): void {
+    this.toasts.show('Legacy destructive', {
+      variant: 'destructive',
+      duration: 0,
+    });
+  }
+}
