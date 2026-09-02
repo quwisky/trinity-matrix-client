@@ -36,10 +36,11 @@ All notable changes to this project are documented here. The format is based on
 ### Added
 
 - **Navigation, overlays and shipped feature states now have complete browser catalogs.** Every
-  public recipe axis and meaningful open, selected, disabled, destructive, clipped, portal,
-  backdrop and focus-restoration state runs across all six Theme/Mode combinations. Inactive tabs
-  and media-error metadata now use their owning semantic treatments and meet AA contrast, while
-  desktop and coarse-pointer browser checks guard geometry, keyboard behavior and accessibility.
+  public recipe axis and meaningful open, selected, invalid, disabled, destructive, clipped,
+  portal, backdrop, focus-restoration and outside-press state runs across all six Theme/Mode
+  combinations. Inactive tabs and media-error metadata now use their owning semantic treatments
+  and meet AA contrast; the toast wrapper repairs its vendored list/live-region roles; and desktop
+  plus coarse-pointer browser checks guard geometry, keyboard behavior and accessibility.
 
 - **Controls now have a complete accessibility catalog.** One Storybook inventory covers every
   button, choice, toggle, field, select, emoji-picker and QR-scanner recipe across all supported

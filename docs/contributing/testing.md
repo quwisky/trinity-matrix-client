@@ -351,10 +351,10 @@ Catalog Axe scans require zero violations and zero incomplete results. Axe canno
 `aria-controls` relationship across an `aria-haspopup` popup, so omit only the dropdown trigger
 after asserting that its `aria-controls` exactly matches the live menu ID. Where CDK deliberately
 hides the background canvas and inserts focus-trap sentinels, scan the live portal around those
-framework nodes and separately assert backdrop, initial focus, containment and restoration. Brain
-Sonner's vendored list host is likewise adjudicated with explicit live-region, visible-state and
-browser-composited contrast assertions while the rest of the canvas remains under Axe. These are
-narrow documented resolutions, not general rule exclusions.
+framework nodes and separately assert backdrop, initial focus, containment and restoration. The
+vendored Sonner wrapper repairs Brain's generated list/live-region roles, so toast variants remain
+inside the ordinary zero-exclusion Axe scan. These are narrow documented resolutions, not general
+rule exclusions.
 
 ## Playwright: the app journeys
 

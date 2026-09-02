@@ -207,9 +207,16 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
 
     await page.getByTestId('alert-prompt').click();
     const prompt = page.getByRole('textbox', { name: 'Room name' });
-    await expect(prompt).toHaveValue('Trinity');
+    await expect(prompt).toHaveValue('');
     await expect(prompt).toHaveAttribute('maxlength', '64');
+    await page.getByTestId('alert-confirm').click();
+    await expect(prompt).toHaveAttribute('aria-invalid', 'true');
+    const promptError = page.getByTestId('alert-prompt-error');
+    await expect(promptError).toHaveText('Room name is required.');
+    await expectReadable(promptError);
     await expectModalAxeClean(page);
+    await prompt.fill('Trinity');
+    await expect(prompt).not.toHaveAttribute('aria-invalid', 'true');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('alert-prompt')).toBeFocused();
 
@@ -243,9 +250,11 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
         .locator('[data-sonner-toast]')
         .filter({ hasText: message });
       await expect(toast).toHaveAttribute('data-visible', 'true');
-      await expect(toast).toHaveAttribute('role', 'status');
-      await expect(toast).toHaveAttribute('aria-live', 'polite');
+      await expect(toast).toHaveCSS('opacity', '1');
+      await expect(toast.locator('..')).toHaveAttribute('role', 'status');
+      await expect(toast.locator('..')).toHaveAttribute('aria-live', 'polite');
       await expectReadable(toast.locator('[data-title]'));
+      await expectAxeClean(page);
     }
 
     await page.goto(catalogUrl);
@@ -255,12 +264,11 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       .filter({ hasText: 'Canonical action' });
     const undo = page.getByRole('button', { name: 'Undo' });
     await expect(actionToast).toHaveAttribute('data-visible', 'true');
+    await expect(actionToast).toHaveCSS('opacity', '1');
+    await expect(actionToast.locator('..')).toHaveAttribute('role', 'status');
     await expectReadable(actionToast.locator('[data-title]'));
     await expectReadable(undo);
-    // Brain Sonner renders a custom-element host between its ol and li and puts
-    // role=status on that li. Assert the owned live-region/contrast contract
-    // above, then audit everything outside that vendored subtree.
-    await expectAxeClean(page, ['[data-sonner-toaster]']);
+    await expectAxeClean(page);
   });
 }
 
@@ -317,6 +325,25 @@ test('the clipped control demonstrates the failure while the portal escapes it',
       Boolean(element.closest('.cdk-overlay-container')),
     ),
   ).toBe(true);
+});
+
+test('anchored overlays honor both outside-press policies and model results', async ({
+  page,
+}) => {
+  await page.goto(
+    story('components-anchored-overlay--outside-press-policy-catalog'),
+  );
+  await expect(page.getByTestId('dismissible-model-state')).toHaveText('open');
+  await expect(page.getByTestId('persistent-model-state')).toHaveText('open');
+  await expect(page.getByTestId('anchored-surface')).toHaveCount(2);
+
+  await page.getByTestId('outside-press-target').click();
+
+  await expect(page.getByTestId('dismissible-model-state')).toHaveText(
+    'closed',
+  );
+  await expect(page.getByTestId('persistent-model-state')).toHaveText('open');
+  await expect(page.getByTestId('anchored-surface')).toHaveCount(1);
 });
 
 test('every dialog placement renders its matching surface layout', async ({

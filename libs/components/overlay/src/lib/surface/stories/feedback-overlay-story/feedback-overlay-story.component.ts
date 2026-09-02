@@ -53,8 +53,9 @@ export class FeedbackOverlayStoryComponent {
         message: 'Prompt fields keep their label and bounded input options.',
         inputLabel: 'Room name',
         placeholder: 'Project room',
-        value: 'Trinity',
+        value: '',
         maxLength: 64,
+        required: true,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();

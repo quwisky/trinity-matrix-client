@@ -21,6 +21,7 @@ export interface AlertDialogData {
   inputLabel?: string;
   value?: string;
   maxLength?: number;
+  required?: boolean;
   inputType?: 'text' | 'password';
 }
 
@@ -61,11 +62,24 @@ export type AlertDialogResult = boolean | string | null;
           [type]="data.inputType ?? 'text'"
           [placeholder]="data.placeholder ?? ''"
           [attr.aria-label]="data.inputLabel ?? null"
+          [attr.aria-describedby]="invalid() ? promptErrorId : null"
+          [attr.aria-invalid]="invalid() ? 'true' : null"
           [attr.maxlength]="data.maxLength ?? null"
+          [required]="data.required ?? false"
           [value]="value()"
           (input)="onInput($event)"
           (keydown.enter)="onConfirm()"
         />
+        @if (invalid()) {
+          <p
+            [id]="promptErrorId"
+            class="mt-2 text-sm text-danger"
+            role="alert"
+            data-testid="alert-prompt-error"
+          >
+            {{ data.inputLabel ?? 'This value' }} is required.
+          </p>
+        }
       }
       <div class="mt-6 flex justify-end gap-2">
         <button
@@ -95,9 +109,15 @@ export class TrnAlertDialogComponent {
     inject<DialogRef<AlertDialogResult, TrnAlertDialogComponent>>(DialogRef);
   protected readonly data = inject<AlertDialogData>(DIALOG_DATA);
   protected readonly value = signal(this.data.value ?? '');
+  protected readonly invalid = signal(false);
+  protected readonly promptErrorId = 'trn-alert-prompt-error';
 
   protected onInput(event: Event): void {
-    this.value.set((event.target as HTMLInputElement).value);
+    const value = (event.target as HTMLInputElement).value;
+    this.value.set(value);
+    if (value.trim()) {
+      this.invalid.set(false);
+    }
   }
 
   protected onCancel(): void {
@@ -105,6 +125,14 @@ export class TrnAlertDialogComponent {
   }
 
   protected onConfirm(): void {
+    if (
+      this.data.kind === 'prompt' &&
+      this.data.required &&
+      !this.value().trim()
+    ) {
+      this.invalid.set(true);
+      return;
+    }
     this.ref.close(this.data.kind === 'prompt' ? this.value() : true);
   }
 }

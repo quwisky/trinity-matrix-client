@@ -1,11 +1,16 @@
 import type { BooleanInput, NumberInput } from '@angular/cdk/coercion';
 import {
+  type AfterViewInit,
   ChangeDetectionStrategy,
   Component,
+  Directive,
+  ElementRef,
+  inject,
   booleanAttribute,
   computed,
   input,
   numberAttribute,
+  type OnDestroy,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -19,9 +24,63 @@ import { BrnSonnerImports, type ToasterProps } from '@spartan-ng/brain/sonner';
 import { hlm } from '@trinity/helm/utils';
 import type { ClassValue } from 'clsx';
 
+/**
+ * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ───────────────┐
+ *
+ * Trinity repairs Brain Sonner's emitted list and live-region roles. Brain
+ * inserts a component host between `<ol>` and `<li>`, then overrides the
+ * `<li>` with `role="status"`; both shapes fail Axe. The private directive
+ * keeps the list structure and moves the live region to its containing
+ * section after each toast render.
+ *
+ * The override is registered in docs/architecture/ui-and-theming.md and pinned
+ * by the real public toaster render test.
+ * └──────────────────────────────────────────────────────────────────────────┘
+ */
+
+@Directive({ selector: 'brn-sonner-toaster' })
+class HlmSonnerSemantics implements AfterViewInit, OnDestroy {
+  private readonly host = inject(ElementRef<HTMLElement>).nativeElement;
+  private observer?: MutationObserver;
+
+  ngAfterViewInit(): void {
+    this.normalizeRoles();
+    if (typeof MutationObserver === 'undefined') {
+      return;
+    }
+    this.observer = new MutationObserver(() => this.normalizeRoles());
+    this.observer.observe(this.host, { childList: true, subtree: true });
+  }
+
+  ngOnDestroy(): void {
+    this.observer?.disconnect();
+  }
+
+  private normalizeRoles(): void {
+    const region = this.host.querySelector('section');
+    region?.setAttribute('role', 'region');
+
+    for (const list of this.host.querySelectorAll('[data-sonner-toaster]')) {
+      list.setAttribute('role', 'group');
+    }
+
+    for (const toastHost of this.host.querySelectorAll('brn-sonner-toast')) {
+      toastHost.setAttribute('role', 'status');
+      toastHost.setAttribute('aria-live', 'polite');
+      toastHost.setAttribute('aria-atomic', 'true');
+      toastHost.setAttribute('tabindex', '0');
+      const toast = toastHost.querySelector('[data-sonner-toast]');
+      toast?.setAttribute('role', 'none');
+      toast?.removeAttribute('aria-live');
+      toast?.removeAttribute('aria-atomic');
+      toast?.removeAttribute('tabindex');
+    }
+  }
+}
+
 @Component({
   selector: 'hlm-toaster',
-  imports: [BrnSonnerImports, NgIcon],
+  imports: [BrnSonnerImports, NgIcon, HlmSonnerSemantics],
   providers: [
     provideIcons({
       lucideCircleCheck,
