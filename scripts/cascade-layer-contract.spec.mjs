@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { globSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -29,11 +30,17 @@ const LAYERS = [
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
 
-function documentStyle(attribute) {
+function documentStyles() {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
-  const body = html.match(
-    new RegExp(`<style\\s+${attribute}(?:=[^>]*)?>([\\s\\S]*?)<\\/style>`, 'u'),
-  )?.[1];
+  return [...html.matchAll(/<style\s+([^>]*)>([\s\S]*?)<\/style>/gu)].map(
+    ([, attributes, body]) => ({ attributes: attributes.trim(), body }),
+  );
+}
+
+function documentStyle(attribute) {
+  const body = documentStyles().find(
+    ({ attributes }) => attributes === attribute,
+  )?.body;
   expect(body, `index.html must contain <style ${attribute}>`).toBeDefined();
   return body;
 }
@@ -48,7 +55,11 @@ function ledger(name) {
 }
 
 const isComponentLayered = (source) => {
-  if (topLevelStyleStatements(source).some((rule) => /^@import\b/u.test(rule)))
+  if (
+    !topLevelStyleStatements(source).every((statement) =>
+      /^@use\b/u.test(statement),
+    )
+  )
     return false;
   const blocks = topLevelStyleBlocks(source);
   return (
@@ -70,6 +81,11 @@ const rulePaths = (source, parents = []) =>
     const path = [...parents, prelude.replace(/\s+/gu, ' ')];
     return [path.join(' > '), ...rulePaths(body, path)];
   });
+
+const styleFingerprint = (source) =>
+  createHash('sha256')
+    .update(stripSourceComments(source).replace(/\s+/gu, ' ').trim())
+    .digest('hex');
 
 const layerBodies = (file, layer) =>
   topLevelStyleBlocks(read(file))
@@ -101,9 +117,21 @@ describe('cascade layer contract', () => {
     const adapter = stripSourceComments(
       read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
     );
+    expect(documentStyles().map(({ attributes }) => attributes)).toEqual([
+      'data-trn-cascade-contract',
+      'data-trn-boot-style',
+    ]);
     expect(documentStyle('data-trn-cascade-contract').trim()).toBe(LAYER_ORDER);
-    expect(adapter).toContain(LAYER_ORDER);
-    expect(adapter).toContain("@import 'tw-animate-css';");
+    expect(topLevelStyleStatements(adapter)).toEqual([
+      LAYER_ORDER.slice(0, -1),
+      "@import 'tailwindcss/theme.css' layer(theme)",
+      "@import 'tailwindcss/preflight.css' layer(base)",
+      "@import 'tailwindcss/utilities.css' layer(utilities)",
+      "@import 'tw-animate-css'",
+      "@source '../../../../libs'",
+      "@source '../../../../apps'",
+      '@custom-variant dark (&:where(.dark, .dark *))',
+    ]);
 
     expect(
       JSON.parse(read('apps/trinity/project.json')).targets.build.options
@@ -120,13 +148,21 @@ describe('cascade layer contract', () => {
       "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);\n" +
         "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
     );
-    expect(
-      stripSourceComments(
-        read('libs/components/storybook-host/.storybook/global-styles.scss'),
-      ),
-    ).toMatch(
-      /@import '\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@angular\/cdk\/overlay-prebuilt\.css'\s+layer\(vendor\);/,
+    const storybookStyles = stripSourceComments(
+      read('libs/components/storybook-host/.storybook/global-styles.scss'),
     );
+    expect(
+      topLevelStyleStatements(storybookStyles).map((statement) =>
+        statement.replace(/\s+/gu, ' '),
+      ),
+    ).toEqual([
+      "@use '../../../theme-foundation/styles/theme'",
+      "@use '../../../../apps/trinity/src/global'",
+      "@import '../../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor)",
+    ]);
+    expect(
+      topLevelStyleBlocks(storybookStyles).map(({ prelude }) => prelude),
+    ).toEqual(['@layer components']);
 
     for (const [file, allowed] of [
       [
@@ -155,6 +191,10 @@ describe('cascade layer contract', () => {
         new Set(topLevel),
         `${file} has an unclassified top-level rule`,
       ).toEqual(new Set(allowed));
+      expect(
+        topLevelStyleStatements(read(file)),
+        `${file} has an unclassified top-level statement`,
+      ).toEqual([]);
     }
 
     expect(
@@ -201,6 +241,9 @@ describe('cascade layer contract', () => {
       '@media (pointer: coarse)',
       "@media (pointer: coarse) > button[trnBtn][data-slot='button'], a[trnBtn][data-slot='button']",
     ]);
+    expect(styleFingerprint(overrides)).toBe(
+      '08842dda4bb13e91b6bda85351b92ce367faf43cdf774dabe1f5e8212d210fa5',
+    );
   });
 
   it('assigns every authored component ruleset to the components layer', () => {
@@ -214,6 +257,11 @@ describe('cascade layer contract', () => {
         "@use './mixins' as mixins; @layer components { :host { display: block; } }",
       ),
     ).toBe(true);
+    expect(
+      isComponentLayered(
+        "@use './mixins' as mixins; @include mixins.rogue; @layer components { :host { display: block; } }",
+      ),
+    ).toBe(false);
     expect(isNonEmittingPartial('@mixin safe { display: block; }')).toBe(true);
     expect(isNonEmittingPartial('.rogue { display: block; }')).toBe(false);
     expect(isNonEmittingPartial('@include rogue;')).toBe(false);
@@ -273,14 +321,10 @@ describe('cascade layer contract', () => {
         `${file}#inline-styles`,
         css,
       ]),
-      [
-        'apps/trinity/src/index.html#data-trn-cascade-contract',
-        documentStyle('data-trn-cascade-contract'),
-      ],
-      [
-        'apps/trinity/src/index.html#data-trn-boot-style',
-        documentStyle('data-trn-boot-style'),
-      ],
+      ...documentStyles().map(({ attributes, body }) => [
+        `apps/trinity/src/index.html#${attributes}`,
+        body,
+      ]),
     );
 
     for (const [file, rawSource] of sources) {
