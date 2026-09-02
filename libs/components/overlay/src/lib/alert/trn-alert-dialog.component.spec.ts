@@ -47,4 +47,38 @@ describe('TrnAlertDialogComponent', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledWith('Core team');
   });
+
+  it('rejects a prompt value longer than its configured limit', async () => {
+    const close = vi.fn();
+    const data: AlertDialogData = {
+      kind: 'prompt',
+      header: 'Name this space',
+      confirmText: 'Create',
+      cancelText: 'Cancel',
+      variant: 'neutral',
+      inputLabel: 'Space name',
+      maxLength: 4,
+    };
+    const { container, fixture } = await render(TrnAlertDialogComponent, {
+      providers: [
+        { provide: DIALOG_DATA, useValue: data },
+        { provide: DialogRef, useValue: { close } },
+      ],
+    });
+    const input = container.querySelector('input')!;
+
+    fireEvent.input(input, { target: { value: 'Matrix' } });
+    fireEvent.click(screen.getByTestId('alert-confirm'));
+    fixture.detectChanges();
+
+    expect(close).not.toHaveBeenCalled();
+    expect(input.maxLength).toBe(4);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+
+    fireEvent.input(input, { target: { value: 'Mx' } });
+    fireEvent.click(screen.getByTestId('alert-confirm'));
+
+    expect(close).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledWith('Mx');
+  });
 });
