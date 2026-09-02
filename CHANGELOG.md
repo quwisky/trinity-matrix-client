@@ -785,6 +785,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **A fresh Electron login no longer reports one host-capability failure per historical
+  notification.** Local notification delivery now waits for each Account's first successful sync
+  transition instead of treating the SDK's initial-history `liveEvent` markers as new messages;
+  genuine messages received after readiness still notify normally.
+
 - **A stalled native badge plugin can no longer hold the app on “Restoring your session…”.** Badge
   support, permission, and update calls now have a finite bound, report typed secret-safe outcomes,
   and discard timed-out readiness attempts so later startup attempts can probe again.

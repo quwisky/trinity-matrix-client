@@ -1,6 +1,12 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  MatrixEventEvent,
+  RoomEvent,
+  SyncState,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { EMPTY, Subject, Subscription, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,6 +57,7 @@ function fakeClient(userId: string, soundEnabled?: boolean) {
         : { getContent: () => ({ enabled: soundEnabled }) },
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
     getRoom: vi.fn(() => room),
+    getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -247,6 +254,12 @@ function decryptedHandler(client: { on: { mock: { calls: unknown[][] } } }) {
   return call?.[1] as (...args: unknown[]) => void;
 }
 
+/** Grab the ClientEvent.Sync handler registered via client.on. */
+function syncHandler(client: { on: { mock: { calls: unknown[][] } } }) {
+  const call = client.on.mock.calls.find((c) => c[0] === ClientEvent.Sync);
+  return call?.[1] as (state: SyncState) => void;
+}
+
 describe('NotificationService', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
@@ -286,6 +299,52 @@ describe('NotificationService', () => {
       body: 'hello there',
       tag: '@me:hs !r:hs',
     });
+  });
+
+  it('ignores initial-sync history before notifying on the first ready event', () => {
+    const { svc, client } = setup();
+    client.getSyncState.mockReturnValue(null);
+    svc.connect();
+
+    timelineHandler(client)(
+      event({ id: '$history' }),
+      room,
+      false,
+      false,
+      live,
+    );
+    expect(MockNotification.instances).toHaveLength(0);
+
+    client.getSyncState.mockReturnValue(SyncState.Error);
+    timelineHandler(client)(
+      event({ id: '$history-after-error' }),
+      room,
+      false,
+      false,
+      live,
+    );
+    expect(MockNotification.instances).toHaveLength(0);
+
+    client.getSyncState.mockReturnValue(SyncState.Reconnecting);
+    timelineHandler(client)(
+      event({ id: '$history-while-reconnecting' }),
+      room,
+      false,
+      false,
+      live,
+    );
+    expect(MockNotification.instances).toHaveLength(0);
+
+    syncHandler(client)(SyncState.Prepared);
+    timelineHandler(client)(
+      event({ id: '$after-ready' }),
+      room,
+      false,
+      false,
+      live,
+    );
+
+    expect(MockNotification.instances).toHaveLength(1);
   });
 
   it('is audible by default — sound is on unless the account says otherwise', () => {
@@ -497,12 +556,16 @@ describe('NotificationService', () => {
     expect(MockNotification.instances).toHaveLength(0);
   });
 
-  it('disconnect detaches both listeners', () => {
+  it('disconnect detaches every listener', () => {
     const { svc, client } = setup();
     svc.connect();
 
     svc.disconnect();
 
+    expect(client.off).toHaveBeenCalledWith(
+      ClientEvent.Sync,
+      expect.any(Function),
+    );
     expect(client.off).toHaveBeenCalledWith(
       RoomEvent.Timeline,
       expect.any(Function),
@@ -795,7 +858,7 @@ describe('NotificationService', () => {
         RoomEvent.Timeline,
         expect.any(Function),
       );
-      expect(fresh.on).toHaveBeenCalledTimes(2); // Timeline + Decrypted
+      expect(fresh.on).toHaveBeenCalledTimes(3); // Sync + Timeline + Decrypted
 
       timelineHandler(fresh)(event(), room, false, false, live);
 
@@ -820,7 +883,7 @@ describe('NotificationService', () => {
       accountIds.set(['@next:hs']);
       TestBed.inject(ApplicationRef).tick();
 
-      expect(next.on).toHaveBeenCalledTimes(2);
+      expect(next.on).toHaveBeenCalledTimes(3);
     });
 
     it('does not negotiate Web permission until the session has an account', () => {
@@ -855,8 +918,8 @@ describe('NotificationService', () => {
       accountIds.set(['@me:hs', '@bg:hs']); // new array ref → effect re-runs
       TestBed.inject(ApplicationRef).tick();
 
-      // Attached exactly once: attach() binds Timeline + Decrypted, so two on() calls.
-      expect(bg.on).toHaveBeenCalledTimes(2);
+      // Attached exactly once: attach() binds Sync + Timeline + Decrypted.
+      expect(bg.on).toHaveBeenCalledTimes(3);
       expect(bg.on).toHaveBeenCalledWith(
         RoomEvent.Timeline,
         expect.any(Function),

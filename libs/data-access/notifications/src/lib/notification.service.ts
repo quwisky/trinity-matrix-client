@@ -6,8 +6,10 @@ import {
   untracked,
 } from '@angular/core';
 import {
+  ClientEvent,
   MatrixEventEvent,
   RoomEvent,
+  SyncState,
   type IRoomTimelineData,
   type MatrixClient,
   type MatrixEvent,
@@ -34,6 +36,7 @@ interface AccountNotifier {
     data?: IRoomTimelineData,
   ) => void;
   readonly onDecrypted: (event: MatrixEvent) => void;
+  readonly onSync: (state: SyncState) => void;
 }
 
 /**
@@ -51,8 +54,9 @@ interface AccountNotifier {
  *  - **Capacitor:** Local Notifications, with explicit plugin/permission availability.
  *  - **Web / PWA:** the renderer Web `Notification` API (with permission prompt).
  *
- * Either way it only fires for **live** events (not backfill), from someone other
- * than us, when the user isn't looking at that room (the window is unfocused, a
+ * Either way it only fires after the Account's first successful sync and for **live**
+ * events (not backfill), from someone other than us, when the user isn't looking at
+ * that room (the window is unfocused, a
  * different room is open, or the event is on a background account), and only when
  * that account's push rules say to notify (`getPushActionsForEvent().notify` —
  * respects mutes / mentions-only). Activation emits an exact semantic destination;
@@ -284,14 +288,28 @@ export class NotificationService {
   }
 
   private buildNotifier(userId: string, client: MatrixClient): AccountNotifier {
+    const currentSyncState = client.getSyncState();
+    let firstSyncCompleted =
+      currentSyncState === SyncState.Prepared ||
+      currentSyncState === SyncState.Syncing;
     return {
       userId,
       client,
+      onSync: (state): void => {
+        if (state === SyncState.Prepared || state === SyncState.Syncing) {
+          firstSyncCompleted = true;
+        }
+      },
       onTimeline: (event, room, _toStart, _removed, data): void => {
         // This runs inside the SDK's sync emit loop — a throw must never disrupt it.
         try {
           if (data?.liveEvent !== true) {
             return; // backfill / scrollback — not a fresh event
+          }
+          if (!firstSyncCompleted) {
+            // matrix-js-sdk labels the first /sync batch as live while it is still
+            // applying stored room state and history. PREPARED is emitted afterwards.
+            return;
           }
           if (this.isAwaitingDecryption(event)) {
             // E2EE: this emit is ciphertext. Defer to MatrixEventEvent.Decrypted so
@@ -336,11 +354,13 @@ export class NotificationService {
   }
 
   private attach(notifier: AccountNotifier): void {
+    notifier.client.on(ClientEvent.Sync, notifier.onSync);
     notifier.client.on(RoomEvent.Timeline, notifier.onTimeline);
     notifier.client.on(MatrixEventEvent.Decrypted, notifier.onDecrypted);
   }
 
   private detach(notifier: AccountNotifier): void {
+    notifier.client.off(ClientEvent.Sync, notifier.onSync);
     notifier.client.off(RoomEvent.Timeline, notifier.onTimeline);
     notifier.client.off(MatrixEventEvent.Decrypted, notifier.onDecrypted);
   }
