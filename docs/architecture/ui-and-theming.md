@@ -67,6 +67,23 @@ entrypoint. The expansion window still accepts Helm-shaped button values such as
 equivalently. Those aliases exist only until the consumer-migration and contract tickets remove
 them.
 
+Choice controls use the same bounded vocabulary while keeping native semantics authoritative:
+
+| Component          | Canonical contract                                                                                                        | Expansion compatibility                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `trn-checkbox`     | Variants `neutral`, `accent`; sizes `sm`, `md`; checked, indeterminate, invalid and disabled stay native checkbox states. | None; the former wrapper had no styling inputs.                             |
+| `trn-switch`       | Variants `neutral`, `accent`; sizes `sm`, `md`; a native checkbox with `role="switch"` owns activation.                   | None; the former wrapper had no styling inputs.                             |
+| `trn-radio-group`  | Variants `neutral`, `accent`; sizes `sm`, `md`; list or segmented layout is a separate structural axis.                   | `variant="list"` and `variant="segmented"` remain temporary layout aliases. |
+| `trnToggle`        | Variants `neutral`, `accent`; sizes `sm`, `md`, `lg`; presentations `plain`, `outline`; read-only remains focusable.      | None; this is a new public control.                                         |
+| `trn-toggle-group` | The toggle recipe plus joined or separated arrangement and horizontal/vertical toolbar behavior.                          | Former `default`/`outline` variants and `default` size normalize privately. |
+
+Checkboxes, switches and radios render native inputs next to recipe-owned visual spans. Invalid,
+disabled, focus and checked state therefore live on the element the browser and assistive
+technology operate, rather than on a role-less vendor wrapper. Toggle groups retain the private
+Brain value holder but own roving tab focus, arrow keys and all visual vocabulary in Controls.
+Consumer classes may arrange a control or group in surrounding layout; spacing, shape, type,
+colour, elevation and interaction states belong to these recipes.
+
 Foundations and Generic Content apply the same rule to the narrower vocabulary each component
 can actually render:
 

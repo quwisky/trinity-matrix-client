@@ -94,7 +94,7 @@ describe('EncryptionSetupPage', () => {
       const box = (
         fixture.nativeElement as HTMLElement
       ).querySelector<HTMLElement>(
-        '[data-testid="recovery-key-saved"] button[role="checkbox"]',
+        '[data-testid="recovery-key-saved"] input[role="checkbox"]',
       );
       box?.click();
       fixture.detectChanges();

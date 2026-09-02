@@ -5,6 +5,10 @@
   <trn-toggle-group
     class="toolbar__actions"
     type="multiple"
+    variant="neutral"
+    presentation="plain"
+    size="md"
+    arrangement="separated"
     aria-label="Formatting"
     [value]="active()"
   >
@@ -16,9 +20,7 @@
       @for (entry of group; track entry.action) {
         <button
           trnToggleGroupItem
-          trnIconButton
           type="button"
-          class="toolbar__button"
           [value]="entry.action"
           [disabled]="formatDisabled()"
           [trnTooltip]="entry.label"
@@ -50,9 +52,10 @@
        writes, reachable from where you notice you want it. -->
   <button
     type="button"
-    class="toolbar__button"
-    [class.toolbar__button--on]="pinned()"
-    [attr.aria-pressed]="pinned()"
+    trnToggle
+    size="md"
+    variant="neutral"
+    [pressed]="pinned()"
     [trnTooltip]="pinned() ? 'Unpin formatting' : 'Keep formatting open'"
     [attr.aria-label]="pinned() ? 'Unpin formatting' : 'Keep formatting open'"
     data-testid="format-pin"
@@ -63,14 +66,14 @@
     <span class="toolbar__pin" aria-hidden="true">Aa</span>
   </button>
 
-  <!-- aria-pressed rather than a toggle component: there is no Helm toggle, and this is the
-       precedent the reaction pills already set. -->
+  <!-- A standalone public toggle owns aria-pressed and the shared interaction recipe while
+       this feature owns what entering or leaving preview means. -->
   <button
     type="button"
-    trnIconButton
-    class="toolbar__button"
-    [class.toolbar__button--on]="previewing()"
-    [attr.aria-pressed]="previewing()"
+    trnToggle
+    size="md"
+    variant="neutral"
+    [pressed]="previewing()"
     [trnTooltip]="previewing() ? 'Back to writing' : 'Preview'"
     [attr.aria-label]="previewing() ? 'Back to writing' : 'Preview'"
     data-testid="composer-preview-toggle"

@@ -1,8 +1,5 @@
-// Formatting affordances, laid out as a row above the composer input.
-// The button rules mirror `.composer__attach`/`.composer__emoji`/`.composer__send` rather than
-// sharing them: those are a comma group in the composer's own stylesheet, and there is no
-// icon-button mixin in the repo. Kept smaller than that group (32px vs 40px) because this row
-// is secondary to the input it sits above.
+// Formatting affordances, laid out as a row above the composer input. Control geometry and
+// interaction states come from the public toggle recipes; this file owns only the row layout.
 .toolbar {
   display: flex;
   align-items: center;
@@ -27,44 +24,8 @@
   flex: 1;
 }
 
-.toolbar__button {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--trinity-density-control-size);
-  height: var(--trinity-density-control-size);
-  border: none;
-  border-radius: var(--trinity-shape-control-radius);
-  background: none;
-  color: var(--trinity-text-muted);
-  font-size: 16px;
-  cursor: pointer;
-
-  &:hover:where(:not(:disabled)) {
-    background: var(--trinity-state-hover-surface);
-    color: var(--trinity-state-hover-foreground);
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
-  }
-
-  &:disabled {
-    opacity: 0.4;
-    cursor: default;
-  }
-}
-
-// The pressed state of the preview toggle.
-.toolbar__button--on {
-  background: var(--trinity-state-selected-surface);
-  color: var(--trinity-state-selected-foreground);
-}
-
-// The nine actions, as one group. `trn-toggle-group` brings its own `w-fit` and gap; both are
-// overridden because this is a bar inside a row, not a segmented control sized to its content.
+// The nine actions, as one group. The recipe owns button spacing; this consumer owns wrapping
+// and width because it is a bar inside a row rather than a fixed segmented control.
 // WRAPS, and it has to. Nine buttons at the 44px touch minimum plus two rules is 470px of
 // content; a phone gives the bar about 358px. Without this the row overflowed by ~176px and
 // `.chat-body`'s `overflow: hidden` cut the tail off — taking the pin and the preview toggle
@@ -83,7 +44,6 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--trinity-density-item-gap);
   width: auto;
   min-width: 0;
 }
@@ -102,13 +62,4 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
-}
-
-// Touch targets. Not inherited from the composer's block: these are different elements in a
-// different stylesheet, and 32px is under the 44px this project holds itself to on touch.
-@media (pointer: coarse) {
-  .toolbar__button {
-    min-width: var(--trinity-interaction-target-min-size);
-    min-height: var(--trinity-interaction-target-min-size);
-  }
 }

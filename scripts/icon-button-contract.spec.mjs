@@ -6,14 +6,15 @@ const workspaceRoot = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
 
 /**
- * Mechanical coverage for Trinity's two icon-button entry points.
+ * Mechanical coverage for Trinity's icon-action entry points.
  *
  * `trnBtn shape="icon"` owns standard square geometry; legacy `icon*` sizes remain in the
  * migration inventory. `trnIconButton` is the explicit
  * opt-in for a purpose-built control whose shape communicates context (for example a reaction
- * chip or server-rail pill). Both receive the same cursor, state feedback and inner-glyph
- * motion. Exact per-file counts make additions and removals reviewable even in an already
- * inventoried file.
+ * chip or server-rail pill). `trnToggle` and `trnToggleGroupItem` own pressed actions; when
+ * their content is an icon, they belong to this contract too. All receive the same cursor,
+ * state feedback and inner-glyph motion. Exact per-file counts make additions and removals
+ * reviewable even in an already inventoried file.
  */
 
 const htmlFiles = globSync(['apps/**/*.html', 'libs/**/*.html'], {
@@ -55,8 +56,11 @@ const publicIconButtons = controlBlocks.filter(
       /\[size\]=/.test(openingTag)),
 );
 
-const bespokeIconButtons = controlBlocks.filter(({ openingTag }) =>
-  /\btrnIconButton\b/.test(openingTag),
+const iconActionControls = controlBlocks.filter(
+  ({ source, openingTag }) =>
+    /\btrnIconButton\b/.test(openingTag) ||
+    (/\b(?:trnToggle|trnToggleGroupItem)\b/.test(openingTag) &&
+      /<trn-icon(?:\s|>)/.test(source)),
 );
 
 const expectedBespokeCounts = {
@@ -74,14 +78,14 @@ const expectedBespokeCounts = {
   'libs/feature/settings/src/lib/account/account-section.component.html': 3,
   'libs/feature/settings/src/lib/profile/profile-settings.component.html': 1,
   'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3': 1,
+  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-1': 7,
+  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-4': 3,
+  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-5': 2,
 };
 
 const expectedCompositeCounts = {
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 9,
   'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts#template-1': 1,
-  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-1': 7,
-  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-4': 3,
-  'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-5': 2,
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 9,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 8,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.html': 5,
@@ -136,7 +140,7 @@ describe('icon-button contract', () => {
   });
 
   it('gives each purpose-built icon control a labelled semantic motion', () => {
-    const incomplete = bespokeIconButtons
+    const incomplete = iconActionControls
       .filter(
         ({ source, openingTag }) =>
           !/(?:aria-label|\[attr\.aria-label\]|\[aria-label\])=/.test(
@@ -159,14 +163,15 @@ describe('icon-button contract', () => {
   });
 
   it('keeps the purpose-built icon-control inventory exact', () => {
-    expect(countsByFile(bespokeIconButtons)).toEqual(expectedBespokeCounts);
+    expect(countsByFile(iconActionControls)).toEqual(expectedBespokeCounts);
   });
 
   it('keeps composite icon-and-text controls out of the icon-only contract', () => {
     const composites = controlBlocks.filter(
       ({ source, openingTag }) =>
-        !/(?:\btrnBtn\b|\btrnIconButton\b)/.test(openingTag) &&
-        /<trn-icon(?:\s|>)/.test(source),
+        !/(?:\btrnBtn\b|\btrnIconButton\b|\btrnToggle\b|\btrnToggleGroupItem\b)/.test(
+          openingTag,
+        ) && /<trn-icon(?:\s|>)/.test(source),
     );
 
     expect(countsByFile(composites)).toEqual(expectedCompositeCounts);

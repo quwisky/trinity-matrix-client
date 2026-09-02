@@ -37,6 +37,9 @@ export const CanonicalAndCompatibility: Story = {
     template: `
       <div class="grid gap-4 p-4">
         <div class="flex flex-wrap items-center gap-3">
+          <button data-testid="canonical-loading" type="button" trnBtn loading disabled>
+            Saving…
+          </button>
           <button data-testid="canonical-primary" type="button" trnBtn variant="primary" size="md">
             Continue
           </button>

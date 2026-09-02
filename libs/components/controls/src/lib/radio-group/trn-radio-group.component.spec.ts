@@ -1,8 +1,11 @@
 import { Component, signal } from '@angular/core';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   TrnRadioGroupComponent,
+  type TrnRadioGroupLayout,
+  type TrnRadioGroupSize,
+  type TrnRadioGroupVariant,
   type TrnRadioOption,
 } from './trn-radio-group.component';
 
@@ -32,7 +35,43 @@ class HostComponent {
   readonly disabled = signal(false);
 }
 
+@Component({
+  imports: [TrnRadioGroupComponent],
+  template: `
+    <trn-radio-group
+      layout="segmented"
+      variant="accent"
+      size="sm"
+      invalid
+      aria-labelledby="mode-heading"
+      [options]="options"
+      value="system"
+    />
+  `,
+})
+class CanonicalHostComponent {
+  readonly options = OPTIONS;
+}
+
 describe('TrnRadioGroupComponent', () => {
+  it('separates semantic variants, ordinal sizes and structural layout', () => {
+    expectTypeOf<TrnRadioGroupVariant>().toEqualTypeOf<'neutral' | 'accent'>();
+    expectTypeOf<'danger'>().not.toExtend<TrnRadioGroupVariant>();
+    expectTypeOf<TrnRadioGroupSize>().toEqualTypeOf<'sm' | 'md'>();
+    expectTypeOf<'lg'>().not.toExtend<TrnRadioGroupSize>();
+    expectTypeOf<TrnRadioGroupLayout>().toEqualTypeOf<'list' | 'segmented'>();
+  });
+
+  it('renders canonical style inputs and invalid state on the radiogroup', async () => {
+    const { container } = await render(CanonicalHostComponent);
+    const host = container.querySelector('trn-radio-group');
+    const group = container.querySelector('[role=radiogroup]');
+
+    expect(host?.getAttribute('data-layout')).toBe('segmented');
+    expect(host?.getAttribute('data-variant')).toBe('accent');
+    expect(host?.getAttribute('data-size')).toBe('sm');
+    expect(group?.getAttribute('aria-invalid')).toBe('true');
+  });
   it('renders one label per option, and wraps the radio in it', async () => {
     const { container } = await render(HostComponent);
     const labels = container.querySelectorAll('label');
@@ -40,12 +79,11 @@ describe('TrnRadioGroupComponent', () => {
     expect(labels.length).toBe(3);
     // The label WRAPPING the radio is the point, not decoration. It is what makes the text
     // a click target — e2e clicks `getByTestId('theme-dark')`, which is this label, not the
-    // radio — and the kit's radio resolves `closest('label')` in a constructor effect to
-    // stamp its disabled state. A wrapper that emitted them as siblings would break both,
-    // silently.
+    // radio. A wrapper that emitted them as siblings would shrink the pointer target to the
+    // indicator and visible text would no longer activate its native input.
     expect(labels[2].getAttribute('data-testid')).toBe('theme-dark');
     expect(labels[2].textContent?.trim()).toBe('Dark');
-    expect(labels[2].querySelector('hlm-radio')).not.toBeNull();
+    expect(labels[2].querySelector('input[type=radio]')).not.toBeNull();
   });
 
   it('points the group at its heading, and only the group', async () => {
@@ -80,9 +118,9 @@ describe('TrnRadioGroupComponent', () => {
     fixture.componentInstance.disabled.set(true);
     fixture.detectChanges();
 
-    expect(container.querySelectorAll('hlm-radio[data-disabled]')).toHaveLength(
-      OPTIONS.length,
-    );
+    expect(
+      container.querySelectorAll('input[type=radio]:disabled'),
+    ).toHaveLength(OPTIONS.length);
   });
 
   it('marks the active option in the segmented presentation', async () => {
@@ -90,15 +128,14 @@ describe('TrnRadioGroupComponent', () => {
     const host = container.querySelector('trn-radio-group');
     const selected = container.querySelector('[data-testid=theme-system]');
 
-    expect(host?.getAttribute('data-variant')).toBe('segmented');
-    expect(selected?.classList.contains('trn-radio-option--selected')).toBe(
-      true,
-    );
+    expect(host?.getAttribute('data-layout')).toBe('segmented');
+    expect(host?.getAttribute('data-variant')).toBe('neutral');
+    expect(selected?.getAttribute('data-state')).toBe('selected');
   });
 
   it('is a block, so a layout class on the host still lays the options out', async () => {
     // The regression this pins. Wrapping moved the caller's `class="px-4 py-2"` off the
-    // kit's `grid` element and onto THIS host; with no display the host is `inline`, the
+    // former inner grid element and onto THIS host; with no display the host is `inline`, the
     // block-level grid child ignores its padding, and the options lose their indent while
     // the vertical padding spills into empty line boxes. Measured in Chromium at the time:
     // first option x=16 -> x=0 and the section 20px taller.

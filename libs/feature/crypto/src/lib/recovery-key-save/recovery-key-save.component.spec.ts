@@ -14,7 +14,7 @@ const inputs = {
 /** The rendered checkbox, which is the gate a user actually meets. */
 function checkbox(container: Element): HTMLElement | null {
   return container.querySelector<HTMLElement>(
-    '[data-testid="recovery-key-saved"] button[role="checkbox"]',
+    '[data-testid="recovery-key-saved"] input[role="checkbox"]',
   );
 }
 

@@ -1,18 +1,18 @@
 import { Directive, ElementRef, inject } from '@angular/core';
-import { HlmToggleGroupItem } from '@trinity/helm/toggle-group';
+import { BrnToggleGroupItem } from '@spartan-ng/brain/toggle-group';
+import { classes } from '@trinity/helm/utils';
+import { trnToggleRecipe } from '../toggle/trn-toggle-recipe';
+import { TRN_TOGGLE_GROUP_STYLE } from './trn-toggle-group-style.token';
 
 /**
  * One button in a {@link TrnToggleGroupComponent}.
  *
- * Nothing is listed for re-publication, and `value`/`disabled` are still bindable on the
- * button: Angular re-publishes a host directive's inputs one level only, so naming them here
- * throws NG0311, while HlmToggleGroupItem already publishes them onto this same host element
- * from BrnToggleGroupItem.
+ * Brain is composed directly and only its behavior inputs are re-published, so Helm's visual
+ * classes never reach the element. `value` and `disabled` remain ordinary public bindings.
  *
- * `variant` and `size` are left off, so an item falls back to HlmToggleGroupItem's own
- * defaults unless the group sets them — which is how a bar stays visually of a piece without
- * this having to enforce anything. Nothing stops a caller reaching for the kit's names on the
- * button; the tier's boundary is what it can IMPORT, not what it can type.
+ * Styling inputs are deliberately absent. The parent publishes a private Trinity recipe
+ * context, so every projected item receives one semantic tone, ordinal size, presentation and
+ * arrangement without accepting per-item Helm vocabulary or consumer paint classes.
  *
  * `aria-label` stays the caller's own binding rather than something this re-publishes, so a
  * call site labels one of these buttons the way it labels every other button.
@@ -21,9 +21,9 @@ import { HlmToggleGroupItem } from '@trinity/helm/toggle-group';
   selector: 'button[trnToggleGroupItem]',
   hostDirectives: [
     {
-      directive: HlmToggleGroupItem,
-      inputs: [],
-      outputs: [],
+      directive: BrnToggleGroupItem,
+      inputs: ['id', 'value', 'disabled', 'state', 'aria-label', 'type'],
+      outputs: ['stateChange'],
     },
   ],
   host: {
@@ -32,6 +32,7 @@ import { HlmToggleGroupItem } from '@trinity/helm/toggle-group';
     // otherwise — the group sets its first enabled item on init, and a seed of 0 here would
     // briefly put every button in the tab order on the first render.
     tabindex: '-1',
+    'data-trn-toggle': '',
   },
 })
 export class TrnToggleGroupItemDirective {
@@ -44,4 +45,16 @@ export class TrnToggleGroupItemDirective {
    */
   readonly element: HTMLElement =
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+
+  constructor() {
+    const style = inject(TRN_TOGGLE_GROUP_STYLE);
+    classes(() =>
+      trnToggleRecipe({
+        arrangement: style.resolvedArrangement(),
+        presentation: style.resolvedPresentation(),
+        size: style.resolvedSize(),
+        variant: style.resolvedVariant(),
+      }),
+    );
+  }
 }

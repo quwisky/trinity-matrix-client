@@ -14,7 +14,7 @@ export const UNLAYERED_RULESET_LEDGER = [
   ],
   [
     'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts#inline-styles',
-    '0b8eaf4efc082689f4f52fcf987c9ec87d7d8b5ccdc8cbf50297844afb1e276d',
+    'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
   ],
   [
     'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
@@ -34,7 +34,7 @@ export const UNLAYERED_RULESET_LEDGER = [
   ],
   [
     'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts#inline-styles',
-    'ce215ba5793a7b0e44cffdbe067a35280cd3b616fd20d9e008ae5b10c0be440f',
+    'c483ff224f1484acb700866912871b7e5c89b6f8fd751c798859cf5ef8b16b4a',
   ],
   [
     'libs/components/controls/src/lib/select/trn-select.component.ts#inline-styles',
@@ -42,7 +42,7 @@ export const UNLAYERED_RULESET_LEDGER = [
   ],
   [
     'libs/components/controls/src/lib/switch/trn-switch.component.ts#inline-styles',
-    '0b8eaf4efc082689f4f52fcf987c9ec87d7d8b5ccdc8cbf50297844afb1e276d',
+    'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
   ],
   [
     'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts#inline-styles',
@@ -166,7 +166,7 @@ export const UNLAYERED_RULESET_LEDGER = [
   ],
   [
     'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.scss',
-    'd91ed8ccadeda030e310195d9dfcadfce70ee428225888befc1a3739ac3558ea',
+    '9403212dd814955880513ac621406bb388dfbfa0b4001c48f2962bdcaed60d11',
   ],
   [
     'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',

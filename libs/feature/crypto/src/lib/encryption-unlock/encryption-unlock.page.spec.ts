@@ -257,7 +257,7 @@ describe('EncryptionUnlockPage', () => {
       expect(done?.disabled).toBe(true);
 
       el.querySelector<HTMLElement>(
-        '[data-testid="recovery-key-saved"] button[role="checkbox"]',
+        '[data-testid="recovery-key-saved"] input[role="checkbox"]',
       )?.click();
       fixture.detectChanges();
       expect(

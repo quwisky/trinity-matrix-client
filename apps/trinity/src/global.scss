@@ -155,6 +155,15 @@
     ) {
     cursor: default;
   }
+
+  /* Compact ordinal recipes stay dense for a fine pointer while every Trinity toggle keeps
+   * the repository's 44px minimum target when touch is the active interaction model. */
+  @media (pointer: coarse) {
+    button[data-trn-toggle] {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+  }
 }
 
 @layer components {

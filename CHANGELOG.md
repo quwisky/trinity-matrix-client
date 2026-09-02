@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Action and choice controls now share bounded Trinity recipes.** Checkboxes, switches, radio
+  groups, standalone toggles and toggle groups expose only the semantic variants, ordinal sizes
+  and structural axes they implement. Native inputs own checked, invalid, disabled and keyboard
+  semantics; toolbars retain one roving tab stop; buttons announce loading; and the composer no
+  longer restyles control internals. Existing segmented-radio and outline-toggle spellings
+  remain compatible while consumers migrate.
+
 - **Foundations and generic content now use bounded Trinity recipes.** Icons, avatars, badges,
   banners, empty states, progress and spinners expose only the semantic variants and ordinal
   sizes they support, while tooltip position stays a behavior choice. Existing exact sizes and
