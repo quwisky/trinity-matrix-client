@@ -126,6 +126,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Settings now composes Trinity's public design-system recipes.** Settings, Appearance,
+  Advanced configuration, and their dialogs use canonical semantic button and overlay inputs,
+  including `danger` feedback, while feature code owns only surrounding layout. Confirmations,
+  prompts, lazy configuration loading, and one-shot actions use cold RxJS pipelines; component
+  styles participate in the named cascade without changing validation, focus order, saving
+  feedback, or the routed and dialog workspace layouts.
+
 - **Authentication, Trust, startup, and host-shell surfaces now use Trinity's public recipes.**
   Their buttons, fields, cards, alerts, toasts, and modal surfaces use canonical semantic axes
   instead of vendor-shaped aliases or local appearance overrides. Alert results stay cold RxJS

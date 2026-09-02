@@ -177,7 +177,7 @@ describe('AdvancedSettingsComponent', () => {
     palette.set('violet');
     apiKey.set('gif-key');
     desktopOnly.set(false);
-    alertPrompt = vi.fn().mockResolvedValue(RESET_CONFIG_CONFIRMATION_WORD);
+    alertPrompt = vi.fn(() => of(RESET_CONFIG_CONFIRMATION_WORD));
     toastShow = vi.fn();
     writeText = vi.fn().mockResolvedValue(undefined);
     readText = vi.fn().mockResolvedValue('');
@@ -204,7 +204,7 @@ describe('AdvancedSettingsComponent', () => {
   function realConfig() {
     return [
       { provide: APP_CONFIG_ENTRIES, multi: true, useValue: ENTRIES },
-      MockProvider(TrnAlertService, { prompt: alertPrompt }),
+      MockProvider(TrnAlertService, { prompt$: alertPrompt }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(HostFileExportService, {
         support: () =>
@@ -225,7 +225,7 @@ describe('AdvancedSettingsComponent', () => {
         exportJson: () => json,
         resetToDefaults,
       }),
-      MockProvider(TrnAlertService, { prompt: alertPrompt }),
+      MockProvider(TrnAlertService, { prompt$: alertPrompt }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(HostFileExportService, {
         support: () =>
@@ -349,7 +349,7 @@ describe('AdvancedSettingsComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not copy your settings.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -451,7 +451,7 @@ describe('AdvancedSettingsComponent', () => {
     await flush();
 
     expect(alertPrompt).toHaveBeenCalledWith(
-      expect.objectContaining({ destructive: true }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(resetToDefaults).toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
@@ -482,7 +482,7 @@ describe('AdvancedSettingsComponent', () => {
   });
 
   it('resets nothing when the gate is cancelled', async () => {
-    alertPrompt.mockResolvedValue(null);
+    alertPrompt.mockReturnValue(of(null));
     const { fixture } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
@@ -494,7 +494,7 @@ describe('AdvancedSettingsComponent', () => {
   });
 
   it('resets nothing on a mistype, and says why', async () => {
-    alertPrompt.mockResolvedValue('defaluts');
+    alertPrompt.mockReturnValue(of('defaluts'));
     const { fixture } = await render(AdvancedSettingsComponent, {
       providers: mockedConfig(),
     });
@@ -524,7 +524,7 @@ describe('AdvancedSettingsComponent', () => {
     expect(button(container, 'advanced-reset')?.disabled).toBe(false);
     expect(toastShow).toHaveBeenCalledWith(
       'Could not reset every setting.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -818,7 +818,7 @@ describe('AdvancedSettingsComponent', () => {
 
       expect(toastShow).toHaveBeenCalledWith(
         CLIPBOARD_UNREADABLE_MESSAGE,
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       );
       expect(button(container, 'advanced-discard')).toBeNull();
     });
@@ -837,7 +837,7 @@ describe('AdvancedSettingsComponent', () => {
 
       expect(toastShow).toHaveBeenCalledWith(
         'Could not apply every setting.',
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       );
       // Some writes may have landed and some not, so the stale summary goes; the text
       // stays, and pressing Apply again re-checks against the app as it now is.

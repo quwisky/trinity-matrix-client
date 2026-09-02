@@ -2,8 +2,9 @@
   <button
     trnHeaderLeading
     trnBtn
-    variant="ghost"
-    size="icon"
+    presentation="ghost"
+    shape="icon"
+    size="md"
     trnTooltip="Back"
     aria-label="Back"
     (click)="goBack()"
@@ -31,7 +32,12 @@
            active visual recipe keys on. On mobile the directory disappears when a detail
            opens; on desktop it remains the stable location cue. -->
         <a
-          class="settings-nav__item"
+          trnBtn
+          #activeLink="routerLinkActive"
+          [variant]="activeLink.isActive ? 'secondary' : 'primary'"
+          [presentation]="activeLink.isActive ? 'solid' : 'ghost'"
+          size="md"
+          class="settings-nav__item w-full justify-start"
           [routerLink]="item.path"
           [replaceUrl]="wide()"
           routerLinkActive="is-active"
@@ -39,7 +45,11 @@
           [attr.data-testid]="'settings-nav-' + item.path"
           (click)="onSectionNavigate()"
         >
-          <trn-icon [name]="item.icon" class="settings-nav__icon" />
+          <trn-icon
+            [name]="item.icon"
+            size="md"
+            [variant]="activeLink.isActive ? 'accent' : 'muted'"
+          />
           <span class="settings-nav__label">{{ item.label }}</span>
           <!-- A mobile drill-in affordance; the sidebar shows the active highlight instead.
              NOT rendered rather than hidden with `md:hidden`: Tailwind's utilities live in
@@ -48,7 +58,7 @@
              specificity — so the class applies and does nothing. `wide()` is the same
              768px boundary the `md:` variant compiles to (both read MD_QUERY). -->
           @if (!wide()) {
-            <trn-icon name="chevron-right" class="settings-nav__chevron" />
+            <trn-icon name="chevron-right" size="md" variant="muted" />
           }
         </a>
       }

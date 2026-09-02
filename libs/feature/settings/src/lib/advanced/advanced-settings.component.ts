@@ -29,14 +29,15 @@ import {
 import { ConfigEditorOutletDirective } from './config-editor-outlet.directive';
 import {
   CLIPBOARD_UNREADABLE_MESSAGE,
-  readClipboardConfig,
-  readPickedConfigFile,
+  readClipboardConfig$,
+  readPickedConfigFile$,
 } from './import-config';
 import {
   RESET_CONFIG_MISTYPED_MESSAGE,
-  confirmResetConfigIntent,
+  confirmResetConfigIntent$,
 } from './reset-config';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import { EMPTY, defer, filter, finalize, switchMap, throwError } from 'rxjs';
 
 /** Two digits, so the dated filename sorts lexically. */
 function pad(value: number): string {
@@ -219,30 +220,36 @@ export class AdvancedSettingsComponent {
   constructor() {
     const load = this.editorLoader;
     if (load) {
-      void load().then(
-        (component) => this.editor.set(component),
-        // The chunk did not arrive: offline on a first visit, since it is held lazily by the
-        // service worker precisely so it is not downloaded by people who never open this
-        // page, or a deploy that moved it. The textarea is a complete editing surface, so
-        // there is nothing to report and nothing to retry.
-        () => this.editor.set(null),
-      );
+      load()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (component) => this.editor.set(component),
+          // The chunk did not arrive: offline on a first visit, since it is held lazily by the
+          // service worker precisely so it is not downloaded by people who never open this
+          // page, or a deploy that moved it. The textarea is a complete editing surface, so
+          // there is nothing to report and nothing to retry.
+          error: () => this.editor.set(null),
+        });
     }
   }
 
   /** Copy the document, toasting only once the write resolves — never on a rejection. */
   copy(): void {
-    void (
-      navigator.clipboard?.writeText(this.outgoingDocument()) ??
-      Promise.reject()
-    ).then(
-      () => this.toast.show('Settings copied.', { duration: 2000 }),
-      () =>
-        this.toast.show('Could not copy your settings.', {
-          duration: 3000,
-          variant: 'destructive',
-        }),
-    );
+    defer(() => {
+      const write = navigator.clipboard?.writeText.bind(navigator.clipboard);
+      return write
+        ? write(this.outgoingDocument())
+        : throwError(() => new Error('Clipboard writing is unavailable'));
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => this.toast.show('Settings copied.', { duration: 2000 }),
+        error: () =>
+          this.toast.show('Could not copy your settings.', {
+            duration: 3000,
+            variant: 'danger',
+          }),
+      });
   }
 
   /** Save the document through the selected cold host operation. */
@@ -260,14 +267,14 @@ export class AdvancedSettingsComponent {
           if (outcome.kind !== 'completed') {
             this.toast.show('Could not export your settings.', {
               duration: 3000,
-              variant: 'destructive',
+              variant: 'danger',
             });
           }
         },
         error: () =>
           this.toast.show('Could not export your settings.', {
             duration: 3000,
-            variant: 'destructive',
+            variant: 'danger',
           }),
       });
   }
@@ -333,7 +340,7 @@ export class AdvancedSettingsComponent {
           this.reviewed.set(null);
           this.toast.show('Could not apply every setting.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -350,44 +357,52 @@ export class AdvancedSettingsComponent {
   }
 
   /** Load a picked file into the box and check it, the same path as a paste. */
-  async importFile(event: Event): Promise<void> {
-    const text = await readPickedConfigFile(event);
-    if (text !== null) {
-      this.loadAndReview(text);
-    }
+  importFile(event: Event): void {
+    readPickedConfigFile$(event)
+      .pipe(
+        filter((text): text is string => text !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((text) => this.loadAndReview(text));
   }
 
   /** Load the clipboard into the box and check it — the primary route on mobile. */
-  async importClipboard(): Promise<void> {
-    const text = await readClipboardConfig();
-    if (text === null) {
-      this.toast.show(CLIPBOARD_UNREADABLE_MESSAGE, {
-        duration: 4000,
-        variant: 'destructive',
+  importClipboard(): void {
+    readClipboardConfig$()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((text) => {
+        if (text === null) {
+          this.toast.show(CLIPBOARD_UNREADABLE_MESSAGE, {
+            duration: 4000,
+            variant: 'danger',
+          });
+          return;
+        }
+        this.loadAndReview(text);
       });
-      return;
-    }
-    this.loadAndReview(text);
   }
 
   /** Put every exported setting back to its default, behind the type-to-confirm gate. */
-  async reset(): Promise<void> {
-    const intent = await confirmResetConfigIntent(this.alert);
-    if (intent === 'cancelled') {
-      return;
-    }
-    if (intent === 'mistyped') {
-      this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, { duration: 4000 });
-      return;
-    }
-
-    this.resetting.set(true);
-    this.config
-      .resetToDefaults()
-      .pipe(takeUntilDestroyed(this.destroyRef))
+  reset(): void {
+    confirmResetConfigIntent$(this.alert)
+      .pipe(
+        switchMap((intent) => {
+          if (intent === 'cancelled') {
+            return EMPTY;
+          }
+          if (intent === 'mistyped') {
+            this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, { duration: 4000 });
+            return EMPTY;
+          }
+          this.resetting.set(true);
+          return this.config
+            .resetToDefaults()
+            .pipe(finalize(() => this.resetting.set(false)));
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
-          this.resetting.set(false);
           // A reset is an edit of the app, not of the box: show what the app now holds.
           this.discard();
           this.toast.show('Settings reset to defaults.', {
@@ -396,10 +411,9 @@ export class AdvancedSettingsComponent {
           });
         },
         error: () => {
-          this.resetting.set(false);
           this.toast.show('Could not reset every setting.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });

@@ -143,17 +143,20 @@ pins those imports and selectors; unit and browser tests pin the interaction and
 name. Subsequent feature migrations should add or replace proof screens only when they exercise
 a genuinely new public contract, rather than turning the ledger into a list of every consumer.
 
-The first consumer-migration slice extends that proof through authentication, Trust, application
-startup, routing surfaces, and the host shell. Those consumers use canonical button
-`variant`/`presentation`/`size` axes, public fields and labels, muted cards, `danger` feedback,
-and neutral dialog surfaces. Consumer classes now arrange only surrounding layout; visual chrome
-belongs to the public recipes. Alert confirmations and prompts use the cold finite RxJS APIs, with
-`firstValueFrom` limited to SDK callback boundaries that require a Promise. Every component
-stylesheet in the slice is in `@layer components`, and
-`design-system-consumer-migration.spec.mjs` keeps the migrated roots non-vacuous while rejecting
-legacy values, vendor imports, local appearance overrides, Promise alert calls, and cascade
-exceptions. Compatibility remains available only for the consumer slices assigned to the later
-migration tickets.
+The completed consumer-migration slices extend that proof through authentication, Trust,
+application startup, routing surfaces, the host shell, and Settings. Those consumers use
+canonical button `variant`/`presentation`/`shape`/`size` axes, public fields and labels, muted
+cards, `danger` feedback, and neutral dialog surfaces. Settings, Appearance, and Advanced
+configuration retain their feature-owned workspace and field layout while public recipes own
+control and overlay chrome.
+
+Alert confirmations, prompts, dialog results, lazy configuration loading, and one-shot Settings
+actions use cold finite RxJS pipelines, with `firstValueFrom` limited to SDK or framework callback
+boundaries that require a Promise. Every component stylesheet in the migrated slices is in
+`@layer components`, and `design-system-consumer-migration.spec.mjs` keeps the roots non-vacuous
+while rejecting legacy values, vendor imports, local appearance overrides, Promise alert calls,
+and cascade exceptions. Compatibility remains available only for the consumer slices assigned to
+the later migration tickets.
 
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
 `shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
@@ -365,12 +368,14 @@ consumers migrate in #397-#401.
 Every overlay surface uses `trnOverlaySurface`, whose three bounded axes stay independent:
 
 - `variant="neutral|accent"` selects semantic color and elevation tokens;
-- `size="sm|md|lg|xl"` selects an ordinal inline-size token; and
-- `layout="dialog|sheet|popover|panel|fullscreen"` selects structural geometry.
+- `size="sm|md|lg|xl|2xl"` selects an ordinal inline-size token; and
+- `layout="dialog|sheet|popover|panel|workspace|fullscreen"` selects structural geometry.
 
 The directive owns background, foreground, border, radius and elevation for both document and
 CDK-portal content. Components own only their interior layout, typography and intentionally
-composed safe-area padding. Storybook imports CDK's overlay baseline into the same `vendor`
+composed safe-area padding. The `workspace` layout is the bounded 72rem by 48rem application
+surface used by Settings; its viewport insets remain part of the public recipe rather than
+feature-owned dialog paint. Storybook imports CDK's overlay baseline into the same `vendor`
 cascade layer as the application, so a recipe resolves identically in either host.
 
 The imperative wrappers expose the same Trinity vocabulary instead of vendor variants:

@@ -16,7 +16,7 @@ import { runWithBusy } from '@trinity/util/ui';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { IdentityService } from '@trinity/data-access/identity';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /** Profile settings sub-page: avatar (with a corner change badge) + display name. */
 @Component({

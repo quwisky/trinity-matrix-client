@@ -17,7 +17,10 @@ import {
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
@@ -29,7 +32,12 @@ import {
 @Component({
   selector: 'trn-settings-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgComponentOutlet, TrnButton, TrnIconComponent],
+  imports: [
+    NgComponentOutlet,
+    TrnButton,
+    TrnIconComponent,
+    TrnOverlaySurfaceDirective,
+  ],
   templateUrl: './settings-dialog.component.html',
   styleUrl: './settings-dialog.component.scss',
 })

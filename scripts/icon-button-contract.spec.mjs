@@ -76,7 +76,6 @@ const expectedBespokeCounts = {
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.html': 1,
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.html': 4,
   'libs/feature/rooms/src/lib/voice-message/voice-message.component.html': 1,
-  'libs/feature/settings/src/lib/account/account-section.component.html': 3,
   'libs/feature/settings/src/lib/profile/profile-settings.component.html': 1,
   'libs/components/controls/src/lib/button/trn-icon-motion.stories.ts#template-3': 1,
   'libs/components/controls/src/lib/toggle-group/trn-toggle-group.component.stories.ts#template-1': 7,
@@ -94,7 +93,6 @@ const expectedCompositeCounts = {
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html': 1,
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html': 1,
   'libs/feature/rooms/src/lib/rooms/rooms.page.html': 5,
-  'libs/feature/settings/src/lib/settings/settings.page.html': 1,
 };
 
 const countsByFile = (controls) =>

@@ -28,6 +28,7 @@ describe('Trinity overlay surface recipe', () => {
     const neutral = trnOverlaySurfaceRecipe('neutral', 'sm', 'dialog');
     const accent = trnOverlaySurfaceRecipe('accent', 'sm', 'dialog');
     const panel = trnOverlaySurfaceRecipe('neutral', 'xl', 'panel');
+    const workspace = trnOverlaySurfaceRecipe('neutral', '2xl', 'workspace');
 
     expect(neutral).toContain('var(--trinity-surface-raised)');
     expect(accent).toContain('var(--trinity-state-attention-surface)');
@@ -35,6 +36,11 @@ describe('Trinity overlay surface recipe', () => {
     expect(panel).toContain('--trn-overlay-inline-size:40rem');
     expect(panel).toContain('w-screen');
     expect(panel).toContain('h-dvh');
+    expect(workspace).toContain('--trn-overlay-inline-size:72rem');
+    expect(workspace).toContain('100vw-2*var(--trinity-space-4)');
+    expect(workspace).toContain('100dvh-2*var(--trinity-space-4)');
+    expect(workspace).toContain('flex');
+    expect(workspace).not.toMatch(/\bblock\b/u);
   });
 
   it('publishes bounded Trinity vocabulary', () => {
@@ -42,10 +48,10 @@ describe('Trinity overlay surface recipe', () => {
       'neutral' | 'accent'
     >();
     expectTypeOf<TrnOverlaySurfaceSize>().toEqualTypeOf<
-      'sm' | 'md' | 'lg' | 'xl'
+      'sm' | 'md' | 'lg' | 'xl' | '2xl'
     >();
     expectTypeOf<TrnOverlaySurfaceLayout>().toEqualTypeOf<
-      'dialog' | 'sheet' | 'popover' | 'panel' | 'fullscreen'
+      'dialog' | 'sheet' | 'popover' | 'panel' | 'workspace' | 'fullscreen'
     >();
   });
 

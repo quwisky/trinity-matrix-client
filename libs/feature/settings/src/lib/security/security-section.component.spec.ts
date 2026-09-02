@@ -31,7 +31,7 @@ async function build(
   );
   const exportRoomKeys = over.exportRoomKeys ?? vi.fn(() => of('ARMORED'));
   const importRoomKeys = over.importRoomKeys ?? vi.fn(() => of(undefined));
-  const prompt = over.prompt ?? vi.fn().mockResolvedValue('pw');
+  const prompt = over.prompt ?? vi.fn(() => of('pw'));
   const toastShow = vi.fn();
   const fileSave =
     over.fileSave ?? vi.fn(() => of({ kind: 'completed' as const }));
@@ -46,7 +46,7 @@ async function build(
         importRoomKeys,
       }),
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
-      MockProvider(TrnAlertService, { prompt }),
+      MockProvider(TrnAlertService, { prompt$: prompt }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(HostFileExportService, { save: fileSave }),
     ],
@@ -225,12 +225,12 @@ describe('SecuritySectionComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not export your room keys.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
   it('does not export when the passphrase prompt is cancelled', async () => {
-    const prompt = vi.fn().mockResolvedValue(null);
+    const prompt = vi.fn(() => of(null));
     const { cmp, exportRoomKeys } = await build({}, { prompt });
 
     await cmp.exportKeys();
@@ -243,7 +243,9 @@ describe('SecuritySectionComponent', () => {
 
     await cmp.onKeyFile(fileEvent('ARMORED-FILE'));
 
-    expect(importRoomKeys).toHaveBeenCalledWith('ARMORED-FILE', 'pw');
+    await vi.waitFor(() =>
+      expect(importRoomKeys).toHaveBeenCalledWith('ARMORED-FILE', 'pw'),
+    );
     expect(toastShow).toHaveBeenCalledWith(
       'Room keys imported.',
       expect.objectContaining({ variant: 'success' }),
@@ -270,7 +272,7 @@ describe('SecuritySectionComponent', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Incorrect passphrase'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 });

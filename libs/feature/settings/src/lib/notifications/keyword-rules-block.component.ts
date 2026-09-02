@@ -18,7 +18,7 @@ import {
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -129,7 +129,7 @@ export class KeywordRulesBlockComponent implements OnInit {
     if (existing?.enabled && existing.pattern === word) {
       this.toast.show(`“${word}” is already in your keywords.`, {
         duration: 3000,
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }
@@ -150,7 +150,7 @@ export class KeywordRulesBlockComponent implements OnInit {
           this.reload();
           this.toast.show(this.messageFor(error, `Could not add “${word}”.`), {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -172,7 +172,7 @@ export class KeywordRulesBlockComponent implements OnInit {
           this.reload();
           this.toast.show(`Could not remove “${keyword.pattern}”.`, {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -199,7 +199,7 @@ export class KeywordRulesBlockComponent implements OnInit {
           this.reload();
           this.toast.show(`Could not update “${keyword.pattern}”.`, {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });

@@ -1,4 +1,5 @@
 import type { TrnAlertService } from '@trinity/components/overlay';
+import { map, type Observable } from 'rxjs';
 
 /**
  * The word the user has to type before every setting goes back to its default.
@@ -37,22 +38,27 @@ export const RESET_CONFIG_MISTYPED_MESSAGE = `Nothing was reset. Type ${RESET_CO
  * the two existing gates: a live-disabled button hides *why* nothing happened, and this flow
  * needs to tell "changed my mind" apart from "typed it wrong".
  */
-export async function confirmResetConfigIntent(
+export function confirmResetConfigIntent$(
   alert: TrnAlertService,
-): Promise<ResetConfigIntent> {
-  const typed = await alert.prompt({
-    header: 'Reset settings to defaults',
-    message: `${RESET_CONFIG_CONSEQUENCES}\n\nType ${RESET_CONFIG_CONFIRMATION_WORD} to confirm.`,
-    placeholder: RESET_CONFIG_CONFIRMATION_WORD,
-    inputLabel: `Type ${RESET_CONFIG_CONFIRMATION_WORD} to confirm`,
-    confirmText: 'Reset settings',
-    cancelText: 'Cancel',
-    destructive: true,
-  });
-  if (typed === null) {
-    return 'cancelled';
-  }
-  return typed.trim().toUpperCase() === RESET_CONFIG_CONFIRMATION_WORD
-    ? 'confirmed'
-    : 'mistyped';
+): Observable<ResetConfigIntent> {
+  return alert
+    .prompt$({
+      header: 'Reset settings to defaults',
+      message: `${RESET_CONFIG_CONSEQUENCES}\n\nType ${RESET_CONFIG_CONFIRMATION_WORD} to confirm.`,
+      placeholder: RESET_CONFIG_CONFIRMATION_WORD,
+      inputLabel: `Type ${RESET_CONFIG_CONFIRMATION_WORD} to confirm`,
+      confirmText: 'Reset settings',
+      cancelText: 'Cancel',
+      variant: 'danger',
+    })
+    .pipe(
+      map((typed) => {
+        if (typed === null) {
+          return 'cancelled';
+        }
+        return typed.trim().toUpperCase() === RESET_CONFIG_CONFIRMATION_WORD
+          ? 'confirmed'
+          : 'mistyped';
+      }),
+    );
 }

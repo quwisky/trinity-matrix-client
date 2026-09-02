@@ -20,7 +20,17 @@ import {
   PushGatewayTrustDialogComponent,
   type PushGatewayTrustData,
 } from './push-gateway-trust-dialog.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import {
+  concatWith,
+  defer,
+  filter,
+  ignoreElements,
+  map,
+  switchMap,
+  tap,
+  type Observable,
+} from 'rxjs';
 
 /**
  * The push-gateway block inside the Notifications section (device-local; see
@@ -132,25 +142,23 @@ export class PushGatewayBlockComponent {
   }
 
   /** Confirm the trust implications, persist the gateway, and (re)register pushers. */
-  async save(): Promise<void> {
+  save(): void {
     const check = this.check();
     if (!check?.ok) {
       return;
     }
-    const confirmed = await this.confirmTrust(check.url, check.insecure);
-    if (!confirmed) {
-      return;
-    }
-    // Reflect the normalisation back into the field so what is stored is visible.
-    this.urlDraft.set(check.url);
     const appId = this.appIdDraft().trim() || undefined;
-    await this.gateway.save(check.url, appId);
-    // register() re-applies pushers for every account against the new config, does the
-    // app-id swap if one is needed, and drives the `registration` signal the status line
-    // reads — so the outcome surfaces without anything to await here.
-    this.push
-      .register()
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.confirmTrust$(check.url, check.insecure)
+      .pipe(
+        filter(Boolean),
+        tap(() => this.urlDraft.set(check.url)),
+        switchMap(() => defer(() => this.gateway.save(check.url, appId))),
+        // register() re-applies pushers for every account against the new config, does the
+        // app-id swap if one is needed, and drives the `registration` signal the status line
+        // reads — so the outcome surfaces through the service signal.
+        switchMap(() => this.push.register()),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({ error: () => undefined });
   }
 
@@ -162,26 +170,27 @@ export class PushGatewayBlockComponent {
   clear(): void {
     this.push
       .unregister()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: () => undefined,
-        complete: () => {
-          void this.gateway.clear();
+      .pipe(
+        ignoreElements(),
+        concatWith(defer(() => this.gateway.clear())),
+        tap(() => {
           this.urlDraft.set('');
           this.appIdDraft.set('');
           this.advancedOpen.set(false);
-        },
-      });
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({ error: () => undefined });
   }
 
-  private async confirmTrust(url: string, insecure: boolean): Promise<boolean> {
+  private confirmTrust$(url: string, insecure: boolean): Observable<boolean> {
     const data: PushGatewayTrustData = { url, insecure };
-    return (
-      (await this.dialog.openAndWait<boolean>(PushGatewayTrustDialogComponent, {
+    return this.dialog
+      .openAndWait$<boolean>(PushGatewayTrustDialogComponent, {
         inputs: { data },
         ariaLabel: 'Trust this push gateway?',
-      })) ?? false
-    );
+      })
+      .pipe(map((confirmed) => confirmed ?? false));
   }
 }
 

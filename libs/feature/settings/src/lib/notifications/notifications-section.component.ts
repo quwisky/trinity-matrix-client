@@ -17,7 +17,7 @@ import {
 } from '@trinity/data-access/notifications';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 import { PushGatewayBlockComponent } from './push-gateway-block.component';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.directive';
 
 /**
@@ -104,7 +104,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
           this.setState(this.soundKey, !on);
           this.setPending(this.soundKey, false);
           this.toast.show('Could not update your notification settings.', {
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -135,7 +135,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
           this.setPending(toggle.id, false);
           this.toast.show('Could not update your notification settings.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });

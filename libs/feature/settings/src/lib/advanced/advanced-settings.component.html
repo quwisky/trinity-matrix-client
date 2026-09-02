@@ -64,7 +64,7 @@
   <div class="flex flex-wrap items-center gap-2 px-4 py-2">
     <button
       trnBtn
-      variant="outline"
+      presentation="outline"
       size="sm"
       (click)="copy()"
       data-testid="advanced-copy"
@@ -74,7 +74,7 @@
     @if (canExportFile()) {
       <button
         trnBtn
-        variant="outline"
+        presentation="outline"
         size="sm"
         (click)="exportFile()"
         data-testid="advanced-export"
@@ -85,7 +85,7 @@
     @if (canEdit) {
       <button
         trnBtn
-        variant="outline"
+        presentation="outline"
         size="sm"
         (click)="pickFile()"
         data-testid="advanced-import-file"
@@ -94,7 +94,7 @@
       </button>
       <button
         trnBtn
-        variant="outline"
+        presentation="outline"
         size="sm"
         (click)="importClipboard()"
         data-testid="advanced-import-clipboard"
@@ -104,7 +104,7 @@
       @if (edited()) {
         <button
           trnBtn
-          variant="ghost"
+          presentation="ghost"
           size="sm"
           (click)="discard()"
           data-testid="advanced-discard"
@@ -211,7 +211,7 @@
           </button>
           <button
             trnBtn
-            variant="ghost"
+            presentation="ghost"
             size="sm"
             [disabled]="applying()"
             (click)="cancelApply()"
@@ -257,7 +257,7 @@
   <div class="border-t border-solid border-border px-4 py-3">
     <button
       trnBtn
-      variant="destructive"
+      variant="danger"
       size="sm"
       [disabled]="resetting()"
       (click)="reset()"

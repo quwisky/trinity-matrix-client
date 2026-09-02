@@ -10,6 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   FormField,
   FormRoot,
@@ -31,8 +32,17 @@ import {
   validateImagePackSource,
 } from '@trinity/data-access/media';
 import { TrnButton } from '@trinity/components/controls';
-import { firstValueFrom } from 'rxjs';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import {
+  catchError,
+  filter,
+  finalize,
+  firstValueFrom,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 interface SourceFormModel {
   source: string;
@@ -109,79 +119,97 @@ export class ImagePacksSectionComponent {
     });
   }
 
-  async find(): Promise<void> {
+  find(): void {
     if (this.finding() || this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
-    await submit(this.sourceForm, {
-      action: async (field) => {
+    void submit(this.sourceForm, {
+      action: (field) => {
         this.discovery.set(null);
         this.finding.set(true);
-        try {
-          const result = await firstValueFrom(
-            this.management.discover(field().value().source),
-          );
-          this.discovery.set(result);
-          queueMicrotask(() => this.resultsHeading()?.nativeElement.focus());
-        } catch (error) {
-          this.discovery.set(null);
-          this.error.set(managementErrorText(error, 'discover'));
-          queueMicrotask(() => this.sourceInput()?.nativeElement.focus());
-        } finally {
-          this.finding.set(false);
-        }
-        return undefined;
+        return firstValueFrom(
+          this.management.discover(field().value().source).pipe(
+            tap((result) => {
+              this.discovery.set(result);
+              queueMicrotask(() =>
+                this.resultsHeading()?.nativeElement.focus(),
+              );
+            }),
+            map(() => undefined),
+            catchError((error: unknown) => {
+              this.discovery.set(null);
+              this.error.set(managementErrorText(error, 'discover'));
+              queueMicrotask(() => this.sourceInput()?.nativeElement.focus());
+              return of(undefined);
+            }),
+            finalize(() => this.finding.set(false)),
+          ),
+        );
       },
+      // Signal Forms owns the Promise callback. The action itself remains an RxJS command
+      // and crosses into that callback only through firstValueFrom.
     });
   }
 
-  async install(pack: ManagedImagePack, trigger?: HTMLElement): Promise<void> {
+  install(pack: ManagedImagePack, trigger?: HTMLElement): void {
     if (this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
     this.busyId.set(pack.id);
-    try {
-      await firstValueFrom(this.management.install(pack));
-      this.notice.set(`${pack.name} is now available in all rooms.`);
-      queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
-    } catch (error) {
-      this.error.set(managementErrorText(error, 'install'));
-      queueMicrotask(() => trigger?.focus());
-    } finally {
-      this.busyId.set(null);
-    }
+    this.management
+      .install(pack)
+      .pipe(
+        finalize(() => this.busyId.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => {
+          this.notice.set(`${pack.name} is now available in all rooms.`);
+          queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
+        },
+        error: (error: unknown) => {
+          this.error.set(managementErrorText(error, 'install'));
+          queueMicrotask(() => trigger?.focus());
+        },
+      });
   }
 
-  async remove(pack: ManagedImagePack, trigger?: HTMLElement): Promise<void> {
+  remove(pack: ManagedImagePack, trigger?: HTMLElement): void {
     if (this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
-    const confirmed = await this.alert.confirm({
-      header: `Remove ${pack.name}?`,
-      message:
-        'This removes the pack from your account only. You will stay in the source room, and its state and media will not be deleted.',
-      confirmText: 'Remove pack',
-      destructive: true,
-    });
-    if (!confirmed) return;
-    this.busyId.set(pack.id);
-    try {
-      await firstValueFrom(this.management.uninstall(pack));
-      this.notice.set(`${pack.name} was removed from your account.`);
-      queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
-    } catch (error) {
-      this.error.set(managementErrorText(error, 'remove'));
-      queueMicrotask(() => trigger?.focus());
-    } finally {
-      this.busyId.set(null);
-    }
+    this.alert
+      .confirm$({
+        header: `Remove ${pack.name}?`,
+        message:
+          'This removes the pack from your account only. You will stay in the source room, and its state and media will not be deleted.',
+        confirmText: 'Remove pack',
+        variant: 'danger',
+      })
+      .pipe(
+        filter(Boolean),
+        tap(() => this.busyId.set(pack.id)),
+        switchMap(() => this.management.uninstall(pack)),
+        finalize(() => this.busyId.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => {
+          this.notice.set(`${pack.name} was removed from your account.`);
+          queueMicrotask(() => this.installedHeading()?.nativeElement.focus());
+        },
+        error: (error: unknown) => {
+          this.error.set(managementErrorText(error, 'remove'));
+          queueMicrotask(() => trigger?.focus());
+        },
+      });
   }
 
-  async setUsage(
+  setUsage(
     pack: ManagedImagePack,
     usage: ImagePackUsage,
     enabled: boolean,
-  ): Promise<void> {
+  ): void {
     if (this.busyId() !== null) return;
     this.error.set(null);
     this.notice.set(null);
@@ -191,14 +219,17 @@ export class ImagePacksSectionComponent {
     const canonical = (['emoticon', 'sticker'] as const).filter((item) =>
       next.includes(item),
     );
-    try {
-      await firstValueFrom(this.management.setEnabledUsage(pack, canonical));
-      this.notice.set(`${pack.name} usage was updated.`);
-    } catch (error) {
-      this.error.set(managementErrorText(error, 'usage'));
-    } finally {
-      this.busyId.set(null);
-    }
+    this.management
+      .setEnabledUsage(pack, canonical)
+      .pipe(
+        finalize(() => this.busyId.set(null)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: () => this.notice.set(`${pack.name} usage was updated.`),
+        error: (error: unknown) =>
+          this.error.set(managementErrorText(error, 'usage')),
+      });
   }
 
   statusText(pack: ManagedImagePack): string {

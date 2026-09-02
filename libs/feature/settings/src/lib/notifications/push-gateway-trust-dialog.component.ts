@@ -5,7 +5,10 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { TrnDialogRef } from '@trinity/components/overlay';
+import {
+  TrnDialogRef,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 
 /** What the confirmation needs to describe the gateway the user is about to trust. */
@@ -30,7 +33,7 @@ export interface PushGatewayTrustData {
   selector: 'trn-push-gateway-trust-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './push-gateway-trust-dialog.component.html',
-  imports: [TrnButton],
+  imports: [TrnButton, TrnOverlaySurfaceDirective],
 })
 export class PushGatewayTrustDialogComponent {
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);

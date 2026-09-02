@@ -53,12 +53,9 @@ function providers(overrides: Partial<Stub> = {}) {
       unregister: unregisterSpy,
     }),
     MockProvider(TrnDialogService, {
-      // `openAndWait` is generic in its return type (`Promise<R | null>`), so a stub
-      // resolving a concrete boolean cannot satisfy it without a cast. The component
-      // only ever calls it as `openAndWait<boolean>`, which is what this yields.
-      openAndWait: vi.fn(async () =>
-        dialogResult(),
-      ) as TrnDialogService['openAndWait'],
+      openAndWait$: vi.fn(() =>
+        of(dialogResult()),
+      ) as TrnDialogService['openAndWait$'],
     }),
   ];
 }
@@ -132,8 +129,7 @@ describe('PushGatewayBlockComponent', () => {
 
     cmp.clear();
 
-    // unregister() resolves synchronously here; its `complete` resets the drafts.
-    expect(cmp.urlDraft()).toBe('');
+    await vi.waitFor(() => expect(cmp.urlDraft()).toBe(''));
     expect(cmp.appIdDraft()).toBe('');
   });
 
@@ -207,7 +203,9 @@ describe('PushGatewayBlockComponent', () => {
 
     await fixture.componentInstance.save();
 
-    expect(saveSpy).toHaveBeenCalledWith(NOTIFY, undefined);
+    await vi.waitFor(() =>
+      expect(saveSpy).toHaveBeenCalledWith(NOTIFY, undefined),
+    );
     expect(registerSpy).toHaveBeenCalled();
   });
 
@@ -232,7 +230,9 @@ describe('PushGatewayBlockComponent', () => {
 
     await fixture.componentInstance.save();
 
-    expect(saveSpy).toHaveBeenCalledWith(NOTIFY, 'org.example.gw');
+    await vi.waitFor(() =>
+      expect(saveSpy).toHaveBeenCalledWith(NOTIFY, 'org.example.gw'),
+    );
   });
 
   it('tears pushers down before clearing the stored gateway', async () => {
@@ -245,7 +245,7 @@ describe('PushGatewayBlockComponent', () => {
     // unregister() must run before gateway.clear() — clearing drops the ledger the
     // teardown reads to know which pushers to remove.
     expect(unregisterSpy).toHaveBeenCalled();
-    expect(clearSpy).toHaveBeenCalled();
+    await vi.waitFor(() => expect(clearSpy).toHaveBeenCalled());
     expect(unregisterSpy.mock.invocationCallOrder[0]).toBeLessThan(
       clearSpy.mock.invocationCallOrder[0],
     );

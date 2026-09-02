@@ -1,10 +1,12 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   inject,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -15,7 +17,8 @@ import {
   isBrowserReserved,
   type ShortcutView,
 } from '@trinity/platform-native';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
+import { filter } from 'rxjs';
 
 /** A shortcut row plus the presentational bits the template needs. */
 interface ShortcutRow extends ShortcutView {
@@ -50,6 +53,7 @@ export class ShortcutsSectionComponent {
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** The shortcut currently in capture (edit) mode, or null. */
   readonly capturingId = signal<string | null>(null);
@@ -105,15 +109,15 @@ export class ShortcutsSectionComponent {
   }
 
   /** Restore every shortcut to its default, after a confirm. */
-  async resetAll(): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Reset shortcuts',
-      message: 'Restore every keyboard shortcut to its default binding?',
-      confirmText: 'Reset all',
-    });
-    if (confirmed) {
-      this.shortcuts.resetAll();
-    }
+  resetAll(): void {
+    this.alert
+      .confirm$({
+        header: 'Reset shortcuts',
+        message: 'Restore every keyboard shortcut to its default binding?',
+        confirmText: 'Reset all',
+      })
+      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.shortcuts.resetAll());
   }
 
   /** Capture the next chord while a row is in edit mode and apply it. */
@@ -135,7 +139,7 @@ export class ShortcutsSectionComponent {
     e.preventDefault();
     if (!hasModifier(chord)) {
       this.toast.show('Use a modifier — Ctrl, Cmd or Alt.', {
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }
@@ -146,7 +150,7 @@ export class ShortcutsSectionComponent {
         .list()
         .find((s) => s.id === result.conflict)?.description;
       this.toast.show(`That chord is taken by “${holder}”, which is fixed.`, {
-        variant: 'destructive',
+        variant: 'danger',
       });
       return;
     }

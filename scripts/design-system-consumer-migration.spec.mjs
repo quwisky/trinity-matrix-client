@@ -9,12 +9,13 @@ import {
 } from './source-style-blocks.mjs';
 
 /**
- * Freeze the first completed application-consumer migration from #397.
+ * Freeze the completed application-consumer migrations from #397 and #398.
  *
  * Public components still accept a few expansion aliases while the remaining slices move.
- * This guard makes authentication, Trust, startup, routing and host-shell consumers a closed
- * set: comments cannot satisfy it, vendor imports cannot bypass the public tier, and aliases or
- * unlayered component rules cannot quietly return after this slice leaves the migration ledgers.
+ * This guard makes authentication, Trust, Settings, startup, routing and host-shell consumers a
+ * closed set: comments cannot satisfy it, vendor imports cannot bypass the public tier, and
+ * aliases or unlayered component rules cannot quietly return after these slices leave the
+ * migration ledgers.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -23,6 +24,7 @@ const migratedRoots = [
   'libs/application/runtime/src/lib',
   'libs/feature/auth/src/lib',
   'libs/feature/crypto/src/lib',
+  'libs/feature/settings/src/lib',
   'libs/feature/shell/src/lib',
 ];
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
@@ -42,6 +44,9 @@ const productionSources = globSync(
   )
   .sort();
 const templates = productionSources.filter((file) => file.endsWith('.html'));
+const settingsTemplates = templates.filter((file) =>
+  file.startsWith('libs/feature/settings/src/lib/'),
+);
 const typescript = productionSources.filter((file) => file.endsWith('.ts'));
 const componentStyles = productionSources.filter(
   (file) => file.endsWith('.component.scss') || file.endsWith('.page.scss'),
@@ -49,12 +54,13 @@ const componentStyles = productionSources.filter(
 
 const markup = (file) => stripMarkupComments(read(file));
 const source = (file) => stripSourceComments(read(file));
-const tags = (selector) =>
-  templates.flatMap((file) =>
+const tagsFrom = (files, selector) =>
+  files.flatMap((file) =>
     [...markup(file).matchAll(selector)].map(([tag]) => [file, tag]),
   );
+const tags = (selector) => tagsFrom(templates, selector);
 
-describe('migrated authentication, Trust and host-shell consumers', () => {
+describe('migrated authentication, Trust, Settings and host-shell consumers', () => {
   it('is a non-vacuous public-tier-only production slice', () => {
     expect(productionSources.length).toBeGreaterThan(40);
     expect(templates.length).toBeGreaterThan(10);
@@ -76,7 +82,7 @@ describe('migrated authentication, Trust and host-shell consumers', () => {
 
   it('uses only canonical Trinity button, card and overlay vocabulary', () => {
     const buttons = tags(/<(?:button|a)\b[^>]*\btrnBtn\b[^>]*>/gu);
-    expect(buttons.length).toBeGreaterThan(25);
+    expect(buttons.length).toBeGreaterThan(90);
 
     for (const [file, tag] of buttons) {
       expect(tag, file).not.toMatch(
@@ -87,6 +93,29 @@ describe('migrated authentication, Trust and host-shell consumers', () => {
       );
       expect(tag, file).not.toMatch(
         /\bclass\s*=\s*['"][^'"]*(?:bg-|border-|font-|h-|leading-|p[trblxy]?-|ring-|rounded-|shadow-|text-|tracking-|hover:|focus:)[^'"]*['"]/u,
+      );
+    }
+
+    const settingsButtons = tagsFrom(settingsTemplates, /<button\b[^>]*>/gu);
+    expect(settingsButtons.length).toBeGreaterThan(25);
+    for (const [file, tag] of settingsButtons) {
+      expect(tag, file).toMatch(/\b(?:trnBtn|trnIconButton)\b/u);
+    }
+
+    const settingsAvatars = tagsFrom(
+      settingsTemplates,
+      /<trn-avatar\b[^>]*>/gu,
+    );
+    for (const [file, tag] of settingsAvatars) {
+      expect(tag, file).not.toMatch(
+        /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,
+      );
+    }
+
+    const settingsIcons = tagsFrom(settingsTemplates, /<trn-icon\b[^>]*>/gu);
+    for (const [file, tag] of settingsIcons) {
+      expect(tag, file).not.toMatch(
+        /\bsize\s*=\s*['"]\d+(?:\.\d+)?(?:px|rem|em)['"]/u,
       );
     }
 
@@ -102,25 +131,31 @@ describe('migrated authentication, Trust and host-shell consumers', () => {
     );
 
     const surfaces = tags(/<[^>]*\btrnOverlaySurface\b[^>]*>/gu);
-    expect(surfaces).toHaveLength(2);
+    expect(surfaces).toHaveLength(4);
     for (const [file, tag] of surfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
-      expect(tag, file).toMatch(/\bsize="md"/u);
-      expect(tag, file).toMatch(/\blayout="dialog"/u);
     }
+    expect(
+      surfaces.map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1]).sort(),
+    ).toEqual(['2xl', 'lg', 'md', 'md']);
+    expect(
+      surfaces.map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1]).sort(),
+    ).toEqual(['dialog', 'dialog', 'dialog', 'workspace']);
   });
 
   it('uses cold finite alert commands and canonical danger variants', () => {
     const authored = typescript.map(source).join('\n');
     expect(authored).toContain('.confirm$(');
     expect(authored).toContain('.prompt$(');
+    expect(authored).toContain('.openAndWait$');
     expect(authored).not.toMatch(/\.(?:confirm|prompt)\s*\(/u);
+    expect(authored).not.toMatch(/\.openAndWait\s*\(/u);
     expect(authored).not.toMatch(/\bdestructive\s*:\s*true\b/u);
     expect(authored).not.toMatch(/\bvariant\s*:\s*['"]destructive['"]/u);
   });
 
   it('keeps every component stylesheet in the named components layer', () => {
-    expect(componentStyles.length).toBeGreaterThanOrEqual(10);
+    expect(componentStyles.length).toBeGreaterThanOrEqual(15);
     for (const file of componentStyles) {
       const blocks = topLevelStyleBlocks(read(file));
       expect(

@@ -15,8 +15,8 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { TrustService } from '@trinity/data-access/trust';
 import { HostFileExportService } from '@trinity/runtime/host';
-import { switchMap } from 'rxjs';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { filter, finalize, from, map, switchMap, tap } from 'rxjs';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /**
  * Security settings sub-page: surfaces this account's end-to-end-encryption posture —
@@ -118,48 +118,45 @@ export class SecuritySectionComponent implements OnInit {
   }
 
   /** Export this device's room keys to a passphrase-encrypted file. */
-  async exportKeys(): Promise<void> {
-    const passphrase = await this.alert.prompt({
-      header: 'Export room keys',
-      message:
-        'Choose a passphrase to protect the file. You’ll need it to import the keys again.',
-      placeholder: 'Passphrase',
-      inputType: 'password',
-      confirmText: 'Export',
-    });
-    if (!passphrase) {
-      return;
-    }
-    this.busy.set(true);
-    this.crypto
-      .exportRoomKeys(passphrase)
+  exportKeys(): void {
+    this.alert
+      .prompt$({
+        header: 'Export room keys',
+        message:
+          'Choose a passphrase to protect the file. You’ll need it to import the keys again.',
+        placeholder: 'Passphrase',
+        inputType: 'password',
+        confirmText: 'Export',
+      })
       .pipe(
+        filter((passphrase): passphrase is string => Boolean(passphrase)),
+        tap(() => this.busy.set(true)),
+        switchMap((passphrase) => this.crypto.exportRoomKeys(passphrase)),
         switchMap((armored) =>
           this.files.save({
             bytes: new Blob([armored], { type: 'text/plain' }),
             filename: 'trinity-room-keys.txt',
           }),
         ),
+        finalize(() => this.busy.set(false)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: (outcome) => {
-          this.busy.set(false);
           this.toast.show(
             outcome.kind === 'completed'
               ? 'Room keys exported.'
               : 'Could not export your room keys.',
             {
               duration: outcome.kind === 'completed' ? 3000 : 4000,
-              variant: outcome.kind === 'completed' ? 'success' : 'destructive',
+              variant: outcome.kind === 'completed' ? 'success' : 'danger',
             },
           );
         },
         error: () => {
-          this.busy.set(false);
           this.toast.show('Could not export your room keys.', {
             duration: 4000,
-            variant: 'destructive',
+            variant: 'danger',
           });
         },
       });
@@ -171,43 +168,46 @@ export class SecuritySectionComponent implements OnInit {
   }
 
   /** Read the picked export file, prompt for its passphrase, and import the keys. */
-  async onKeyFile(event: Event): Promise<void> {
+  onKeyFile(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // allow re-picking the same file
     if (!file) {
       return;
     }
-    const passphrase = await this.alert.prompt({
-      header: 'Import room keys',
-      message: 'Enter the passphrase this file was exported with.',
-      placeholder: 'Passphrase',
-      inputType: 'password',
-      confirmText: 'Import',
-    });
-    if (!passphrase) {
-      return;
-    }
-    const armored = await file.text();
-    this.busy.set(true);
-    this.crypto
-      .importRoomKeys(armored, passphrase)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.alert
+      .prompt$({
+        header: 'Import room keys',
+        message: 'Enter the passphrase this file was exported with.',
+        placeholder: 'Passphrase',
+        inputType: 'password',
+        confirmText: 'Import',
+      })
+      .pipe(
+        filter((passphrase): passphrase is string => Boolean(passphrase)),
+        switchMap((passphrase) =>
+          from(file.text()).pipe(map((armored) => ({ armored, passphrase }))),
+        ),
+        tap(() => this.busy.set(true)),
+        switchMap(({ armored, passphrase }) =>
+          this.crypto.importRoomKeys(armored, passphrase),
+        ),
+        finalize(() => this.busy.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
-          this.busy.set(false);
           this.toast.show('Room keys imported.', {
             duration: 3000,
             variant: 'success',
           });
         },
         error: (err: unknown) => {
-          this.busy.set(false);
           this.toast.show(
             err instanceof Error
               ? err.message
               : 'Could not import the room keys.',
-            { duration: 4000, variant: 'destructive' },
+            { duration: 4000, variant: 'danger' },
           );
         },
       });

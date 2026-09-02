@@ -31,20 +31,22 @@
 
       <div class="flex flex-col gap-1.5">
         <label trnLabel for="current-password">Current password</label>
-        <div class="relative">
+        <div class="flex items-center gap-2">
           <input
             trnInput
             id="current-password"
             [type]="revealed().currentPassword ? 'text' : 'password'"
-            class="pr-10"
+            class="min-w-0 flex-1"
             autocomplete="current-password"
             [formField]="form.currentPassword"
             data-testid="current-password"
           />
           <button
             type="button"
-            trnIconButton
-            class="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+            trnBtn
+            presentation="ghost"
+            shape="icon"
+            size="md"
             [attr.aria-label]="
               revealed().currentPassword ? 'Hide password' : 'Show password'
             "
@@ -61,20 +63,22 @@
 
       <div class="flex flex-col gap-1.5">
         <label trnLabel for="new-password">New password</label>
-        <div class="relative">
+        <div class="flex items-center gap-2">
           <input
             trnInput
             id="new-password"
             [type]="revealed().newPassword ? 'text' : 'password'"
-            class="pr-10"
+            class="min-w-0 flex-1"
             autocomplete="new-password"
             [formField]="form.newPassword"
             data-testid="new-password"
           />
           <button
             type="button"
-            trnIconButton
-            class="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+            trnBtn
+            presentation="ghost"
+            shape="icon"
+            size="md"
             [attr.aria-label]="
               revealed().newPassword ? 'Hide password' : 'Show password'
             "
@@ -91,20 +95,22 @@
 
       <div class="flex flex-col gap-1.5">
         <label trnLabel for="confirm-password">Confirm new password</label>
-        <div class="relative">
+        <div class="flex items-center gap-2">
           <input
             trnInput
             id="confirm-password"
             [type]="revealed().confirmPassword ? 'text' : 'password'"
-            class="pr-10"
+            class="min-w-0 flex-1"
             autocomplete="new-password"
             [formField]="form.confirmPassword"
             data-testid="confirm-password"
           />
           <button
             type="button"
-            trnIconButton
-            class="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+            trnBtn
+            presentation="ghost"
+            shape="icon"
+            size="md"
             [attr.aria-label]="
               revealed().confirmPassword ? 'Hide password' : 'Show password'
             "

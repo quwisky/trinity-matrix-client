@@ -28,7 +28,6 @@ export interface AppearancePreferenceField {
   selector: 'trn-appearance-preference-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-preference-field.component.html',
-  styleUrl: './appearance-preference-field.component.scss',
   imports: [TrnButton, TrnSelectComponent, SettingsFieldRowDirective],
 })
 export class AppearancePreferenceFieldComponent {

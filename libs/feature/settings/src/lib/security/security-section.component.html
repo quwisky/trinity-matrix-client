@@ -52,9 +52,10 @@
              otherwise guess it lives behind "Enter recovery key". -->
         <button
           trnBtn
-          variant="ghost"
+          variant="secondary"
+          presentation="ghost"
           size="sm"
-          class="self-start text-muted-foreground"
+          class="self-start"
           (click)="resetRecovery()"
           data-testid="security-reset-recovery"
         >
@@ -84,7 +85,7 @@
       <button
         trnBtn
         size="sm"
-        variant="outline"
+        presentation="outline"
         class="self-start"
         (click)="verifySession()"
         data-testid="security-verify"
@@ -120,7 +121,7 @@
       <button
         trnBtn
         size="sm"
-        variant="outline"
+        presentation="outline"
         class="self-start"
         [disabled]="busy()"
         (click)="exportKeys()"
@@ -131,7 +132,7 @@
       <button
         trnBtn
         size="sm"
-        variant="outline"
+        presentation="outline"
         class="self-start"
         [disabled]="busy()"
         (click)="pickKeyFile()"

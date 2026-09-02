@@ -51,6 +51,7 @@ import {
   template: \`
     <section trnOverlaySurface variant="neutral" size="sm" layout="dialog"></section>
     <section trnOverlaySurface variant="accent" size="xl" layout="fullscreen"></section>
+    <section trnOverlaySurface variant="neutral" size="2xl" layout="workspace"></section>
     <button [trnDropdownMenuTrigger]="menu" side="top" align="center">Open</button>
     <ng-template #menu>
       <div trnDropdownMenu>

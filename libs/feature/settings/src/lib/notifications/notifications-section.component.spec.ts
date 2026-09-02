@@ -131,7 +131,7 @@ describe('NotificationsSectionComponent', () => {
     expect(cmp.soundChecked()).toBe(before);
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -154,7 +154,7 @@ describe('NotificationsSectionComponent', () => {
     expect(cmp.checked(TOGGLES[1])).toBe(false); // reverted
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 

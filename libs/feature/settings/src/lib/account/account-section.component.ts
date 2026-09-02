@@ -15,7 +15,7 @@ import {
   schema,
   validateTree,
 } from '@angular/forms/signals';
-import { TrnButton, TrnIconButton } from '@trinity/components/controls';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -23,7 +23,7 @@ import { runWithBusy } from '@trinity/util/ui';
 import { AuthService, type AccountManagement } from '@trinity/data-access/auth';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading.component';
+import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 
 /** Minimum length we require for a new password (a light client-side guard). */
 const MIN_PASSWORD = 8;
@@ -93,7 +93,6 @@ const passwordSchema = schema<PasswordModel>((path) => {
     FormField,
     FormRoot,
     TrnIconComponent,
-    TrnIconButton,
     SettingsSectionHeadingComponent,
     TrnButton,
     TrnInput,
