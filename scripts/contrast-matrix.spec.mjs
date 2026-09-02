@@ -299,8 +299,8 @@ function resolve(token, theme, mode, seen = new Set()) {
 /**
  * An opaque CSS colour -> [r, g, b], or null if this parser cannot measure it safely.
  *
- * OKLCH, HSL, RGB and hex are all handled. Trinity now authors OKLCH while the named Themes keep
- * legacy notation until their own redesign tickets; silently dropping either family would make
+ * OKLCH, HSL, RGB and hex are all handled. Redesigned Themes author OKLCH while Themes still
+ * waiting for their migration keep legacy notation; silently dropping either family would make
  * the matrix report a false clean run. What cannot be parsed is asserted below rather than
  * filtered away. Alpha is fail-closed too: discarding it would let transparent text or surfaces
  * report the contrast of their invisible RGB channels.
@@ -514,14 +514,19 @@ describe('contrast matrix', () => {
     expect(runtimeMixes).toEqual([]);
   });
 
-  it('keeps every authored Trinity colour in explicit sRGB-safe OKLCH', () => {
-    const trinityBlocks = blocks.filter(({ selector }) =>
-      [':root', ':root.dark'].includes(selector),
+  it('keeps every redesigned Theme colour in explicit sRGB-safe OKLCH', () => {
+    const redesignedThemeBlocks = blocks.filter(({ selector }) =>
+      [
+        ':root',
+        ':root.dark',
+        ":root[data-theme='amethyst']:not(.dark)",
+        ":root[data-theme='amethyst'].dark",
+      ].includes(selector),
     );
     const legacy = [];
     const outOfGamut = [];
     let authoredColours = 0;
-    for (const { selector, tokens } of trinityBlocks) {
+    for (const { selector, tokens } of redesignedThemeBlocks) {
       for (const [token, value] of tokens) {
         if (/#|(?:rgb|hsl|color-mix)\s*\(|\btransparent\b/iu.test(value)) {
           legacy.push(`${selector}: ${token} = ${value}`);
@@ -536,7 +541,7 @@ describe('contrast matrix', () => {
       }
     }
 
-    expect(authoredColours).toBeGreaterThan(50);
+    expect(authoredColours).toBeGreaterThan(90);
     expect(legacy).toEqual([]);
     expect(outOfGamut).toEqual([]);
   });

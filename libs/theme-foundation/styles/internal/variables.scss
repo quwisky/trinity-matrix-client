@@ -459,85 +459,75 @@
   }
 
   // =============================================================================
-  // Example Theme: "Amethyst" — a violet reskin. Demonstrates that a Theme only
-  // needs to override what differs; brand-bound Helm tokens (--primary, --ring) and
-  // the aliased dark surfaces (--card, --popover) re-theme automatically. The light
-  // block is scoped `:not(.dark)` so its literals never leak into dark (see the header).
+  // Amethyst — a violet Theme. It overrides only its accent and violet-neutral family;
+  // conventional status hues, syntax colours and every mode-invariant role stay inherited.
+  // Brand-bound Helm tokens such as --primary and aliased surfaces re-theme automatically.
+  // The light block is scoped `:not(.dark)` so its values never leak into dark (see the header).
   // =============================================================================
   :root[data-theme='amethyst']:not(.dark) {
-    --trinity-accent: #7c3aed;
-    --trinity-accent-hover: #6d28d9;
-    --trinity-accent-tint-20: #7c3aed33;
-    --trinity-accent-tint-30: #7c3aed4d;
+    // A coordinated 300deg violet family. Text uses a darker stop than the accent fill,
+    // while the two tint stops remain opaque so their contrast is independent of the ground.
+    --trinity-accent: oklch(54% 0.2 300deg);
+    --trinity-accent-hover: oklch(48% 0.19 300deg);
+    --trinity-link: oklch(45% 0.17 300deg);
+    --trinity-accent-tint-20: oklch(94% 0.025 300deg);
+    --trinity-accent-tint-30: oklch(91% 0.045 300deg);
 
-    // Violet-800 keeps Amethyst text distinct from its violet-600 fill. Without it this block
-    // inherits the Trinity indigo link, so `.settings__item--active` paints two unrelated hues
-    // on one row. The dedicated Amethyst redesign replaces these legacy coordinates later.
-    --trinity-link: #5b21b6;
-    --trinity-rail: #e7e2f0;
-    --trinity-sidebar: #f4f1fa;
-    --trinity-sidebar-header: #ece6f5;
-    --trinity-chat: #fdfcff;
-    --trinity-hover: #ece5f6;
-    --trinity-active: #dccfef;
-    --trinity-divider: #e6ddf2;
-    --trinity-text: #2b2438;
-    --trinity-text-muted: #5d5470; // 4.90:1 on --trinity-active (was #635a74, 4.38:1)
-    --trinity-text-bright: #120a1e;
-    --trinity-state-hover-surface: var(--trinity-hover);
-    --trinity-state-pressed-surface: var(--trinity-active);
-    --trinity-state-selected-surface: var(--trinity-active);
-    --trinity-state-selected-hover-surface: var(--trinity-active);
-    --trinity-status-neutral-surface: var(--trinity-active);
-    --trinity-status-neutral-foreground: var(--trinity-text);
-
-    // Control roles that differ from the complete default Theme.
-    --trinity-control-foreground: hsl(260deg 22% 14%);
-    --trinity-control-secondary-foreground: var(--trinity-control-foreground);
-    --trinity-control-accent-foreground: var(--trinity-control-foreground);
-    --trinity-surface-control: #ece5f6;
-    --trinity-control-muted-foreground: hsl(
-      260deg 10% 38%
-    ); // 4.77:1 on --trinity-active (was 3.84:1)
-
-    --trinity-border-control: #e6ddf2;
-    --trinity-surface-drop-overlay: #fdfcffd1;
+    // Lightness carries the surface hierarchy; restrained violet chroma makes the Theme
+    // recognisable without tinting conventional status families into new meanings.
+    --trinity-rail: oklch(91.5% 0.018 300deg);
+    --trinity-sidebar: oklch(96.5% 0.01 300deg);
+    --trinity-sidebar-header: oklch(94.5% 0.014 300deg);
+    --trinity-chat: oklch(99% 0.005 300deg);
+    --trinity-hover: oklch(93.5% 0.016 300deg);
+    --trinity-active: oklch(88% 0.035 300deg);
+    --trinity-divider: oklch(89.5% 0.02 300deg);
+    --trinity-text: oklch(30% 0.025 300deg);
+    --trinity-text-muted: oklch(43% 0.025 300deg);
+    --trinity-text-bright: oklch(16% 0.02 300deg);
+    --trinity-state-hover-surface: oklch(93.5% 0.016 300deg);
+    --trinity-state-pressed-surface: oklch(86% 0.045 300deg);
+    --trinity-state-selected-surface: oklch(88% 0.035 300deg);
+    --trinity-state-selected-hover-surface: oklch(84% 0.05 300deg);
+    --trinity-status-neutral-surface: oklch(88% 0.035 300deg);
+    --trinity-status-neutral-foreground: oklch(30% 0.025 300deg);
+    --trinity-surface-control: oklch(95% 0.012 300deg);
+    --trinity-control-foreground: oklch(20% 0.02 300deg);
+    --trinity-control-muted-foreground: oklch(43% 0.025 300deg);
+    --trinity-border-control: oklch(89% 0.02 300deg);
+    --trinity-surface-drop-overlay: oklch(99% 0.005 300deg / 82%);
   }
 
   :root[data-theme='amethyst'].dark {
-    --trinity-accent: #a78bfa; // lighter violet reads better on the dark canvas
-    --trinity-accent-hover: #8b5cf6;
-    --trinity-accent-tint-20: #a78bfa33;
-    --trinity-accent-tint-30: #a78bfa4d;
-    --trinity-link: #b9a3fc; // 5.32:1 on the worst amethyst-dark surface (was 4.23:1)
-
-    // The light accent needs dark on-accent text: white would be 2.7:1 (fails WCAG AA);
-    // this dark violet is 6.3:1. --primary-foreground defaults to white in :root.
-    --trinity-accent-foreground: #1e1633;
-    --trinity-rail: #1c1826;
-    --trinity-sidebar: #262232;
-    --trinity-sidebar-header: #201c2b;
-    --trinity-chat: #2b2735;
-    --trinity-hover: #322c42;
-    --trinity-active: #3d3550;
-    --trinity-divider: #1a1622;
-    --trinity-text: #ddd8e6;
-    --trinity-text-muted: #aaa3bd; // 4.76:1 on the worst amethyst-dark surface (was 4.22:1)
-    --trinity-text-bright: #f5f2fa;
-    --trinity-state-hover-surface: var(--trinity-hover);
-    --trinity-state-pressed-surface: var(--trinity-active);
-    --trinity-state-selected-surface: var(--trinity-active);
-    --trinity-state-selected-hover-surface: var(--trinity-active);
-    --trinity-status-neutral-surface: var(--trinity-active);
-    --trinity-status-neutral-foreground: var(--trinity-text);
-    --trinity-surface-canvas: hsl(260deg 20% 8%);
-    --trinity-control-foreground: hsl(260deg 20% 96%);
-    --trinity-control-muted-foreground: hsl(
-      260deg 12% 70%
-    ); // 5.06:1 on the worst amethyst-dark ground
-
-    --trinity-border-control: #322c42;
-    --trinity-surface-drop-overlay: #2b2735d1;
+    // Dark Mode lifts the violet family and pairs its light accent with dark violet ink.
+    --trinity-accent: oklch(70% 0.145 300deg);
+    --trinity-accent-hover: oklch(64% 0.16 300deg);
+    --trinity-link: oklch(77% 0.1 300deg);
+    --trinity-accent-foreground: oklch(18% 0.03 300deg);
+    --trinity-accent-tint-20: oklch(34% 0.045 300deg);
+    --trinity-accent-tint-30: oklch(37% 0.07 300deg);
+    --trinity-rail: oklch(18% 0.018 300deg);
+    --trinity-sidebar: oklch(24% 0.022 300deg);
+    --trinity-sidebar-header: oklch(21% 0.02 300deg);
+    --trinity-chat: oklch(28% 0.024 300deg);
+    --trinity-hover: oklch(32% 0.028 300deg);
+    --trinity-active: oklch(37% 0.045 300deg);
+    --trinity-divider: oklch(20% 0.018 300deg);
+    --trinity-text: oklch(90% 0.018 300deg);
+    --trinity-text-muted: oklch(74% 0.025 300deg);
+    --trinity-text-bright: oklch(97% 0.008 300deg);
+    --trinity-state-hover-surface: oklch(32% 0.028 300deg);
+    --trinity-state-pressed-surface: oklch(39% 0.05 300deg);
+    --trinity-state-selected-surface: oklch(37% 0.045 300deg);
+    --trinity-state-selected-hover-surface: oklch(41% 0.055 300deg);
+    --trinity-status-neutral-surface: oklch(37% 0.045 300deg);
+    --trinity-status-neutral-foreground: oklch(90% 0.018 300deg);
+    --trinity-surface-canvas: oklch(16% 0.018 300deg);
+    --trinity-surface-control: oklch(32% 0.028 300deg);
+    --trinity-control-foreground: oklch(97% 0.008 300deg);
+    --trinity-control-muted-foreground: oklch(74% 0.025 300deg);
+    --trinity-border-control: oklch(34% 0.032 300deg);
+    --trinity-surface-drop-overlay: oklch(28% 0.024 300deg / 82%);
   }
 
   // -----------------------------------------------------------------------------

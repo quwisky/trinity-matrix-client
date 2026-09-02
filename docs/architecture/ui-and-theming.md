@@ -808,13 +808,13 @@ new grounds, which is exactly where an inherited colour is most likely to stop w
 Theme that needed a component edited, or a role redefined to stay legible, would be telling
 you the token layer is incomplete.
 
-### Trinity's sRGB OKLCH Theme colours
+### Trinity and Amethyst sRGB OKLCH Theme colours
 
-Every colour authored directly by the Trinity Theme uses absolute `oklch()` coordinates that
-resolve inside the sRGB gamut. This is deliberate: browsers still differ in how they map
-out-of-gamut OKLCH, and a contrast claim is only portable when no browser has to clip or remap the
-source colour. `contrast-matrix.spec.mjs` rejects legacy colour notation, runtime `color-mix()`
-inside the Trinity Theme, invalid coordinates, and any OKLCH value outside sRGB.
+Every colour authored directly by the redesigned Trinity and Amethyst Themes uses absolute
+`oklch()` coordinates that resolve inside the sRGB gamut. This is deliberate: browsers still
+differ in how they map out-of-gamut OKLCH, and a contrast claim is only portable when no browser
+has to clip or remap the source colour. `contrast-matrix.spec.mjs` rejects legacy colour notation,
+runtime `color-mix()`, invalid coordinates, and any OKLCH value outside sRGB in those Themes.
 
 The families are coordinated by role rather than converted mechanically from the previous hex
 values:
@@ -828,9 +828,11 @@ values:
 | Danger 25deg        | Dark red text/icons, a stronger solid pair, and three explicit pale tint stops.                         | Light red text/icons, a stronger solid pair, and three explicit dark tint stops.                |
 
 Hover, pressed, selected, selected-hover, focus, solid status, accent and status tint roles all
-resolve to governed Theme values. Named Themes temporarily keep their existing interaction
-aliases until their own redesign tickets replace those values; they still inherit the corrected
-status pairs and remain covered by the full contrast matrix.
+resolve to governed Theme values. Amethyst replaces the indigo and cool-neutral families with a
+sparse 300deg violet accent and violet-neutral surface, text, interaction, and control family. It
+inherits the base syntax and conventional success, warning, and danger families, then the full
+contrast matrix re-measures those inherited roles on every Amethyst surface. Onyx temporarily
+keeps its existing interaction aliases until its redesign ticket replaces them.
 
 ### The danger versus destructive rule
 
