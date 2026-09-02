@@ -578,7 +578,7 @@ The architecture check pins the four ids, the installed package versions, the up
 markers, each owned seam, and every permitted production import prefix. A package upgrade or a
 direct import outside those seams therefore fails for review. Adding an authored stylesheet to
 this catalog is not a migration path: ordinary app and component CSS remains governed by the
-named-layer contract and the shrinking unlayered fingerprint ledger.
+zero-exception named-layer contract.
 
 CodeMirror used to be the misleading edge case. Its generated DOM was reached with
 `ViewEncapsulation.None` and a global `.trn-config-editor .cm-*` stylesheet. The editor now receives
