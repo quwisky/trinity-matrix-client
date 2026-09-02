@@ -19,7 +19,7 @@ import {
   TrnTabsComponent,
   type TrnTabOption,
 } from '@trinity/components/navigation-layout';
-import { TrnInput } from '@trinity/components/controls';
+import { TrnInput, TrnTextarea } from '@trinity/components/controls';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
 import { JoinRule } from '@trinity/data-access/room-administration';
 import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
@@ -79,6 +79,7 @@ const OTHER_RULE_LABELS: Partial<Record<JoinRule, string>> = {
     TrnActionAvailability,
     TrnTooltip,
     TrnInput,
+    TrnTextarea,
     AvatarFieldComponent,
     BannedMembersComponent,
     RoomAliasesComponent,

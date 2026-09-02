@@ -1,12 +1,15 @@
 import { Component } from '@angular/core';
 import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
+import { trnTextareaRecipe } from '../input/trn-text-control-recipe';
 import { TrnTextarea } from './trn-textarea';
 
 @Component({
   imports: [TrnTextarea],
   template: `<textarea
     trnTextarea
+    size="lg"
+    invalid
     rows="1"
     aria-describedby="hint"
   ></textarea>`,
@@ -25,6 +28,8 @@ describe('TrnTextarea', () => {
     expect(el?.rows).toBe(1);
     // The defect control: `data-slot` arrives only through the composed kit directive.
     expect(el?.getAttribute('data-slot')).toBe('textarea');
+    expect(el?.getAttribute('data-size')).toBe('lg');
+    expect(el?.getAttribute('aria-invalid')).toBe('true');
   });
 
   it('keeps a consumer’s aria-describedby, as the input wrapper does', async () => {
@@ -33,5 +38,12 @@ describe('TrnTextarea', () => {
     expect(
       container.querySelector('textarea')?.getAttribute('aria-describedby'),
     ).toBe('hint');
+  });
+
+  it('resolves size and validation through the synchronous recipe', () => {
+    const recipe = trnTextareaRecipe('lg', true);
+
+    expect(recipe).toContain('min-h-20');
+    expect(recipe).toContain('border-danger');
   });
 });

@@ -11,7 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { QrCodeService } from '@trinity/platform-native';
-import { HlmButton } from '@trinity/helm/button';
+import { TrnButton } from '../../button/trn-button';
 
 type ScannerStatus = 'starting' | 'scanning' | 'error';
 
@@ -21,7 +21,7 @@ type ScannerStatus = 'starting' | 'scanning' | 'error';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './qr-scanner.component.html',
   styleUrl: './qr-scanner.component.scss',
-  imports: [HlmButton],
+  imports: [TrnButton],
 })
 export class QrScannerComponent implements AfterViewInit, OnDestroy {
   private readonly qrCode = inject(QrCodeService);

@@ -1,8 +1,9 @@
 <label
   hlmLabel
   [for]="controlId()"
-  [attr.data-variant]="variant()"
-  [class.trn-field-label--eyebrow]="variant() === 'eyebrow'"
+  [class]="labelClass()"
+  [attr.data-emphasis]="resolvedEmphasis()"
+  [attr.data-invalid]="invalid() ? 'true' : null"
 >
   <ng-content />
 </label>

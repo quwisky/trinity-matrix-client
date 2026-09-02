@@ -17,13 +17,19 @@
   } @else if (error(); as message) {
     <div class="error" role="alert">
       <p>{{ message }}</p>
-      <button hlmBtn variant="secondary" size="sm" (click)="retry()">
+      <button trnBtn variant="secondary" size="sm" (click)="retry()">
         Try again
       </button>
     </div>
   }
 
-  <button hlmBtn variant="ghost" class="cancel" (click)="cancel()">
+  <button
+    trnBtn
+    variant="secondary"
+    presentation="ghost"
+    class="cancel"
+    (click)="cancel()"
+  >
     Cancel scan
   </button>
 </div>

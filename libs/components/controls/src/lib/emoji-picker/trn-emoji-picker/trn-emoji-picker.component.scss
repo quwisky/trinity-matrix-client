@@ -17,74 +17,76 @@
 // short of `!important` can outrank, so it is passed through its `color` input instead —
 // see the template.
 
-.trn-emoji-picker {
-  display: block;
+@layer components {
+  .trn-emoji-picker {
+    display: block;
 
-  .emoji-mart {
-    overflow: hidden;
-    border-color: var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-overlay-radius);
-    background: var(--trinity-surface-floating);
-    color: var(--foreground);
-    font-family: inherit;
-    box-shadow: var(--trinity-shadow-overlay);
-  }
-
-  // Only the idle and hover states are ours to paint. The vendor inline-styles the anchor
-  // bar and the SELECTED anchor from its `color` input — which the template hands
-  // `var(--trinity-accent)` — so a rule for either would be outranked and, worse, would
-  // read as though it were doing the work.
-  .emoji-mart-anchor {
-    color: var(--muted-foreground);
-
-    &:hover {
-      color: var(--trinity-link);
-    }
-  }
-
-  .emoji-mart-bar {
-    border-color: var(--border);
-  }
-
-  .emoji-mart-search {
-    input {
-      background: var(--trinity-surface-workspace);
-      border-color: var(--border);
+    .emoji-mart {
+      overflow: hidden;
+      border-color: var(--trinity-border-subtle);
+      border-radius: var(--trinity-shape-overlay-radius);
+      background: var(--trinity-surface-floating);
       color: var(--foreground);
+      font-family: inherit;
+      box-shadow: var(--trinity-shadow-overlay);
+    }
 
-      &::placeholder {
-        color: var(--muted-foreground);
-      }
+    // Only the idle and hover states are ours to paint. The vendor inline-styles the anchor
+    // bar and the SELECTED anchor from its `color` input — which the template hands
+    // `var(--trinity-accent)` — so a rule for either would be outranked and, worse, would
+    // read as though it were doing the work.
+    .emoji-mart-anchor {
+      color: var(--muted-foreground);
 
-      // The vendor sets `outline: 0` on this input unconditionally, so without a ring here
-      // it has no focus indicator at all. Same shape as the rest of the app's.
-      &:focus-visible {
-        border-color: var(--trinity-accent);
-        outline: 2px solid var(--trinity-accent);
-        outline-offset: 2px;
+      &:hover {
+        color: var(--trinity-link);
       }
     }
-  }
 
-  .emoji-mart-search-icon svg {
-    fill: var(--muted-foreground);
-  }
+    .emoji-mart-bar {
+      border-color: var(--border);
+    }
 
-  // Category headings are sticky and painted opaque by the vendor so rows do not show
-  // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
-  .emoji-mart-category-label span {
-    background: var(--trinity-surface-floating);
-    color: var(--foreground);
-  }
+    .emoji-mart-search {
+      input {
+        background: var(--trinity-surface-workspace);
+        border-color: var(--border);
+        color: var(--foreground);
 
-  .emoji-mart-category .emoji-mart-emoji:hover::before {
-    background-color: var(--muted);
-  }
+        &::placeholder {
+          color: var(--muted-foreground);
+        }
 
-  .emoji-mart-no-results {
-    color: var(--muted-foreground);
-  }
+        // The vendor sets `outline: 0` on this input unconditionally, so without a ring here
+        // it has no focus indicator at all. Same shape as the rest of the app's.
+        &:focus-visible {
+          border-color: var(--trinity-accent);
+          outline: 2px solid var(--trinity-accent);
+          outline-offset: 2px;
+        }
+      }
+    }
 
-  // The vendor list deliberately keeps `overflow-y: scroll` because its width calculation
-  // reserves the scrollbar. The global visible-scrollbar contract supplies its appearance.
+    .emoji-mart-search-icon svg {
+      fill: var(--muted-foreground);
+    }
+
+    // Category headings are sticky and painted opaque by the vendor so rows do not show
+    // through; that opaque fill has to be OUR surface or a band of #fff crosses dark mode.
+    .emoji-mart-category-label span {
+      background: var(--trinity-surface-floating);
+      color: var(--foreground);
+    }
+
+    .emoji-mart-category .emoji-mart-emoji:hover::before {
+      background-color: var(--muted);
+    }
+
+    .emoji-mart-no-results {
+      color: var(--muted-foreground);
+    }
+
+    // The vendor list deliberately keeps `overflow-y: scroll` because its width calculation
+    // reserves the scrollbar. The global visible-scrollbar contract supplies its appearance.
+  }
 }

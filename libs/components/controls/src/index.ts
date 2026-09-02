@@ -17,7 +17,10 @@ export {
   type TrnCheckboxVariant,
 } from './lib/checkbox/trn-checkbox.component';
 export { TrnEmojiIndex } from './lib/emoji-picker/trn-emoji-index.service';
-export { TrnEmojiPickerComponent } from './lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component';
+export {
+  TrnEmojiPickerComponent,
+  type TrnEmojiPickerSize,
+} from './lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component';
 export type {
   TrnEmojiPick,
   TrnEmojiSuggestion,
@@ -25,9 +28,10 @@ export type {
 export { TrnFieldComponent } from './lib/field/field/trn-field.component';
 export {
   TrnFieldLabelComponent,
+  type TrnFieldLabelEmphasis,
   type TrnFieldLabelVariant,
 } from './lib/field/field-label/trn-field-label.component';
-export { TrnInput } from './lib/input/trn-input';
+export { TrnInput, type TrnTextControlSize } from './lib/input/trn-input';
 export { TrnLabel } from './lib/label/trn-label';
 export { QrScannerComponent } from './lib/qr-scanner/qr-scanner/qr-scanner.component';
 export {
@@ -40,6 +44,7 @@ export {
 export {
   TrnSelectComponent,
   type TrnSelectOption,
+  type TrnSelectSize,
 } from './lib/select/trn-select.component';
 export {
   TrnSwitchComponent,

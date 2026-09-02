@@ -3,6 +3,7 @@ import { QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TrnButton } from '../../button/trn-button';
 import { QrScannerComponent } from './qr-scanner.component';
 
 describe('QrScannerComponent', () => {
@@ -28,6 +29,25 @@ describe('QrScannerComponent', () => {
     fireEvent.click(container.querySelector('button')!);
 
     expect(TestBed.inject(QrCodeService).openCamera).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps scanner actions behind Trinity button contracts', async () => {
+    const { fixture } = await render(QrScannerComponent, {
+      providers: [
+        MockProvider(QrCodeService, {
+          openCamera: vi
+            .fn()
+            .mockRejectedValue(new Error('Camera unavailable')),
+        }),
+      ],
+    });
+    await fixture.whenStable();
+
+    expect(
+      fixture.debugElement.queryAll((debugElement) =>
+        debugElement.providerTokens.includes(TrnButton),
+      ),
+    ).toHaveLength(2);
   });
 
   it('releases the camera and emits when cancelled', async () => {

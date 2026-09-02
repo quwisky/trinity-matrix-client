@@ -24,7 +24,8 @@ const OPTIONS: readonly TrnSelectOption<string>[] = [
       data-testid="space-order-select"
       aria-labelledby="space-order-heading"
       placeholder="Select an order"
-      triggerClass="w-full"
+      size="sm"
+      invalid
       [options]="options"
       [value]="value()"
       (valueChange)="value.set($event)"
@@ -50,13 +51,21 @@ describe('TrnSelectComponent', () => {
     expect(trigger(container)?.textContent).not.toContain('recent');
   });
 
-  it('puts the trigger class where the width has to land', async () => {
-    // `class` and `triggerClass` cannot be one input: every call site sets `block` on the
-    // select and `w-full` on the TRIGGER, and the kit's trigger is `w-fit`. Folding them
-    // together would shrink every settings select to the width of its own text.
+  it('owns the repeated full-width trigger instead of exposing an inner class input', async () => {
     const { container } = await render(HostComponent);
 
     expect(container.querySelector('button')?.className).toContain('w-full');
+  });
+
+  it('maps Trinity size and validation to the focusable combobox', async () => {
+    const { container } = await render(HostComponent);
+    const host = container.querySelector('trn-select');
+    const button = container.querySelector('[role=combobox]');
+
+    expect(host?.getAttribute('data-size')).toBe('sm');
+    expect(host?.getAttribute('data-invalid')).toBe('true');
+    expect(button?.getAttribute('data-size')).toBe('sm');
+    expect(button?.getAttribute('aria-invalid')).toBe('true');
   });
 
   it('keeps the shared coarse-pointer target floor on the trigger', async () => {
@@ -107,12 +116,13 @@ describe('TrnSelectComponent', () => {
     // component owns it now, and this host deliberately does NOT pass the class, so the
     // assertion fails if the style is dropped rather than passing on the caller's copy.
     //
-    // Assertable because it is a component `styles:` declaration: jsdom loads no
-    // stylesheet, but it does apply component styles.
+    // A host utility stays in the authored utilities layer and composes with consumer
+    // layout classes; jsdom does not evaluate named cascade layers, so assert the contract
+    // on the class and leave computed display to the browser story.
     const { container } = await render(HostComponent);
     const host = container.querySelector('trn-select') as HTMLElement;
 
-    expect(getComputedStyle(host).display).toBe('block');
+    expect(host.classList.contains('block')).toBe(true);
   });
 
   it('is a Signal Forms control, so `[formField]` drives it', async () => {

@@ -1,5 +1,10 @@
-import { Directive } from '@angular/core';
+import { booleanAttribute, Directive, input } from '@angular/core';
 import { HlmLabel } from '@trinity/helm/label';
+import { classes } from '@trinity/helm/utils';
+import {
+  trnFieldLabelRecipe,
+  type TrnFieldLabelEmphasis,
+} from '../field/trn-field-recipe';
 
 /**
  * Trinity's form label.
@@ -27,7 +32,18 @@ import { HlmLabel } from '@trinity/helm/label';
  * because a directive re-published it.
  */
 @Directive({
-  selector: '[trnLabel]',
+  selector: 'label[trnLabel], span[trnLabel]',
+  host: {
+    '[attr.data-emphasis]': 'emphasis()',
+    '[attr.data-invalid]': 'invalid() ? "true" : null',
+  },
   hostDirectives: [{ directive: HlmLabel, inputs: [], outputs: [] }],
 })
-export class TrnLabel {}
+export class TrnLabel {
+  readonly emphasis = input<TrnFieldLabelEmphasis>('normal');
+  readonly invalid = input(false, { transform: booleanAttribute });
+
+  constructor() {
+    classes(() => trnFieldLabelRecipe(this.emphasis(), this.invalid()));
+  }
+}

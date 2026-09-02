@@ -62,7 +62,6 @@ const componentStylesheets = stylesheets.filter(
 const COMPONENT_STYLESHEET_LEDGER = [
   'libs/application/runtime/src/lib/application-root/application-root.component.scss',
   'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
-  'libs/components/controls/src/lib/field/field-label/trn-field-label.component.scss',
   'libs/components/controls/src/lib/field/field/trn-field.component.scss',
   'libs/components/controls/src/lib/qr-scanner/qr-scanner/qr-scanner.component.scss',
   'libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.scss',
@@ -152,7 +151,6 @@ const COMPONENT_STYLESHEET_LEDGER = [
 const INLINE_STYLE_LEDGER = [
   'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts',
   'libs/components/controls/src/lib/radio-group/trn-radio-group.component.ts',
-  'libs/components/controls/src/lib/select/trn-select.component.ts',
   'libs/components/controls/src/lib/switch/trn-switch.component.ts',
   'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
   'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',

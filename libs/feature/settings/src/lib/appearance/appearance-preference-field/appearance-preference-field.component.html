@@ -14,7 +14,6 @@
       [attr.data-testid]="field().testId"
       [aria-labelledby]="field().headingId"
       [placeholder]="'Select ' + model().editor.label.toLowerCase()"
-      triggerClass="w-full"
       [options]="options()"
       [value]="model().value()"
       [disabled]="hydrationBusy() || status().busy()"

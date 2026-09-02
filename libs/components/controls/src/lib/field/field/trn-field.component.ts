@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { BrnField } from '@spartan-ng/brain/field';
 
 /**
  * Groups one labelled form control and its supporting content.
@@ -11,5 +12,12 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './trn-field.component.html',
   styleUrl: './trn-field.component.scss',
+  hostDirectives: [
+    {
+      directive: BrnField,
+      inputs: ['forceInvalid: invalid'],
+      outputs: [],
+    },
+  ],
 })
 export class TrnFieldComponent {}

@@ -1,6 +1,8 @@
 import {
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
+  computed,
   input,
   model,
 } from '@angular/core';
@@ -13,6 +15,13 @@ import {
   HlmSelectTrigger,
   HlmSelectValue,
 } from '@trinity/helm/select';
+import {
+  trnSelectHelmSize,
+  trnSelectTriggerRecipe,
+  type TrnSelectSize,
+} from './trn-select-recipe';
+
+export type { TrnSelectSize } from './trn-select-recipe';
 
 /** One choice in a {@link TrnSelectComponent}. */
 export interface TrnSelectOption<T> {
@@ -52,10 +61,9 @@ export interface TrnSelectOption<T> {
  * function — find the option with this id, return its label — which a component that already
  * holds the options can do itself. Four hand-written lookups deleted rather than moved.
  *
- * **`triggerClass` is separate from `class`, and has to be.** Every call site put
- * `class="w-full"` on the TRIGGER and `class="block"` on the select; the kit's trigger is
- * `w-fit`, so folding them into one input would shrink every settings select to the width of
- * its text.
+ * **The trigger fills the host by default.** Every call site used to pass the same
+ * `triggerClass="w-full"` escape because the kit's trigger is `w-fit`. That repeated inner
+ * appearance is now owned here; consumer `class` remains available for surrounding layout.
  *
  * `aria-labelledby` is routed to the actual combobox button through Trinity's registered
  * `HlmSelectTrigger` divergence. The host keeps the consumer's `data-testid`, but it is
@@ -64,14 +72,13 @@ export interface TrnSelectOption<T> {
 @Component({
   selector: 'trn-select',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  // Owned here rather than left to callers. Every one of the seven call sites wrote
-  // `class="block"` because the kit's trigger is `w-fit`, so an inline host collapses the
-  // control to its content width — which means the box model was a rule each consumer had
-  // to know, and the first one to forget it would get a silently narrow select. Same
-  // reasoning as TrnRadioGroupComponent, where forgetting it was already costing an indent.
-  styles: [':host { display: block; }'],
+  // The host owns its outer display while the private trigger recipe owns the repeated
+  // full-width inner class. Consumer classes remain available for surrounding layout.
   host: {
+    class: 'block',
     '[attr.aria-labelledby]': 'null',
+    '[attr.data-size]': 'size()',
+    '[attr.data-invalid]': 'invalid() ? "true" : null',
   },
   imports: [
     HlmSelect,
@@ -89,7 +96,9 @@ export interface TrnSelectOption<T> {
       (valueChange)="onValueChange($event)"
     >
       <hlm-select-trigger
-        [class]="triggerClass()"
+        [class]="triggerClass"
+        [size]="helmSize()"
+        [forceInvalid]="invalid()"
         [aria-labelledby]="ariaLabelledby()"
       >
         <hlm-select-value [placeholder]="placeholder()" />
@@ -150,11 +159,18 @@ export class TrnSelectComponent<T> implements FormValueControl<T | null> {
    */
   readonly disabled = input<boolean>(false);
 
+  /** Ordinal sizes implemented by the current select trigger. */
+  readonly size = input<TrnSelectSize>('md');
+
+  /** Explicit validation state, independent from semantic treatment. */
+  readonly invalid = input(false, { transform: booleanAttribute });
+
   /** Shown in the trigger until something is chosen. Every call site sets one. */
   readonly placeholder = input<string>('');
 
-  /** Classes for the trigger, which is the element that carries the field's width. */
-  readonly triggerClass = input<string>('');
+  /** Private vendor adapter; neither `default` nor the trigger class is public API. */
+  protected readonly helmSize = computed(() => trnSelectHelmSize(this.size()));
+  protected readonly triggerClass = trnSelectTriggerRecipe();
 
   /**
    * What the trigger shows for the chosen value.

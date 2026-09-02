@@ -43,7 +43,7 @@
         <label class="space-settings__field">
           <span class="space-settings__label">Topic</span>
           <textarea
-            trnInput
+            trnTextarea
             class="w-full"
             rows="3"
             [formField]="form.topic"
@@ -62,7 +62,6 @@
           <trn-select
             [options]="joinRuleOptions()"
             [formField]="form.joinRule"
-            triggerClass="w-full"
             data-testid="space-settings-join-rule"
           />
           <!-- Rooms inside a space keep their own join rules; this governs the space itself. -->

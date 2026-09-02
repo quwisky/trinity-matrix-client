@@ -164,6 +164,18 @@ describe('TrnEmojiPickerComponent', () => {
     expect(vendor.componentInstance.color).toBe('var(--trinity-accent)');
   });
 
+  it('maps an ordinal Trinity size to the private vendor glyph measurement', async () => {
+    const { fixture } = await render(TrnEmojiPickerComponent, {
+      inputs: { size: 'lg' },
+    });
+    const vendor = fixture.debugElement.query(By.directive(PickerComponent));
+
+    expect(
+      (fixture.nativeElement as HTMLElement).getAttribute('data-size'),
+    ).toBe('lg');
+    expect(vendor.componentInstance.emojiSize).toBe(24);
+  });
+
   it('never puts the vendor dark class on the element, even on a dark OS', async () => {
     // `darkMode` is pinned `false`, and the dark OS here is the whole point. The vendor's
     // default is not `false` — it is `matchMedia('(prefers-color-scheme: dark)').matches`,

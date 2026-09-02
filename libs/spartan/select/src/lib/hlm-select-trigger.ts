@@ -1,5 +1,5 @@
 import type { BooleanInput } from '@angular/cdk/coercion';
-import { booleanAttribute, ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { booleanAttribute, ChangeDetectionStrategy, Component, computed, Directive, input } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { lucideChevronDown } from '@ng-icons/lucide';
 import { BrnFieldControlDescribedBy } from '@spartan-ng/brain/field';
@@ -10,25 +10,53 @@ import type { ClassValue } from 'clsx';
 /**
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ───────────────┐
  *
- * Trinity forwards `aria-labelledby` through this wrapper to the inner
- * combobox button and gives that button the shared coarse-pointer target
- * floor. Upstream exposes no input for that focusable element, so a label
- * placed on `hlm-select-trigger` names a role-less host instead.
+ * Trinity forwards `aria-labelledby` and explicit invalid state through this
+ * wrapper to the inner combobox button, and gives that button the shared
+ * coarse-pointer target floor. Upstream exposes no input for that focusable
+ * element, so either attribute placed on `hlm-select-trigger` lands on a
+ * role-less host instead.
  *
  * The override is registered in docs/architecture/ui-and-theming.md and pinned
  * by the public select wrapper test.
  * └──────────────────────────────────────────────────────────────────────────┘
  */
 
+/**
+ * Runs after Brain's own host binding so an explicit invalid state is announced.
+ *
+ * `BrnSelectTrigger.forceInvalid` styles the trigger through
+ * `data-matches-spartan-invalid` but does not include that override in its
+ * `aria-invalid` computation. This private directive closes that mismatch without
+ * exporting Brain's vocabulary through Trinity's public select.
+ */
+@Directive({
+	selector: 'button[hlmSelectExplicitInvalid]',
+	host: {
+		'[attr.aria-invalid]': 'invalid() ? "true" : null',
+	},
+})
+export class HlmSelectExplicitInvalid {
+	readonly invalid = input(false, {
+		alias: 'hlmSelectExplicitInvalid',
+		transform: booleanAttribute,
+	});
+}
+
 @Component({
 	selector: 'hlm-select-trigger',
-	imports: [NgIcon, BrnSelectTrigger, BrnFieldControlDescribedBy],
+	imports: [
+		NgIcon,
+		BrnSelectTrigger,
+		BrnFieldControlDescribedBy,
+		HlmSelectExplicitInvalid,
+	],
 	providers: [provideIcons({ lucideChevronDown })],
 	changeDetection: ChangeDetectionStrategy.OnPush,
 	template: `
 		<button
 			brnSelectTrigger
 			brnFieldControlDescribedBy
+			[hlmSelectExplicitInvalid]="forceInvalid()"
 			[forceInvalid]="forceInvalid()"
 			[id]="buttonId()"
 			[class]="_computedClass()"

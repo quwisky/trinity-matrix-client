@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Fields and rich controls now use bounded Trinity recipes.** Labels separate normal or strong
+  emphasis from validation; native inputs and textareas expose `sm`–`lg` sizes; selects own their
+  full-width trigger and expose only `sm` or `md`; and emoji sizing no longer leaks vendor pixels.
+  Native names, descriptions, focus and keyboard behavior remain authoritative, while scanner,
+  field and picker styles now live in explicit cascade layers.
+
 - **Action and choice controls now share bounded Trinity recipes.** Checkboxes, switches, radio
   groups, standalone toggles and toggle groups expose only the semantic variants, ordinal sizes
   and structural axes they implement. Native inputs own checked, invalid, disabled and keyboard

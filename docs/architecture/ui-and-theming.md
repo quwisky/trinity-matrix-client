@@ -84,6 +84,23 @@ Brain value holder but own roving tab focus, arrow keys and all visual vocabular
 Consumer classes may arrange a control or group in surrounding layout; spacing, shape, type,
 colour, elevation and interaction states belong to these recipes.
 
+Fields and rich controls expose only the axes their native or vendor substrate can implement:
+
+| Component                      | Canonical contract                                                                              | Expansion compatibility                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `trn-field`                    | Groups a native control and supporting content; `invalid` marks the field state.                | None; layout is not a semantic variant.                                   |
+| `trn-field-label` / `trnLabel` | Emphasis `normal`, `strong`; validation remains the independent `invalid` state.                | `trn-field-label` variants `default`, `eyebrow` temporarily map emphasis. |
+| `trnInput` / `trnTextarea`     | Sizes `sm`, `md`, `lg`; explicit or form-derived invalid state; exact native-element selectors. | None; vendor `forceInvalid` is private.                                   |
+| `trn-select`                   | Sizes `sm`, `md`; invalid and disabled states; the focusable trigger fills its block host.      | None; repeated `triggerClass="w-full"` copies were removed.               |
+| `trn-emoji-picker`             | Sizes `sm`, `md`, `lg`; the vendor glyph measurement is a private adapter.                      | None; the raw numeric `emojiSize` input was removed.                      |
+| `trn-qr-scanner`               | One tokenized, layered scanner surface whose actions compose `trnBtn`.                          | None; one surface does not justify styling inputs.                        |
+
+Labels keep native `for`/`id` associations, text controls retain native focus and keyboard
+behavior, and descriptions remain attached through `aria-describedby`. The select routes its
+accessible name, invalid state and keyboard interaction to the actual combobox button. Host
+classes may arrange a whole control in its consumer; repeated inner classes and vendor-specific
+values belong to the owning recipe.
+
 Foundations and Generic Content apply the same rule to the narrower vocabulary each component
 can actually render:
 
@@ -368,9 +385,10 @@ DOM — silently, on three shipped screens, for as long as the components have e
    asymmetry is pinned by a test — do not "fix" it into describing the wrong node.
 
 `hlm-select-trigger` still applies `brnFieldControlDescribedBy` to its inner `<button>` with
-nothing bound, so `aria-describedby` remains unavailable. Trinity's registered override now
-forwards `aria-labelledby` to that same button, which lets the public select wrapper name the
-actual combobox while the description gap stays explicitly tracked.
+nothing bound, so `aria-describedby` remains unavailable. Trinity's registered override forwards
+`aria-labelledby` and an explicit invalid state to that same button. The public select therefore
+names and announces validation on the actual combobox while the description gap stays explicitly
+tracked.
 
 ## Registered vendored divergences
 
@@ -392,7 +410,7 @@ step with the banner in
 | `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub` | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                                                | `kit-reduced-motion.spec.mjs`                                |
 | `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                                              | `kit-reduced-motion.spec.mjs`                                |
 | `select` · `HlmSelectContent`                                | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                                           | `kit-reduced-motion.spec.mjs`                                |
-| `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` to the inner focusable combobox button instead of leaving it on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                                                  | `trn-select.component.spec.ts`; Settings Playwright journeys |
+| `select` · `HlmSelectTrigger`                                | Forwards `aria-labelledby` and explicit invalid state to the inner focusable combobox button instead of leaving them on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                     | `trn-select.component.spec.ts`; Settings Playwright journeys |
 | `progress` · `HlmProgressIndicator`                          | Its **indeterminate** sweep is guarded for reduced motion in Theme Foundation's private Tailwind adapter — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`                                |
 | Every file with `hostDirectives`, kit and public tier alike  | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                                        | `host-directives.spec.mjs`                                   |
 

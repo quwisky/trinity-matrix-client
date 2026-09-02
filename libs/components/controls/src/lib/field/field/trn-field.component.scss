@@ -1,4 +1,6 @@
-:host {
-  display: grid;
-  gap: var(--trinity-space-3);
+@layer components {
+  :host {
+    display: grid;
+    gap: var(--trinity-space-3);
+  }
 }

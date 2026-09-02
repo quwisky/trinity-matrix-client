@@ -143,7 +143,7 @@ describe('LoginPage', () => {
     expect(label?.htmlFor).toBe('homeserver');
     expect(input?.id).toBe('homeserver');
     expect(label?.textContent?.trim()).toBe('Homeserver');
-    expect(label?.getAttribute('data-variant')).toBe('eyebrow');
+    expect(label?.getAttribute('data-emphasis')).toBe('strong');
   });
 
   it('renders its page title as the first and only heading', async () => {

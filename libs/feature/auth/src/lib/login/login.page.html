@@ -35,7 +35,7 @@
   @if (!baseUrl() && !reauthUserId()) {
     <!-- ── Step 1: Homeserver (skipped in re-auth: the HS is known) ── -->
     <trn-field class="login-card__field">
-      <trn-field-label controlId="homeserver" variant="eyebrow">
+      <trn-field-label controlId="homeserver" emphasis="strong">
         Homeserver
       </trn-field-label>
       <input
@@ -62,7 +62,7 @@
     <!-- ── Step 2: Username + Password ────────────────── -->
     @if (passwordSupported()) {
       <trn-field class="login-card__field">
-        <trn-field-label controlId="username" variant="eyebrow">
+        <trn-field-label controlId="username" emphasis="strong">
           Username
         </trn-field-label>
         <input
@@ -78,7 +78,7 @@
       </trn-field>
 
       <trn-field class="login-card__field">
-        <trn-field-label controlId="password" variant="eyebrow">
+        <trn-field-label controlId="password" emphasis="strong">
           Password
         </trn-field-label>
         <div class="relative">

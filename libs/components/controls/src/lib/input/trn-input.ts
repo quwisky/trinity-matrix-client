@@ -1,29 +1,67 @@
-import { Directive } from '@angular/core';
-import { HlmInput } from '@trinity/helm/input';
+import {
+  booleanAttribute,
+  computed,
+  Directive,
+  inject,
+  input,
+} from '@angular/core';
+import {
+  BrnFieldControl,
+  BrnFieldControlDescribedBy,
+} from '@spartan-ng/brain/field';
+import { BrnInput } from '@spartan-ng/brain/input';
+import { classes } from '@trinity/helm/utils';
+import {
+  trnInputRecipe,
+  type TrnTextControlSize,
+} from './trn-text-control-recipe';
+
+export type { TrnTextControlSize } from './trn-text-control-recipe';
 
 /**
  * Trinity's form input.
  *
- * An attribute directive, because the host is the control. It is applied to `<input>` at 27
- * call sites, but also to two `<textarea>`s and three native `<select>`s — an element
- * wrapper could not express any of that, and would take the native value, focus and form
- * behaviour with it.
+ * The exact native-input selector keeps focus, value, autofill and Signal Forms behavior on
+ * the element the browser operates. Brain supplies field state and description wiring while
+ * this directive owns the public size and validation vocabulary plus every appearance class.
+ * The vendor's `forceInvalid` input is intentionally not published.
  *
- * **`aria-describedby` survives without being re-published here, and that is worth knowing.**
- * #153 was the bug where `BrnFieldControlDescribedBy` owns `[attr.aria-describedby]` and
- * computes it as `null` unless the composing entry lists the input — silently deleting a
- * consumer's value on three shipped screens. The kit's entry lists it, and that publication
- * reaches THIS element too: `hostDirectives` publication chains down to whatever element the
- * directive ends up on, even though *re-declaring* the same input in this wrapper's own
- * entry does not (that throws NG0311, as the label wrapper found).
- *
- * So there is deliberately no `aria-describedby` input here. One was written, and removing it
- * changed nothing — verified against the kit, this wrapper and a bare `<input>`, all three of
- * which keep the attribute. The spec keeps asserting it, because the day that stops being
- * true is the day three screens lose their descriptions again without a word.
+ * `aria-describedby` is published explicitly because `BrnFieldControlDescribedBy` otherwise
+ * writes `null` over a consumer attribute. The unit and browser contracts pin the resulting
+ * native description relationship.
  */
 @Directive({
-  selector: '[trnInput]',
-  hostDirectives: [{ directive: HlmInput, inputs: [], outputs: [] }],
+  selector: 'input[trnInput]',
+  host: {
+    'data-slot': 'input',
+    '[attr.data-size]': 'size()',
+    '[attr.aria-invalid]': 'resolvedInvalid() ? "true" : null',
+    '[attr.data-invalid]': 'resolvedInvalid() ? "true" : null',
+    '[attr.data-matches-spartan-invalid]': 'resolvedInvalid() ? "true" : null',
+  },
+  hostDirectives: [
+    {
+      directive: BrnInput,
+      inputs: ['id'],
+      outputs: [],
+    },
+    {
+      directive: BrnFieldControlDescribedBy,
+      inputs: ['aria-describedby'],
+      outputs: [],
+    },
+  ],
 })
-export class TrnInput {}
+export class TrnInput {
+  private readonly fieldControl = inject(BrnFieldControl);
+
+  readonly size = input<TrnTextControlSize>('md');
+  readonly invalid = input(false, { transform: booleanAttribute });
+  protected readonly resolvedInvalid = computed(
+    () => this.invalid() || Boolean(this.fieldControl.invalid()),
+  );
+
+  constructor() {
+    classes(() => trnInputRecipe(this.size(), this.resolvedInvalid()));
+  }
+}
