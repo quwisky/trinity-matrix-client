@@ -51,8 +51,9 @@ interface AccountNotifier {
  *  - **Capacitor:** Local Notifications, with explicit plugin/permission availability.
  *  - **Web / PWA:** the renderer Web `Notification` API (with permission prompt).
  *
- * Either way it only fires for **live** events (not backfill), from someone other
- * than us, when the user isn't looking at that room (the window is unfocused, a
+ * Either way it only fires after the Account's first sync transition and for **live**
+ * events (not backfill), from someone other than us, when the user isn't looking at
+ * that room (the window is unfocused, a
  * different room is open, or the event is on a background account), and only when
  * that account's push rules say to notify (`getPushActionsForEvent().notify` —
  * respects mutes / mentions-only). Activation emits an exact semantic destination;
@@ -292,6 +293,11 @@ export class NotificationService {
         try {
           if (data?.liveEvent !== true) {
             return; // backfill / scrollback — not a fresh event
+          }
+          if (client.getSyncState() === null) {
+            // matrix-js-sdk labels the first /sync batch as live while it is still
+            // applying stored room state and history. PREPARED is emitted afterwards.
+            return;
           }
           if (this.isAwaitingDecryption(event)) {
             // E2EE: this emit is ciphertext. Defer to MatrixEventEvent.Decrypted so

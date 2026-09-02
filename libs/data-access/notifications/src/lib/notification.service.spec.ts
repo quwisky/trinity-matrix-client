@@ -1,6 +1,11 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { MatrixEventEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
+import {
+  MatrixEventEvent,
+  RoomEvent,
+  SyncState,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { EMPTY, Subject, Subscription, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,6 +56,7 @@ function fakeClient(userId: string, soundEnabled?: boolean) {
         : { getContent: () => ({ enabled: soundEnabled }) },
     getPushActionsForEvent: vi.fn(() => ({ notify: true, tweaks: {} })),
     getRoom: vi.fn(() => room),
+    getSyncState: vi.fn((): SyncState | null => SyncState.Prepared),
     on: vi.fn(),
     off: vi.fn(),
   };
@@ -286,6 +292,32 @@ describe('NotificationService', () => {
       body: 'hello there',
       tag: '@me:hs !r:hs',
     });
+  });
+
+  it('ignores initial-sync history before notifying on the first ready event', () => {
+    const { svc, client } = setup();
+    client.getSyncState.mockReturnValue(null);
+    svc.connect();
+
+    timelineHandler(client)(
+      event({ id: '$history' }),
+      room,
+      false,
+      false,
+      live,
+    );
+    expect(MockNotification.instances).toHaveLength(0);
+
+    client.getSyncState.mockReturnValue(SyncState.Prepared);
+    timelineHandler(client)(
+      event({ id: '$after-ready' }),
+      room,
+      false,
+      false,
+      live,
+    );
+
+    expect(MockNotification.instances).toHaveLength(1);
   });
 
   it('is audible by default — sound is on unless the account says otherwise', () => {
