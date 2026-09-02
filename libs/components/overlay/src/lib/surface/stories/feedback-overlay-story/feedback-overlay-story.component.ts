@@ -23,12 +23,38 @@ export class FeedbackOverlayStoryComponent {
   private readonly toasts = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
+  protected neutralAlert(): void {
+    this.alerts
+      .confirm$({
+        header: 'Keep this room?',
+        message: 'The neutral confirmation path.',
+        confirmText: 'Keep',
+        variant: 'neutral',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   protected canonicalAlert(): void {
     this.alerts
       .confirm$({
         header: 'Delete this room?',
         confirmText: 'Delete',
         variant: 'danger',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
+  protected canonicalPrompt(): void {
+    this.alerts
+      .prompt$({
+        header: 'Name this room',
+        message: 'Prompt fields keep their label and bounded input options.',
+        inputLabel: 'Room name',
+        placeholder: 'Project room',
+        value: 'Trinity',
+        maxLength: 64,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
@@ -44,12 +70,25 @@ export class FeedbackOverlayStoryComponent {
           {
             text: 'Delete',
             variant: 'danger',
+            separatorBefore: true,
             testId: 'sheet-danger',
           },
         ],
+        reactions: [{ key: '👍', handler: () => undefined }],
       },
       'Canonical actions',
     );
+  }
+
+  protected neutralToast(): void {
+    this.toasts.show('Canonical neutral', { duration: 0 });
+  }
+
+  protected successToast(): void {
+    this.toasts.show('Canonical success', {
+      variant: 'success',
+      duration: 0,
+    });
   }
 
   protected warningToast(): void {
@@ -58,5 +97,12 @@ export class FeedbackOverlayStoryComponent {
 
   protected dangerToast(): void {
     this.toasts.show('Canonical danger', { variant: 'danger', duration: 0 });
+  }
+
+  protected actionToast(): void {
+    this.toasts.show('Canonical action', {
+      duration: 0,
+      action: { label: 'Undo', onClick: () => undefined },
+    });
   }
 }

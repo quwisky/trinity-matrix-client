@@ -338,6 +338,22 @@ check that the mutation would actually change what you are asserting.
     perfectly good teardown test looked vacuous. A mutation that does not fail is only
     evidence once you have confirmed it landed where you meant.
 
+## Playwright: component catalogs
+
+The Storybook component target owns browser-rendered recipe, accessibility and interaction
+evidence. Focus a catalog through Nx rather than starting a separate Storybook process:
+
+```bash
+pnpm nx run trinity-e2e-components:storybook -- navigation-overlay-catalog.spec.mts --project=chromium
+```
+
+Catalog Axe scans require zero violations and zero incomplete results. Where CDK deliberately
+hides the background canvas and inserts focus-trap sentinels, scan the live portal around those
+framework nodes and separately assert backdrop, initial focus, containment and restoration.
+Brain Sonner's vendored list host is likewise adjudicated with explicit live-region, visible-state
+and browser-composited contrast assertions while the rest of the canvas remains under Axe. These
+are narrow documented resolutions, not general rule exclusions.
+
 ## Playwright: the app journeys
 
 The spec files under `e2e/browser/journeys/` run in Chromium against the disposable

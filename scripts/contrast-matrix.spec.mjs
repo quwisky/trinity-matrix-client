@@ -83,6 +83,9 @@ const ROLES = [
       '--trinity-rail',
       '--trinity-hover',
       '--trinity-active',
+      '--trinity-danger-tint-10',
+      '--trinity-danger-tint-20',
+      '--trinity-danger-tint-30',
     ],
   },
   {

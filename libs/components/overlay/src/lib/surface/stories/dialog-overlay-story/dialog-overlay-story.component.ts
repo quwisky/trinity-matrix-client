@@ -28,12 +28,14 @@ export class DialogOverlayStoryComponent {
   protected openCanonical(
     placement: TrnDialogPlacement,
     layout: TrnOverlaySurfaceLayout,
+    anchor?: HTMLElement,
   ): void {
     this.dialog
       .openAndWait$<string, OverlayStoryDialogComponent>(
         OverlayStoryDialogComponent,
         {
           placement,
+          ...(anchor ? { anchor } : {}),
           ariaLabel: `Canonical ${placement} dialog`,
           inputs: { title: `Canonical ${placement}`, layout },
         },

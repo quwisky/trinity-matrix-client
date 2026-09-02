@@ -101,6 +101,11 @@
     &:active:not(:disabled) {
       background: var(--trinity-danger-tint-30);
     }
+
+    .media__sub {
+      color: var(--trinity-danger);
+      opacity: 1;
+    }
   }
 
   .media__icon {

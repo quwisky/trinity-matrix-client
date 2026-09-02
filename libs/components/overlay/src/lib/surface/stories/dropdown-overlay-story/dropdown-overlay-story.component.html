@@ -34,5 +34,56 @@
     <button trnDropdownMenuItem disabled data-testid="dropdown-disabled">
       Disabled action
     </button>
+    <div trnDropdownMenuSeparator></div>
+    <div trnDropdownMenuLabel>Selection states</div>
+    <button
+      trnDropdownMenuCheckbox
+      checked
+      data-testid="dropdown-selected-checkbox"
+    >
+      <trn-dropdown-menu-checkbox-indicator />
+      Selected option
+    </button>
+    <button
+      trnDropdownMenuCheckbox
+      checked
+      disabled
+      lockedSelection
+      data-testid="dropdown-locked-checkbox"
+    >
+      <trn-dropdown-menu-checkbox-indicator />
+      Locked selection
+    </button>
+    <button
+      trnDropdownMenuItem
+      [trnDropdownMenuSubTrigger]="subMenu"
+      data-testid="dropdown-submenu-trigger"
+    >
+      More choices
+      <trn-dropdown-menu-item-sub-indicator />
+    </button>
+  </div>
+</ng-template>
+
+<ng-template #subMenu>
+  <div trnDropdownMenuSub aria-label="More overlay choices">
+    <div trnDropdownMenuLabel>Radio choices</div>
+    <button
+      trnDropdownMenuRadio
+      checked
+      [keepOpen]="false"
+      data-testid="dropdown-selected-radio"
+    >
+      <trn-dropdown-menu-radio-indicator />
+      Selected radio
+    </button>
+    <button
+      trnDropdownMenuRadio
+      [keepOpen]="false"
+      data-testid="dropdown-unselected-radio"
+    >
+      <trn-dropdown-menu-radio-indicator />
+      Unselected radio
+    </button>
   </div>
 </ng-template>
