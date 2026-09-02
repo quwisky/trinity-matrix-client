@@ -6,6 +6,7 @@ import {
   stripMarkupComments,
   stripSourceComments,
   topLevelStyleBlocks,
+  topLevelStyleStatements,
 } from './source-style-blocks.mjs';
 
 /**
@@ -47,12 +48,28 @@ function ledger(name) {
 }
 
 const isComponentLayered = (source) => {
+  if (topLevelStyleStatements(source).some((rule) => /^@import\b/u.test(rule)))
+    return false;
   const blocks = topLevelStyleBlocks(source);
   return (
     blocks.length > 0 &&
     blocks.every(({ prelude }) => prelude === '@layer components')
   );
 };
+
+const isNonEmittingPartial = (source) =>
+  topLevelStyleStatements(source).every((statement) =>
+    /^(?:@use\b|@forward\b|\$[\w-]+\s*:)/u.test(statement),
+  ) &&
+  topLevelStyleBlocks(source).every(({ prelude }) =>
+    /^@(mixin|function)\b/u.test(prelude),
+  );
+
+const rulePaths = (source, parents = []) =>
+  topLevelStyleBlocks(source).flatMap(({ prelude, body }) => {
+    const path = [...parents, prelude.replace(/\s+/gu, ' ')];
+    return [path.join(' > '), ...rulePaths(body, path)];
+  });
 
 const layerBodies = (file, layer) =>
   topLevelStyleBlocks(read(file))
@@ -165,14 +182,42 @@ describe('cascade layer contract', () => {
     expect(utilities).toContain('.safe-bottom');
 
     const overrides = layerBodies('apps/trinity/src/global.scss', 'overrides');
-    expect(overrides).toContain('button:disabled');
-    expect(overrides).toContain("[aria-disabled='true']");
-    expect(overrides).toContain('[data-trn-action-disabled]');
-    expect(overrides).toContain('[data-trn-icon-button]');
-    expect(overrides).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(rulePaths(overrides)).toEqual([
+      "button:disabled:not([data-trn-selection-locked]), [aria-disabled='true']:not([data-trn-selection-locked])",
+      '[data-trn-selection-locked]',
+      '[data-trn-action-disabled]',
+      ':is(button, a)[data-trn-icon-button]',
+      ':is(button, a)[trnBtn][data-trn-icon-button]',
+      '@media (hover: hover)',
+      "@media (hover: hover) > :is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      "@media (hover: hover) > :is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:hover",
+      ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:active",
+      ":is(button, a)[data-trn-icon-button]:is( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      '@media (pointer: coarse)',
+      '@media (pointer: coarse) > button[data-trn-toggle]',
+      '@media (prefers-reduced-motion: reduce)',
+      '@media (prefers-reduced-motion: reduce) > *, *::before, *::after',
+      '@media (pointer: coarse)',
+      "@media (pointer: coarse) > button[trnBtn][data-slot='button'], a[trnBtn][data-slot='button']",
+    ]);
   });
 
   it('assigns every authored component ruleset to the components layer', () => {
+    expect(
+      isComponentLayered(
+        "@import './legacy.css'; @layer components { :host { display: block; } }",
+      ),
+    ).toBe(false);
+    expect(
+      isComponentLayered(
+        "@use './mixins' as mixins; @layer components { :host { display: block; } }",
+      ),
+    ).toBe(true);
+    expect(isNonEmittingPartial('@mixin safe { display: block; }')).toBe(true);
+    expect(isNonEmittingPartial('.rogue { display: block; }')).toBe(false);
+    expect(isNonEmittingPartial('@include rogue;')).toBe(false);
+
     const componentSources = globSync(
       [
         'libs/**/*.component.scss',
@@ -200,6 +245,10 @@ describe('cascade layer contract', () => {
     }
 
     for (const file of sharedPartials) {
+      expect(
+        isNonEmittingPartial(read(file)),
+        `${file} must define only non-emitting Sass helpers`,
+      ).toBe(true);
       const consumers = sharedPartialConsumers(file, componentSources);
       expect(
         consumers.length,
@@ -224,6 +273,14 @@ describe('cascade layer contract', () => {
         `${file}#inline-styles`,
         css,
       ]),
+      [
+        'apps/trinity/src/index.html#data-trn-cascade-contract',
+        documentStyle('data-trn-cascade-contract'),
+      ],
+      [
+        'apps/trinity/src/index.html#data-trn-boot-style',
+        documentStyle('data-trn-boot-style'),
+      ],
     );
 
     for (const [file, rawSource] of sources) {

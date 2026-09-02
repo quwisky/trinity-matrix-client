@@ -40,10 +40,9 @@ export function sourceStyleBlockAt(source, openingBrace) {
   throw new Error(`Unbalanced style block at offset ${openingBrace}`);
 }
 
-/** Return outer rule blocks; nested rules stay inside their owning block body. */
-export function topLevelStyleBlocks(source) {
+function topLevelStyleEntries(source) {
   const css = stripSourceComments(source);
-  const blocks = [];
+  const entries = [];
   let start = 0;
   let quote = null;
   let escaped = false;
@@ -62,16 +61,31 @@ export function topLevelStyleBlocks(source) {
     }
     if (character === '{') {
       const block = sourceStyleBlockAt(css, index);
-      blocks.push({
+      entries.push({
+        type: 'block',
         prelude: css.slice(start, index).trim(),
         body: block.body,
       });
       index = block.end;
       start = block.end + 1;
     } else if (character === ';') {
+      const statement = css.slice(start, index).trim();
+      if (statement) entries.push({ type: 'statement', statement });
       start = index + 1;
     }
   }
 
-  return blocks;
+  return entries;
 }
+
+/** Return outer rule blocks; nested rules stay inside their owning block body. */
+export const topLevelStyleBlocks = (source) =>
+  topLevelStyleEntries(source)
+    .filter(({ type }) => type === 'block')
+    .map(({ prelude, body }) => ({ prelude, body }));
+
+/** Return semicolon-terminated statements outside any rule block. */
+export const topLevelStyleStatements = (source) =>
+  topLevelStyleEntries(source)
+    .filter(({ type }) => type === 'statement')
+    .map(({ statement }) => statement);
