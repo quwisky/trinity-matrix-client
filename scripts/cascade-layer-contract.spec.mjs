@@ -30,7 +30,7 @@ const LAYERS = [
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
 const IMPORTANT_DECLARATION =
-  /([a-z-]+)\s*:\s*([^;{}]*!\s*important)\s*(?:;|(?=\}))/giu;
+  /([a-z_-][a-z0-9_-]*)\s*:\s*([^;{}]*!\s*important)\s*(?:;|(?=\}))/giu;
 
 function documentStyles() {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
@@ -368,6 +368,7 @@ describe('cascade layer contract', () => {
         ':host { color: red !important }',
         ':host { COLOR: red !IMPORTANT; }',
         ':host { color: red ! important }',
+        ':host { --trinity-space-2: 4px !important }',
       ].flatMap((source) =>
         [...source.matchAll(IMPORTANT_DECLARATION)].map(
           ([, property, value]) => `${property}:${value.trim()}`,
@@ -377,6 +378,7 @@ describe('cascade layer contract', () => {
       'color:red !important',
       'COLOR:red !IMPORTANT',
       'color:red ! important',
+      '--trinity-space-2:4px !important',
     ]);
 
     const declarations = [];
