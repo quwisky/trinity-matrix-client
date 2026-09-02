@@ -7,6 +7,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { ShellStatusService } from './shell-status.service';
 import { WorkspaceService } from './workspace.service';
+import { filter, switchMap } from 'rxjs';
 
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
@@ -63,19 +64,19 @@ export class SessionActionsService {
     void this.router.navigate(['/login'], { queryParams: { reauth: userId } });
   }
 
-  async logout(userId: string): Promise<void> {
-    const confirmed = await this.alert.confirm({
-      header: 'Sign out',
-      message: 'Sign out of this account on this device?',
-      confirmText: 'Sign out',
-      destructive: true,
-    });
-    if (!confirmed) {
-      return;
-    }
-    this.accounts
-      .signOutAccount(userId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+  logout(userId: string): void {
+    this.alert
+      .confirm$({
+        header: 'Sign out',
+        message: 'Sign out of this account on this device?',
+        confirmText: 'Sign out',
+        variant: 'danger',
+      })
+      .pipe(
+        filter(Boolean),
+        switchMap(() => this.accounts.signOutAccount(userId)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe((outcome) => {
         if (
           (outcome.kind === 'ready' || outcome.kind === 'partial-cleanup') &&
@@ -83,7 +84,7 @@ export class SessionActionsService {
         ) {
           void this.router.navigateByUrl('/login', { replaceUrl: true });
         } else if (outcome.kind !== 'ready') {
-          void this.status.showError('Unable to fully sign out right now.');
+          this.status.showError('Unable to fully sign out right now.');
         }
       });
   }

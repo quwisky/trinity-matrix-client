@@ -1,249 +1,244 @@
 @use '../../styles/mixins' as *;
 
-// Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop
-// width the host floats across both the Space rail and room list, leaving `.userbar`
-// responsible only for the dock's visual surface.
-:host {
-  display: block;
-  grid-column: 2;
-  grid-row: 2;
-  height: var(--trinity-navigation-dock-height);
+@layer components {
+  // Narrow layouts keep the panel in the room-list column of the navigation grid. At desktop
+  // width the host floats across both the Space rail and room list, leaving `.userbar`
+  // responsible only for the dock's visual surface.
+  :host {
+    display: block;
+    grid-column: 2;
+    grid-row: 2;
+    height: var(--trinity-navigation-dock-height);
 
-  @media #{$md} {
-    grid-column: 1 / -1;
-    position: absolute;
-    inset-inline: var(--trinity-space-3);
-    inset-block-end: calc(
-      var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
-    );
-    z-index: var(--trinity-z-sticky);
+    @media #{$md} {
+      grid-column: 1 / -1;
+      position: absolute;
+      inset-inline: var(--trinity-space-3);
+      inset-block-end: calc(
+        var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
+      );
+      z-index: var(--trinity-z-sticky);
+    }
   }
-}
 
-.userbar {
-  --userbar-avatar-ring: var(--trinity-surface-navigation-header);
+  .userbar {
+    --userbar-avatar-ring: var(--trinity-surface-navigation-header);
 
-  box-sizing: border-box;
-  height: var(--trinity-navigation-dock-height);
-  flex: 0 0 var(--trinity-navigation-dock-height);
-  display: flex;
-  align-items: center;
-  gap: var(--trinity-density-shell-gap);
-  padding: 0 var(--trinity-density-shell-padding-inline);
-  background: var(--trinity-surface-navigation-header);
-  box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
+    box-sizing: border-box;
+    height: var(--trinity-navigation-dock-height);
+    flex: 0 0 var(--trinity-navigation-dock-height);
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-shell-gap);
+    padding: 0 var(--trinity-density-shell-padding-inline);
+    background: var(--trinity-surface-navigation-header);
+    box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
 
-  @media #{$md} {
-    --userbar-avatar-ring: var(--trinity-surface-floating);
+    @media #{$md} {
+      --userbar-avatar-ring: var(--trinity-surface-floating);
 
-    height: 100%;
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-floating);
-    box-shadow: var(--trinity-shadow-floating);
+      height: 100%;
+      border: 1px solid var(--trinity-border-subtle);
+      border-radius: var(--trinity-shape-container-radius);
+      background: var(--trinity-surface-floating);
+      box-shadow: var(--trinity-shadow-floating);
+    }
   }
-}
 
-.userbar__trigger {
-  @include interactive-row;
+  .userbar__trigger {
+    @include interactive-row;
 
-  display: flex;
-  flex: 1;
-  min-height: var(--trinity-interaction-target-min-size);
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-  text-align: left;
-}
+    display: flex;
+    flex: 1;
+    min-height: var(--trinity-interaction-target-min-size);
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    text-align: left;
+  }
 
-.userbar__id {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
+  .userbar__id {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
 
-.userbar__name {
-  @include ellipsis;
+  .userbar__name {
+    @include ellipsis;
 
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-}
-
-.userbar__handle {
-  @include ellipsis;
-
-  font-size: 12px;
-  color: var(--trinity-text-muted);
-}
-
-.userbar__settings {
-  @include interactive-row;
-
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  padding: 6px;
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
-
-  &:hover {
+    font-size: 13px;
+    font-weight: 600;
     color: var(--trinity-text-bright);
   }
-}
 
-.account-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-}
+  .userbar__handle {
+    @include ellipsis;
 
-.account-row__id {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
-}
-
-.account-row__name {
-  @include ellipsis;
-
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-}
-
-.account-row__handle {
-  @include ellipsis;
-
-  font-size: 12px;
-  color: var(--trinity-text-muted);
-}
-
-// A third, quieter line under the handle. Ellipsised like its siblings: a version can
-// carry a build suffix (`1.158.0 (b=…,5569b9e479)`) that would otherwise widen the menu.
-.account-row__server {
-  @include ellipsis;
-
-  font-size: 11px;
-  color: var(--trinity-text-muted);
-}
-
-.account-row__badge {
-  flex: 0 0 auto;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-text-muted);
-  color: var(--trinity-sidebar);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-}
-
-.account-row__check {
-  flex: 0 0 auto;
-  color: var(--trinity-text-bright);
-}
-
-.account-row__reauth {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--trinity-link);
-}
-
-.account-row__active {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--trinity-text-muted);
-}
-
-// Included accounts as an overlapping stack, replacing the single avatar while mixing.
-// The 24px tiles keep the cluster inside the .userbar's fixed 52px budget (capped at three
-// in the template), and the ring reads each tile as a separate face rather than one blob.
-.userbar__stack {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-}
-
-.userbar__stack-item {
-  position: relative;
-  border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--userbar-avatar-ring);
-
-  &:not(:first-child) {
-    margin-left: -10px;
+    font-size: 12px;
+    color: var(--trinity-text-muted);
   }
 
-  // Descending z-index so the ACTIVE account (rendered first) sits on top of the stack —
-  // by default later siblings paint over earlier ones, which would bury the very account
-  // whose name is displayed next to it.
-  &:nth-child(1) {
-    // Local stacking: these three order this component's own children against each
-    // other, not against anything in the app. The z-index scale governs app-level
-    // layers, and pretending it governs this would make both harder to read.
-    z-index: 3;
+  .userbar__settings {
+    @include interactive-row;
+
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    padding: 6px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+
+    &:hover {
+      color: var(--trinity-text-bright);
+    }
   }
 
-  &:nth-child(2) {
-    z-index: 2;
+  .account-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
   }
 
-  &:nth-child(3) {
-    z-index: 1;
+  .account-row__id {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
   }
-}
 
-// The handle ellipsises, the "+N" must not: an ordinary mxid would otherwise clip away the
-// only textual sign that the view is mixed.
-.userbar__meta {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 4px;
-}
+  .account-row__name {
+    @include ellipsis;
 
-.userbar__mixed {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--trinity-text-muted);
-}
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+  }
 
-// The active account is always shown, so its picker row is disabled to stop it being
-// unticked. Undo the disabled dimming: greying out the one row that is guaranteed present
-// reads as "excluded", the exact opposite of what it means.
-.account-pick[data-disabled] {
-  opacity: 1;
-}
+  .account-row__handle {
+    @include ellipsis;
 
-.account-pick__id {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
+    font-size: 12px;
+    color: var(--trinity-text-muted);
+  }
 
-.account-pick__name {
-  @include ellipsis;
+  // A third, quieter line under the handle. Ellipsised like its siblings: a version can
+  // carry a build suffix (`1.158.0 (b=…,5569b9e479)`) that would otherwise widen the menu.
+  .account-row__server {
+    @include ellipsis;
 
-  font-size: 13px;
-}
+    font-size: 11px;
+    color: var(--trinity-text-muted);
+  }
 
-.account-pick__handle {
-  @include ellipsis;
+  .account-row__badge {
+    flex: 0 0 auto;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-text-muted);
+    color: var(--trinity-sidebar);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+  }
 
-  font-size: 11px;
-  color: var(--trinity-text-muted);
+  .account-row__check {
+    flex: 0 0 auto;
+    color: var(--trinity-text-bright);
+  }
+
+  .account-row__reauth {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--trinity-link);
+  }
+
+  .account-row__active {
+    flex: 0 0 auto;
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--trinity-text-muted);
+  }
+
+  // Included accounts as an overlapping stack, replacing the single avatar while mixing.
+  // The 24px tiles keep the cluster inside the .userbar's fixed 52px budget (capped at three
+  // in the template), and the ring reads each tile as a separate face rather than one blob.
+  .userbar__stack {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+  }
+
+  .userbar__stack-item {
+    position: relative;
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--userbar-avatar-ring);
+
+    &:not(:first-child) {
+      margin-left: -10px;
+    }
+
+    // Descending z-index so the ACTIVE account (rendered first) sits on top of the stack —
+    // by default later siblings paint over earlier ones, which would bury the very account
+    // whose name is displayed next to it.
+    &:nth-child(1) {
+      // Local stacking: these three order this component's own children against each
+      // other, not against anything in the app. The z-index scale governs app-level
+      // layers, and pretending it governs this would make both harder to read.
+      z-index: 3;
+    }
+
+    &:nth-child(2) {
+      z-index: 2;
+    }
+
+    &:nth-child(3) {
+      z-index: 1;
+    }
+  }
+
+  // The handle ellipsises, the "+N" must not: an ordinary mxid would otherwise clip away the
+  // only textual sign that the view is mixed.
+  .userbar__meta {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: 4px;
+  }
+
+  .userbar__mixed {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--trinity-text-muted);
+  }
+
+  .account-pick__id {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .account-pick__name {
+    @include ellipsis;
+
+    font-size: 13px;
+  }
+
+  .account-pick__handle {
+    @include ellipsis;
+
+    font-size: 11px;
+    color: var(--trinity-text-muted);
+  }
 }

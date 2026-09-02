@@ -1,5 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { asapScheduler, finalize, scheduled, switchMap } from 'rxjs';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -20,34 +22,38 @@ export interface AccountPickerOptions {
 @Injectable({ providedIn: 'root' })
 export class AccountPickerService {
   private readonly dialog = inject(TrnDialogService);
+  private readonly destroyRef = inject(DestroyRef);
   private showing = false;
 
-  /** Show the picker; resolves when it is dismissed. */
-  async open({ accounts, activeUserId }: AccountPickerOptions): Promise<void> {
+  /** Show the picker until it is dismissed. */
+  open({ accounts, activeUserId }: AccountPickerOptions): void {
     if (this.showing) {
       return; // already open — ignore the repeat trigger
     }
     this.showing = true;
-    try {
-      // Yield a microtask before presenting. The dropdown item that raised this is still
-      // inside CdkMenuItem.trigger(), which emits `triggered` and only THEN calls
-      // menuStack.closeAll({ focusParentTrigger: true }). Opening synchronously would have CDK
-      // capture the menu row it is about to destroy as the focus-restore target, so dismissing
-      // the dialog would drop focus to <body>; after the yield it captures the user-panel
-      // button the menu has just restored focus to, and focus returns there.
-      await Promise.resolve();
-      await this.dialog.openAndWait<void, AccountPickerComponent>(
-        AccountPickerComponent,
-        {
-          ariaLabel: 'Show accounts',
-          inputs: { accounts, activeUserId },
-          // Land on the first account rather than CDK's first tabbable element, which is
-          // the Done button.
-          autoFocus: '[data-autofocus]',
-        },
-      );
-    } finally {
-      this.showing = false;
-    }
+    // Yield a microtask before presenting. The dropdown item that raised this is still inside
+    // CdkMenuItem.trigger(), which emits `triggered` and only THEN calls
+    // menuStack.closeAll({ focusParentTrigger: true }). Opening synchronously would have CDK
+    // capture the menu row it is about to destroy as the focus-restore target, so dismissing
+    // the dialog would drop focus to <body>; after the yield it captures the user-panel button
+    // the menu has just restored focus to, and focus returns there.
+    scheduled([undefined], asapScheduler)
+      .pipe(
+        switchMap(() =>
+          this.dialog.openAndWait$<void, AccountPickerComponent>(
+            AccountPickerComponent,
+            {
+              ariaLabel: 'Show accounts',
+              inputs: { accounts, activeUserId },
+              // Land on the first account rather than CDK's first tabbable element, which is
+              // the Done button.
+              autoFocus: '[data-autofocus]',
+            },
+          ),
+        ),
+        finalize(() => (this.showing = false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({ error: () => undefined });
   }
 }

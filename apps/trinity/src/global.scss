@@ -85,11 +85,16 @@
 }
 
 @layer overrides {
-  /* Disabled interaction is a semantic invariant rather than a component default: callers may
-   * choose layout and colour utilities, but cannot create a second disabled-strength recipe. */
-  button:disabled,
-  [aria-disabled='true'] {
+  /* Disabled interaction is a semantic invariant rather than a component default. A public
+   * locked-selection row is the one exception: it is unavailable because its checked value is
+   * guaranteed, not because the choice itself is excluded. */
+  button:disabled:not([data-trn-selection-locked]),
+  [aria-disabled='true']:not([data-trn-selection-locked]) {
     opacity: var(--trinity-disabled-opacity);
+  }
+
+  [data-trn-selection-locked] {
+    opacity: 1;
   }
 
   [data-trn-action-disabled] {

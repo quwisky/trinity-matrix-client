@@ -1,311 +1,314 @@
 @use '../styles/mixins' as *;
 
-// The room shell holds the app-global banners above the rail + chat columns. The top
-// safe-area inset lives here so the banners (not just the columns) clear the notch /
-// status bar. env() is 0 off notched devices, so this is inert on web/desktop.
-.rooms-shell {
-  padding-top: env(safe-area-inset-top);
-  background: var(--trinity-surface-frame);
-}
-
-// Paint-only recessing: this must not add padding, borders or clipping because the shell's
-// pane geometry, outward focus rings and negative-margin resize handles are contractual.
-.rooms-workspace {
-  background: var(--trinity-surface-frame);
-  box-shadow: inset 0 0 0 1px var(--trinity-border-subtle);
-}
-
-// Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and the
-// full-screen room-list page below md.
-// Width comes from `--shell-sidebar-w` on the shell root, seeded from the persisted setting
-// and overridden inline for the length of a drag. It used to be `md:w-[352px]` with an
-// eight-line note on why it was px and not `w-88` — the reasoning survives in
-// `ShellLayoutService`, which owns the default and the bounds. `text-scaling.spec.mts` still
-// asserts the rail and sidebar edges meet at every text size, and they still must.
-
-// The draggable dividers: 4px of visible line inside a 12px grab area, because a 4px hit
-// target is a fair-weather one. The padding is what widens the target; `background-clip:
-// content-box` keeps the highlight on the 4px content box, so the line stays thin while the
-// thing you can grab is three times as wide. The negative margin cancels the whole 12px
-// again, so the handle costs the layout nothing and `--shell-sidebar-w` is the width the pane
-// actually gets. Positioned and lifted so it sits over the two panes it straddles rather than
-// under them — otherwise the padding that makes it forgiving is covered by whatever is
-// beside it.
-.pane-handle {
-  position: relative;
-  z-index: var(--trinity-z-sticky);
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  width: 12px;
-  padding: 0 4px;
-  margin: 0 -6px;
-  cursor: col-resize;
-  background: transparent;
-  background-clip: content-box;
-  touch-action: none;
-
-  &:hover,
-  &:focus-visible,
-  &.pane-handle--dragging {
-    background: var(--trinity-focus-ring);
-    background-clip: content-box;
-  }
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: -3px;
-  }
-}
-
-.shell-side {
-  position: relative;
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  height: 100%;
-  min-height: 0;
-  background: var(--trinity-surface-frame);
-
-  // One measurement owns the shell-spanning dock and the clearance inherited by both
-  // independent navigation scrollers.
-  --trinity-navigation-dock-height: 52px;
-  --trinity-navigation-safe-area-bottom: env(safe-area-inset-bottom);
-
-  @media #{$md} {
-    width: var(--shell-sidebar-w, 352px);
-
-    // The custom property is the user's persisted preference, not an unconditional rendered
-    // width. At the narrow end of the two-pane layout a 560px preference plus `.main`'s
-    // 320px floor needs more room than the shell has, so let flexbox take only that deficit
-    // from this pane. Widening restores the preferred width without rewriting the setting.
-    flex: 0 1 auto;
-  }
-
-  // Outer-left column: clear the left cutout on a landscape notch (left) and the home
-  // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
-  padding-bottom: var(--trinity-navigation-safe-area-bottom);
-  padding-left: env(safe-area-inset-left);
-}
-
-.shell-side__rail {
-  grid-column: 1;
-  grid-row: 1 / -1;
-  min-height: 0;
-}
-
-.shell-side__rooms {
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-// The two mobile pages take programmatic focus on a view switch (tabindex="-1", so
-// they're not in the tab order) — suppress the outline focus would draw around the
-// whole page.
-.shell-side:focus,
-.main:focus {
-  outline: none;
-}
-
-.main {
-  flex: 1;
-
-  // A floor rather than 0, so the conversation cannot be squeezed out of existence: the two
-  // pane bounds are per-pane, and their maxima add up to more than a 1280px window. With the
-  // panel shrinkable (below) flexbox resolves the violation by taking the space back from the
-  // panel instead. `min()` so this never exceeds the row itself — below the `members`
-  // breakpoint the panel leaves the flow and a wide sidebar can make the row narrower than
-  // the floor, which would otherwise overflow the shell.
-  min-width: min(320px, 100%);
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden; // contain the header + body so the timeline scrolls internally
-  // Outer-right column: keep content clear of a right-side landscape cutout. The top
-  // inset lives on .rooms-shell (above the banners).
-  padding-right: env(safe-area-inset-right);
-  background: var(--trinity-surface-workspace);
-  box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
-}
-
-// Below md the rail + sidebar (room list) and the chat are separate full-screen
-// pages — show only the one matching the current view. At md+ this media query
-// doesn't apply, so both columns stay static and side by side.
-@media #{$below-md} {
-  [data-mobile-view='chat'] .shell-side {
-    display: none;
-  }
-
-  [data-mobile-view='list'] .main {
-    display: none;
-  }
-}
-
-// The toolbar surface now comes from <trn-page-header variant="chat"> (which
-// carries bg-[var(--trinity-chat)] and the toolbar text color). The room-name
-// title is still projected from here, so these scoped title styles stay.
-.title-hash {
-  color: var(--trinity-text-muted);
-  margin-right: 4px;
-}
-
-.title-lock {
-  margin-left: 6px;
-  color: var(--trinity-text-muted);
-  font-size: 14px;
-  vertical-align: middle;
-}
-
-// The pinned-messages header button carries a small count badge in its corner.
-.header-pin {
-  position: relative;
-}
-
-.header-pin__badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 16px;
-  text-align: center;
-}
-
-// The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
-// `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
-// without it the browser consumes the sideways drag as a scroll or an overscroll navigation
-// and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
-// still scroll.
-// A flex ROW of [timeline, right-hand panel], and that is all it may hold.
-// Its children are sized by content, so anything else added here competes with the timeline
-// for horizontal space rather than stacking above it. That is not hypothetical: the tombstone
-// banner sat here and took 779px of a 928px row, leaving the timeline 149px and the composer's
-// text column nothing — visible only in a tombstoned room, which is why it survived. A
-// room-level notice belongs in `.main`, the COLUMN this row sits in, beside the page header.
-.chat-body {
-  touch-action: pan-y;
-  overscroll-behavior-x: contain;
-  flex: 1;
-  display: flex;
-  min-height: 0;
-  overflow: hidden; // bound the row so message-list/member-list scroll internally
-  background: var(--trinity-surface-workspace);
-}
-
-.chat-members {
-  flex: 0 0 240px;
-  box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
-}
-
-// The other surfaces the slot can show — threads, a thread, pinned, search, member info.
-// 480px is the width they had as `md:w-120` dialog cards, so this is the same measurement
-// moved from the card to the slot that now owns it.
-// IN FLOW, sharing the row with the timeline rather than covering it, which is what #179
-// asks for. That was deferred once, because a panel taking layout space resizes the timeline
-// and a jump issued across that resize landed off screen — the scroll was computed against a
-// width the timeline no longer had. `MessageListBase` now remembers a recent jump and
-// re-applies it when the scroller's width actually changes, so the resize is survivable and
-// the panels can take their space.
-.chat-panel {
-  // Shrinkable, not fixed: the stored width is what the user chose, but on a window too
-  // narrow to honour it AND leave the timeline its floor, the panel is the one that gives.
-  // The stored value is untouched, so widening the window restores it.
-  flex: 0 1 var(--shell-right-panel-w, 480px);
-  min-width: 0;
-}
-
-// Below the `members` breakpoint the static column would crowd the chat, so present the
-// member list as a slide-in drawer over the content instead (dismissed by the template's
-// backdrop). The inner .members is a fixed 240px column, so the drawer host matches that
-// width. `$below-members` is the shared definition — see its note in _mixins.scss.
-@media #{$below-members} {
-  .chat-members,
-  .chat-panel {
-    position: fixed;
-    inset-block: 0;
-    right: 0;
-    z-index: var(--trinity-z-panel);
-    flex: none;
-    box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
-
-    // NEITHER inset is padded here — both are per-surface now, and which surface needs
-    // which is the split below.
-    animation: members-drawer-in var(--trinity-duration-base)
-      var(--trinity-ease-decelerate);
-
-    // Follows the finger while it is being DISMISSED. `--drawer-drag` is written by
-    // `DrawerSwipeDirective` for the length of a gesture and removed on release, so the
-    // drawer settles back to its CSS position without the directive having to animate
-    // anything itself. Zero when nobody is dragging.
-    // Only the closing direction can track, and that is a real gap rather than a choice: an
-    // OPENING swipe is measured before the slot has anything in it, so there is no element
-    // here to translate and the drawer arrives at the end of the gesture with its entrance
-    // animation. Painting the open drag means mounting the drawer at the first qualifying
-    // move and suppressing that animation, which is a bigger change than this slice.
-    transform: translateX(var(--drawer-drag, 0));
-  }
-
-  // Where the two drawers part company, on width and on the safe-area insets.
-  // WIDTH: the roster fits 240px; a thread or a search result does not, and those were
-  // full-screen (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px
-  // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
-  // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
-  // phone.
-  // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
-  // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
-  // composer, a member-info action row), and padding the host as well would clear the notch
-  // twice. The member list has neither, so the host does both for it; without the bottom one
-  // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
-  // was added to fix.
-  .chat-members {
-    width: 240px;
+@layer components {
+  // The room shell holds the app-global banners above the rail + chat columns. The top
+  // safe-area inset lives here so the banners (not just the columns) clear the notch /
+  // status bar. env() is 0 off notched devices, so this is inert on web/desktop.
+  .rooms-shell {
     padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--trinity-surface-frame);
   }
 
+  // Paint-only recessing: this must not add padding, borders or clipping because the shell's
+  // pane geometry, outward focus rings and negative-margin resize handles are contractual.
+  .rooms-workspace {
+    background: var(--trinity-surface-frame);
+    box-shadow: inset 0 0 0 1px var(--trinity-border-subtle);
+  }
+
+  // Server rail (72) + channel sidebar (280) = 352px. A static column at md+ and the
+  // full-screen room-list page below md.
+  // Width comes from `--shell-sidebar-w` on the shell root, seeded from the persisted setting
+  // and overridden inline for the length of a drag. It used to be `md:w-[352px]` with an
+  // eight-line note on why it was px and not `w-88` — the reasoning survives in
+  // `ShellLayoutService`, which owns the default and the bounds. `text-scaling.spec.mts` still
+  // asserts the rail and sidebar edges meet at every text size, and they still must.
+
+  // The draggable dividers: 4px of visible line inside a 12px grab area, because a 4px hit
+  // target is a fair-weather one. The padding is what widens the target; `background-clip:
+  // content-box` keeps the highlight on the 4px content box, so the line stays thin while the
+  // thing you can grab is three times as wide. The negative margin cancels the whole 12px
+  // again, so the handle costs the layout nothing and `--shell-sidebar-w` is the width the pane
+  // actually gets. Positioned and lifted so it sits over the two panes it straddles rather than
+  // under them — otherwise the padding that makes it forgiving is covered by whatever is
+  // beside it.
+  .pane-handle {
+    position: relative;
+    z-index: var(--trinity-z-sticky);
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 12px;
+    padding: 0 4px;
+    margin: 0 -6px;
+    cursor: col-resize;
+    background: transparent;
+    background-clip: content-box;
+    touch-action: none;
+
+    &:hover,
+    &:focus-visible,
+    &.pane-handle--dragging {
+      background: var(--trinity-focus-ring);
+      background-clip: content-box;
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: -3px;
+    }
+  }
+
+  .shell-side {
+    position: relative;
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--trinity-surface-frame);
+
+    // One measurement owns the shell-spanning dock and the clearance inherited by both
+    // independent navigation scrollers.
+    --trinity-navigation-dock-height: 52px;
+    --trinity-navigation-safe-area-bottom: env(safe-area-inset-bottom);
+
+    @media #{$md} {
+      width: var(--shell-sidebar-w, 352px);
+
+      // The custom property is the user's persisted preference, not an unconditional rendered
+      // width. At the narrow end of the two-pane layout a 560px preference plus `.main`'s
+      // 320px floor needs more room than the shell has, so let flexbox take only that deficit
+      // from this pane. Widening restores the preferred width without rewriting the setting.
+      flex: 0 1 auto;
+    }
+
+    // Outer-left column: clear the left cutout on a landscape notch (left) and the home
+    // indicator (bottom, where the user footer sits). The top inset is on .rooms-shell.
+    padding-bottom: var(--trinity-navigation-safe-area-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .shell-side__rail {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    min-height: 0;
+  }
+
+  .shell-side__rooms {
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  // The two mobile pages take programmatic focus on a view switch (tabindex="-1", so
+  // they're not in the tab order) — suppress the outline focus would draw around the
+  // whole page.
+  .shell-side:focus,
+  .main:focus {
+    outline: none;
+  }
+
+  .main {
+    flex: 1;
+
+    // A floor rather than 0, so the conversation cannot be squeezed out of existence: the two
+    // pane bounds are per-pane, and their maxima add up to more than a 1280px window. With the
+    // panel shrinkable (below) flexbox resolves the violation by taking the space back from the
+    // panel instead. `min()` so this never exceeds the row itself — below the `members`
+    // breakpoint the panel leaves the flow and a wide sidebar can make the row narrower than
+    // the floor, which would otherwise overflow the shell.
+    min-width: min(320px, 100%);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden; // contain the header + body so the timeline scrolls internally
+    // Outer-right column: keep content clear of a right-side landscape cutout. The top
+    // inset lives on .rooms-shell (above the banners).
+    padding-right: env(safe-area-inset-right);
+    background: var(--trinity-surface-workspace);
+    box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
+  }
+
+  // Below md the rail + sidebar (room list) and the chat are separate full-screen
+  // pages — show only the one matching the current view. At md+ this media query
+  // doesn't apply, so both columns stay static and side by side.
+  @media #{$below-md} {
+    [data-mobile-view='chat'] .shell-side {
+      display: none;
+    }
+
+    [data-mobile-view='list'] .main {
+      display: none;
+    }
+  }
+
+  // The toolbar surface now comes from the canonical neutral toolbar page-header
+  // recipe. The room-name title is still projected from here, so these scoped
+  // title styles stay.
+  .title-hash {
+    color: var(--trinity-text-muted);
+    margin-right: 4px;
+  }
+
+  .title-lock {
+    margin-left: 6px;
+    color: var(--trinity-text-muted);
+    font-size: 14px;
+    vertical-align: middle;
+  }
+
+  // The pinned-messages header button carries a small count badge in its corner.
+  .header-pin {
+    position: relative;
+  }
+
+  .header-pin__badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-accent);
+    color: var(--trinity-accent-foreground);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  // The chat area owns the drawer gesture, so a swipe that starts over the timeline is heard.
+  // `touch-action: pan-y` keeps vertical scrolling native while claiming the horizontal axis —
+  // without it the browser consumes the sideways drag as a scroll or an overscroll navigation
+  // and the directive never sees a move. `pan-y` rather than `none`, because the timeline must
+  // still scroll.
+  // A flex ROW of [timeline, right-hand panel], and that is all it may hold.
+  // Its children are sized by content, so anything else added here competes with the timeline
+  // for horizontal space rather than stacking above it. That is not hypothetical: the tombstone
+  // banner sat here and took 779px of a 928px row, leaving the timeline 149px and the composer's
+  // text column nothing — visible only in a tombstoned room, which is why it survived. A
+  // room-level notice belongs in `.main`, the COLUMN this row sits in, beside the page header.
+  .chat-body {
+    touch-action: pan-y;
+    overscroll-behavior-x: contain;
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    overflow: hidden; // bound the row so message-list/member-list scroll internally
+    background: var(--trinity-surface-workspace);
+  }
+
+  .chat-members {
+    flex: 0 0 240px;
+    box-shadow: inset 1px 0 0 var(--trinity-border-subtle);
+  }
+
+  // The other surfaces the slot can show — threads, a thread, pinned, search, member info.
+  // 480px is the width they had as `md:w-120` dialog cards, so this is the same measurement
+  // moved from the card to the slot that now owns it.
+  // IN FLOW, sharing the row with the timeline rather than covering it, which is what #179
+  // asks for. That was deferred once, because a panel taking layout space resizes the timeline
+  // and a jump issued across that resize landed off screen — the scroll was computed against a
+  // width the timeline no longer had. `MessageListBase` now remembers a recent jump and
+  // re-applies it when the scroller's width actually changes, so the resize is survivable and
+  // the panels can take their space.
   .chat-panel {
-    width: 480px;
-    max-width: 100%;
-  }
-}
-
-@keyframes members-drawer-in {
-  from {
-    transform: translateX(100%);
+    // Shrinkable, not fixed: the stored width is what the user chose, but on a window too
+    // narrow to honour it AND leave the timeline its floor, the panel is the one that gives.
+    // The stored value is untouched, so widening the window restores it.
+    flex: 0 1 var(--shell-right-panel-w, 480px);
+    min-width: 0;
   }
 
-  to {
-    transform: translateX(0);
+  // Below the `members` breakpoint the static column would crowd the chat, so present the
+  // member list as a slide-in drawer over the content instead (dismissed by the template's
+  // backdrop). The inner .members is a fixed 240px column, so the drawer host matches that
+  // width. `$below-members` is the shared definition — see its note in _mixins.scss.
+  @media #{$below-members} {
+    .chat-members,
+    .chat-panel {
+      position: fixed;
+      inset-block: 0;
+      right: 0;
+      z-index: var(--trinity-z-panel);
+      flex: none;
+      box-shadow: -2px 0 12px rgb(0 0 0 / 30%);
+
+      // NEITHER inset is padded here — both are per-surface now, and which surface needs
+      // which is the split below.
+      animation: members-drawer-in var(--trinity-duration-base)
+        var(--trinity-ease-decelerate);
+
+      // Follows the finger while it is being DISMISSED. `--drawer-drag` is written by
+      // `DrawerSwipeDirective` for the length of a gesture and removed on release, so the
+      // drawer settles back to its CSS position without the directive having to animate
+      // anything itself. Zero when nobody is dragging.
+      // Only the closing direction can track, and that is a real gap rather than a choice: an
+      // OPENING swipe is measured before the slot has anything in it, so there is no element
+      // here to translate and the drawer arrives at the end of the gesture with its entrance
+      // animation. Painting the open drag means mounting the drawer at the first qualifying
+      // move and suppressing that animation, which is a bigger change than this slice.
+      transform: translateX(var(--drawer-drag, 0));
+    }
+
+    // Where the two drawers part company, on width and on the safe-area insets.
+    // WIDTH: the roster fits 240px; a thread or a search result does not, and those were
+    // full-screen (`w-screen`) as dialogs at this width, so `max-width` keeps them so — 480px
+    // exceeds the viewport here. The dragged width is deliberately not read at this breakpoint:
+    // there is no divider to drag, and a width chosen on a desktop has nothing to say about a
+    // phone.
+    // INSETS: the four panels pad themselves at BOTH ends — `safe-top` on the header they all
+    // carry, `safe-bottom` on the root — because their content reaches both edges (a thread
+    // composer, a member-info action row), and padding the host as well would clear the notch
+    // twice. The member list has neither, so the host does both for it; without the bottom one
+    // its last row sits under the home indicator, which is the bug the panels' `safe-bottom`
+    // was added to fix.
+    .chat-members {
+      width: 240px;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .chat-panel {
+      width: 480px;
+      max-width: 100%;
+    }
   }
-}
 
-// Active-identity chip in the chat header, shown only while mixing accounts. Compact so it
-// never competes with the room name, but always present — on the mobile master-detail
-// layout this is the ONLY thing on screen naming the account you send as.
-.title-account {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 4px;
-  max-width: 40%;
-  padding: 2px 8px 2px 2px;
-  border-radius: var(--trinity-radius-pill);
-  background: var(--trinity-hover);
-}
+  @keyframes members-drawer-in {
+    from {
+      transform: translateX(100%);
+    }
 
-.title-account__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--trinity-text-muted);
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  // Active-identity chip in the chat header, shown only while mixing accounts. Compact so it
+  // never competes with the room name, but always present — on the mobile master-detail
+  // layout this is the ONLY thing on screen naming the account you send as.
+  .title-account {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+    max-width: 40%;
+    padding: 2px 8px 2px 2px;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-hover);
+  }
+
+  .title-account__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--trinity-text-muted);
+  }
 }

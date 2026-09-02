@@ -318,7 +318,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   /** Phones use a dialog because the narrow navigation has no room for the desktop submenu. */
   protected onOpenAccountPicker(): void {
-    void this.accountPicker.open({
+    this.accountPicker.open({
       accounts: this.vm.accounts(),
       activeUserId: this.vm.activeAccountId(),
     });

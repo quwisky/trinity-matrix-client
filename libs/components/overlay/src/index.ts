@@ -52,6 +52,7 @@ export {
   TrnDropdownMenuItem,
   TrnDropdownMenuItemSubIndicatorComponent,
   TrnDropdownMenuLabel,
+  TrnLockedSelectionDirective,
   TrnDropdownMenuRadio,
   TrnDropdownMenuRadioIndicatorComponent,
   TrnDropdownMenuSeparator,

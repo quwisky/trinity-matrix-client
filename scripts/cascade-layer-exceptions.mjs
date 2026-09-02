@@ -21,24 +21,8 @@ export const UNLAYERED_RULESET_LEDGER = [
     'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
   ],
   [
-    'libs/feature/rooms/src/lib/account-picker/account-picker.component.scss',
-    '839ddd8641623320d02044a8bd9135f575ffb7e0365ac136d8063d59203cace6',
-  ],
-  [
     'libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss',
     '088407b59fd5a8c51d3f2ebcc70e7ce4f01d6918221bde9ae11a410abf685b95',
-  ],
-  [
-    'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss',
-    '3748d6764da0cc0fcdc37d027886720f9d47b13fe20441cc6aa38997191a0515',
-  ],
-  [
-    'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
-    '344d9645ed0c1d474ce15baaf2db1d2a02038133d372cd1476e4680ceb764f35',
-  ],
-  [
-    'libs/feature/rooms/src/lib/channel-sidebar/sidebar-user-panel/sidebar-user-panel.component.scss',
-    'ea38067e4680937c4fbd7b449562b7c19c014e64b7ee9c21d6dfd515d64aea51',
   ],
   [
     'libs/feature/rooms/src/lib/edit-history/edit-history.component.scss',
@@ -187,14 +171,6 @@ export const UNLAYERED_RULESET_LEDGER = [
   [
     'libs/feature/rooms/src/lib/room-settings/room-widgets.component.scss',
     '362b56069fff4eee90a4b9c460b285408afbf40a2f72d0213056a8bee127c6da',
-  ],
-  [
-    'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
-    'c39ea758a4547bb2afc2d4d0614e02e65829b2810f1a130ace9464205bb62c81',
-  ],
-  [
-    'libs/feature/rooms/src/lib/server-rail/server-rail.component.scss',
-    '5c0cca1669ac14420b1b7b6d9f665daf379f343722d36f6978caef2145b7b5f6',
   ],
   [
     'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',

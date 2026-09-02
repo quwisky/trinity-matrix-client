@@ -2,7 +2,8 @@ import {
   type MemberSummary,
   RoomSettingsService,
 } from '@trinity/data-access/room-administration';
-import { Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RoomAliasesService } from '@trinity/data-access/room-administration';
 import {
   RoomLibraryService,
@@ -14,7 +15,7 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access/room-library';
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
-import { map, Observable, switchMap, throwError } from 'rxjs';
+import { filter, map, Observable, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceMembersComponent } from '../space-members/space-members.component';
@@ -53,80 +54,97 @@ export class SpaceActionsService {
   private readonly aliases = inject(RoomAliasesService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
-  async onCreateSpace(): Promise<void> {
+  onCreateSpace(): void {
     this.status.error.set(null); // don't carry a stale error into a fresh action
-    const name = await this.alert.prompt({
-      header: 'Create a space',
-      message: 'A space groups related rooms, like a Discord server.',
-      placeholder: 'Space name',
-      confirmText: 'Create',
-      maxLength: 100,
-    });
-    if (name !== null) {
-      this.applyCreateSpace(name);
-    }
+    this.alert
+      .prompt$({
+        header: 'Create a space',
+        message: 'A space groups related rooms, like a Discord server.',
+        placeholder: 'Space name',
+        confirmText: 'Create',
+        maxLength: 100,
+      })
+      .pipe(
+        filter((name): name is string => name !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((name) => this.applyCreateSpace(name));
   }
 
   /**
    * Space overflow "Create a space inside": make a new space and link it as a child of
    * the active one, so a space can hold sub-spaces as well as rooms.
    */
-  async onCreateSubspace(): Promise<void> {
+  onCreateSubspace(): void {
     const parentId = this.store.activeSpaceId();
     if (!parentId || !this.vm.canCurateSpace()) {
       return;
     }
     this.status.error.set(null);
-    const name = await this.alert.prompt({
-      header: 'Create a space inside',
-      message: `The new space will sit inside “${this.vm.activeSpaceName()}”.`,
-      placeholder: 'Space name',
-      confirmText: 'Create',
-      maxLength: 100,
-    });
-    if (name !== null && this.vm.canCurateSpace()) {
-      this.applyCreateSubspace(parentId, name);
-    }
+    this.alert
+      .prompt$({
+        header: 'Create a space inside',
+        message: `The new space will sit inside “${this.vm.activeSpaceName()}”.`,
+        placeholder: 'Space name',
+        confirmText: 'Create',
+        maxLength: 100,
+      })
+      .pipe(
+        filter((name): name is string => name !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((name) => {
+        if (this.vm.canCurateSpace()) {
+          this.applyCreateSubspace(parentId, name);
+        }
+      });
   }
 
   /** Sidebar "+": prompt for a name and create a room inside the active space. */
-  async onCreateChannel(): Promise<void> {
+  onCreateChannel(): void {
     const spaceId = this.store.activeSpaceId();
     if (!spaceId || !this.vm.canCurateSpace()) {
       return; // the affordance is hidden on Home, but guard regardless
     }
     this.status.error.set(null);
-    const name = await this.alert.prompt({
-      header: 'Create a channel',
-      message: `New channels are end-to-end encrypted and added to “${this.vm.activeSpaceName()}”.`,
-      placeholder: 'Channel name',
-      confirmText: 'Create',
-      maxLength: 100,
-    });
-    if (name !== null && this.vm.canCurateSpace()) {
-      this.applyCreateChannel(spaceId, name);
-    }
+    this.alert
+      .prompt$({
+        header: 'Create a channel',
+        message: `New channels are end-to-end encrypted and added to “${this.vm.activeSpaceName()}”.`,
+        placeholder: 'Channel name',
+        confirmText: 'Create',
+        maxLength: 100,
+      })
+      .pipe(
+        filter((name): name is string => name !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((name) => {
+        if (this.vm.canCurateSpace()) {
+          this.applyCreateChannel(spaceId, name);
+        }
+      });
   }
 
   /** Sidebar exit icon: confirm, then leave the active space (back to Home). */
-  async onLeaveSpace(): Promise<void> {
+  onLeaveSpace(): void {
     const spaceId = this.store.activeSpaceId();
     if (!spaceId) {
       return;
     }
     this.status.error.set(null);
-    if (
-      await this.alert.confirm({
+    this.alert
+      .confirm$({
         header: 'Leave space',
         message: `Leave “${this.vm.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
         confirmText: 'Leave',
-        destructive: true,
+        variant: 'danger',
       })
-    ) {
-      this.applyLeaveSpace(spaceId);
-    }
+      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.applyLeaveSpace(spaceId));
   }
 
   private applyCreateSpace(name: string): void {
@@ -207,7 +225,7 @@ export class SpaceActionsService {
   }
 
   /** Sidebar remove icon on a joined channel: confirm, then unlink it from the space. */
-  async onRemoveFromSpace(roomId: string): Promise<void> {
+  onRemoveFromSpace(roomId: string): void {
     const spaceId = this.store.activeSpaceId();
     if (!spaceId || !this.vm.canCurateSpace()) {
       return; // the affordance only shows in a space, but guard regardless
@@ -215,17 +233,19 @@ export class SpaceActionsService {
     this.status.error.set(null);
     const name =
       this.rooms.rooms().find((r) => r.id === roomId)?.name ?? 'this channel';
-    if (
-      (await this.alert.confirm({
+    this.alert
+      .confirm$({
         header: 'Remove from space',
         message: `Remove “${name}” from “${this.vm.activeSpaceName()}”? You stay in the room — it’s just unlinked from this space.`,
         confirmText: 'Remove',
-        destructive: true,
-      })) &&
-      this.vm.canCurateSpace()
-    ) {
-      this.applyRemoveFromSpace(spaceId, roomId);
-    }
+        variant: 'danger',
+      })
+      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        if (this.vm.canCurateSpace()) {
+          this.applyRemoveFromSpace(spaceId, roomId);
+        }
+      });
   }
 
   private applyRemoveFromSpace(spaceId: string, childId: string): void {
@@ -272,21 +292,24 @@ export class SpaceActionsService {
     const identity = this.roomSettings.currentIdentity(spaceId);
     const editable = this.roomSettings.editableFields(spaceId);
     const access = this.roomSettings.currentAccess(spaceId);
-    void this.dialog.openAndWait(SpaceSettingsComponent, {
-      ariaLabel: 'Space settings',
-      inputs: {
-        spaceId,
-        name: identity.name,
-        topic: identity.topic,
-        avatarMxc: identity.avatarMxc,
-        joinRule: access.joinRule,
-        canEditName: editable.name,
-        canEditTopic: editable.topic,
-        canEditAvatar: editable.avatar,
-        canEditJoinRule: editable.joinRule,
-        canManageAliases: this.aliases.canManageAliases(spaceId),
-      },
-    });
+    this.dialog
+      .openAndWait$(SpaceSettingsComponent, {
+        ariaLabel: 'Space settings',
+        inputs: {
+          spaceId,
+          name: identity.name,
+          topic: identity.topic,
+          avatarMxc: identity.avatarMxc,
+          joinRule: access.joinRule,
+          canEditName: editable.name,
+          canEditTopic: editable.topic,
+          canEditAvatar: editable.avatar,
+          canEditJoinRule: editable.joinRule,
+          canManageAliases: this.aliases.canManageAliases(spaceId),
+        },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Space overflow "Add existing rooms": link rooms the user is already in. */
@@ -295,10 +318,13 @@ export class SpaceActionsService {
     if (!spaceId || !this.vm.canCurateSpace()) {
       return;
     }
-    void this.dialog.openAndWait(AddToSpaceComponent, {
-      ariaLabel: 'Add rooms to this space',
-      inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
-    });
+    this.dialog
+      .openAndWait$(AddToSpaceComponent, {
+        ariaLabel: 'Add rooms to this space',
+        inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /** Space overflow "Organise rooms": curate the child order and suggestions. */
@@ -307,10 +333,13 @@ export class SpaceActionsService {
     if (!spaceId || !this.vm.canCurateSpace()) {
       return;
     }
-    void this.dialog.openAndWait(ManageSpaceRoomsComponent, {
-      ariaLabel: 'Organise this space',
-      inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
-    });
+    this.dialog
+      .openAndWait$(ManageSpaceRoomsComponent, {
+        ariaLabel: 'Organise this space',
+        inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 
   /**
@@ -326,18 +355,20 @@ export class SpaceActionsService {
     if (!spaceId) {
       return;
     }
-    void this.dialog
-      .openAndWait<MemberSummary | null, SpaceMembersComponent>(
+    this.dialog
+      .openAndWait$<MemberSummary | null, SpaceMembersComponent>(
         SpaceMembersComponent,
         {
           ariaLabel: 'Space members',
           inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
         },
       )
-      .then((member) => {
-        if (member) {
-          void this.memberActions.openMemberInfo(member, spaceId);
-        }
+      .pipe(
+        filter((member): member is MemberSummary => member !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((member) => {
+        void this.memberActions.openMemberInfo(member, spaceId);
       });
   }
 }

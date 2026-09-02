@@ -29,6 +29,7 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
+import { defer, EMPTY, filter, map, switchMap } from 'rxjs';
 
 /**
  * The life of a room: creating one, starting a DM, joining from the directory, inviting
@@ -61,13 +62,13 @@ export class RoomActionsService {
   /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
    * account that owns the row. Leaving is irreversible for a private room, so it must
    * never fall through to the active account just because the row belongs to another. */
-  async onLeaveRoom({
+  onLeaveRoom({
     roomId,
     accountId,
   }: {
     roomId: string;
     accountId?: string;
-  }): Promise<void> {
+  }): void {
     const name =
       this.vm.visibleRooms().find((r) => r.id === roomId)?.name ?? 'this room';
     // Leaving is per-account and irreversible, so never fan it out the way the idempotent
@@ -76,18 +77,18 @@ export class RoomActionsService {
       this.accountScope.mixing() && accountId
         ? ` as ${this.routing.accountLabel(accountId)}`
         : '';
-    const confirmed = await this.alert.confirm({
-      header: 'Leave room',
-      message: `Leave “${name}”${as}? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
-      confirmText: 'Leave',
-      destructive: true,
-    });
-    if (!confirmed) {
-      return;
-    }
-    this.rooms
-      .leave(roomId, accountId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.alert
+      .confirm$({
+        header: 'Leave room',
+        message: `Leave “${name}”${as}? You'll stop receiving its messages and need a new invite (or a public join) to come back.`,
+        confirmText: 'Leave',
+        variant: 'danger',
+      })
+      .pipe(
+        filter(Boolean),
+        switchMap(() => this.rooms.leave(roomId, accountId)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         // The room drops from the sidebar via sync. If it was the open one, tear the
         // room panes down (mirroring ngOnDestroy / onSelectRoom) so the timeline,
@@ -113,11 +114,11 @@ export class RoomActionsService {
         { text: 'Create a room', handler: () => void this.onCreateRoom() },
         {
           text: 'Explore public rooms',
-          handler: () => void this.onExploreRooms(),
+          handler: () => this.onExploreRooms(),
         },
         {
           text: 'Start a direct message',
-          handler: () => void this.onStartDm(),
+          handler: () => this.onStartDm(),
         },
         { text: 'Cancel', role: 'cancel' },
       ],
@@ -125,23 +126,27 @@ export class RoomActionsService {
   }
 
   /** Browse the public directory; open a room — or select a space — joined from it. */
-  async onExploreRooms(): Promise<void> {
-    const joined = await this.dialog.openAndWait<DirectoryJoin | null>(
-      RoomDirectoryComponent,
-    );
-    if (!joined) {
-      return;
-    }
-    const accountId = this.store.activeAccountId();
-    if (!accountId) return;
-    // The join endpoint can close the dialog before /sync publishes the Room. Workspace
-    // correctly rejects an unavailable destination, so cross that finite readiness barrier
-    // before asking it to select the new Room or Space.
-    this.roomReadiness
-      .waitForRoom(accountId, joined.roomId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+  onExploreRooms(): void {
+    this.dialog
+      .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent)
+      .pipe(
+        filter((joined): joined is DirectoryJoin => joined !== null),
+        switchMap((joined) => {
+          const accountId = this.store.activeAccountId();
+          if (!accountId) {
+            return EMPTY;
+          }
+          // The join endpoint can close the dialog before /sync publishes the Room. Workspace
+          // correctly rejects an unavailable destination, so cross that finite readiness
+          // barrier before asking it to select the new Room or Space.
+          return this.roomReadiness
+            .waitForRoom(accountId, joined.roomId)
+            .pipe(map(() => joined));
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: () => {
+        next: (joined) => {
           if (joined.isSpace) {
             // A joined space lands in the rail — select it there.
             this.nav.onSelectSpace(joined.roomId);
@@ -174,51 +179,55 @@ export class RoomActionsService {
   }
 
   /** Prompt for a name, create a standalone encrypted room, then select it. */
-  async onCreateRoom(): Promise<void> {
+  onCreateRoom(): void {
     this.status.error.set(null);
-    const name = await this.alert.prompt({
-      header: 'Create a room',
-      message: 'New rooms are end-to-end encrypted.',
-      placeholder: 'Room name',
-      confirmText: 'Create',
-      maxLength: 100,
-    });
-    if (name !== null) {
-      this.applyCreateRoom(name);
-    }
+    this.alert
+      .prompt$({
+        header: 'Create a room',
+        message: 'New rooms are end-to-end encrypted.',
+        placeholder: 'Room name',
+        confirmText: 'Create',
+        maxLength: 100,
+      })
+      .pipe(
+        filter((name): name is string => name !== null),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((name) => this.applyCreateRoom(name));
   }
 
   /** Pick a user (MXID or directory), open/reuse a DM with them, then select it. */
-  async onStartDm(): Promise<void> {
+  onStartDm(): void {
     this.status.error.set(null);
-    const userId = await this.userPicker.pick({
-      title: 'Start a direct message',
-      confirmLabel: 'Message',
-    });
-    if (!userId) {
-      return; // cancelled
-    }
-    runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
-      (roomId) => this.nav.onSelectRoom(roomId),
-    );
+    defer(() =>
+      this.userPicker.pick({
+        title: 'Start a direct message',
+        confirmLabel: 'Message',
+      }),
+    )
+      .pipe(
+        filter((userId): userId is string => Boolean(userId)),
+        switchMap((userId) =>
+          runWithBusy(this.rooms.createDirectMessage(userId), this.status),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((roomId) => this.nav.onSelectRoom(roomId));
   }
 
   /** Open-room header: invite a user to the active room. */
-  async onInviteToRoom(): Promise<void> {
+  onInviteToRoom(): void {
     const roomId = this.store.activeRoomId();
     if (roomId && this.vm.roomInvitePermission().available) {
-      await this.invitePeople(
-        roomId,
-        this.vm.activeRoom()?.name ?? 'this room',
-      );
+      this.invitePeople(roomId, this.vm.activeRoom()?.name ?? 'this room');
     }
   }
 
   /** Space sidebar: invite a user to the active space. */
-  async onInviteToSpace(): Promise<void> {
+  onInviteToSpace(): void {
     const spaceId = this.store.activeSpaceId();
     if (spaceId && this.vm.spaceInvitePermission().available) {
-      await this.invitePeople(spaceId, this.vm.activeSpaceName());
+      this.invitePeople(spaceId, this.vm.activeSpaceName());
     }
   }
 
@@ -232,25 +241,31 @@ export class RoomActionsService {
   }
 
   /** Shared invite flow for a room or space: pick a user, invite, then toast. */
-  private async invitePeople(targetId: string, label: string): Promise<void> {
+  private invitePeople(targetId: string, label: string): void {
     this.status.error.set(null);
-    const userId = await this.userPicker.pick({
-      title: `Invite to ${label}`,
-      confirmLabel: 'Invite',
-    });
-    if (!userId) {
-      return; // cancelled
-    }
-    runWithBusy(
-      this.rooms.inviteUser(targetId, userId),
-      this.status,
-      matrixRequestErrorHandling(
-        'invite user to room',
-        'Could not invite this user. Try again.',
-      ),
-    ).subscribe(
-      () => void this.status.showSuccess(`Invitation sent to ${userId}.`),
-    );
+    defer(() =>
+      this.userPicker.pick({
+        title: `Invite to ${label}`,
+        confirmLabel: 'Invite',
+      }),
+    )
+      .pipe(
+        filter((userId): userId is string => Boolean(userId)),
+        switchMap((userId) =>
+          runWithBusy(
+            this.rooms.inviteUser(targetId, userId),
+            this.status,
+            matrixRequestErrorHandling(
+              'invite user to room',
+              'Could not invite this user. Try again.',
+            ),
+          ).pipe(map(() => userId)),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((userId) =>
+        this.status.showSuccess(`Invitation sent to ${userId}.`),
+      );
   }
 
   /** Header "Room settings": edit the active room's name and topic in a dialog. */
@@ -276,25 +291,28 @@ export class RoomActionsService {
     }));
     // The dialog writes on save; the name/topic/access update live via the rooms
     // sync listeners, so nothing to do with the resolved result here.
-    void this.dialog.openAndWait(RoomSettingsComponent, {
-      ariaLabel: 'Room settings',
-      inputs: {
-        roomId: room.id,
-        name: identity.name,
-        topic: identity.topic,
-        avatarMxc: identity.avatarMxc,
-        joinRule: access.joinRule,
-        historyVisibility: access.historyVisibility,
-        canEditName: editable.name,
-        canEditTopic: editable.topic,
-        canEditAvatar: editable.avatar,
-        canEditJoinRule: editable.joinRule,
-        canEditHistory: editable.history,
-        allowedSpaceIds: access.allowedSpaceIds,
-        parentSpaces,
-        supportsRestricted: this.roomSettings.supportsRestricted(room.id),
-        canManageAliases: this.aliases.canManageAliases(room.id),
-      },
-    });
+    this.dialog
+      .openAndWait$(RoomSettingsComponent, {
+        ariaLabel: 'Room settings',
+        inputs: {
+          roomId: room.id,
+          name: identity.name,
+          topic: identity.topic,
+          avatarMxc: identity.avatarMxc,
+          joinRule: access.joinRule,
+          historyVisibility: access.historyVisibility,
+          canEditName: editable.name,
+          canEditTopic: editable.topic,
+          canEditAvatar: editable.avatar,
+          canEditJoinRule: editable.joinRule,
+          canEditHistory: editable.history,
+          allowedSpaceIds: access.allowedSpaceIds,
+          parentSpaces,
+          supportsRestricted: this.roomSettings.supportsRestricted(room.id),
+          canManageAliases: this.aliases.canManageAliases(room.id),
+        },
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
   }
 }

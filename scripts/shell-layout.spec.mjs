@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  sourceStyleBlockAt,
+  stripSourceComments,
+} from './source-style-blocks.mjs';
 
 /**
  * Source-shape invariants for the room shell redesign.
@@ -13,6 +17,14 @@ import { describe, expect, it } from 'vitest';
 
 const root = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(root, file), 'utf8');
+const ruleBody = (source, selector) => {
+  const css = stripSourceComments(source);
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const match = new RegExp(`${escapedSelector}\\s*\\{`, 'u').exec(css);
+  if (!match) return undefined;
+  const openingBrace = match.index + match[0].lastIndexOf('{');
+  return sourceStyleBlockAt(css, openingBrace).body;
+};
 
 const variables = read('libs/theme-foundation/styles/internal/variables.scss');
 const roomsHtml = read('libs/feature/rooms/src/lib/rooms/rooms.page.html');
@@ -57,9 +69,7 @@ describe('modern room shell layout contracts', () => {
     );
 
     for (const selector of ['.rooms-workspace', '.shell-side']) {
-      const block = roomsCss.match(
-        new RegExp(`${selector.replace('.', '\\\.')}\\s*\\{([\\s\\S]*?)\\n\\}`),
-      )?.[1];
+      const block = ruleBody(roomsCss, selector);
       expect(block, `${selector} must have a rule`).toBeDefined();
       expect(
         block,
@@ -91,10 +101,7 @@ describe('modern room shell layout contracts', () => {
     ];
 
     for (const [source, selector] of controls) {
-      const escaped = selector.replace('.', '\\\.');
-      const rule = source.match(
-        new RegExp(`${escaped}\\s*\\{([\\s\\S]*?)\\n\\}`),
-      )?.[1];
+      const rule = ruleBody(source, selector);
       expect(rule, `${selector} must have a rule`).toBeDefined();
       expect(rule, `${selector} must consume the shared touch floor`).toContain(
         'var(--trinity-interaction-target-min-size)',
@@ -103,8 +110,9 @@ describe('modern room shell layout contracts', () => {
   });
 
   it('gives the desktop identity dock one shared floating geometry contract', () => {
+    expect(roomsHtml).not.toMatch(/class="[^"]*shell-side[^"]*\bw-full\b/);
     expect(roomsCss).toMatch(
-      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*--trinity-navigation-dock-height:\s*52px;/s,
+      /\.shell-side\s*\{[^}]*position:\s*relative;[^}]*display:\s*grid;[^}]*width:\s*100%;[^}]*--trinity-navigation-dock-height:\s*52px;[^}]*@media\s+#\{\$md\}\s*\{[^}]*width:\s*var\(--shell-sidebar-w,\s*352px\);/s,
     );
     expect(roomsCss).toMatch(
       /--trinity-navigation-safe-area-bottom:\s*env\(safe-area-inset-bottom\);[\s\S]*?padding-bottom:\s*var\(--trinity-navigation-safe-area-bottom\);/,
@@ -135,10 +143,8 @@ describe('modern room shell layout contracts', () => {
   });
 
   it('leaves right-panel separators with one paint owner', () => {
-    const panelHeader = globalCss.match(
-      /\.panel-header\s*\{([\s\S]*?)\n\}/,
-    )?.[1];
-    const chatPanel = roomsCss.match(/\.chat-panel\s*\{([\s\S]*?)\n\}/)?.[1];
+    const panelHeader = ruleBody(globalCss, '.panel-header');
+    const chatPanel = ruleBody(roomsCss, '.chat-panel');
     expect(panelHeader).toBeDefined();
     expect(chatPanel).toBeDefined();
     expect(panelHeader).not.toContain('box-shadow');

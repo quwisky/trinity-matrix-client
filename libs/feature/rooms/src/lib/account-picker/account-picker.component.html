@@ -1,4 +1,11 @@
-<div class="picker" data-testid="account-picker">
+<div
+  trnOverlaySurface
+  variant="neutral"
+  size="sm"
+  layout="dialog"
+  class="picker flex flex-col"
+  data-testid="account-picker"
+>
   <h2 class="picker__title" id="account-picker-title">Show accounts</h2>
   <p class="picker__hint">
     Pick which accounts the room list, rail and spaces draw from.
@@ -14,6 +21,7 @@
           role="checkbox"
           [attr.aria-checked]="isShown(account.userId)"
           [disabled]="locked"
+          [trnLockedSelection]="locked"
           [attr.data-disabled]="locked ? '' : null"
           [attr.data-autofocus]="first ? '' : null"
           [attr.data-testid]="'show-account-' + account.userId"
@@ -38,7 +46,7 @@
             [accountId]="account.userId"
             [initial]="initialOf(account)"
             [name]="account.displayName"
-            [size]="24"
+            size="sm"
           />
           <span class="account-pick__id">
             <span class="account-pick__name">{{ account.displayName }}</span>
