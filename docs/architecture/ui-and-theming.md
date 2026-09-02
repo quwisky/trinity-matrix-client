@@ -86,14 +86,14 @@ colour, elevation and interaction states belong to these recipes.
 
 Fields and rich controls expose only the axes their native or vendor substrate can implement:
 
-| Component                      | Canonical contract                                                                              | Expansion compatibility                                     |
-| ------------------------------ | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `trn-field`                    | Groups a native control and supporting content; `invalid` marks the field state.                | None; layout is not a semantic variant.                     |
-| `trn-field-label` / `trnLabel` | Emphasis `normal`, `strong`; validation remains the independent `invalid` state.                | `trn-field-label variant="default                           | eyebrow"` temporarily maps emphasis. |
-| `trnInput` / `trnTextarea`     | Sizes `sm`, `md`, `lg`; explicit or form-derived invalid state; exact native-element selectors. | None; vendor `forceInvalid` is private.                     |
-| `trn-select`                   | Sizes `sm`, `md`; invalid and disabled states; the focusable trigger fills its block host.      | None; repeated `triggerClass="w-full"` copies were removed. |
-| `trn-emoji-picker`             | Sizes `sm`, `md`, `lg`; the vendor glyph measurement is a private adapter.                      | None; the raw numeric `emojiSize` input was removed.        |
-| `trn-qr-scanner`               | One tokenized, layered scanner surface whose actions compose `trnBtn`.                          | None; one surface does not justify styling inputs.          |
+| Component                      | Canonical contract                                                                              | Expansion compatibility                                                   |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `trn-field`                    | Groups a native control and supporting content; `invalid` marks the field state.                | None; layout is not a semantic variant.                                   |
+| `trn-field-label` / `trnLabel` | Emphasis `normal`, `strong`; validation remains the independent `invalid` state.                | `trn-field-label` variants `default`, `eyebrow` temporarily map emphasis. |
+| `trnInput` / `trnTextarea`     | Sizes `sm`, `md`, `lg`; explicit or form-derived invalid state; exact native-element selectors. | None; vendor `forceInvalid` is private.                                   |
+| `trn-select`                   | Sizes `sm`, `md`; invalid and disabled states; the focusable trigger fills its block host.      | None; repeated `triggerClass="w-full"` copies were removed.               |
+| `trn-emoji-picker`             | Sizes `sm`, `md`, `lg`; the vendor glyph measurement is a private adapter.                      | None; the raw numeric `emojiSize` input was removed.                      |
+| `trn-qr-scanner`               | One tokenized, layered scanner surface whose actions compose `trnBtn`.                          | None; one surface does not justify styling inputs.                        |
 
 Labels keep native `for`/`id` associations, text controls retain native focus and keyboard
 behavior, and descriptions remain attached through `aria-describedby`. The select routes its
