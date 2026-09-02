@@ -549,17 +549,16 @@ Authored global rules are classified by what they do. The generic focus treatmen
 routed-shell and rendered-content defaults are `components`; safe-area and visually hidden
 helpers are `utilities`; shared disabled opacity, icon-button, reduced-motion and coarse-pointer
 invariants are the small `overrides` allowlist. There is no project-wide Tailwind `important`
-mode. The only
-important declarations are the four reduced-motion properties required to cross Angular's
-still-unlayered component style tags, and the repository contract rejects any fifth one.
+mode. The only important declarations are the four reduced-motion properties required to
+override runtime-injected and inline author animation styles that cannot enter a named layer,
+and the repository contract rejects any fifth one.
 
-Angular currently injects component `styleUrl` and inline `styles` blocks without a layer. The
-complete source inventory is frozen in
-[`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs). The stricter temporary
-ledger in `cascade-layer-exceptions.mjs` fingerprints each comment-free unlayered ruleset, so a
-rule added or changed inside an existing source fails too. Shared SCSS partials have their own
-entries, so a transitive mixin or emitted-rule change cannot bypass the component fingerprints;
-later migrations delete entries.
+Angular injects component `styleUrl` and inline `styles` blocks as runtime style tags, so every
+authored source wraps its rules in `@layer components`. The complete source inventory is frozen in
+[`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs), and the zero-exception
+cascade contract rejects any unlayered component or inline ruleset. Shared SCSS partials have their
+own inventory entries, and the contract proves that every consumer emits them through the
+component layer. The temporary unlayered-rule migration ledger is gone.
 
 ### Runtime vendor styles are an explicit exception class
 
@@ -579,7 +578,7 @@ The architecture check pins the four ids, the installed package versions, the up
 markers, each owned seam, and every permitted production import prefix. A package upgrade or a
 direct import outside those seams therefore fails for review. Adding an authored stylesheet to
 this catalog is not a migration path: ordinary app and component CSS remains governed by the
-named-layer contract and the shrinking unlayered fingerprint ledger.
+zero-exception named-layer contract.
 
 CodeMirror used to be the misleading edge case. Its generated DOM was reached with
 `ViewEncapsulation.None` and a global `.trn-config-editor .cm-*` stylesheet. The editor now receives

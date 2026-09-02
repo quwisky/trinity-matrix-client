@@ -11,18 +11,16 @@ import { inlineStyleSheets } from './inline-styles.mjs';
  * move onto tokens and utilities — but a spec asserting that end state would fail sixty times
  * on the day it landed and be deleted the first time it cried wolf.
  *
- * So this is a **frozen ledger**: the set of stylesheet-owning components is recorded, and the
+ * So this is a **frozen inventory**: the set of stylesheet-owning components is recorded, and the
  * assertion is that it does not GROW. `cascade-layer-contract.spec.mjs` reads the same inventory
- * and checks each still-unlayered ruleset against the stricter fingerprint ledger in
- * `cascade-layer-exceptions.mjs`. Migrating one leaves its ownership entry here but removes its
- * exception fingerprint. Adding a stylesheet still means adding an explicit inventory entry,
- * which is a conversation.
+ * and requires every source to emit through `@layer components`. Adding a stylesheet still means
+ * adding an explicit inventory entry, which is a conversation.
  *
  * It lives in `scripts` for the same reason `confirmation-words.spec.mjs` does: the files span
  * libraries that the Nx module boundaries stop any single project from importing.
  *
  * There is a THIRD idiom, and it was counted by nothing: an inline `styles: [...]` array on
- * the component. Six wrapper components use it, so it is ledgered here on the same terms —
+ * the component. Five wrapper components use it, so it is inventoried here on the same terms —
  * the set may shrink, and growing it is a visible line in a shared file rather than an
  * invisible default. Without this, a rule could be added anywhere in `libs/components`
  * without any styling guard in the tree reading it.

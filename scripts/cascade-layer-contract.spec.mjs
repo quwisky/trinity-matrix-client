@@ -1,22 +1,21 @@
 import { createHash } from 'node:crypto';
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { UNLAYERED_RULESET_LEDGER } from './cascade-layer-exceptions.mjs';
 import { inlineStyleSheets } from './inline-styles.mjs';
 import {
   stripMarkupComments,
   stripSourceComments,
   topLevelStyleBlocks,
+  topLevelStyleStatements,
 } from './source-style-blocks.mjs';
 
 /**
  * The application has one cascade and six responsibilities.
  *
- * Angular component styles are still emitted as unlayered runtime style tags. Their complete
- * source inventory is frozen in `styling-idiom.spec.mjs`; this contract fingerprints the exact
- * comment-free ruleset of every source without an `@layer`. A new or changed unlayered rule
- * therefore fails before it can become a silent seventh precedence tier.
+ * Angular emits component styles as runtime style tags, so every authored source must name its
+ * layer itself. The complete source inventory is frozen in `styling-idiom.spec.mjs`; this
+ * contract rejects any component or inline stylesheet that could become a silent seventh tier.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -30,16 +29,20 @@ const LAYERS = [
   'overrides',
 ];
 const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
+const IMPORTANT_DECLARATION =
+  /([a-z_-][a-z0-9_-]*)\s*:\s*([^;{}]*!\s*important)\s*(?:;|(?=\}))/giu;
 
-const normalizedRules = (source) =>
-  stripSourceComments(source).replace(/\s+/gu, ' ').trim();
-const rulesetFingerprint = (source) =>
-  createHash('sha256').update(normalizedRules(source)).digest('hex');
-function documentStyle(attribute) {
+function documentStyles() {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
-  const body = html.match(
-    new RegExp(`<style\\s+${attribute}(?:=[^>]*)?>([\\s\\S]*?)<\\/style>`, 'u'),
-  )?.[1];
+  return [...html.matchAll(/<style(?:\s+([^>]*))?>([\s\S]*?)<\/style>/gu)].map(
+    ([, attributes = '', body]) => ({ attributes: attributes.trim(), body }),
+  );
+}
+
+function documentStyle(attribute) {
+  const body = documentStyles().find(
+    ({ attributes }) => attributes === attribute,
+  )?.body;
   expect(body, `index.html must contain <style ${attribute}>`).toBeDefined();
   return body;
 }
@@ -53,15 +56,38 @@ function ledger(name) {
   return [...body.matchAll(/'([^']+)'/gu)].map(([, file]) => file);
 }
 
-const isFullyLayered = (source) => {
+const isComponentLayered = (source) => {
+  if (
+    !topLevelStyleStatements(source).every((statement) =>
+      /^@use\b/u.test(statement),
+    )
+  )
+    return false;
   const blocks = topLevelStyleBlocks(source);
   return (
     blocks.length > 0 &&
-    blocks.every(({ prelude }) =>
-      /^@layer (?:components|overrides)$/u.test(prelude),
-    )
+    blocks.every(({ prelude }) => prelude === '@layer components')
   );
 };
+
+const isNonEmittingPartial = (source) =>
+  topLevelStyleStatements(source).every((statement) =>
+    /^(?:@use\b|@forward\b|\$[\w-]+\s*:)/u.test(statement),
+  ) &&
+  topLevelStyleBlocks(source).every(({ prelude }) =>
+    /^@(mixin|function)\b/u.test(prelude),
+  );
+
+const rulePaths = (source, parents = []) =>
+  topLevelStyleBlocks(source).flatMap(({ prelude, body }) => {
+    const path = [...parents, prelude.replace(/\s+/gu, ' ')];
+    return [path.join(' > '), ...rulePaths(body, path)];
+  });
+
+const styleFingerprint = (source) =>
+  createHash('sha256')
+    .update(stripSourceComments(source).replace(/\s+/gu, ' ').trim())
+    .digest('hex');
 
 const layerBodies = (file, layer) =>
   topLevelStyleBlocks(read(file))
@@ -69,33 +95,65 @@ const layerBodies = (file, layer) =>
     .map(({ body }) => body)
     .join('\n');
 
+const resolveSassModule = (owner, specifier) => {
+  if (!specifier.startsWith('.')) return specifier;
+  const unresolved = resolve(dirname(join(workspaceRoot, owner)), specifier);
+  const candidates = [
+    unresolved,
+    `${unresolved}.scss`,
+    join(dirname(unresolved), `_${basename(unresolved)}.scss`),
+    join(unresolved, 'index.scss'),
+    join(unresolved, '_index.scss'),
+  ];
+  const resolved = candidates.find((candidate) => existsSync(candidate));
+  return resolved ? relative(workspaceRoot, resolved) : specifier;
+};
+
+const sassModules = (file) =>
+  topLevelStyleStatements(read(file))
+    .map((statement) => statement.match(/^@(use|forward)\s+['"]([^'"]+)['"]/u))
+    .filter(Boolean)
+    .map(([, , specifier]) => resolveSassModule(file, specifier));
+
 const sharedPartialConsumers = (partial, componentSources) =>
-  componentSources.filter((file) => {
-    const source = stripSourceComments(read(file));
-    return [...source.matchAll(/@use\s+['"]([^'"]+)['"]/gu)].some(
-      ([, specifier]) => {
-        if (!specifier.startsWith('.')) return false;
-        const unresolved = resolve(
-          dirname(join(workspaceRoot, file)),
-          specifier,
-        );
-        const resolved = relative(
-          workspaceRoot,
-          join(dirname(unresolved), `_${basename(unresolved)}.scss`),
-        );
-        return resolved === partial;
-      },
-    );
-  });
+  componentSources.filter((file) => sassModules(file).includes(partial));
 
 describe('cascade layer contract', () => {
   it('declares the one supported order and classifies every static stylesheet', () => {
     const adapter = stripSourceComments(
       read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
     );
+    expect(documentStyles().map(({ attributes }) => attributes)).toEqual([
+      'data-trn-cascade-contract',
+      'data-trn-boot-style',
+    ]);
     expect(documentStyle('data-trn-cascade-contract').trim()).toBe(LAYER_ORDER);
-    expect(adapter).toContain(LAYER_ORDER);
-    expect(adapter).toContain("@import 'tw-animate-css';");
+    expect(
+      topLevelStyleStatements(documentStyle('data-trn-boot-style')),
+    ).toEqual([]);
+    expect(topLevelStyleStatements(adapter)).toEqual([
+      LAYER_ORDER.slice(0, -1),
+      "@import 'tailwindcss/theme.css' layer(theme)",
+      "@import 'tailwindcss/preflight.css' layer(base)",
+      "@import 'tailwindcss/utilities.css' layer(utilities)",
+      "@import 'tw-animate-css'",
+      "@source '../../../../libs'",
+      "@source '../../../../apps'",
+      '@custom-variant dark (&:where(.dark, .dark *))',
+    ]);
+    expect(topLevelStyleBlocks(adapter).map(({ prelude }) => prelude)).toEqual([
+      '@custom-variant data-checked',
+      '@custom-variant data-unchecked',
+      '@custom-variant data-active',
+      '@custom-variant data-open',
+      '@custom-variant data-closed',
+      '@custom-variant data-horizontal',
+      '@custom-variant data-vertical',
+      '@utility no-scrollbar',
+      '@theme inline',
+      '@layer theme',
+      '@layer overrides',
+    ]);
 
     expect(
       JSON.parse(read('apps/trinity/project.json')).targets.build.options
@@ -107,18 +165,35 @@ describe('cascade layer contract', () => {
       'apps/trinity/src/rendered-markdown.scss',
     ]);
     expect(
+      topLevelStyleStatements(read('libs/theme-foundation/styles/theme.scss')),
+    ).toEqual([
+      "@use './internal/variables'",
+      "@use './internal/tailwind-adapter.css'",
+    ]);
+    expect(
+      topLevelStyleBlocks(read('libs/theme-foundation/styles/theme.scss')),
+    ).toEqual([]);
+    expect(
       stripSourceComments(read('apps/trinity/src/vendor.css')).trim(),
     ).toBe(
       "@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor);\n" +
         "@import '../../../node_modules/@ctrl/ngx-emoji-mart/picker.css' layer(vendor);",
     );
-    expect(
-      stripSourceComments(
-        read('libs/components/storybook-host/.storybook/global-styles.scss'),
-      ),
-    ).toMatch(
-      /@import '\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@angular\/cdk\/overlay-prebuilt\.css'\s+layer\(vendor\);/,
+    const storybookStyles = stripSourceComments(
+      read('libs/components/storybook-host/.storybook/global-styles.scss'),
     );
+    expect(
+      topLevelStyleStatements(storybookStyles).map((statement) =>
+        statement.replace(/\s+/gu, ' '),
+      ),
+    ).toEqual([
+      "@use '../../../theme-foundation/styles/theme'",
+      "@use '../../../../apps/trinity/src/global'",
+      "@import '../../../../node_modules/@angular/cdk/overlay-prebuilt.css' layer(vendor)",
+    ]);
+    expect(
+      topLevelStyleBlocks(storybookStyles).map(({ prelude }) => prelude),
+    ).toEqual(['@layer components']);
 
     for (const [file, allowed] of [
       [
@@ -147,6 +222,10 @@ describe('cascade layer contract', () => {
         new Set(topLevel),
         `${file} has an unclassified top-level rule`,
       ).toEqual(new Set(allowed));
+      expect(
+        topLevelStyleStatements(read(file)),
+        `${file} has an unclassified top-level statement`,
+      ).toEqual([]);
     }
 
     expect(
@@ -174,14 +253,60 @@ describe('cascade layer contract', () => {
     expect(utilities).toContain('.safe-bottom');
 
     const overrides = layerBodies('apps/trinity/src/global.scss', 'overrides');
-    expect(overrides).toContain('button:disabled');
-    expect(overrides).toContain("[aria-disabled='true']");
-    expect(overrides).toContain('[data-trn-action-disabled]');
-    expect(overrides).toContain('[data-trn-icon-button]');
-    expect(overrides).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(rulePaths(overrides)).toEqual([
+      "button:disabled:not([data-trn-selection-locked]), [aria-disabled='true']:not([data-trn-selection-locked])",
+      '[data-trn-selection-locked]',
+      '[data-trn-action-disabled]',
+      ':is(button, a)[data-trn-icon-button]',
+      ':is(button, a)[trnBtn][data-trn-icon-button]',
+      '@media (hover: hover)',
+      "@media (hover: hover) > :is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      "@media (hover: hover) > :is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:hover",
+      ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      ":is(button, a)[data-trn-icon-button]:not( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] ) > &:active",
+      ":is(button, a)[data-trn-icon-button]:is( :disabled, [aria-disabled='true'], [data-disabled='true'], [data-disabled=''] )",
+      '@media (pointer: coarse)',
+      '@media (pointer: coarse) > button[data-trn-toggle]',
+      '@media (prefers-reduced-motion: reduce)',
+      '@media (prefers-reduced-motion: reduce) > *, *::before, *::after',
+      '@media (pointer: coarse)',
+      "@media (pointer: coarse) > button[trnBtn][data-slot='button'], a[trnBtn][data-slot='button']",
+    ]);
+    expect(styleFingerprint(overrides)).toBe(
+      '08842dda4bb13e91b6bda85351b92ce367faf43cdf774dabe1f5e8212d210fa5',
+    );
+    expect(
+      styleFingerprint(
+        topLevelStyleBlocks(
+          read('libs/theme-foundation/styles/internal/tailwind-adapter.css'),
+        )
+          .filter(({ prelude }) => prelude === '@layer overrides')
+          .map(({ body }) => body)
+          .join('\n'),
+      ),
+    ).toBe('45628b69ccf1517a414ba072300c498e136a62819b54c4c455fd1070655c3d40');
   });
 
-  it('fingerprints every still-unlayered production ruleset as a temporary exception', () => {
+  it('assigns every authored component ruleset to the components layer', () => {
+    expect(
+      isComponentLayered(
+        "@import './legacy.css'; @layer components { :host { display: block; } }",
+      ),
+    ).toBe(false);
+    expect(
+      isComponentLayered(
+        "@use './mixins' as mixins; @layer components { :host { display: block; } }",
+      ),
+    ).toBe(true);
+    expect(
+      isComponentLayered(
+        "@use './mixins' as mixins; @include mixins.rogue; @layer components { :host { display: block; } }",
+      ),
+    ).toBe(false);
+    expect(isNonEmittingPartial('@mixin safe { display: block; }')).toBe(true);
+    expect(isNonEmittingPartial('.rogue { display: block; }')).toBe(false);
+    expect(isNonEmittingPartial('@include rogue;')).toBe(false);
+
     const componentSources = globSync(
       [
         'libs/**/*.component.scss',
@@ -200,60 +325,83 @@ describe('cascade layer contract', () => {
     expect(inlineSources.map(({ file }) => file)).toEqual(inlineLedger);
     expect(
       inlineSources
-        .filter(({ css }) => isFullyLayered(css))
+        .filter(
+          ({ css }) =>
+            isComponentLayered(css) &&
+            topLevelStyleStatements(css).length === 0,
+        )
         .map(({ file }) => file),
-    ).toEqual([
-      'libs/components/navigation-layout/src/lib/tabs/trn-tab-panel.component.ts',
-      'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
-    ]);
+    ).toEqual(inlineLedger);
 
-    const sharedPartialExceptions = sharedPartials.flatMap((file) => {
+    for (const file of componentSources) {
+      expect(isComponentLayered(read(file)), file).toBe(true);
+      expect(
+        sassModules(file).every((module) => sharedPartials.includes(module)),
+        `${file} must use only audited non-emitting Sass modules`,
+      ).toBe(true);
+    }
+
+    for (const file of sharedPartials) {
+      expect(
+        isNonEmittingPartial(read(file)),
+        `${file} must define only non-emitting Sass helpers`,
+      ).toBe(true);
+      expect(
+        sassModules(file).every((module) => sharedPartials.includes(module)),
+        `${file} must use only audited non-emitting Sass modules`,
+      ).toBe(true);
       const consumers = sharedPartialConsumers(file, componentSources);
       expect(
         consumers.length,
         `${file} must be consumed by a component stylesheet`,
       ).toBeGreaterThan(0);
-      return consumers.some((consumer) => !isFullyLayered(read(consumer)))
-        ? [[file, rulesetFingerprint(read(file))]]
-        : [];
-    });
-
-    const actualExceptions = [
-      ...componentSources.flatMap((file) => {
-        const css = read(file);
-        return topLevelStyleBlocks(css).length > 0 && !isFullyLayered(css)
-          ? [[file, rulesetFingerprint(css)]]
-          : [];
-      }),
-      ...sharedPartialExceptions,
-      ...inlineSources.flatMap(({ file, css }) =>
-        isFullyLayered(css)
-          ? []
-          : [[`${file}#inline-styles`, rulesetFingerprint(css)]],
-      ),
-    ].sort(([left], [right]) => left.localeCompare(right));
-
-    // Keep the sweep non-vacuous while the final shared-control exceptions remain.
-    // Once their migration removes the ledger entirely, delete this assertion too.
-    expect(actualExceptions.length).toBeGreaterThan(0);
-    expect(actualExceptions).toEqual(
-      [...UNLAYERED_RULESET_LEDGER].sort(([left], [right]) =>
-        left.localeCompare(right),
-      ),
-    );
+      expect(
+        consumers.every((consumer) => isComponentLayered(read(consumer))),
+        `${file} must emit only through layered consumers`,
+      ).toBe(true);
+    }
   });
 
   it('allows only the audited reduced-motion important bridge', () => {
+    expect(
+      [
+        ':host { color: red !important }',
+        ':host { COLOR: red !IMPORTANT; }',
+        ':host { color: red ! important }',
+        ':host { --trinity-space-2: 4px !important }',
+      ].flatMap((source) =>
+        [...source.matchAll(IMPORTANT_DECLARATION)].map(
+          ([, property, value]) => `${property}:${value.trim()}`,
+        ),
+      ),
+    ).toEqual([
+      'color:red !important',
+      'COLOR:red !IMPORTANT',
+      'color:red ! important',
+      '--trinity-space-2:4px !important',
+    ]);
+
     const declarations = [];
-    for (const file of globSync(
-      ['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'],
-      {
-        cwd: workspaceRoot,
-      },
-    ).sort()) {
-      const source = stripSourceComments(read(file));
+    const sources = globSync(['apps/**/*.{css,scss}', 'libs/**/*.{css,scss}'], {
+      cwd: workspaceRoot,
+    })
+      .sort()
+      .map((file) => [file, read(file)]);
+    sources.push(
+      ...inlineStyleSheets().map(({ file, css }) => [
+        `${file}#inline-styles`,
+        css,
+      ]),
+      ...documentStyles().map(({ attributes, body }) => [
+        `apps/trinity/src/index.html#${attributes}`,
+        body,
+      ]),
+    );
+
+    for (const [file, rawSource] of sources) {
+      const source = stripSourceComments(rawSource);
       for (const [, property, value] of source.matchAll(
-        /([a-z-]+)\s*:\s*([^;{}]*!important)\s*;/gu,
+        IMPORTANT_DECLARATION,
       )) {
         declarations.push(`${file}:${property}:${value.trim()}`);
       }

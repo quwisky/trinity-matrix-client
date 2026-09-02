@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The authored cascade migration is complete.** Every component stylesheet and inline rule now
+  emits through the named `components` layer, while static vendor CSS and the narrow invariant
+  override allowlist remain explicit. The temporary unlayered-rule fingerprint ledger is removed,
+  and repository contracts reject any new unlayered authored rule or unapproved `!important`.
+
 - **Public components now expose only canonical Trinity contracts.** Removed temporary styling
   aliases, numeric and CSS-length size inputs, overlay Promise wrappers, legacy dialog placement,
   and the tab panel's arbitrary inner-class input. Strict template and source guards reject the

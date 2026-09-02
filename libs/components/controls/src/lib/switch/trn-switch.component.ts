@@ -52,7 +52,7 @@ export type TrnSwitchVariant = TrnChoiceVariant;
   selector: 'trn-switch',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: [
-    ':host { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--trinity-interaction-target-min-size); min-height: var(--trinity-interaction-target-min-size); }',
+    '@layer components { :host { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: var(--trinity-interaction-target-min-size); min-height: var(--trinity-interaction-target-min-size); } }',
   ],
   host: {
     '[attr.data-size]': 'size()',

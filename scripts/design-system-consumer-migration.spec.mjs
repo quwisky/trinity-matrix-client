@@ -1,7 +1,6 @@
 import { globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { UNLAYERED_RULESET_LEDGER } from './cascade-layer-exceptions.mjs';
 import {
   stripMarkupComments,
   stripSourceComments,
@@ -11,11 +10,9 @@ import {
 /**
  * Freeze the completed application-consumer migrations from #397 through #401.
  *
- * Public components still accept a few expansion aliases while the remaining slices move.
  * This guard makes authentication, Trust, Settings, every Rooms consumer, startup, routing and
  * host-shell consumers a closed set: comments cannot satisfy it, vendor imports cannot bypass the
- * public tier, and aliases or unlayered component rules cannot quietly return after these slices
- * leave the migration ledgers.
+ * public tier, and retired aliases or unlayered component rules cannot quietly return.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -435,12 +432,6 @@ describe('migrated application design-system consumers', () => {
         `${file} must emit only named component rules`,
       ).toEqual(Array(blocks.length).fill('@layer components'));
     }
-
-    const migratedExceptions = UNLAYERED_RULESET_LEDGER.filter(([file]) => {
-      const sourceFile = file.replace(/#inline-styles$/u, '');
-      return productionSources.includes(sourceFile);
-    });
-    expect(migratedExceptions).toEqual([]);
 
     const roomStyles = productionSources
       .filter(

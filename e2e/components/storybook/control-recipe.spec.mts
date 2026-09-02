@@ -36,6 +36,10 @@ test('choice controls expose accessible interaction states', async ({
   await expect(disabledSwitch).toBeDisabled();
 
   const radioGroup = page.getByRole('radiogroup', { name: 'Theme' });
+  await expect(page.getByTestId('radio-canonical')).toHaveCSS(
+    'display',
+    'block',
+  );
   await expect(radioGroup).toBeVisible();
   await expect(page.getByRole('radio', { name: 'System' })).toBeChecked();
   await page.getByTestId('radio-dark').click();
