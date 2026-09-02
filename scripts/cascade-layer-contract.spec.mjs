@@ -32,8 +32,8 @@ const LAYER_ORDER = `@layer ${LAYERS.join(', ')};`;
 
 function documentStyles() {
   const html = stripMarkupComments(read('apps/trinity/src/index.html'));
-  return [...html.matchAll(/<style\s+([^>]*)>([\s\S]*?)<\/style>/gu)].map(
-    ([, attributes, body]) => ({ attributes: attributes.trim(), body }),
+  return [...html.matchAll(/<style(?:\s+([^>]*))?>([\s\S]*?)<\/style>/gu)].map(
+    ([, attributes = '', body]) => ({ attributes: attributes.trim(), body }),
   );
 }
 
