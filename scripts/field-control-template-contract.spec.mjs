@@ -120,9 +120,14 @@ function compileTemplateContract() {
 
 describe('field control strict-template contract', () => {
   it('accepts precise canonical inputs and rejects unrelated or vendor-shaped values', () => {
-    const messages = compileTemplateContract().map((diagnostic) =>
+    const errors = compileTemplateContract();
+    const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
+    expect(errors.map(({ code }) => code)).toEqual([
+      ...Array(6).fill(2322),
+      ...Array(5).fill(-998002),
+    ]);
 
     for (const unsupported of [
       'muted',

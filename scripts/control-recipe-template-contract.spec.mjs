@@ -137,9 +137,11 @@ function compileTemplateContract() {
 
 describe('control recipe strict-template contract', () => {
   it('accepts canonical values and rejects unsupported or retired recipes', () => {
-    const messages = compileTemplateContract().map((diagnostic) =>
+    const errors = compileTemplateContract();
+    const messages = errors.map((diagnostic) =>
       ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
     );
+    expect(errors.map(({ code }) => code)).toEqual(Array(15).fill(2322));
 
     for (const unsupported of [
       'danger',
