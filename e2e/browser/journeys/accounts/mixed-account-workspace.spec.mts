@@ -183,6 +183,7 @@ test.describe('Multiple accounts', () => {
     const activeRow = page.locator(`[data-testid^="show-account-@${userB}:"]`);
     await expect(activeRow).toHaveAttribute('aria-checked', 'true');
     await expect(activeRow).toHaveAttribute('data-disabled', '');
+    await expect(activeRow).toHaveCSS('opacity', '1');
 
     // Unticking the other account returns the view to a single account.
     await page.locator(`[data-testid^="show-account-@${userA}:"]`).click();
@@ -231,12 +232,18 @@ test.describe('Multiple accounts', () => {
     // A dialog, not a submenu: the account menu is gone by now.
     const picker = page.getByTestId('account-picker');
     await expect(picker).toBeVisible({ timeout: 15_000 });
+    await expect(picker).toHaveCSS('display', 'flex');
+    await expect(picker.locator('.picker__list')).toHaveCSS(
+      'overflow-y',
+      'auto',
+    );
     await expect(page.getByTestId('user-menu-trigger')).toBeVisible();
 
     // The same row contract the desktop submenu carries.
     const activeRow = page.locator(`[data-testid^="show-account-@${userB}:"]`);
     await expect(activeRow).toHaveAttribute('aria-checked', 'true');
     await expect(activeRow).toHaveAttribute('data-disabled', '');
+    await expect(activeRow).toHaveCSS('opacity', '1');
 
     // Ticking applies immediately and does NOT close the picker — it is a multi-select.
     const otherRow = page.locator(`[data-testid^="show-account-@${userA}:"]`);

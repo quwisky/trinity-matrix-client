@@ -66,8 +66,8 @@ describe('RoomsPage space actions', () => {
     accountIds: readonly string[] = ['@me:hs'],
   ) {
     const activeAccountId = signal<string | null>(activeUserId);
-    alertPrompt = vi.fn().mockResolvedValue(null);
-    alertConfirm = vi.fn().mockResolvedValue(false);
+    alertPrompt = vi.fn(() => of(null));
+    alertConfirm = vi.fn(() => of(false));
     createSpace = vi.fn(() => of('!new:hs'));
     createRoomInSpace = vi.fn(() => of('!room:hs'));
     leaveSpace = vi.fn(() => of(undefined));
@@ -145,8 +145,8 @@ describe('RoomsPage space actions', () => {
         }),
         MockProvider(TrnDialogService),
         MockProvider(TrnAlertService, {
-          confirm: alertConfirm,
-          prompt: alertPrompt,
+          confirm$: alertConfirm,
+          prompt$: alertPrompt,
         }),
         MockProvider(TrnToastService),
       ],
@@ -156,21 +156,21 @@ describe('RoomsPage space actions', () => {
 
   it('creates a space and selects it on success', async () => {
     const shell = build();
-    alertPrompt.mockResolvedValue('My Space');
+    alertPrompt.mockReturnValue(of('My Space'));
 
-    await shell.spaces.onCreateSpace();
+    shell.spaces.onCreateSpace();
 
     expect(createSpace).toHaveBeenCalledWith({ name: 'My Space' });
-    expect(shell.store.activeSpaceId()).toBe('!new:hs');
+    await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBe('!new:hs'));
   });
 
   it('waits for a created space to enter the Account SDK graph before selecting it', async () => {
     const shell = build();
     const ready = new Subject<void>();
     waitForRoom.mockReturnValue(ready);
-    alertPrompt.mockResolvedValue('My Space');
+    alertPrompt.mockReturnValue(of('My Space'));
 
-    await shell.spaces.onCreateSpace();
+    shell.spaces.onCreateSpace();
 
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!new:hs');
     expect(shell.store.activeSpaceId()).toBeNull();
@@ -184,28 +184,28 @@ describe('RoomsPage space actions', () => {
 
   it('does not create a space for an empty name', async () => {
     const shell = build();
-    alertPrompt.mockResolvedValue('   ');
+    alertPrompt.mockReturnValue(of('   '));
 
-    await shell.spaces.onCreateSpace();
+    shell.spaces.onCreateSpace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
 
   it('does not create a space when the prompt is cancelled', async () => {
     const shell = build();
-    alertPrompt.mockResolvedValue(null);
+    alertPrompt.mockReturnValue(of(null));
 
-    await shell.spaces.onCreateSpace();
+    shell.spaces.onCreateSpace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
 
   it('surfaces a create-space failure in spaceError', async () => {
     const shell = build();
-    alertPrompt.mockResolvedValue('My Space');
+    alertPrompt.mockReturnValue(of('My Space'));
     createSpace.mockReturnValue(throwError(() => new Error('boom')));
 
-    await shell.spaces.onCreateSpace();
+    shell.spaces.onCreateSpace();
 
     expect(shell.status.error()).toBe('boom');
     expect(shell.store.activeSpaceId()).toBeNull(); // not selected on failure
@@ -215,9 +215,9 @@ describe('RoomsPage space actions', () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
     await settleWorkspace();
-    alertPrompt.mockResolvedValue('general');
+    alertPrompt.mockReturnValue(of('general'));
 
-    await shell.spaces.onCreateChannel();
+    shell.spaces.onCreateChannel();
 
     expect(createRoomInSpace).toHaveBeenCalledWith('!s:hs', {
       name: 'general',
@@ -228,7 +228,7 @@ describe('RoomsPage space actions', () => {
     const shell = build();
     shell.nav.onSelectSpace(null);
 
-    await shell.spaces.onCreateChannel();
+    shell.spaces.onCreateChannel();
 
     expect(alertPrompt).not.toHaveBeenCalled();
     expect(createRoomInSpace).not.toHaveBeenCalled();
@@ -238,20 +238,20 @@ describe('RoomsPage space actions', () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
     await settleWorkspace();
-    alertConfirm.mockResolvedValue(true);
+    alertConfirm.mockReturnValue(of(true));
 
-    await shell.spaces.onLeaveSpace();
+    shell.spaces.onLeaveSpace();
 
     expect(leaveSpace).toHaveBeenCalledWith('!s:hs');
-    expect(shell.store.activeSpaceId()).toBeNull();
+    await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBeNull());
   });
 
   it('does not leave when the confirm is cancelled', async () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
-    alertConfirm.mockResolvedValue(false);
+    alertConfirm.mockReturnValue(of(false));
 
-    await shell.spaces.onLeaveSpace();
+    shell.spaces.onLeaveSpace();
 
     expect(leaveSpace).not.toHaveBeenCalled();
   });
@@ -260,7 +260,7 @@ describe('RoomsPage space actions', () => {
     const shell = build();
     shell.nav.onSelectSpace(null);
 
-    await shell.spaces.onLeaveSpace();
+    shell.spaces.onLeaveSpace();
 
     expect(alertConfirm).not.toHaveBeenCalled();
     expect(leaveSpace).not.toHaveBeenCalled();
@@ -268,11 +268,11 @@ describe('RoomsPage space actions', () => {
 
   it('signs out the last account and navigates to /login after confirming', async () => {
     const shell = build();
-    alertConfirm.mockResolvedValue(true);
+    alertConfirm.mockReturnValue(of(true));
     const accounts = TestBed.inject(AccountRuntimeService);
     const router = TestBed.inject(Router);
 
-    await shell.session.logout('@me:hs');
+    shell.session.logout('@me:hs');
 
     expect(alertConfirm).toHaveBeenCalled();
     expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
@@ -284,11 +284,11 @@ describe('RoomsPage space actions', () => {
 
   it('signs out one of several accounts without leaving the shell', async () => {
     const shell = build('@me:hs', ['@me:hs', '@alt:hs']);
-    alertConfirm.mockResolvedValue(true);
+    alertConfirm.mockReturnValue(of(true));
     const accounts = TestBed.inject(AccountRuntimeService);
     const router = TestBed.inject(Router);
 
-    await shell.session.logout('@me:hs');
+    shell.session.logout('@me:hs');
 
     expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
     // A second account is still signed in (activeUserId stays non-null), so the
@@ -300,10 +300,10 @@ describe('RoomsPage space actions', () => {
 
   it('does not sign out when the confirm is cancelled', async () => {
     const shell = build();
-    alertConfirm.mockResolvedValue(false);
+    alertConfirm.mockReturnValue(of(false));
     const accounts = TestBed.inject(AccountRuntimeService);
 
-    await shell.session.logout('@me:hs');
+    shell.session.logout('@me:hs');
 
     expect(accounts.signOutAccount).not.toHaveBeenCalled();
   });
@@ -440,7 +440,7 @@ describe('RoomsPage room / DM / invite actions', () => {
   }
 
   function build() {
-    alertPrompt = vi.fn().mockResolvedValue(null);
+    alertPrompt = vi.fn(() => of(null));
     toastShow = vi.fn();
     pick = vi.fn();
     createRoom = vi.fn(() => of('!room:hs'));
@@ -511,8 +511,11 @@ describe('RoomsPage room / DM / invite actions', () => {
             new Map(),
           ).asReadonly(),
         }),
-        MockProvider(TrnDialogService, { openAndWait: dialogOpen }),
-        MockProvider(TrnAlertService, { prompt: alertPrompt }),
+        MockProvider(TrnDialogService, {
+          openAndWait: dialogOpen,
+          openAndWait$: () => of(null),
+        }),
+        MockProvider(TrnAlertService, { prompt$: alertPrompt }),
         MockProvider(TrnToastService, { show: toastShow }),
       ],
     });
@@ -521,19 +524,19 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('creates an encrypted room from the name prompt and selects it', async () => {
     const shell = build();
-    alertPrompt.mockResolvedValue('general');
+    alertPrompt.mockReturnValue(of('general'));
 
-    await shell.rooms.onCreateRoom();
+    shell.rooms.onCreateRoom();
 
     expect(createRoom).toHaveBeenCalledWith({ name: 'general' });
-    expect(shell.store.activeRoomId()).toBe('!room:hs');
+    await vi.waitFor(() => expect(shell.store.activeRoomId()).toBe('!room:hs'));
   });
 
   it('does not create a room for an empty name', async () => {
     const shell = build();
-    alertPrompt.mockResolvedValue('   ');
+    alertPrompt.mockReturnValue(of('   '));
 
-    await shell.rooms.onCreateRoom();
+    shell.rooms.onCreateRoom();
 
     expect(createRoom).not.toHaveBeenCalled();
   });
@@ -542,7 +545,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     pick.mockResolvedValue('@bob:hs');
 
-    await shell.rooms.onStartDm();
+    shell.rooms.onStartDm();
+    await settleWorkspace();
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
@@ -552,7 +556,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     pick.mockResolvedValue(null);
 
-    await shell.rooms.onStartDm();
+    shell.rooms.onStartDm();
+    await settleWorkspace();
 
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
@@ -644,7 +649,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'That Matrix link is malformed or unsupported.',
-      { duration: 4000, variant: 'destructive' },
+      { duration: 4000, variant: 'danger' },
     );
     expect(dialogOpen).not.toHaveBeenCalled();
   });
@@ -897,7 +902,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     pick.mockResolvedValue('@bob:hs');
 
-    await shell.rooms.onInviteToRoom();
+    shell.rooms.onInviteToRoom();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
     expect(toastShow).toHaveBeenCalledWith(
@@ -914,13 +921,15 @@ describe('RoomsPage room / DM / invite actions', () => {
     pick.mockResolvedValue('@bob:hs');
     inviteUser.mockReturnValue(throwError(() => new Error('forbidden')));
 
-    await shell.rooms.onInviteToRoom();
+    shell.rooms.onInviteToRoom();
+    await Promise.resolve();
+    await Promise.resolve();
 
     // runWithBusy records and presents the failure without relying on a render pass.
     expect(shell.status.error()).toBe('Could not invite this user. Try again.');
     expect(toastShow).toHaveBeenCalledWith(
       'Could not invite this user. Try again.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
     expect(warn).toHaveBeenCalledWith(
       '[trinity] Matrix request failed',
@@ -941,7 +950,8 @@ describe('RoomsPage room / DM / invite actions', () => {
       )
       .mockReturnValueOnce(of(undefined));
 
-    await shell.rooms.onInviteToRoom();
+    shell.rooms.onInviteToRoom();
+    await settleWorkspace();
 
     expect(shell.status.busy()).toBe(false);
     expect(shell.status.error()).toBe('You do not have permission to do that.');
@@ -950,7 +960,8 @@ describe('RoomsPage room / DM / invite actions', () => {
       expect.objectContaining({ operation: 'invite user to room' }),
     );
 
-    await shell.rooms.onInviteToRoom();
+    shell.rooms.onInviteToRoom();
+    await settleWorkspace();
 
     expect(inviteUser).toHaveBeenCalledTimes(2);
     expect(shell.status.busy()).toBe(false);
@@ -972,7 +983,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'forbidden',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -982,7 +993,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     pick.mockResolvedValue(null);
 
-    await shell.rooms.onInviteToRoom();
+    shell.rooms.onInviteToRoom();
+    await settleWorkspace();
 
     expect(inviteUser).not.toHaveBeenCalled();
   });
@@ -993,7 +1005,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     pick.mockResolvedValue('@bob:hs');
 
-    await shell.rooms.onInviteToSpace();
+    shell.rooms.onInviteToSpace();
+    await settleWorkspace();
 
     expect(inviteUser).toHaveBeenCalledWith('!s:hs', '@bob:hs');
   });
@@ -1168,7 +1181,7 @@ describe('RoomsPage space hierarchy actions', () => {
   }
 
   function build() {
-    alertConfirm = vi.fn().mockResolvedValue(false);
+    alertConfirm = vi.fn(() => of(false));
     openSpace = vi.fn(() => of(void 0));
     joinRoom = vi.fn(() => of(undefined));
     removeRoomFromSpace = vi.fn(() => of(undefined));
@@ -1233,7 +1246,7 @@ describe('RoomsPage space hierarchy actions', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(TrnDialogService),
-        MockProvider(TrnAlertService, { confirm: alertConfirm }),
+        MockProvider(TrnAlertService, { confirm$: alertConfirm }),
         MockProvider(TrnToastService),
       ],
     });
@@ -1267,9 +1280,9 @@ describe('RoomsPage space hierarchy actions', () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
     await settleWorkspace();
-    alertConfirm.mockResolvedValue(true);
+    alertConfirm.mockReturnValue(of(true));
 
-    await shell.spaces.onRemoveFromSpace('!c:hs');
+    shell.spaces.onRemoveFromSpace('!c:hs');
 
     // The confirmation names the channel and the space.
     expect(alertConfirm).toHaveBeenCalledWith(
@@ -1282,9 +1295,9 @@ describe('RoomsPage space hierarchy actions', () => {
     const shell = build();
     shell.nav.onSelectSpace('!s:hs');
     await settleWorkspace();
-    alertConfirm.mockResolvedValue(false);
+    alertConfirm.mockReturnValue(of(false));
 
-    await shell.spaces.onRemoveFromSpace('!c:hs');
+    shell.spaces.onRemoveFromSpace('!c:hs');
 
     expect(removeRoomFromSpace).not.toHaveBeenCalled();
   });
@@ -1293,7 +1306,7 @@ describe('RoomsPage space hierarchy actions', () => {
     const shell = build();
     shell.nav.onSelectSpace(null);
 
-    await shell.spaces.onRemoveFromSpace('!c:hs');
+    shell.spaces.onRemoveFromSpace('!c:hs');
 
     expect(alertConfirm).not.toHaveBeenCalled();
     expect(removeRoomFromSpace).not.toHaveBeenCalled();

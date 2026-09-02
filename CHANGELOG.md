@@ -126,6 +126,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Rooms workspace navigation now composes canonical design-system recipes.** The account picker,
+  server rail, channel sidebar, room list, user panel, and workspace header use named avatar and
+  icon sizes, canonical toolbar, button, menu, empty-state, overlay, and danger inputs while
+  retaining their feature-owned wide, compact, touch, mobile, and safe-area geometry. Their
+  component styles now participate in the named cascade, and navigation prompts, confirmations,
+  and dialog results use cold RxJS commands without changing selection, unread, invitation,
+  disabled, hover, or focus behavior.
+
 - **Settings now composes Trinity's public design-system recipes.** Settings, Appearance,
   Advanced configuration, and their dialogs use canonical semantic button and overlay inputs,
   including `danger` feedback, while feature code owns only surrounding layout. Confirmations,

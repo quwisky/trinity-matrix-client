@@ -144,19 +144,22 @@ name. Subsequent feature migrations should add or replace proof screens only whe
 a genuinely new public contract, rather than turning the ledger into a list of every consumer.
 
 The completed consumer-migration slices extend that proof through authentication, Trust,
-application startup, routing surfaces, the host shell, and Settings. Those consumers use
-canonical button `variant`/`presentation`/`shape`/`size` axes, public fields and labels, muted
-cards, `danger` feedback, and neutral dialog surfaces. Settings, Appearance, and Advanced
-configuration retain their feature-owned workspace and field layout while public recipes own
-control and overlay chrome.
+application startup, routing surfaces, the host shell, Settings, and Rooms workspace navigation.
+Those consumers use canonical button `variant`/`presentation`/`shape`/`size` axes, public fields
+and labels, named icon and avatar sizes, muted cards, `danger` feedback, neutral dialog surfaces,
+and the neutral toolbar page header. Settings, Appearance, Advanced configuration, and Rooms
+navigation retain their feature-owned workspace geometry and safe-area layout while public
+recipes own control, header, and overlay chrome. Purpose-built server-rail pills and account or
+room navigation rows keep their product semantics, but compose public icons and avatars and use
+Theme interaction-state tokens rather than vendor recipes.
 
 Alert confirmations, prompts, dialog results, lazy configuration loading, and one-shot Settings
-actions use cold finite RxJS pipelines, with `firstValueFrom` limited to SDK or framework callback
-boundaries that require a Promise. Every component stylesheet in the migrated slices is in
-`@layer components`, and `design-system-consumer-migration.spec.mjs` keeps the roots non-vacuous
-while rejecting legacy values, vendor imports, local appearance overrides, Promise alert calls,
-and cascade exceptions. Compatibility remains available only for the consumer slices assigned to
-the later migration tickets.
+and Rooms navigation actions use cold finite RxJS pipelines, with `firstValueFrom` limited to SDK
+or framework callback boundaries that require a Promise. Every component stylesheet in the
+migrated slices is in `@layer components`, and `design-system-consumer-migration.spec.mjs` keeps
+the roots non-vacuous while rejecting legacy values, vendor imports, local appearance overrides,
+Promise alert calls, and cascade exceptions. Compatibility remains available only for the
+consumer slices assigned to the later migration tickets.
 
 Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
 `shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
@@ -381,6 +384,8 @@ cascade layer as the application, so a recipe resolves identically in either hos
 The imperative wrappers expose the same Trinity vocabulary instead of vendor variants:
 
 - dropdown items are `neutral|danger` (`default|destructive` are temporary aliases);
+- guaranteed checked values use `trnLockedSelection`; dropdown checkboxes expose the same state as
+  `lockedSelection`, preserving disabled semantics without making the included value look excluded;
 - alerts and action-sheet buttons are `neutral|danger`, with cancellation behavior separate
   from appearance; and
 - toasts are `neutral|success|warning|danger` (`default|destructive` remain aliases).
@@ -583,8 +588,9 @@ is involved.
 
 Three old reversals are deliberate now. Public input and textarea controls are excluded from
 the base focus selector so their Helm ring remains the only indicator. The semantic disabled
-opacity invariant beats arbitrary state utilities, and utility display classes beat routed-shell
-component defaults.
+opacity invariant beats arbitrary state utilities; a public locked-selection marker is its one
+bounded exception because the checked value is guaranteed rather than unavailable. Utility display
+classes beat routed-shell component defaults.
 Safe-area helpers and padding utilities must never share a longhand; the source guard requires
 one composed declaration such as `.panel-header` instead of depending on which utility happens
 to be emitted last. A compiled Playwright probe measures both directions of the contract:

@@ -9,13 +9,13 @@ import {
 } from './source-style-blocks.mjs';
 
 /**
- * Freeze the completed application-consumer migrations from #397 and #398.
+ * Freeze the completed application-consumer migrations from #397 through #399.
  *
  * Public components still accept a few expansion aliases while the remaining slices move.
- * This guard makes authentication, Trust, Settings, startup, routing and host-shell consumers a
- * closed set: comments cannot satisfy it, vendor imports cannot bypass the public tier, and
- * aliases or unlayered component rules cannot quietly return after these slices leave the
- * migration ledgers.
+ * This guard makes authentication, Trust, Settings, Rooms workspace navigation, startup,
+ * routing and host-shell consumers a closed set: comments cannot satisfy it, vendor imports
+ * cannot bypass the public tier, and aliases or unlayered component rules cannot quietly return
+ * after these slices leave the migration ledgers.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -24,18 +24,33 @@ const migratedRoots = [
   'libs/application/runtime/src/lib',
   'libs/feature/auth/src/lib',
   'libs/feature/crypto/src/lib',
+  'libs/feature/rooms/src/lib/account-picker',
+  'libs/feature/rooms/src/lib/channel-sidebar',
+  'libs/feature/rooms/src/lib/server-rail',
   'libs/feature/settings/src/lib',
   'libs/feature/shell/src/lib',
 ];
+const migratedRoomNavigationFiles = [
+  'libs/feature/rooms/src/lib/rooms/room-actions.service.ts',
+  'libs/feature/rooms/src/lib/rooms/rooms.page.html',
+  'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
+  'libs/feature/rooms/src/lib/rooms/rooms.page.ts',
+  'libs/feature/rooms/src/lib/rooms/session-actions.service.ts',
+  'libs/feature/rooms/src/lib/rooms/shell-status.service.ts',
+  'libs/feature/rooms/src/lib/rooms/space-actions.service.ts',
+];
 const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
-const productionSources = globSync(
-  migratedRoots.flatMap((root) => [
-    `${root}/**/*.ts`,
-    `${root}/**/*.html`,
-    `${root}/**/*.scss`,
-  ]),
-  { cwd: workspaceRoot },
-)
+const productionSources = [
+  ...globSync(
+    migratedRoots.flatMap((root) => [
+      `${root}/**/*.ts`,
+      `${root}/**/*.html`,
+      `${root}/**/*.scss`,
+    ]),
+    { cwd: workspaceRoot },
+  ),
+  ...migratedRoomNavigationFiles,
+]
   .filter(
     (file) =>
       !file.endsWith('.spec.ts') &&
@@ -46,6 +61,13 @@ const productionSources = globSync(
 const templates = productionSources.filter((file) => file.endsWith('.html'));
 const settingsTemplates = templates.filter((file) =>
   file.startsWith('libs/feature/settings/src/lib/'),
+);
+const roomNavigationTemplates = templates.filter(
+  (file) =>
+    migratedRoots
+      .filter((root) => root.startsWith('libs/feature/rooms/'))
+      .some((root) => file.startsWith(`${root}/`)) ||
+    file === 'libs/feature/rooms/src/lib/rooms/rooms.page.html',
 );
 const typescript = productionSources.filter((file) => file.endsWith('.ts'));
 const componentStyles = productionSources.filter(
@@ -60,7 +82,7 @@ const tagsFrom = (files, selector) =>
   );
 const tags = (selector) => tagsFrom(templates, selector);
 
-describe('migrated authentication, Trust, Settings and host-shell consumers', () => {
+describe('migrated application design-system consumers', () => {
   it('is a non-vacuous public-tier-only production slice', () => {
     expect(productionSources.length).toBeGreaterThan(40);
     expect(templates.length).toBeGreaterThan(10);
@@ -119,6 +141,76 @@ describe('migrated authentication, Trust, Settings and host-shell consumers', ()
       );
     }
 
+    expect(roomNavigationTemplates).toHaveLength(6);
+    const roomNavigationAvatars = tagsFrom(
+      roomNavigationTemplates,
+      /<trn-avatar\b[^>]*>/gu,
+    );
+    expect(roomNavigationAvatars.length).toBeGreaterThan(10);
+    for (const [file, tag] of roomNavigationAvatars) {
+      expect(tag, file).not.toMatch(
+        /(?:\[size\]|\bsize)\s*=\s*['"](?:\d+(?:\.\d+)?|\d+(?:\.\d+)?(?:px|rem|em))['"]/u,
+      );
+    }
+
+    const roomNavigationIcons = tagsFrom(
+      roomNavigationTemplates,
+      /<trn-icon\b[^>]*>/gu,
+    );
+    expect(roomNavigationIcons.length).toBeGreaterThan(25);
+    for (const [file, tag] of roomNavigationIcons) {
+      expect(tag, file).not.toMatch(
+        /\bsize\s*=\s*['"]\d+(?:\.\d+)?(?:px|rem|em)['"]/u,
+      );
+    }
+
+    for (const [file, tag] of tagsFrom(
+      roomNavigationTemplates,
+      /<trn-empty-state\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(/\bsize\s*=/u);
+    }
+    for (const [file, tag] of tagsFrom(
+      roomNavigationTemplates,
+      /<trn-page-header\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(/\bvariant\s*=\s*['"](?:page|chat)['"]/u);
+    }
+    for (const [file, tag] of tagsFrom(
+      roomNavigationTemplates,
+      /<[^>]*\btrnDropdownMenuItem\b[^>]*>/gu,
+    )) {
+      expect(tag, file).not.toMatch(
+        /\bvariant\s*=\s*['"](?:default|destructive)['"]/u,
+      );
+    }
+
+    const roomNavigationSurfaces = tagsFrom(
+      roomNavigationTemplates,
+      /<[^>]*\btrnOverlaySurface\b[^>]*>/gu,
+    );
+    expect(roomNavigationSurfaces).toHaveLength(1);
+    expect(roomNavigationSurfaces[0]?.[1]).toMatch(/\bvariant="neutral"/u);
+    expect(roomNavigationSurfaces[0]?.[1]).toMatch(/\bsize="sm"/u);
+    expect(roomNavigationSurfaces[0]?.[1]).toMatch(/\blayout="dialog"/u);
+    expect(roomNavigationSurfaces[0]?.[1]).toMatch(
+      /\bclass="[^"]*\bflex\b[^"]*\bflex-col\b/u,
+    );
+
+    const accountCheckboxes = tagsFrom(
+      roomNavigationTemplates,
+      /<[^>]*\btrnDropdownMenuCheckbox\b[^>]*>/gu,
+    );
+    expect(accountCheckboxes).toHaveLength(1);
+    expect(accountCheckboxes[0]?.[1]).toMatch(
+      /\[lockedSelection\]\s*=\s*"isActive"/u,
+    );
+    expect(
+      markup(
+        'libs/feature/rooms/src/lib/account-picker/account-picker.component.html',
+      ),
+    ).toMatch(/\[trnLockedSelection\]\s*=\s*"locked"/u);
+
     const cards = tags(/<[^>]*\btrnCard\b[^>]*>/gu);
     expect(cards.length).toBeGreaterThan(0);
     expect(cards).toEqual(
@@ -131,16 +223,16 @@ describe('migrated authentication, Trust, Settings and host-shell consumers', ()
     );
 
     const surfaces = tags(/<[^>]*\btrnOverlaySurface\b[^>]*>/gu);
-    expect(surfaces).toHaveLength(4);
+    expect(surfaces).toHaveLength(5);
     for (const [file, tag] of surfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
     }
     expect(
       surfaces.map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1]).sort(),
-    ).toEqual(['2xl', 'lg', 'md', 'md']);
+    ).toEqual(['2xl', 'lg', 'md', 'md', 'sm']);
     expect(
       surfaces.map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1]).sort(),
-    ).toEqual(['dialog', 'dialog', 'dialog', 'workspace']);
+    ).toEqual(['dialog', 'dialog', 'dialog', 'dialog', 'workspace']);
   });
 
   it('uses cold finite alert commands and canonical danger variants', () => {
@@ -155,7 +247,7 @@ describe('migrated authentication, Trust, Settings and host-shell consumers', ()
   });
 
   it('keeps every component stylesheet in the named components layer', () => {
-    expect(componentStyles.length).toBeGreaterThanOrEqual(15);
+    expect(componentStyles.length).toBeGreaterThanOrEqual(21);
     for (const file of componentStyles) {
       const blocks = topLevelStyleBlocks(read(file));
       expect(
@@ -168,9 +260,10 @@ describe('migrated authentication, Trust, Settings and host-shell consumers', ()
       ).toEqual(Array(blocks.length).fill('@layer components'));
     }
 
-    const migratedExceptions = UNLAYERED_RULESET_LEDGER.filter(([file]) =>
-      migratedRoots.some((root) => file.startsWith(`${root}/`)),
-    );
+    const migratedExceptions = UNLAYERED_RULESET_LEDGER.filter(([file]) => {
+      const sourceFile = file.replace(/#inline-styles$/u, '');
+      return productionSources.includes(sourceFile);
+    });
     expect(migratedExceptions).toEqual([]);
   });
 });

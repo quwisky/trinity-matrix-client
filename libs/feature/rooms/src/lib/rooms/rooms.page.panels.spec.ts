@@ -64,6 +64,7 @@ describe('RoomsPage panels, pins and media', () => {
   let setNotifyMode: Mock;
   let leaveRoom: Mock;
   let alertConfirm: Mock;
+  let dialogOpen: Mock;
   let roomsSignal: WritableSignal<RoomSummary[]>;
   let editableFields: Mock;
   let currentAccess: Mock;
@@ -87,7 +88,8 @@ describe('RoomsPage panels, pins and media', () => {
     sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
-    alertConfirm = vi.fn().mockResolvedValue(true);
+    alertConfirm = vi.fn(() => of(true));
+    dialogOpen = vi.fn(() => of(null));
     roomsSignal = signal<RoomSummary[]>([]);
     editableFields = vi.fn(() => ({
       name: true,
@@ -157,7 +159,7 @@ describe('RoomsPage panels, pins and media', () => {
           selected: signal(new Set(['@me:hs'])),
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
-        MockProvider(TrnAlertService, { confirm: alertConfirm }),
+        MockProvider(TrnAlertService, { confirm$: alertConfirm }),
         MockProvider(TimelineActionsService, { sendMedia }),
         MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
@@ -176,7 +178,7 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
           connect: vi.fn(),
@@ -239,40 +241,38 @@ describe('RoomsPage panels, pins and media', () => {
     expect(editableFields).toHaveBeenCalledWith('!r:hs');
     expect(currentAccess).toHaveBeenCalledWith('!r:hs');
     expect(canManageAliases).toHaveBeenCalledWith('!r:hs');
-    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
-      RoomSettingsComponent,
-      {
-        ariaLabel: 'Room settings',
-        inputs: expect.objectContaining({
-          roomId: '!r:hs',
-          name: 'Raw name',
-          topic: 'Raw topic',
-          avatarMxc: 'mxc://a/b',
-          joinRule: 'public',
-          historyVisibility: 'world_readable',
-          canEditName: true,
-          canEditTopic: false,
-          canEditAvatar: false,
-          canEditJoinRule: true,
-          canEditHistory: false,
-          canManageAliases: true,
-        }),
-      },
-    );
+    expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
+      ariaLabel: 'Room settings',
+      inputs: expect.objectContaining({
+        roomId: '!r:hs',
+        name: 'Raw name',
+        topic: 'Raw topic',
+        avatarMxc: 'mxc://a/b',
+        joinRule: 'public',
+        historyVisibility: 'world_readable',
+        canEditName: true,
+        canEditTopic: false,
+        canEditAvatar: false,
+        canEditJoinRule: true,
+        canEditHistory: false,
+        canManageAliases: true,
+      }),
+    });
   });
 
   it('opens the room directory and selects a room joined from it', async () => {
     const shell = build();
-    const dialog = TestBed.inject(TrnDialogService);
     vi.mocked(TestBed.inject(Router).navigate).mockResolvedValueOnce(true);
-    vi.mocked(dialog.openAndWait).mockResolvedValue({
-      roomId: '!joined:hs',
-      isSpace: false,
-    });
+    dialogOpen.mockReturnValue(
+      of({
+        roomId: '!joined:hs',
+        isSpace: false,
+      }),
+    );
 
-    await shell.rooms.onExploreRooms();
+    shell.rooms.onExploreRooms();
 
-    expect(dialog.openAndWait).toHaveBeenCalledWith(RoomDirectoryComponent);
+    expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent);
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!joined:hs');
     await vi.waitFor(() =>
       expect(shell.store.activeRoomId()).toBe('!joined:hs'),
@@ -284,25 +284,27 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('selects a space joined from the directory in the rail', async () => {
     const shell = build();
-    const dialog = TestBed.inject(TrnDialogService);
-    vi.mocked(dialog.openAndWait).mockResolvedValue({
-      roomId: '!space:hs',
-      isSpace: true,
-    });
+    dialogOpen.mockReturnValue(
+      of({
+        roomId: '!space:hs',
+        isSpace: true,
+      }),
+    );
 
-    await shell.rooms.onExploreRooms();
+    shell.rooms.onExploreRooms();
 
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!space:hs');
-    expect(shell.store.activeSpaceId()).toBe('!space:hs'); // onSelectSpace ran
+    await vi.waitFor(() =>
+      expect(shell.store.activeSpaceId()).toBe('!space:hs'),
+    ); // onSelectSpace ran
     expect(shell.store.activeRoomId()).toBeNull(); // no room opened
   });
 
   it('does not select a room when the directory is dismissed', async () => {
     const shell = build();
-    const dialog = TestBed.inject(TrnDialogService);
-    vi.mocked(dialog.openAndWait).mockResolvedValue(null);
+    dialogOpen.mockReturnValue(of(null));
 
-    await shell.rooms.onExploreRooms();
+    shell.rooms.onExploreRooms();
 
     expect(shell.store.activeRoomId()).toBeNull();
   });
@@ -348,7 +350,7 @@ describe('RoomsPage panels, pins and media', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not mark the room unread.'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -634,7 +636,7 @@ describe('RoomsPage panels, pins and media', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       'Could not pin the message.',
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -718,7 +720,7 @@ describe('RoomsPage panels, pins and media', () => {
 
       expect(toastShow, kind).toHaveBeenCalledWith(
         expect.stringMatching(expected),
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       );
       // And it must NOT pretend the jump happened.
       expect(shell.store.jumpRequest(), kind).toBe(0);
@@ -1036,7 +1038,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(outcomes).toEqual([{ id: 'a', failed: true }]);
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 });

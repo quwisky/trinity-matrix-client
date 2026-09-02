@@ -60,7 +60,7 @@ export class ShellStatusService implements BusyState {
   }
 
   showError(message: string): void {
-    this.toast.show(message, { duration: 4000, variant: 'destructive' });
+    this.toast.show(message, { duration: 4000, variant: 'danger' });
   }
 
   showSuccess(message: string): void {

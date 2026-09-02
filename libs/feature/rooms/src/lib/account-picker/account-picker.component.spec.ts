@@ -55,7 +55,22 @@ describe('AccountPickerComponent', () => {
     );
 
     expect(row(container, '@alice:hs').getAttribute('data-disabled')).toBe('');
+    expect(
+      row(container, '@alice:hs').getAttribute('data-trn-selection-locked'),
+    ).toBe('');
     expect(row(container, '@bob:hs').getAttribute('data-disabled')).toBeNull();
+    expect(
+      row(container, '@bob:hs').getAttribute('data-trn-selection-locked'),
+    ).toBeNull();
+  });
+
+  it('uses the public dialog surface recipe', async () => {
+    const { container } = await renderPicker();
+    const surface = container.querySelector('[data-testid="account-picker"]');
+
+    expect(surface?.getAttribute('data-trn-variant')).toBe('neutral');
+    expect(surface?.getAttribute('data-trn-size')).toBe('sm');
+    expect(surface?.getAttribute('data-trn-layout')).toBe('dialog');
   });
 
   it('toggles an account without closing — this is a multi-select', async () => {

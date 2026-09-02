@@ -1,102 +1,94 @@
 @use '../styles/mixins' as *;
 
-.picker {
-  display: flex;
-  max-height: 80vh;
-  width: min(90vw, 22rem);
-  flex-direction: column;
-  gap: 4px;
-
-  // `--trinity-radius` is the one documented as "default / lg"; `--trinity-radius-lg` was
-  // never defined, so this declaration was invalid and the dialog shipped square corners.
-  border-radius: var(--trinity-radius);
-  background: var(--trinity-surface);
-  padding: 16px;
-  color: var(--trinity-text);
-}
-
-.picker__title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.picker__hint {
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: var(--trinity-text-muted);
-}
-
-.picker__list {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  gap: 2px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.account-pick {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 10px;
-  border-radius: var(--trinity-radius-sm);
-  padding: 8px;
-  text-align: left;
-
-  &:hover:not([disabled]) {
-    background: var(--trinity-chat);
+@layer components {
+  .picker {
+    gap: 4px;
+    padding: 16px;
   }
-}
 
-// The active account is always shown, so its row is disabled to stop it being unticked.
-// Undo the disabled dimming: greying out the one row that is guaranteed present reads as
-// "excluded", the exact opposite of what it means.
-.account-pick[data-disabled] {
-  opacity: 1;
-  cursor: default;
-}
+  .picker__title {
+    font-size: 16px;
+    font-weight: 700;
+  }
 
-.account-pick__tick {
-  display: flex;
-  flex: 0 0 16px;
-  align-items: center;
-  justify-content: center;
-  color: var(--trinity-link);
-}
+  .picker__hint {
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--trinity-text-muted);
+  }
 
-.account-pick__id {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  flex-direction: column;
-}
+  .picker__list {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
 
-.account-pick__name {
-  @include ellipsis;
+  .account-pick {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 10px;
+    border-radius: var(--trinity-radius-sm);
+    padding: 8px;
+    text-align: left;
 
-  font-size: 14px;
-}
+    &:hover:not([disabled]) {
+      background: var(--trinity-chat);
+    }
+  }
 
-.account-pick__handle {
-  @include ellipsis;
+  // The active account is always shown, so its row is disabled to stop it being unticked.
+  // Undo the disabled dimming: greying out the one row that is guaranteed present reads as
+  // "excluded", the exact opposite of what it means.
+  .account-pick[data-disabled] {
+    opacity: 1;
+    cursor: default;
+  }
 
-  font-size: 12px;
-  color: var(--trinity-text-muted);
-}
+  .account-pick__tick {
+    display: flex;
+    flex: 0 0 16px;
+    align-items: center;
+    justify-content: center;
+    color: var(--trinity-link);
+  }
 
-.account-pick__active {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--trinity-text-muted);
-}
+  .account-pick__id {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
 
-.picker__actions {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 8px;
+  .account-pick__name {
+    @include ellipsis;
+
+    font-size: 14px;
+  }
+
+  .account-pick__handle {
+    @include ellipsis;
+
+    font-size: 12px;
+    color: var(--trinity-text-muted);
+  }
+
+  .account-pick__active {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--trinity-text-muted);
+  }
+
+  .picker__actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 8px;
+  }
 }

@@ -1,151 +1,153 @@
 @use '../styles/mixins' as *;
 
-.rail {
-  @include column(var(--trinity-surface-frame));
-  @include scrollable;
+@layer components {
+  .rail {
+    @include column(var(--trinity-surface-frame));
+    @include scrollable;
 
-  // Ring the account badge against the rail surface, not the page background — the default
-  // resolves to --background, which is near-black in dark themes and reads as a punched
-  // hole around the badge rather than an overlay. (Mirrors channel-sidebar.)
-  --trn-presence-ring: var(--trinity-surface-frame);
+    // Ring the account badge against the rail surface, not the page background — the default
+    // resolves to --background, which is near-black in dark themes and reads as a punched
+    // hole around the badge rather than an overlay. (Mirrors channel-sidebar.)
+    --trn-presence-ring: var(--trinity-surface-frame);
 
-  width: 72px;
-  align-items: center;
-  padding: 12px 0;
-  gap: var(--trinity-density-shell-gap);
+    width: 72px;
+    align-items: center;
+    padding: 12px 0;
+    gap: var(--trinity-density-shell-gap);
 
-  @media #{$md} {
-    // The identity dock spans this rail and the room list at desktop widths. Give the last
-    // Space the same visual and focus-driven clearance as the room scroller beside it.
-    padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-    );
-    scroll-padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-    );
-  }
-}
-
-// A visible section divider on the rail. `--trinity-divider` is tuned for the lighter
-// sidebar/chat surfaces and is near-invisible on the darker rail, so use `--trinity-active`
-// (the selected-pill color), which contrasts against the rail in both themes. Full pill
-// width (48px) so it reads as a line, not a dot.
-.separator {
-  width: 48px;
-  height: 2px;
-  background: var(--trinity-active);
-  border-radius: 1px;
-  margin: 2px 0;
-}
-
-.item {
-  position: relative;
-  width: 100%;
-  display: flex;
-  justify-content: center;
-}
-
-.indicator {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 4px;
-  height: 0;
-  background: var(--trinity-state-selected-foreground);
-  border-radius: 0 4px 4px 0;
-  transition: height var(--trinity-duration-fast) var(--trinity-ease-standard);
-}
-
-.item:hover .indicator {
-  height: 20px;
-}
-
-// Unread-count badge pinned to a pill's top-right. The rail-coloured ring lifts
-// it off the pill (Discord-style); pointer-events:none keeps clicks on the pill.
-.badge {
-  position: absolute;
-  top: -2px;
-  right: 8px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--trinity-radius-pill);
-
-  // Filled badge, so this takes the solid pair — `--trinity-danger` is the
-  // text/icon role and is too light to carry white on it.
-  background: var(--trinity-danger-solid);
-  color: var(--trinity-danger-solid-foreground);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-  box-shadow: 0 0 0 2px var(--trinity-surface-frame);
-  pointer-events: none;
-}
-
-.item.active .indicator {
-  height: 40px;
-}
-
-.pill {
-  width: 48px;
-  height: 48px;
-  border: none;
-  cursor: pointer;
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
-  background: var(--trinity-surface-navigation);
-  color: var(--trinity-text);
-  border-radius: var(--trinity-shape-place-radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  font-weight: 700;
-  padding: 0;
-  transition:
-    background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
-    color var(--trinity-duration-fast) var(--trinity-ease-standard),
-    transform var(--trinity-duration-press) var(--trinity-ease-standard);
-
-  &:focus-visible {
-    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
-    outline-offset: var(--trinity-focus-ring-offset);
+    @media #{$md} {
+      // The identity dock spans this rail and the room list at desktop widths. Give the last
+      // Space the same visual and focus-driven clearance as the room scroller beside it.
+      padding-block-end: calc(
+        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      );
+      scroll-padding-block-end: calc(
+        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      );
+    }
   }
 
-  &:active {
-    transform: scale(0.96);
+  // A visible section divider on the rail. `--trinity-divider` is tuned for the lighter
+  // sidebar/chat surfaces and is near-invisible on the darker rail, so use `--trinity-active`
+  // (the selected-pill color), which contrasts against the rail in both themes. Full pill
+  // width (48px) so it reads as a line, not a dot.
+  .separator {
+    width: 48px;
+    height: 2px;
+    background: var(--trinity-active);
+    border-radius: 1px;
+    margin: 2px 0;
   }
-}
 
-// Recent is the primary view (first item, default on launch), so its pill is the
-// always-filled brand exception — accent-filled at rest.
-.pill.recent {
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
-}
+  .item {
+    position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
 
-.pill.add {
-  color: var(--trinity-green);
-  font-weight: 400;
-}
+  .indicator {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 0;
+    background: var(--trinity-state-selected-foreground);
+    border-radius: 0 4px 4px 0;
+    transition: height var(--trinity-duration-fast) var(--trinity-ease-standard);
+  }
 
-.pill.add:hover {
-  background: var(--trinity-green);
-  color: var(--trinity-text-bright);
-}
+  .item:hover .indicator {
+    height: 20px;
+  }
 
-// Home + Rooms pills: accent-filled on hover and while their view is active
-// (`.item.active`), the quieter treatment against Recent's always-filled pill.
-.pill.home:hover,
-.item.active .pill.home,
-.pill.rooms:hover,
-.item.active .pill.rooms {
-  background: var(--trinity-accent);
-  color: var(--trinity-accent-foreground);
-}
+  // Unread-count badge pinned to a pill's top-right. The rail-coloured ring lifts
+  // it off the pill (Discord-style); pointer-events:none keeps clicks on the pill.
+  .badge {
+    position: absolute;
+    top: -2px;
+    right: 8px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--trinity-radius-pill);
 
-trn-avatar {
-  pointer-events: none;
+    // Filled badge, so this takes the solid pair — `--trinity-danger` is the
+    // text/icon role and is too light to carry white on it.
+    background: var(--trinity-danger-solid);
+    color: var(--trinity-danger-solid-foreground);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--trinity-surface-frame);
+    pointer-events: none;
+  }
+
+  .item.active .indicator {
+    height: 40px;
+  }
+
+  .pill {
+    width: 48px;
+    height: 48px;
+    border: none;
+    cursor: pointer;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+    background: var(--trinity-surface-navigation);
+    color: var(--trinity-text);
+    border-radius: var(--trinity-shape-place-radius);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 700;
+    padding: 0;
+    transition:
+      background-color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      color var(--trinity-duration-fast) var(--trinity-ease-standard),
+      transform var(--trinity-duration-press) var(--trinity-ease-standard);
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: var(--trinity-focus-ring-offset);
+    }
+
+    &:active {
+      transform: scale(0.96);
+    }
+  }
+
+  // Recent is the primary view (first item, default on launch), so its pill is the
+  // always-filled brand exception — accent-filled at rest.
+  .pill.recent {
+    background: var(--trinity-accent);
+    color: var(--trinity-accent-foreground);
+  }
+
+  .pill.add {
+    color: var(--trinity-green);
+    font-weight: 400;
+  }
+
+  .pill.add:hover {
+    background: var(--trinity-green);
+    color: var(--trinity-text-bright);
+  }
+
+  // Home + Rooms pills: accent-filled on hover and while their view is active
+  // (`.item.active`), the quieter treatment against Recent's always-filled pill.
+  .pill.home:hover,
+  .item.active .pill.home,
+  .pill.rooms:hover,
+  .item.active .pill.rooms {
+    background: var(--trinity-accent);
+    color: var(--trinity-accent-foreground);
+  }
+
+  trn-avatar {
+    pointer-events: none;
+  }
 }

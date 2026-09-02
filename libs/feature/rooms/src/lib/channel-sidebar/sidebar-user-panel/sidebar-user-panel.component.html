@@ -25,7 +25,7 @@
             [accountId]="account.userId"
             [initial]="initialFor(account)"
             [name]="account.displayName"
-            [size]="24"
+            size="sm"
           />
         }
       </span>
@@ -34,7 +34,7 @@
         [mxc]="user().avatarMxc"
         [initial]="userInitial()"
         [name]="user().displayName"
-        [size]="32"
+        size="lg"
       />
     }
     <div class="userbar__id">
@@ -79,7 +79,7 @@
           [mxc]="account.avatarMxc"
           [accountId]="account.userId"
           [name]="account.displayName"
-          [size]="28"
+          size="md"
         />
         <div class="account-row__id">
           <span class="account-row__name">{{ account.displayName }}</span>
@@ -111,7 +111,7 @@
         (triggered)="reauthAccount.emit(userId)"
         data-testid="reauth-row"
       >
-        <trn-avatar [name]="userId" [size]="28" />
+        <trn-avatar [name]="userId" size="md" />
         <div class="account-row__id">
           <span class="account-row__name">Signed out</span>
           <span class="account-row__handle">{{ userId }}</span>
@@ -156,7 +156,7 @@
     <div trnDropdownMenuSeparator></div>
     <button
       trnDropdownMenuItem
-      variant="destructive"
+      variant="danger"
       (triggered)="logout.emit(activeUserId() ?? '')"
       data-testid="logout"
     >
@@ -181,6 +181,7 @@
           trnDropdownMenuCheckbox
           [checked]="shownAccountIds().has(account.userId)"
           [disabled]="isActive"
+          [lockedSelection]="isActive"
           (triggered)="toggleAccountShown.emit(account.userId)"
           [attr.data-testid]="'show-account-' + account.userId"
         >
@@ -190,7 +191,7 @@
             [accountId]="account.userId"
             [initial]="initialFor(account)"
             [name]="account.displayName"
-            [size]="20"
+            size="xs"
           />
           <span class="account-pick__id">
             <span class="account-pick__name">{{ account.displayName }}</span>

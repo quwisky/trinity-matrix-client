@@ -1,184 +1,186 @@
 @use '../styles/mixins' as *;
 
-// The room list takes whatever the shell column has left after the 72px rail, which is what
-// makes the shell's drag handle move THIS rather than an empty box. It was a fixed 280px, and
-// the two together made up the 352px the shell shipped with — but with the column's width now
-// a dragged custom property, a fixed list left the difference as bare rail colour when the
-// column grew and overflowed it over the timeline when it shrank. `min-width: 0` because a
-// flex item's automatic minimum is its content, which would floor the column at the widest
-// room name in it. `rooms.page.scss` owns the column's width and the bounds live in
-// `ShellLayoutService`.
-:host {
-  flex: 1;
-  min-width: 0;
-}
+@layer components {
+  // The room list takes whatever the shell column has left after the 72px rail, which is what
+  // makes the shell's drag handle move THIS rather than an empty box. It was a fixed 280px, and
+  // the two together made up the 352px the shell shipped with — but with the column's width now
+  // a dragged custom property, a fixed list left the difference as bare rail colour when the
+  // column grew and overflowed it over the timeline when it shrank. `min-width: 0` because a
+  // flex item's automatic minimum is its content, which would floor the column at the widest
+  // room name in it. `rooms.page.scss` owns the column's width and the bounds live in
+  // `ShellLayoutService`.
+  :host {
+    flex: 1;
+    min-width: 0;
+  }
 
-.sidebar {
-  @include column(var(--trinity-surface-navigation));
+  .sidebar {
+    @include column(var(--trinity-surface-navigation));
 
-  width: 100%;
+    width: 100%;
 
-  // Ring the avatar presence dots (DM online status) in this panel's surface colour.
-  --trn-presence-ring: var(--trinity-surface-navigation);
-}
+    // Ring the avatar presence dots (DM online status) in this panel's surface colour.
+    --trn-presence-ring: var(--trinity-surface-navigation);
+  }
 
-.sidebar__header {
-  height: 56px;
-  flex: 0 0 56px;
-  display: flex;
-  align-items: center;
-  gap: var(--trinity-density-shell-gap);
-  padding: 0 var(--trinity-density-shell-padding-inline);
-  font-weight: 600;
-  color: var(--trinity-text-bright);
-  background: var(--trinity-surface-navigation-header);
-  box-shadow: inset 0 -1px 0 var(--trinity-border-subtle);
-}
-
-.sidebar__title {
-  @include ellipsis;
-
-  flex: 1;
-  min-width: 0;
-}
-
-.sidebar__actions {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.sidebar__action {
-  @include interactive-row;
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
-  font-size: 20px;
-
-  &:hover {
+  .sidebar__header {
+    height: 56px;
+    flex: 0 0 56px;
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-density-shell-gap);
+    padding: 0 var(--trinity-density-shell-padding-inline);
+    font-weight: 600;
     color: var(--trinity-text-bright);
+    background: var(--trinity-surface-navigation-header);
+    box-shadow: inset 0 -1px 0 var(--trinity-border-subtle);
   }
-}
 
-// Outside `.sidebar__scroll` on purpose: the box stays put while the list it narrows
-// scrolls under it. The input itself is `trnInput`, so this only positions the row and
-// overlays the clear button — no colours here, or it would stop re-theming.
-.sidebar__filter {
-  position: relative;
-  flex: 0 0 auto;
-  margin: 8px 8px 0;
-}
+  .sidebar__title {
+    @include ellipsis;
 
-.sidebar__filter-clear {
-  @include interactive-row;
-
-  position: absolute;
-  top: 50%;
-  right: 4px;
-  transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  min-width: var(--trinity-interaction-target-min-size);
-  min-height: var(--trinity-interaction-target-min-size);
-  font-size: 14px;
-
-  &:hover {
-    color: var(--trinity-text-bright);
+    flex: 1;
+    min-width: 0;
   }
-}
 
-.sidebar__scroll {
-  @include scrollable;
-
-  flex: 1;
-  padding: 12px var(--trinity-density-shell-padding-inline);
-
-  @media #{$md} {
-    // The desktop identity dock floats over this scroller. Leave enough real content space
-    // for the last room and tell focus-driven scrolling about the same obstruction, so a
-    // keyboard-selected row can always settle fully above the dock.
-    padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-    );
-    scroll-padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
-    );
+  .sidebar__actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 2px;
   }
-}
 
-// Separates the Favourites group from the rooms below it.
+  .sidebar__action {
+    @include interactive-row;
 
-// Row wrapper so a joined channel can carry a (hover-revealed) options menu
-// alongside the selectable channel button without nesting buttons.
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+    font-size: 20px;
 
-// Not-yet-joined child rooms / sub-spaces: muted rows with a Join (or Open) action.
-.joinable {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px var(--trinity-density-shell-padding-inline);
-  margin-top: 1px;
-  color: var(--trinity-text-muted);
-}
-
-.joinable__hash {
-  font-size: 18px;
-}
-
-.joinable__text {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
-}
-
-.joinable__name {
-  @include ellipsis;
-
-  font-size: 14px;
-  min-width: 0;
-}
-
-.joinable__tag {
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.joinable__action {
-  @include interactive-row;
-
-  flex: 0 0 auto;
-  min-height: var(--trinity-interaction-target-min-size);
-  padding: 3px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--trinity-hover);
-
-  &:hover {
-    background: var(--trinity-active);
-    color: var(--trinity-text-bright);
+    &:hover {
+      color: var(--trinity-text-bright);
+    }
   }
-}
 
-// The space-children section headers ("More Channels", "Spaces"). Duplicated from
-// SidebarRoomListComponent's stylesheet rather than shared, because emulated encapsulation
-// scopes each rule to its own component's elements: these two headers are rendered HERE,
-// the Favourites/Low priority ones there, and neither stylesheet can reach the other's.
-// The shared `category-label` mixin is what keeps them identical.
-.category {
-  @include category-label;
+  // Outside `.sidebar__scroll` on purpose: the box stays put while the list it narrows
+  // scrolls under it. The input itself is `trnInput`, so this only positions the row and
+  // overlays the clear button — no colours here, or it would stop re-theming.
+  .sidebar__filter {
+    position: relative;
+    flex: 0 0 auto;
+    margin: 8px 8px 0;
+  }
 
-  padding: 12px 8px 4px;
+  .sidebar__filter-clear {
+    @include interactive-row;
+
+    position: absolute;
+    top: 50%;
+    right: 4px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    min-width: var(--trinity-interaction-target-min-size);
+    min-height: var(--trinity-interaction-target-min-size);
+    font-size: 14px;
+
+    &:hover {
+      color: var(--trinity-text-bright);
+    }
+  }
+
+  .sidebar__scroll {
+    @include scrollable;
+
+    flex: 1;
+    padding: 12px var(--trinity-density-shell-padding-inline);
+
+    @media #{$md} {
+      // The desktop identity dock floats over this scroller. Leave enough real content space
+      // for the last room and tell focus-driven scrolling about the same obstruction, so a
+      // keyboard-selected row can always settle fully above the dock.
+      padding-block-end: calc(
+        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      );
+      scroll-padding-block-end: calc(
+        var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      );
+    }
+  }
+
+  // Separates the Favourites group from the rooms below it.
+
+  // Row wrapper so a joined channel can carry a (hover-revealed) options menu
+  // alongside the selectable channel button without nesting buttons.
+
+  // Not-yet-joined child rooms / sub-spaces: muted rows with a Join (or Open) action.
+  .joinable {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px var(--trinity-density-shell-padding-inline);
+    margin-top: 1px;
+    color: var(--trinity-text-muted);
+  }
+
+  .joinable__hash {
+    font-size: 18px;
+  }
+
+  .joinable__text {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .joinable__name {
+    @include ellipsis;
+
+    font-size: 14px;
+    min-width: 0;
+  }
+
+  .joinable__tag {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .joinable__action {
+    @include interactive-row;
+
+    flex: 0 0 auto;
+    min-height: var(--trinity-interaction-target-min-size);
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--trinity-hover);
+
+    &:hover {
+      background: var(--trinity-active);
+      color: var(--trinity-text-bright);
+    }
+  }
+
+  // The space-children section headers ("More Channels", "Spaces"). Duplicated from
+  // SidebarRoomListComponent's stylesheet rather than shared, because emulated encapsulation
+  // scopes each rule to its own component's elements: these two headers are rendered HERE,
+  // the Favourites/Low priority ones there, and neither stylesheet can reach the other's.
+  // The shared `category-label` mixin is what keeps them identical.
+  .category {
+    @include category-label;
+
+    padding: 12px 8px 4px;
+  }
 }

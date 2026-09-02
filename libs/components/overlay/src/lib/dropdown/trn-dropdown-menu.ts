@@ -182,9 +182,25 @@ export class TrnDropdownMenuRadio {
   }
 }
 
+/** Marks a guaranteed checked value as locked rather than unavailable. */
+@Directive({
+  selector: '[trnLockedSelection]',
+  host: {
+    '[attr.data-trn-selection-locked]': 'trnLockedSelection() ? "" : null',
+  },
+})
+export class TrnLockedSelectionDirective {
+  readonly trnLockedSelection = input(false, { transform: booleanAttribute });
+}
+
 @Directive({
   selector: '[trnDropdownMenuCheckbox]',
   hostDirectives: [
+    {
+      directive: TrnLockedSelectionDirective,
+      inputs: ['trnLockedSelection: lockedSelection'],
+      outputs: [],
+    },
     {
       directive: HlmDropdownMenuCheckbox,
       inputs: ['inset'],

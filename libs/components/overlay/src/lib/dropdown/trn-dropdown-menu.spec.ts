@@ -4,13 +4,19 @@ import { render } from '@trinity/testing';
 import { describe, expect, it } from 'vitest';
 import {
   TrnDropdownMenu,
+  TrnDropdownMenuCheckbox,
   TrnDropdownMenuItem,
   TrnDropdownMenuTrigger,
 } from './trn-dropdown-menu';
 import { trnDropdownMenuItemRecipe } from './trn-dropdown-menu-recipe';
 
 @Component({
-  imports: [TrnDropdownMenu, TrnDropdownMenuItem, TrnDropdownMenuTrigger],
+  imports: [
+    TrnDropdownMenu,
+    TrnDropdownMenuCheckbox,
+    TrnDropdownMenuItem,
+    TrnDropdownMenuTrigger,
+  ],
   template: `
     <button [trnDropdownMenuTrigger]="menu">Open</button>
     <ng-template #menu>
@@ -34,6 +40,22 @@ import { trnDropdownMenuItemRecipe } from './trn-dropdown-menu-recipe';
         </button>
         <button trnDropdownMenuItem disabled data-testid="disabled-item">
           Disabled
+        </button>
+        <button
+          trnDropdownMenuCheckbox
+          checked
+          disabled
+          lockedSelection
+          data-testid="locked-selection"
+        >
+          Always included
+        </button>
+        <button
+          trnDropdownMenuCheckbox
+          checked
+          data-testid="removable-selection"
+        >
+          Optional
         </button>
       </div>
     </ng-template>
@@ -89,5 +111,23 @@ describe('Trinity dropdown menu', () => {
     expect(legacy?.dataset['trnVariant']).toBe('danger');
     expect(trnDropdownMenuItemRecipe('danger')).toContain('text-danger');
     expect(disabled?.getAttribute('data-disabled')).not.toBeNull();
+  });
+
+  it('publishes locked checked selections as a distinct disabled state', async () => {
+    const { fixture } = await render(HostComponent);
+
+    fixture.componentInstance.trigger().open();
+    TestBed.tick();
+
+    const locked = document.querySelector<HTMLButtonElement>(
+      '[data-testid=locked-selection]',
+    );
+    const removable = document.querySelector<HTMLButtonElement>(
+      '[data-testid=removable-selection]',
+    );
+    expect(locked?.getAttribute('data-disabled')).not.toBeNull();
+    expect(locked?.getAttribute('data-checked')).not.toBeNull();
+    expect(locked?.getAttribute('data-trn-selection-locked')).toBe('');
+    expect(removable?.getAttribute('data-trn-selection-locked')).toBeNull();
   });
 });

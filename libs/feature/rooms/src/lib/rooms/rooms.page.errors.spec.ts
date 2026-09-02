@@ -61,6 +61,8 @@ describe('RoomsPage action error feedback', () => {
   let setNotifyMode: Mock;
   let leaveRoom: Mock;
   let alertConfirm: Mock;
+  let alertPrompt: Mock;
+  let dialogOpen: Mock;
   let roomsSignal: WritableSignal<RoomSummary[]>;
   let editableFields: Mock;
   let currentAccess: Mock;
@@ -83,7 +85,9 @@ describe('RoomsPage action error feedback', () => {
     sendMedia = vi.fn(() => of(undefined));
     setNotifyMode = vi.fn(() => of(undefined));
     leaveRoom = vi.fn(() => of(undefined));
-    alertConfirm = vi.fn().mockResolvedValue(true);
+    alertConfirm = vi.fn(() => of(true));
+    alertPrompt = vi.fn(() => of(null));
+    dialogOpen = vi.fn(() => of(null));
     roomsSignal = signal<RoomSummary[]>([]);
     editableFields = vi.fn(() => ({
       name: true,
@@ -167,7 +171,10 @@ describe('RoomsPage action error feedback', () => {
             };
           },
         }),
-        MockProvider(TrnAlertService, { confirm: alertConfirm }),
+        MockProvider(TrnAlertService, {
+          confirm$: alertConfirm,
+          prompt$: alertPrompt,
+        }),
         MockProvider(TimelineActionsService, { sendMedia }),
         MockProvider(MediaPipeline),
         MockProvider(MatrixClientService, {
@@ -186,7 +193,7 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
         MockProvider(JumpToDateService),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
           connect: vi.fn(),
@@ -217,7 +224,7 @@ describe('RoomsPage action error feedback', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -233,7 +240,7 @@ describe('RoomsPage action error feedback', () => {
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('previous setting was restored'),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -250,11 +257,11 @@ describe('RoomsPage action error feedback', () => {
     // the assertion below can only be satisfied by the release that leaving performs.
     (media.releaseAll as Mock).mockClear();
 
-    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
+    shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(alertConfirm).toHaveBeenCalled();
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
-    expect(shell.store.activeRoomId()).toBeNull();
+    await vi.waitFor(() => expect(shell.store.activeRoomId()).toBeNull());
     TestBed.tick(); // run the teardown the now-roomless URL triggers
     // Tear every open-room projection down so none keeps listening on it.
     expect(TestBed.inject(RoomsTimelineStub).close).toHaveBeenCalled();
@@ -268,7 +275,7 @@ describe('RoomsPage action error feedback', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
 
-    await shell.rooms.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
+    shell.rooms.onLeaveRoom({ roomId: '!r:hs', accountId: '@alt:hs' });
 
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', '@alt:hs');
     expect(shell.store.activeRoomId()).toBe('!r:hs');
@@ -282,7 +289,7 @@ describe('RoomsPage action error feedback', () => {
       '!other:hs',
     );
 
-    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
+    shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).toHaveBeenCalledWith('!r:hs', undefined);
     expect(shell.store.activeRoomId()).toBe('!other:hs');
@@ -293,9 +300,9 @@ describe('RoomsPage action error feedback', () => {
 
   it('does not leave a room when the confirmation is cancelled', async () => {
     const shell = build();
-    alertConfirm.mockResolvedValue(false);
+    alertConfirm.mockReturnValue(of(false));
 
-    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
+    shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(leaveRoom).not.toHaveBeenCalled();
   });
@@ -304,11 +311,11 @@ describe('RoomsPage action error feedback', () => {
     const shell = build();
     leaveRoom.mockReturnValue(throwError(() => new Error('nope')));
 
-    await shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
+    shell.rooms.onLeaveRoom({ roomId: '!r:hs' });
 
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ variant: 'destructive' }),
+      expect.objectContaining({ variant: 'danger' }),
     );
   });
 
@@ -337,15 +344,13 @@ describe('RoomsPage action error feedback', () => {
       powerLevel: 0,
       isCreator: false,
     };
-    (TestBed.inject(TrnDialogService).openAndWait as Mock).mockResolvedValue(
-      picked,
-    );
+    dialogOpen.mockReturnValue(of(picked));
 
     shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+    expect(dialogOpen).toHaveBeenCalledWith(
       SpaceMembersComponent,
       expect.objectContaining({
         inputs: expect.objectContaining({ spaceId: '!s:hs' }),
@@ -359,9 +364,7 @@ describe('RoomsPage action error feedback', () => {
     shell.nav.onSelectSpace('!s:hs');
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
-    (TestBed.inject(TrnDialogService).openAndWait as Mock).mockResolvedValue(
-      null,
-    );
+    dialogOpen.mockReturnValue(of(null));
 
     shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
@@ -373,13 +376,10 @@ describe('RoomsPage action error feedback', () => {
     shell.nav.onSelectSpace('!parent:hs');
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!parent:hs')]);
-    alertConfirm.mockResolvedValue(true);
-    const prompt = TestBed.inject(TrnAlertService).prompt as ReturnType<
-      typeof vi.fn
-    >;
-    prompt.mockResolvedValue('Sub');
+    alertConfirm.mockReturnValue(of(true));
+    alertPrompt.mockReturnValue(of('Sub'));
 
-    await shell.spaces.onCreateSubspace();
+    shell.spaces.onCreateSubspace();
 
     expect(createSpace).toHaveBeenCalledWith({ name: 'Sub' });
     // The link is the whole point — a space created and not nested is just a space.
@@ -393,7 +393,7 @@ describe('RoomsPage action error feedback', () => {
     railSpacesSignal.set([railSpace('!parent:hs')]);
     canCurate.mockReturnValue(false);
 
-    await shell.spaces.onCreateSubspace();
+    shell.spaces.onCreateSubspace();
 
     expect(createSpace).not.toHaveBeenCalled();
   });
@@ -406,7 +406,7 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onAddToSpace();
 
-    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+    expect(dialogOpen).toHaveBeenCalledWith(
       AddToSpaceComponent,
       expect.objectContaining({
         inputs: expect.objectContaining({ spaceId: '!s:hs' }),
@@ -422,7 +422,7 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onManageSpaceRooms();
 
-    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
+    expect(dialogOpen).toHaveBeenCalledWith(
       ManageSpaceRoomsComponent,
       expect.objectContaining({
         inputs: expect.objectContaining({ spaceId: '!s:hs' }),
@@ -441,7 +441,7 @@ describe('RoomsPage action error feedback', () => {
     shell.spaces.onAddToSpace();
     shell.spaces.onManageSpaceRooms();
 
-    expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalled();
   });
 
   it('refuses to curate another account’s space', async () => {
@@ -499,24 +499,21 @@ describe('RoomsPage action error feedback', () => {
     expect(currentIdentity).toHaveBeenCalledWith('!s:hs');
     expect(editableFields).toHaveBeenCalledWith('!s:hs');
     expect(currentAccess).toHaveBeenCalledWith('!s:hs');
-    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
-      SpaceSettingsComponent,
-      {
-        ariaLabel: 'Space settings',
-        inputs: expect.objectContaining({
-          spaceId: '!s:hs',
-          name: 'Design',
-          topic: 'Where design happens',
-          avatarMxc: 'mxc://a/b',
-          joinRule: 'public',
-          canEditName: true,
-          canEditTopic: true,
-          canEditAvatar: false,
-          canEditJoinRule: true,
-          canManageAliases: false,
-        }),
-      },
-    );
+    expect(dialogOpen).toHaveBeenCalledWith(SpaceSettingsComponent, {
+      ariaLabel: 'Space settings',
+      inputs: expect.objectContaining({
+        spaceId: '!s:hs',
+        name: 'Design',
+        topic: 'Where design happens',
+        avatarMxc: 'mxc://a/b',
+        joinRule: 'public',
+        canEditName: true,
+        canEditTopic: true,
+        canEditAvatar: false,
+        canEditJoinRule: true,
+        canManageAliases: false,
+      }),
+    });
   });
 
   it('offers no history visibility to the space dialog', async () => {
@@ -529,8 +526,7 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onOpenSpaceSettings();
 
-    const [, options] = (TestBed.inject(TrnDialogService).openAndWait as Mock)
-      .mock.calls[0];
+    const [, options] = dialogOpen.mock.calls[0];
     expect(options.inputs).not.toHaveProperty('historyVisibility');
     expect(options.inputs).not.toHaveProperty('canEditHistory');
   });
@@ -542,7 +538,7 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onOpenSpaceSettings();
 
-    expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalled();
   });
 
   it('refuses to configure another account’s space', async () => {
@@ -557,7 +553,7 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onOpenSpaceSettings();
 
-    expect(TestBed.inject(TrnDialogService).openAndWait).not.toHaveBeenCalled();
+    expect(dialogOpen).not.toHaveBeenCalled();
     expect(currentIdentity).not.toHaveBeenCalled();
   });
 
@@ -629,16 +625,13 @@ describe('RoomsPage action error feedback', () => {
     shell.rooms.onOpenRoomSettings();
 
     // The label names the space, so the id alone is not enough to pass through.
-    expect(TestBed.inject(TrnDialogService).openAndWait).toHaveBeenCalledWith(
-      RoomSettingsComponent,
-      {
-        ariaLabel: 'Room settings',
-        inputs: expect.objectContaining({
-          parentSpaces: [{ id: '!s:hs', name: 'Design' }],
-          supportsRestricted: true,
-          allowedSpaceIds: ['!kept:hs'],
-        }),
-      },
-    );
+    expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
+      ariaLabel: 'Room settings',
+      inputs: expect.objectContaining({
+        parentSpaces: [{ id: '!s:hs', name: 'Design' }],
+        supportsRestricted: true,
+        allowedSpaceIds: ['!kept:hs'],
+      }),
+    });
   });
 });

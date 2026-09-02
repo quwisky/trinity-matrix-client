@@ -27,7 +27,7 @@
          asserts the two edges meet at every text size. -->
     <!-- The rule below only sees that 352px equals w-88's 22rem at the default root size;
          the paragraph above is why the two are not interchangeable here. -->
-    <aside #listView tabindex="-1" class="shell-side w-full">
+    <aside #listView tabindex="-1" class="shell-side">
       <trn-server-rail
         class="shell-side__rail"
         [spaces]="vm.railSpaces()"
@@ -119,19 +119,20 @@
     />
 
     <div #mainView tabindex="-1" class="main">
-      <trn-page-header variant="chat">
+      <trn-page-header variant="neutral" layout="toolbar">
         <button
           trnHeaderLeading
           trnBtn
-          variant="ghost"
-          size="icon"
+          presentation="ghost"
+          size="md"
+          shape="icon"
           class="md:hidden"
           (click)="backToList()"
           trnTooltip="Back to rooms"
           aria-label="Back to rooms"
           data-testid="back-to-rooms"
         >
-          <trn-icon size="1.25rem" name="arrow-left" motion="nudge-left" />
+          <trn-icon size="lg" name="arrow-left" motion="nudge-left" />
         </button>
 
         <!-- Projected into the shell's single <h1>: inline spans + icon only, no
@@ -160,7 +161,7 @@
                   [accountId]="vm.userId()"
                   [initial]="vm.userInitial()"
                   [name]="vm.userName()"
-                  [size]="18"
+                  [exactSize]="18"
                 />
                 <span class="title-account__name">{{ vm.userName() }}</span>
               </span>
@@ -174,19 +175,21 @@
           @if (vm.activeRoom()) {
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               (click)="messageActions.openMessageSearch()"
               trnTooltip="Search messages in this room"
               aria-label="Search messages in this room"
               data-testid="search-messages"
             >
-              <trn-icon size="1.25rem" name="search" motion="pop" />
+              <trn-icon size="lg" name="search" motion="pop" />
             </button>
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               class="max-md:hidden"
               (click)="roomActions.onInviteToRoom()"
               [trnActionAllowed]="vm.roomInvitePermission().available"
@@ -195,46 +198,45 @@
               aria-label="Invite people"
               data-testid="invite-people"
             >
-              <trn-icon
-                size="1.25rem"
-                name="user-plus"
-                motion="nudge-up-right"
-              />
+              <trn-icon size="lg" name="user-plus" motion="nudge-up-right" />
             </button>
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               class="max-md:hidden"
               (click)="roomActions.onOpenRoomSettings()"
               trnTooltip="Room settings"
               aria-label="Room settings"
               data-testid="open-room-settings"
             >
-              <trn-icon size="1.25rem" name="settings" motion="rotate" />
+              <trn-icon size="lg" name="settings" motion="rotate" />
             </button>
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               (click)="messageActions.openThreadsList()"
               trnTooltip="Threads"
               aria-label="Threads"
               data-testid="open-threads"
             >
-              <trn-icon size="1.25rem" name="messages-square" motion="pop" />
+              <trn-icon size="lg" name="messages-square" motion="pop" />
             </button>
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               class="header-pin max-md:hidden"
               (click)="messageActions.openPinnedPanel()"
               trnTooltip="Pinned messages"
               aria-label="Pinned messages"
               data-testid="open-pinned"
             >
-              <trn-icon size="1.25rem" name="pin" motion="nudge-up" />
+              <trn-icon size="lg" name="pin" motion="nudge-up" />
               @if (pinned.messages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.messages().length
@@ -243,8 +245,9 @@
             </button>
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               class="max-md:hidden"
               (click)="toggleMembers()"
               [attr.aria-pressed]="store.membersOpen()"
@@ -252,7 +255,7 @@
               aria-label="Members"
               data-testid="toggle-members"
             >
-              <trn-icon size="1.25rem" name="users" motion="pop" />
+              <trn-icon size="lg" name="users" motion="pop" />
             </button>
 
             <!-- Present at EVERY breakpoint. Below md it also absorbs the demoted header
@@ -262,15 +265,16 @@
                already carries six. -->
             <button
               trnBtn
-              variant="ghost"
-              size="icon"
+              presentation="ghost"
+              size="md"
+              shape="icon"
               class="header-pin"
               [trnDropdownMenuTrigger]="roomActionsMenu"
               align="end"
               aria-label="More actions"
               data-testid="room-actions-overflow"
             >
-              <trn-icon size="1.25rem" name="ellipsis-vertical" motion="pop" />
+              <trn-icon size="lg" name="ellipsis-vertical" motion="pop" />
               @if (pinned.messages().length > 0) {
                 <span class="header-pin__badge" aria-hidden="true">{{
                   pinned.messages().length
@@ -557,7 +561,7 @@
                room is active). -->
           <div class="flex flex-1 items-center justify-center p-6">
             <trn-empty-state
-              size="hero"
+              layout="hero"
               titleAs="h2"
               badge="#"
               [title]="vm.syncLabel()"

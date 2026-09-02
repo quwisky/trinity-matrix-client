@@ -246,7 +246,7 @@ describe('MessageActionsService', () => {
 
         expect(toastShow).toHaveBeenCalledWith(
           message,
-          expect.objectContaining({ variant: 'destructive' }),
+          expect.objectContaining({ variant: 'danger' }),
         );
       });
 
@@ -274,7 +274,7 @@ describe('MessageActionsService', () => {
 
       expect(toastShow).toHaveBeenCalledWith(
         'Could not delete the message.',
-        expect.objectContaining({ variant: 'destructive' }),
+        expect.objectContaining({ variant: 'danger' }),
       );
     });
   });

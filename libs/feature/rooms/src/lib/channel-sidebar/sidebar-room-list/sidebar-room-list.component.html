@@ -9,7 +9,7 @@
         [accountBadge]="badgeFor(invite.accountId)"
         [initial]="invite.initial"
         [name]="invite.name"
-        [size]="32"
+        size="lg"
         [shape]="invite.isDirect ? 'person' : 'place'"
       />
       <div class="invite__text">
@@ -94,7 +94,7 @@
      nothing matched above a visible result would be a plain contradiction. -->
 @if (filterActive() ? !rooms().length && !invites().length : !rooms().length) {
   <trn-empty-state
-    size="line"
+    layout="line"
     [body]="
       filterActive() ? 'No rooms match your filter.' : 'No channels here yet.'
     "
@@ -116,7 +116,7 @@
         [accountId]="room.accountId"
         [initial]="room.initial"
         [name]="room.name"
-        [size]="36"
+        [exactSize]="36"
         [shape]="room.directUserId ? 'person' : 'place'"
         [presence]="presenceOf(room)"
         [accountBadge]="badgeFor(room.accountId)"
@@ -136,7 +136,7 @@
         <trn-icon
           class="channel__muted"
           name="bell-off"
-          size="0.875rem"
+          size="xs"
           [label]="
             mode === 'mentions'
               ? 'Room muted; mentions and keywords still notify'
@@ -239,7 +239,7 @@
       @if (spaceActive()) {
         <button
           trnDropdownMenuItem
-          variant="destructive"
+          variant="danger"
           (triggered)="removeRoom.emit(room.id)"
           [trnActionAllowed]="canCurateSpace()"
           [trnActionDisabledReason]="curateSpaceReason()"
@@ -252,7 +252,7 @@
       }
       <button
         trnDropdownMenuItem
-        variant="destructive"
+        variant="danger"
         (triggered)="
           leaveRoom.emit({ roomId: room.id, accountId: room.accountId })
         "
