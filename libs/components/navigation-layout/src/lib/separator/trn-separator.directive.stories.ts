@@ -20,8 +20,8 @@ const meta: Meta<TrnSeparatorDirective> = {
     docs: {
       description: {
         component:
-          'A horizontal or vertical rule. `decorative` (default true) decides whether it ' +
-          'is announced as a separator or hidden from the accessibility tree.',
+          'A neutral or accent horizontal/vertical rule. `decorative` (default true) decides ' +
+          'whether it is announced as a separator or hidden from the accessibility tree.',
       },
     },
   },
@@ -52,6 +52,17 @@ export const Vertical: Story = {
         <span>Code</span>
         <div trnSeparator orientation="vertical" [decorative]="false"></div>
         <span>Link</span>
+      </div>`,
+  }),
+};
+
+/** Neutral grouping and accent attention treatments use the same geometry. */
+export const SemanticTreatments: Story = {
+  render: () => ({
+    template: `
+      <div class="grid w-80 gap-4">
+        <div trnSeparator data-testid="separator-neutral" variant="neutral"></div>
+        <div trnSeparator data-testid="separator-accent" variant="accent"></div>
       </div>`,
   }),
 };

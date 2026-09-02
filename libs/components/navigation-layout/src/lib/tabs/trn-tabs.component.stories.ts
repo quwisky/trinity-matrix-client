@@ -7,8 +7,8 @@ import { TrnTabsComponent } from './trn-tabs.component';
  * wrapper. Worth putting the keyboard on: arrow keys move between triggers and select as they
  * go, Home and End jump to the ends, and a disabled tab is stepped over rather than focused.
  *
- * `Line` is the variant the settings dialogs use — a row of underlined triggers reads as
- * section navigation, where the filled `Default` reads as a control.
+ * Line presentation reads as section navigation, while pills read as a control. Neutral and
+ * accent treatment stay independent from that structural choice.
  */
 const meta: Meta<TrnTabsComponent> = {
   title: 'Components/Tabs',
@@ -66,6 +66,36 @@ export const Line: Story = {
   render: (args) => ({
     props: args,
     template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant">${body}</trn-tabs>`,
+  }),
+};
+
+export const NeutralPill: Story = {
+  args: { tabs: TABS, variant: 'neutral', presentation: 'pill' },
+  render: (args) => ({
+    props: args,
+    template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant" [presentation]="presentation">${body}</trn-tabs>`,
+  }),
+};
+
+export const AccentLine: Story = {
+  args: { tabs: TABS, variant: 'accent', presentation: 'line' },
+  render: (args) => ({
+    props: args,
+    template: `<trn-tabs tab="general" [tabs]="tabs" [variant]="variant" [presentation]="presentation">${body}</trn-tabs>`,
+  }),
+};
+
+/** Legacy variants beside the canonical recipes they normalize to. */
+export const CompatibilityAliases: Story = {
+  render: () => ({
+    props: { tabs: TABS },
+    template: `
+      <div class="grid gap-5">
+        <trn-tabs data-testid="tabs-canonical-pill" tab="general" [tabs]="tabs" variant="neutral" presentation="pill">${body}</trn-tabs>
+        <trn-tabs data-testid="tabs-legacy-pill" tab="general" [tabs]="tabs" variant="default">${body}</trn-tabs>
+        <trn-tabs data-testid="tabs-canonical-line" tab="general" [tabs]="tabs" variant="neutral" presentation="line">${body}</trn-tabs>
+        <trn-tabs data-testid="tabs-legacy-line" tab="general" [tabs]="tabs" variant="line">${body}</trn-tabs>
+      </div>`,
   }),
 };
 

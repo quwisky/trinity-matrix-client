@@ -1,11 +1,18 @@
-import { Directive } from '@angular/core';
+import { Directive, input } from '@angular/core';
 import {
-  HlmCard,
   HlmCardContent,
   HlmCardDescription,
   HlmCardHeader,
   HlmCardTitle,
 } from '@trinity/helm/card';
+import { classes } from '@trinity/helm/utils';
+import {
+  trnCardRecipe,
+  type TrnCardSize,
+  type TrnCardVariant,
+} from './trn-card-recipe';
+
+export type { TrnCardSize, TrnCardVariant } from './trn-card-recipe';
 
 /**
  * Trinity's card, as five attribute directives.
@@ -17,19 +24,30 @@ import {
  * layout depends on the parent/child relationship (`has-data-[slot=card-footer]` and friends),
  * which attributes preserve exactly.
  *
- * Each composes the kit directive through `hostDirectives`, so no class list is duplicated
- * and a swap is a change to these five entries.
+ * The root owns its bounded semantic surface and size recipe. The structural slots still
+ * compose the kit directives because their private grid/spacing relationship is useful and
+ * does not cross the public API.
  *
  * `trnCardFooter` and `trnCardAction` exist in the kit and are not wrapped: nothing uses
- * them. `HlmCard`'s `size` input is not forwarded for the same reason. Both are one line to
- * add when something needs them, and until then they are surface nobody has to maintain or
- * reimplement.
+ * them. Both are one line to add when something needs them, and until then they are surface
+ * nobody has to maintain or reimplement.
  */
 @Directive({
   selector: '[trnCard]',
-  hostDirectives: [{ directive: HlmCard, inputs: [], outputs: [] }],
+  host: {
+    'data-slot': 'card',
+    '[attr.data-size]': 'size()',
+    '[attr.data-variant]': 'variant()',
+  },
 })
-export class TrnCard {}
+export class TrnCard {
+  readonly variant = input<TrnCardVariant>('neutral');
+  readonly size = input<TrnCardSize>('md');
+
+  constructor() {
+    classes(() => trnCardRecipe(this.variant(), this.size()));
+  }
+}
 
 @Directive({
   selector: '[trnCardHeader]',

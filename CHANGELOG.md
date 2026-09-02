@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- **Navigation and layout primitives now separate meaning from structure.** Tabs expose neutral or
+  accent treatment independently from pill or line presentation; page headers expose the same
+  semantic treatments independently from page or toolbar layout; cards offer only neutral/muted
+  surfaces and compact/default spacing; and separators offer neutral/accent lines while retaining
+  native orientation and accessibility behavior. Existing tab `default|line` and header
+  `page|chat` inputs remain visually equivalent while consumers migrate.
+
 - **Fields and rich controls now use bounded Trinity recipes.** Labels separate normal or strong
   emphasis from validation; native inputs and textareas expose `sm`–`lg` sizes; selects own their
   full-width trigger and expose only `sm` or `md`; and emoji sizing no longer leaks vendor pixels.

@@ -1,5 +1,22 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+} from '@angular/core';
 import { HlmTabs, HlmTabsList, HlmTabsTrigger } from '@trinity/helm/tabs';
+import {
+  normalizeTrnTabsPresentation,
+  normalizeTrnTabsVariant,
+  type TrnTabsPresentation,
+  type TrnTabsVariantInput,
+} from './trn-tabs-recipe';
+
+export type {
+  TrnTabsPresentation,
+  TrnTabsVariant,
+  TrnTabsVariantInput,
+} from './trn-tabs-recipe';
 
 /** One tab in a {@link TrnTabsComponent}: the trigger, and the panel it reveals. */
 export interface TrnTabOption {
@@ -50,6 +67,10 @@ export interface TrnTabOption {
  * which reaches up past a projection boundary. {@link TrnTabPanelComponent} therefore stays
  * a projected element, and panel content stays where it is written.
  *
+ * Semantic treatment (`variant`) and structure (`presentation`) are independent.
+ * The former `default` and `line` variant values remain temporary compatibility
+ * inputs and normalize to neutral pill and neutral line recipes respectively.
+ *
  * `tab` (the initially active one) is listed below and keeps its name for the same
  * one-level rule. `orientation`, `activationMode` and `(tabActivated)` are not listed and are
  * not lost — `HlmTabs` already publishes them onto this host element, so a call site binds
@@ -61,12 +82,17 @@ export interface TrnTabOption {
   imports: [HlmTabsList, HlmTabsTrigger],
   hostDirectives: [{ directive: HlmTabs, inputs: ['tab'], outputs: [] }],
   template: `
-    <hlm-tabs-list [variant]="variant()">
+    <hlm-tabs-list
+      [variant]="resolvedPresentation() === 'pill' ? 'default' : 'line'"
+      [attr.data-trn-variant]="resolvedVariant()"
+      [attr.data-trn-presentation]="resolvedPresentation()"
+    >
       @for (tab of tabs(); track tab.value) {
         <button
           [hlmTabsTrigger]="tab.value"
           [disabled]="tab.disabled ?? false"
           [attr.data-testid]="tab.testId"
+          [class]="triggerToneClass()"
         >
           {{ tab.label }}
         </button>
@@ -78,6 +104,23 @@ export interface TrnTabOption {
 export class TrnTabsComponent {
   readonly tabs = input.required<readonly TrnTabOption[]>();
 
-  /** `'default'` is the filled pill row; `'line'` underlines the active tab instead. */
-  readonly variant = input<'default' | 'line'>('default');
+  /** Semantic treatment. `default|line` remain temporary structural aliases. */
+  readonly variant = input<TrnTabsVariantInput>('neutral');
+
+  /** Filled pills or a line-marked navigation row. */
+  readonly presentation = input<TrnTabsPresentation>('pill');
+
+  protected readonly resolvedVariant = computed(() =>
+    normalizeTrnTabsVariant(this.variant()),
+  );
+
+  protected readonly resolvedPresentation = computed(() =>
+    normalizeTrnTabsPresentation(this.variant(), this.presentation()),
+  );
+
+  protected readonly triggerToneClass = computed(() =>
+    this.resolvedVariant() === 'accent'
+      ? 'data-active:bg-[var(--trinity-state-attention-surface)] data-active:text-[var(--trinity-state-attention-foreground)] group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-[variant=line]/tabs-list:data-active:text-[var(--trinity-link)] group-data-[variant=line]/tabs-list:data-active:after:bg-[var(--trinity-state-attention-surface)]'
+      : '',
+  );
 }

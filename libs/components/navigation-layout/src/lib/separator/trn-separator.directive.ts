@@ -1,19 +1,21 @@
-import { Directive } from '@angular/core';
-import { HlmSeparator } from '@trinity/helm/separator';
+import { Directive, input } from '@angular/core';
+import { BrnSeparator } from '@spartan-ng/brain/separator';
+import { classes } from '@trinity/helm/utils';
+import {
+  trnSeparatorRecipe,
+  type TrnSeparatorVariant,
+} from './trn-separator-recipe';
+
+export type { TrnSeparatorVariant } from './trn-separator-recipe';
 
 /**
  * A rule between groups of controls.
  *
  * A directive rather than an element, because the thing it separates is usually a flex or
- * grid child and an extra wrapper would land in that layout. Composed by `hostDirectives`,
- * which is available here precisely because the kit ships a directive rather than a
- * component — the checkbox wrapper next door has to compose by template for want of that.
+ * grid child and an extra wrapper would land in that layout. Brain remains the behavior and
+ * accessibility substrate while the public directive owns its neutral/accent line recipe.
  *
  * Nothing is listed for re-publication, and `orientation`/`decorative` are still bindable on
- * the host: Angular re-publishes a host directive's inputs one level only, so naming them
- * here throws NG0311 — HlmSeparator does not declare them, it publishes them from BrnSeparator
- * onto this same element, which is exactly where a call site binds them.
- *
  * `decorative` is the interesting one, and its default is upstream's: `true`, so a rule is
  * silent unless asked otherwise and `role` reads `none`. That is right for the common case —
  * most rules are drawn to look like something, not to say something — and it means a caller
@@ -23,6 +25,22 @@ import { HlmSeparator } from '@trinity/helm/separator';
  */
 @Directive({
   selector: '[trnSeparator]',
-  hostDirectives: [{ directive: HlmSeparator, inputs: [], outputs: [] }],
+  hostDirectives: [
+    {
+      directive: BrnSeparator,
+      inputs: ['orientation', 'decorative'],
+      outputs: [],
+    },
+  ],
+  host: {
+    'data-slot': 'separator',
+    '[attr.data-variant]': 'variant()',
+  },
 })
-export class TrnSeparatorDirective {}
+export class TrnSeparatorDirective {
+  readonly variant = input<TrnSeparatorVariant>('neutral');
+
+  constructor() {
+    classes(() => trnSeparatorRecipe(this.variant()));
+  }
+}

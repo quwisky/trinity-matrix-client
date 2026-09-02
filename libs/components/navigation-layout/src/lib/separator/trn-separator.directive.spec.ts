@@ -1,7 +1,11 @@
 import { Component } from '@angular/core';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
-import { TrnSeparatorDirective } from './trn-separator.directive';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import {
+  TrnSeparatorDirective,
+  type TrnSeparatorVariant,
+} from './trn-separator.directive';
+import { trnSeparatorRecipe } from './trn-separator-recipe';
 
 @Component({
   imports: [TrnSeparatorDirective],
@@ -10,6 +14,7 @@ import { TrnSeparatorDirective } from './trn-separator.directive';
       trnSeparator
       data-t="announced"
       orientation="vertical"
+      variant="accent"
       [decorative]="false"
     ></div>
     <div trnSeparator data-t="default"></div>
@@ -18,6 +23,16 @@ import { TrnSeparatorDirective } from './trn-separator.directive';
 class HostComponent {}
 
 describe('TrnSeparatorDirective', () => {
+  it('limits appearance to neutral and accent treatments', () => {
+    expectTypeOf<TrnSeparatorVariant>().toEqualTypeOf<'neutral' | 'accent'>();
+    expect(trnSeparatorRecipe('neutral')).toContain(
+      'bg-[var(--trinity-border-control)]',
+    );
+    expect(trnSeparatorRecipe('accent')).toContain(
+      'bg-[var(--trinity-state-attention-surface)]',
+    );
+  });
+
   it('announces itself when the caller says it means something', async () => {
     // The bindings reach BrnSeparator through TWO layers of hostDirectives, which is the
     // thing worth pinning here: neither is re-published by name, so a wrong list would leave
@@ -27,6 +42,7 @@ describe('TrnSeparatorDirective', () => {
     const rule = container.querySelector('[data-t="announced"]')!;
     expect(rule.getAttribute('role')).toBe('separator');
     expect(rule.getAttribute('data-orientation')).toBe('vertical');
+    expect(rule.getAttribute('data-variant')).toBe('accent');
   });
 
   it('is decoration by default, as upstream has it', async () => {

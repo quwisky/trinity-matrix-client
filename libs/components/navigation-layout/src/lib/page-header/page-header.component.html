@@ -1,4 +1,8 @@
-<header [class]="headerClass()">
+<header
+  [class]="headerClass()"
+  [attr.data-trn-layout]="resolvedLayout()"
+  [attr.data-trn-variant]="resolvedVariant()"
+>
   <ng-content select="[trnHeaderLeading]" />
   <!-- The single, always-rendered page heading. Body is a plain string
            (title input) or fully projected (e.g. the rooms room-name title). -->
