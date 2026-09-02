@@ -31,6 +31,10 @@ const source = readFileSync(
 )
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^\s*\/\/[^\n]*$/gm, '');
+const catalogSource = readFileSync(
+  join(workspaceRoot, 'libs/theme-foundation/src/lib/theme-catalog.ts'),
+  'utf8',
+);
 
 /** WCAG AA for body text. Large text may use 3:1; nothing here is guaranteed large. */
 const AA = 4.5;
@@ -260,6 +264,15 @@ const themes = [
   ),
 ];
 
+function catalogRoles(name) {
+  const body = new RegExp(
+    `const ${name} = Object\\.freeze\\(\\[([\\s\\S]*?)\\] as const\\);`,
+    'u',
+  ).exec(catalogSource)?.[1];
+  if (!body) throw new Error(`Missing ${name} in Theme catalog`);
+  return [...body.matchAll(/'(--[^']+)'/gu)].map((match) => match[1]);
+}
+
 /**
  * Resolve a token for one theme x mode, honouring the cascade the selectors encode:
  * defaults first, then dark, then the theme's block for that mode.
@@ -299,11 +312,10 @@ function resolve(token, theme, mode, seen = new Set()) {
 /**
  * An opaque CSS colour -> [r, g, b], or null if this parser cannot measure it safely.
  *
- * OKLCH, HSL, RGB and hex are all handled. Redesigned Themes author OKLCH while Themes still
- * waiting for their migration keep legacy notation; silently dropping either family would make
- * the matrix report a false clean run. What cannot be parsed is asserted below rather than
- * filtered away. Alpha is fail-closed too: discarding it would let transparent text or surfaces
- * report the contrast of their invisible RGB channels.
+ * OKLCH, HSL, RGB and hex are all handled so a parser regression cannot silently drop a measured
+ * role. Every Theme now authors colours in OKLCH, and the contract below rejects legacy notation.
+ * What cannot be parsed is asserted rather than filtered away. Alpha is fail-closed too:
+ * discarding it would let transparent text or surfaces report the contrast of invisible channels.
  */
 function toRgb(value) {
   if (!value) return null;
@@ -514,24 +526,43 @@ describe('contrast matrix', () => {
     expect(runtimeMixes).toEqual([]);
   });
 
-  it('keeps every redesigned Theme colour in explicit sRGB-safe OKLCH', () => {
-    const redesignedThemeBlocks = blocks.filter(({ selector }) =>
-      [
-        ':root',
-        ':root.dark',
-        ":root[data-theme='amethyst']:not(.dark)",
-        ":root[data-theme='amethyst'].dark",
-      ].includes(selector),
+  it('keeps every Theme colour in explicit sRGB-safe OKLCH', () => {
+    const themeSelectors = new Set([
+      ':root',
+      ':root.dark',
+      ...themes.flatMap((theme) =>
+        theme === 'trinity'
+          ? []
+          : [
+              `:root[data-theme='${theme}']:not(.dark)`,
+              `:root[data-theme='${theme}'].dark`,
+            ],
+      ),
+    ]);
+    const governedRoles = new Set([
+      ...catalogRoles('colorRoles'),
+      ...catalogRoles('elevationRoles'),
+    ]);
+    const themeBlocks = blocks.filter(({ selector }) =>
+      themeSelectors.has(selector),
     );
-    const legacy = [];
+    const invalidNotation = [];
     const outOfGamut = [];
     let authoredColours = 0;
-    for (const { selector, tokens } of redesignedThemeBlocks) {
+    for (const { selector, tokens } of themeBlocks) {
       for (const [token, value] of tokens) {
-        if (/#|(?:rgb|hsl|color-mix)\s*\(|\btransparent\b/iu.test(value)) {
-          legacy.push(`${selector}: ${token} = ${value}`);
+        if (!governedRoles.has(token) || /^var\([^)]*\)$/u.test(value)) {
+          continue;
         }
-        for (const match of value.matchAll(/oklch\([^)]*\)/giu)) {
+        const colours = [...value.matchAll(/oklch\([^)]*\)/giu)];
+        const residue = value
+          .replaceAll(/oklch\([^)]*\)/giu, '')
+          .replaceAll(/(?:[-+]?\d*\.?\d+(?:px|rem|em|%)?|inset|[,/])/giu, '')
+          .replaceAll(/\s/gu, '');
+        if (colours.length === 0 || residue !== '') {
+          invalidNotation.push(`${selector}: ${token} = ${value}`);
+        }
+        for (const match of colours) {
           authoredColours += 1;
           const colour = parseOklch(match[0]);
           if (!colour?.inSrgb) {
@@ -541,8 +572,8 @@ describe('contrast matrix', () => {
       }
     }
 
-    expect(authoredColours).toBeGreaterThan(90);
-    expect(legacy).toEqual([]);
+    expect(authoredColours).toBeGreaterThan(120);
+    expect(invalidNotation).toEqual([]);
     expect(outOfGamut).toEqual([]);
   });
 
