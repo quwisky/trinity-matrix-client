@@ -5,7 +5,7 @@ import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncryptionUnlockPage } from './encryption-unlock.page';
 
@@ -42,11 +42,11 @@ async function renderPage(options: RenderOptions = {}) {
     managementFails = false,
     confirmClose = true,
   } = options;
-  // The type-to-confirm gate and the password prompt both go through prompt(); the
+  // The type-to-confirm gate and the password prompt both go through prompt$(); the
   // first call is the gate, any later one is the password.
   const prompt = vi.fn();
-  prompt.mockResolvedValueOnce(typed ?? null).mockResolvedValue('pw');
-  const confirm = vi.fn().mockResolvedValue(confirmClose);
+  prompt.mockReturnValueOnce(of(typed ?? null)).mockReturnValue(of('pw'));
+  const confirm = vi.fn(() => of(confirmClose));
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
@@ -63,7 +63,7 @@ async function renderPage(options: RenderOptions = {}) {
         },
       } as never),
       MockProvider(TrnDialogRef),
-      MockProvider(TrnAlertService, { prompt, confirm }),
+      MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
       MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
     ],
   });
@@ -190,12 +190,17 @@ describe('EncryptionUnlockPage', () => {
   });
 
   it('renders a Close control only in modal mode', async () => {
-    const { fixture } = await renderPage();
+    const { fixture, container } = await renderPage();
     expect(closeButton()).toBeNull();
 
     fixture.componentRef.setInput('asModal', true);
     fixture.detectChanges();
     expect(closeButton()).not.toBeNull();
+
+    const surface = container.querySelector('.crypto-modal');
+    expect(surface).toHaveAttribute('data-trn-layout', 'dialog');
+    expect(surface).toHaveAttribute('data-trn-size', 'md');
+    expect(surface).toHaveAttribute('data-trn-variant', 'neutral');
   });
 
   describe('losing the recovery key', () => {
@@ -235,7 +240,7 @@ describe('EncryptionUnlockPage', () => {
       expect(message).toContain('backup on the server is deleted');
       expect(message).toContain('lose their verified status');
       expect(message).toContain('new recovery key');
-      expect(prompt.mock.calls[0][0].destructive).toBe(true);
+      expect(prompt.mock.calls[0][0].variant).toBe('danger');
     });
 
     it('shows the new key once, and only releases Done once it is saved', async () => {
@@ -457,19 +462,19 @@ describe('EncryptionUnlockPage', () => {
     it('stays put if the question itself cannot be asked', async () => {
       // Failing towards staying loses nothing that cannot be retried; failing towards
       // leaving loses a key that is shown once.
-      const { fixture } = await renderPage({
+      const { fixture, confirm } = await renderPage({
         asModal: true,
         typed: 'RESET',
         reset: of('EsTBrandNew'),
       });
       await fixture.componentInstance.resetRecovery();
-      vi.mocked(TestBed.inject(TrnAlertService).confirm).mockRejectedValue(
-        new Error('no overlay container'),
+      confirm.mockReturnValue(
+        throwError(() => new Error('no overlay container')),
       );
 
-      await expect(fixture.componentInstance.confirmLeave()).resolves.toBe(
-        false,
-      );
+      await expect(
+        firstValueFrom(fixture.componentInstance.confirmLeave()),
+      ).resolves.toBe(false);
     });
 
     it('closes without asking when there is nothing to lose', async () => {

@@ -20,37 +20,6 @@
   margin-bottom: var(--trinity-space-5);
 }
 
-@mixin label {
-  display: block;
-  margin-bottom: var(--trinity-space-3);
-  color: var(--trinity-text-muted);
-  font-size: var(--trinity-type-caption-size);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-@mixin input {
-  width: 100%;
-  min-height: 40px;
-  border-color: transparent;
-  background: var(--trinity-state-hover-surface);
-  color: var(--trinity-text-bright);
-  transition:
-    background var(--trinity-duration-fast) var(--trinity-ease-standard),
-    border-color var(--trinity-duration-fast) var(--trinity-ease-standard);
-
-  &:hover:not(:disabled) {
-    background: var(--trinity-state-pressed-surface);
-  }
-}
-
-@mixin primary-action {
-  display: flex;
-  min-height: 40px;
-  margin-top: var(--trinity-space-6);
-}
-
 @mixin busy {
   padding-top: var(--trinity-space-5);
 }

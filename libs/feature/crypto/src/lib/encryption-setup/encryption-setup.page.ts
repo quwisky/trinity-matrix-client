@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { Observable } from 'rxjs';
+import { firstValueFrom, type Observable } from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
@@ -92,7 +92,7 @@ export class EncryptionSetupPage {
    * asking anyone — on the path every new account takes. Same fail-towards-staying
    * semantics as the unlock page's guard.
    */
-  confirmLeave(): Promise<boolean> {
+  confirmLeave(): Observable<boolean> {
     return confirmLeaving(this.alert, this.leaveWouldDiscard());
   }
 
@@ -102,13 +102,15 @@ export class EncryptionSetupPage {
    * a fresh password alert. Resolving `null` cancels the whole setup.
    */
   private readonly promptPassword: PasswordPrompt = () =>
-    this.alert.prompt({
-      header: 'Confirm your password',
-      message: 'Your homeserver needs your password to set up encryption.',
-      placeholder: 'Password',
-      confirmText: 'Confirm',
-      inputType: 'password',
-    });
+    firstValueFrom(
+      this.alert.prompt$({
+        header: 'Confirm your password',
+        message: 'Your homeserver needs your password to set up encryption.',
+        placeholder: 'Password',
+        confirmText: 'Confirm',
+        inputType: 'password',
+      }),
+    );
 
   /** Wrap a one-shot action with shared busy/error handling. */
   private withBusy<T>(source: Observable<T>): Observable<T> {

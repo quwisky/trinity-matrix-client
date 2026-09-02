@@ -34,8 +34,9 @@
     </button>
     <button
       trnBtn
-      class="w-full text-danger hover:text-danger"
-      variant="outline"
+      variant="danger"
+      presentation="outline"
+      class="w-full"
       data-testid="sas-mismatch"
       [disabled]="busy()"
       (click)="mismatch.emit()"
@@ -46,7 +47,7 @@
   <button
     trnBtn
     class="w-full"
-    variant="ghost"
+    presentation="ghost"
     [disabled]="busy()"
     (click)="cancelled.emit()"
   >

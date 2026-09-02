@@ -1,4 +1,5 @@
 import type { TrnAlertService } from '@trinity/components/overlay';
+import { catchError, of, type Observable } from 'rxjs';
 
 /**
  * Why leaving right now would cost something.
@@ -40,21 +41,19 @@ const QUESTIONS: Record<LeaveRisk, { header: string; message: string }> = {
  * Fails towards staying: if the confirmation itself cannot be shown there is nothing to
  * read, and refusing to leave loses nothing that cannot be retried.
  */
-export async function confirmLeaving(
+export function confirmLeaving(
   alert: TrnAlertService,
   risk: LeaveRisk | null,
-): Promise<boolean> {
+): Observable<boolean> {
   if (!risk) {
-    return true;
+    return of(true);
   }
-  try {
-    return await alert.confirm({
+  return alert
+    .confirm$({
       ...QUESTIONS[risk],
       confirmText: 'Leave anyway',
       cancelText: 'Stay',
-      destructive: true,
-    });
-  } catch {
-    return false;
-  }
+      variant: 'danger',
+    })
+    .pipe(catchError(() => of(false)));
 }

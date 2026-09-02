@@ -9,10 +9,6 @@
  */
 export const UNLAYERED_RULESET_LEDGER = [
   [
-    'libs/application/runtime/src/lib/application-root/application-root.component.scss',
-    '0a8cd372c66e7089501af9feff715e724b64235ee25e314b1ec1c71fe4f9fa93',
-  ],
-  [
     'libs/components/controls/src/lib/checkbox/trn-checkbox.component.ts#inline-styles',
     'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
   ],
@@ -23,42 +19,6 @@ export const UNLAYERED_RULESET_LEDGER = [
   [
     'libs/components/controls/src/lib/switch/trn-switch.component.ts#inline-styles',
     'a026ec4832cea8bee39ce42f0ce8d47c75657098303b1195b942f09ffeb459db',
-  ],
-  [
-    'libs/feature/auth/src/lib/auth-card/auth-card.component.scss',
-    'a5b29ddd3647a4bbfa6891b1de94586054b70a3db5dea5a3bed7169c28dc0dd7',
-  ],
-  [
-    'libs/feature/auth/src/lib/login/login.page.scss',
-    '904da7d1235059f31386a82c6bcda1d566c0805ae6ba5279276564dc3915b2cd',
-  ],
-  [
-    'libs/feature/auth/src/lib/registration/registration.page.scss',
-    '7a712b71c9da20e02a7aaa6514e73eeaca850c32d36215a6dacf42234d75fc94',
-  ],
-  [
-    'libs/feature/crypto/src/lib/encryption-setup/encryption-setup.page.scss',
-    'c548afaa7555536b73b55756ab26e2d4a418284f79faa57ea7d57988b1895742',
-  ],
-  [
-    'libs/feature/crypto/src/lib/encryption-unlock/encryption-unlock.page.scss',
-    '3168ba52405a9b2cf6135a853c30ae8382db095a82adddcde76129177cd5d6fe',
-  ],
-  [
-    'libs/feature/crypto/src/lib/recovery-key-display/recovery-key-display.component.scss',
-    '4e8d0b6a056fc3502220dfe51818dfe9df5cdf526f9c92c32aa15876d049c7b3',
-  ],
-  [
-    'libs/feature/crypto/src/lib/recovery-key-save/recovery-key-save.component.scss',
-    'bb5e3ddd774def495ccfca0b57397b504b4bd67bab6c5ea9516a6ded9f875998',
-  ],
-  [
-    'libs/feature/crypto/src/lib/verification/device-verification.page.scss',
-    'da5d5cb76d9ae5a0e37545fce659a4f2c92f0e5bd30fd5c6c093b2b5044d6850',
-  ],
-  [
-    'libs/feature/crypto/src/lib/verification/sas-compare.component.scss',
-    '2d26c2567fc6e50c82ae9aea2f4677f6eb6e60773c89c4a5e5b61187e19027ad',
   ],
   [
     'libs/feature/rooms/src/lib/account-picker/account-picker.component.scss',
@@ -295,14 +255,6 @@ export const UNLAYERED_RULESET_LEDGER = [
   [
     'libs/feature/settings/src/lib/settings/settings.page.scss',
     '33faee7f788b03682bda03bf701ae9bbd08a2d0087cd57e3d96b121cf1e7de59',
-  ],
-  [
-    'libs/feature/auth/src/lib/styles/_auth-form.scss',
-    'dae2357cab08c84417d57c321af7835bee72e40db88275a2c476cc11081a1d1d',
-  ],
-  [
-    'libs/feature/crypto/src/lib/styles/_mixins.scss',
-    'b528cd290beb6eda7c1964aa08493711810c850bfb9d56553389b3179d764c33',
   ],
   [
     'libs/feature/rooms/src/lib/message-list/_message-list-shared.scss',

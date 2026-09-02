@@ -308,7 +308,7 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
     const name = surface.kind === 'settings' ? 'Settings' : 'Encryption';
     this.toast.show(`Could not open ${name}. Please try again.`, {
       duration: 5000,
-      variant: 'destructive',
+      variant: 'danger',
     });
   }
 }

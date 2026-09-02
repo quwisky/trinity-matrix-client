@@ -1,63 +1,65 @@
-:host {
-  display: block;
-}
+@layer components {
+  :host {
+    display: block;
+  }
 
-.emoji {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
-  gap: var(--trinity-space-3);
-  margin: var(--trinity-space-5) 0;
-  padding: 0;
-  list-style: none;
-}
+  .emoji {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+    gap: var(--trinity-space-3);
+    margin: var(--trinity-space-5) 0;
+    padding: 0;
+    list-style: none;
+  }
 
-.emoji__item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--trinity-space-2);
-  padding: var(--trinity-space-4) var(--trinity-space-2);
-  border: 1px solid var(--trinity-border-subtle);
-  border-radius: var(--trinity-shape-container-radius);
-  background: var(--trinity-state-hover-surface);
-}
+  .emoji__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    padding: var(--trinity-space-4) var(--trinity-space-2);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-state-hover-surface);
+  }
 
-.emoji__glyph {
-  font-size: 34px;
-  line-height: 1;
-}
+  .emoji__glyph {
+    font-size: 34px;
+    line-height: 1;
+  }
 
-.emoji__name {
-  font-size: var(--trinity-type-caption-size);
-  color: var(--trinity-text-muted);
-  text-align: center;
-}
-
-.hint {
-  margin: 0 0 var(--trinity-space-5);
-  color: var(--trinity-text);
-  font-size: var(--trinity-type-body-size);
-}
-
-.waiting {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  // The gap to .actions lives here, not on the child: align-items centres each
-  // item's *margin* box, so .hint's own bottom margin would offset the text
-  // against the spinner instead of spacing the row.
-  margin-bottom: 16px;
+  .emoji__name {
+    font-size: var(--trinity-type-caption-size);
+    color: var(--trinity-text-muted);
+    text-align: center;
+  }
 
   .hint {
-    margin: 0;
-    color: var(--trinity-text-muted);
+    margin: 0 0 var(--trinity-space-5);
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-body-size);
   }
-}
 
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--trinity-space-2);
+  .waiting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    // The gap to .actions lives here, not on the child: align-items centres each
+    // item's *margin* box, so .hint's own bottom margin would offset the text
+    // against the spinner instead of spacing the row.
+    margin-bottom: 16px;
+
+    .hint {
+      margin: 0;
+      color: var(--trinity-text-muted);
+    }
+  }
+
+  .actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-2);
+  }
 }

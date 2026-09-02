@@ -455,19 +455,23 @@ export class LoginPage {
    * its `next` never runs — here that would mean silently not restarting, leaving the user
    * looking at an app whose data is already gone. Busy and error are set by hand instead.
    */
-  async clearAllData(): Promise<void> {
-    const intent = await confirmClearDataIntent(
-      this.alert,
-      this.storedUserIds(),
-    );
-    if (intent === 'cancelled') {
-      return; // they stopped it themselves; saying anything would be nagging
-    }
-    if (intent === 'mistyped') {
-      this.error.set(CLEAR_DATA_MISTYPED_MESSAGE);
-      return;
-    }
+  clearAllData(): void {
+    confirmClearDataIntent(this.alert, this.storedUserIds())
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((intent) => {
+        if (intent === 'cancelled') {
+          return; // they stopped it themselves; saying anything would be nagging
+        }
+        if (intent === 'mistyped') {
+          this.error.set(CLEAR_DATA_MISTYPED_MESSAGE);
+          return;
+        }
 
+        this.beginInstallationReset();
+      });
+  }
+
+  private beginInstallationReset(): void {
     this.error.set(null);
     this.erasing.set(true);
     // Deliberately NOT `takeUntilDestroyed`: after cleanup begins, a page transition must

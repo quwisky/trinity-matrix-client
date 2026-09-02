@@ -365,6 +365,17 @@ describe('DeviceVerificationPage', () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it('uses the canonical dialog surface recipe in modal mode', async () => {
+    const { container } = await renderPage(signal(view({ stage: 'done' })), {
+      asModal: true,
+    });
+
+    const surface = container.querySelector('.crypto-modal');
+    expect(surface).toHaveAttribute('data-trn-layout', 'dialog');
+    expect(surface).toHaveAttribute('data-trn-size', 'md');
+    expect(surface).toHaveAttribute('data-trn-variant', 'neutral');
+  });
+
   it('does not touch the modal stack on the routed (non-modal) path', async () => {
     const { close, container } = await renderPage(
       signal(view({ stage: 'done' })),

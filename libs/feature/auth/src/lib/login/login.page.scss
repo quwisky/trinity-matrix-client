@@ -6,54 +6,44 @@
 // it renders, and the card is now a separate component. What is left here is everything
 // the page itself draws INTO the card.
 
-// The line under the wordmark, projected into the card's header. Styled HERE and not in
-// the card, because the card does not write it: the login page's is four conditional
-// branches, and the callback leg's is one line of utilities. Emulated encapsulation scopes
-// this to whoever declared the element, which is the same rule the styling guard enforces.
-.login-card__subtitle {
-  @include auth.subtitle;
-}
+@layer components {
+  // The line under the wordmark, projected into the card's header. Styled HERE and not in
+  // the card, because the card does not write it: the login page's is four conditional
+  // branches, and the callback leg's is one line of utilities. Emulated encapsulation scopes
+  // this to whoever declared the element, which is the same rule the styling guard enforces.
+  .login-card__subtitle {
+    @include auth.subtitle;
+  }
 
-.login-card__homeserver {
-  @include auth.homeserver;
-}
+  .login-card__homeserver {
+    @include auth.homeserver;
+  }
 
-// Individual field wrapper — vertical spacing between stacked inputs.
-.login-card__field {
-  @include auth.field;
-}
+  // Public field and input recipes own label/control appearance. This class only separates
+  // one complete field from the next.
+  .login-card__field {
+    @include auth.field;
+  }
 
-// Native field (trnInput) — Discord-style filled box on the card surface so it
-// reads consistently in light + dark; the spartan border/ring stays for focus.
-.login-card__field input {
-  @include auth.input;
-}
+  .login-card__submit {
+    margin-top: var(--trinity-space-6);
+  }
 
-// Primary action buttons (Continue / Sign in) — use the spartan --primary token
-// (blurple) via the helm button. Top margin separates the button from the last field.
-.login-card__submit {
-  @include auth.primary-action;
-}
+  .login-card__sso {
+    margin-top: var(--trinity-space-4);
+  }
 
-// SSO secondary action — slightly less emphasis, smaller gap above.
-.login-card__sso {
-  display: flex;
-  min-height: 40px;
-  margin-top: var(--trinity-space-4);
-}
+  .login-card__busy {
+    @include auth.busy;
+  }
 
-// Loading indicator.
-.login-card__busy {
-  @include auth.busy;
-}
+  .login-card__error {
+    @include auth.error;
 
-// Inline error message.
-.login-card__error {
-  @include auth.error;
+    text-align: center;
+  }
 
-  text-align: center;
-}
-
-.login-card__cancel {
-  margin-top: var(--trinity-space-3);
+  .login-card__cancel {
+    margin-top: var(--trinity-space-3);
+  }
 }

@@ -1,23 +1,25 @@
 @use '../styles/mixins' as *;
 
-.heading {
-  @include heading;
-}
+@layer components {
+  .heading {
+    @include heading;
+  }
 
-.heading:focus-visible {
-  outline: 2px solid var(--trinity-accent);
-  outline-offset: 4px;
-}
+  .heading:focus-visible {
+    outline: 2px solid var(--trinity-accent);
+    outline-offset: 4px;
+  }
 
-// The one sentence that has to be noticed: the key is shown once. Design tokens, not
-// Tailwind colours, so it re-themes with the Theme and with dark Mode.
-.warning {
-  @include warning;
-}
+  // The one sentence that has to be noticed: the key is shown once. Design tokens, not
+  // Tailwind colours, so it re-themes with the Theme and with dark Mode.
+  .warning {
+    @include warning;
+  }
 
-.confirm {
-  // Layout (flex/alignment/gap) comes from the utility classes on the label;
-  // this scoped rule only contributes the section's spacing and text color.
-  margin: var(--trinity-space-6) 0;
-  color: var(--trinity-text);
+  .confirm {
+    // Layout (flex/alignment/gap) comes from the utility classes on the label;
+    // this scoped rule only contributes the section's spacing and text color.
+    margin: var(--trinity-space-6) 0;
+    color: var(--trinity-text);
+  }
 }

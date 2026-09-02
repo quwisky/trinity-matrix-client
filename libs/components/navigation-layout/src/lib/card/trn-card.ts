@@ -18,8 +18,8 @@ export type { TrnCardSize, TrnCardVariant } from './trn-card-recipe';
  * Trinity's card, as five attribute directives.
  *
  * Attributes rather than elements because the call site chooses the semantics: a section title
- * can put `trnCardTitle` on its correctly levelled heading, while the auth card uses it on a
- * neutral wordmark and lets each projected page supply its own `<h1>`. Turning those into
+ * can put `trnCardTitle` on its correctly levelled heading, while a card such as the auth surface
+ * can omit that slot and let projected content supply its own `<h1>`. Turning those into
  * `<trn-card>` / `<trn-card-title>` elements would flatten the document outline. The kit's own
  * layout depends on the parent/child relationship (`has-data-[slot=card-footer]` and friends),
  * which attributes preserve exactly.

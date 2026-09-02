@@ -1,68 +1,62 @@
 @use '../styles/auth-form' as auth;
 
-.registration-card__subtitle {
-  @include auth.subtitle;
-}
+@layer components {
+  .registration-card__subtitle {
+    @include auth.subtitle;
+  }
 
-.registration-card__homeserver {
-  @include auth.homeserver;
-}
+  .registration-card__homeserver {
+    @include auth.homeserver;
+  }
 
-.registration-card__field {
-  @include auth.field;
-}
+  .registration-card__field {
+    @include auth.field;
+  }
 
-.registration-card__label {
-  @include auth.label;
-}
+  .registration-card__submit {
+    margin-top: var(--trinity-space-6);
+  }
 
-.registration-card__field input {
-  @include auth.input;
-}
+  .registration-card__copy,
+  .registration-card__policies {
+    margin: 0 0 16px;
+    color: var(--trinity-text-muted);
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
 
-.registration-card__submit {
-  @include auth.primary-action;
-}
+  .registration-card__policies {
+    padding-left: 20px;
+  }
 
-.registration-card__copy,
-.registration-card__policies {
-  margin: 0 0 16px;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  color: var(--trinity-text-muted);
-}
+  .registration-card__policy + .registration-card__policy {
+    margin-top: 12px;
+  }
 
-.registration-card__policies {
-  padding-left: 20px;
-}
+  .registration-card__consent {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: var(--trinity-text);
+    font-size: 0.875rem;
+    line-height: 1.4;
+  }
 
-.registration-card__policy + .registration-card__policy {
-  margin-top: 12px;
-}
+  .registration-card__field-error,
+  .registration-card__stage-error,
+  .registration-card__error {
+    @include auth.error;
+  }
 
-.registration-card__consent {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  color: var(--trinity-text);
-}
+  .registration-card__stage-error {
+    margin-bottom: 16px;
+  }
 
-.registration-card__field-error,
-.registration-card__stage-error,
-.registration-card__error {
-  @include auth.error;
-}
+  .registration-card__error {
+    text-align: center;
+  }
 
-.registration-card__stage-error {
-  margin-bottom: 16px;
-}
-
-.registration-card__error {
-  text-align: center;
-}
-
-.registration-card__busy {
-  @include auth.busy;
+  .registration-card__busy {
+    @include auth.busy;
+  }
 }

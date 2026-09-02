@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { TrnAlertService } from '@trinity/components/overlay';
+import { firstValueFrom, of } from 'rxjs';
 import {
   CLEAR_DATA_CONFIRMATION_WORD,
   CLEAR_DATA_CONSEQUENCES,
@@ -10,7 +11,7 @@ import {
 } from './clear-all-data';
 
 const alertWith = (typed: string | null) =>
-  ({ prompt: vi.fn().mockResolvedValue(typed) }) as unknown as TrnAlertService;
+  ({ prompt$: vi.fn(() => of(typed)) }) as unknown as TrnAlertService;
 
 describe('clear-all-data copy', () => {
   it('asks for ERASE', () => {
@@ -81,37 +82,37 @@ describe('clear-all-data copy', () => {
 describe('confirmClearDataIntent', () => {
   it('accepts the word regardless of case or surrounding space', async () => {
     await expect(
-      confirmClearDataIntent(alertWith('  erase '), []),
+      firstValueFrom(confirmClearDataIntent(alertWith('  erase '), [])),
     ).resolves.toBe('confirmed');
   });
 
   it('treats the OTHER flow’s word as a mistype, not a confirmation', async () => {
-    await expect(confirmClearDataIntent(alertWith('RESET'), [])).resolves.toBe(
-      'mistyped',
-    );
+    await expect(
+      firstValueFrom(confirmClearDataIntent(alertWith('RESET'), [])),
+    ).resolves.toBe('mistyped');
   });
 
   it('distinguishes cancelling from mistyping', async () => {
     // They mean different things to the user: one needs an explanation, the other needs
     // silence. Collapsing them would either nag someone who changed their mind or leave
     // someone who fat-fingered it staring at a button that appears broken.
-    await expect(confirmClearDataIntent(alertWith(null), [])).resolves.toBe(
-      'cancelled',
-    );
-    await expect(confirmClearDataIntent(alertWith(''), [])).resolves.toBe(
-      'mistyped',
-    );
+    await expect(
+      firstValueFrom(confirmClearDataIntent(alertWith(null), [])),
+    ).resolves.toBe('cancelled');
+    await expect(
+      firstValueFrom(confirmClearDataIntent(alertWith(''), [])),
+    ).resolves.toBe('mistyped');
   });
 
   it('asks destructively, with the accounts named in the body', async () => {
     const alert = alertWith('ERASE');
 
-    await confirmClearDataIntent(alert, ['@a:hs']);
+    await firstValueFrom(confirmClearDataIntent(alert, ['@a:hs']));
 
-    expect(alert.prompt).toHaveBeenCalledWith(
+    expect(alert.prompt$).toHaveBeenCalledWith(
       expect.objectContaining({
         header: 'Erase all Trinity data',
-        destructive: true,
+        variant: 'danger',
         confirmText: 'Erase everything',
         message: expect.stringContaining('@a:hs'),
       }),

@@ -93,7 +93,7 @@ async function renderLogin(
         clearAll: vi.fn(() => of([]) as never),
       }),
       MockProvider(TrnAlertService, {
-        prompt: vi.fn().mockResolvedValue(opts.typed ?? null),
+        prompt$: vi.fn(() => of(opts.typed ?? null)),
       }),
       MockProvider(AccountRuntimeService, {
         resetInstallation: vi.fn(() =>
@@ -503,16 +503,11 @@ describe('LoginPage', () => {
       expect(button()?.disabled).toBe(true);
     });
 
-    it('does not use the Helm destructive variant, which would out-weigh signing in', async () => {
-      // The fast canary for the one wrong edit this button attracts: reaching for
-      // `variant="destructive"`, the only thing in hlm-button that emits `bg-destructive`.
-      // It used to fail contrast on this card as well; the tint is pinned opaque now, so
-      // what remains is weighting — a filled control reads as this screen's primary action,
-      // and that is the sign-in button, not the escape hatch. Deliberately a NEGATIVE
-      // assertion: any restyling that keeps the label red without the tint still passes, so
-      // this does not red on a legitimate refactor. What the label positively renders as is
-      // measured where it can actually be seen, in clear-all-data.spec.mts — jsdom has no
-      // Tailwind and no theme tokens, so nothing here can check a colour.
+    it('keeps the danger action ghost instead of making it the primary surface', async () => {
+      // The public danger/ghost recipe owns the red label and tint. A filled destructive
+      // surface would out-weigh signing in, which remains the task this screen is for.
+      // Browser coverage measures the actual themed result; jsdom can only pin the recipe
+      // class boundary here.
       const { fixture } = await renderLogin(
         {} as unknown as Partial<AuthService>,
       );
@@ -629,7 +624,7 @@ describe('LoginPage', () => {
 
       await cmp.clearAllData();
 
-      const message = vi.mocked(alert.prompt).mock.calls[0][0].message ?? '';
+      const message = vi.mocked(alert.prompt$).mock.calls[0][0].message ?? '';
       expect(message).toMatch(/Any accounts signed in on this device/);
     });
 
@@ -647,7 +642,7 @@ describe('LoginPage', () => {
 
       await cmp.clearAllData();
 
-      const message = vi.mocked(alert.prompt).mock.calls[0][0].message ?? '';
+      const message = vi.mocked(alert.prompt$).mock.calls[0][0].message ?? '';
       expect(message).toContain('@a:hs');
       expect(message).toContain('@b:hs');
     });

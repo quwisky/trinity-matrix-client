@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { globSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { UNLAYERED_RULESET_LEDGER } from './cascade-layer-exceptions.mjs';
 import { inlineStyleSheets } from './inline-styles.mjs';
@@ -68,6 +68,25 @@ const layerBodies = (file, layer) =>
     .filter(({ prelude }) => prelude === `@layer ${layer}`)
     .map(({ body }) => body)
     .join('\n');
+
+const sharedPartialConsumers = (partial, componentSources) =>
+  componentSources.filter((file) => {
+    const source = stripSourceComments(read(file));
+    return [...source.matchAll(/@use\s+['"]([^'"]+)['"]/gu)].some(
+      ([, specifier]) => {
+        if (!specifier.startsWith('.')) return false;
+        const unresolved = resolve(
+          dirname(join(workspaceRoot, file)),
+          specifier,
+        );
+        const resolved = relative(
+          workspaceRoot,
+          join(dirname(unresolved), `_${basename(unresolved)}.scss`),
+        );
+        return resolved === partial;
+      },
+    );
+  });
 
 describe('cascade layer contract', () => {
   it('declares the one supported order and classifies every static stylesheet', () => {
@@ -188,6 +207,17 @@ describe('cascade layer contract', () => {
       'libs/components/overlay/src/lib/action-sheet/trn-action-sheet.component.ts',
     ]);
 
+    const sharedPartialExceptions = sharedPartials.flatMap((file) => {
+      const consumers = sharedPartialConsumers(file, componentSources);
+      expect(
+        consumers.length,
+        `${file} must be consumed by a component stylesheet`,
+      ).toBeGreaterThan(0);
+      return consumers.some((consumer) => !isFullyLayered(read(consumer)))
+        ? [[file, rulesetFingerprint(read(file))]]
+        : [];
+    });
+
     const actualExceptions = [
       ...componentSources.flatMap((file) => {
         const css = read(file);
@@ -195,7 +225,7 @@ describe('cascade layer contract', () => {
           ? [[file, rulesetFingerprint(css)]]
           : [];
       }),
-      ...sharedPartials.map((file) => [file, rulesetFingerprint(read(file))]),
+      ...sharedPartialExceptions,
       ...inlineSources.flatMap(({ file, css }) =>
         isFullyLayered(css)
           ? []
