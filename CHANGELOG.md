@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Amethyst light and dark now use a coordinated sRGB-safe OKLCH palette.** A sparse violet
+  accent and violet-neutral surface family replaces the legacy hex and HSL values while inherited
+  success, warning, danger, and syntax colours retain their established meaning. Text, controls,
+  icons, and focus remain readable across every Amethyst surface.
+
 - **Trinity light and dark now use a coordinated sRGB-safe OKLCH palette.** Neutral, indigo,
   success, warning and danger families provide explicit interaction, solid and tint stops;
   success and warning text/icons no longer share their filled-status colours. Local contracts
