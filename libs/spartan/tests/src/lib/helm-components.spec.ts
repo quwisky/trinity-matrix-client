@@ -30,6 +30,12 @@ import { HlmTextarea } from '@trinity/helm/textarea';
 // throwing — never the applied host classes.
 
 describe('badgeVariants (hlm-badge cva)', () => {
+  it('uses the invariant pill radius instead of Tailwind radius steps', () => {
+    const classes = badgeVariants({ variant: 'default' });
+    expect(classes).toContain('rounded-full');
+    expect(classes).not.toMatch(/\brounded-(?:2xl|3xl|4xl)\b/u);
+  });
+
   it('maps the success status variant to the success token classes', () => {
     const classes = badgeVariants({ variant: 'success' });
     expect(classes).toContain('bg-success');

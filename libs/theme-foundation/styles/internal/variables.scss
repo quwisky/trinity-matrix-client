@@ -146,6 +146,7 @@
     --trinity-shadow-raised: 0 1px 2px oklch(0% 0 0deg / 8%);
     --trinity-shadow-floating: 0 4px 12px oklch(0% 0 0deg / 12%);
     --trinity-shadow-overlay: 0 12px 32px oklch(0% 0 0deg / 18%);
+    --trinity-overlay-scrim: oklch(0% 0 0deg / 50%);
     --trinity-camera-scrim: oklch(0% 0 0deg / 35%);
 
     // QR modules require a stable light quiet zone regardless of Mode or Theme.

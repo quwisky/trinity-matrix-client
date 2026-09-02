@@ -155,7 +155,7 @@ export const Treatments: Story = {
           variant="secondary"
           shape="icon"
           size="lg"
-          class="border border-border shadow-sm"
+          class="border border-border shadow-raised"
           aria-label="Floating action"
         >
           <trn-icon name="x" motion="rotate" />

@@ -37,14 +37,25 @@ export type ThemeMode = (typeof modes)[number]['id'];
 /** A fixed Mode after `system` has resolved. */
 export type ResolvedThemeMode = Exclude<ThemeMode, 'system'>;
 
-const previewCombinations = Object.freeze(
-  themes.flatMap((theme) =>
-    modes.flatMap((mode) =>
-      mode.previewClass === null
-        ? []
-        : [Object.freeze({ theme: theme.id, mode: mode.id })],
+/** Derive fixed previews from Theme metadata; kept internal to Theme Foundation's package API. */
+export function themePreviewCombinations(
+  themeEntries: readonly ThemeCatalogEntry[],
+  modeEntries: readonly ThemeModeCatalogEntry[],
+): readonly Readonly<{ theme: string; mode: string }>[] {
+  return Object.freeze(
+    themeEntries.flatMap((theme) =>
+      modeEntries.flatMap((mode) =>
+        mode.previewClass === null
+          ? []
+          : [Object.freeze({ theme: theme.id, mode: mode.id })],
+      ),
     ),
-  ),
+  );
+}
+
+const previewCombinations = themePreviewCombinations(
+  themes,
+  modes,
 ) as readonly Readonly<{
   theme: ThemeId;
   mode: ResolvedThemeMode;
@@ -125,6 +136,7 @@ const colorRoles = Object.freeze([
   '--trinity-focus-ring-halo',
   '--trinity-tooltip-surface',
   '--trinity-tooltip-foreground',
+  '--trinity-overlay-scrim',
   '--trinity-camera-scrim',
   '--trinity-qr-surface',
   '--trinity-media-matte',

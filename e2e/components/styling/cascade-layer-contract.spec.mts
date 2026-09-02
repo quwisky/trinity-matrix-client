@@ -122,3 +122,67 @@ test('compiled cascade preserves defaults, utilities, and invariants', async ({
     ),
   ).not.toBe('none');
 });
+
+test('compiled Tailwind exposes only the governed design namespaces', async ({
+  page,
+}) => {
+  await page.goto('/login');
+  await page.locator('body').waitFor();
+
+  const values = await page.locator('html').evaluate((root) => {
+    const styles = getComputedStyle(root);
+    const read = (name: string) => styles.getPropertyValue(name).trim();
+    return Object.fromEntries(
+      [
+        '--color-red-500',
+        '--color-black',
+        '--shadow-sm',
+        '--inset-shadow-xs',
+        '--drop-shadow-sm',
+        '--radius-2xl',
+        '--color-overlay-scrim',
+        '--shadow-raised',
+        '--shadow-floating',
+        '--shadow-overlay',
+        '--radius-xs',
+        '--radius-sm',
+        '--radius-md',
+        '--radius-lg',
+        '--radius-xl',
+        '--radius-full',
+        '--spacing',
+        '--text-sm',
+        '--text-13',
+      ].map((name) => [name, read(name)]),
+    );
+  });
+
+  for (const name of [
+    '--color-red-500',
+    '--color-black',
+    '--shadow-sm',
+    '--inset-shadow-xs',
+    '--drop-shadow-sm',
+    '--radius-2xl',
+  ]) {
+    expect(values[name], name).toBe('');
+  }
+
+  for (const name of [
+    '--color-overlay-scrim',
+    '--shadow-raised',
+    '--shadow-floating',
+    '--shadow-overlay',
+    '--radius-xs',
+    '--radius-sm',
+    '--radius-md',
+    '--radius-lg',
+    '--radius-xl',
+    '--radius-full',
+    '--spacing',
+    '--text-sm',
+    '--text-13',
+  ]) {
+    expect(values[name], name).not.toBe('');
+  }
+});
