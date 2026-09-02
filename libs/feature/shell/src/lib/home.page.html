@@ -23,7 +23,9 @@
     <div data-testid="spike-result" [attr.data-ok]="r.ok">
       @if (r.ok) {
         <p>
-          <span class="text-success"><strong>PASS</strong></span>
+          <span class="text-[var(--trinity-success)]"
+            ><strong>PASS</strong></span
+          >
         </p>
         <ul>
           <li>crypto version: {{ r.cryptoVersion }}</li>

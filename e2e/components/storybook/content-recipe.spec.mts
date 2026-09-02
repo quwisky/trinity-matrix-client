@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
+import { contrastRatio } from '../../browser/support/contrast.mts';
 import { renderedColour } from './recipe-appearance.mts';
 import {
   STORYBOOK_THEME_PREVIEWS,
@@ -157,12 +158,11 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       ],
     ] as const) {
       const badge = page.getByTestId(testId);
-      expect(await renderedColour(badge, 'backgroundColor')).toEqual(
-        await renderedColour(badge, surface),
-      );
-      expect(await renderedColour(badge, 'color')).toEqual(
-        await renderedColour(badge, foreground),
-      );
+      const background = await renderedColour(badge, 'backgroundColor');
+      const ink = await renderedColour(badge, 'color');
+      expect(background).toEqual(await renderedColour(badge, surface));
+      expect(ink).toEqual(await renderedColour(badge, foreground));
+      expect(contrastRatio(ink, background)).toBeGreaterThanOrEqual(4.5);
     }
 
     for (const [testId, token] of [

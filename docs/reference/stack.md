@@ -34,13 +34,16 @@ window. matrix-js-sdk only asks for `>=22`, so "newer is fine" does not hold her
 A `preinstall` script inspects `npm_config_user_agent` and aborts anything that is not
 pnpm.
 
-Browser floors live in `.browserslistrc`: Chrome and Edge `>=111`, Firefox `>=112`,
-Safari and iOS `>=16.4`, plus separate `ChromeAndroid` and `FirefoxAndroid` entries.
+Browser floors live in `.browserslistrc`: Chrome, Edge and Firefox `>=119`, Safari and iOS
+`>=17`, plus separate `ChromeAndroid` and `FirefoxAndroid` entries.
 Those two Android entries are not redundant — browserslist treats them as distinct
 targets, and without them the Android WebView Trinity ships through Capacitor would be
-absent from the target set entirely. The list is the resolved form of Angular 22's
-`baseline widely available on 2025-10-20` policy; re-resolve it after each Angular
+absent from the target set entirely. The list is the resolved form of Angular 22.1's
+`baseline widely available on 2026-05-07` policy; re-resolve it after each Angular
 major rather than editing numbers by hand.
+
+Firefox and Firefox Android first support `oklch()` at 113. The framework floor of 119 is
+therefore also the effective floor for Trinity's authored OKLCH colours.
 
 ## Application dependencies
 

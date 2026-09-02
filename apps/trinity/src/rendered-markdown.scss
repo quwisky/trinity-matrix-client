@@ -44,17 +44,13 @@
       &.mention {
         padding: 0 0.35em;
         border-radius: var(--trinity-radius-pill);
-        background: color-mix(in srgb, var(--trinity-accent) 18%, transparent);
+        background: var(--trinity-accent-tint-20);
         color: var(--trinity-text-bright);
         font-weight: 600;
         text-decoration: none;
 
         &:hover {
-          background: color-mix(
-            in srgb,
-            var(--trinity-accent) 28%,
-            transparent
-          );
+          background: var(--trinity-accent-tint-30);
           text-decoration: none;
         }
       }
@@ -435,7 +431,7 @@
  * tint failing to render.
  */
   .diff-ins {
-    background: color-mix(in srgb, var(--success) 22%, transparent);
+    background: var(--trinity-success-tint-20);
     color: inherit;
     border-radius: var(--trinity-radius-sm);
     padding: 0 2px;
@@ -443,7 +439,7 @@
   }
 
   .diff-del {
-    background: color-mix(in srgb, var(--trinity-danger) 18%, transparent);
+    background: var(--trinity-danger-tint-20);
     color: inherit;
     border-radius: var(--trinity-radius-sm);
     padding: 0 2px;

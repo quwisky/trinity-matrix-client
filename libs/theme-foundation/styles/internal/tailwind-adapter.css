@@ -195,19 +195,16 @@
 
   /*
    * `text-danger` for alert TEXT. `text-destructive` reads --destructive, which is a
-   * fill-only token: in dark it is a near-black maroon (#7f1d1d) that lands at 1.26:1
-   * on the chat canvas, so error copy set with it is effectively invisible. This maps
-   * to the measured text role instead. See docs/architecture/ui-and-theming.md.
+   * fill-only token paired with --destructive-foreground. It is not a supported promise
+   * for standalone copy, even when one Theme happens to make it readable. This maps to
+   * the measured text role instead. See docs/architecture/ui-and-theming.md.
    */
   --color-danger: var(--trinity-danger);
 
   /*
    * `text-link` for accent-coloured TEXT, exactly as `text-danger` above. `text-primary`
-   * reads --primary, which aliases --trinity-accent — a FILL. `:root.dark` never overrides
-   * it, so blurple text lands at 2.74:1 on the settings canvas against the 4.5:1 floor this
-   * theme sets. The SCSS half of that split was migrated to --trinity-link when the token
-   * was introduced; this is the Tailwind half, which was missed because the utility names
-   * the Helm token rather than the Trinity one.
+   * reads --primary, which aliases --trinity-accent — a FILL. Fill and readable text are
+   * separate stops in every Theme, so product copy consumes --trinity-link instead.
    */
   --color-link: var(--trinity-link);
   --color-success: var(--success);
@@ -316,25 +313,19 @@
  * token takes. Every red that clears 4.5:1 against its own 20% tint is above 90%
  * lightness, i.e. a pale pink that no longer reads as danger.
  *
- * So we decouple the two roles instead of recolouring one. `--destructive` keeps its
- * shadcn value and stays the border/ring source and the colour the tint is mixed from
- * (unchanged appearance — see the opaque-tint block below); only the
- * text utilities are redirected to `--trinity-danger`. Contrast over --card/--popover,
- * sampled from the browser's actual composited pixels: light 5.37:1 on the /10 tint and
- * 4.72:1 on /20; dark 5.63:1 on /10, 5.53:1 on /20 and 5.43:1 on /30. (Light never
- * reaches /30 — only `dark:hover:` uses it — which is just as well, as it would be
- * 4.10:1.) Before the split the same text sat at 1.34:1 in dark.
+ * So we decouple the two roles instead of recolouring one. `--destructive` stays the solid
+ * border/ring source; text utilities are redirected to the independently measured
+ * `--trinity-danger`, and the opaque-tint block below owns the three backgrounds.
  *
  * These rules live in the allowlisted `overrides` layer. Tailwind emits the original
  * declarations into `utilities`, so this wins without a specificity war or an unlayered
  * escape.
  *
- * The list must cover EVERY emitted variant — an unmatched one does not degrade
- * gracefully, it produces a half-styled control (a legible label beside an icon still at
- * ~1.3:1). Note the last entry: the dropdown menu colours its child icon through a
- * separate rule that targets the `ng-icon` descendant, so fixing the item alone leaves
- * the glyph behind. After running the spartan CLI, re-derive this list mechanically from
- * the built CSS rather than by reading the Helm class strings:
+ * The list must cover EVERY emitted variant — an unmatched one produces a half-styled
+ * control whose label and icon consume different semantic roles. Note the last entry: the
+ * dropdown menu colours its child icon through a separate rule targeting the `ng-icon`
+ * descendant. After running the spartan CLI, re-derive this list mechanically from the
+ * built CSS rather than by reading the Helm class strings:
  *
  *   pnpm nx build trinity
  *   tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
@@ -354,22 +345,10 @@
   /*
  * Make the destructive TINT opaque, for the other half of the same problem.
  *
- * Splitting the text off --destructive fixed the colour but not the arithmetic: Helm paints
- * `bg-destructive/10..30`, which is TRANSLUCENT, so the contrast a destructive control
- * achieves depends on whatever it happens to sit on. Measured with the same
- * composited-pixel method as the figures above, one identical button ranged from 5.37:1 on
- * --card down to 4.28:1 at REST on --trinity-rail and 3.84:1 on hover there.
- *
- * Nothing in the app was actually failing: every destructive control today is a
- * dropdown-menu item, which renders on --popover, or a button on --card. This closes a trap
- * rather than a live bug — putting one on the sidebar or the room list would have shipped a
- * sub-AA label with nothing to catch it, and the token comment in variables.scss positively
- * invited that by claiming the red cleared 4.5:1 "on every tint".
- *
- * Retoning --destructive cannot fix it, because the problem is the SURFACE showing through,
- * not the hue. So the tint is pinned to an opaque sRGB mix over --card, which reproduces
- * today's pixels exactly (see --trinity-danger-tint-*). Each selector maps to the strength
- * it literally declares, so no rule silently changes weight.
+ * Helm paints `bg-destructive/10..30` as translucent colours, so their contrast depends on
+ * whatever surface sits below. Retoning --destructive cannot fix that surface dependency.
+ * Each variant is therefore pinned to one opaque, sRGB-safe OKLCH Theme stop from
+ * --trinity-danger-tint-*; changing the card or solid danger token cannot move it silently.
  *
  * In `overrides` for the same reason as the block above, and the list must likewise cover
  * every emitted variant. The `@media (hover: hover)` gates mirror Helm's own: on a touchscreen it

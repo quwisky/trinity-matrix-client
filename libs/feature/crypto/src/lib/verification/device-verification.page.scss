@@ -52,11 +52,11 @@
     align-items: center;
     justify-content: center;
     font-size: 32px;
-    color: var(--trinity-green-foreground);
+    color: var(--trinity-success-solid-foreground);
   }
 
   .result--ok {
-    background: var(--trinity-green);
+    background: var(--trinity-success-solid);
   }
 
   .result--bad {

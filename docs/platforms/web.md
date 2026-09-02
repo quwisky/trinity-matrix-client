@@ -198,14 +198,14 @@ else.
 ## Browser support floors
 
 ```text
-Chrome >=111        ChromeAndroid >=111
-Firefox >=112       FirefoxAndroid >=112
-Edge >=111
-Safari >=16.4       iOS >=16.4
+Chrome >=119        ChromeAndroid >=119
+Firefox >=119       FirefoxAndroid >=119
+Edge >=119
+Safari >=17         iOS >=17
 ```
 
-These are not a Trinity preference. They are the resolved form of Angular 22's own support
-policy, which the framework expresses as `baseline widely available on 2025-10-20`. The
+These are not a Trinity preference. They are the resolved form of Angular 22.1's own support
+policy, which the framework expresses as `baseline widely available on 2026-05-07`. The
 build warns about any browser configured in `.browserslistrc` that falls outside that set,
 so the file has to track the framework. Re-resolve after each Angular major:
 
@@ -216,6 +216,9 @@ node -e "console.log(require('browserslist')('baseline widely available on <DATE
 The `ChromeAndroid` and `FirefoxAndroid` entries are not redundant with their desktop
 counterparts. Browserslist treats them as separate targets, and without them the Android
 WebView that Trinity ships through Capacitor would be absent from the target set entirely.
+[MDN's browser compatibility data](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/oklch#browser_compatibility)
+records Firefox 113 as the first `oklch()` release, with Firefox Android mirroring it. The current
+Angular floor is already stricter at 119, so the Trinity Theme needs no legacy colour fallback.
 
 ## Serving the build
 

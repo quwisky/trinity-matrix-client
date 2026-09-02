@@ -50,7 +50,9 @@ describe('shared scrollbar design', () => {
     expect(variables).toContain(
       '--trinity-scrollbar-thumb: var(--trinity-rail);',
     );
-    expect(variables).toContain('--trinity-scrollbar-track: transparent;');
+    expect(variables).toContain(
+      '--trinity-scrollbar-track: oklch(0% 0 0deg / 0%);',
+    );
 
     expect(global).toMatch(
       /::-webkit-scrollbar\s*\{[^}]*width:\s*var\(--trinity-scrollbar-size\);[^}]*height:\s*var\(--trinity-scrollbar-size\);/s,

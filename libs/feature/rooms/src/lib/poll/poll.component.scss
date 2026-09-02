@@ -55,7 +55,7 @@
   .poll__bar {
     position: absolute;
     inset: 0 auto 0 0;
-    background: color-mix(in srgb, var(--trinity-accent) 22%, transparent);
+    background: var(--trinity-accent-tint-20);
     transition: width var(--trinity-duration-base) var(--trinity-ease-standard);
   }
 
