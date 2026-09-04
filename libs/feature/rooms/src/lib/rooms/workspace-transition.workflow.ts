@@ -33,6 +33,7 @@ import { workspaceUrlOf } from './workspace-url';
 
 interface WorkspaceAttempt {
   readonly destination: WorkspaceDestination;
+  readonly options: WorkspaceOpenOptions;
   readonly outcome: Observable<WorkspaceOpenOutcome>;
 }
 
@@ -86,7 +87,9 @@ export class WorkspaceTransitionWorkflow {
   ): Observable<WorkspaceOpenOutcome> {
     return defer(() => {
       if (this.attempt) {
-        return sameWorkspaceDestination(this.attempt.destination, requested)
+        return sameWorkspaceDestination(this.attempt.destination, requested) &&
+          this.attempt.options.source === options.source &&
+          this.attempt.options.history === options.history
           ? this.attempt.outcome
           : of({
               kind: 'transition-in-progress',
@@ -238,7 +241,7 @@ export class WorkspaceTransitionWorkflow {
         if (this.attempt?.outcome === outcome) this.attempt = null;
       },
     );
-    this.attempt = { destination: requested, outcome };
+    this.attempt = { destination: requested, options, outcome };
     return outcome;
   }
 

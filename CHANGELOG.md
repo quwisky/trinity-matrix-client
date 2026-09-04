@@ -8,10 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Room selection now crosses a semantic Workspace boundary.** Each visible row carries its exact
-  Account and Room identity while Workspace owns scope retention, compact-pane opening, history,
-  canonical URL projection, Account readiness, Conversation focus, and typed navigation outcomes.
-  The remaining caller-built destination seam is frozen for removal by the next migration slices.
+- **Room-shell navigation now crosses a semantic Workspace boundary.** Account and scope changes,
+  exact Room opens, compact-list close, Room removal, shortcuts, Room hopping, and Workspace Back
+  submit product intent while Workspace owns scope retention, pane and history policy, canonical
+  URL projection, Account readiness, Conversation focus, and typed outcomes. Shortcut history
+  retains exact Account-and-Room identities across mixed accounts. No Room-shell caller
+  constructs a destination; search and inbound restoration remain the final internal migration.
 
 - **The atomic design-system migration is integrated and ready for delivery.** Tailwind,
   Theme and Appearance ownership, public component recipes, the authored cascade, accessibility

@@ -131,12 +131,14 @@ evidence rather than a portable unit-test assertion. There is no duplicate SDK s
 `ConversationRuntime` owns the messaging lifetime of one immutable Account-and-Room pair. A
 handle freezes that key and exposes named timeline, compose, message, media, thread and pin
 children; it never reads the route and never retargets when Active Account changes.
-`WorkspaceService` owns one immutable Account, scope, Room, and pane view. A Room row emits its exact
-Account-and-Room identity, and Workspace resolves that semantic intent into current scope, pane,
-history, canonical URL, Account readiness, and Conversation focus. Its transition workflow focuses
-the exact Conversation only after Account readiness and canonical URL navigation settle, or blurs
-the current handle when the Room leaves Workspace. `RoomShellNavigationService` remains a small
-compatibility adapter for the not-yet-migrated shell paths; it does not own semantic state or
+`WorkspaceService` owns one immutable Account, scope, Room, and pane view. Room-shell Account,
+scope, Room, compact-list, removal, shortcut, hop, and Back actions submit semantic intent with
+exact ownership. Visit history also stores the Account-and-Room pair rather than a Room id alone.
+Workspace resolves each intent into scope retention, pane, history, canonical URL,
+Account readiness, and Conversation focus. Its transition workflow focuses the exact Conversation
+only after Account readiness and canonical URL navigation settle, or blurs the current handle when
+the Room leaves Workspace. `RoomShellNavigationService` remains a small presentation adapter for
+focus handoff, overlay cleanup, and typed failure feedback; it does not own semantic state or
 routing. Feature surfaces consume `ConversationRuntime.timeline`, a stable proxy for the focused child, rather than
 injecting the child implementation or a root timeline singleton.
 When a create or invite request succeeds before `/sync` has published the Room, Workspace crosses
@@ -378,9 +380,9 @@ multi-account design.
     Workspace view publication. Consumers can therefore act on `ready` without an
     `afterNextRender` timing workaround.
 
-    The caller-built `WorkspaceService.open()` seam is temporary compatibility debt. Its frozen
-    four-file production allowlist is guarded by
-    `scripts/workspace-navigation-contract.spec.mjs`; issue #369 owns its removal.
+    The caller-built `WorkspaceService.open()` seam is temporary compatibility debt. Its external
+    production allowlist is empty and guarded by `scripts/workspace-navigation-contract.spec.mjs`.
+    Search and inbound restoration remain internal users until #368; issue #369 owns removal.
 
 ## Who takes the whole primitive, and who takes only the batching
 

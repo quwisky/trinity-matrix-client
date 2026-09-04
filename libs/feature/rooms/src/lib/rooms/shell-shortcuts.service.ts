@@ -3,7 +3,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { TrnDialogService } from '@trinity/components/overlay';
-import { MruRoomsService } from '../shortcuts/mru-rooms.service';
+import type { RoomSummary } from '@trinity/data-access/room-library';
+import {
+  MruRoomsService,
+  type MruRoomIdentity,
+} from '../shortcuts/mru-rooms.service';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomShellStore } from './room-shell-store';
@@ -101,8 +105,8 @@ export class ShellShortcutsService {
         if (hit.digit) {
           e.preventDefault();
           this.openShortcutTarget(
-            this.mru.nth(hit.digit, this.store.activeRoomId()),
-            'user',
+            this.mru.nth(hit.digit, this.activeRoom()),
+            'shortcut',
           );
         }
         break;
@@ -118,30 +122,42 @@ export class ShellShortcutsService {
   private hopRoom(direction: 'back' | 'forward'): void {
     // Across every mixed account, not just the active one — otherwise hopping back to a
     // room you opened on another account silently does nothing.
-    const known = new Set(this.nav.knownRooms().map((room) => room.id));
+    const known = this.nav
+      .knownRooms()
+      .flatMap((room) =>
+        room.accountIds.map((accountId) => ({ accountId, roomId: room.id })),
+      );
     this.openShortcutTarget(
-      this.mru.hop(direction, this.store.activeRoomId(), known),
-      'hop',
+      this.mru.hop(direction, this.activeRoom(), known),
+      'room-hop',
     );
   }
 
   // Both walks step through `filteredRooms`, not `visibleRooms`: with the sidebar's filter
   // box active they must not land on a room the user cannot see.
   private walkList(direction: 'next' | 'previous'): void {
+    const rooms = this.vm.filteredRooms();
     this.openShortcutTarget(
-      stepList(
-        this.vm.filteredRooms().map((room) => room.id),
-        this.store.activeRoomId(),
-        direction,
+      this.roomIdentity(
+        stepList(
+          rooms.map((room) => room.id),
+          this.store.activeRoomId(),
+          direction,
+        ),
+        rooms,
       ),
-      'user',
+      'shortcut',
     );
   }
 
   private walkUnread(direction: 'next' | 'previous'): void {
+    const rooms = this.vm.filteredRooms();
     this.openShortcutTarget(
-      stepUnread(this.vm.filteredRooms(), this.store.activeRoomId(), direction),
-      'user',
+      this.roomIdentity(
+        stepUnread(rooms, this.store.activeRoomId(), direction),
+        rooms,
+      ),
+      'shortcut',
     );
   }
 
@@ -152,16 +168,39 @@ export class ShellShortcutsService {
    * timeline and leave a blank chat pane, so drop it instead.
    */
   private openShortcutTarget(
-    roomId: string | null,
-    source: 'user' | 'hop',
+    room: MruRoomIdentity | null,
+    origin: 'shortcut' | 'room-hop',
   ): void {
-    if (!roomId || roomId === this.store.activeRoomId()) {
+    if (!room) return;
+    const known = this.nav
+      .knownRooms()
+      .some(
+        (candidate) =>
+          candidate.id === room.roomId &&
+          candidate.accountIds.includes(room.accountId),
+      );
+    if (
+      !known ||
+      (room.roomId === this.store.activeRoomId() &&
+        room.accountId === this.store.activeAccountId())
+    ) {
       return;
     }
-    if (!this.nav.knownRooms().some((room) => room.id === roomId)) {
-      return;
-    }
-    this.routing.onSelectRoomRow(roomId, source);
+    this.routing.onSelectRoomSelection(room, origin);
+  }
+
+  private roomIdentity(
+    roomId: string | null,
+    rooms: readonly RoomSummary[],
+  ): MruRoomIdentity | null {
+    const room = rooms.find((candidate) => candidate.id === roomId);
+    return room ? { accountId: room.accountId, roomId: room.id } : null;
+  }
+
+  private activeRoom(): MruRoomIdentity | null {
+    const accountId = this.store.activeAccountId();
+    const roomId = this.store.activeRoomId();
+    return accountId && roomId ? { accountId, roomId } : null;
   }
 
   /**

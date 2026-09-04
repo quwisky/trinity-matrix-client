@@ -36,11 +36,16 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
+import { MruRoomsService } from '../shortcuts/mru-rooms.service';
+import { desktopBridgeFixture } from '@trinity/testing';
 
 // The route outlives any one TestBed — it is one stream in the harness, shared by every
 // block in this file. Without the reset a test that opens a room hands it to the next one,
 // where "no room is open" would then assert against the previous test's room.
 beforeEach(() => setRouteRoom(null));
+afterEach(() => {
+  delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+});
 
 // Mixed-account view (issue #10): the global "All accounts" scope spans every signed-in
 // account across ALL surfaces — Recent, Home's DMs, the Rooms list and the rail spaces —
@@ -113,6 +118,7 @@ describe('RoomsPage mixed-account view', () => {
   let setMixedRoomsAccounts: Mock;
   /** The picker's current selection, driven directly by the tests. */
   let shownAccounts: WritableSignal<ReadonlySet<string>>;
+  let mixedRooms: WritableSignal<RoomSummary[]>;
   let toggleAccount: Mock;
 
   function build(
@@ -140,6 +146,7 @@ describe('RoomsPage mixed-account view', () => {
     );
     setMixedRoomsAccounts = vi.fn();
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
+    mixedRooms = signal(mixedRoomList());
     toggleAccount = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
       providers: [
@@ -162,7 +169,7 @@ describe('RoomsPage mixed-account view', () => {
           toggle: toggleAccount,
         }),
         MockProvider(MixedRoomsService, {
-          rooms: signal(mixedRoomList()),
+          rooms: mixedRooms,
           setAccounts: setMixedRoomsAccounts,
         }),
         MockProvider(MixedSpacesService, {
@@ -331,6 +338,40 @@ describe('RoomsPage mixed-account view', () => {
     );
     await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!theirs:hs');
+  });
+
+  it('keeps an exact MRU owner when a mixed row is shared by two accounts', async () => {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture();
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    mixedRooms.update((rooms) => [
+      ...rooms,
+      {
+        ...room('!shared:hs', '@me:hs'),
+        accountIds: ['@me:hs', '@alt:hs'],
+      },
+    ]);
+    TestBed.inject(MruRoomsService).record({
+      accountId: '@alt:hs',
+      roomId: '!shared:hs',
+    });
+
+    shell.shortcuts.onGlobalKeydown({
+      code: 'Digit1',
+      key: '1',
+      ctrlKey: true,
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent);
+
+    await vi.waitFor(() =>
+      expect(switchAccount).toHaveBeenCalledWith(
+        '@alt:hs',
+        expect.objectContaining({ prepare: expect.any(Function) }),
+      ),
+    );
+    await settleWorkspace();
+    expect(shell.store.activeRoomId()).toBe('!shared:hs');
   });
 
   it('switches to the owning account before selecting a foreign space', async () => {

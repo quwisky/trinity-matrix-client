@@ -14,9 +14,10 @@ import {
 } from '@trinity/data-access/room-library';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import type {
-  WorkspaceDestination,
-  WorkspaceNavigationSource,
-} from './workspace.models';
+  WorkspaceNavigationIntent,
+  WorkspaceNavigationScope,
+  WorkspaceRoomNavigationOrigin,
+} from '@trinity/application/workspace';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { WorkspaceService } from './workspace.service';
@@ -69,38 +70,35 @@ export class RoomShellNavigationService {
     this.openScope({ kind: 'rooms' });
   }
 
-  onSelectRoom(id: string, source: 'user' | 'hop' = 'user'): void {
+  onSelectRoom(
+    id: string,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
     const accountId = this.workspace.activeAccountId();
     if (!accountId) return;
-    this.open(this.workspace.roomDestination(accountId, id), source, 'push');
+    this.navigate({ kind: 'room', accountId, roomId: id, origin });
   }
 
   /** Change sidebar scope and open its room as one atomic Workspace destination. */
   onSelectRoomInScope(
     id: string,
-    scope: WorkspaceDestination['scope'],
-    source: 'user' | 'hop' = 'user',
+    scope: WorkspaceNavigationScope,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
   ): void {
     const accountId = this.workspace.activeAccountId();
     if (!accountId) return;
-    this.open(
-      this.workspace.roomInScopeDestination(accountId, id, scope),
-      source,
-      'push',
-    );
+    this.navigate({ kind: 'room', accountId, roomId: id, scope, origin });
   }
 
   closeOpenRoom(): void {
     if (this.membersAreDrawer()) this.store.rightPanel.set(null);
-    const destination = this.workspace.listDestination();
-    if (destination) this.open(destination, 'user', 'push');
+    this.navigate({ kind: 'list', origin: 'compact-close' });
   }
 
   /** Clear selection after the Room is removed rather than merely hiding its pane. */
   clearOpenRoom(): void {
     if (this.membersAreDrawer()) this.store.rightPanel.set(null);
-    const destination = this.workspace.unselectedListDestination();
-    if (destination) this.open(destination, 'user', 'replace');
+    this.navigate({ kind: 'list', origin: 'room-removed' });
   }
 
   /** Leaving the page releases projections without manufacturing a navigation. */
@@ -115,23 +113,15 @@ export class RoomShellNavigationService {
       : this.rooms.rooms();
   }
 
-  private openScope(scope: WorkspaceDestination['scope']): void {
+  private openScope(scope: WorkspaceNavigationScope): void {
     const accountId = this.workspace.activeAccountId();
     if (!accountId) return;
-    this.open(
-      this.workspace.scopeDestination(accountId, scope),
-      'user',
-      'push',
-    );
+    this.navigate({ kind: 'scope', accountId, scope });
   }
 
-  private open(
-    destination: WorkspaceDestination,
-    source: WorkspaceNavigationSource,
-    history: 'push' | 'replace',
-  ): void {
+  private navigate(intent: WorkspaceNavigationIntent): void {
     this.workspace
-      .open(destination, { source, history })
+      .navigate(intent)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
         if (outcome.kind !== 'ready') {

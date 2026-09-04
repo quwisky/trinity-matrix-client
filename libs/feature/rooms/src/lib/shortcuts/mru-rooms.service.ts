@@ -9,8 +9,17 @@ const MAX_VISITS = 20;
 /** Which way a hop moves through the frozen snapshot. */
 export type HopDirection = 'back' | 'forward';
 
+export interface MruRoomIdentity {
+  readonly accountId: string;
+  readonly roomId: string;
+}
+
+function sameRoom(left: MruRoomIdentity, right: MruRoomIdentity): boolean {
+  return left.accountId === right.accountId && left.roomId === right.roomId;
+}
+
 /**
- * The most-recently-**visited** room stack — where the user *was*, distinct from the
+ * The most-recently-**visited** Account-and-Room stack — where the user *was*, distinct from the
  * activity-recency the quick switcher and Recent view use. Session-scoped (in memory);
  * a visit-MRU is inherently a session concept, so it is not persisted across restarts.
  *
@@ -25,23 +34,23 @@ export type HopDirection = 'back' | 'forward';
  */
 @Injectable({ providedIn: 'root' })
 export class MruRoomsService {
-  private readonly _visited = signal<string[]>([]);
+  private readonly _visited = signal<MruRoomIdentity[]>([]);
   /** The visit stack, most-recently-visited first. */
   readonly visited = this._visited.asReadonly();
 
   /** Snapshot of the stack taken when a hop cycle began, or null when not cycling. */
-  private hopSnapshot: string[] | null = null;
+  private hopSnapshot: MruRoomIdentity[] | null = null;
   private hopIndex = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
-   * Record a user-driven visit to `id`: move it to the front of the stack (deduped,
+   * Record a user-driven visit: move it to the front of the stack (deduped,
    * capped) and end any hop cycle in progress — the explicit open is the commit.
    */
-  record(id: string): void {
+  record(room: MruRoomIdentity): void {
     this.endHop();
     this._visited.update((visited) =>
-      [id, ...visited.filter((existing) => existing !== id)].slice(
+      [room, ...visited.filter((existing) => !sameRoom(existing, room))].slice(
         0,
         MAX_VISITS,
       ),
@@ -50,23 +59,28 @@ export class MruRoomsService {
 
   /**
    * Step through the visit stack alt-tab style and return the room to open, or null when
-   * there is nowhere to hop. `currentId` is the room open now (forced to the front of the
-   * snapshot so a hop always starts from "here"); `knownIds` is the set of rooms that
-   * still exist, so a room since left/forgotten is skipped rather than opened.
+   * there is nowhere to hop. `current` is the room open now (forced to the front of the
+   * snapshot so a hop always starts from "here"); `knownRooms` contains rooms that still
+   * exist, so a room since left/forgotten is skipped rather than opened.
    *
    * The first hop of a cycle snapshots the stack; subsequent hops walk that frozen order
    * (clamped at both ends) without reordering it. Each press re-arms the idle commit.
    */
   hop(
     direction: HopDirection,
-    currentId: string | null,
-    knownIds: ReadonlySet<string>,
-  ): string | null {
+    current: MruRoomIdentity | null,
+    knownRooms: readonly MruRoomIdentity[],
+  ): MruRoomIdentity | null {
     if (!this.hopSnapshot) {
-      const ordered = currentId
-        ? [currentId, ...this._visited().filter((id) => id !== currentId)]
+      const ordered = current
+        ? [
+            current,
+            ...this._visited().filter((room) => !sameRoom(room, current)),
+          ]
         : [...this._visited()];
-      this.hopSnapshot = ordered.filter((id) => knownIds.has(id));
+      this.hopSnapshot = ordered.filter((room) =>
+        knownRooms.some((known) => sameRoom(known, room)),
+      );
       this.hopIndex = 0;
     }
     const snapshot = this.hopSnapshot;
@@ -82,11 +96,13 @@ export class MruRoomsService {
 
   /**
    * The Nth most-recently-visited room, skipping the one open now — so Ctrl/Cmd+1 is the
-   * previous room. Returns null when the stack is too short. `currentId` is excluded so
+   * previous room. Returns null when the stack is too short. `current` is excluded so
    * the numbering matches what a user would count ("1 = the last place I was").
    */
-  nth(n: number, currentId: string | null): string | null {
-    const others = this._visited().filter((id) => id !== currentId);
+  nth(n: number, current: MruRoomIdentity | null): MruRoomIdentity | null {
+    const others = current
+      ? this._visited().filter((room) => !sameRoom(room, current))
+      : this._visited();
     return others[n - 1] ?? null;
   }
 

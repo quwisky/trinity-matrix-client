@@ -1,20 +1,21 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import type {
+  WorkspaceNavigationIntent,
+  WorkspaceRoomNavigationOrigin,
+} from '@trinity/application/workspace';
 import { AccountScopeService } from '@trinity/data-access/room-library';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
-import type { WorkspaceDestination } from './workspace.models';
-import type { WorkspaceNavigationSource } from './workspace.models';
 import { WorkspaceService } from './workspace.service';
 
 /**
  * Routing a selection to the account that owns it.
  *
  * In mixed mode a visible row carries its exact owning Account into the semantic Workspace
- * command. Older ID-only shell paths still resolve ownership here and use the compatibility
- * destination seam until the rest of the shell migration lands.
+ * command. Older ID-only shell paths resolve ownership here before submitting the same intent.
  *
  * This is why the cluster moved before invites and shortcuts. `onAcceptInvite` and
  * `jumpTo` both finish through `onSelectRoomRow`, so they need it to already have a home
@@ -29,21 +30,6 @@ export class AccountRoutingService {
   private readonly workspace = inject(WorkspaceService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly destroyRef = inject(DestroyRef);
-
-  /** Switch to `accountId`, then repair the requested Workspace destination. */
-  private runOnAccount(
-    destination: WorkspaceDestination,
-    source: WorkspaceNavigationSource = 'user',
-  ): void {
-    this.workspace
-      .open(destination, { source, history: 'push' })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((outcome) => {
-        if (outcome.kind !== 'ready') {
-          void this.status.showError('Unable to open that account right now.');
-        }
-      });
-  }
 
   /** An account's display name for user-facing copy, falling back to its user id. */
   accountLabel(accountId: string): string {
@@ -67,38 +53,28 @@ export class AccountRoutingService {
   }
 
   /**
-   * Compatibility path for ID-only shell navigation. Visible rows use
-   * {@link onSelectRoomSelection} and never re-derive Account ownership from this list.
+   * Resolve legacy ID-only shell actions before submitting an exact semantic identity.
+   * Visible rows use {@link onSelectRoomSelection} and skip this lookup.
    */
-  onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
-    const accountId = this.nav.knownRooms().find((r) => r.id === id)?.accountId;
-    if (id && accountId && accountId !== this.workspace.activeAccountId()) {
-      this.runOnAccount(this.workspace.roomDestination(accountId, id), source);
-      return;
-    }
-    this.nav.onSelectRoom(id, source);
+  onSelectRoomRow(
+    id: string,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
+    const room = this.nav.knownRooms().find((candidate) => candidate.id === id);
+    const accountId = room?.accountId ?? this.workspace.activeAccountId();
+    if (!id || !accountId) return;
+    this.openRoom({ roomId: id, accountId }, origin);
   }
 
   /** Open the exact Account-and-Room identity emitted by a visible Room row. */
-  onSelectRoomSelection(selection: {
-    readonly roomId: string;
-    readonly accountId: string;
-  }): void {
-    this.workspace
-      .navigate({
-        kind: 'room',
-        accountId: selection.accountId,
-        roomId: selection.roomId,
-        origin: 'room-list',
-      })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((outcome) => {
-        if (outcome.kind !== 'ready') {
-          void this.status.showError(
-            'Unable to open that destination right now.',
-          );
-        }
-      });
+  onSelectRoomSelection(
+    selection: {
+      readonly roomId: string;
+      readonly accountId: string;
+    },
+    origin: WorkspaceRoomNavigationOrigin = 'room-list',
+  ): void {
+    this.openRoom(selection, origin);
   }
 
   /**
@@ -108,17 +84,19 @@ export class AccountRoutingService {
   onSelectSpaceRow(id: string | null): void {
     const accountId = id
       ? this.vm.railSpaces().find((s) => s.id === id)?.accountId
-      : undefined;
-    if (id && accountId && accountId !== this.workspace.activeAccountId()) {
-      this.runOnAccount(
-        this.workspace.scopeDestination(accountId, {
-          kind: 'space',
-          spaceId: id,
-        }),
-      );
-      return;
-    }
-    this.nav.onSelectSpace(id);
+      : this.workspace.activeAccountId();
+    if (!accountId) return;
+    const changesAccount = accountId !== this.workspace.activeAccountId();
+    this.navigate(
+      {
+        kind: 'scope',
+        accountId,
+        scope: id ? { kind: 'space', spaceId: id } : { kind: 'home' },
+      },
+      changesAccount
+        ? 'Unable to open that account right now.'
+        : 'Unable to open that destination right now.',
+    );
   }
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
@@ -162,14 +140,39 @@ export class AccountRoutingService {
     accountId: string,
     isDirect: boolean,
   ): void {
-    const current = this.workspace.view();
-    const scope = isDirect
-      ? ({ kind: 'home' } as const)
-      : current.accountId === accountId && current.scope.kind !== 'space'
-        ? current.scope
-        : ({ kind: 'recent' } as const);
-    this.runOnAccount(
-      this.workspace.roomInScopeDestination(accountId, roomId, scope),
+    this.navigate(
+      {
+        kind: 'room',
+        accountId,
+        roomId,
+        origin: isDirect ? 'direct-invitation' : 'room-invitation',
+      },
+      accountId !== this.workspace.activeAccountId()
+        ? 'Unable to open that account right now.'
+        : 'Unable to open that destination right now.',
     );
+  }
+
+  private openRoom(
+    selection: { readonly roomId: string; readonly accountId: string },
+    origin: WorkspaceRoomNavigationOrigin,
+  ): void {
+    const changesAccount =
+      selection.accountId !== this.workspace.activeAccountId();
+    this.navigate(
+      { kind: 'room', ...selection, origin },
+      changesAccount
+        ? 'Unable to open that account right now.'
+        : 'Unable to open that destination right now.',
+    );
+  }
+
+  private navigate(intent: WorkspaceNavigationIntent, error: string): void {
+    this.workspace
+      .navigate(intent)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => {
+        if (outcome.kind !== 'ready') void this.status.showError(error);
+      });
   }
 }

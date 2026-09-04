@@ -639,10 +639,8 @@ export class RoomsPage implements OnInit, OnDestroy {
         return of('dismissed' as const);
       }
       if (surface.layer !== 'conversation') return of('blocked' as const);
-      const destination = this.workspace.listDestination();
-      if (!destination) return of('blocked' as const);
       return this.workspace
-        .open(destination, { source: 'user', history: 'replace' })
+        .navigate({ kind: 'list', origin: 'workspace-back' })
         .pipe(
           map((outcome) =>
             outcome.kind === 'ready'

@@ -92,7 +92,8 @@ describe('Conversation Runtime production boundary', () => {
       'this.conversations.focus({\n      accountId: view.accountId,\n      roomId: view.roomId,\n    });',
     );
     expect(workspace).toContain('this.conversations.blur();');
-    expect(navigation).toContain('.open(destination, { source, history })');
+    expect(navigation).toContain('.navigate(intent)');
+    expect(navigation).not.toMatch(/\bworkspace\s*\.\s*open\s*\(/s);
   });
 
   it('binds each child to the client for its immutable Account key', () => {

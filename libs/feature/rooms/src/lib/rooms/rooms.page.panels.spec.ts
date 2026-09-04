@@ -392,7 +392,7 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.nav.onSelectRoom('!r:hs');
     await settleWorkspace();
-    shell.nav.onSelectRoom('!h:hs', 'hop');
+    shell.nav.onSelectRoom('!h:hs', 'room-hop');
     await settleWorkspace();
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');
