@@ -809,6 +809,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- **Message swipe journeys no longer lose the edit gesture under parallel browser load.** The
+  shared synthetic touch driver now advances with Chromium's renderer frames, and fresh-account
+  journeys wait for the encryption banner before measuring message geometry. Touch paths now
+  reach the application without being coalesced or displaced by a late layout change.
+
 - **A fresh Electron login no longer reports one host-capability failure per historical
   notification.** Local notification delivery now waits for each Account's first successful sync
   transition instead of treating the SDK's initial-history `liveEvent` markers as new messages;

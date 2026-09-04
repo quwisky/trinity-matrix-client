@@ -18,6 +18,7 @@ import {
   closeSettings,
   openSettingsSection,
 } from '../../../support/journeys/navigation.mts';
+import { cdpSwipe as swipe } from '../../../support/touch-platform.mts';
 
 // Swiping a message row sideways to edit or reply to it (#222), on a real phone profile.
 //
@@ -35,49 +36,6 @@ const session = synapseSession();
 // something the app never reads.
 const SWIPE_KEY = 'trinity.message-swipe';
 const DRAWER_OPEN_FROM_RIGHT_PX = 44;
-
-/**
- * A real touch drag, through the browser's own input pipeline.
- *
- * Takes an END y as well as a start, unlike the drawer's helper, so a drag that turns
- * vertical is drivable — that is a whole acceptance criterion and a horizontal-only
- * signature cannot express it.
- */
-async function swipe(
-  page: Page,
-  from: { x: number; y: number },
-  to: { x: number; y: number },
-): Promise<void> {
-  const cdp = await page.context().newCDPSession(page);
-  const STEPS = 10;
-  try {
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x: from.x, y: from.y, id: 1 }],
-    });
-    for (let step = 1; step <= STEPS; step++) {
-      await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [
-          {
-            x: Math.round(from.x + ((to.x - from.x) * step) / STEPS),
-            y: Math.round(from.y + ((to.y - from.y) * step) / STEPS),
-            id: 1,
-          },
-        ],
-      });
-    }
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchEnd',
-      touchPoints: [],
-    });
-  } finally {
-    // Released even when an assertion throws mid-drag, which also leaves the page with a
-    // finger permanently down — a state no gesture can produce, and one that has already
-    // made a probe in this repo report a defect that did not exist.
-    await cdp.detach();
-  }
-}
 
 /** A throwaway account with one room holding one message from someone else and one of ours. */
 async function openRoom(
@@ -154,6 +112,12 @@ async function openRoom(
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 20_000,
   });
+  // Fresh accounts resolve their crypto state after the room becomes interactive. Wait for
+  // the resulting banner before measuring a row, or its insertion can reflow the mobile
+  // surface between boundingBox() and touchStart under parallel load.
+  await expect(
+    page.locator('trn-banner').getByText('Set up encryption'),
+  ).toBeVisible();
 
   if (filler > 0) {
     // The initial /sync contains only the newest timeline slice, so the two target
