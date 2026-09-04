@@ -9,6 +9,7 @@ import {
   clientStub,
   flushPanelJump,
   invitesProvider,
+  selectedRoomLibraryProvider,
   setRouteRoom,
   settleWorkspace,
   shellFrom,
@@ -125,6 +126,7 @@ describe('RoomsPage panels, pins and media', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           leave: leaveRoom,

@@ -1,6 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { type AccountBadge } from '@trinity/components/generic-content';
 
 /**
@@ -15,12 +15,13 @@ import { type AccountBadge } from '@trinity/components/generic-content';
  */
 @Injectable({ providedIn: 'root' })
 export class AccountBadgesService {
-  private readonly scope = inject(AccountScopeService);
+  private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly identities = inject(AccountIdentitiesService);
 
   readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
     const badges = new Map<string, AccountBadge>();
-    if (!this.scope.mixing()) {
+    const view = this.selectedLibrary.view();
+    if (view.mode !== 'mixed') {
       return badges;
     }
     // Every account's profile, each read through its OWN client. This used to read a
@@ -30,7 +31,7 @@ export class AccountBadgesService {
     // That workaround is gone: the projection listens per account, so a badge is driven by
     // the thing it displays rather than by whichever unrelated signal happened to tick.
     const profiles = this.identities.identities();
-    for (const userId of this.scope.selected()) {
+    for (const userId of view.accountIds) {
       const profile = profiles.get(userId);
       const name = profile?.displayName || userId;
       badges.set(userId, {

@@ -431,8 +431,9 @@ publishes the effective Account set, active-or-mixed mode, Rooms, Spaces, and in
 read model. It observes Account selection once and drives all three mixed projectors; consumers do
 not fan Account ids into them. A one-Account selection delegates to the active projections, while a
 multi-Account selection preserves active-owner preference, every contributing Room Account, the
-loudest unread state, unioned Space children, and every Account-scoped invitation. Local search is
-the first migrated consumer; five Room-feature files remain on the frozen compatibility allowlist.
+loudest unread state, unioned Space children, and every Account-scoped invitation. Local search and
+the Room shell's Recent, Home, Rooms, Space, rail, badge, and invitation presentation read that same
+generation. Two action and shortcut files remain on the frozen compatibility allowlist.
 
 The selected Account set is a Room Library-owned typed installation preference. Its command writes
 before publishing, so unavailable storage returns typed retry guidance while the prior selected

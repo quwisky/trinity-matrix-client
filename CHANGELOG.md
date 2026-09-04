@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room-shell lists now render one coherent selected-Account generation.** Recent, Home, Rooms,
+  Space, rail, account-badge, and invitation presentation no longer choose between active and mixed
+  sources. Shared Rooms and Spaces retain their selected-view ownership and child-union policy,
+  scope changes replace the complete visible generation together, and the page no longer fans
+  Account selection into three compatibility projectors.
+
 - **Room Library now publishes one selected-Account view.** Local search reads one coherent Room,
   Space, and invitation generation instead of choosing active or mixed sources, so invitations
   from every selected Account are searchable with exact ownership. Single-Account selection keeps

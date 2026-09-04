@@ -13,13 +13,10 @@ import {
   type AccountIdentity,
 } from '@trinity/data-access/identity';
 import {
-  AccountScopeService,
-  MixedRoomsService,
-  MixedSpacesService,
   RoomLibraryService,
+  SelectedRoomLibraryService,
   SpaceChildrenService,
   SpaceRoomOrderService,
-  SpacesService,
   UnreadAggregatorService,
 } from '@trinity/data-access/room-library';
 import { AccountBadgesService } from '../shared/account-badges.service';
@@ -82,8 +79,16 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
       RoomShellStore,
       RoomShellViewModel,
       MockProvider(RoomLibraryService),
+      MockProvider(SelectedRoomLibraryService, {
+        view: signal({
+          accountIds: new Set(['@me:hs']),
+          mode: 'active' as const,
+          rooms: [],
+          spaces: [],
+          invitations: [],
+        }).asReadonly(),
+      }),
       MockProvider(RoomMembersService, { membersFor }),
-      MockProvider(SpacesService),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomActionPermissionsService, {
         room: () => ({
@@ -91,9 +96,6 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
           curateSpace: { available: true, reason: null },
         }),
       }),
-      MockProvider(MixedRoomsService),
-      MockProvider(MixedSpacesService),
-      MockProvider(AccountScopeService),
       MockProvider(SpaceRoomOrderService),
       MockProvider(AccountBadgesService),
       MockProvider(UnreadAggregatorService, {

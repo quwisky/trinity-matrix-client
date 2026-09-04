@@ -40,10 +40,7 @@ import {
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrustService } from '@trinity/data-access/trust';
-import {
-  InvitesService,
-  MixedInvitesService,
-} from '@trinity/data-access/room-library';
+import { InvitesService } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
@@ -54,11 +51,9 @@ import {
 } from '@trinity/data-access/room-administration';
 import {
   RoomLibraryService,
+  SelectedRoomLibraryService,
   SpacesService,
   SpaceChildrenService,
-  AccountScopeService,
-  MixedRoomsService,
-  MixedSpacesService,
 } from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
@@ -277,10 +272,7 @@ export class RoomsPage implements OnInit, OnDestroy {
 
   readonly rooms = inject(RoomLibraryService);
   readonly spaces = inject(SpacesService);
-  private readonly mixedRooms = inject(MixedRoomsService);
-  private readonly mixedSpaces = inject(MixedSpacesService);
-  private readonly accountScope = inject(AccountScopeService);
-  private readonly mixedInvites = inject(MixedInvitesService);
+  private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   readonly invites = inject(InvitesService);
   private readonly conversations = inject(ConversationRuntime);
   readonly timeline = this.conversations.timeline;
@@ -331,9 +323,13 @@ export class RoomsPage implements OnInit, OnDestroy {
    * including the active account. When it names more than one, mixed mode governs **every**
    * surface: the Recent list, Home's DMs, the Rooms list, and the rail's space pills.
    */
-  readonly shownAccountIds = this.accountScope.selected;
+  readonly shownAccountIds = computed(
+    () => this.selectedLibrary.view().accountIds,
+  );
   /** Whether the cross-account projection is active (more than one account selected). */
-  readonly mixedOn = this.accountScope.mixing;
+  readonly mixedOn = computed(
+    () => this.selectedLibrary.view().mode === 'mixed',
+  );
 
   // The two mobile pages (the rail/room-list and the chat), focused on a view switch
   // so keyboard/screen-reader focus follows to the newly-shown page (see focusActiveView).
@@ -360,15 +356,6 @@ export class RoomsPage implements OnInit, OnDestroy {
       if (!this.matrix.activeUserId()) {
         void this.router.navigateByUrl('/login', { replaceUrl: true });
       }
-    });
-    // Point the cross-account projections at the selected accounts. They attach listeners
-    // only for those accounts (and none at all below two), so an unmixed session costs
-    // nothing. `selected` is set-equal-compared, so this doesn't churn on every sync tick.
-    effect(() => {
-      const accounts = this.shownAccountIds();
-      this.mixedRooms.setAccounts(accounts);
-      this.mixedSpaces.setAccounts(accounts);
-      this.mixedInvites.setAccounts(accounts);
     });
     effect((onCleanup) => {
       const roomId = this.store.activeRoomId();

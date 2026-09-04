@@ -1,4 +1,4 @@
-import { signal, type WritableSignal } from '@angular/core';
+import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +6,7 @@ import {
   AccountIdentitiesService,
   type AccountIdentity,
 } from '@trinity/data-access/identity';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { AccountBadgesService } from './account-badges.service';
 
 function profileMap(
@@ -42,9 +42,14 @@ function harness(opts: {
   TestBed.configureTestingModule({
     providers: [
       AccountBadgesService,
-      MockProvider(AccountScopeService, {
-        mixing: mixing.asReadonly(),
-        selected: selected.asReadonly(),
+      MockProvider(SelectedRoomLibraryService, {
+        view: computed(() => ({
+          accountIds: selected(),
+          mode: mixing() ? ('mixed' as const) : ('active' as const),
+          rooms: [],
+          spaces: [],
+          invitations: [],
+        })),
       }),
       MockProvider(AccountIdentitiesService, {
         identities: profiles.asReadonly(),

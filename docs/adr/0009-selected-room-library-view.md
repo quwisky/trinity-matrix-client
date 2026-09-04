@@ -6,8 +6,8 @@ status: accepted
 
 Room Library publishes one `SelectedRoomLibraryView` containing the effective Account set, its
 active or mixed mode, and the Room, Space, and invitation rows derived for that set. Consumers read
-that record instead of choosing between active and mixed projections. Local search is the first
-complete consumer; the Room shell and action paths migrate in the next increments.
+that record instead of choosing between active and mixed projections. Local search and the complete
+Room-shell list presentation are migrated consumers; action paths migrate in the next increment.
 
 The active Account is always present. Persisted Account identifiers remain stored when their
 accounts are temporarily absent, but only live Account identifiers contribute rows. A one-Account
@@ -28,6 +28,7 @@ Preference writes are cold and finite, publish only after durable storage succee
 typed recovery when storage is unavailable. A failed write therefore leaves the prior effective
 view visible instead of briefly publishing an unpersisted selection.
 
-This is the expand step of ADR-0007. Five Room-feature files still import a legacy mixed projector;
-a source contract freezes that allowlist. The next two increments move presentation and actions to
-the selected view, and the contract step removes page fan-out and all three public mixed services.
+This follows the expand step of ADR-0007. Room-shell presentation now reads one selected generation,
+and page-level Account fan-out is gone. Two action and shortcut files still import a legacy mixed
+projector; a source contract freezes that reduced allowlist. The next increment moves those actions
+to the selected view, and the contract step removes all three public mixed services.

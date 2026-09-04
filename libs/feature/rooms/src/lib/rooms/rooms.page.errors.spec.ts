@@ -9,6 +9,7 @@ import {
   RoomsTimelineStub,
   clientStub,
   invitesProvider,
+  selectedRoomLibraryProvider,
   setRouteRoom,
   settleWorkspace,
   shellFrom,
@@ -122,6 +123,7 @@ describe('RoomsPage action error feedback', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           leave: leaveRoom,

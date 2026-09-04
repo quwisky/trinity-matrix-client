@@ -31,13 +31,11 @@ import {
   type AccountBadge,
 } from '@trinity/components/generic-content';
 import {
-  InvitesService,
-  MixedInvitesService,
+  SelectedRoomLibraryService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
-  AccountScopeService,
   DEFAULT_ROOM_SORT,
   matchesRoomFilter,
   normalizeRoomFilter,
@@ -84,9 +82,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 })
 export class ChannelSidebarComponent {
   private readonly spacesSvc = inject(SpacesService);
-  private readonly invitesSvc = inject(InvitesService);
-  private readonly mixedInvites = inject(MixedInvitesService);
-  private readonly accountScope = inject(AccountScopeService);
+  private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly roomsSvc = inject(RoomLibraryService);
   /**
    * Who is typing, per room, read here and passed DOWN to the row list.
@@ -120,7 +116,7 @@ export class ChannelSidebarComponent {
   readonly inviteToSpaceReason = input<string | null>(null);
   /** Already narrowed by {@link filterQuery} — the shell filters, so that the Alt+↑/↓ room
    * walk steps through exactly what is on screen (`RoomShellStore.roomFilter`). */
-  readonly rooms = input<RoomSummary[]>([]);
+  readonly rooms = input<readonly RoomSummary[]>([]);
 
   /**
    * Whether any room has unread messages — gates the "Mark all as read" affordance.
@@ -203,12 +199,9 @@ export class ChannelSidebarComponent {
   readonly childrenLoading = this.spacesSvc.childrenLoading;
   /** Non-null when the active space's child hierarchy failed to load. */
   readonly childrenError = this.spacesSvc.childrenError;
-  /** Pending invites surfaced in an "Invites" group above the channels — across every
-   * mixed account, so an invite to one you aren't currently acting as is still visible. */
-  readonly invites = computed<readonly PendingInvite[]>(() =>
-    this.accountScope.mixing()
-      ? this.mixedInvites.invites()
-      : this.invitesSvc.pendingInvites(),
+  /** Pending invites from the same selected generation as the Room and Space lists. */
+  readonly invites = computed<readonly PendingInvite[]>(
+    () => this.selectedLibrary.view().invitations,
   );
 
   protected readonly filteredInvites = computed(() =>

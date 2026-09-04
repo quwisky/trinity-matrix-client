@@ -2,6 +2,7 @@ import {
   SHARED_MOCKS,
   clientStub,
   invitesProvider,
+  selectedRoomLibraryProvider,
   setRouteRoom,
   settleWorkspace,
   shellFrom,
@@ -77,7 +78,10 @@ describe('RoomsPage space filtering', () => {
     // and the space-order assertion below would pass whether or not the mode was honoured.
     const rooms = [
       roomSummary('!c:hs', 'charlie', 2),
-      roomSummary('!a:hs', 'alpha', 5),
+      {
+        ...roomSummary('!a:hs', 'alpha', 5),
+        directUserId: '@alice:hs',
+      },
       roomSummary('!b:hs', 'bravo', 3),
     ];
     const childRoomIds = vi.fn((id: string | null) =>
@@ -87,6 +91,7 @@ describe('RoomsPage space filtering', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
@@ -534,6 +539,7 @@ describe('RoomsPage space ordering', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
@@ -742,7 +748,10 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
   /** `extra` adds a third space and its rooms, so the default fixture is unchanged. */
   function build(extra: { rooms?: RoomSummary[]; children?: string[] } = {}) {
     const rooms = [
-      roomSummary('!dm:hs', 'dm-with-bob', 4), // a direct message
+      {
+        ...roomSummary('!dm:hs', 'dm-with-bob', 4),
+        directUserId: '@bob:hs',
+      }, // a direct message
       roomSummary('!a:hs', 'alpha', 5), // space 1's only child
       roomSummary('!b:hs', 'bravo', 3), // space 2's child
       roomSummary('!c:hs', 'charlie', 7), // space 2's other child
@@ -759,6 +768,7 @@ describe('RoomsPage unread aggregation: multiple spaces + DM split', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
