@@ -27,6 +27,8 @@ export type RoomLinkAction = 'open' | 'accept' | 'join' | 'knock' | 'none';
 
 /** Information safe to project into the room-link preview UI. */
 export interface RoomLinkPreview {
+  /** Account whose Matrix client resolved this preview and must perform its action. */
+  readonly accountId: string;
   readonly roomId: string;
   readonly requestedAddress: string | null;
   readonly canonicalAddress: string | null;
@@ -69,6 +71,12 @@ function joinRuleOf(value: unknown): RoomLinkJoinRule {
     value === 'private'
     ? value
     : 'unknown';
+}
+
+function accountIdOf(client: MatrixClient): string {
+  const accountId = client.getUserId();
+  if (!accountId) throw new Error('Account unavailable.');
+  return accountId;
 }
 
 /** Exhaustive action mapping: never offer a membership write that cannot be justified. */
@@ -161,7 +169,7 @@ export class RoomLinkService {
           localMembership === 'knock' ||
           localMembership === 'ban')
       ) {
-        return of(this.fromLocal(local, target, localMembership));
+        return of(this.fromLocal(client, local, target, localMembership));
       }
 
       return from(this.resolveRemote(client, target)).pipe(
@@ -181,11 +189,10 @@ export class RoomLinkService {
   /** Join only after the preview's explicit Join action is pressed. Cold. */
   join(preview: RoomLinkPreview): Observable<string> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
-      }
+      const client = this.matrix.clientFor(preview.accountId);
+      if (!client) return throwError(() => new Error('Account unavailable.'));
       return from(
-        this.matrix.instance.joinRoom(
+        client.joinRoom(
           preview.roomId,
           preview.via.length > 0 ? { viaServers: [...preview.via] } : undefined,
         ),
@@ -196,11 +203,10 @@ export class RoomLinkService {
   /** Request access only after the preview's explicit knock action is pressed. Cold. */
   knock(preview: RoomLinkPreview): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
-      }
+      const client = this.matrix.clientFor(preview.accountId);
+      if (!client) return throwError(() => new Error('Account unavailable.'));
       return from(
-        this.matrix.instance.knockRoom(
+        client.knockRoom(
           preview.roomId,
           preview.via.length > 0 ? { viaServers: [...preview.via] } : undefined,
         ),
@@ -279,6 +285,7 @@ export class RoomLinkService {
   }
 
   private fromLocal(
+    client: MatrixClient,
     room: Room,
     target: Extract<MatrixLinkTarget, { kind: 'room' }>,
     membership: RoomLinkMembership,
@@ -293,6 +300,7 @@ export class RoomLinkService {
       ],
     );
     return this.build({
+      accountId: accountIdOf(client),
       roomId: room.roomId,
       target,
       canonicalAddress: room.getCanonicalAlias(),
@@ -347,6 +355,7 @@ export class RoomLinkService {
       typeof raw['avatar_url'] === 'string' ? raw['avatar_url'] : null;
     const memberCount = raw['num_joined_members'];
     return this.build({
+      accountId: accountIdOf(client),
       roomId,
       target,
       canonicalAddress: canonical,
@@ -371,6 +380,7 @@ export class RoomLinkService {
   }
 
   private build(values: {
+    accountId: string;
     roomId: string;
     target: Extract<MatrixLinkTarget, { kind: 'room' }>;
     canonicalAddress: string | null;
@@ -385,6 +395,7 @@ export class RoomLinkService {
     restrictedEligible?: boolean;
   }): RoomLinkPreview {
     return {
+      accountId: values.accountId,
       roomId: values.roomId,
       requestedAddress: values.target.roomIdOrAlias.startsWith('#')
         ? values.target.roomIdOrAlias

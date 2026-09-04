@@ -12,7 +12,7 @@ import {
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
@@ -23,7 +23,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
  * across the bottom of the viewport, so a flyout anchored beside the account menu has nowhere
  * to go — it would land back on top of the menu, which is the bug this exists to avoid.
  *
- * Writes through {@link AccountScopeService} directly, as the other dialogs in this feature
+ * Writes through {@link SelectedRoomLibraryService} directly, as the other dialogs in this feature
  * inject their own data-access service. That keeps multi-select honest: each tick applies
  * immediately and the dialog stays open, matching the submenu, rather than inventing a
  * batch-and-commit contract the rest of the app does not have. The consequence worth knowing
@@ -43,7 +43,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   ],
 })
 export class AccountPickerComponent {
-  private readonly scope = inject(AccountScopeService);
+  private readonly selected = inject(SelectedRoomLibraryService);
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -55,7 +55,7 @@ export class AccountPickerComponent {
 
   /** Whether `userId` is currently mixed into the view. Live, so a tick re-renders its row. */
   isShown(userId: string): boolean {
-    return this.scope.selected().has(userId);
+    return this.selected.view().accountIds.has(userId);
   }
 
   /**
@@ -70,8 +70,8 @@ export class AccountPickerComponent {
   /** Tick or untick an account. Deliberately does NOT close — this is a multi-select. */
   toggle(userId: string): void {
     if (!this.isLocked(userId)) {
-      this.scope
-        .toggle(userId)
+      this.selected
+        .toggleAccount(userId)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
           next: (outcome) => {

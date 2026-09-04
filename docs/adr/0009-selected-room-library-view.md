@@ -6,8 +6,9 @@ status: accepted
 
 Room Library publishes one `SelectedRoomLibraryView` containing the effective Account set, its
 active or mixed mode, and the Room, Space, and invitation rows derived for that set. Consumers read
-that record instead of choosing between active and mixed projections. Local search and the complete
-Room-shell list presentation are migrated consumers; action paths migrate in the next increment.
+that record instead of choosing between active and mixed projections. Local search, Room-shell
+presentation, shortcuts, and Room actions all consume the selected generation or the exact row
+identity emitted from it.
 
 The active Account is always present. Persisted Account identifiers remain stored when their
 accounts are temporarily absent, but only live Account identifiers contribute rows. A one-Account
@@ -30,7 +31,10 @@ Preference writes are cold and finite, publish only after durable storage succee
 typed recovery when storage is unavailable. A failed write therefore leaves the prior effective
 view visible instead of briefly publishing an unpersisted selection.
 
-This follows the expand step of ADR-0007. Room-shell presentation now reads one selected generation,
-and page-level Account fan-out is gone. Two action and shortcut files still import a legacy mixed
-projector; a source contract freezes that reduced allowlist. The next increment moves those actions
-to the selected view, and the contract step removes all three public mixed services.
+This follows the migrate step of ADR-0007. Room-shell presentation and action lookup now read one
+selected generation, and page-level Account fan-out is gone. Visible Room and invitation rows carry
+their exact Account identity; shared-row read, notification, favourite, and priority writes dedupe
+and target every contributing Account. Async create, join, permalink, and confirmed-membership
+flows retain the Account that began the action rather than re-reading Active Account on completion.
+The source contract now rejects every production import of the legacy mixed services outside the
+selected implementation. The contract step can therefore remove those implementations and exports.

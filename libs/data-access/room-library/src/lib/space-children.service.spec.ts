@@ -92,6 +92,8 @@ function setup(
           return signedIn;
         },
         instance: client as never,
+        clientFor: (accountId: string) =>
+          accountId === '@me:hs.example' && signedIn ? (client as never) : null,
         activeUserId: activeUserId.asReadonly(),
       }),
     ],
@@ -212,7 +214,9 @@ describe('SpaceChildrenService', () => {
     it('links a joined room into the space', async () => {
       const { svc, sendStateEvent } = setup();
 
-      await firstValueFrom(svc.addExistingRoom('!s:hs', '!room:other.example'));
+      await firstValueFrom(
+        svc.addExistingRoom('@me:hs.example', '!s:hs', '!room:other.example'),
+      );
 
       expect(sendStateEvent).toHaveBeenCalledWith(
         '!s:hs',
@@ -227,7 +231,9 @@ describe('SpaceChildrenService', () => {
       // point of `via` is to tell a remote server where to find the room.
       const { svc, sendStateEvent } = setup();
 
-      await firstValueFrom(svc.addExistingRoom('!s:hs', '!r:remote.example'));
+      await firstValueFrom(
+        svc.addExistingRoom('@me:hs.example', '!s:hs', '!r:remote.example'),
+      );
 
       expect(sentContent(sendStateEvent)['via']).toEqual(['remote.example']);
     });
@@ -240,7 +246,9 @@ describe('SpaceChildrenService', () => {
         ],
       });
 
-      await firstValueFrom(svc.addExistingRoom('!s:hs', '!c:hs'));
+      await firstValueFrom(
+        svc.addExistingRoom('@me:hs.example', '!s:hs', '!c:hs'),
+      );
 
       const order = sentContent(sendStateEvent)['order'] as string;
       expect(compareOrder('b', order)).toBe(-1);
@@ -252,7 +260,9 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs', suggested: true, order: 'm' }],
       });
 
-      await firstValueFrom(svc.addExistingRoom('!s:hs', '!a:hs'));
+      await firstValueFrom(
+        svc.addExistingRoom('@me:hs.example', '!s:hs', '!a:hs'),
+      );
 
       expect(sendStateEvent).not.toHaveBeenCalled();
     });
@@ -261,7 +271,7 @@ describe('SpaceChildrenService', () => {
       const { svc, sendStateEvent } = setup({ signedOut: true });
 
       await expect(
-        firstValueFrom(svc.addExistingRoom('!s:hs', '!a:hs')),
+        firstValueFrom(svc.addExistingRoom('@me:hs.example', '!s:hs', '!a:hs')),
       ).rejects.toThrow(/not signed in/i);
       expect(sendStateEvent).not.toHaveBeenCalled();
     });

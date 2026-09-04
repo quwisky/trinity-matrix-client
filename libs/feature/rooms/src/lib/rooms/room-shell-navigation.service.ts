@@ -7,9 +7,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  AccountScopeService,
-  MixedRoomsService,
-  RoomLibraryService,
+  SelectedRoomLibraryService,
   type RoomSummary,
 } from '@trinity/data-access/room-library';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
@@ -21,21 +19,23 @@ import {
 } from '@trinity/application/workspace';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
+import {
+  type ExactRoomSelection,
+  type ExactSpaceSelection,
+} from '../shared/exact-selection';
 
 /**
  * UI-local navigation adapter around the authoritative Workspace workflow.
  *
  * Semantic state, Account activation, URLs, and Conversation focus belong to Workspace.
  * This adapter retains only room-shell concerns: focus handoff, overlay cleanup, error
- * presentation, and the mixed-room lookup needed by keyboard and row coordinators.
+ * presentation, and the selected-room lookup needed by keyboard and row coordinators.
  */
 @Injectable()
 export class RoomShellNavigationService {
   private readonly store = inject(RoomShellStore);
   private readonly workspace = inject(WorkspaceNavigationService);
-  private readonly rooms = inject(RoomLibraryService);
-  private readonly mixedRooms = inject(MixedRoomsService);
-  private readonly accountScope = inject(AccountScopeService);
+  private readonly selected = inject(SelectedRoomLibraryService);
   private readonly status = inject(ShellStatusService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly membersAreDrawer = mediaQuerySignal(
@@ -62,8 +62,11 @@ export class RoomShellNavigationService {
     this.openScope({ kind: 'recent' });
   }
 
-  onSelectSpace(id: string | null): void {
-    this.openScope(id ? { kind: 'space', spaceId: id } : { kind: 'home' });
+  onSelectSpace({ spaceId, accountId }: ExactSpaceSelection): void {
+    this.openScope(
+      spaceId ? { kind: 'space', spaceId } : { kind: 'home' },
+      accountId,
+    );
   }
 
   onShowRooms(): void {
@@ -71,23 +74,19 @@ export class RoomShellNavigationService {
   }
 
   onSelectRoom(
-    id: string,
+    { roomId, accountId }: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
   ): void {
-    const accountId = this.workspace.activeAccountId();
-    if (!accountId) return;
-    this.navigate({ kind: 'room', accountId, roomId: id, origin });
+    this.navigate({ kind: 'room', accountId, roomId, origin });
   }
 
   /** Change sidebar scope and open its room as one atomic Workspace destination. */
   onSelectRoomInScope(
-    id: string,
+    { roomId, accountId }: ExactRoomSelection,
     scope: WorkspaceNavigationScope,
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
   ): void {
-    const accountId = this.workspace.activeAccountId();
-    if (!accountId) return;
-    this.navigate({ kind: 'room', accountId, roomId: id, scope, origin });
+    this.navigate({ kind: 'room', accountId, roomId, scope, origin });
   }
 
   closeOpenRoom(): void {
@@ -102,14 +101,14 @@ export class RoomShellNavigationService {
   }
 
   /** Every room the shell can currently open, independent of the active sidebar scope. */
-  knownRooms(): RoomSummary[] {
-    return this.accountScope.mixing()
-      ? this.mixedRooms.rooms()
-      : this.rooms.rooms();
+  knownRooms(): readonly RoomSummary[] {
+    return this.selected.view().rooms;
   }
 
-  private openScope(scope: WorkspaceNavigationScope): void {
-    const accountId = this.workspace.activeAccountId();
+  private openScope(
+    scope: WorkspaceNavigationScope,
+    accountId = this.workspace.activeAccountId(),
+  ): void {
     if (!accountId) return;
     this.navigate({ kind: 'scope', accountId, scope });
   }

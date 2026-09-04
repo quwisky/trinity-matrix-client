@@ -34,6 +34,7 @@ import {
   SelectedRoomLibraryService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
+import { type ExactSpaceSelection } from '../shared/exact-selection';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   DEFAULT_ROOM_SORT,
@@ -244,10 +245,10 @@ export class ChannelSidebarComponent {
    * account so a mixed-in row leaves on ITS account, never the active one. */
   readonly leaveRoom = output<{ roomId: string; accountId: string }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
-  readonly openChildSpace = output<string>();
+  readonly openChildSpace = output<ExactSpaceSelection>();
   /** Accept / decline a pending invite by room id. */
-  readonly acceptInvite = output<{ roomId: string; accountId: string }>();
-  readonly declineInvite = output<{ roomId: string; accountId: string }>();
+  readonly acceptInvite = output<PendingInvite>();
+  readonly declineInvite = output<PendingInvite>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
   readonly openSwitcher = output<void>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
@@ -268,6 +269,8 @@ export class ChannelSidebarComponent {
     roomId: string;
     accountIds: readonly string[];
   }>();
+  readonly favouriteChange = output<RoomSummary>();
+  readonly priorityChange = output<RoomSummary>();
   /** Mark every room read. Inline on Home; a row in the overflow menu inside a space. */
   readonly markAllRead = output<void>();
 

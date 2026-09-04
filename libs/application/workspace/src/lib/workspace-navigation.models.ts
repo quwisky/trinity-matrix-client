@@ -24,6 +24,12 @@ export interface WorkspaceRoomNavigationIntent {
   readonly origin: WorkspaceRoomNavigationOrigin;
 }
 
+/** One Account-and-Room identity eligible for visit-history navigation. */
+export interface WorkspaceRoomIdentity {
+  readonly accountId: string;
+  readonly roomId: string;
+}
+
 /** Product intent for switching the active Account from the shell picker. */
 export interface WorkspaceAccountNavigationIntent {
   readonly kind: 'account';
@@ -50,11 +56,13 @@ export type WorkspaceHistoryNavigationIntent =
       readonly kind: 'history';
       readonly action: 'hop';
       readonly direction: 'back' | 'forward';
+      readonly availableRooms: readonly WorkspaceRoomIdentity[];
     }
   | {
       readonly kind: 'history';
       readonly action: 'jump';
       readonly position: number;
+      readonly availableRooms: readonly WorkspaceRoomIdentity[];
     };
 
 /** Exact Conversation selected by Global Search. */

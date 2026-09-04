@@ -45,7 +45,11 @@ async function build(
     })),
   );
   const { fixture, container } = await render(AddToSpaceComponent, {
-    inputs: { spaceId: '!s:hs', spaceName: 'Design' },
+    inputs: {
+      accountId: '@me:hs',
+      spaceId: '!s:hs',
+      spaceName: 'Design',
+    },
     providers: [
       MockProvider(RoomLibraryService, {
         rooms: signal(opts.rooms ?? []) as never,
@@ -175,7 +179,7 @@ describe('AddToSpaceComponent', () => {
     cmp.add();
 
     expect(addExistingRoom).toHaveBeenCalledTimes(1);
-    expect(addExistingRoom).toHaveBeenCalledWith('!s:hs', '!b:hs');
+    expect(addExistingRoom).toHaveBeenCalledWith('@me:hs', '!s:hs', '!b:hs');
     expect(close).toHaveBeenCalledWith(true);
   });
 

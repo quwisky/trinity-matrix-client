@@ -15,7 +15,7 @@ import {
   type SpaceChildRoom,
 } from '@trinity/data-access/room-library';
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
-import { filter, map, Observable, switchMap, throwError } from 'rxjs';
+import { filter, map, Observable, switchMap } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceMembersComponent } from '../space-members/space-members.component';
@@ -58,6 +58,8 @@ export class SpaceActionsService {
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
   onCreateSpace(): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     this.status.error.set(null); // don't carry a stale error into a fresh action
     this.alert
       .prompt$({
@@ -71,7 +73,7 @@ export class SpaceActionsService {
         filter((name): name is string => name !== null),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((name) => this.applyCreateSpace(name));
+      .subscribe((name) => this.applyCreateSpace(accountId, name));
   }
 
   /**
@@ -80,7 +82,8 @@ export class SpaceActionsService {
    */
   onCreateSubspace(): void {
     const parentId = this.store.activeSpaceId();
-    if (!parentId || !this.vm.canCurateSpace()) {
+    const accountId = this.store.activeAccountId();
+    if (!parentId || !accountId || !this.vm.canCurateSpace()) {
       return;
     }
     this.status.error.set(null);
@@ -98,7 +101,7 @@ export class SpaceActionsService {
       )
       .subscribe((name) => {
         if (this.vm.canCurateSpace()) {
-          this.applyCreateSubspace(parentId, name);
+          this.applyCreateSubspace(parentId, accountId, name);
         }
       });
   }
@@ -147,16 +150,16 @@ export class SpaceActionsService {
       .subscribe(() => this.applyLeaveSpace(spaceId));
   }
 
-  private applyCreateSpace(name: string): void {
+  private applyCreateSpace(accountId: string, name: string): void {
     if (!name.trim()) {
       return; // empty name — dismiss the prompt without creating
     }
     runWithBusy(
       this.spaces
-        .createSpace({ name })
-        .pipe(switchMap((spaceId) => this.waitForSpace(spaceId))),
+        .createSpace(accountId, { name })
+        .pipe(switchMap((spaceId) => this.waitForSpace(accountId, spaceId))),
       this.status,
-    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
+    ).subscribe((spaceId) => this.nav.onSelectSpace({ spaceId, accountId }));
   }
 
   /**
@@ -167,21 +170,25 @@ export class SpaceActionsService {
    * is why the error is surfaced rather than swallowed: the user can add it to the parent
    * from "Add existing rooms" without having lost anything.
    */
-  private applyCreateSubspace(parentId: string, name: string): void {
+  private applyCreateSubspace(
+    parentId: string,
+    accountId: string,
+    name: string,
+  ): void {
     if (!name.trim()) {
       return;
     }
     runWithBusy(
-      this.spaces.createSpace({ name }).pipe(
+      this.spaces.createSpace(accountId, { name }).pipe(
         switchMap((spaceId) =>
           this.spaceChildren
-            .addExistingRoom(parentId, spaceId)
+            .addExistingRoom(accountId, parentId, spaceId)
             .pipe(map(() => spaceId)),
         ),
-        switchMap((spaceId) => this.waitForSpace(spaceId)),
+        switchMap((spaceId) => this.waitForSpace(accountId, spaceId)),
       ),
       this.status,
-    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
+    ).subscribe((spaceId) => this.nav.onSelectSpace({ spaceId, accountId }));
   }
 
   private applyCreateChannel(spaceId: string, name: string): void {
@@ -196,19 +203,17 @@ export class SpaceActionsService {
   }
 
   /** Cross the post-create `/sync` barrier before Workspace validates the new Space. */
-  private waitForSpace(spaceId: string): Observable<string> {
-    const accountId = this.store.activeAccountId();
-    if (!accountId) {
-      return throwError(() => new Error('Account unavailable'));
-    }
+  private waitForSpace(accountId: string, spaceId: string): Observable<string> {
     return this.roomReadiness
       .waitForRoom(accountId, spaceId)
       .pipe(map(() => spaceId));
   }
 
   private applyLeaveSpace(spaceId: string): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     runWithBusy(this.spaces.leaveSpace(spaceId), this.status).subscribe(() =>
-      this.nav.onSelectSpace(null),
+      this.nav.onSelectSpace({ spaceId: null, accountId }),
     );
   }
 
@@ -219,7 +224,7 @@ export class SpaceActionsService {
     // joined channel list, a space into the rail — and its `joined` flag flips live,
     // dropping it from the "more channels"/Spaces lists. No manual selection here.
     runWithBusy(
-      this.spaces.joinRoom(child.roomId, child.via),
+      this.spaces.joinRoom(child.accountId, child.roomId, child.via),
       this.status,
     ).subscribe();
   }
@@ -315,13 +320,14 @@ export class SpaceActionsService {
   /** Space overflow "Add existing rooms": link rooms the user is already in. */
   onAddToSpace(): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId || !this.vm.canCurateSpace()) {
+    const accountId = this.store.activeAccountId();
+    if (!spaceId || !accountId || !this.vm.canCurateSpace()) {
       return;
     }
     this.dialog
       .openAndWait$(AddToSpaceComponent, {
         ariaLabel: 'Add rooms to this space',
-        inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
+        inputs: { accountId, spaceId, spaceName: this.vm.activeSpaceName() },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();

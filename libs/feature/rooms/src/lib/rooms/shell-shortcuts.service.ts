@@ -4,15 +4,13 @@ import { filter, switchMap } from 'rxjs';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { TrnDialogService } from '@trinity/components/overlay';
 import type { RoomSummary } from '@trinity/data-access/room-library';
-import {
-  type WorkspaceNavigationIntent,
-  WorkspaceNavigationService,
-} from '@trinity/application/workspace';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
+import { type ExactRoomSelection } from '../shared/exact-selection';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
 
@@ -151,7 +149,7 @@ export class ShellShortcutsService {
   /**
    * Open a list-walk target when it still belongs to the visible Account projection.
    */
-  private openShortcutTarget(room: RoomIdentity | null): void {
+  private openShortcutTarget(room: ExactRoomSelection | null): void {
     if (!room) return;
     const known = this.nav
       .knownRooms()
@@ -173,16 +171,31 @@ export class ShellShortcutsService {
   private roomIdentity(
     roomId: string | null,
     rooms: readonly RoomSummary[],
-  ): RoomIdentity | null {
+  ): ExactRoomSelection | null {
     const room = rooms.find((candidate) => candidate.id === roomId);
     return room ? { accountId: room.accountId, roomId: room.id } : null;
   }
 
   private navigateHistory(
-    intent: Extract<WorkspaceNavigationIntent, { readonly kind: 'history' }>,
+    intent:
+      | {
+          readonly kind: 'history';
+          readonly action: 'hop';
+          readonly direction: 'back' | 'forward';
+        }
+      | {
+          readonly kind: 'history';
+          readonly action: 'jump';
+          readonly position: number;
+        },
   ): void {
+    const availableRooms = this.nav
+      .knownRooms()
+      .flatMap((room) =>
+        room.accountIds.map((accountId) => ({ accountId, roomId: room.id })),
+      );
     this.workspace
-      .navigate(intent)
+      .navigate({ ...intent, availableRooms })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
@@ -233,9 +246,4 @@ export class ShellShortcutsService {
           this.status.showError('Unable to open that search result right now.'),
       });
   }
-}
-
-interface RoomIdentity {
-  readonly accountId: string;
-  readonly roomId: string;
 }

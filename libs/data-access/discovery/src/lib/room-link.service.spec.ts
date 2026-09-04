@@ -78,6 +78,7 @@ function setup(options: {
   const joinRoom = vi.fn().mockResolvedValue({ roomId: '!remote:remote' });
   const knockRoom = vi.fn().mockResolvedValue({ room_id: '!remote:remote' });
   const client = {
+    getUserId: () => '@me:hs',
     getRoom: (id: string) => rooms.find((room) => room.roomId === id) ?? null,
     getRooms: () => rooms,
     getRoomIdForAlias,
@@ -86,12 +87,16 @@ function setup(options: {
     joinRoom,
     knockRoom,
   };
+  const clientFor = vi.fn((accountId: string) =>
+    accountId === '@me:hs' ? (client as never) : null,
+  );
   TestBed.configureTestingModule({
     providers: [
       RoomLinkService,
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as never,
+        clientFor,
       }),
     ],
   });
@@ -102,11 +107,13 @@ function setup(options: {
     authedRequest,
     joinRoom,
     knockRoom,
+    clientFor,
   };
 }
 
 function preview(overrides: Partial<RoomLinkPreview> = {}): RoomLinkPreview {
   return {
+    accountId: '@me:hs',
     roomId: '!room:hs',
     requestedAddress: '!room:hs',
     canonicalAddress: null,
@@ -214,6 +221,7 @@ describe('RoomLinkService', () => {
     );
     expect(getRoomSummary).not.toHaveBeenCalled();
     expect(preview).toEqual({
+      accountId: '@me:hs',
       roomId: '!remote:remote',
       requestedAddress: null,
       canonicalAddress: '#remote:remote',
@@ -399,7 +407,7 @@ describe('RoomLinkService', () => {
   });
 
   it('keeps join and knock cold and forwards via only on subscription', async () => {
-    const { service, joinRoom, knockRoom } = setup({});
+    const { service, joinRoom, knockRoom, clientFor } = setup({});
     const linkedRoom = preview({
       roomId: '!remote:remote',
       via: ['a.example', 'b.example'],
@@ -409,9 +417,12 @@ describe('RoomLinkService', () => {
     const knock = service.knock(linkedRoom);
     expect(joinRoom).not.toHaveBeenCalled();
     expect(knockRoom).not.toHaveBeenCalled();
+    expect(clientFor).not.toHaveBeenCalled();
 
     await firstValueFrom(join);
     await firstValueFrom(knock);
+    expect(clientFor).toHaveBeenNthCalledWith(1, '@me:hs');
+    expect(clientFor).toHaveBeenNthCalledWith(2, '@me:hs');
     expect(joinRoom).toHaveBeenCalledWith('!remote:remote', {
       viaServers: ['a.example', 'b.example'],
     });

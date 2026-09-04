@@ -1,4 +1,5 @@
 import { Injectable, signal } from '@angular/core';
+import { type WorkspaceRoomIdentity } from './workspace-navigation.models';
 
 /** How long (ms) after the last hop press before the landed room commits to the top. */
 const HOP_IDLE_MS = 1200;
@@ -8,11 +9,6 @@ const MAX_VISITS = 20;
 
 /** Which way a hop moves through the frozen snapshot. */
 export type HopDirection = 'back' | 'forward';
-
-export interface WorkspaceRoomIdentity {
-  readonly accountId: string;
-  readonly roomId: string;
-}
 
 function sameRoom(
   left: WorkspaceRoomIdentity,

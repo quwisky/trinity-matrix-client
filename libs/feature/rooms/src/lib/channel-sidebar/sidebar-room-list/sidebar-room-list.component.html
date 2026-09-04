@@ -25,12 +25,7 @@
         <button
           trnIconButton
           class="invite__btn accept"
-          (click)="
-            acceptInvite.emit({
-              roomId: invite.roomId,
-              accountId: invite.accountId,
-            })
-          "
+          (click)="acceptInvite.emit(invite)"
           [attr.aria-label]="'Accept invite to ' + invite.name"
           trnTooltip="Accept"
         >
@@ -39,12 +34,7 @@
         <button
           trnIconButton
           class="invite__btn decline"
-          (click)="
-            declineInvite.emit({
-              roomId: invite.roomId,
-              accountId: invite.accountId,
-            })
-          "
+          (click)="declineInvite.emit(invite)"
           [attr.aria-label]="'Decline invite to ' + invite.name"
           trnTooltip="Decline"
         >

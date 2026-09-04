@@ -279,7 +279,7 @@ describe('RoomsPage mixed-account view', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick();
-    shell.nav.onSelectSpace(null); // Home — leaves Recent
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' }); // Home — leaves Recent
     await settleWorkspace();
 
     // Both accounts' DMs (classified by each row's own-account m.direct), nothing else.
@@ -308,8 +308,9 @@ describe('RoomsPage mixed-account view', () => {
   it('switches to the owning account before opening a foreign room', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
 
-    shell.routing.onSelectRoomRow('!theirs:hs'); // belongs to @alt:hs
+    shell.routing.openLinkedRoom('!theirs:hs'); // belongs to @alt:hs
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
         '@alt:hs',
@@ -320,7 +321,7 @@ describe('RoomsPage mixed-account view', () => {
 
     // Returning to the first Account is another atomic Workspace switch.
     switchAccount.mockClear();
-    shell.routing.onSelectRoomRow('!mine:hs');
+    shell.routing.openLinkedRoom('!mine:hs');
     await settleWorkspace();
     expect(switchAccount).toHaveBeenCalledWith(
       '@me:hs',
@@ -394,7 +395,10 @@ describe('RoomsPage mixed-account view', () => {
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick();
 
-    shell.routing.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
+    shell.routing.onSelectSpaceRow({
+      spaceId: '!s-alt:hs',
+      accountId: '@alt:hs',
+    });
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
         '@alt:hs',
@@ -405,9 +409,12 @@ describe('RoomsPage mixed-account view', () => {
 
     // Returning to the first Account switches once; Home then stays on it.
     switchAccount.mockClear();
-    shell.routing.onSelectSpaceRow('!s-mine:hs');
+    shell.routing.onSelectSpaceRow({
+      spaceId: '!s-mine:hs',
+      accountId: '@me:hs',
+    });
     await settleWorkspace();
-    shell.routing.onSelectSpaceRow(null);
+    shell.routing.onSelectSpaceRow({ spaceId: null, accountId: '@me:hs' });
     await settleWorkspace();
     expect(switchAccount).toHaveBeenCalledOnce();
     expect(switchAccount).toHaveBeenCalledWith(
@@ -456,13 +463,13 @@ describe('RoomsPage mixed-account view', () => {
   it('resolves a foreign room’s account even when the current view filters it out', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    shell.nav.onSelectSpace(null); // Home — DMs only, so '!theirs:hs' is not visible
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' }); // Home — DMs only, so '!theirs:hs' is not visible
     await settleWorkspace();
     expect(shell.vm.visibleRooms().map((r) => r.id)).not.toContain(
       '!theirs:hs',
     );
 
-    shell.routing.onSelectRoomRow('!theirs:hs');
+    shell.routing.openLinkedRoom('!theirs:hs');
 
     await vi.waitFor(() =>
       expect(switchAccount).toHaveBeenCalledWith(
@@ -536,7 +543,7 @@ describe('RoomsPage mixed-account view', () => {
   it('lists a mixed space’s children from the same union its badge counts', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    shell.nav.onSelectSpace('!s-alt:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s-alt:hs', accountId: '@me:hs' });
     await settleWorkspace();
 
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
@@ -551,7 +558,7 @@ describe('RoomsPage mixed-account view', () => {
     shell.nav.onShowRooms();
     await settleWorkspace();
 
-    shell.routing.onSelectRoomRow('!theirs:hs'); // switches to @alt
+    shell.routing.openLinkedRoom('!theirs:hs'); // switches to @alt
     await settleWorkspace();
 
     expect(shell.store.roomsView()).toBe(true); // the user's filter survives
@@ -561,10 +568,10 @@ describe('RoomsPage mixed-account view', () => {
   it('returns to Recent when the switch happened from inside a space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
-    shell.nav.onSelectSpace('!s-mine:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s-mine:hs', accountId: '@me:hs' });
     await settleWorkspace();
 
-    shell.routing.onSelectRoomRow('!theirs:hs');
+    shell.routing.openLinkedRoom('!theirs:hs');
     await settleWorkspace();
 
     expect(shell.store.activeSpaceId()).toBeNull();

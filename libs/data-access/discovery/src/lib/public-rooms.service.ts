@@ -45,10 +45,12 @@ export class PublicRoomsService {
    * normal rooms. Cold — runs the query on subscribe.
    */
   search(
+    accountId: string,
     opts: { term?: string; since?: string; spaces?: boolean } = {},
   ): Observable<PublicRoomsPage> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
       const term = opts.term?.trim();
@@ -57,7 +59,7 @@ export class PublicRoomsService {
         ...(opts.spaces ? { room_types: [RoomType.Space] } : {}),
       };
       return from(
-        this.matrix.instance.publicRooms({
+        client.publicRooms({
           limit: PAGE_SIZE,
           ...(opts.since ? { since: opts.since } : {}),
           ...(Object.keys(filter).length ? { filter } : {}),
@@ -81,12 +83,13 @@ export class PublicRoomsService {
   }
 
   /** Join a room by ID or alias; resolves to the joined room's ID. Cold. */
-  join(roomIdOrAlias: string): Observable<string> {
+  join(accountId: string, roomIdOrAlias: string): Observable<string> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
-      return from(this.matrix.instance.joinRoom(roomIdOrAlias)).pipe(
+      return from(client.joinRoom(roomIdOrAlias)).pipe(
         map((room) => room.roomId),
       );
     });

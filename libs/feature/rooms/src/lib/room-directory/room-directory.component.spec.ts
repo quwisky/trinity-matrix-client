@@ -41,6 +41,7 @@ async function build(
   const close = vi.fn();
   const toastShow = vi.fn();
   const { fixture, container } = await render(RoomDirectoryComponent, {
+    inputs: { accountId: '@me:hs' },
     imports: [MockComponent(AvatarComponent)],
     providers: [
       MockProvider(PublicRoomsService, { search, join }),
@@ -61,7 +62,7 @@ async function build(
 describe('RoomDirectoryComponent', () => {
   it('loads the first page of public rooms on open', async () => {
     const { cmp, search, container } = await build();
-    expect(search).toHaveBeenCalledWith({
+    expect(search).toHaveBeenCalledWith('@me:hs', {
       term: '',
       since: undefined,
       spaces: false,
@@ -76,7 +77,7 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.search();
 
-    expect(search).toHaveBeenLastCalledWith({
+    expect(search).toHaveBeenLastCalledWith('@me:hs', {
       term: 'chess',
       since: undefined,
       spaces: false,
@@ -104,7 +105,7 @@ describe('RoomDirectoryComponent', () => {
     cmp.setMode('spaces');
 
     expect(cmp.mode()).toBe('spaces');
-    expect(search).toHaveBeenLastCalledWith({
+    expect(search).toHaveBeenLastCalledWith('@me:hs', {
       term: '',
       since: undefined,
       spaces: true,
@@ -124,7 +125,7 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.setMode('spaces'); // while the initial request is still pending
 
-    expect(search).toHaveBeenLastCalledWith({
+    expect(search).toHaveBeenLastCalledWith('@me:hs', {
       term: '',
       since: undefined,
       spaces: true,
@@ -156,7 +157,7 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.loadMore();
 
-    expect(search).toHaveBeenLastCalledWith({
+    expect(search).toHaveBeenLastCalledWith('@me:hs', {
       term: '',
       since: 'tok',
       spaces: false,
@@ -178,8 +179,9 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.join(room({ roomId: '!r:hs', alias: '#general:hs' }));
 
-    expect(join).toHaveBeenCalledWith('#general:hs'); // alias preferred
+    expect(join).toHaveBeenCalledWith('@me:hs', '#general:hs'); // alias preferred
     expect(close).toHaveBeenCalledWith({
+      accountId: '@me:hs',
       roomId: '!joined:hs',
       isSpace: false,
     });
@@ -190,7 +192,11 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.join(room({ alias: null, isSpace: true }));
 
-    expect(close).toHaveBeenCalledWith({ roomId: '!joined:hs', isSpace: true });
+    expect(close).toHaveBeenCalledWith({
+      accountId: '@me:hs',
+      roomId: '!joined:hs',
+      isSpace: true,
+    });
   });
 
   it('joins by room id when there is no alias', async () => {
@@ -198,7 +204,7 @@ describe('RoomDirectoryComponent', () => {
 
     cmp.join(room({ roomId: '!x:hs', alias: null }));
 
-    expect(join).toHaveBeenCalledWith('!x:hs');
+    expect(join).toHaveBeenCalledWith('@me:hs', '!x:hs');
   });
 
   it('keeps the dialog open and toasts when a join fails', async () => {

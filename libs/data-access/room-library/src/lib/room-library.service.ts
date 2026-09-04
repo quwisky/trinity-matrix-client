@@ -670,10 +670,15 @@ export class RoomLibraryService {
       if (!isValidUserId(userId)) {
         return throwError(() => new Error(`Invalid user id: ${userId}`));
       }
-      assertRoomLibraryGovernance(this.governance.authorize(roomId, 'invite'));
-      return from(this.matrix.instance.invite(roomId, userId)).pipe(
-        map(() => void 0),
+      const client = this.matrix.instance;
+      const accountId = client.getUserId();
+      if (!accountId) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      assertRoomLibraryGovernance(
+        this.governance.authorize({ accountId, roomId }, 'invite'),
       );
+      return from(client.invite(roomId, userId)).pipe(map(() => void 0));
     });
   }
 

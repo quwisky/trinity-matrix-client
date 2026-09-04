@@ -433,8 +433,11 @@ not fan Account ids into them. A one-Account selection delegates to the active p
 multi-Account selection preserves active-owner preference, every contributing Room Account, the
 loudest unread state, unioned Space children, per-Account space-child membership, and every
 Account-scoped invitation. Local search and the Room shell's Recent, Home, Rooms, Space, rail,
-badge, and invitation presentation read that same generation. Two action and shortcut files remain
-on the frozen compatibility allowlist.
+badge, invitation presentation, action lookup, and shortcut validation read that same generation.
+Rows emit exact Account identities; shared-row commands deduplicate and target every contributing
+Account, while create, join, permalink, and confirmed-membership flows retain their initiating
+Account across asynchronous work. No production consumer imports a compatibility mixed projector
+outside `SelectedRoomLibraryService`.
 
 The selected Account set is a Room Library-owned typed installation preference. Its command writes
 before publishing, so unavailable storage returns typed retry guidance while the prior selected

@@ -23,8 +23,8 @@ function setup(
     providers: [
       PublicRoomsService,
       MockProvider(MatrixClientService, {
-        isInitialized: true,
-        instance: instance as never,
+        clientFor: (accountId: string) =>
+          accountId === '@me:hs' ? (instance as never) : null,
       }),
     ],
   });
@@ -48,7 +48,7 @@ describe('PublicRoomsService', () => {
       total_room_count_estimate: 100,
     });
 
-    const action = svc.search();
+    const action = svc.search('@me:hs');
     expect(publicRooms).not.toHaveBeenCalled(); // cold
 
     expect(await firstValueFrom(action)).toEqual({
@@ -76,7 +76,7 @@ describe('PublicRoomsService', () => {
       ],
     });
 
-    const page = await firstValueFrom(svc.search());
+    const page = await firstValueFrom(svc.search('@me:hs'));
     expect(page.rooms.map((r) => r.name)).toEqual(['#a:hs', '!b:hs']);
     expect(page.rooms[0].topic).toBeNull();
     expect(page.rooms[1].alias).toBeNull();
@@ -86,7 +86,7 @@ describe('PublicRoomsService', () => {
   it('passes a search term as a generic filter', async () => {
     const { svc, publicRooms } = setup();
 
-    await firstValueFrom(svc.search({ term: '  chess  ' }));
+    await firstValueFrom(svc.search('@me:hs', { term: '  chess  ' }));
 
     expect(publicRooms).toHaveBeenCalledWith(
       expect.objectContaining({ filter: { generic_search_term: 'chess' } }),
@@ -96,7 +96,7 @@ describe('PublicRoomsService', () => {
   it('omits the filter for an empty term and threads the pagination token', async () => {
     const { svc, publicRooms } = setup();
 
-    await firstValueFrom(svc.search({ term: '   ', since: 'page2' }));
+    await firstValueFrom(svc.search('@me:hs', { term: '   ', since: 'page2' }));
 
     const opts = publicRooms.mock.calls[0][0];
     expect(opts.filter).toBeUndefined();
@@ -108,7 +108,7 @@ describe('PublicRoomsService', () => {
       chunk: [{ ...CHUNK_ROOM, room_type: 'm.space' }],
     });
 
-    const page = await firstValueFrom(svc.search({ spaces: true }));
+    const page = await firstValueFrom(svc.search('@me:hs', { spaces: true }));
 
     expect(publicRooms).toHaveBeenCalledWith(
       expect.objectContaining({ filter: { room_types: ['m.space'] } }),
@@ -119,7 +119,7 @@ describe('PublicRoomsService', () => {
   it('combines a search term with the Spaces filter', async () => {
     const { svc, publicRooms } = setup();
 
-    await firstValueFrom(svc.search({ term: 'dev', spaces: true }));
+    await firstValueFrom(svc.search('@me:hs', { term: 'dev', spaces: true }));
 
     expect(publicRooms).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -131,7 +131,9 @@ describe('PublicRoomsService', () => {
   it('join resolves the joined room id', async () => {
     const { svc, joinRoom } = setup();
 
-    expect(await firstValueFrom(svc.join('#general:hs'))).toBe('!joined:hs');
+    expect(await firstValueFrom(svc.join('@me:hs', '#general:hs'))).toBe(
+      '!joined:hs',
+    );
     expect(joinRoom).toHaveBeenCalledWith('#general:hs');
   });
 });

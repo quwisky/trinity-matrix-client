@@ -1060,6 +1060,7 @@ describe('RoomLibraryService writes', () => {
       .mockResolvedValue({ room_id: '!aliased:hs' });
     const leave = vi.fn().mockResolvedValue({});
     const client = {
+      getUserId: () => '@me:hs',
       getRooms: () => [],
       getRoom: (id: string) =>
         membershipById[id]

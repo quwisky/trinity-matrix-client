@@ -267,6 +267,7 @@ describe('RoomsPage panels, pins and media', () => {
     vi.mocked(TestBed.inject(Router).navigate).mockResolvedValueOnce(true);
     dialogOpen.mockReturnValue(
       of({
+        accountId: '@me:hs',
         roomId: '!joined:hs',
         isSpace: false,
       }),
@@ -277,6 +278,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent, {
       ariaLabel: 'Explore rooms and spaces',
       autoFocus: '[data-autofocus]',
+      inputs: { accountId: '@me:hs' },
     });
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!joined:hs');
     await vi.waitFor(() =>
@@ -291,6 +293,7 @@ describe('RoomsPage panels, pins and media', () => {
     const shell = build();
     dialogOpen.mockReturnValue(
       of({
+        accountId: '@me:hs',
         roomId: '!space:hs',
         isSpace: true,
       }),
@@ -320,15 +323,15 @@ describe('RoomsPage panels, pins and media', () => {
     shell.rooms.onGoToUpgradedRoom('!old:hs');
     await settleWorkspace();
 
-    expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
+    expect(joinPublicRoom).toHaveBeenCalledWith('@me:hs', '!old:hs');
     expect(shell.store.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
     expect(shell.store.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
 
   it('marks a room read via RoomLibraryService', () => {
     const shell = build();
-    shell.readState.onMarkRead({ roomId: '!r:hs' });
-    expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);
+    shell.readState.onMarkRead({ roomId: '!r:hs', accountIds: ['@me:hs'] });
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
   });
 
   // A row merged from two accounts carries the loudest unread of the two, so acking only
@@ -338,9 +341,10 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.readState.onMarkRead({
       roomId: '!r:hs',
-      accountIds: ['@me:hs', '@alt:hs'],
+      accountIds: ['@me:hs', '@alt:hs', '@me:hs'],
     });
 
+    expect(markReadFn).toHaveBeenCalledTimes(2);
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@alt:hs');
   });
@@ -371,15 +375,16 @@ describe('RoomsPage panels, pins and media', () => {
     expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@alt:hs');
   });
 
-  it('flags on the active account when the row names none', () => {
-    // The fallback matters: `forkJoin([])` completes without emitting, so dropping it
-    // would make the single-account ⋮ menu write nothing at all, silently.
+  it('flags on the exact account named by a single-account row', () => {
     const shell = build();
 
-    shell.readState.onMarkUnread({ roomId: '!r:hs' });
+    shell.readState.onMarkUnread({
+      roomId: '!r:hs',
+      accountIds: ['@me:hs'],
+    });
 
     expect(setMarkedUnreadFn).toHaveBeenCalledTimes(1);
-    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, undefined);
+    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@me:hs');
   });
 
   it('clears the flag whenever a room is opened, however it was opened', async () => {
@@ -392,9 +397,12 @@ describe('RoomsPage panels, pins and media', () => {
     // shown is not a room that was opened.
     const shell = build();
 
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom({ roomId: '!r:hs', accountId: '@me:hs' });
     await settleWorkspace();
-    shell.nav.onSelectRoom('!h:hs', 'room-hop');
+    shell.nav.onSelectRoom(
+      { roomId: '!h:hs', accountId: '@me:hs' },
+      'room-hop',
+    );
     await settleWorkspace();
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');

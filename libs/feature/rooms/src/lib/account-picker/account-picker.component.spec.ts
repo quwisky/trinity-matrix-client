@@ -1,9 +1,9 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { AccountPickerComponent } from './account-picker.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { of } from 'rxjs';
@@ -29,7 +29,18 @@ describe('AccountPickerComponent', () => {
     return render(AccountPickerComponent, {
       inputs: { accounts: ACCOUNTS, activeUserId },
       providers: [
-        MockProvider(AccountScopeService, { selected, toggle }),
+        MockProvider(SelectedRoomLibraryService, {
+          view: computed(() => ({
+            accountIds: selected(),
+            mode:
+              selected().size > 1 ? ('mixed' as const) : ('active' as const),
+            rooms: [],
+            spaces: [],
+            spaceChildRoomIdsByAccount: new Map(),
+            invitations: [],
+          })),
+          toggleAccount: toggle,
+        }),
         { provide: TrnDialogRef, useValue: { close } },
       ],
     });

@@ -20,7 +20,7 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
   )
   .sort();
 
-/** Freeze the expand-migrate boundary until #372-#373 remove its legacy consumers. */
+/** Freeze the expand-migrate boundary until #373 removes the legacy implementations. */
 describe('Selected Room Library boundary', () => {
   it('makes local search a complete selected-view consumer', () => {
     const search = source(searchImplementation);
@@ -39,17 +39,14 @@ describe('Selected Room Library boundary', () => {
     expect(selected.match(/\.setAccounts\(accountIds\)/gu)).toHaveLength(3);
   });
 
-  it('leaves legacy mixed projections only in deferred action paths', () => {
+  it('routes every production consumer through the selected boundary', () => {
     const legacyImport =
       /import\s*{[^}]*\bMixed(?:Rooms|Spaces|Invites)Service\b[^}]*}\s*from\s*['"]@trinity\/data-access\/room-library['"]/s;
     const consumers = productionSources
       .filter((file) => file !== selectedImplementation)
       .filter((file) => legacyImport.test(source(file)));
 
-    expect(consumers).toEqual([
-      'libs/feature/rooms/src/lib/rooms/invite-actions.service.ts',
-      'libs/feature/rooms/src/lib/rooms/room-shell-navigation.service.ts',
-    ]);
+    expect(consumers).toEqual([]);
   });
 
   it('registers capability-owned selection persistence', () => {

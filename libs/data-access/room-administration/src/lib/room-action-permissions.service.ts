@@ -24,6 +24,11 @@ export interface RoomActionPermissions {
   readonly curateSpace: ActionAvailability;
 }
 
+export interface RoomActionPermissionsKey {
+  readonly accountId: string;
+  readonly roomId: string;
+}
+
 /** Live authorization for every state-backed field in room and space settings. */
 export interface RoomSettingsPermissions {
   readonly name: ActionAvailability;
@@ -111,23 +116,14 @@ export class RoomActionPermissionsService {
   }
 
   room(roomId: string): RoomActionPermissions {
-    const context = this.context(roomId);
-    if (!context) {
-      const unavailable = denied('Join this room to use this action.');
-      return { invite: unavailable, curateSpace: unavailable };
-    }
-    const state = liveRoomState(context.room);
-    return {
-      invite: state?.hasSufficientPowerLevelFor('invite', context.myPower)
-        ? ALLOWED
-        : denied('Your role cannot invite people to this room.'),
-      curateSpace: state?.maySendStateEvent(
-        EventType.SpaceChild,
-        context.userId,
-      )
-        ? ALLOWED
-        : denied('Your role cannot manage rooms in this space.'),
-    };
+    return this.roomPermissions(this.context(roomId));
+  }
+
+  roomFor(key: RoomActionPermissionsKey): RoomActionPermissions {
+    this.revision();
+    return this.roomPermissions(
+      this.contextForClient(this.matrix.clientFor(key.accountId), key.roomId),
+    );
   }
 
   settings(roomId: string): RoomSettingsPermissions {
@@ -245,10 +241,37 @@ export class RoomActionPermissionsService {
     }
   }
 
+  private roomPermissions(
+    context: PermissionContext | null,
+  ): RoomActionPermissions {
+    if (!context) {
+      const unavailable = denied('Join this room to use this action.');
+      return { invite: unavailable, curateSpace: unavailable };
+    }
+    const state = liveRoomState(context.room);
+    return {
+      invite: state?.hasSufficientPowerLevelFor('invite', context.myPower)
+        ? ALLOWED
+        : denied('Your role cannot invite people to this room.'),
+      curateSpace: state?.maySendStateEvent(
+        EventType.SpaceChild,
+        context.userId,
+      )
+        ? ALLOWED
+        : denied('Your role cannot manage rooms in this space.'),
+    };
+  }
+
   private context(roomId: string): PermissionContext | null {
     this.revision();
     this.matrix.activeUserId();
-    const client = this.readClient();
+    return this.contextForClient(this.readClient(), roomId);
+  }
+
+  private contextForClient(
+    client: MatrixClient | null,
+    roomId: string,
+  ): PermissionContext | null {
     const room = client?.getRoom(roomId) ?? null;
     const userId = client?.getUserId() ?? null;
     if (!room || !userId || room.getMyMembership() !== KnownMembership.Join) {

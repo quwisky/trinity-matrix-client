@@ -208,21 +208,30 @@ export class SpaceChildrenService {
    * half-linked after the link that matters had already succeeded. The parent event is
    * advisory; the child event is what puts the room in the space.
    */
-  addExistingRoom(spaceId: string, childId: string): Observable<void> {
+  addExistingRoom(
+    accountId: string,
+    spaceId: string,
+    childId: string,
+  ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
       assertRoomLibraryGovernance(
-        this.governance.authorize(spaceId, 'curate-space'),
+        this.governance.authorize(
+          { accountId, roomId: spaceId },
+          'curate-space',
+        ),
       );
-      const client = this.matrix.instance;
-      if (this.currentLink(spaceId, childId)) {
+      const room = client.getRoom(spaceId);
+      const state = room ? liveRoomState(room) : null;
+      const links = readChildLinks(state);
+      if (links.some((link) => link.childId === childId)) {
         // Already a child. Re-sending would be harmless but would reset any curation the
         // link already carries, so treat it as a no-op.
         return from(Promise.resolve()).pipe(map(() => void 0));
       }
-      const links = this.childLinks(spaceId);
       const last = links.length > 0 ? links[links.length - 1].order : '';
       const content: SpaceChildContent = {
         via: [viaFor(client, childId)],
@@ -328,11 +337,19 @@ export class SpaceChildrenService {
       ...(link.order ? { order: link.order } : {}),
     };
     return defer(() => {
+      const client = this.matrix.instance;
+      const accountId = client.getUserId();
+      if (!accountId) {
+        return throwError(() => new Error('Not signed in.'));
+      }
       assertRoomLibraryGovernance(
-        this.governance.authorize(spaceId, 'curate-space'),
+        this.governance.authorize(
+          { accountId, roomId: spaceId },
+          'curate-space',
+        ),
       );
       return from(
-        this.matrix.instance.sendStateEvent(
+        client.sendStateEvent(
           spaceId,
           EventType.SpaceChild,
           content,

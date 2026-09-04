@@ -6,6 +6,7 @@ import {
   OnInit,
   computed,
   inject,
+  input,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -29,8 +30,9 @@ import {
 
 /** What the directory resolves when a room/space is joined from it. */
 export interface DirectoryJoin {
-  roomId: string;
-  isSpace: boolean;
+  readonly accountId: string;
+  readonly roomId: string;
+  readonly isSpace: boolean;
 }
 
 /**
@@ -61,8 +63,11 @@ export class RoomDirectoryComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   /** The in-flight directory request, so a reset can supersede it. */
   private searchSub?: Subscription;
-
   private readonly searchModel = signal({ query: '' });
+  /** Pagination token for the next page, or null when there are no more. */
+  private readonly nextBatch = signal<string | null>(null);
+
+  readonly accountId = input.required<string>();
   readonly searchForm = form(this.searchModel);
 
   /** Browse normal rooms or Spaces. */
@@ -70,8 +75,6 @@ export class RoomDirectoryComponent implements OnInit {
 
   /** The rooms found so far (accumulated across pages). */
   readonly rooms = signal<readonly PublicRoomSummary[]>([]);
-  /** Pagination token for the next page, or null when there are no more. */
-  private readonly nextBatch = signal<string | null>(null);
   /** True while a search / load-more request is in flight. */
   readonly loading = signal(false);
   /** Last search failure, or null. */
@@ -118,14 +121,18 @@ export class RoomDirectoryComponent implements OnInit {
     }
     this.joining.set(room.roomId);
     this.directory
-      .join(room.alias ?? room.roomId)
+      .join(this.accountId(), room.alias ?? room.roomId)
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.joining.set(null)),
       )
       .subscribe({
         next: (roomId) =>
-          this.dialogRef.close({ roomId, isSpace: room.isSpace }),
+          this.dialogRef.close({
+            accountId: this.accountId(),
+            roomId,
+            isSpace: room.isSpace,
+          }),
         error: (error: unknown) => {
           const handling = matrixRequestErrorHandling(
             'join room from directory',
@@ -157,7 +164,7 @@ export class RoomDirectoryComponent implements OnInit {
     this.error.set(null);
     const since = reset ? undefined : (this.nextBatch() ?? undefined);
     this.searchSub = this.directory
-      .search({
+      .search(this.accountId(), {
         term: this.searchModel().query,
         since,
         spaces: this.mode() === 'spaces',
