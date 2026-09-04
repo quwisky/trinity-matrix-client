@@ -62,7 +62,7 @@ import { resolveWorkspaceNavigation } from './workspace-navigation';
  * The application workflow that owns the semantic Workspace destination.
  *
  * The Router is an inbound/outbound projection rather than a second store: URL restoration
- * enters through {@link open}, while every successful command publishes one immutable view
+ * enters through {@link navigate}, while every successful command publishes one immutable view
  * only after Account readiness and the canonical navigation have both settled.
  */
 @Injectable()
