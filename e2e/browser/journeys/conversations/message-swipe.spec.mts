@@ -117,7 +117,7 @@ async function openRoom(
   // surface between boundingBox() and touchStart under parallel load.
   await expect(
     page.locator('trn-banner').getByText('Set up encryption'),
-  ).toBeVisible({ timeout: 20_000 });
+  ).toBeVisible();
 
   if (filler > 0) {
     // The initial /sync contains only the newest timeline slice, so the two target
