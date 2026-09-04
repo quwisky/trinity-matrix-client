@@ -32,6 +32,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { WorkspaceService } from './workspace.service';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
+import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 
 const ALICE = '@alice:example.org';
 const BOB = '@bob:example.org';
@@ -480,6 +481,29 @@ describe('WorkspaceService', () => {
       await expect(joined).resolves.toMatchObject({ kind: 'ready' });
     });
 
+    it('does not join matching destinations with different history policy', async () => {
+      const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+      const navigation = new Subject<boolean>();
+      h.navigate.mockImplementationOnce(() => firstValueFrom(navigation));
+      h.navigate.mockClear();
+
+      const close = firstValueFrom(
+        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
+      );
+      await expect(
+        firstValueFrom(
+          h.service.navigate({ kind: 'list', origin: 'workspace-back' }),
+        ),
+      ).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'transition-in-progress',
+      });
+
+      navigation.next(true);
+      navigation.complete();
+      await expect(close).resolves.toMatchObject({ kind: 'ready' });
+    });
+
     it('returns a typed failure when a different Room location is rejected', async () => {
       const h = harness({ routeAccountId: ALICE });
       h.navigate.mockResolvedValueOnce(false);
@@ -498,6 +522,155 @@ describe('WorkspaceService', () => {
         reason: 'navigation-rejected',
       });
       expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
+    });
+
+    it('derives Account and scope destinations inside Workspace', async () => {
+      const spaceId = '!space:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM], [BOB]: [ROOM, spaceId] },
+      });
+      h.navigate.mockClear();
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'account',
+            accountId: BOB,
+          }),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+      expect(h.service.view()).toEqual({
+        accountId: BOB,
+        scope: { kind: 'home' },
+        roomId: null,
+        pane: 'list',
+      });
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'scope',
+            accountId: BOB,
+            scope: { kind: 'space', spaceId },
+          }),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+      expect(h.service.view()).toEqual({
+        accountId: BOB,
+        scope: { kind: 'space', spaceId },
+        roomId: null,
+        pane: 'list',
+      });
+      expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
+        queryParams: { account: BOB, space: encodeRoomSegment(spaceId) },
+        replaceUrl: false,
+      });
+    });
+
+    it('derives invitation scope when the cold command is subscribed', async () => {
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM], [BOB]: [ROOM] },
+      });
+      const invitation = h.service.navigate({
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-invitation',
+      });
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'scope',
+          accountId: ALICE,
+          scope: { kind: 'rooms' },
+        }),
+      );
+      await firstValueFrom(invitation);
+
+      expect(h.service.view()).toMatchObject({
+        accountId: ALICE,
+        scope: { kind: 'rooms' },
+        roomId: ROOM,
+      });
+    });
+
+    it('derives compact close, Workspace Back, and Room-removal history', async () => {
+      const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+      h.navigate.mockClear();
+
+      await firstValueFrom(
+        h.service.navigate({ kind: 'list', origin: 'compact-close' }),
+      );
+      expect(h.service.view()).toMatchObject({
+        roomId: ROOM,
+        pane: 'list',
+      });
+      expect(h.navigate).toHaveBeenLastCalledWith(
+        ['/rooms', encodeRoomSegment(ROOM)],
+        {
+          queryParams: { account: ALICE, pane: 'list' },
+          replaceUrl: false,
+        },
+      );
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'room',
+          accountId: ALICE,
+          roomId: ROOM,
+          origin: 'room-list',
+        }),
+      );
+      await firstValueFrom(
+        h.service.navigate({ kind: 'list', origin: 'workspace-back' }),
+      );
+      expect(h.navigate).toHaveBeenLastCalledWith(
+        ['/rooms', encodeRoomSegment(ROOM)],
+        {
+          queryParams: { account: ALICE, pane: 'list' },
+          replaceUrl: true,
+        },
+      );
+
+      await firstValueFrom(
+        h.service.navigate({ kind: 'list', origin: 'room-removed' }),
+      );
+      expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
+      expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
+        queryParams: { account: ALICE },
+        replaceUrl: true,
+      });
+    });
+
+    it('preserves Room-hop MRU policy while recording shortcut navigation', async () => {
+      const secondRoom = '!second:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM, secondRoom], [BOB]: [ROOM] },
+      });
+      const mru = TestBed.inject(MruRoomsService);
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'room',
+          accountId: ALICE,
+          roomId: ROOM,
+          origin: 'room-hop',
+        }),
+      );
+      expect(mru.visited()).toEqual([]);
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'room',
+          accountId: ALICE,
+          roomId: secondRoom,
+          origin: 'shortcut',
+        }),
+      );
+      expect(mru.visited()).toEqual([{ accountId: ALICE, roomId: secondRoom }]);
     });
   });
 

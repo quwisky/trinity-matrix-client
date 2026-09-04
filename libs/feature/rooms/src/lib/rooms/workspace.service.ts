@@ -55,6 +55,7 @@ import {
 } from './workspace.models';
 import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { parseWorkspaceUrl } from './workspace-url';
+import { resolveWorkspaceNavigation } from './workspace-navigation';
 
 /**
  * The application workflow that owns the semantic Workspace destination.
@@ -156,8 +157,8 @@ export class WorkspaceService implements WorkspaceNavigation {
   /**
    * Open one exact semantic destination as a cold, joining RxJS command.
    *
-   * User intent pushes history. Restoration, canonical repair, and an unavailable room or
-   * space replace it. A conflicting command receives a typed outcome before any mutation.
+   * Explicit selection pushes history. Back, restoration, canonical repair, and unavailable
+   * destinations replace it. A conflicting command receives a typed outcome before mutation.
    */
   open(
     destination: WorkspaceDestination,
@@ -172,8 +173,12 @@ export class WorkspaceService implements WorkspaceNavigation {
           this.workspaceView.set(view);
           this.transitionMetrics.set(metrics);
           if (changed) this.project(view);
-          if (committedOptions.source === 'user' && view.roomId) {
-            this.mru.record(view.roomId);
+          if (
+            committedOptions.source === 'user' &&
+            view.accountId &&
+            view.roomId
+          ) {
+            this.mru.record({ accountId: view.accountId, roomId: view.roomId });
           }
         },
       }),
@@ -183,46 +188,43 @@ export class WorkspaceService implements WorkspaceNavigation {
   /**
    * Resolve product navigation intent inside Workspace.
    *
-   * The first migrated path is an exact Room-list selection. Keeping resolution inside
-   * `defer` means current scope and pane are read only when the command is subscribed.
+   * Keeping resolution inside `defer` means current scope and pane are read only when the
+   * command is subscribed. Destinations, history, and transition sources stay private.
    */
   navigate(
     intent: WorkspaceNavigationIntent,
   ): Observable<WorkspaceNavigationOutcome> {
     return defer(() => {
-      switch (intent.origin) {
-        case 'room-list': {
-          const destination = this.roomDestination(
-            intent.accountId,
-            intent.roomId,
-          );
-          const unchanged = sameWorkspaceDestination(this.view(), destination);
-          return this.open(destination, {
-            source: 'user',
-            history: 'push',
-          }).pipe(
-            map((outcome): WorkspaceNavigationOutcome => {
-              switch (outcome.kind) {
-                case 'ready':
-                  return {
-                    kind: 'ready',
-                    change:
-                      unchanged && !outcome.repaired
-                        ? 'unchanged'
-                        : 'committed',
-                  };
-                case 'failed':
-                  return { kind: 'unavailable', reason: outcome.failure };
-                case 'transition-in-progress':
-                  return {
-                    kind: 'unavailable',
-                    reason: 'transition-in-progress',
-                  };
-              }
-            }),
-          );
-        }
+      const resolved = resolveWorkspaceNavigation(intent, this.view());
+      if (!resolved) {
+        return of({
+          kind: 'unavailable',
+          reason: 'navigation-rejected',
+        } as const);
       }
+      const unchanged = sameWorkspaceDestination(
+        this.view(),
+        resolved.destination,
+      );
+      return this.open(resolved.destination, resolved.options).pipe(
+        map((outcome): WorkspaceNavigationOutcome => {
+          switch (outcome.kind) {
+            case 'ready':
+              return {
+                kind: 'ready',
+                change:
+                  unchanged && !outcome.repaired ? 'unchanged' : 'committed',
+              };
+            case 'failed':
+              return { kind: 'unavailable', reason: outcome.failure };
+            case 'transition-in-progress':
+              return {
+                kind: 'unavailable',
+                reason: 'transition-in-progress',
+              };
+          }
+        }),
+      );
     });
   }
 

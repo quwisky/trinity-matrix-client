@@ -42,9 +42,9 @@ export class SessionActionsService {
       return;
     }
     this.workspace
-      .open(this.workspace.accountDestination(userId), {
-        source: 'user',
-        history: 'push',
+      .navigate({
+        kind: 'account',
+        accountId: userId,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {

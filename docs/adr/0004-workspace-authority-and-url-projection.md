@@ -25,8 +25,9 @@ before the Account commit. It then activates the Account, waits for projection r
 then publishes the complete view and focuses its Conversation. Once Account commit begins,
 Workspace owns the remaining coordination to completion even if its initiating page or route
 subscriber disappears. Account Runtime signals that boundary only after adapter preparation
-settles, so teardown before the signal cancels the switch and repairs the pre-commit URL. User
-navigation pushes history. Because Router promises are not cancellable, teardown starts an owned
+settles, so teardown before the signal cancels the switch and repairs the pre-commit URL. Explicit
+user selections and compact-list close push history, while semantic Workspace Back replaces the
+current compact surface. Because Router promises are not cancellable, teardown starts an owned
 replacement navigation immediately and retains the transition lock until that repair settles;
 another destination cannot race the rollback. Restoration, legacy-URL canonicalization, and
 repair replace history.
@@ -35,15 +36,17 @@ native Back, dialogs, reloads, and compact-layout changes coherent without expos
 Workspace.
 
 Product navigation crosses Workspace as semantic intent rather than as a caller-built destination.
-The first migrated intent is a Room-list selection containing its exact Account, Room, and semantic
-origin. Workspace derives the retained sidebar scope, Conversation pane, user-history push, URL
-projection, and transition coordination when the cold command is subscribed. An exact-current
-intent therefore completes as `ready`/`unchanged`, while selecting the retained Room from the
-compact list is a `ready`/`committed` pane transition. Account, route, and in-flight conflicts are
-normalized into typed `unavailable` reasons; Router booleans and legacy destinations do not cross
-the semantic interface.
+Account selection, sidebar scope selection, exact Account-and-Room opens, compact-list close, Room
+removal, shortcuts, Room hopping, and Workspace Back all use that interface. Workspace derives the
+retained scope, Conversation pane, history policy, URL projection, and transition coordination when
+the cold command is subscribed. Visit history preserves the exact Account-and-Room pair, so a
+shortcut never re-derives ownership from a mixed projection. An exact-current intent therefore completes as
+`ready`/`unchanged`, while selecting the retained Room from the compact list is a
+`ready`/`committed` pane transition. Account, route, and in-flight conflicts are normalized into
+typed `unavailable` reasons; Router booleans and legacy destinations do not cross the semantic
+interface.
 
-During the incremental migration, the destination-based `open` seam remains available to exactly
-four production callers. `scripts/workspace-navigation-contract.spec.mjs` freezes that allowlist;
-issue #369 owns reducing its counter to zero and deleting the compatibility seam after the
-Room-shell and activation paths migrate.
+During the incremental migration, the destination-based `open` seam has zero production callers
+outside Workspace. `scripts/workspace-navigation-contract.spec.mjs` freezes that empty allowlist.
+Search and inbound activation/restoration still resolve through the compatibility implementation
+inside Workspace; issue #368 migrates those paths and issue #369 deletes the seam.

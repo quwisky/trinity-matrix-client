@@ -1,8 +1,6 @@
-export type WorkspaceScope =
-  | { readonly kind: 'recent' }
-  | { readonly kind: 'home' }
-  | { readonly kind: 'rooms' }
-  | { readonly kind: 'space'; readonly spaceId: string };
+import type { WorkspaceNavigationScope } from '@trinity/application/workspace';
+
+export type WorkspaceScope = WorkspaceNavigationScope;
 
 export interface WorkspaceDestination {
   readonly accountId: string;
@@ -20,7 +18,8 @@ export interface WorkspaceView {
 
 export type WorkspacePlacement = 'list' | 'conversation' | 'split';
 
-export type WorkspaceNavigationSource = 'user' | 'hop' | 'restore' | 'repair';
+export type WorkspaceNavigationSource =
+  'user' | 'hop' | 'back' | 'restore' | 'repair';
 
 export interface WorkspaceOpenOptions {
   readonly source: WorkspaceNavigationSource;
