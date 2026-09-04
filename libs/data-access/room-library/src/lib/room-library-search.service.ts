@@ -1,10 +1,5 @@
 import { Injectable, computed, inject } from '@angular/core';
-import { AccountScopeService } from './account-scope.service';
-import { InvitesService } from './invites.service';
-import { MixedRoomsService } from './mixed-rooms.service';
-import { MixedSpacesService } from './mixed-spaces.service';
-import { RoomLibraryService } from './room-library.service';
-import { SpacesService } from './spaces.service';
+import { SelectedRoomLibraryService } from './selected-room-library.service';
 
 /** A local Room Library destination that can appear in application search. */
 export type RoomLibrarySearchKind = 'room' | 'space' | 'dm' | 'invite';
@@ -26,7 +21,7 @@ interface RoomLibrarySearchResultBase {
   encrypted?: boolean;
   /** The signed-in account this row belongs to — the mixed-account view badges rows with
    * it, and jumping to one switches to that account first. */
-  accountId?: string;
+  accountId: string;
   /** Present only for mixed-account presentation; semantic Account identity is separate. */
   accountBadgeId?: string;
 }
@@ -60,7 +55,7 @@ interface SwitcherEntryBase {
   /** Last-activity ms for the recency tiebreak (0 for spaces/invites). */
   activityTs: number;
   encrypted?: boolean;
-  accountId?: string;
+  accountId: string;
   accountBadgeId?: string;
 }
 
@@ -88,9 +83,8 @@ const DEFAULT_LIMIT = 30;
 
 /**
  * Read-only, client-side search aggregator for the quick switcher. Reads the live
- * synced signals from {@link RoomLibraryService}, {@link SpacesService}, and
- * {@link InvitesService} (joined rooms/DMs, spaces, pending invites) and ranks them
- * by name — no network, no message-body access, so it is inherently E2EE-safe.
+ * selected Room Library view (joined rooms/DMs, spaces, pending invites) and ranks
+ * them by name — no network, no message-body access, so it is inherently E2EE-safe.
  *
  * {@link search} is synchronous so application orchestration can wrap it in a
  * `computed` and preserve signal reactivity without making Room Library know about
@@ -98,12 +92,7 @@ const DEFAULT_LIMIT = 30;
  */
 @Injectable({ providedIn: 'root' })
 export class RoomLibrarySearchService {
-  private readonly rooms = inject(RoomLibraryService);
-  private readonly spaces = inject(SpacesService);
-  private readonly mixedRooms = inject(MixedRoomsService);
-  private readonly mixedSpaces = inject(MixedSpacesService);
-  private readonly scope = inject(AccountScopeService);
-  private readonly invites = inject(InvitesService);
+  private readonly selected = inject(SelectedRoomLibraryService);
 
   /**
    * The searchable corpus, recomputed only when a source signal changes — so each
@@ -111,16 +100,11 @@ export class RoomLibrarySearchService {
    * re-projecting and re-casing every name.
    */
   private readonly entries = computed<SwitcherEntry[]>(() => {
-    // Mirror the sidebar's scope: while mixing, the switcher searches every selected
-    // account's rooms and spaces, each row tagged with the account that owns it. DMs are
-    // then classified by the row's OWN account's m.direct, since the active account's
-    // direct set says nothing about another account's rooms.
-    const mixing = this.scope.mixing();
-    const directIds = this.rooms.directRoomIds();
+    const view = this.selected.view();
     const out: SwitcherEntry[] = [];
 
-    for (const room of mixing ? this.mixedRooms.rooms() : this.rooms.rooms()) {
-      const isDm = mixing ? room.directUserId != null : directIds.has(room.id);
+    for (const room of view.rooms) {
+      const isDm = room.directUserId != null;
       const topic = room.topic.trim();
       const titleLower = room.name.toLowerCase();
       out.push({
@@ -134,18 +118,12 @@ export class RoomLibrarySearchService {
         haystack: topic ? `${titleLower}\n${topic.toLowerCase()}` : titleLower,
         activityTs: room.activityTs,
         encrypted: room.encrypted,
-        ...(mixing
-          ? {
-              accountId: room.accountId,
-              accountBadgeId: room.accountId,
-            }
-          : {}),
+        accountId: room.accountId,
+        ...(view.mode === 'mixed' ? { accountBadgeId: room.accountId } : {}),
       });
     }
 
-    for (const space of mixing
-      ? this.mixedSpaces.spaces()
-      : this.spaces.spaces()) {
+    for (const space of view.spaces) {
       const titleLower = space.name.toLowerCase();
       out.push({
         kind: 'space',
@@ -156,18 +134,12 @@ export class RoomLibrarySearchService {
         titleLower,
         haystack: titleLower,
         activityTs: 0,
-        ...(mixing
-          ? {
-              accountId: space.accountId,
-              accountBadgeId: space.accountId,
-            }
-          : {}),
+        accountId: space.accountId,
+        ...(view.mode === 'mixed' ? { accountBadgeId: space.accountId } : {}),
       });
     }
 
-    // Invites stay active-account only: InvitesService projects one client, and accepting
-    // one is an action on that account.
-    for (const invite of this.invites.pendingInvites()) {
+    for (const invite of view.invitations) {
       const titleLower = invite.name.toLowerCase();
       out.push({
         kind: 'invite',
@@ -182,6 +154,7 @@ export class RoomLibrarySearchService {
         isDirect: invite.isDirect,
         isSpace: invite.isSpace,
         accountId: invite.accountId,
+        ...(view.mode === 'mixed' ? { accountBadgeId: invite.accountId } : {}),
       });
     }
 
@@ -203,7 +176,7 @@ export class RoomLibrarySearchService {
     // Scope BEFORE ranking and slicing: filtering afterwards lets a busier other account
     // consume the whole cap and leaves the caller with nothing.
     const corpus = accountId
-      ? this.entries().filter((e) => !e.accountId || e.accountId === accountId)
+      ? this.entries().filter((entry) => entry.accountId === accountId)
       : this.entries();
     return corpus
       .map((entry) => ({
@@ -229,7 +202,7 @@ export class RoomLibrarySearchService {
           ...(entry.encrypted !== undefined
             ? { encrypted: entry.encrypted }
             : {}),
-          ...(entry.accountId ? { accountId: entry.accountId } : {}),
+          accountId: entry.accountId,
           ...(entry.accountBadgeId
             ? { accountBadgeId: entry.accountBadgeId }
             : {}),

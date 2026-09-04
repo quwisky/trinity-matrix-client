@@ -426,6 +426,19 @@ follows from what the service's lifetime is keyed to:
 | `MixedInvitesService`        | The mixed account set          | Same                                                                                                                                     |
 | `UnreadAggregatorService`    | The mixed account set          | Same                                                                                                                                     |
 
+`SelectedRoomLibraryService` sits above the active and mixed projections. Its single `view` signal
+publishes the effective Account set, active-or-mixed mode, Rooms, Spaces, and invitations as one
+read model. It observes Account selection once and drives all three mixed projectors; consumers do
+not fan Account ids into them. A one-Account selection delegates to the active projections, while a
+multi-Account selection preserves active-owner preference, every contributing Room Account, the
+loudest unread state, unioned Space children, and every Account-scoped invitation. Local search is
+the first migrated consumer; five Room-feature files remain on the frozen compatibility allowlist.
+
+The selected Account set is a Room Library-owned typed installation preference. Its command writes
+before publishing, so unavailable storage returns typed retry guidance while the prior selected
+view remains visible. Stale persisted ids stay stored but are intersected with live Accounts before
+they can contribute rows. See [ADR-0009](../adr/0009-selected-room-library-view.md).
+
 `NotificationService` takes neither. It binds per account, with push scoring, own-message
 suppression and event dedupe all keyed by account, and an account-set effect in its constructor is
 its equivalent of the projection.

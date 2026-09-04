@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AccountScopeService, sameAccountSet } from './account-scope.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { provideCapacitorPreferenceStorage } from '@trinity/platform-native';
 import { firstValueFrom } from 'rxjs';
 
 const store = new Map<string, string>();
@@ -44,6 +45,7 @@ function harness(
   TestBed.configureTestingModule({
     providers: [
       AccountScopeService,
+      provideCapacitorPreferenceStorage(),
       { provide: MatrixClientService, useValue: matrix },
     ],
   });
@@ -69,25 +71,25 @@ describe('AccountScopeService', () => {
     expect(svc.mixing()).toBe(false);
   });
 
-  it('includes an account once it is selected, and mixes at two', () => {
+  it('includes an account once it is selected, and mixes at two', async () => {
     const { svc } = harness(['@me:hs', '@alt:hs']);
-    svc.toggle('@alt:hs').subscribe();
+    await firstValueFrom(svc.toggle('@alt:hs'));
 
     expect([...svc.selected()].sort()).toEqual(['@alt:hs', '@me:hs']);
     expect(svc.mixing()).toBe(true);
 
-    svc.toggle('@alt:hs').subscribe();
+    await firstValueFrom(svc.toggle('@alt:hs'));
     expect([...svc.selected()]).toEqual(['@me:hs']);
     expect(svc.mixing()).toBe(false);
   });
 
   // The account you act as must stay visible — otherwise you'd be posting into a list
   // that can't show what you posted.
-  it('refuses to hide the active account', () => {
+  it('refuses to hide the active account', async () => {
     const { svc } = harness(['@me:hs', '@alt:hs']);
-    svc.toggle('@alt:hs').subscribe();
+    await firstValueFrom(svc.toggle('@alt:hs'));
 
-    svc.toggle('@me:hs').subscribe(); // attempt to drop the active account
+    await firstValueFrom(svc.toggle('@me:hs')); // attempt to drop the active account
     expect(svc.selected().has('@me:hs')).toBe(true);
   });
 
@@ -100,9 +102,9 @@ describe('AccountScopeService', () => {
     expect(svc.selected().has('@alt:hs')).toBe(true);
   });
 
-  it('drops accounts that are no longer signed in, without forgetting them', () => {
+  it('drops accounts that are no longer signed in, without forgetting them', async () => {
     const { svc, accountIds } = harness(['@me:hs', '@alt:hs']);
-    svc.toggle('@alt:hs').subscribe();
+    await firstValueFrom(svc.toggle('@alt:hs'));
     expect(svc.mixing()).toBe(true);
 
     // Signed out → stops contributing…
@@ -117,10 +119,10 @@ describe('AccountScopeService', () => {
 
   // Turning the mix off must forget the active account too, or the next account switch
   // would pair it with the newly-active one and silently turn mixing back on.
-  it('stays single-account after unticking, even across an account switch', () => {
+  it('stays single-account after unticking, even across an account switch', async () => {
     const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
-    svc.toggle('@alt:hs').subscribe();
-    svc.toggle('@alt:hs').subscribe(); // back off again
+    await firstValueFrom(svc.toggle('@alt:hs'));
+    await firstValueFrom(svc.toggle('@alt:hs')); // back off again
     expect(svc.mixing()).toBe(false);
 
     activeUserId.set('@alt:hs'); // user switches accounts from the switcher
@@ -130,7 +132,7 @@ describe('AccountScopeService', () => {
 
   it('persists the selection and restores it on the next launch', async () => {
     const first = harness(['@me:hs', '@alt:hs']);
-    first.svc.toggle('@alt:hs').subscribe();
+    await firstValueFrom(first.svc.toggle('@alt:hs'));
     expect(store.get(KEY)).toBeDefined();
 
     // A fresh service (cold start) hydrates the same mix.
@@ -142,16 +144,16 @@ describe('AccountScopeService', () => {
 
   // A soft-logged-out account is absent from accountIds(); pruning it on write would throw
   // away the user's pick for good, so the stored set keeps it and `selected` filters on read.
-  it('keeps a signed-out account in storage so its pick survives re-authentication', () => {
+  it('keeps a signed-out account in storage so its pick survives re-authentication', async () => {
     const { svc, accountIds } = harness(['@me:hs', '@alt:hs', '@away:hs']);
-    svc.toggle('@alt:hs').subscribe();
-    svc.toggle('@away:hs').subscribe();
+    await firstValueFrom(svc.toggle('@alt:hs'));
+    await firstValueFrom(svc.toggle('@away:hs'));
 
     accountIds.set(['@me:hs', '@alt:hs']); // @away's token is revoked overnight
     expect(svc.selected().has('@away:hs')).toBe(false); // inert while signed out
 
-    svc.toggle('@alt:hs').subscribe(); // any later write must not drop @away
-    expect(JSON.parse(store.get(KEY) ?? '[]')).toContain('@away:hs');
+    await firstValueFrom(svc.toggle('@alt:hs')); // any later write must not drop @away
+    expect(JSON.parse(store.get(KEY) ?? '{}').value).toContain('@away:hs');
 
     accountIds.set(['@me:hs', '@alt:hs', '@away:hs']); // re-authenticated
     expect(svc.selected().has('@away:hs')).toBe(true);
@@ -160,9 +162,9 @@ describe('AccountScopeService', () => {
   // The active account is only unioned in at read time, so it must be materialised into
   // storage when a mix is created — otherwise opening a mixed-in account's room (which
   // switches the active account) drops the account you were mixing FROM straight back out.
-  it('survives the account switch that opening a mixed-in room performs', () => {
+  it('survives the account switch that opening a mixed-in room performs', async () => {
     const { svc, activeUserId } = harness(['@me:hs', '@alt:hs']);
-    svc.toggle('@alt:hs').subscribe();
+    await firstValueFrom(svc.toggle('@alt:hs'));
     expect(svc.mixing()).toBe(true);
 
     activeUserId.set('@alt:hs'); // opening one of @alt's rooms switches to it
@@ -187,7 +189,7 @@ describe('AccountScopeService', () => {
   });
 
   it('keeps hydration and selection writes cold', async () => {
-    store.set(KEY, JSON.stringify(['@alt:hs']));
+    store.set(KEY, JSON.stringify({ version: 1, value: ['@alt:hs'] }));
     const { svc } = harness(['@me:hs', '@alt:hs']);
 
     const hydration = svc.init();
@@ -202,13 +204,16 @@ describe('AccountScopeService', () => {
     expect(setCalls).toBe(1);
   });
 
-  it('surfaces selection persistence failures to the subscriber', async () => {
+  it('keeps the prior selection and returns typed recovery when persistence fails', async () => {
     const { svc } = harness(['@me:hs', '@alt:hs']);
     failStorage = true;
 
-    await expect(firstValueFrom(svc.toggle('@alt:hs'))).rejects.toThrow(
-      'storage unavailable',
-    );
+    await expect(firstValueFrom(svc.toggle('@alt:hs'))).resolves.toEqual({
+      kind: 'unavailable',
+      recovery: 'retry-storage',
+      diagnostic: { code: 'preference-storage-write-failed' },
+    });
+    expect([...svc.selected()]).toEqual(['@me:hs']);
   });
 });
 

@@ -69,7 +69,10 @@ export class MixedRoomsService {
       return;
     }
     this.syncListeners();
-    this.scheduleFlush();
+    // Selection is a generation boundary for the public selected view. Rebuild now so
+    // its Room, Space, and invitation rows can be published together; SDK event bursts
+    // still use the coalesced path below.
+    this.flush();
   }
 
   constructor() {

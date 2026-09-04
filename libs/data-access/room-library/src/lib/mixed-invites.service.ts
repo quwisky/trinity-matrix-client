@@ -78,7 +78,9 @@ export class MixedInvitesService {
       return;
     }
     this.syncListeners();
-    this.scheduleFlush();
+    // Account-selection changes publish as one selected-view generation. Event-driven
+    // refreshes remain coalesced, but the initial rows for a selection must be ready now.
+    this.flush();
   }
 
   private syncListeners(): void {

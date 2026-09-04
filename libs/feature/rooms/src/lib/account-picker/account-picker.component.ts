@@ -74,6 +74,11 @@ export class AccountPickerComponent {
         .toggle(userId)
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe({
+          next: (outcome) => {
+            if (outcome.kind !== 'completed') {
+              console.error('Could not update the accounts shown');
+            }
+          },
           error: (err: unknown) =>
             console.error('Could not update the accounts shown', err),
         });

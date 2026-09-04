@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room Library now publishes one selected-Account view.** Local search reads one coherent Room,
+  Space, and invitation generation instead of choosing active or mixed sources, so invitations
+  from every selected Account are searchable with exact ownership. Single-Account selection keeps
+  the efficient active projections; shared Rooms retain every owner and their loudest unread state,
+  while shared Spaces retain the union of joined children. Account selection now uses a typed
+  capability-owned preference command that leaves the prior view published when storage fails.
+
 - **Room-shell navigation now crosses a semantic Workspace boundary.** Account and scope changes,
   exact Room opens, compact-list close, Room removal, shortcuts, Room hopping, and Workspace Back
   submit product intent while Workspace owns scope retention, pane and history policy, canonical

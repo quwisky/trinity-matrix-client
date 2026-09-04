@@ -21,7 +21,7 @@ describe('AccountPickerComponent', () => {
 
   beforeEach(() => {
     selected = signal<ReadonlySet<string>>(new Set(['@alice:hs', '@bob:hs']));
-    toggle = vi.fn(() => of(void 0));
+    toggle = vi.fn(() => of({ kind: 'completed' as const }));
     close = vi.fn();
   });
 
