@@ -20,7 +20,12 @@ import {
   RoomReadinessService,
   SpacesService,
 } from '@trinity/data-access/room-library';
-import type { WorkspaceSearchIntent } from '@trinity/application/workspace';
+import type {
+  WorkspaceNavigation,
+  WorkspaceNavigationIntent,
+  WorkspaceNavigationOutcome,
+  WorkspaceSearchIntent,
+} from '@trinity/application/workspace';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
@@ -59,7 +64,7 @@ import { parseWorkspaceUrl } from './workspace-url';
  * only after Account readiness and the canonical navigation have both settled.
  */
 @Injectable()
-export class WorkspaceService {
+export class WorkspaceService implements WorkspaceNavigation {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly accounts = inject(AccountRuntimeService);
@@ -173,6 +178,52 @@ export class WorkspaceService {
         },
       }),
     );
+  }
+
+  /**
+   * Resolve product navigation intent inside Workspace.
+   *
+   * The first migrated path is an exact Room-list selection. Keeping resolution inside
+   * `defer` means current scope and pane are read only when the command is subscribed.
+   */
+  navigate(
+    intent: WorkspaceNavigationIntent,
+  ): Observable<WorkspaceNavigationOutcome> {
+    return defer(() => {
+      switch (intent.origin) {
+        case 'room-list': {
+          const destination = this.roomDestination(
+            intent.accountId,
+            intent.roomId,
+          );
+          const unchanged = sameWorkspaceDestination(this.view(), destination);
+          return this.open(destination, {
+            source: 'user',
+            history: 'push',
+          }).pipe(
+            map((outcome): WorkspaceNavigationOutcome => {
+              switch (outcome.kind) {
+                case 'ready':
+                  return {
+                    kind: 'ready',
+                    change:
+                      unchanged && !outcome.repaired
+                        ? 'unchanged'
+                        : 'committed',
+                  };
+                case 'failed':
+                  return { kind: 'unavailable', reason: outcome.failure };
+                case 'transition-in-progress':
+                  return {
+                    kind: 'unavailable',
+                    reason: 'transition-in-progress',
+                  };
+              }
+            }),
+          );
+        }
+      }
+    });
   }
 
   /**

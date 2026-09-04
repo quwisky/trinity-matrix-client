@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room selection now crosses a semantic Workspace boundary.** Each visible row carries its exact
+  Account and Room identity while Workspace owns scope retention, compact-pane opening, history,
+  canonical URL projection, Account readiness, Conversation focus, and typed navigation outcomes.
+  The remaining caller-built destination seam is frozen for removal by the next migration slices.
+
 - **The atomic design-system migration is integrated and ready for delivery.** Tailwind,
   Theme and Appearance ownership, public component recipes, the authored cascade, accessibility
   catalogs and host-specific proof now form one documented route across Web, PWA, Electron,

@@ -358,6 +358,149 @@ describe('WorkspaceService', () => {
     expect(h.media.releaseAll).not.toHaveBeenCalled();
   });
 
+  describe('semantic Room navigation', () => {
+    it('resolves an exact Room intent without exposing destination or history policy', async () => {
+      const h = harness({ routeAccountId: ALICE });
+      h.navigate.mockClear();
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'room',
+            accountId: BOB,
+            roomId: ROOM,
+            origin: 'room-list',
+          }),
+        ),
+      ).resolves.toMatchObject({
+        kind: 'ready',
+        change: 'committed',
+      });
+      expect(h.service.view()).toEqual({
+        accountId: BOB,
+        scope: { kind: 'recent' },
+        roomId: ROOM,
+        pane: 'conversation',
+      });
+      expect(h.navigate).toHaveBeenLastCalledWith(
+        ['/rooms', encodeRoomSegment(ROOM)],
+        {
+          queryParams: { account: BOB },
+          replaceUrl: false,
+        },
+      );
+    });
+
+    it('keeps exact-current selection unchanged but opens a retained compact Room', async () => {
+      const h = harness({
+        routeAccountId: ALICE,
+        routeRoomId: ROOM,
+        compact: true,
+      });
+      const intent = {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-list',
+      } as const;
+      h.navigate.mockClear();
+      h.conversations.focus.mockClear();
+      h.conversations.blur.mockClear();
+      h.media.releaseAll.mockClear();
+
+      await expect(
+        firstValueFrom(h.service.navigate(intent)),
+      ).resolves.toMatchObject({
+        kind: 'ready',
+        change: 'unchanged',
+      });
+      expect(h.navigate).not.toHaveBeenCalled();
+      expect(h.conversations.focus).not.toHaveBeenCalled();
+      expect(h.conversations.blur).not.toHaveBeenCalled();
+      expect(h.media.releaseAll).not.toHaveBeenCalled();
+
+      await firstValueFrom(
+        h.service.open(
+          {
+            accountId: ALICE,
+            scope: h.service.view().scope,
+            roomId: ROOM,
+            pane: 'list',
+          },
+          { source: 'user', history: 'push' },
+        ),
+      );
+      h.navigate.mockClear();
+      h.conversations.focus.mockClear();
+
+      await expect(
+        firstValueFrom(h.service.navigate(intent)),
+      ).resolves.toMatchObject({
+        kind: 'ready',
+        change: 'committed',
+      });
+      expect(h.service.view()).toMatchObject({
+        roomId: ROOM,
+        pane: 'conversation',
+      });
+      expect(h.navigate).toHaveBeenCalledOnce();
+      expect(h.conversations.focus).toHaveBeenCalledWith({
+        accountId: ALICE,
+        roomId: ROOM,
+      });
+    });
+
+    it('is cold, joins an identical intent, and types conflicts', async () => {
+      const h = harness({ routeAccountId: ALICE });
+      const navigation = new Subject<boolean>();
+      h.navigate.mockImplementationOnce(() => firstValueFrom(navigation));
+      h.navigate.mockClear();
+      const intent = {
+        kind: 'room',
+        accountId: ALICE,
+        roomId: ROOM,
+        origin: 'room-list',
+      } as const;
+      const command = h.service.navigate(intent);
+
+      expect(h.navigate).not.toHaveBeenCalled();
+      const first = firstValueFrom(command);
+      const joined = firstValueFrom(command);
+      await expect(
+        firstValueFrom(h.service.navigate({ ...intent, accountId: BOB })),
+      ).resolves.toEqual({
+        kind: 'unavailable',
+        reason: 'transition-in-progress',
+      });
+      expect(h.navigate).toHaveBeenCalledOnce();
+
+      navigation.next(true);
+      navigation.complete();
+      await expect(first).resolves.toMatchObject({ kind: 'ready' });
+      await expect(joined).resolves.toMatchObject({ kind: 'ready' });
+    });
+
+    it('returns a typed failure when a different Room location is rejected', async () => {
+      const h = harness({ routeAccountId: ALICE });
+      h.navigate.mockResolvedValueOnce(false);
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'room',
+            accountId: ALICE,
+            roomId: ROOM,
+            origin: 'room-list',
+          }),
+        ),
+      ).resolves.toMatchObject({
+        kind: 'unavailable',
+        reason: 'navigation-rejected',
+      });
+      expect(h.service.view()).toMatchObject({ roomId: null, pane: 'list' });
+    });
+  });
+
   it('transitions when selecting a different pane for the active Room', async () => {
     const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
     h.navigate.mockClear();

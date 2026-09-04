@@ -222,10 +222,12 @@ describe('ChannelSidebarComponent', () => {
     expect(channels.length).toBe(1);
     expect(channels[0].textContent).toContain('general');
 
-    let roomId: string | undefined;
-    fixture.componentInstance.selectRoom.subscribe((id) => (roomId = id));
+    let selection: { roomId: string; accountId: string } | undefined;
+    fixture.componentInstance.selectRoom.subscribe(
+      (value) => (selection = value),
+    );
     channels[0].click();
-    expect(roomId).toBe('!a:hs');
+    expect(selection).toEqual({ roomId: '!a:hs', accountId: '@me:hs' });
   });
 
   it('renders a messenger-style row: avatar, name, and last-message preview', async () => {

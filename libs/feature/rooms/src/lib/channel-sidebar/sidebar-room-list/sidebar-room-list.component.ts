@@ -117,7 +117,7 @@ export class SidebarRoomListComponent {
    */
   readonly filterActive = input(false);
 
-  readonly selectRoom = output<string>();
+  readonly selectRoom = output<{ roomId: string; accountId: string }>();
   /** Carries the owning account so a mixed-in row leaves on ITS account, not the active one. */
   readonly leaveRoom = output<{ roomId: string; accountId: string }>();
   readonly removeRoom = output<string>();
