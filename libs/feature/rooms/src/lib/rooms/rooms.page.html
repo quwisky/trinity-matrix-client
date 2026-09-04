@@ -63,7 +63,7 @@
         [sortMode]="vm.spaceSortMode()"
         [sortOverridden]="vm.spaceSortOverridden()"
         [defaultSortMode]="vm.defaultSpaceSortMode()"
-        (selectRoom)="routing.onSelectRoomRow($event)"
+        (selectRoom)="routing.onSelectRoomSelection($event)"
         (openSwitcher)="shortcutActions.openSwitcher()"
         (newChat)="roomActions.onNewChat()"
         (createRoom)="spaceActions.onCreateChannel()"

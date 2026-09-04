@@ -12,11 +12,9 @@ import { WorkspaceService } from './workspace.service';
 /**
  * Routing a selection to the account that owns it.
  *
- * In mixed mode a row in the sidebar may belong to an account that is not the active one,
- * so opening it means switching account first and then selecting — which is what
- * `runOnAccount` wraps. Everything that can be reached from a row therefore lives here
- * rather than in the plain navigation coordinator: the row handlers themselves, the
- * permalink opener, and the account-visibility toggle.
+ * In mixed mode a visible row carries its exact owning Account into the semantic Workspace
+ * command. Older ID-only shell paths still resolve ownership here and use the compatibility
+ * destination seam until the rest of the shell migration lands.
  *
  * This is why the cluster moved before invites and shortcuts. `onAcceptInvite` and
  * `jumpTo` both finish through `onSelectRoomRow`, so they need it to already have a home
@@ -69,9 +67,8 @@ export class AccountRoutingService {
   }
 
   /**
-   * Open a room chosen from the sidebar list. In mixed-account mode the row may belong to
-   * a different signed-in account — switch to that account first (so every downstream
-   * action runs on its client), then open the room; otherwise open it directly.
+   * Compatibility path for ID-only shell navigation. Visible rows use
+   * {@link onSelectRoomSelection} and never re-derive Account ownership from this list.
    */
   onSelectRoomRow(id: string, source: 'user' | 'hop' = 'user'): void {
     const accountId = this.nav.knownRooms().find((r) => r.id === id)?.accountId;
@@ -80,6 +77,28 @@ export class AccountRoutingService {
       return;
     }
     this.nav.onSelectRoom(id, source);
+  }
+
+  /** Open the exact Account-and-Room identity emitted by a visible Room row. */
+  onSelectRoomSelection(selection: {
+    readonly roomId: string;
+    readonly accountId: string;
+  }): void {
+    this.workspace
+      .navigate({
+        kind: 'room',
+        accountId: selection.accountId,
+        roomId: selection.roomId,
+        origin: 'room-list',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => {
+        if (outcome.kind !== 'ready') {
+          void this.status.showError(
+            'Unable to open that destination right now.',
+          );
+        }
+      });
   }
 
   /**

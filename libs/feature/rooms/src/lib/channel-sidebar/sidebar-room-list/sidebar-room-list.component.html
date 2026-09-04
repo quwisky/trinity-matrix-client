@@ -108,7 +108,7 @@
       class="channel"
       [class.active]="activeRoomId() === room.id"
       [class.unread]="room.hasUnread"
-      (click)="selectRoom.emit(room.id)"
+      (click)="selectRoom.emit({ roomId: room.id, accountId: room.accountId })"
     >
       <trn-avatar
         class="channel__avatar"

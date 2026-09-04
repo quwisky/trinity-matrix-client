@@ -131,11 +131,13 @@ evidence rather than a portable unit-test assertion. There is no duplicate SDK s
 `ConversationRuntime` owns the messaging lifetime of one immutable Account-and-Room pair. A
 handle freezes that key and exposes named timeline, compose, message, media, thread and pin
 children; it never reads the route and never retargets when Active Account changes.
-`WorkspaceService` owns one immutable Account, scope, Room, and pane view. Its transition workflow
-focuses the exact Conversation only after Account readiness and canonical URL navigation settle,
-or blurs the current handle when the Room leaves Workspace. `RoomShellNavigationService` is now a
-small shell-event adapter into that authority; it does not own semantic state or routing. Feature
-surfaces consume `ConversationRuntime.timeline`, a stable proxy for the focused child, rather than
+`WorkspaceService` owns one immutable Account, scope, Room, and pane view. A Room row emits its exact
+Account-and-Room identity, and Workspace resolves that semantic intent into current scope, pane,
+history, canonical URL, Account readiness, and Conversation focus. Its transition workflow focuses
+the exact Conversation only after Account readiness and canonical URL navigation settle, or blurs
+the current handle when the Room leaves Workspace. `RoomShellNavigationService` remains a small
+compatibility adapter for the not-yet-migrated shell paths; it does not own semantic state or
+routing. Feature surfaces consume `ConversationRuntime.timeline`, a stable proxy for the focused child, rather than
 injecting the child implementation or a root timeline singleton.
 When a create or invite request succeeds before `/sync` has published the Room, Workspace crosses
 Room Library's bounded exact-Account readiness barrier before opening it. The barrier listens for
@@ -370,11 +372,15 @@ multi-account design.
 !!! warning "Do not bypass coordinated switch readiness"
 
     The `activeUserId()` effect is only a compatibility fallback for Account changes made outside
-    the coordinated path, and it still flushes after those legacy mutations. Product flows use
-    `WorkspaceService.open()`: its `ready` outcome follows canonical URL preparation, Account
+    the coordinated path, and it still flushes after those legacy mutations. Migrated product flows
+    use `WorkspaceService.navigate()`; its `ready` outcome follows canonical URL preparation, Account
     commit, synchronous Projection Runtime reattachment, generation acknowledgement, and atomic
     Workspace view publication. Consumers can therefore act on `ready` without an
     `afterNextRender` timing workaround.
+
+    The caller-built `WorkspaceService.open()` seam is temporary compatibility debt. Its frozen
+    four-file production allowlist is guarded by
+    `scripts/workspace-navigation-contract.spec.mjs`; issue #369 owns its removal.
 
 ## Who takes the whole primitive, and who takes only the batching
 

@@ -424,7 +424,7 @@ describe('RoomsPage mobile navigation', () => {
     return shellFrom();
   }
 
-  it('backToList retains selection and a link to that Room reopens chat', async () => {
+  it('backToList retains selection and selecting that Room reopens chat', async () => {
     const shell = build();
     shell.nav.onSelectRoom('!r:hs');
     await settleWorkspace(); // open the projections FIRST, so the closes below can only come from backToList
@@ -443,10 +443,10 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.pane()).toBe('list');
     expect(TestBed.inject(RoomsTimelineStub).close).not.toHaveBeenCalled();
 
-    vi.spyOn(shell.nav, 'knownRooms').mockReturnValue([
-      { id: '!r:hs' } as RoomSummary,
-    ]);
-    shell.routing.openLinkedRoom('!r:hs');
+    shell.routing.onSelectRoomSelection({
+      roomId: '!r:hs',
+      accountId: '@me:hs',
+    });
     await vi.waitFor(() => expect(shell.store.pane()).toBe('conversation'));
   });
 
@@ -882,10 +882,13 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.rightPanel()).toBe(before);
   });
 
-  it('onSelectRoom opens the room (switching to the mobile chat page)', async () => {
+  it('semantic Room selection opens the mobile Conversation pane', async () => {
     const shell = build();
 
-    shell.nav.onSelectRoom('!r:hs');
+    shell.routing.onSelectRoomSelection({
+      roomId: '!r:hs',
+      accountId: '@me:hs',
+    });
     await settleWorkspace(); // the projections follow the URL from an effect
 
     expect(shell.store.activeRoomId()).toBe('!r:hs');
@@ -895,7 +898,10 @@ describe('RoomsPage mobile navigation', () => {
 
   it('silently ignores selecting the exact Room that is already open', async () => {
     const shell = build();
-    shell.nav.onSelectRoom('!r:hs');
+    shell.routing.onSelectRoomSelection({
+      roomId: '!r:hs',
+      accountId: '@me:hs',
+    });
     await settleWorkspace();
     const navigate = TestBed.inject(Router).navigate as Mock;
     const showError = vi.spyOn(shell.status, 'showError');
@@ -904,7 +910,10 @@ describe('RoomsPage mobile navigation', () => {
     timelineOpen.mockClear();
     releaseAll.mockClear();
 
-    shell.nav.onSelectRoom('!r:hs');
+    shell.routing.onSelectRoomSelection({
+      roomId: '!r:hs',
+      accountId: '@me:hs',
+    });
     await settleWorkspace();
 
     expect(showError).not.toHaveBeenCalled();
@@ -919,7 +928,10 @@ describe('RoomsPage mobile navigation', () => {
     const showError = vi.spyOn(shell.status, 'showError');
     navigate.mockResolvedValueOnce(false);
 
-    shell.nav.onSelectRoom('!r:hs');
+    shell.routing.onSelectRoomSelection({
+      roomId: '!r:hs',
+      accountId: '@me:hs',
+    });
     await settleWorkspace();
 
     expect(showError).toHaveBeenCalledWith(

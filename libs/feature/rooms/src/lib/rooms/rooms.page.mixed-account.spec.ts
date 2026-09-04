@@ -314,6 +314,25 @@ describe('RoomsPage mixed-account view', () => {
     expect(shell.store.activeRoomId()).toBe('!mine:hs');
   });
 
+  it('opens a selected row with the exact Account identity emitted by that row', async () => {
+    const shell = build(['@me:hs', '@alt:hs']);
+    shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+
+    shell.routing.onSelectRoomSelection({
+      roomId: '!theirs:hs',
+      accountId: '@alt:hs',
+    });
+
+    await vi.waitFor(() =>
+      expect(switchAccount).toHaveBeenCalledWith(
+        '@alt:hs',
+        expect.objectContaining({ prepare: expect.any(Function) }),
+      ),
+    );
+    await settleWorkspace();
+    expect(shell.store.activeRoomId()).toBe('!theirs:hs');
+  });
+
   it('switches to the owning account before selecting a foreign space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));

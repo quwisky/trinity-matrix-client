@@ -224,7 +224,7 @@ export class ChannelSidebarComponent {
    * initial/name. Empty when not in mixed mode — room rows then show no badge.
    */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
-  readonly selectRoom = output<string>();
+  readonly selectRoom = output<{ roomId: string; accountId: string }>();
   /** Header "+" on Home — raise the new-room / new-DM chooser. */
   readonly newChat = output<void>();
   /** Header "+" in a space — raise the create-a-channel flow. */

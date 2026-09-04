@@ -33,3 +33,17 @@ repair replace history.
 Responsive placement creates no history. This keeps browser Back,
 native Back, dialogs, reloads, and compact-layout changes coherent without exposing a half-old
 Workspace.
+
+Product navigation crosses Workspace as semantic intent rather than as a caller-built destination.
+The first migrated intent is a Room-list selection containing its exact Account, Room, and semantic
+origin. Workspace derives the retained sidebar scope, Conversation pane, user-history push, URL
+projection, and transition coordination when the cold command is subscribed. An exact-current
+intent therefore completes as `ready`/`unchanged`, while selecting the retained Room from the
+compact list is a `ready`/`committed` pane transition. Account, route, and in-flight conflicts are
+normalized into typed `unavailable` reasons; Router booleans and legacy destinations do not cross
+the semantic interface.
+
+During the incremental migration, the destination-based `open` seam remains available to exactly
+four production callers. `scripts/workspace-navigation-contract.spec.mjs` freezes that allowlist;
+issue #369 owns reducing its counter to zero and deleting the compatibility seam after the
+Room-shell and activation paths migrate.
