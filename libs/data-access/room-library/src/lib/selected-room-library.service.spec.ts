@@ -132,7 +132,7 @@ describe('SelectedRoomLibraryService', () => {
       }),
     );
 
-    const command = harness.service.setAccountSelected('@other:hs', true);
+    const command = harness.service.setAccountSelected('@other:hs', 'included');
     expect(harness.setSelected).not.toHaveBeenCalled();
 
     await expect(firstValueFrom(command)).resolves.toEqual({
@@ -140,6 +140,7 @@ describe('SelectedRoomLibraryService', () => {
       recovery: 'retry-storage',
       diagnostic: { code: 'preference-storage-write-failed' },
     });
+    expect(harness.setSelected).toHaveBeenCalledWith('@other:hs', true);
     expect(harness.service.view().accountIds).toEqual(new Set(['@active:hs']));
   });
 

@@ -62,9 +62,11 @@ export class SelectedRoomLibraryService {
   /** Persist one Account's inclusion; failed writes leave the published view unchanged. */
   setAccountSelected(
     accountId: string,
-    selected: boolean,
+    selection: 'included' | 'excluded',
   ): Observable<PreferenceCommandOutcome> {
-    return defer(() => this.scope.setSelected(accountId, selected));
+    return defer(() =>
+      this.scope.setSelected(accountId, selection === 'included'),
+    );
   }
 
   /** Toggle one Account's inclusion through the same cold finite preference command. */

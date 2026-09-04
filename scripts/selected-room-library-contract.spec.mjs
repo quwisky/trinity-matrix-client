@@ -39,11 +39,11 @@ describe('Selected Room Library boundary', () => {
     expect(selected.match(/\.setAccounts\(accountIds\)/gu)).toHaveLength(3);
   });
 
-  it('freezes the five remaining feature consumers of legacy mixed projections', () => {
+  it('freezes the five remaining production consumers of legacy mixed projections', () => {
     const legacyImport =
       /import\s*{[^}]*\bMixed(?:Rooms|Spaces|Invites)Service\b[^}]*}\s*from\s*['"]@trinity\/data-access\/room-library['"]/s;
     const consumers = productionSources
-      .filter((file) => file.startsWith('libs/feature/rooms/'))
+      .filter((file) => file !== selectedImplementation)
       .filter((file) => legacyImport.test(source(file)));
 
     expect(consumers).toEqual([
