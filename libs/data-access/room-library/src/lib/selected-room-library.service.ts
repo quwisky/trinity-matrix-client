@@ -1,12 +1,28 @@
-import { Injectable, effect, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { defer, type Observable } from 'rxjs';
+import {
+  MatrixClientService,
+  coalesce,
+} from '@trinity/data-access/matrix-client';
 import { type PreferenceCommandOutcome } from '@trinity/runtime/preferences';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
-import { MixedInvitesService } from './mixed-invites.service';
-import { MixedRoomsService } from './mixed-rooms.service';
-import { MixedSpacesService } from './mixed-spaces.service';
 import { RoomLibraryService, type RoomSummary } from './room-library.service';
+import {
+  ALL_SELECTED_PROJECTION_DOMAINS,
+  SelectedAccountSourceRegistry,
+  projectSelectedInvitations,
+  projectSelectedRooms,
+  projectSelectedSpaces,
+  type SelectedProjectionDomain,
+} from './selected-room-library-projection';
 import { SpacesService, type SpaceSummary } from './spaces.service';
 
 export type SelectedRoomLibraryMode = 'active' | 'mixed';
@@ -37,8 +53,8 @@ function indexSpaceChildrenByAccount(
 /**
  * The public selected-Account Room Library boundary.
  *
- * It owns active-versus-mixed source choice and drives the legacy mixed projections while
- * the expand-migrate-contract sequence moves their remaining callers behind this view.
+ * It owns active-versus-mixed source choice, selected Account listener lifecycle, and the
+ * Room, Space, and invitation projection policy behind one coherent read interface.
  */
 @Injectable({ providedIn: 'root' })
 export class SelectedRoomLibraryService {
@@ -46,9 +62,14 @@ export class SelectedRoomLibraryService {
   private readonly activeRooms = inject(RoomLibraryService);
   private readonly activeSpaces = inject(SpacesService);
   private readonly activeInvites = inject(InvitesService);
-  private readonly mixedRooms = inject(MixedRoomsService);
-  private readonly mixedSpaces = inject(MixedSpacesService);
-  private readonly mixedInvites = inject(MixedInvitesService);
+  private readonly matrix = inject(MatrixClientService);
+  private readonly destroyRef = inject(DestroyRef);
+
+  private readonly pendingDomains = new Set<SelectedProjectionDomain>();
+  private readonly sources = new SelectedAccountSourceRegistry(
+    this.matrix,
+    (domains) => this.scheduleProjection(domains),
+  );
 
   private readonly _view = signal<SelectedRoomLibraryView>({
     accountIds: this.scope.selected(),
@@ -63,15 +84,15 @@ export class SelectedRoomLibraryService {
 
   /**
    * Effective Account set, mode, and all three row kinds from one published generation.
-   * A one-Account selection always reads the active projections directly; the intentionally
-   * empty legacy mixed signals can therefore never blank the single-Account view.
+   * A one-Account selection always reads the active projections directly and therefore
+   * adds no selected-registry listeners to the single-Account path.
    */
   readonly view = this._view.asReadonly();
 
   constructor() {
-    // Publish once before injection returns, then keep the whole record current. The mixed
-    // projectors rebuild synchronously when their Account generation changes, so no reader
-    // can observe new Account ids paired with rows from the preceding generation.
+    this.destroyRef.onDestroy(() => this.sources.release());
+    // Publish once before injection returns, then keep selection, live Account/client
+    // replacement, Active Account ownership, and active projections current.
     this.publishSelection();
     effect(() => this.publishSelection());
   }
@@ -91,36 +112,69 @@ export class SelectedRoomLibraryService {
     return defer(() => this.scope.toggle(accountId));
   }
 
-  private publishSelection(): void {
+  private readonly projectionFlusher = coalesce(() => {
+    const domains = new Set(this.pendingDomains);
+    this.pendingDomains.clear();
+    this.publishSelection(domains);
+  });
+
+  private scheduleProjection(
+    domains: ReadonlySet<SelectedProjectionDomain>,
+  ): void {
+    for (const domain of domains) this.pendingDomains.add(domain);
+    this.projectionFlusher.schedule();
+  }
+
+  private publishSelection(
+    requestedDomains: ReadonlySet<SelectedProjectionDomain> = ALL_SELECTED_PROJECTION_DOMAINS,
+  ): void {
     const accountIds = this.scope.selected();
     const mode: SelectedRoomLibraryMode =
       accountIds.size > 1 ? 'mixed' : 'active';
 
-    this.mixedRooms.setAccounts(accountIds);
-    this.mixedSpaces.setAccounts(accountIds);
-    this.mixedInvites.setAccounts(accountIds);
+    if (mode === 'active') {
+      this.sources.reconcile(accountIds);
+      this._view.set({
+        accountIds,
+        mode,
+        rooms: this.activeRooms.rooms(),
+        spaces: this.activeSpaces.spaces(),
+        spaceChildRoomIdsByAccount: indexSpaceChildrenByAccount(
+          this.activeSpaces.spaces(),
+        ),
+        invitations: this.activeInvites.pendingInvites(),
+      });
+      return;
+    }
 
-    this._view.set(
-      mode === 'mixed'
-        ? {
-            accountIds,
-            mode,
-            rooms: this.mixedRooms.rooms(),
-            spaces: this.mixedSpaces.spaces(),
-            spaceChildRoomIdsByAccount:
-              this.mixedSpaces.spaceChildRoomIdsByAccount(),
-            invitations: this.mixedInvites.invites(),
-          }
-        : {
-            accountIds,
-            mode,
-            rooms: this.activeRooms.rooms(),
-            spaces: this.activeSpaces.spaces(),
-            spaceChildRoomIdsByAccount: indexSpaceChildrenByAccount(
-              this.activeSpaces.spaces(),
-            ),
-            invitations: this.activeInvites.pendingInvites(),
-          },
-    );
+    const previous = untracked(this._view);
+    const sourceChanged = this.sources.reconcile(accountIds);
+    const selectionChanged =
+      previous.mode !== mode || previous.accountIds !== accountIds;
+    const domains =
+      sourceChanged || selectionChanged
+        ? ALL_SELECTED_PROJECTION_DOMAINS
+        : requestedDomains;
+    const sources = this.sources.current();
+    const activeAccountId = this.matrix.activeUserId();
+    const spaces = domains.has('spaces')
+      ? projectSelectedSpaces(sources, activeAccountId)
+      : {
+          spaces: previous.spaces,
+          childRoomIdsByAccount: previous.spaceChildRoomIdsByAccount,
+        };
+
+    this._view.set({
+      accountIds,
+      mode,
+      rooms: domains.has('rooms')
+        ? projectSelectedRooms(sources, activeAccountId)
+        : previous.rooms,
+      spaces: spaces.spaces,
+      spaceChildRoomIdsByAccount: spaces.childRoomIdsByAccount,
+      invitations: domains.has('invitations')
+        ? projectSelectedInvitations(sources)
+        : previous.invitations,
+    });
   }
 }

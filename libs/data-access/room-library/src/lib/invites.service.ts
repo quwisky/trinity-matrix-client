@@ -15,7 +15,7 @@ import { roomAvatarMxc } from '@trinity/util/matrix';
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
   roomId: string;
-  /** The signed-in account this invite belongs to — for the mixed-account view. */
+  /** The signed-in account this invite belongs to — exact even across selected Accounts. */
   accountId: string;
   /** Room (or inviter, for an unnamed DM) display name. */
   name: string;
@@ -142,7 +142,7 @@ export class InvitesService {
 /**
  * Project one invited {@link Room} into a {@link PendingInvite}, tagged with the account it
  * was sent to. Pure read — shared by {@link InvitesService} (active account) and the
- * cross-account {@link MixedInvitesService} so both build identical rows.
+ * selected-Account projector so both build identical rows.
  */
 export function buildInvite(
   client: MatrixClient,

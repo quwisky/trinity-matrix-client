@@ -40,7 +40,7 @@ describe('Room Library production boundary', () => {
 
   it('keeps the former room-graph export and caller allowlist empty', () => {
     const movedSymbols =
-      /\b(?:RoomLibraryService|SpacesService|SpaceChildrenService|SpaceRoomOrderService|AccountScopeService|MixedRoomsService|MixedSpacesService|InvitesService|MixedInvitesService|UnreadAggregatorService)\b/;
+      /\b(?:RoomLibraryService|SpacesService|SpaceChildrenService|SpaceRoomOrderService|AccountScopeService|InvitesService|UnreadAggregatorService)\b/;
     const legacyImport =
       /import\s*(?:type\s*)?{([^}]*)}\s*from\s*['"]@trinity\/data-access\/discovery['"]/gs;
     const offenders = productionSources.filter((file) => {

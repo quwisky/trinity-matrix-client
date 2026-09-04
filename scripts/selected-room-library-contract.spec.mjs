@@ -1,10 +1,12 @@
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const selectedImplementation =
   'libs/data-access/room-library/src/lib/selected-room-library.service.ts';
+const selectedProjection =
+  'libs/data-access/room-library/src/lib/selected-room-library-projection.ts';
 const searchImplementation =
   'libs/data-access/room-library/src/lib/room-library-search.service.ts';
 
@@ -20,7 +22,7 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
   )
   .sort();
 
-/** Freeze the expand-migrate boundary until #373 removes the legacy implementations. */
+/** Freeze the contracted selected Room Library boundary after #373. */
 describe('Selected Room Library boundary', () => {
   it('makes local search a complete selected-view consumer', () => {
     const search = source(searchImplementation);
@@ -32,21 +34,51 @@ describe('Selected Room Library boundary', () => {
     );
   });
 
-  it('keeps Account-source observation inside the selected implementation', () => {
+  it('keeps one Account-source registry inside the selected implementation', () => {
     const selected = source(selectedImplementation);
+    const projection = source(selectedProjection);
 
     expect(selected).toContain('const accountIds = this.scope.selected()');
-    expect(selected.match(/\.setAccounts\(accountIds\)/gu)).toHaveLength(3);
+    expect(selected).toContain('new SelectedAccountSourceRegistry(');
+    expect(selected).toContain('this.sources.reconcile(accountIds)');
+    expect(projection).toContain('class SelectedAccountSourceRegistry');
+    expect(projection).toContain('current !== source.client');
+    expect(projection).toContain('projectSelectedRooms(');
+    expect(projection).toContain('projectSelectedSpaces(');
+    expect(projection).toContain('projectSelectedInvitations(');
   });
 
-  it('routes every production consumer through the selected boundary', () => {
-    const legacyImport =
-      /import\s*{[^}]*\bMixed(?:Rooms|Spaces|Invites)Service\b[^}]*}\s*from\s*['"]@trinity\/data-access\/room-library['"]/s;
-    const consumers = productionSources
-      .filter((file) => file !== selectedImplementation)
-      .filter((file) => legacyImport.test(source(file)));
+  it('removes legacy mixed implementations, exports, and callers', () => {
+    const legacySymbols = /\bMixed(?:Rooms|Spaces|Invites)Service\b/u;
+    const consumers = productionSources.filter((file) =>
+      legacySymbols.test(source(file)),
+    );
+    const legacyFiles = ['rooms', 'spaces', 'invites'].map(
+      (domain) =>
+        `libs/data-access/room-library/src/lib/mixed-${domain}.service.ts`,
+    );
 
     expect(consumers).toEqual([]);
+    expect(
+      legacyFiles.filter((file) => existsSync(join(workspaceRoot, file))),
+    ).toEqual([]);
+    expect(source('libs/data-access/room-library/src/index.ts')).not.toMatch(
+      /mixed-(?:rooms|spaces|invites)\.service/u,
+    );
+  });
+
+  it('keeps page fan-out and source-choice branching out of Room surfaces', () => {
+    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
+    const viewModel = source(
+      'libs/feature/rooms/src/lib/rooms/room-shell-view-model.ts',
+    );
+
+    expect(page).not.toContain('AccountScopeService');
+    expect(page).not.toContain('.setAccounts(');
+    expect(viewModel).toContain('inject(SelectedRoomLibraryService)');
+    expect(viewModel).not.toMatch(
+      /inject\((?:SpacesService|InvitesService)\)/u,
+    );
   });
 
   it('registers capability-owned selection persistence', () => {

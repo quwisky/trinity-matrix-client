@@ -106,7 +106,7 @@ export function directMapOf(client: MatrixClient): {
 /**
  * Project one {@link Room} into a {@link RoomSummary}, tagged with the account it belongs
  * to. Pure read of the room — shared by {@link RoomLibraryService} (single active account) and
- * the cross-account {@link MixedRoomsService} so both build identical rows.
+ * the selected-Account projector so both build identical rows.
  */
 export function buildRoomSummary(
   room: Room,
@@ -171,8 +171,7 @@ export function compareRoomSummaries(a: RoomSummary, b: RoomSummary): number {
  * A space's *joined* child room ids, ordered by the `m.space.child` `order` field
  * (Unicode code point, unordered children last) then room name. Children we have not
  * joined — and removed/dangling child links — are dropped. Pure read of the space room,
- * shared by {@link SpacesService} (active account) and the cross-account
- * {@link MixedSpacesService}.
+ * shared by {@link SpacesService} (active account) and the selected-Account projector.
  */
 export function spaceChildIdsOf(client: MatrixClient, space: Room): string[] {
   const children = (
@@ -279,9 +278,9 @@ function lowPriorityLast(a: RoomSummary, b: RoomSummary): number {
  * belongs to the *space*, not to a {@link RoomSummary} — there is nothing on the row itself to
  * sort by. First occurrence wins, so the result is well defined for any input, though neither
  * producer emits a repeat today (`spaceChildIdsOf` reads one state event per child, and
- * `MixedSpacesService` dedupes as it concatenates).
+ * the selected-Account projector dedupes as it concatenates).
  *
- * **Mixed accounts see an approximation.** `MixedSpacesService` builds its child list by
+ * **Selected Accounts see an approximation.** The selected projector builds its child list by
  * concatenating each account's children in sorted-user-id order rather than merge-sorting by
  * the `order` string, so a space spanning two accounts ranks the first account's curated
  * children ahead of the second's extras. This reproduces that list verbatim; fixing it means
@@ -308,8 +307,8 @@ export function spaceRankOf(
  * runs on every sync, and the shipped default is `'recent'`). An id the list does not hold
  * sorts last rather than yielding `NaN`, which would make `sort` implementation-defined.
  *
- * NOTE: `Array.prototype.sort` mutates, and `RoomLibraryService.rooms()` / `MixedRoomsService.rooms()`
- * hand out their array by identity — sort a copy you own, never the signal's value.
+ * NOTE: `Array.prototype.sort` mutates, and Room Library projections hand out their array by
+ * identity — sort a copy you own, never the signal's value.
  */
 export function comparatorFor(
   mode: RoomSortMode,

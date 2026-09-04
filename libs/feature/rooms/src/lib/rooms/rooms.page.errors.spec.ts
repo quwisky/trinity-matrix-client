@@ -155,9 +155,8 @@ describe('RoomsPage action error feedback', () => {
           createSpace,
         }),
         MockProvider(AccountScopeService, {
-          // `selected` as well as `mixing`: the page points the cross-account projections
-          // at it from a constructor effect, and this block now flushes effects, so an
-          // unstubbed one reaches MixedRoomsService.setAccounts as `undefined`.
+          // Account routing reads both signals, and this block flushes effects, so neither
+          // can be left for ng-mocks to supply as `undefined`.
           selected: signal<ReadonlySet<string>>(
             new Set(['@me:hs']),
           ).asReadonly(),

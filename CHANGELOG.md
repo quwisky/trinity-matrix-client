@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room Library now owns one selected-Account projection path.** The selected view directly
+  reconciles live Account clients through one internal listener registry and projects Rooms,
+  Spaces, and invitations behind its public interface. The three compatibility mixed services,
+  their exports, and page-shaped tests are removed; single-Account selection still delegates to
+  the existing active projections without attaching duplicate Matrix listeners.
+
 - **Room actions now retain exact selected-Account ownership.** Room, Space, invitation, permalink,
   and shortcut navigation use the same selected Room Library generation as the visible sidebar.
   Shared-Room read, notification, favourite, and priority changes target each contributing Account

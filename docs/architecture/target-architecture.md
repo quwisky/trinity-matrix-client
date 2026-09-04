@@ -30,7 +30,9 @@ Tooling and black-box test projects are outside this runtime dependency model. W
 - **Accounts** owns saved Accounts and Account Runtime lifecycle. Authentication Attempts end by
   issuing an opaque authenticated grant; Account Runtime consumes the grant with an explicit
   active/inactive placement intent and never exposes credentials back to the caller.
-- **Room Library** owns the current user's relationship to the Room and Space graph.
+- **Room Library** owns the current user's relationship to the Room and Space graph. Its selected
+  view is the only cross-Account read boundary: one internal source registry feeds Room, Space, and
+  invitation projectors, while single-Account reads reuse the active projections.
 - **Conversations** owns keyed timelines, composer intent, messages, threads, pins, and read position.
 - **Room Administration** owns governance within a Room.
 - **Trust** owns verification, cross-signing, secret storage, recovery, key transfer, and encryption health.
