@@ -162,6 +162,7 @@ describe('RoomsPage rendered right-panel focus', () => {
         MockProvider(SpacesService, {
           connect: vi.fn(),
           openSpace: () => of(void 0),
+          spaces: signal([]),
         }),
         MockProvider(MixedRoomsService, { setAccounts: vi.fn() }),
         MockProvider(MixedSpacesService, { setAccounts: vi.fn() }),

@@ -166,6 +166,7 @@ async function renderSidebar(
           mode: 'active' as const,
           rooms: [],
           spaces: [],
+          spaceChildRoomIdsByAccount: new Map(),
           invitations: signals.invitations(),
         })),
       }),

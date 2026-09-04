@@ -425,6 +425,16 @@ export function selectedRoomLibraryProvider(): Provider {
             mode: 'active' as const,
             rooms: rooms.rooms(),
             spaces: spaces.spaces(),
+            spaceChildRoomIdsByAccount: activeAccountId
+              ? new Map([
+                  [
+                    activeAccountId,
+                    new Set(
+                      spaces.spaces().flatMap((space) => space.childRoomIds),
+                    ),
+                  ],
+                ])
+              : new Map(),
             invitations: invites.pendingInvites(),
           };
         }),

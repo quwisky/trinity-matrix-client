@@ -18,6 +18,8 @@ import {
   SpaceChildrenService,
   SpaceRoomOrderService,
   UnreadAggregatorService,
+  type RoomSummary,
+  type SelectedRoomLibraryView,
 } from '@trinity/data-access/room-library';
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
@@ -53,7 +55,12 @@ function profile(
   return { userId, displayName, avatarMxc };
 }
 
-function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
+function build(
+  opts: {
+    members?: Record<string, MemberSummary[]>;
+    selectedView?: SelectedRoomLibraryView;
+  } = {},
+) {
   const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
@@ -72,6 +79,18 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
   // Workspace owns the semantic destination. This focused view-model test supplies only
   // its read model and mutates the backing signal as if a transition had committed.
   const activeRoomId = signal<string | null>(null);
+  const recentView = signal(true);
+  const roomsView = signal(false);
+  const selectedView = signal<SelectedRoomLibraryView>(
+    opts.selectedView ?? {
+      accountIds: new Set(['@me:hs']),
+      mode: 'active',
+      rooms: [],
+      spaces: [],
+      spaceChildRoomIdsByAccount: new Map(),
+      invitations: [],
+    },
+  );
 
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -80,13 +99,7 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
       RoomShellViewModel,
       MockProvider(RoomLibraryService),
       MockProvider(SelectedRoomLibraryService, {
-        view: signal({
-          accountIds: new Set(['@me:hs']),
-          mode: 'active' as const,
-          rooms: [],
-          spaces: [],
-          invitations: [],
-        }).asReadonly(),
+        view: selectedView.asReadonly(),
       }),
       MockProvider(RoomMembersService, { membersFor }),
       MockProvider(SpaceChildrenService),
@@ -113,8 +126,8 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
           activeAccountId: activeUserId.asReadonly(),
           activeSpaceId: signal<string | null>(null).asReadonly(),
           activeRoomId: activeRoomId.asReadonly(),
-          recentView: signal(true).asReadonly(),
-          roomsView: signal(false).asReadonly(),
+          recentView: recentView.asReadonly(),
+          roomsView: roomsView.asReadonly(),
           pane: signal<'list' | 'conversation'>('list').asReadonly(),
           placement: signal<'list' | 'conversation' | 'split'>(
             'split',
@@ -137,8 +150,71 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
     accountIds,
     rosters,
     membersFor,
+    selectedView,
+    showRooms: () => {
+      recentView.set(false);
+      roomsView.set(true);
+    },
   };
 }
+
+function room(
+  id: string,
+  accountId: string,
+  accountIds: readonly string[] = [accountId],
+): RoomSummary {
+  return {
+    id,
+    accountId,
+    accountIds,
+    name: id,
+    initial: 'R',
+    avatarMxc: null,
+    topic: '',
+    memberCount: 2,
+    encrypted: false,
+    unreadCount: 0,
+    highlightCount: 0,
+    hasUnread: false,
+    markedUnread: false,
+    lastMessage: '',
+    activityTs: 0,
+    favourite: false,
+    lowPriority: false,
+  };
+}
+
+describe('RoomShellViewModel selected hierarchy', () => {
+  it('uses the winning Account hierarchy for a shared Room', () => {
+    const shared = room('!shared:hs', '@a:hs', ['@a:hs', '@b:hs']);
+    const { vm, selectedView, showRooms } = build({
+      selectedView: {
+        accountIds: new Set(['@a:hs', '@b:hs']),
+        mode: 'mixed',
+        rooms: [shared],
+        spaces: [],
+        spaceChildRoomIdsByAccount: new Map([
+          ['@a:hs', new Set()],
+          ['@b:hs', new Set(['!shared:hs'])],
+        ]),
+        invitations: [],
+      },
+    });
+    showRooms();
+
+    expect(vm.visibleRooms()).toEqual([shared]);
+
+    selectedView.update((view) => ({
+      ...view,
+      spaceChildRoomIdsByAccount: new Map([
+        ['@a:hs', new Set(['!shared:hs'])],
+        ['@b:hs', new Set()],
+      ]),
+    }));
+
+    expect(vm.visibleRooms()).toEqual([]);
+  });
+});
 
 describe('RoomShellViewModel account profile', () => {
   it('shows the mxid until the profile hydrates, then the name', () => {

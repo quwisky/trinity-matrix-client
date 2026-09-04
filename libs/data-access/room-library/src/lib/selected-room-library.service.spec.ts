@@ -18,6 +18,9 @@ const ACTIVE_SPACE = space('!active-space:hs', '@active:hs');
 const MIXED_SPACE = space('!mixed-space:hs', '@other:hs');
 const ACTIVE_INVITE = invite('!active-invite:hs', '@active:hs');
 const MIXED_INVITE = invite('!mixed-invite:hs', '@other:hs');
+const MIXED_CHILDREN = new Map<string, ReadonlySet<string>>([
+  ['@other:hs', new Set(['!mixed:hs'])],
+]);
 
 function setup(accountIds: ReadonlySet<string>) {
   const selected = signal(accountIds);
@@ -46,6 +49,7 @@ function setup(accountIds: ReadonlySet<string>) {
       }),
       MockProvider(MixedSpacesService, {
         spaces: signal([MIXED_SPACE]),
+        spaceChildRoomIdsByAccount: signal(MIXED_CHILDREN),
         setAccounts: setSpaceAccounts,
       }),
       MockProvider(MixedInvitesService, {
@@ -79,6 +83,7 @@ describe('SelectedRoomLibraryService', () => {
       mode: 'mixed',
       rooms: [MIXED_ROOM],
       spaces: [MIXED_SPACE],
+      spaceChildRoomIdsByAccount: MIXED_CHILDREN,
       invitations: [MIXED_INVITE],
     });
     expect(harness.setRoomAccounts).toHaveBeenCalledWith(accounts);
@@ -118,6 +123,7 @@ describe('SelectedRoomLibraryService', () => {
       mode: 'mixed',
       rooms: [MIXED_ROOM],
       spaces: [MIXED_SPACE],
+      spaceChildRoomIdsByAccount: MIXED_CHILDREN,
       invitations: [MIXED_INVITE],
     });
   });

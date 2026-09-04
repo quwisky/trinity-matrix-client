@@ -176,6 +176,12 @@ describe('RoomsPage mixed-account view', () => {
             space('!s-mine:hs', '@me:hs'),
             space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
           ]),
+          spaceChildRoomIdsByAccount: signal(
+            new Map([
+              ['@me:hs', new Set<string>()],
+              ['@alt:hs', new Set(['!child-theirs:hs'])],
+            ]),
+          ),
           setAccounts: vi.fn(),
         }),
         MockProvider(MixedInvitesService, {

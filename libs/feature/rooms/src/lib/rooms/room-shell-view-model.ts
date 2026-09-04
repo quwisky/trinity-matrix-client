@@ -52,28 +52,15 @@ export class RoomShellViewModel {
   private readonly homeservers = inject(HomeserverInfoService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Ids of every joined room that is a child of some space, unioned across all spaces.
-   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
-   * In mixed mode this spans every account's spaces so the global Rooms list excludes
-   * space-owned rooms from all accounts, matching the single-account view. */
-  private readonly spaceChildRoomIds = computed<Map<string, Set<string>>>(
-    () => {
-      const byAccount = new Map<string, Set<string>>();
-      for (const space of this.selectedLibrary.view().spaces) {
-        const ids = byAccount.get(space.accountId) ?? new Set<string>();
-        for (const id of space.childRoomIds) ids.add(id);
-        byAccount.set(space.accountId, ids);
-      }
-      return byAccount;
-    },
-  );
-
-  /** Whether a row is filed under one of ITS OWN account's spaces. Keyed per account: a
-   * room that is top-level for the account you're acting as must not vanish from the Rooms
-   * view just because a different mixed account files it inside one of its spaces. */
+  /** Whether a row is filed under one of its selected owner's spaces. A shared Room uses
+   * the hierarchy of the Account that won the selected-view row, just as its actions do. */
   private isSpaceChild(room: RoomSummary): boolean {
-    const byAccount = this.spaceChildRoomIds();
-    return room.accountIds.some((id) => byAccount.get(id)?.has(room.id));
+    return (
+      this.selectedLibrary
+        .view()
+        .spaceChildRoomIdsByAccount.get(room.accountId)
+        ?.has(room.id) ?? false
+    );
   }
 
   /**

@@ -48,6 +48,7 @@ function harness(opts: {
           mode: mixing() ? ('mixed' as const) : ('active' as const),
           rooms: [],
           spaces: [],
+          spaceChildRoomIdsByAccount: new Map(),
           invitations: [],
         })),
       }),

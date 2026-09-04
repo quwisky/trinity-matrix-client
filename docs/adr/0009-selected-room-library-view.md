@@ -18,7 +18,9 @@ projectors from one selection observer owned by the selected view.
 Room identity is exact. A Room shared by selected Accounts renders once, prefers the active
 Account as its action identity, retains every contributing Account, and carries the loudest unread
 and highlight state. A shared Space likewise prefers the active Account and unions the joined
-child Room identifiers from every contributing Account. Invitations are not deduplicated across
+child Room identifiers from every contributing Account. The view separately preserves each
+Account's space-child membership, so a deduplicated Room's winning Account decides whether it is
+filed under a Space or remains in the flat Rooms list. Invitations are not deduplicated across
 Accounts: membership is Account-specific, so every selected Account's pending invitation remains
 visible with its exact owner.
 
