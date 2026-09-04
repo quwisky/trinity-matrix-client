@@ -1,6 +1,8 @@
 import {
   DestroyRef,
+  type EffectRef,
   Injectable,
+  Injector,
   effect,
   inject,
   signal,
@@ -58,6 +60,7 @@ function indexSpaceChildrenByAccount(
  */
 @Injectable({ providedIn: 'root' })
 export class SelectedRoomLibraryService {
+  private readonly injector = inject(Injector);
   private readonly scope = inject(AccountScopeService);
   private readonly activeRooms = inject(RoomLibraryService);
   private readonly activeSpaces = inject(SpacesService);
@@ -75,6 +78,7 @@ export class SelectedRoomLibraryService {
     this.pendingDomains.clear();
     this.publishSelection(domains);
   });
+  private watcher: EffectRef | null = null;
 
   private readonly _view = signal<SelectedRoomLibraryView>({
     accountIds: this.scope.selected(),
@@ -95,15 +99,35 @@ export class SelectedRoomLibraryService {
   readonly view = this._view.asReadonly();
 
   constructor() {
-    this.destroyRef.onDestroy(() => {
-      this.projectionFlusher.cancel();
-      this.pendingDomains.clear();
-      this.sources.release();
+    this.destroyRef.onDestroy(() => this.disconnect());
+  }
+
+  /** Attach selected Account sources for one Application Runtime session. */
+  connect(): void {
+    if (this.watcher) return;
+    this.watcher = effect(() => this.publishSelection(), {
+      injector: this.injector,
     });
-    // Publish once before injection returns, then keep selection, live Account/client
-    // replacement, Active Account ownership, and active projections current.
     this.publishSelection();
-    effect(() => this.publishSelection());
+  }
+
+  /** Release selected Account sources and clear their published rows. */
+  disconnect(): void {
+    if (!this.watcher) return;
+    this.watcher.destroy();
+    this.watcher = null;
+    this.projectionFlusher.cancel();
+    this.pendingDomains.clear();
+    this.sources.release();
+    const accountIds = this.scope.selected();
+    this._view.set({
+      accountIds,
+      mode: accountIds.size > 1 ? 'mixed' : 'active',
+      rooms: [],
+      spaces: [],
+      spaceChildRoomIdsByAccount: new Map(),
+      invitations: [],
+    });
   }
 
   /** Persist one Account's inclusion; failed writes leave the published view unchanged. */

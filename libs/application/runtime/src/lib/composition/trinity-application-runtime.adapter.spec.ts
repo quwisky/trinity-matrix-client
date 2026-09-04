@@ -32,6 +32,8 @@ import {
 } from '@trinity/data-access/notifications';
 import {
   AccountScopeService,
+  RoomLibraryLifetime,
+  type RoomLibraryLifetimeEvent,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
 import {
@@ -78,6 +80,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let routedSession: Subject<void>;
   let surfaceSession: Subject<void>;
   let orderSession: Subject<void>;
+  let roomLibrarySession: Subject<RoomLibraryLifetimeEvent>;
   let deepLinks: Subject<{ readonly url: string }>;
   let backIntents: Subject<{ readonly canGoBack: boolean }>;
   let versionUpdates: Subject<never>;
@@ -121,6 +124,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     routedSession = new Subject<void>();
     surfaceSession = new Subject<void>();
     orderSession = new Subject<void>();
+    roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
     deepLinks = new Subject<{ readonly url: string }>();
     backIntents = new Subject<{ readonly canGoBack: boolean }>();
     versionUpdates = new Subject<never>();
@@ -224,6 +228,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           hydrateKnownAccounts: () => of(void 0),
           run: () => orderSession,
         }),
+        MockProvider(RoomLibraryLifetime, {
+          run: () => roomLibrarySession,
+        }),
         MockProvider(StoragePersistenceService, {
           requestPersistence: vi.fn(() => of(true)),
         }),
@@ -258,7 +265,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
     ).resolves.toEqual({ kind: 'ready' });
-    expect(updateCheck).toHaveBeenCalledOnce();
+    expect(updateCheck).not.toHaveBeenCalled();
   });
 
   it('publishes one recoverable warning for partial Appearance hydration', async () => {
@@ -322,7 +329,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
   });
 
-  it('routes the cold initial update check through the shared host contract', async () => {
+  it('keeps the initial update check out of pre-readiness capabilities', async () => {
     updateCheck.mockReturnValueOnce(
       of({
         kind: 'rejected',
@@ -334,14 +341,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(updateCheck).not.toHaveBeenCalled();
     await expect(firstValueFrom(establishment)).resolves.toEqual({
       kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          scope: 'updates',
-          diagnostic: { code: 'update-check-failed' },
-        }),
-      ],
     });
-    expect(updateCheck).toHaveBeenCalledOnce();
+    expect(updateCheck).not.toHaveBeenCalled();
   });
 
   it('maps partial and required Account outcomes without leaking account ids', async () => {
@@ -442,12 +443,31 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   });
 
   it('owns every concrete session stream across teardown and restart', () => {
-    const warnings: unknown[] = [];
+    const events: unknown[] = [];
+    const readiness = new Subject<void>();
     const first = adapter
-      .runSession()
-      .subscribe((value) => warnings.push(value));
+      .runSession(readiness)
+      .subscribe((value) => events.push(value));
     TestBed.tick();
 
+    expect(roomLibrarySession.observed).toBe(true);
+    expect([
+      badgeSession.observed,
+      notificationSession.observed,
+      focusSession.observed,
+      routedSession.observed,
+      surfaceSession.observed,
+      orderSession.observed,
+      deepLinks.observed,
+      backIntents.observed,
+      versionUpdates.observed,
+      unrecoverable.observed,
+    ]).toEqual(Array(10).fill(false));
+    roomLibrarySession.next({ kind: 'prepared' });
+    expect(events).toEqual([{ kind: 'prepared' }]);
+    readiness.next();
+    readiness.complete();
+    TestBed.tick();
     expect([
       badgeSession.observed,
       notificationSession.observed,
@@ -466,15 +486,20 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       kind: 'rejected',
       diagnostic: { code: 'badge-write-rejected' },
     });
-    expect(warnings).toEqual([
-      expect.objectContaining({
-        stage: 'session',
-        scope: 'badge',
-        diagnostic: { code: 'badge-update-failed' },
-      }),
+    expect(events).toEqual([
+      { kind: 'prepared' },
+      {
+        kind: 'warning',
+        warning: expect.objectContaining({
+          stage: 'session',
+          scope: 'badge',
+          diagnostic: { code: 'badge-update-failed' },
+        }),
+      },
     ]);
 
     first.unsubscribe();
+    expect(roomLibrarySession.observed).toBe(false);
     expect([
       badgeSession.observed,
       notificationSession.observed,
@@ -492,7 +517,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     TestBed.tick();
     expect(setHistoryGesturesEnabled).toHaveBeenCalledTimes(gestureCalls);
 
-    const second = adapter.runSession().subscribe();
+    const secondReadiness = new Subject<void>();
+    const second = adapter.runSession(secondReadiness).subscribe();
+    roomLibrarySession.next({ kind: 'prepared' });
+    secondReadiness.next();
     TestBed.tick();
     expect(badgeSession.observed).toBe(true);
     expect(notificationSession.observed).toBe(true);

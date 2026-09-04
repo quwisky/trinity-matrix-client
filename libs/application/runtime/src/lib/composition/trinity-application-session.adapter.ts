@@ -2,7 +2,10 @@ import { Location } from '@angular/common';
 import { Injectable, Injector, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
-import type { ApplicationRuntimeWarning } from '../application-runtime.models';
+import type {
+  ApplicationRuntimeWarning,
+  ApplicationSessionEvent,
+} from '../application-runtime.models';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import {
@@ -18,7 +21,10 @@ import {
   type NotificationDestination,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
-import { SpaceRoomOrderService } from '@trinity/data-access/room-library';
+import {
+  RoomLibraryLifetime,
+  SpaceRoomOrderService,
+} from '@trinity/data-access/room-library';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -31,6 +37,7 @@ import {
   EMPTY,
   Observable,
   catchError,
+  concat,
   concatMap,
   defer,
   filter,
@@ -71,8 +78,33 @@ export class TrinityApplicationSessionAdapter {
     WorkspaceApplicationSurfacePresenterAdapter,
   );
   private readonly spaceOrder = inject(SpaceRoomOrderService);
+  private readonly roomLibrary = inject(RoomLibraryLifetime);
 
-  run(): Observable<ApplicationRuntimeWarning> {
+  run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
+    return this.roomLibrary.run().pipe(
+      switchMap((event) =>
+        event.kind === 'blocked'
+          ? of({
+              kind: 'blocked',
+              recovery: 'retry-startup',
+              diagnostic: event.diagnostic,
+            } as const)
+          : concat(
+              of({ kind: 'prepared' } as const),
+              readiness.pipe(
+                take(1),
+                switchMap(() => this.runLive()),
+                map((warning): ApplicationSessionEvent => ({
+                  kind: 'warning',
+                  warning,
+                })),
+              ),
+            ),
+      ),
+    );
+  }
+
+  private runLive(): Observable<ApplicationRuntimeWarning> {
     return merge(
       this.badge.run().pipe(concatMap((outcome) => this.badgeWarning(outcome))),
       this.runNotificationActivations(),
@@ -246,6 +278,7 @@ export class TrinityApplicationSessionAdapter {
   }
 
   private runUpdates(): Observable<ApplicationRuntimeWarning> {
+    const initialCheck = this.checkForUpdates();
     const serviceWorkerEvents = this.swUpdate.isEnabled
       ? merge(
           this.swUpdate.unrecoverable.pipe(
@@ -272,18 +305,20 @@ export class TrinityApplicationSessionAdapter {
       : EMPTY;
     const foregroundChecks = this.hostLifecycle.events.pipe(
       filter((event) => event.kind === 'active'),
-      switchMap(() =>
-        this.hostUpdates.check().pipe(
-          switchMap((outcome) =>
-            outcome.kind === 'rejected'
-              ? of(warning('updates', 'update-check-failed'))
-              : EMPTY,
-          ),
-          catchError(() => of(warning('updates', 'update-check-failed'))),
-        ),
-      ),
+      switchMap(() => this.checkForUpdates()),
     );
-    return merge(serviceWorkerEvents, foregroundChecks);
+    return merge(initialCheck, serviceWorkerEvents, foregroundChecks);
+  }
+
+  private checkForUpdates(): Observable<ApplicationRuntimeWarning> {
+    return defer(() => this.hostUpdates.check()).pipe(
+      switchMap((outcome) =>
+        outcome.kind === 'rejected'
+          ? of(warning('updates', 'update-check-failed'))
+          : EMPTY,
+      ),
+      catchError(() => of(warning('updates', 'update-check-failed'))),
+    );
   }
 
   private activateUpdate(): void {

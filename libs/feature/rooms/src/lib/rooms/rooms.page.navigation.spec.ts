@@ -4,6 +4,7 @@ import {
   clientStub,
   flushPanelJump,
   invitesProvider,
+  selectedRoomLibraryProvider,
   setMediaQuery,
   setRouteRoom,
   setRouteSegment,
@@ -1134,6 +1135,7 @@ describe('RoomsPage keyboard room switching', () => {
       providers: [
         RoomsPage,
         ...SHARED_MOCKS,
+        selectedRoomLibraryProvider(),
         MockProvider(RoomLibraryService, {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),

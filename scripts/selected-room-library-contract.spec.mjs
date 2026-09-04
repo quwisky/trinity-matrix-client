@@ -7,6 +7,8 @@ const selectedImplementation =
   'libs/data-access/room-library/src/lib/selected-room-library.service.ts';
 const selectedProjection =
   'libs/data-access/room-library/src/lib/selected-room-library-projection.ts';
+const roomLibraryLifetime =
+  'libs/data-access/room-library/src/lib/room-library-lifetime.ts';
 const searchImplementation =
   'libs/data-access/room-library/src/lib/room-library-search.service.ts';
 
@@ -23,6 +25,7 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
   .sort();
 
 const selectedConsumers = [
+  roomLibraryLifetime,
   'libs/data-access/room-library/src/lib/room-library-search.service.ts',
   'libs/feature/rooms/src/lib/account-picker/account-picker.component.ts',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.ts',
@@ -34,7 +37,7 @@ const selectedConsumers = [
   'libs/feature/rooms/src/lib/shared/account-badges.service.ts',
 ];
 
-/** Freeze the contracted selected Room Library boundary after #373. */
+/** Freeze the contracted selected Room Library boundary after #374. */
 describe('Selected Room Library boundary', () => {
   it('makes local search a complete selected-view consumer', () => {
     const search = source(searchImplementation);
@@ -115,5 +118,21 @@ describe('Selected Room Library boundary', () => {
     expect(scope).toContain('PreferenceStoreService');
     expect(scope).not.toContain('DevicePreferenceStorageService');
     expect(providers).toContain('provideRoomLibraryPreferences()');
+  });
+
+  it('keeps selected sources inside the named Room Library lifetime', () => {
+    const selected = source(selectedImplementation);
+    const lifetime = source(roomLibraryLifetime);
+    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
+
+    expect(selected).toContain('connect(): void');
+    expect(selected).toContain('disconnect(): void');
+    expect(lifetime).toContain('class RoomLibraryLifetime');
+    expect(lifetime).toContain("waitFor({ kind: 'active-account' })");
+    expect(lifetime).toContain('this.selected.connect()');
+    expect(lifetime).toContain('this.selected.disconnect()');
+    expect(page).not.toMatch(
+      /this\.(?:rooms|spaces|invites|spaceChildren)\.connect\(\)/u,
+    );
   });
 });

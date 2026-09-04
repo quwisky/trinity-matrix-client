@@ -4,7 +4,9 @@ import {
   ReplaySubject,
   Subject,
   concat,
+  connect,
   defer,
+  finalize,
   ignoreElements,
   map,
   merge,
@@ -14,6 +16,7 @@ import {
   takeUntil,
   tap,
   throwIfEmpty,
+  throwError,
 } from 'rxjs';
 import { APPLICATION_RUNTIME_ADAPTER } from './application-runtime.adapter';
 import {
@@ -67,19 +70,7 @@ export class ApplicationRuntimeService {
         this.attemptUntilReady(() => {
           preferenceLifetimeStart.next();
           preferenceLifetimeStart.complete();
-        }).pipe(
-          switchMap((outcome) =>
-            outcome.kind === 'blocked'
-              ? of(outcome)
-              : concat(
-                  of(outcome),
-                  this.adapter.runSession().pipe(
-                    tap((warning) => this.recordSessionWarning(warning)),
-                    ignoreElements(),
-                  ),
-                ),
-          ),
-        ),
+        }),
       ).pipe(
         takeUntil(stop),
         tap({
@@ -164,6 +155,15 @@ export class ApplicationRuntimeService {
       return of(outcome);
     }
     this.runtimeState.set({ phase: 'starting', attempt, stage, warnings });
+    if (stage === 'session-capabilities') {
+      return this.runSessionStage(
+        attempt,
+        index,
+        stage,
+        warnings,
+        onPreferencesHydrated,
+      );
+    }
     return this.stageCommand(stage).pipe(
       take(1),
       throwIfEmpty(
@@ -180,6 +180,84 @@ export class ApplicationRuntimeService {
           onPreferencesHydrated,
         ),
       ),
+    );
+  }
+
+  private runSessionStage(
+    attempt: number,
+    index: number,
+    stage: ApplicationStartupStage,
+    warnings: readonly ApplicationRuntimeWarning[],
+    onPreferencesHydrated: () => void,
+  ): Observable<ApplicationStartOutcome> {
+    const readiness = new ReplaySubject<void>(1);
+    return this.adapter.runSession(readiness).pipe(
+      connect((events) =>
+        events.pipe(
+          take(1),
+          switchMap((event) => {
+            if (event.kind === 'warning') {
+              return throwError(
+                () =>
+                  new Error(
+                    'Application Runtime session warned before preparation.',
+                  ),
+              );
+            }
+            if (event.kind === 'blocked') {
+              return this.advanceStage(
+                attempt,
+                index,
+                stage,
+                warnings,
+                event,
+                onPreferencesHydrated,
+              );
+            }
+            return this.stageCommand(stage).pipe(
+              take(1),
+              throwIfEmpty(
+                () =>
+                  new Error(
+                    `Application Runtime stage '${stage}' emitted nothing.`,
+                  ),
+              ),
+              switchMap((outcome) =>
+                this.advanceStage(
+                  attempt,
+                  index,
+                  stage,
+                  warnings,
+                  outcome,
+                  onPreferencesHydrated,
+                ),
+              ),
+              switchMap((outcome) => {
+                if (outcome.kind === 'blocked') return of(outcome);
+                return merge(
+                  events.pipe(
+                    tap((sessionEvent) => {
+                      if (sessionEvent.kind !== 'warning') {
+                        throw new Error(
+                          'Application Runtime session prepared more than once.',
+                        );
+                      }
+                      this.recordSessionWarning(sessionEvent.warning);
+                    }),
+                    ignoreElements(),
+                  ),
+                  defer(() => {
+                    readiness.next();
+                    readiness.complete();
+                    return of(outcome);
+                  }),
+                );
+              }),
+            );
+          }),
+        ),
+      ),
+      finalize(() => readiness.complete()),
     );
   }
 

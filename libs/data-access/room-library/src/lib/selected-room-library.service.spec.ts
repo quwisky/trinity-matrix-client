@@ -136,6 +136,7 @@ function setup(
     live?: readonly string[];
     active?: string | null;
     clients?: ReadonlyMap<string, FakeClient>;
+    connect?: boolean;
   } = {},
 ) {
   const selected = signal<ReadonlySet<string>>(
@@ -172,8 +173,10 @@ function setup(
     ],
   });
 
+  const service = TestBed.inject(SelectedRoomLibraryService);
+  if (options.connect !== false) service.connect();
   return {
-    service: TestBed.inject(SelectedRoomLibraryService),
+    service,
     selected: selected as WritableSignal<ReadonlySet<string>>,
     accountIds,
     activeUserId,
@@ -190,6 +193,48 @@ async function flushProjection(): Promise<void> {
 
 describe('SelectedRoomLibraryService', () => {
   beforeEach(() => TestBed.resetTestingModule());
+
+  it('attaches only for its owned lifetime and reconnects from empty state', () => {
+    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
+    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      clients: new Map([
+        ['@a:hs', a],
+        ['@b:hs', b],
+      ]),
+      connect: false,
+    });
+
+    expect(harness.service.view()).toMatchObject({
+      mode: 'active',
+      rooms: [ACTIVE_ROOM],
+      spaces: [ACTIVE_SPACE],
+      invitations: [ACTIVE_INVITE],
+    });
+    expect(a.listenerCount()).toBe(0);
+    expect(b.listenerCount()).toBe(0);
+
+    harness.service.connect();
+    expect(a.listenerCount()).toBe(9);
+    expect(b.listenerCount()).toBe(9);
+
+    harness.service.disconnect();
+    expect(a.listenerCount()).toBe(0);
+    expect(b.listenerCount()).toBe(0);
+    expect(harness.service.view()).toMatchObject({
+      mode: 'mixed',
+      rooms: [],
+      spaces: [],
+      invitations: [],
+    });
+
+    harness.service.connect();
+    expect(a.listenerCount()).toBe(9);
+    expect(b.listenerCount()).toBe(9);
+    expect(a.attachmentCount()).toBe(18);
+  });
 
   it('delegates one Account to active projections without duplicate listeners', () => {
     const client = fakeClient('@active:hs', [fakeRoom('!sdk:hs')]);

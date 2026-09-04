@@ -40,7 +40,6 @@ import {
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { TrustService } from '@trinity/data-access/trust';
-import { InvitesService } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
@@ -49,12 +48,7 @@ import {
   RoomActionPermissionsService,
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
-import {
-  RoomLibraryService,
-  SelectedRoomLibraryService,
-  SpacesService,
-  SpaceChildrenService,
-} from '@trinity/data-access/room-library';
+import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
   HapticsService,
@@ -270,10 +264,7 @@ export class RoomsPage implements OnInit, OnDestroy {
     dismiss: (surface) => this.dismissWorkspaceSurface(surface),
   });
 
-  readonly rooms = inject(RoomLibraryService);
-  readonly spaces = inject(SpacesService);
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
-  readonly invites = inject(InvitesService);
   private readonly conversations = inject(ConversationRuntime);
   readonly timeline = this.conversations.timeline;
   readonly threads = this.conversations.threads;
@@ -283,7 +274,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly matrix = inject(MatrixClientService);
   private readonly crypto = inject(TrustService);
   private readonly presence = inject(IdentityPresenceService);
-  private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);
   private readonly roomMembers = inject(RoomMembersService);
   private readonly roomNotifications = inject(RoomNotificationsService);
@@ -454,20 +444,10 @@ export class RoomsPage implements OnInit, OnDestroy {
       : null;
   }
 
-  /**
-   * These projections are **session-lifetime, not page-lifetime**, which is why nothing
-   * here is undone in {@link ngOnDestroy}. They are root singletons whose `connect()` is
-   * idempotent per client, and `projectFromClient` keys its listeners to the client
-   * instance — so a re-mount rebinds nothing and a logout releases all of them at once,
-   * from `reprojectOnAccountSwitch`, rather than from whichever page remembered to ask.
-   */
+  /** Temporary route wiring for session lifetimes not yet moved into Application Runtime. */
   ngOnInit(): void {
-    this.rooms.connect();
-    this.spaces.connect();
-    this.invites.connect();
     this.crypto.connect();
     this.presence.connect(); // live online-status for member avatars
-    this.spaceChildren.connect(); // live m.space.child links for the curation surfaces
     this.roomNotifications.connect(); // live per-room push rules from every account
     this.roomPermissions.connect(); // live power/membership gates for room actions
     this.roomMembers.connect(); // authoritative Room Administration member summaries
@@ -485,14 +465,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Only the open room's panes are torn down here.
    *
-   * The nine Room-shell projections `ngOnInit` connects are root-scoped and outlive this page —
-   * leaving `/rooms` for settings must not blank them, and they are re-`connect()`ed
-   * on the way back in. Their real teardown is the one that matters (the last account
-   * signing out), and that belongs to the projections themselves rather than to
-   * whichever page happened to connect them: `reproject-on-switch` disconnects them
-   * when the active client goes away. Notification delivery is separately owned by
-   * Application Runtime for the whole session. This used to disconnect `invites` alone, which was neither
-   * symmetric nor load-bearing — one owner, not one and a half.
+   * The remaining five `ngOnInit` connections are root-scoped compatibility lifetimes until
+   * Trust, Identity, and Notification preparation moves into Application Runtime. Room Library
+   * is already Runtime-owned and is not started or stopped by this route.
    */
   ngOnDestroy(): void {
     this.backRegistration();
