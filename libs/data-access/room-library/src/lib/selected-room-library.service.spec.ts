@@ -279,6 +279,60 @@ describe('SelectedRoomLibraryService', () => {
     expect(a.listenerCount()).toBe(9);
   });
 
+  it('takes favourite from the winning Account copy', () => {
+    const a = fakeClient('@a:hs', [fakeRoom('!shared:hs')]);
+    const b = fakeClient('@b:hs', [
+      fakeRoom('!shared:hs', { favourite: true }),
+    ]);
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      active: '@a:hs',
+      clients: new Map([
+        ['@a:hs', a],
+        ['@b:hs', b],
+      ]),
+    });
+
+    expect(harness.service.view().rooms[0]?.favourite).toBe(false);
+
+    harness.activeUserId.set('@b:hs');
+    TestBed.tick();
+
+    expect(harness.service.view().rooms[0]?.favourite).toBe(true);
+  });
+
+  it('refreshes marked-unread state after room account data changes', async () => {
+    const room = fakeRoom('!room:hs');
+    const a = fakeClient('@a:hs', [room]);
+    const b = fakeClient('@b:hs', [fakeRoom('!other:hs')]);
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      active: '@a:hs',
+      clients: new Map([
+        ['@a:hs', a],
+        ['@b:hs', b],
+      ]),
+    });
+    expect(
+      harness.service.view().rooms.find((item) => item.id === '!room:hs')
+        ?.markedUnread,
+    ).toBe(false);
+
+    room.getAccountData = (type: string) =>
+      type === 'm.marked_unread'
+        ? { getContent: () => ({ unread: true }) }
+        : undefined;
+    a.emit(RoomEvent.AccountData);
+    await flushProjection();
+
+    expect(
+      harness.service.view().rooms.find((item) => item.id === '!room:hs')
+        ?.markedUnread,
+    ).toBe(true);
+  });
+
   it('ignores unselected live Accounts and gives them no listeners', () => {
     const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
