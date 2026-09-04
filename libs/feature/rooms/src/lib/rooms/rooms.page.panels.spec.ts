@@ -327,8 +327,8 @@ describe('RoomsPage panels, pins and media', () => {
 
   it('marks a room read via RoomLibraryService', () => {
     const shell = build();
-    shell.readState.onMarkRead({ roomId: '!r:hs' });
-    expect(markReadFn).toHaveBeenCalledWith('!r:hs', undefined);
+    shell.readState.onMarkRead({ roomId: '!r:hs', accountIds: ['@me:hs'] });
+    expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
   });
 
   // A row merged from two accounts carries the loudest unread of the two, so acking only
@@ -338,9 +338,10 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.readState.onMarkRead({
       roomId: '!r:hs',
-      accountIds: ['@me:hs', '@alt:hs'],
+      accountIds: ['@me:hs', '@alt:hs', '@me:hs'],
     });
 
+    expect(markReadFn).toHaveBeenCalledTimes(2);
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@me:hs');
     expect(markReadFn).toHaveBeenCalledWith('!r:hs', '@alt:hs');
   });
@@ -371,15 +372,16 @@ describe('RoomsPage panels, pins and media', () => {
     expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@alt:hs');
   });
 
-  it('flags on the active account when the row names none', () => {
-    // The fallback matters: `forkJoin([])` completes without emitting, so dropping it
-    // would make the single-account ⋮ menu write nothing at all, silently.
+  it('flags on the exact account named by a single-account row', () => {
     const shell = build();
 
-    shell.readState.onMarkUnread({ roomId: '!r:hs' });
+    shell.readState.onMarkUnread({
+      roomId: '!r:hs',
+      accountIds: ['@me:hs'],
+    });
 
     expect(setMarkedUnreadFn).toHaveBeenCalledTimes(1);
-    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, undefined);
+    expect(setMarkedUnreadFn).toHaveBeenCalledWith('!r:hs', true, '@me:hs');
   });
 
   it('clears the flag whenever a room is opened, however it was opened', async () => {
@@ -392,9 +394,9 @@ describe('RoomsPage panels, pins and media', () => {
     // shown is not a room that was opened.
     const shell = build();
 
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs', '@me:hs');
     await settleWorkspace();
-    shell.nav.onSelectRoom('!h:hs', 'room-hop');
+    shell.nav.onSelectRoom('!h:hs', '@me:hs', 'room-hop');
     await settleWorkspace();
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');

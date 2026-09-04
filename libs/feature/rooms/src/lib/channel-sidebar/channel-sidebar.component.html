@@ -134,6 +134,8 @@
       (markUnread)="markUnread.emit($event)"
       (acceptInvite)="acceptInvite.emit($event)"
       (declineInvite)="declineInvite.emit($event)"
+      (favouriteChange)="favouriteChange.emit($event)"
+      (priorityChange)="priorityChange.emit($event)"
     />
     @if (spaceActive()) {
       @if (childrenLoading()) {

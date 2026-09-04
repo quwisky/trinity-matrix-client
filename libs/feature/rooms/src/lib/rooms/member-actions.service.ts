@@ -87,8 +87,10 @@ export class MemberActionsService {
 
   /** Open (or reuse) a direct message with `userId` and navigate to it. */
   private startDirectMessage(userId: string): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
-      (roomId) => this.nav.onSelectRoom(roomId),
+      (roomId) => this.nav.onSelectRoom(roomId, accountId),
     );
   }
 

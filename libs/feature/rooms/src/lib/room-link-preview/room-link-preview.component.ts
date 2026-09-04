@@ -35,6 +35,7 @@ import {
 import { finalize, map, type Observable } from 'rxjs';
 
 export interface RoomLinkPreviewResult {
+  readonly accountId: string;
   readonly roomId: string;
   readonly isSpace: boolean;
   /** True only after this surface completed Join/Accept; synced sidebars may still lag. */
@@ -142,6 +143,7 @@ export class RoomLinkPreviewComponent implements OnInit {
     if (!preview || this.acting()) return;
     if (preview.action === 'open') {
       this.dialogRef.close({
+        accountId: preview.accountId,
         roomId: preview.roomId,
         isSpace: preview.isSpace,
         membershipChanged: this.membershipChanged(),
@@ -198,7 +200,7 @@ export class RoomLinkPreviewComponent implements OnInit {
     }
     if (preview.action === 'accept') {
       return this.invites
-        .acceptInvite(preview.roomId)
+        .acceptInvite(preview.roomId, preview.accountId)
         .pipe(map(() => preview.roomId));
     }
     if (preview.action === 'knock') {

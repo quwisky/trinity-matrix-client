@@ -213,7 +213,7 @@ describe('RoomsPage space actions', () => {
 
   it('creates a channel in the active space', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     alertPrompt.mockReturnValue(of('general'));
 
@@ -226,7 +226,7 @@ describe('RoomsPage space actions', () => {
 
   it('does not prompt to create a channel on Home (no active space)', async () => {
     const shell = build();
-    shell.nav.onSelectSpace(null);
+    shell.nav.onSelectSpace(null, '@me:hs');
 
     shell.spaces.onCreateChannel();
 
@@ -236,7 +236,7 @@ describe('RoomsPage space actions', () => {
 
   it('leaves the active space and returns to Home on success', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     alertConfirm.mockReturnValue(of(true));
 
@@ -248,7 +248,7 @@ describe('RoomsPage space actions', () => {
 
   it('does not leave when the confirm is cancelled', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     alertConfirm.mockReturnValue(of(false));
 
     shell.spaces.onLeaveSpace();
@@ -258,7 +258,7 @@ describe('RoomsPage space actions', () => {
 
   it('does not prompt to leave on Home (no active space)', async () => {
     const shell = build();
-    shell.nav.onSelectSpace(null);
+    shell.nav.onSelectSpace(null, '@me:hs');
 
     shell.spaces.onLeaveSpace();
 
@@ -348,7 +348,7 @@ describe('RoomsPage space actions', () => {
     // its decryption) with no way to re-bind short of a reload.
     const shell = build();
     const timeline = TestBed.inject(RoomsTimelineStub);
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs', '@me:hs');
     await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     // Opening is a navigation now and the projections follow the URL from an effect, so
@@ -658,6 +658,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const openConfirmed = vi.spyOn(shell.routing, 'openConfirmedLinkedRoom');
     dialogOpen.mockReturnValue(
       of({
+        accountId: '@me:hs',
         roomId: '!joined:remote',
         isSpace: false,
         membershipChanged: true,
@@ -670,7 +671,11 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(openConfirmed).toHaveBeenCalledWith('!joined:remote', false);
+    expect(openConfirmed).toHaveBeenCalledWith(
+      '!joined:remote',
+      '@me:hs',
+      false,
+    );
   });
 
   it('opens a member info panel and starts a DM only if messaged', async () => {
@@ -1002,7 +1007,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
   it('invites to the active space from the sidebar action', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     pick.mockReturnValue(of('@bob:hs'));
 
@@ -1016,10 +1021,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     pending.set([pendingInvite({ roomId: '!i:hs', isSpace: false })]);
 
-    shell.invites.onAcceptInvite({ roomId: '!i:hs' });
+    shell.invites.onAcceptInvite(pendingInvite({ roomId: '!i:hs' }));
     await settleWorkspace();
 
-    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', undefined);
+    expect(acceptInvite).toHaveBeenCalledWith('!i:hs', '@me:hs');
     expect(shell.store.activeRoomId()).toBe('!i:hs');
   });
 
@@ -1039,7 +1044,9 @@ describe('RoomsPage room / DM / invite actions', () => {
       )
       .mockReturnValueOnce(of(undefined));
 
-    shell.invites.onAcceptInvite({ roomId: '!i:remote.example' });
+    shell.invites.onAcceptInvite(
+      pendingInvite({ roomId: '!i:remote.example' }),
+    );
     await settleWorkspace();
 
     expect(shell.status.busy()).toBe(false);
@@ -1052,7 +1059,9 @@ describe('RoomsPage room / DM / invite actions', () => {
       expect.objectContaining({ operation: 'accept room invite' }),
     );
 
-    shell.invites.onAcceptInvite({ roomId: '!i:remote.example' });
+    shell.invites.onAcceptInvite(
+      pendingInvite({ roomId: '!i:remote.example' }),
+    );
     await settleWorkspace();
 
     expect(acceptInvite).toHaveBeenCalledTimes(2);
@@ -1070,7 +1079,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     pending.set([pendingInvite({ roomId: '!i:hs', isDirect: false })]);
     expect(shell.store.recentView()).toBe(true);
 
-    shell.invites.onAcceptInvite({ roomId: '!i:hs' });
+    shell.invites.onAcceptInvite(
+      pendingInvite({ roomId: '!i:hs', isDirect: false }),
+    );
     await settleWorkspace();
 
     expect(shell.store.recentView()).toBe(true);
@@ -1082,7 +1093,9 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     pending.set([pendingInvite({ roomId: '!d:hs', isDirect: true })]);
 
-    shell.invites.onAcceptInvite({ roomId: '!d:hs' });
+    shell.invites.onAcceptInvite(
+      pendingInvite({ roomId: '!d:hs', isDirect: true }),
+    );
     await settleWorkspace();
 
     expect(shell.store.recentView()).toBe(false);
@@ -1100,10 +1113,13 @@ describe('RoomsPage room / DM / invite actions', () => {
       }),
     ]);
 
-    shell.invites.onAcceptInvite({
-      roomId: '!shared:hs',
-      accountId: '@alt:hs',
-    });
+    shell.invites.onAcceptInvite(
+      pendingInvite({
+        roomId: '!shared:hs',
+        accountId: '@alt:hs',
+        isDirect: true,
+      }),
+    );
 
     await vi.waitFor(() =>
       expect(shell.store.activeAccountId()).toBe('@alt:hs'),
@@ -1118,18 +1134,20 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     pending.set([pendingInvite({ roomId: '!s:hs', isSpace: true })]);
 
-    shell.invites.onAcceptInvite({ roomId: '!s:hs' });
+    shell.invites.onAcceptInvite(
+      pendingInvite({ roomId: '!s:hs', isSpace: true }),
+    );
 
-    expect(acceptInvite).toHaveBeenCalledWith('!s:hs', undefined);
+    expect(acceptInvite).toHaveBeenCalledWith('!s:hs', '@me:hs');
     expect(shell.store.activeRoomId()).toBeNull(); // a space lands in the rail, not selected
   });
 
   it('declines an invite (leaves)', () => {
     const shell = build();
 
-    shell.invites.onDeclineInvite({ roomId: '!i:hs' });
+    shell.invites.onDeclineInvite(pendingInvite({ roomId: '!i:hs' }));
 
-    expect(declineInvite).toHaveBeenCalledWith('!i:hs', undefined);
+    expect(declineInvite).toHaveBeenCalledWith('!i:hs', '@me:hs');
   });
 
   it('opens the new-chat action sheet on Home', async () => {
@@ -1257,12 +1275,12 @@ describe('RoomsPage space hierarchy actions', () => {
   it('loads the hierarchy when a space is selected (and clears it for Home)', async () => {
     const shell = build();
 
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     expect(shell.store.activeSpaceId()).toBe('!s:hs');
     expect(openSpace).toHaveBeenCalledWith('!s:hs');
 
-    shell.nav.onSelectSpace(null);
+    shell.nav.onSelectSpace(null, '@me:hs');
     await settleWorkspace();
     expect(openSpace).toHaveBeenLastCalledWith(null);
   });
@@ -1279,7 +1297,7 @@ describe('RoomsPage space hierarchy actions', () => {
 
   it('confirms then removes a joined child from the active space', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     alertConfirm.mockReturnValue(of(true));
 
@@ -1294,7 +1312,7 @@ describe('RoomsPage space hierarchy actions', () => {
 
   it('does not remove when the confirm is cancelled', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     alertConfirm.mockReturnValue(of(false));
 
@@ -1305,7 +1323,7 @@ describe('RoomsPage space hierarchy actions', () => {
 
   it('does not prompt to remove on Home (no active space)', async () => {
     const shell = build();
-    shell.nav.onSelectSpace(null);
+    shell.nav.onSelectSpace(null, '@me:hs');
 
     shell.spaces.onRemoveFromSpace('!c:hs');
 

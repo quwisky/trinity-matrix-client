@@ -33,7 +33,7 @@ export class ReadStateService {
   }: {
     roomId: string;
     mode: RoomNotifyMode;
-    accountIds?: readonly string[];
+    accountIds: readonly string[];
   }): void {
     this.setNotifyMode(roomId, mode, accountIds);
   }
@@ -43,10 +43,17 @@ export class ReadStateService {
   private setNotifyMode(
     roomId: string,
     mode: RoomNotifyMode,
-    accountIds?: readonly string[],
+    accountIds: readonly string[],
   ): void {
+    const targets = this.exactAccounts(accountIds);
+    if (targets.length === 0) {
+      void this.status.showError(
+        'Couldn’t update notifications for that room.',
+      );
+      return;
+    }
     this.roomNotifications
-      .setModeForAccounts(roomId, mode, accountIds)
+      .setModeForAccounts(roomId, mode, targets)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: (error: unknown) => {
@@ -66,8 +73,12 @@ export class ReadStateService {
     accountIds,
   }: {
     roomId: string;
-    accountIds?: readonly string[];
+    accountIds: readonly string[];
   }): void {
+    if (this.exactAccounts(accountIds).length === 0) {
+      void this.status.showError('Could not mark the room read.');
+      return;
+    }
     this.ackRead(roomId, accountIds)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -86,9 +97,13 @@ export class ReadStateService {
     accountIds,
   }: {
     roomId: string;
-    accountIds?: readonly string[];
+    accountIds: readonly string[];
   }): void {
-    const targets = accountIds?.length ? accountIds : [undefined];
+    const targets = this.exactAccounts(accountIds);
+    if (targets.length === 0) {
+      void this.status.showError('Could not mark the room unread.');
+      return;
+    }
     forkJoin(
       targets.map((accountId) =>
         this.rooms.setMarkedUnread(roomId, true, accountId),
@@ -108,9 +123,9 @@ export class ReadStateService {
    */
   private ackRead(
     roomId: string,
-    accountIds?: readonly string[],
+    accountIds: readonly string[],
   ): Observable<unknown> {
-    const targets = accountIds?.length ? accountIds : [undefined];
+    const targets = this.exactAccounts(accountIds);
     return forkJoin(
       targets.map((accountId) => this.rooms.markRead(roomId, accountId)),
     );
@@ -137,5 +152,9 @@ export class ReadStateService {
       .subscribe({
         error: () => void this.status.showError('Could not mark rooms read.'),
       });
+  }
+
+  private exactAccounts(accountIds: readonly string[]): readonly string[] {
+    return [...new Set(accountIds)];
   }
 }

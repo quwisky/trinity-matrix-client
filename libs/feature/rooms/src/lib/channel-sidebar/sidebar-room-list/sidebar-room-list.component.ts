@@ -1,13 +1,11 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   computed,
   inject,
   input,
   output,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NgTemplateOutlet } from '@angular/common';
 import {
   TrnActionAvailability,
@@ -31,10 +29,7 @@ import {
   type AccountBadge,
 } from '@trinity/components/generic-content';
 import { unreadBadgeLabel } from '../../shared/unread-badge';
-import {
-  RoomLibraryService,
-  type RoomSummary,
-} from '@trinity/data-access/room-library';
+import { type RoomSummary } from '@trinity/data-access/room-library';
 import {
   RoomNotificationsService,
   type RoomNotifyDisplayMode,
@@ -44,7 +39,6 @@ import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { formatTypingNotice, type PresenceState } from '@trinity/util/matrix';
 import { type PendingInvite } from '@trinity/data-access/room-library';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { forkJoin } from 'rxjs';
 
 /**
  * The scrolling body of the channel sidebar: pending invites, the favourite and
@@ -85,10 +79,8 @@ import { forkJoin } from 'rxjs';
   ],
 })
 export class SidebarRoomListComponent {
-  private readonly roomsSvc = inject(RoomLibraryService);
   private readonly presence = inject(IdentityPresenceService);
   private readonly roomNotifications = inject(RoomNotificationsService);
-  private readonly destroyRef = inject(DestroyRef);
 
   readonly rooms = input<readonly RoomSummary[]>([]);
   readonly invites = input<readonly PendingInvite[]>([]);
@@ -135,8 +127,10 @@ export class SidebarRoomListComponent {
     roomId: string;
     accountIds: readonly string[];
   }>();
-  readonly acceptInvite = output<{ roomId: string; accountId: string }>();
-  readonly declineInvite = output<{ roomId: string; accountId: string }>();
+  readonly acceptInvite = output<PendingInvite>();
+  readonly declineInvite = output<PendingInvite>();
+  readonly favouriteChange = output<RoomSummary>();
+  readonly priorityChange = output<RoomSummary>();
 
   /**
    * Favourite rooms (`m.favourite`), rendered under a "Favourite" header. The service
@@ -190,30 +184,12 @@ export class SidebarRoomListComponent {
 
   /** Flip the room's `m.lowpriority` tag on every account joined to the merged row. */
   toggleLowPriority(room: RoomSummary): void {
-    forkJoin(
-      room.accountIds.map((accountId) =>
-        this.roomsSvc.setLowPriority(room.id, !room.lowPriority, accountId),
-      ),
-    )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: (error: unknown) =>
-          console.error('Could not update room priority', error),
-      });
+    this.priorityChange.emit(room);
   }
 
   /** Flip the room's `m.favourite` tag on every account joined to the merged row. */
   toggleFavourite(room: RoomSummary): void {
-    forkJoin(
-      room.accountIds.map((accountId) =>
-        this.roomsSvc.setFavourite(room.id, !room.favourite, accountId),
-      ),
-    )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        error: (error: unknown) =>
-          console.error('Could not update room favourite', error),
-      });
+    this.favouriteChange.emit(room);
   }
 
   /**

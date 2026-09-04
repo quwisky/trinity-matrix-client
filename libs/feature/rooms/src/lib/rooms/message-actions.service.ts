@@ -134,7 +134,11 @@ export class MessageActionsService {
       .subscribe((result) => {
         if (!result) return;
         if (result.membershipChanged) {
-          this.routing.openConfirmedLinkedRoom(result.roomId, result.isSpace);
+          this.routing.openConfirmedLinkedRoom(
+            result.roomId,
+            result.accountId,
+            result.isSpace,
+          );
           return;
         }
         if (result.isSpace) {

@@ -5,30 +5,25 @@ import {
   WorkspaceNavigationService,
   type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
-import { AccountScopeService } from '@trinity/data-access/room-library';
+import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
-import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
 
 /**
  * Routing a selection to the account that owns it.
  *
- * In mixed mode a visible row carries its exact owning Account into the semantic Workspace
- * command. Older ID-only shell paths resolve ownership here before submitting the same intent.
- *
- * This is why the cluster moved before invites and shortcuts. `onAcceptInvite` and
- * `jumpTo` both finish through `onSelectRoomRow`, so they need it to already have a home
- * that is not the page.
+ * A visible row carries its exact owning Account into the semantic Workspace command.
+ * Permalinks resolve against the same selected Room Library generation that rendered the
+ * sidebar; confirmed membership flows carry their Account explicitly and skip that lookup.
  */
 @Injectable()
 export class AccountRoutingService {
   private readonly store = inject(RoomShellStore);
   private readonly vm = inject(RoomShellViewModel);
-  private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly workspace = inject(WorkspaceNavigationService);
-  private readonly accountScope = inject(AccountScopeService);
+  private readonly selected = inject(SelectedRoomLibraryService);
   private readonly destroyRef = inject(DestroyRef);
 
   /** An account's display name for user-facing copy, falling back to its user id. */
@@ -41,8 +36,8 @@ export class AccountRoutingService {
    * active account is always shown, and the service ignores an attempt to drop it.
    */
   onToggleAccountShown(userId: string): void {
-    this.accountScope
-      .toggle(userId)
+    this.selected
+      .toggleAccount(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (outcome) => {
@@ -57,20 +52,6 @@ export class AccountRoutingService {
             'Unable to update the accounts shown right now.',
           ),
       });
-  }
-
-  /**
-   * Resolve legacy ID-only shell actions before submitting an exact semantic identity.
-   * Visible rows use {@link onSelectRoomSelection} and skip this lookup.
-   */
-  onSelectRoomRow(
-    id: string,
-    origin: WorkspaceRoomNavigationOrigin = 'room-action',
-  ): void {
-    const room = this.nav.knownRooms().find((candidate) => candidate.id === id);
-    const accountId = room?.accountId ?? this.workspace.activeAccountId();
-    if (!id || !accountId) return;
-    this.openRoom({ roomId: id, accountId }, origin);
   }
 
   /** Open the exact Account-and-Room identity emitted by a visible Room row. */
@@ -108,18 +89,19 @@ export class AccountRoutingService {
 
   /** Open a resolved room if joined (jumping to `eventId` when given), else toast. */
   openLinkedRoom(roomId: string, eventId?: string): void {
-    // Against the mixed superset: while mixing, a room owned by another selected account is
-    // listed and openable in the sidebar, so refusing its permalink would contradict the
-    // list one column to the left.
-    if (!this.nav.knownRooms().some((r) => r.id === roomId)) {
+    const room = this.selected
+      .view()
+      .rooms.find((candidate) => candidate.id === roomId);
+    if (!room) {
       void this.status.showError("You're not in that room.");
       return;
     }
     if (
       roomId !== this.store.activeRoomId() ||
+      room.accountId !== this.store.activeAccountId() ||
       this.store.pane() !== 'conversation'
     ) {
-      this.onSelectRoomRow(roomId);
+      this.openRoom({ roomId, accountId: room.accountId }, 'room-action');
     }
     if (eventId) {
       // Jump to the linked event (a no-op until it's in the loaded timeline).
@@ -133,12 +115,32 @@ export class AccountRoutingService {
    * path checks the synced sidebar projection and can briefly reject the new membership
    * before `/sync` catches up, so confirmed membership deliberately bypasses that stale read.
    */
-  openConfirmedLinkedRoom(roomId: string, isSpace: boolean): void {
+  openConfirmedLinkedRoom(
+    roomId: string,
+    accountId: string,
+    isSpace: boolean,
+  ): void {
     if (isSpace) {
-      this.nav.onSelectSpace(roomId);
+      this.navigate(
+        {
+          kind: 'scope',
+          accountId,
+          scope: { kind: 'space', spaceId: roomId },
+        },
+        'Unable to open that destination right now.',
+      );
       return;
     }
-    this.nav.onSelectRoomInScope(roomId, { kind: 'rooms' });
+    this.navigate(
+      {
+        kind: 'room',
+        accountId,
+        roomId,
+        scope: { kind: 'rooms' },
+        origin: 'room-action',
+      },
+      'Unable to open that destination right now.',
+    );
   }
 
   /** Open a newly accepted invite on its exact Account without waiting for sidebar sync. */

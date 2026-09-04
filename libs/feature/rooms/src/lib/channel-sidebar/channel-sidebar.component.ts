@@ -246,8 +246,8 @@ export class ChannelSidebarComponent {
   /** Open a joined sub-space (select it in the rail), by room id. */
   readonly openChildSpace = output<string>();
   /** Accept / decline a pending invite by room id. */
-  readonly acceptInvite = output<{ roomId: string; accountId: string }>();
-  readonly declineInvite = output<{ roomId: string; accountId: string }>();
+  readonly acceptInvite = output<PendingInvite>();
+  readonly declineInvite = output<PendingInvite>();
   /** Header search icon — open the global quick switcher (Ctrl/Cmd+K). */
   readonly openSwitcher = output<void>();
   /** Set a room's notification level (all / mentions / mute) from its ⋮ menu. */
@@ -268,6 +268,8 @@ export class ChannelSidebarComponent {
     roomId: string;
     accountIds: readonly string[];
   }>();
+  readonly favouriteChange = output<RoomSummary>();
+  readonly priorityChange = output<RoomSummary>();
   /** Mark every room read. Inline on Home; a row in the overflow menu inside a space. */
   readonly markAllRead = output<void>();
 

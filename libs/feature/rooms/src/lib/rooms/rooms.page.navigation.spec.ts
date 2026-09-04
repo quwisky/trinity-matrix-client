@@ -305,7 +305,7 @@ describe('RoomsPage quick switcher', () => {
     // right-hand slot, and a picked row arrives back through `onPanelJump` — which is what
     // the template binds the panel's `(selected)` output to.
     const shell = build();
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs', '@me:hs');
     await settleWorkspace();
 
     shell.messages.openMessageSearch();
@@ -328,7 +328,7 @@ describe('RoomsPage quick switcher', () => {
     // Easier to reach now — the panel stays open, so the second pick is just another row
     // click rather than reopening the whole dialog.
     const shell = build();
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs', '@me:hs');
     await settleWorkspace();
     shell.messages.openMessageSearch();
 
@@ -347,7 +347,7 @@ describe('RoomsPage quick switcher', () => {
 
   it('does not jump when in-room search is dismissed without a pick', async () => {
     const shell = build();
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs', '@me:hs');
     await settleWorkspace();
 
     shell.messages.openMessageSearch();
@@ -429,7 +429,7 @@ describe('RoomsPage mobile navigation', () => {
 
   it('backToList retains selection and selecting that Room reopens chat', async () => {
     const shell = build();
-    shell.nav.onSelectRoom('!r:hs');
+    shell.nav.onSelectRoom('!r:hs', '@me:hs');
     await settleWorkspace(); // open the projections FIRST, so the closes below can only come from backToList
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     // Both halves, or the test passes on an effect that never opened anything and then
@@ -492,7 +492,7 @@ describe('RoomsPage mobile navigation', () => {
     const restore = stubNarrowLayout();
     try {
       const shell = build();
-      shell.nav.onSelectRoom('!a:hs');
+      shell.nav.onSelectRoom('!a:hs', '@me:hs');
       shell.store.rightPanel.set({ kind: 'members' }); // the drawer is open in room A
       expect(shell.store.membersOpen()).toBe(true);
 
@@ -1189,11 +1189,11 @@ describe('RoomsPage keyboard room switching', () => {
 
   /** Visit a → b → c so the MRU is [c, b, a] and we're in c. */
   async function visitABC(shell: ReturnType<typeof shellFrom>): Promise<void> {
-    shell.nav.onSelectRoom('!a:hs');
+    shell.nav.onSelectRoom('!a:hs', '@me:hs');
     await settleWorkspace();
-    shell.nav.onSelectRoom('!b:hs');
+    shell.nav.onSelectRoom('!b:hs', '@me:hs');
     await settleWorkspace();
-    shell.nav.onSelectRoom('!c:hs');
+    shell.nav.onSelectRoom('!c:hs', '@me:hs');
     await settleWorkspace();
   }
 
@@ -1204,7 +1204,7 @@ describe('RoomsPage keyboard room switching', () => {
     // walk wraps around to the room you are already in.
     const shell = build();
     keyboardRooms.set([roomSummary('!only:hs')]);
-    shell.nav.onSelectRoom('!only:hs');
+    shell.nav.onSelectRoom('!only:hs', '@me:hs');
     await settleWorkspace(); // let the room actually open (this is the releaseAll we allow)
     releaseAll.mockClear();
 
@@ -1276,7 +1276,7 @@ describe('RoomsPage keyboard room switching', () => {
 
   it('jumps to the next unread room with Alt+Shift+Arrow', async () => {
     const shell = build(); // b(3) and c(1) are unread
-    shell.nav.onSelectRoom('!a:hs'); // in a read room
+    shell.nav.onSelectRoom('!a:hs', '@me:hs'); // in a read room
     await settleWorkspace();
 
     shell.shortcuts.onGlobalKeydown(
@@ -1510,7 +1510,7 @@ describe('RoomsPage room-in-URL deep link', () => {
 
   it('does not re-open the room that is already open', async () => {
     const shell = build();
-    shell.nav.onSelectRoom('!notified:hs');
+    shell.nav.onSelectRoom('!notified:hs', '@me:hs');
     await settleWorkspace();
     conversationFocus.mockClear();
 

@@ -9,7 +9,8 @@ import {
   RoomLibraryService,
   RoomReadinessService,
   SpacesService,
-  AccountScopeService,
+  SelectedRoomLibraryService,
+  type RoomSummary,
 } from '@trinity/data-access/room-library';
 import {
   TrnActionSheetService,
@@ -29,7 +30,7 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
-import { EMPTY, filter, map, switchMap } from 'rxjs';
+import { EMPTY, filter, forkJoin, map, switchMap, type Observable } from 'rxjs';
 
 /**
  * The life of a room: creating one, starting a DM, joining from the directory, inviting
@@ -52,7 +53,7 @@ export class RoomActionsService {
   private readonly publicRooms = inject(PublicRoomsService);
   private readonly roomSettings = inject(RoomSettingsService);
   private readonly aliases = inject(RoomAliasesService);
-  private readonly accountScope = inject(AccountScopeService);
+  private readonly selected = inject(SelectedRoomLibraryService);
   private readonly userPicker = inject(UserPickerService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
@@ -67,14 +68,14 @@ export class RoomActionsService {
     accountId,
   }: {
     roomId: string;
-    accountId?: string;
+    accountId: string;
   }): void {
     const name =
       this.vm.visibleRooms().find((r) => r.id === roomId)?.name ?? 'this room';
     // Leaving is per-account and irreversible, so never fan it out the way the idempotent
     // actions are — name the account instead, since a merged row represents two memberships.
     const as =
-      this.accountScope.mixing() && accountId
+      this.selected.view().mode === 'mixed'
         ? ` as ${this.routing.accountLabel(accountId)}`
         : '';
     this.alert
@@ -94,7 +95,7 @@ export class RoomActionsService {
         // room panes down (mirroring ngOnDestroy / onSelectRoom) so the timeline,
         // threads, and pinned projections stop listening on a room we just left.
         next: () => {
-          const leftAccountId = accountId ?? this.store.activeAccountId();
+          const leftAccountId = accountId;
           if (
             this.store.activeAccountId() === leftAccountId &&
             this.store.activeRoomId() === roomId
@@ -104,6 +105,41 @@ export class RoomActionsService {
         },
         error: () => void this.status.showError('Could not leave the room.'),
       });
+  }
+
+  /** Apply a favourite change once per Account represented by the selected row. */
+  onToggleFavourite(room: RoomSummary): void {
+    this.runForAccounts(
+      room.accountIds,
+      (accountId) =>
+        this.rooms.setFavourite(room.id, !room.favourite, accountId),
+      'Could not update the room favourite.',
+    );
+  }
+
+  /** Apply a low-priority change once per Account represented by the selected row. */
+  onToggleLowPriority(room: RoomSummary): void {
+    this.runForAccounts(
+      room.accountIds,
+      (accountId) =>
+        this.rooms.setLowPriority(room.id, !room.lowPriority, accountId),
+      'Could not update the room priority.',
+    );
+  }
+
+  private runForAccounts(
+    accountIds: readonly string[],
+    command: (accountId: string) => Observable<void>,
+    errorMessage: string,
+  ): void {
+    const exactAccountIds = [...new Set(accountIds)];
+    if (exactAccountIds.length === 0) {
+      void this.status.showError(errorMessage);
+      return;
+    }
+    forkJoin(exactAccountIds.map(command))
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => void this.status.showError(errorMessage) });
   }
 
   /** Home "+": choose between creating a room, exploring the directory, and a DM. */
@@ -144,19 +180,21 @@ export class RoomActionsService {
           // barrier before asking it to select the new Room or Space.
           return this.roomReadiness
             .waitForRoom(accountId, joined.roomId)
-            .pipe(map(() => joined));
+            .pipe(map(() => ({ joined, accountId })));
         }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: (joined) => {
+        next: ({ joined, accountId }) => {
           if (joined.isSpace) {
             // A joined space lands in the rail — select it there.
-            this.nav.onSelectSpace(joined.roomId);
+            this.nav.onSelectSpace(joined.roomId, accountId);
           } else {
             // A joined public room is a spaceless non-DM, so it lives in the Rooms view
             // (Home shows DMs only) — select both coordinates in one Workspace command.
-            this.nav.onSelectRoomInScope(joined.roomId, { kind: 'rooms' });
+            this.nav.onSelectRoomInScope(joined.roomId, accountId, {
+              kind: 'rooms',
+            });
           }
         },
         error: () =>
@@ -166,6 +204,8 @@ export class RoomActionsService {
 
   /** Move to a room's upgraded successor (from the tombstone banner): join it, then open it. */
   onGoToUpgradedRoom(roomId: string): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     this.status.error.set(null);
     runWithBusy(
       this.publicRooms.join(roomId),
@@ -177,7 +217,7 @@ export class RoomActionsService {
     ).subscribe((joinedId) => {
       // Surface the successor in the sidebar (Home shows DMs only) so it isn't
       // opened-but-invisible, mirroring onExploreRooms.
-      this.nav.onSelectRoomInScope(joinedId, { kind: 'rooms' });
+      this.nav.onSelectRoomInScope(joinedId, accountId, { kind: 'rooms' });
     });
   }
 
@@ -209,12 +249,19 @@ export class RoomActionsService {
       })
       .pipe(
         filter((userId): userId is string => Boolean(userId)),
-        switchMap((userId) =>
-          runWithBusy(this.rooms.createDirectMessage(userId), this.status),
-        ),
+        switchMap((userId) => {
+          const accountId = this.store.activeAccountId();
+          if (!accountId) return EMPTY;
+          return runWithBusy(
+            this.rooms.createDirectMessage(userId),
+            this.status,
+          ).pipe(map((roomId) => ({ roomId, accountId })));
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((roomId) => this.nav.onSelectRoom(roomId));
+      .subscribe(({ roomId, accountId }) =>
+        this.nav.onSelectRoom(roomId, accountId),
+      );
   }
 
   /** Open-room header: invite a user to the active room. */
@@ -237,8 +284,10 @@ export class RoomActionsService {
     if (!name.trim()) {
       return; // empty name — dismiss without creating
     }
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     runWithBusy(this.rooms.createRoom({ name }), this.status).subscribe(
-      (roomId) => this.nav.onSelectRoom(roomId),
+      (roomId) => this.nav.onSelectRoom(roomId, accountId),
     );
   }
 

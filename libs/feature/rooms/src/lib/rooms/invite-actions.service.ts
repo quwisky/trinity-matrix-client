@@ -1,10 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import {
   InvitesService,
-  MixedInvitesService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
-import { AccountScopeService } from '@trinity/data-access/room-library';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { AccountRoutingService } from './account-routing.service';
@@ -13,32 +11,19 @@ import { ShellStatusService } from './shell-status.service';
 /**
  * Accepting and declining room and space invites.
  *
- * Accepting routes through {@link AccountRoutingService.onSelectRoomRow} rather than
- * selecting directly, because an invite may belong to an account that is not the active
- * one — which is why the account cluster had to move first.
+ * The selected Room Library row travels intact from the sidebar, so duplicate room ids
+ * remain qualified by their exact owning Account without a second, potentially stale lookup.
  */
 @Injectable()
 export class InviteActionsService {
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
   private readonly invites = inject(InvitesService);
-  private readonly mixedInvites = inject(MixedInvitesService);
-  private readonly accountScope = inject(AccountScopeService);
 
   /** Accept a pending invite (join); select the joined room when it's not a space. */
-  onAcceptInvite({
-    roomId,
-    accountId,
-  }: {
-    roomId: string;
-    accountId?: string;
-  }): void {
+  onAcceptInvite(invite: PendingInvite): void {
+    const { roomId, accountId } = invite;
     this.status.error.set(null);
-    const invite = this.knownInvites().find(
-      (candidate) =>
-        candidate.roomId === roomId &&
-        (!accountId || candidate.accountId === accountId),
-    );
     // Joined on the account the invite was sent to — answering one must never need an
     // account switch, and joining as the wrong account would fail or join the wrong user.
     runWithBusy(
@@ -57,25 +42,15 @@ export class InviteActionsService {
       // measurably so (the row count dropped from 2 to 1). That was correct before the rail
       // split in bd16dc25, when Home listed everything. A room is instead left on whatever
       // view the user was already on — Recent activity by default, which lists everything.
-      if (!invite || invite.isSpace) {
+      if (invite.isSpace) {
         return;
       }
-      this.routing.openConfirmedInviteRoom(
-        roomId,
-        accountId ?? invite.accountId,
-        invite.isDirect,
-      );
+      this.routing.openConfirmedInviteRoom(roomId, accountId, invite.isDirect);
     });
   }
 
   /** Decline a pending invite (leave the invited room/space). */
-  onDeclineInvite({
-    roomId,
-    accountId,
-  }: {
-    roomId: string;
-    accountId?: string;
-  }): void {
+  onDeclineInvite({ roomId, accountId }: PendingInvite): void {
     this.status.error.set(null);
     runWithBusy(
       this.invites.declineInvite(roomId, accountId),
@@ -85,12 +60,5 @@ export class InviteActionsService {
         'Could not decline the invitation. Try again.',
       ),
     ).subscribe();
-  }
-
-  /** Pending invites across the mixed accounts, or the active account's when not mixing. */
-  private knownInvites(): readonly PendingInvite[] {
-    return this.accountScope.mixing()
-      ? this.mixedInvites.invites()
-      : this.invites.pendingInvites();
   }
 }

@@ -148,7 +148,7 @@ describe('RoomsPage space filtering', () => {
 
   it('Home (no space) shows only direct messages', async () => {
     const shell = build();
-    shell.nav.onSelectSpace(null); // click Home — leaves the default Recent view
+    shell.nav.onSelectSpace(null, '@me:hs'); // click Home — leaves the default Recent view
     await settleWorkspace();
 
     // Only '!a:hs' is a DM (see directRoomIds in build()).
@@ -159,7 +159,7 @@ describe('RoomsPage space filtering', () => {
 
   it('a selected space shows only its joined children, in space order', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
 
     // '!c:hs' is excluded (not a child); b/a appear in the space's curated order, which is
@@ -186,7 +186,7 @@ describe('RoomsPage space filtering', () => {
 
   it('showing Rooms clears the active space', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs'); // a space is selected…
+    shell.nav.onSelectSpace('!s:hs', '@me:hs'); // a space is selected…
     await settleWorkspace();
     shell.nav.onShowRooms(); // …switching to Rooms leaves it
     await settleWorkspace();
@@ -201,7 +201,7 @@ describe('RoomsPage space filtering', () => {
     await settleWorkspace();
     expect(shell.store.roomsView()).toBe(true);
 
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     expect(shell.store.roomsView()).toBe(false);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual([
@@ -217,7 +217,7 @@ describe('RoomsPage space filtering', () => {
     await settleWorkspace();
     expect(shell.store.roomsView()).toBe(true);
 
-    shell.nav.onSelectSpace(null); // clicking Home
+    shell.nav.onSelectSpace(null, '@me:hs'); // clicking Home
     await settleWorkspace();
     expect(shell.store.roomsView()).toBe(false);
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!a:hs']); // DMs
@@ -400,7 +400,7 @@ describe('RoomsPage space filtering', () => {
 
   it('walks the FILTERED list with Alt+Arrow, so the keyboard cannot land off-screen', async () => {
     const shell = build();
-    shell.nav.onSelectRoom('!c:hs');
+    shell.nav.onSelectRoom('!c:hs', '@me:hs');
     await settleWorkspace();
     // "charlie" and "bravo" match; "alpha" does not. The hidden room has to sit BETWEEN
     // the active one and the next visible one (list order is c, a, b) or the filtered and
@@ -428,7 +428,7 @@ describe('RoomsPage space filtering', () => {
 
   it('jumps to the next unread room within the filter, not past it', async () => {
     const shell = build();
-    shell.nav.onSelectRoom('!c:hs');
+    shell.nav.onSelectRoom('!c:hs', '@me:hs');
     await settleWorkspace();
     // All three are unread, so the only thing that can move the target is the filter.
     shell.store.roomFilter.set('r'); // c, b on screen; a hidden between them
@@ -464,7 +464,7 @@ describe('RoomsPage space filtering', () => {
     const shell = build();
     shell.store.roomFilter.set('alpha');
 
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
 
     // A filter typed in one view must not silently narrow the next one.
@@ -582,7 +582,7 @@ describe('RoomsPage space ordering', () => {
       ],
     });
     const shell = shellFrom();
-    shell.nav.onSelectSpace('!s:hs');
+    shell.nav.onSelectSpace('!s:hs', '@me:hs');
     await settleWorkspace();
     return { shell, rooms, setForSpace, clearForSpace };
   }
@@ -689,7 +689,7 @@ describe('RoomsPage space ordering', () => {
 
     it('does nothing when no space is open', async () => {
       const { shell, setForSpace, clearForSpace } = await build();
-      shell.nav.onSelectSpace(null);
+      shell.nav.onSelectSpace(null, '@me:hs');
       await settleWorkspace();
 
       shell.spaces.onSetSpaceSort('space');

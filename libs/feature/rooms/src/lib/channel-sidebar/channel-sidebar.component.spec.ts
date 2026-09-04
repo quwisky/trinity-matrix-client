@@ -771,11 +771,15 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('favourites a non-favourite room via the kebab menu', async () => {
-    const { fixture, container, roomsSvc } = await renderSidebar({
+    const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [room({ id: '!a:hs', name: 'general', favourite: false })],
       },
     });
+    let changed: RoomSummary | undefined;
+    fixture.componentInstance.favouriteChange.subscribe(
+      (room) => (changed = room),
+    );
 
     const kebab = container.querySelector<HTMLElement>('.channel__menu')!;
     kebab.click(); // open the menu (rendered into the CDK overlay)
@@ -787,7 +791,7 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Favourite');
     favouriteItem?.click();
 
-    expect(roomsSvc.setFavourite).toHaveBeenCalledWith('!a:hs', true, '@me:hs');
+    expect(changed).toMatchObject({ id: '!a:hs', favourite: false });
   });
 
   it('renders low-priority rooms last, under their own header', async () => {
@@ -842,7 +846,7 @@ describe('ChannelSidebarComponent', () => {
   });
 
   it('demotes a room via the kebab menu, on every account joined to the row', async () => {
-    const { fixture, container, roomsSvc } = await renderSidebar({
+    const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [
           room({
@@ -853,6 +857,10 @@ describe('ChannelSidebarComponent', () => {
         ],
       },
     });
+    let changed: RoomSummary | undefined;
+    fixture.componentInstance.priorityChange.subscribe(
+      (room) => (changed = room),
+    );
 
     container.querySelector<HTMLElement>('.channel__menu')!.click();
     fixture.detectChanges();
@@ -863,25 +871,23 @@ describe('ChannelSidebarComponent', () => {
     expect(item?.textContent).toContain('Low priority');
     item?.click();
 
-    // Both accounts, so the merged row cannot flip back when the other one syncs.
-    expect(roomsSvc.setLowPriority).toHaveBeenCalledWith(
-      '!a:hs',
-      true,
-      '@me:hs',
-    );
-    expect(roomsSvc.setLowPriority).toHaveBeenCalledWith(
-      '!a:hs',
-      true,
-      '@alt:hs',
-    );
+    expect(changed).toMatchObject({
+      id: '!a:hs',
+      accountIds: ['@me:hs', '@alt:hs'],
+      lowPriority: false,
+    });
   });
 
   it('unfavourites a favourite room via the kebab menu', async () => {
-    const { fixture, container, roomsSvc } = await renderSidebar({
+    const { fixture, container } = await renderSidebar({
       inputs: {
         rooms: [room({ id: '!a:hs', name: 'general', favourite: true })],
       },
     });
+    let changed: RoomSummary | undefined;
+    fixture.componentInstance.favouriteChange.subscribe(
+      (room) => (changed = room),
+    );
 
     const kebab = container.querySelector<HTMLElement>('.channel__menu')!;
     kebab.click();
@@ -893,11 +899,7 @@ describe('ChannelSidebarComponent', () => {
     expect(favouriteItem?.textContent).toContain('Unfavourite');
     favouriteItem?.click();
 
-    expect(roomsSvc.setFavourite).toHaveBeenCalledWith(
-      '!a:hs',
-      false,
-      '@me:hs',
-    );
+    expect(changed).toMatchObject({ id: '!a:hs', favourite: true });
   });
 
   it('emits removeRoom for a joined channel only while a space is active', async () => {
@@ -1462,12 +1464,14 @@ describe('ChannelSidebarComponent', () => {
         },
       ],
     });
-    const accepted: { roomId: string; accountId: string }[] = [];
+    const accepted: PendingInvite[] = [];
     fixture.componentInstance.acceptInvite.subscribe((e) => accepted.push(e));
 
     container.querySelector<HTMLElement>('.invite__btn.accept')!.click();
 
-    expect(accepted).toEqual([{ roomId: '!i:hs', accountId: '@alt:hs' }]);
+    expect(accepted).toEqual([
+      expect.objectContaining({ roomId: '!i:hs', accountId: '@alt:hs' }),
+    ]);
   });
 
   it('renders the invitations from the selected generation', async () => {

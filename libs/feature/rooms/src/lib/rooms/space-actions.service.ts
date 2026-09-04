@@ -151,12 +151,14 @@ export class SpaceActionsService {
     if (!name.trim()) {
       return; // empty name — dismiss the prompt without creating
     }
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     runWithBusy(
       this.spaces
         .createSpace({ name })
         .pipe(switchMap((spaceId) => this.waitForSpace(spaceId))),
       this.status,
-    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
+    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId, accountId));
   }
 
   /**
@@ -171,6 +173,8 @@ export class SpaceActionsService {
     if (!name.trim()) {
       return;
     }
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     runWithBusy(
       this.spaces.createSpace({ name }).pipe(
         switchMap((spaceId) =>
@@ -181,7 +185,7 @@ export class SpaceActionsService {
         switchMap((spaceId) => this.waitForSpace(spaceId)),
       ),
       this.status,
-    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId));
+    ).subscribe((spaceId) => this.nav.onSelectSpace(spaceId, accountId));
   }
 
   private applyCreateChannel(spaceId: string, name: string): void {
@@ -207,8 +211,10 @@ export class SpaceActionsService {
   }
 
   private applyLeaveSpace(spaceId: string): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     runWithBusy(this.spaces.leaveSpace(spaceId), this.status).subscribe(() =>
-      this.nav.onSelectSpace(null),
+      this.nav.onSelectSpace(null, accountId),
     );
   }
 

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room actions now retain exact selected-Account ownership.** Room, Space, invitation, permalink,
+  and shortcut navigation use the same selected Room Library generation as the visible sidebar.
+  Shared-Room read, notification, favourite, and priority changes target each contributing Account
+  exactly once, while asynchronous create, join, and confirmed-membership flows keep the Account
+  that started the action instead of following a later Active Account switch.
+
 - **Room-shell lists now render one coherent selected-Account generation.** Recent, Home, Rooms,
   Space, rail, account-badge, and invitation presentation no longer choose between active and mixed
   sources. Shared Rooms and Spaces retain their selected-view ownership and child-union policy,

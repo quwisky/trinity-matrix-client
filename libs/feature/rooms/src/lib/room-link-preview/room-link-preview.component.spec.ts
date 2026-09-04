@@ -11,6 +11,7 @@ import { RoomLinkPreviewComponent } from './room-link-preview.component';
 
 function preview(overrides: Partial<RoomLinkPreview> = {}): RoomLinkPreview {
   return {
+    accountId: '@me:hs',
     roomId: '!room:hs',
     requestedAddress: '#linked:hs',
     canonicalAddress: '#canonical:hs',
@@ -113,6 +114,7 @@ describe('RoomLinkPreviewComponent', () => {
 
     primary().click();
     expect(close).toHaveBeenCalledWith({
+      accountId: '@me:hs',
       roomId: '!joined:hs',
       isSpace: false,
       membershipChanged: true,
@@ -131,7 +133,7 @@ describe('RoomLinkPreviewComponent', () => {
       .click();
     await fixture.whenStable();
 
-    expect(accept).toHaveBeenCalledWith('!room:hs');
+    expect(accept).toHaveBeenCalledWith('!room:hs', '@me:hs');
     expect(join).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Invitation accepted');
   });
