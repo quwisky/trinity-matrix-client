@@ -70,6 +70,11 @@ export class SelectedRoomLibraryService {
     this.matrix,
     (domains) => this.scheduleProjection(domains),
   );
+  private readonly projectionFlusher = coalesce(() => {
+    const domains = new Set(this.pendingDomains);
+    this.pendingDomains.clear();
+    this.publishSelection(domains);
+  });
 
   private readonly _view = signal<SelectedRoomLibraryView>({
     accountIds: this.scope.selected(),
@@ -90,7 +95,11 @@ export class SelectedRoomLibraryService {
   readonly view = this._view.asReadonly();
 
   constructor() {
-    this.destroyRef.onDestroy(() => this.sources.release());
+    this.destroyRef.onDestroy(() => {
+      this.projectionFlusher.cancel();
+      this.pendingDomains.clear();
+      this.sources.release();
+    });
     // Publish once before injection returns, then keep selection, live Account/client
     // replacement, Active Account ownership, and active projections current.
     this.publishSelection();
@@ -111,12 +120,6 @@ export class SelectedRoomLibraryService {
   toggleAccount(accountId: string): Observable<PreferenceCommandOutcome> {
     return defer(() => this.scope.toggle(accountId));
   }
-
-  private readonly projectionFlusher = coalesce(() => {
-    const domains = new Set(this.pendingDomains);
-    this.pendingDomains.clear();
-    this.publishSelection(domains);
-  });
 
   private scheduleProjection(
     domains: ReadonlySet<SelectedProjectionDomain>,

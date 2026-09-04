@@ -22,6 +22,18 @@ const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
   )
   .sort();
 
+const selectedConsumers = [
+  'libs/data-access/room-library/src/lib/room-library-search.service.ts',
+  'libs/feature/rooms/src/lib/account-picker/account-picker.component.ts',
+  'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.ts',
+  'libs/feature/rooms/src/lib/rooms/account-routing.service.ts',
+  'libs/feature/rooms/src/lib/rooms/room-actions.service.ts',
+  'libs/feature/rooms/src/lib/rooms/room-shell-navigation.service.ts',
+  'libs/feature/rooms/src/lib/rooms/room-shell-view-model.ts',
+  'libs/feature/rooms/src/lib/rooms/rooms.page.ts',
+  'libs/feature/rooms/src/lib/shared/account-badges.service.ts',
+];
+
 /** Freeze the contracted selected Room Library boundary after #373. */
 describe('Selected Room Library boundary', () => {
   it('makes local search a complete selected-view consumer', () => {
@@ -67,12 +79,22 @@ describe('Selected Room Library boundary', () => {
     );
   });
 
-  it('keeps page fan-out and source-choice branching out of Room surfaces', () => {
+  it('keeps page fan-out and source-choice branching out of every selected caller', () => {
     const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
     const viewModel = source(
       'libs/feature/rooms/src/lib/rooms/room-shell-view-model.ts',
     );
+    const actualConsumers = productionSources.filter((file) =>
+      source(file).includes('inject(SelectedRoomLibraryService)'),
+    );
+    const sourceChoice =
+      /(?:view(?:\(\))?\.mode|mixedOn\(\)|mixing\(\))[\s\S]{0,200}(?:\.rooms\(\)|\.spaces\(\)|\.pendingInvites\(\))|(?:\.rooms\(\)|\.spaces\(\)|\.pendingInvites\(\))[\s\S]{0,200}(?:view(?:\(\))?\.mode|mixedOn\(\)|mixing\(\))/u;
 
+    expect(actualConsumers).toEqual(selectedConsumers);
+    for (const consumer of actualConsumers) {
+      expect(source(consumer)).not.toContain('inject(AccountScopeService)');
+      expect(source(consumer)).not.toMatch(sourceChoice);
+    }
     expect(page).not.toContain('AccountScopeService');
     expect(page).not.toContain('.setAccounts(');
     expect(viewModel).toContain('inject(SelectedRoomLibraryService)');

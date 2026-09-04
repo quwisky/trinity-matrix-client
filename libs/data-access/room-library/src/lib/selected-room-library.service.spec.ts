@@ -486,7 +486,7 @@ describe('SelectedRoomLibraryService', () => {
     expect(b.listenerCount()).toBe(0);
   });
 
-  it('detaches selected sources when its injector is destroyed', () => {
+  it('cancels a queued projection before detaching on destruction', async () => {
     const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     setup({
@@ -497,11 +497,15 @@ describe('SelectedRoomLibraryService', () => {
         ['@b:hs', b],
       ]),
     });
+    a.emit(RoomEvent.Receipt);
 
     TestBed.resetTestingModule();
+    await flushProjection();
 
     expect(a.listenerCount()).toBe(0);
     expect(b.listenerCount()).toBe(0);
+    expect(a.attachmentCount()).toBe(9);
+    expect(a.detachmentCount()).toBe(9);
   });
 
   it('keeps selection commands cold and returns typed unavailable recovery', async () => {
