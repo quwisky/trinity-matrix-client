@@ -99,6 +99,7 @@ function validInput() {
       ':capacitor-filesystem',
       ':capacitor-local-notifications',
       ':capacitor-push-notifications',
+      ':capacitor-status-bar',
       ':capawesome-capacitor-badge',
     ].join('\n'),
     iosPlugins: [
@@ -108,10 +109,13 @@ function validInput() {
       'CapacitorFilesystem',
       'CapacitorLocalNotifications',
       'CapacitorPushNotifications',
+      'CapacitorStatusBar',
       'CapawesomeCapacitorBadge',
     ].join('\n'),
     androidManifest: 'android:scheme="eu.qwky.trinity"',
-    iosInfo: '<key>CFBundleURLSchemes</key><string>eu.qwky.trinity</string>',
+    iosInfo:
+      '<key>UIViewControllerBasedStatusBarAppearance</key><true/>' +
+      '<key>CFBundleURLSchemes</key><string>eu.qwky.trinity</string>',
   };
 }
 
@@ -207,6 +211,20 @@ describe('native host contract', () => {
       'iOS host is missing plugin wiring: CapacitorApp',
     ],
     [
+      'Android status-bar plugin',
+      'androidPlugins',
+      ':capacitor-status-bar',
+      '// :capacitor-status-bar',
+      'Android host is missing plugin wiring: :capacitor-status-bar',
+    ],
+    [
+      'iOS status-bar plugin',
+      'iosPlugins',
+      'CapacitorStatusBar',
+      '// CapacitorStatusBar',
+      'iOS host is missing plugin wiring: CapacitorStatusBar',
+    ],
+    [
       'Android deep link',
       'androidManifest',
       'android:scheme="eu.qwky.trinity"',
@@ -219,6 +237,13 @@ describe('native host contract', () => {
       '<key>CFBundleURLSchemes</key>',
       '<!-- <key>CFBundleURLSchemes</key> -->',
       'iOS host is missing the authentication deep-link scheme',
+    ],
+    [
+      'iOS status-bar ownership',
+      'iosInfo',
+      '<key>UIViewControllerBasedStatusBarAppearance</key><true/>',
+      '<!-- <key>UIViewControllerBasedStatusBarAppearance</key><true/> -->',
+      'iOS host must delegate status-bar appearance to its view controller',
     ],
   ])(
     'rejects commented-out %s wiring',

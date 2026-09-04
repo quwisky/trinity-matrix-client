@@ -77,7 +77,25 @@ platform adapters for native capabilities and an independently packaged second t
 device. External FCM delivery, the browser-only encrypted-key download, and the one
 compositor-panning assertion are explicit platform skips rather than simulated passes.
 Android-only journeys additionally cover hardware Back and persisted-session restoration
-after a native force-stop/relaunch. See
+after a native force-stop/relaunch. The focused `@native-appearance` journey activates Mode
+through the radio's semantic label and changes Theme, density and text size through native touch
+in the installed WebView. It reads the native `StatusBar` plugin back after each Mode change and
+checks the routed page's safe-area and coarse-pointer geometry. It retains successful WebView and
+full-device screenshots under the ignored Playwright output for direct pull-request upload; proof
+media is never committed. Run it with:
+
+```bash
+pnpm nx run trinity-e2e-android:e2e -- --grep @native-appearance
+```
+
+The Android target rebuilds and hashes `www/`, runs `cap sync`, verifies the copied payload against
+that manifest, packages the renderer and only then installs the APK. The prebuilt path verifies the
+existing manifest both before and after the copy. `pnpm android:verify` and `pnpm ios:verify`
+statically pin that shared-artifact graph and the native status-bar wiring on Linux. Record
+`trinity-ios:verify-native` as **unavailable** on Linux rather than passed: only a macOS host with
+Xcode can execute the unsigned Simulator build.
+
+See
 [`e2e/README.md`](../../e2e/README.md#android-webview-journeys) for ownership, TLS,
 diagnostics, and cleanup details.
 

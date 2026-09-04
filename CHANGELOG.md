@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Native Appearance now has installed Android and static iOS proof.** The real Capacitor WebView
+  exercises Mode, Theme, density and text size, verifies native status-bar style,
+  safe-area/coarse-pointer geometry and exact shared-bundle parity, and retains successful
+  screenshots outside Git for review. Linux validation also pins the shared production renderer
+  and iOS status-bar bridge while recording the Xcode-only Simulator build as unavailable.
+
 - **Production Web, PWA and Electron now prove the shipped Appearance system end to end.** The
   exact production artifact covers untouched defaults, system changes, every Theme × Mode on
   desktop and mobile, static first paint, offline styling, overlays, density, safe areas, reduced
