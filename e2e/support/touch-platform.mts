@@ -32,6 +32,9 @@ export async function cdpSwipe(
       type: 'touchStart',
       touchPoints: [{ ...from, id: 1 }],
     });
+    // Give Chromium a renderer frame for every point. Under parallel load it can otherwise
+    // coalesce the whole path into touch-axis arbitration without delivering pointer moves.
+    await nextAnimationFrame(page);
     for (let step = 1; step <= steps; step += 1) {
       await cdp.send('Input.dispatchTouchEvent', {
         type: 'touchMove',
@@ -43,6 +46,7 @@ export async function cdpSwipe(
           },
         ],
       });
+      await nextAnimationFrame(page);
     }
     await cdp.send('Input.dispatchTouchEvent', {
       type: 'touchEnd',
@@ -51,4 +55,11 @@ export async function cdpSwipe(
   } finally {
     await cdp.detach();
   }
+}
+
+async function nextAnimationFrame(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
 }
