@@ -52,10 +52,13 @@ invitation results complete their Account-scoped create or join work before open
 destination. Notification activation carries an optional event anchor through Workspace's
 canonical URL projection. Repeating the same anchor in the already-open Room republishes a fresh
 event target without treating unchanged Router state as failure. Application Runtime submits only
-the host-neutral intent. When the lazy Room shell is absent, a composition adapter mounts it without
-changing browser location, then the registered Workspace implementation performs the transition.
+the host-neutral intent.
 
-During the incremental migration, the destination-based `open` seam has zero production callers
-outside Workspace. `scripts/workspace-navigation-contract.spec.mjs` freezes that empty allowlist.
-Issue #368 migrated the final search and activation/restoration callers; issue #369 deletes the
-remaining package-internal destination and page-scoped transition implementation.
+The application-owned `WorkspaceNavigationService` is the only semantic navigation seam. It owns
+the immutable view, attempt coordination, repair, visit-history policy, Media release, and
+Conversation focus for the application lifetime. Router stays behind the internal
+`WorkspaceLocationAdapter`, which normalizes inbound locations and projects committed views. Route
+changes outside `/rooms` release active projections; returning restores them even when the
+semantic destination did not change. There is no lazy activator, registered page implementation,
+caller-built destination, or caller-supplied history policy. The structural contract in
+`scripts/workspace-navigation-contract.spec.mjs` prevents those seams from returning.

@@ -1,12 +1,14 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
+import {
+  WorkspaceApplicationSurfaceService,
+  WorkspaceNavigationService,
+} from '@trinity/application/workspace';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { ShellStatusService } from './shell-status.service';
-import { WorkspaceService } from './workspace.service';
 import { filter, switchMap } from 'rxjs';
 
 /**
@@ -19,7 +21,7 @@ import { filter, switchMap } from 'rxjs';
 @Injectable()
 export class SessionActionsService {
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly workspace = inject(WorkspaceService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   private readonly matrix = inject(MatrixClientService);
   private readonly router = inject(Router);
   private readonly applicationSurfaces = inject(

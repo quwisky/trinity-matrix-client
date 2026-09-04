@@ -9,12 +9,15 @@ const MAX_VISITS = 20;
 /** Which way a hop moves through the frozen snapshot. */
 export type HopDirection = 'back' | 'forward';
 
-export interface MruRoomIdentity {
+export interface WorkspaceRoomIdentity {
   readonly accountId: string;
   readonly roomId: string;
 }
 
-function sameRoom(left: MruRoomIdentity, right: MruRoomIdentity): boolean {
+function sameRoom(
+  left: WorkspaceRoomIdentity,
+  right: WorkspaceRoomIdentity,
+): boolean {
   return left.accountId === right.accountId && left.roomId === right.roomId;
 }
 
@@ -33,13 +36,13 @@ function sameRoom(left: MruRoomIdentity, right: MruRoomIdentity): boolean {
  *  - {@link nth} resolves Ctrl/Cmd+1…9 (the Nth most-recent room, skipping the current).
  */
 @Injectable({ providedIn: 'root' })
-export class MruRoomsService {
-  private readonly _visited = signal<MruRoomIdentity[]>([]);
+export class WorkspaceVisitHistoryService {
+  private readonly _visited = signal<WorkspaceRoomIdentity[]>([]);
   /** The visit stack, most-recently-visited first. */
   readonly visited = this._visited.asReadonly();
 
   /** Snapshot of the stack taken when a hop cycle began, or null when not cycling. */
-  private hopSnapshot: MruRoomIdentity[] | null = null;
+  private hopSnapshot: WorkspaceRoomIdentity[] | null = null;
   private hopIndex = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -47,7 +50,7 @@ export class MruRoomsService {
    * Record a user-driven visit: move it to the front of the stack (deduped,
    * capped) and end any hop cycle in progress — the explicit open is the commit.
    */
-  record(room: MruRoomIdentity): void {
+  record(room: WorkspaceRoomIdentity): void {
     this.endHop();
     this._visited.update((visited) =>
       [room, ...visited.filter((existing) => !sameRoom(existing, room))].slice(
@@ -68,9 +71,9 @@ export class MruRoomsService {
    */
   hop(
     direction: HopDirection,
-    current: MruRoomIdentity | null,
-    knownRooms: readonly MruRoomIdentity[],
-  ): MruRoomIdentity | null {
+    current: WorkspaceRoomIdentity | null,
+    knownRooms: readonly WorkspaceRoomIdentity[],
+  ): WorkspaceRoomIdentity | null {
     if (!this.hopSnapshot) {
       const ordered = current
         ? [
@@ -99,10 +102,17 @@ export class MruRoomsService {
    * previous room. Returns null when the stack is too short. `current` is excluded so
    * the numbering matches what a user would count ("1 = the last place I was").
    */
-  nth(n: number, current: MruRoomIdentity | null): MruRoomIdentity | null {
+  nth(
+    n: number,
+    current: WorkspaceRoomIdentity | null,
+    knownRooms: readonly WorkspaceRoomIdentity[] = this._visited(),
+  ): WorkspaceRoomIdentity | null {
+    const available = this._visited().filter((room) =>
+      knownRooms.some((known) => sameRoom(known, room)),
+    );
     const others = current
-      ? this._visited().filter((room) => !sameRoom(room, current))
-      : this._visited();
+      ? available.filter((room) => !sameRoom(room, current))
+      : available;
     return others[n - 1] ?? null;
   }
 

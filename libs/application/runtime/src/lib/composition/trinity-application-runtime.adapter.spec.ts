@@ -15,7 +15,10 @@ import {
   type AppearanceHydrationOutcome,
 } from '@trinity/application/appearance';
 import { BadgeCoordinator } from '@trinity/application/badge';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  WorkspaceBackService,
+  WorkspaceNavigationService,
+} from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   AccountRuntimeService,
@@ -185,6 +188,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(WorkspaceBackService, {
           hasActive: workspaceActive,
           activeOwnsTopmostOverlay: () => false,
+        }),
+        MockProvider(WorkspaceNavigationService, {
+          navigate: () => of({ kind: 'ready', change: 'committed' }),
         }),
         MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
         MockProvider(HostDeepLinksService, { received: deepLinks }),

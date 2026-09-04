@@ -1,4 +1,15 @@
-import type { WorkspaceNavigationScope } from '@trinity/application/workspace';
+import type {
+  WorkspaceNavigationScope,
+  WorkspaceTransitionMetrics,
+  WorkspaceView,
+} from './workspace-navigation.models';
+
+export type {
+  WorkspaceEventTarget,
+  WorkspacePlacement,
+  WorkspaceTransitionMetrics,
+  WorkspaceView,
+} from './workspace-navigation.models';
 
 export type WorkspaceScope = WorkspaceNavigationScope;
 
@@ -9,15 +20,6 @@ export interface WorkspaceDestination {
   readonly pane: 'list' | 'conversation';
 }
 
-export interface WorkspaceView {
-  readonly accountId: string | null;
-  readonly scope: WorkspaceScope;
-  readonly roomId: string | null;
-  readonly pane: 'list' | 'conversation';
-}
-
-export type WorkspacePlacement = 'list' | 'conversation' | 'split';
-
 export type WorkspaceNavigationSource =
   'user' | 'hop' | 'back' | 'restore' | 'repair';
 
@@ -26,17 +28,8 @@ export interface WorkspaceOpenOptions {
   readonly history: 'push' | 'replace';
   /** Present when a semantic command also owns the canonical event-anchor projection. */
   readonly eventId?: string | null;
-}
-
-export interface WorkspaceTransitionMetrics {
-  readonly durationMs: number;
-  readonly accountDurationMs: number;
-  readonly routeDurationMs: number;
-}
-
-/** One event anchor requested by an inbound Workspace destination. */
-export interface WorkspaceEventTarget {
-  readonly eventId: string;
+  /** Re-attach projections when the semantic state survived outside the Workspace route. */
+  readonly force?: boolean;
 }
 
 export type WorkspaceOpenFailure =

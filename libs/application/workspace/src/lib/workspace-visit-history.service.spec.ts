@@ -1,18 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MruRoomsService } from './mru-rooms.service';
+import { WorkspaceVisitHistoryService } from './workspace-visit-history.service';
 
 const A = { accountId: '@me:hs', roomId: '!a' } as const;
 const B = { accountId: '@me:hs', roomId: '!b' } as const;
 const C = { accountId: '@me:hs', roomId: '!c' } as const;
 const ALL = [A, B, C];
 
-describe('MruRoomsService', () => {
-  let svc: MruRoomsService;
+describe('WorkspaceVisitHistoryService', () => {
+  let svc: WorkspaceVisitHistoryService;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [MruRoomsService] });
-    svc = TestBed.inject(MruRoomsService);
+    TestBed.configureTestingModule({
+      providers: [WorkspaceVisitHistoryService],
+    });
+    svc = TestBed.inject(WorkspaceVisitHistoryService);
   });
 
   /** Visit a, then b, then c → stack is [c, b, a]. */

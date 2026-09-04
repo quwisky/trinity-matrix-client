@@ -1,5 +1,3 @@
-import type { Observable } from 'rxjs';
-
 /** Sidebar scope selected by the user without exposing a URL projection. */
 export type WorkspaceNavigationScope =
   | { readonly kind: 'recent' }
@@ -45,6 +43,19 @@ export interface WorkspaceListNavigationIntent {
   readonly kind: 'list';
   readonly origin: 'compact-close' | 'workspace-back' | 'room-removed';
 }
+
+/** Product intent for navigating the application-owned visit history. */
+export type WorkspaceHistoryNavigationIntent =
+  | {
+      readonly kind: 'history';
+      readonly action: 'hop';
+      readonly direction: 'back' | 'forward';
+    }
+  | {
+      readonly kind: 'history';
+      readonly action: 'jump';
+      readonly position: number;
+    };
 
 /** Exact Conversation selected by Global Search. */
 export interface WorkspaceConversationNavigationIntent {
@@ -94,12 +105,13 @@ export interface WorkspaceRestorationNavigationIntent {
   readonly canonical: boolean;
 }
 
-/** Semantic navigation commands accepted by Workspace during the migration. */
+/** Semantic navigation commands accepted by Workspace. */
 export type WorkspaceNavigationIntent =
   | WorkspaceAccountNavigationIntent
   | WorkspaceScopeNavigationIntent
   | WorkspaceRoomNavigationIntent
   | WorkspaceListNavigationIntent
+  | WorkspaceHistoryNavigationIntent
   | WorkspaceConversationNavigationIntent
   | WorkspaceSpaceNavigationIntent
   | WorkspacePersonNavigationIntent
@@ -121,9 +133,23 @@ export type WorkspaceNavigationOutcome =
         | 'transition-in-progress';
     };
 
-/** Application-owned semantic navigation seam. */
-export interface WorkspaceNavigation {
-  navigate(
-    intent: WorkspaceNavigationIntent,
-  ): Observable<WorkspaceNavigationOutcome>;
+/** The single immutable semantic Workspace state. */
+export interface WorkspaceView {
+  readonly accountId: string | null;
+  readonly scope: WorkspaceNavigationScope;
+  readonly roomId: string | null;
+  readonly pane: 'list' | 'conversation';
+}
+
+export type WorkspacePlacement = 'list' | 'conversation' | 'split';
+
+/** One event anchor requested by an inbound Workspace destination. */
+export interface WorkspaceEventTarget {
+  readonly eventId: string;
+}
+
+export interface WorkspaceTransitionMetrics {
+  readonly durationMs: number;
+  readonly accountDurationMs: number;
+  readonly routeDurationMs: number;
 }

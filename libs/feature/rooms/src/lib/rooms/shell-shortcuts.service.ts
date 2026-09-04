@@ -5,9 +5,9 @@ import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { TrnDialogService } from '@trinity/components/overlay';
 import type { RoomSummary } from '@trinity/data-access/room-library';
 import {
-  MruRoomsService,
-  type MruRoomIdentity,
-} from '../shortcuts/mru-rooms.service';
+  type WorkspaceNavigationIntent,
+  WorkspaceNavigationService,
+} from '@trinity/application/workspace';
 import { stepList, stepUnread } from '../shortcuts/room-navigation';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomShellStore } from './room-shell-store';
@@ -15,7 +15,6 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
-import { WorkspaceService } from './workspace.service';
 
 /**
  * The keyboard surface: the global chord handler, room hopping and list walking, and the
@@ -32,8 +31,7 @@ export class ShellShortcutsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
-  private readonly workspace = inject(WorkspaceService);
-  private readonly mru = inject(MruRoomsService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   private readonly switcher = inject(QuickSwitcherService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private readonly dialog = inject(TrnDialogService);
@@ -104,10 +102,11 @@ export class ShellShortcutsService {
       case 'room.jump':
         if (hit.digit) {
           e.preventDefault();
-          this.openShortcutTarget(
-            this.mru.nth(hit.digit, this.activeRoom()),
-            'shortcut',
-          );
+          this.navigateHistory({
+            kind: 'history',
+            action: 'jump',
+            position: hit.digit,
+          });
         }
         break;
     }
@@ -120,17 +119,7 @@ export class ShellShortcutsService {
   }
 
   private hopRoom(direction: 'back' | 'forward'): void {
-    // Across every mixed account, not just the active one — otherwise hopping back to a
-    // room you opened on another account silently does nothing.
-    const known = this.nav
-      .knownRooms()
-      .flatMap((room) =>
-        room.accountIds.map((accountId) => ({ accountId, roomId: room.id })),
-      );
-    this.openShortcutTarget(
-      this.mru.hop(direction, this.activeRoom(), known),
-      'room-hop',
-    );
+    this.navigateHistory({ kind: 'history', action: 'hop', direction });
   }
 
   // Both walks step through `filteredRooms`, not `visibleRooms`: with the sidebar's filter
@@ -146,7 +135,6 @@ export class ShellShortcutsService {
         ),
         rooms,
       ),
-      'shortcut',
     );
   }
 
@@ -157,20 +145,13 @@ export class ShellShortcutsService {
         stepUnread(rooms, this.store.activeRoomId(), direction),
         rooms,
       ),
-      'shortcut',
     );
   }
 
   /**
-   * Open a shortcut's resolved target when there is one and it isn't already open. The MRU
-   * remembers rooms across account switches, so a target can name a room no account in the
-   * current scope holds (it was unticked, or signed out) — opening that would tear down the
-   * timeline and leave a blank chat pane, so drop it instead.
+   * Open a list-walk target when it still belongs to the visible Account projection.
    */
-  private openShortcutTarget(
-    room: MruRoomIdentity | null,
-    origin: 'shortcut' | 'room-hop',
-  ): void {
+  private openShortcutTarget(room: RoomIdentity | null): void {
     if (!room) return;
     const known = this.nav
       .knownRooms()
@@ -186,21 +167,32 @@ export class ShellShortcutsService {
     ) {
       return;
     }
-    this.routing.onSelectRoomSelection(room, origin);
+    this.routing.onSelectRoomSelection(room, 'shortcut');
   }
 
   private roomIdentity(
     roomId: string | null,
     rooms: readonly RoomSummary[],
-  ): MruRoomIdentity | null {
+  ): RoomIdentity | null {
     const room = rooms.find((candidate) => candidate.id === roomId);
     return room ? { accountId: room.accountId, roomId: room.id } : null;
   }
 
-  private activeRoom(): MruRoomIdentity | null {
-    const accountId = this.store.activeAccountId();
-    const roomId = this.store.activeRoomId();
-    return accountId && roomId ? { accountId, roomId } : null;
+  private navigateHistory(
+    intent: Extract<WorkspaceNavigationIntent, { readonly kind: 'history' }>,
+  ): void {
+    this.workspace
+      .navigate(intent)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (outcome) => {
+          if (outcome.kind !== 'ready') {
+            void this.status.showError('Unable to open that room right now.');
+          }
+        },
+        error: () =>
+          this.status.showError('Unable to open that room right now.'),
+      });
   }
 
   /**
@@ -241,4 +233,9 @@ export class ShellShortcutsService {
           this.status.showError('Unable to open that search result right now.'),
       });
   }
+}
+
+interface RoomIdentity {
+  readonly accountId: string;
+  readonly roomId: string;
 }

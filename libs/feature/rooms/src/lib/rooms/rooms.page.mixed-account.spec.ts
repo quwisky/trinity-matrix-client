@@ -36,7 +36,6 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
-import { MruRoomsService } from '../shortcuts/mru-rooms.service';
 import { desktopBridgeFixture } from '@trinity/testing';
 
 // The route outlives any one TestBed — it is one stream in the harness, shared by every
@@ -352,10 +351,17 @@ describe('RoomsPage mixed-account view', () => {
         accountIds: ['@me:hs', '@alt:hs'],
       },
     ]);
-    TestBed.inject(MruRoomsService).record({
+    shell.routing.onSelectRoomSelection({
       accountId: '@alt:hs',
       roomId: '!shared:hs',
     });
+    await settleWorkspace();
+    shell.routing.onSelectRoomSelection({
+      accountId: '@me:hs',
+      roomId: '!mine:hs',
+    });
+    await settleWorkspace();
+    switchAccount.mockClear();
 
     shell.shortcuts.onGlobalKeydown({
       code: 'Digit1',

@@ -131,7 +131,8 @@ evidence rather than a portable unit-test assertion. There is no duplicate SDK s
 `ConversationRuntime` owns the messaging lifetime of one immutable Account-and-Room pair. A
 handle freezes that key and exposes named timeline, compose, message, media, thread and pin
 children; it never reads the route and never retargets when Active Account changes.
-`WorkspaceService` owns one immutable Account, scope, Room, and pane view. Room-shell Account,
+`WorkspaceNavigationService` owns one immutable Account, scope, Room, pane, and event-target view
+for the application lifetime. Room-shell Account,
 scope, Room, compact-list, removal, shortcut, hop, and Back actions submit semantic intent with
 exact ownership. Visit history also stores the Account-and-Room pair rather than a Room id alone.
 Workspace resolves each intent into scope retention, pane, history, canonical URL,
@@ -375,16 +376,17 @@ multi-account design.
 
     The `activeUserId()` effect is only a compatibility fallback for Account changes made outside
     the coordinated path, and it still flushes after those legacy mutations. Migrated product flows
-    use `WorkspaceService.navigate()`; its `ready` outcome follows canonical URL preparation, Account
+    use `WorkspaceNavigationService.navigate()`; its `ready` outcome follows canonical URL preparation, Account
     commit, synchronous Projection Runtime reattachment, generation acknowledgement, and atomic
     Workspace view publication. Consumers can therefore act on `ready` without an
     `afterNextRender` timing workaround.
 
-    The caller-built `WorkspaceService.open()` seam is temporary compatibility debt. Its external
-    production allowlist is empty and guarded by `scripts/workspace-navigation-contract.spec.mjs`.
-    Global Search, notification activation, native push, and inbound restoration now enter through
-    semantic `navigate()` intent. The legacy destination is package-internal only; issue #369 owns
-    its removal together with the page-scoped transition implementation.
+    Global Search, notification activation, native push, inbound restoration, Account actions, and
+    Room surfaces all enter through the same cold semantic `navigate()` command. Router access,
+    destination resolution, transition joining and rollback, repair, visit-history policy, Media
+    release, and Conversation focus remain internal to `@trinity/application/workspace`; no caller
+    can supply a destination or history option. The structural Workspace contract guards that
+    single seam and the absence of direct Router writes in product callers.
 
 ## Who takes the whole primitive, and who takes only the batching
 

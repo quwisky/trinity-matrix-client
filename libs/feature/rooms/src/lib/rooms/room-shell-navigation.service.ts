@@ -13,14 +13,14 @@ import {
   type RoomSummary,
 } from '@trinity/data-access/room-library';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import type {
-  WorkspaceNavigationIntent,
-  WorkspaceNavigationScope,
-  WorkspaceRoomNavigationOrigin,
+import {
+  type WorkspaceNavigationIntent,
+  WorkspaceNavigationService,
+  type WorkspaceNavigationScope,
+  type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
-import { WorkspaceService } from './workspace.service';
 
 /**
  * UI-local navigation adapter around the authoritative Workspace workflow.
@@ -32,7 +32,7 @@ import { WorkspaceService } from './workspace.service';
 @Injectable()
 export class RoomShellNavigationService {
   private readonly store = inject(RoomShellStore);
-  private readonly workspace = inject(WorkspaceService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly mixedRooms = inject(MixedRoomsService);
   private readonly accountScope = inject(AccountScopeService);
@@ -99,11 +99,6 @@ export class RoomShellNavigationService {
   clearOpenRoom(): void {
     if (this.membersAreDrawer()) this.store.rightPanel.set(null);
     this.navigate({ kind: 'list', origin: 'room-removed' });
-  }
-
-  /** Leaving the page releases projections without manufacturing a navigation. */
-  releaseOpenRoom(): void {
-    this.workspace.release();
   }
 
   /** Every room the shell can currently open, independent of the active sidebar scope. */

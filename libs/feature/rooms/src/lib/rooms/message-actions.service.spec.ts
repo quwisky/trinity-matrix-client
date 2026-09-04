@@ -17,7 +17,7 @@ import { MessageActionsService } from './message-actions.service';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
-import { WorkspaceService } from './workspace.service';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 /**
  * The composer and timeline half of MessageActionsService.
@@ -117,7 +117,7 @@ describe('MessageActionsService', () => {
       providers: [
         ...MOCKS,
         {
-          provide: WorkspaceService,
+          provide: WorkspaceNavigationService,
           useValue: {
             activeAccountId: signal<string | null>('@me:hs').asReadonly(),
             activeSpaceId: signal<string | null>(null).asReadonly(),

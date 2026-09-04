@@ -15,7 +15,11 @@ All notable changes to this project are documented here. The format is based on
   retains exact Account-and-Room identities across mixed accounts. Global Search, local and native
   notification activation, and inbound restoration now use that same cold semantic command;
   Application Runtime no longer constructs Room URLs, and repeated same-Room event activations
-  publish a fresh target without reporting a navigation failure.
+  publish a fresh target without reporting a navigation failure. The application-owned Workspace
+  service now also owns Router projection and route restoration for its full lifetime, removing the
+  lazy activator, page-scoped transition seam, caller-built destinations, and caller-supplied
+  history policy while preserving transition repair, visit history, Media release, and
+  Conversation focus behind one interface.
 
 - **The atomic design-system migration is integrated and ready for delivery.** Tailwind,
   Theme and Appearance ownership, public component recipes, the authored cascade, accessibility

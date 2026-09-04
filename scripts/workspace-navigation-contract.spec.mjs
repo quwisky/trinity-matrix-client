@@ -1,189 +1,199 @@
-import { globSync, readFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const workspaceRoot = join(import.meta.dirname, '..');
-const implementation = 'libs/feature/rooms/src/lib/rooms/workspace.service.ts';
-const expectedLegacyCallers = [];
+const applicationRoot = 'libs/application/workspace/src/lib';
+const featureRoot = 'libs/feature/rooms/src/lib/rooms';
 
 function source(file) {
   return readFileSync(join(workspaceRoot, file), 'utf8');
 }
 
-function callsLegacyOpen(file, contents) {
+function exists(file) {
+  return existsSync(join(workspaceRoot, file));
+}
+
+function publicMethods(file, className) {
   const parsed = ts.createSourceFile(
     file,
-    contents,
+    source(file),
     ts.ScriptTarget.Latest,
     true,
   );
-  const serviceNames = new Set(['WorkspaceService']);
-  const bindings = new Set();
-
-  for (const statement of parsed.statements) {
-    if (!ts.isImportDeclaration(statement)) continue;
-    const imports = statement.importClause?.namedBindings;
-    if (!imports || !ts.isNamedImports(imports)) continue;
-    for (const element of imports.elements) {
-      if ((element.propertyName ?? element.name).text === 'WorkspaceService') {
-        serviceNames.add(element.name.text);
-      }
-    }
-  }
-
-  function isWorkspaceType(type) {
-    return (
-      type &&
-      ts.isTypeReferenceNode(type) &&
-      ts.isIdentifier(type.typeName) &&
-      serviceNames.has(type.typeName.text)
-    );
-  }
-
-  function isWorkspaceInjection(initializer) {
-    return (
-      initializer &&
-      ts.isCallExpression(initializer) &&
-      ts.isIdentifier(initializer.expression) &&
-      initializer.expression.text === 'inject' &&
-      (initializer.arguments.some(
-        (argument) =>
-          ts.isIdentifier(argument) && serviceNames.has(argument.text),
-      ) ||
-        initializer.typeArguments?.some(isWorkspaceType))
-    );
-  }
-
-  function collectBindings(node) {
-    if (
-      (ts.isVariableDeclaration(node) ||
-        ts.isPropertyDeclaration(node) ||
-        ts.isParameter(node)) &&
-      ts.isIdentifier(node.name) &&
-      (isWorkspaceType(node.type) || isWorkspaceInjection(node.initializer))
-    ) {
-      bindings.add(node.name.text);
-    }
-    ts.forEachChild(node, collectBindings);
-  }
-  collectBindings(parsed);
-
-  let found = false;
-  function findOpen(node) {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === 'open'
-    ) {
-      const receiver = node.expression.expression;
-      found =
-        (ts.isIdentifier(receiver) && bindings.has(receiver.text)) ||
-        (ts.isPropertyAccessExpression(receiver) &&
-          receiver.expression.kind === ts.SyntaxKind.ThisKeyword &&
-          bindings.has(receiver.name.text));
-    }
-    if (!found) ts.forEachChild(node, findOpen);
-  }
-  findOpen(parsed);
-  return found;
+  const declaration = parsed.statements.find(
+    (statement) =>
+      ts.isClassDeclaration(statement) && statement.name?.text === className,
+  );
+  if (!declaration || !ts.isClassDeclaration(declaration)) return [];
+  return declaration.members
+    .filter(ts.isMethodDeclaration)
+    .filter(
+      (member) =>
+        !member.modifiers?.some(
+          (modifier) =>
+            modifier.kind === ts.SyntaxKind.PrivateKeyword ||
+            modifier.kind === ts.SyntaxKind.ProtectedKeyword,
+        ),
+    )
+    .map((member) => member.name.getText(parsed));
 }
 
-/**
- * Freeze the expand-migrate-contract boundary introduced by #366.
- *
- * Room-shell, search, notification activation, and inbound restoration all use semantic
- * intent. Issue #369 removes the now-internal destination implementation. Any external
- * `workspace.open()` call is a regression.
- */
+function methodSource(file, className, methodName) {
+  const parsed = ts.createSourceFile(
+    file,
+    source(file),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const declaration = parsed.statements.find(
+    (statement) =>
+      ts.isClassDeclaration(statement) && statement.name?.text === className,
+  );
+  if (!declaration || !ts.isClassDeclaration(declaration)) {
+    throw new Error(`${className} is missing from ${file}`);
+  }
+  const method = declaration.members.find(
+    (member) =>
+      ts.isMethodDeclaration(member) &&
+      member.name.getText(parsed) === methodName,
+  );
+  if (!method || !ts.isMethodDeclaration(method)) {
+    throw new Error(`${className}.${methodName} is missing from ${file}`);
+  }
+  return method.getText(parsed);
+}
+
+/** Freeze the completed #366-#369 expand-migrate-contract boundary. */
 describe('Workspace semantic navigation boundary', () => {
-  const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
-    cwd: workspaceRoot,
-  })
-    .filter(
+  it('keeps one application-owned semantic command and no feature implementation', () => {
+    const service = source(
+      `${applicationRoot}/workspace-navigation.service.ts`,
+    );
+
+    expect(service).toContain('export class WorkspaceNavigationService');
+    expect(
+      publicMethods(
+        `${applicationRoot}/workspace-navigation.service.ts`,
+        'WorkspaceNavigationService',
+      ),
+    ).toEqual(['navigate']);
+    expect(service).toContain('readonly view =');
+    expect(service).not.toContain('register(');
+    expect(service).not.toContain('WorkspaceNavigationActivator');
+    expect(exists(`${featureRoot}/workspace.service.ts`)).toBe(false);
+    expect(exists(`${featureRoot}/workspace-transition.workflow.ts`)).toBe(
+      false,
+    );
+  });
+
+  it('keeps Router access behind the internal Workspace location adapter', () => {
+    const applicationSources = globSync(`${applicationRoot}/**/*.ts`, {
+      cwd: workspaceRoot,
+    }).filter((file) => !file.endsWith('.spec.ts'));
+    const routerOwners = applicationSources.filter((file) =>
+      source(file).includes("from '@angular/router'"),
+    );
+
+    expect(routerOwners).toEqual([
+      `${applicationRoot}/workspace-location.adapter.ts`,
+    ]);
+  });
+
+  it('removes the activation relay and caller-built destination API', () => {
+    const publicModels = source(
+      `${applicationRoot}/workspace-navigation.models.ts`,
+    );
+    const providers = source(
+      'libs/application/runtime/src/lib/composition/trinity-application.providers.ts',
+    );
+    const entrypoint = source('libs/application/workspace/src/index.ts');
+    const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
+      cwd: workspaceRoot,
+    }).filter(
       (file) =>
-        file !== implementation &&
-        !file.endsWith('.spec.ts') &&
-        !file.endsWith('.spec-harness.ts'),
-    )
-    .sort();
+        !file.endsWith('.spec.ts') && !file.endsWith('.spec-harness.ts'),
+    );
 
-  it('keeps the legacy caller allowlist empty outside Workspace', () => {
-    const legacyCallers = productionSources
-      .filter((file) => source(file).includes('WorkspaceService'))
-      .filter((file) => callsLegacyOpen(file, source(file)));
-
-    expect(legacyCallers).toEqual(expectedLegacyCallers);
-  });
-
-  it('recognizes aliased and constructor-injected compatibility calls', () => {
+    expect(publicModels).not.toContain('interface WorkspaceNavigation');
+    expect(publicModels).not.toContain('WorkspaceDestination');
+    expect(entrypoint).not.toContain('workspace-visit-history.service');
+    expect(entrypoint).not.toContain('workspace.models');
+    expect(providers).not.toContain('WORKSPACE_NAVIGATION_ACTIVATOR');
     expect(
-      callsLegacyOpen(
-        'fixture.ts',
-        `import { WorkspaceService as Navigation } from './workspace.service';
-         class Consumer {
-           constructor(private readonly facade: Navigation) {}
-           run() { return this.facade.open(destination, options); }
-         }`,
+      exists(
+        'libs/application/runtime/src/lib/composition/workspace-navigation.activator.ts',
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
-      callsLegacyOpen(
-        'fixture.ts',
-        `import { WorkspaceService as Navigation } from './workspace.service';
-         const facade = inject(Navigation);
-         facade.open(destination, options);`,
+      productionSources.filter((file) =>
+        source(file).includes('WorkspaceService'),
       ),
-    ).toBe(true);
+    ).toEqual([]);
+    expect(
+      productionSources
+        .filter((file) => !file.startsWith(`${applicationRoot}/`))
+        .filter((file) =>
+          /Workspace(?:Destination|OpenOptions|OpenOutcome)/u.test(
+            source(file),
+          ),
+        ),
+    ).toEqual([]);
   });
 
-  it('keeps exact Room-row ownership on the semantic path', () => {
-    const row = source(
-      'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html',
-    );
-    const routing = source(
-      'libs/feature/rooms/src/lib/rooms/account-routing.service.ts',
-    );
-    const shortcuts = source(
-      'libs/feature/rooms/src/lib/rooms/shell-shortcuts.service.ts',
-    );
-
-    expect(row).toContain(
-      'selectRoom.emit({ roomId: room.id, accountId: room.accountId })',
-    );
-    expect(routing).toContain(
-      "origin: WorkspaceRoomNavigationOrigin = 'room-list'",
-    );
-    expect(routing).toContain("{ kind: 'room', ...selection, origin }");
-    expect(shortcuts).toContain('accountId: room.accountId');
-    expect(routing).toContain('this.workspace\n      .navigate(intent)');
-    expect(source(implementation)).toContain(
-      'export class WorkspaceService implements WorkspaceNavigation',
-    );
-  });
-
-  it('keeps search and notification activation on the semantic path', () => {
-    const shortcuts = source(
-      'libs/feature/rooms/src/lib/rooms/shell-shortcuts.service.ts',
-    );
+  it('keeps Room-shell and notification callers on the semantic service', () => {
+    const routing = source(`${featureRoot}/account-routing.service.ts`);
+    const shell = source(`${featureRoot}/room-shell-navigation.service.ts`);
+    const shortcuts = source(`${featureRoot}/shell-shortcuts.service.ts`);
     const session = source(
       'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
     );
+    const back = source(`${applicationRoot}/workspace-back.service.ts`);
+    const accountSession =
+      'libs/feature/rooms/src/lib/rooms/session-actions.service.ts';
 
+    for (const consumer of [routing, shell, shortcuts, session]) {
+      expect(consumer).toContain('WorkspaceNavigationService');
+      expect(consumer).not.toContain('WorkspaceService');
+    }
+    expect(routing).toContain('this.workspace\n      .navigate(intent)');
     expect(shortcuts).toContain('this.workspace.navigate(selection)');
-    expect(source(implementation)).not.toContain('openSearchIntent(');
-    expect(source(implementation)).toContain("kind: 'restoration'");
     expect(session).toContain('this.workspaceNavigation.navigate(intent)');
     expect(session).not.toContain('encodeRoomSegment');
+    for (const consumer of [routing, shell, shortcuts, back]) {
+      expect(consumer).not.toContain("from '@angular/router'");
+    }
+    expect(
+      methodSource(
+        'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+        'TrinityApplicationSessionAdapter',
+        'openWorkspaceIntent',
+      ),
+    ).not.toContain('this.router');
+    expect(
+      methodSource(
+        `${featureRoot}/rooms.page.ts`,
+        'RoomsPage',
+        'dismissWorkspaceSurface',
+      ),
+    ).not.toContain('this.router');
+    const switchAccount = methodSource(
+      accountSession,
+      'SessionActionsService',
+      'switchAccount',
+    );
+    expect(switchAccount).toMatch(/this\.workspace\s*\.navigate/u);
+    expect(switchAccount).not.toContain('this.router');
   });
 
-  it('records the internal legacy seam and its removal owner in the Workspace ADR', () => {
+  it('records the contracted boundary in the Workspace ADR', () => {
     const adr = source(
       'docs/adr/0004-workspace-authority-and-url-projection.md',
     );
 
-    expect(adr).toContain('zero production callers');
-    expect(adr).toContain('#368');
-    expect(adr).toContain('#369');
+    expect(adr).toContain('application-owned `WorkspaceNavigationService`');
+    expect(adr).toContain('Router stays behind');
+    expect(adr).not.toContain('issue #369 deletes');
   });
 });
