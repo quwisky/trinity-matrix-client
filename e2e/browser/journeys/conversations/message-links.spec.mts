@@ -197,15 +197,21 @@ test.describe('Matrix room links', () => {
     const preview = page.getByTestId('room-link-preview');
     await expect(preview).toBeVisible();
     await expect(preview.getByTestId('room-link-name')).toHaveText(targetName);
-    await expect(preview.getByTestId('room-link-primary')).toHaveText(
-      'Open room',
-    );
+    const primary = preview.getByTestId('room-link-primary');
+    await expect(primary).toHaveText('Open room');
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',
       new RegExp(sourceName),
     );
 
-    await preview.getByTestId('room-link-primary').click();
+    if (isAndroidE2E) {
+      // The remote-debugging viewport can be shorter than the physical WebView even
+      // though the dedicated portrait geometry check proves this footer is on-screen.
+      await primary.focus();
+      await page.keyboard.press('Enter');
+    } else {
+      await primary.click();
+    }
 
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',
