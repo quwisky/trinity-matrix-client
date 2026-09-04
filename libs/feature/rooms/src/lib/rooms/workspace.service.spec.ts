@@ -13,6 +13,7 @@ import {
 } from '@trinity/data-access/accounts';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
+  InvitesService,
   RoomLibraryService,
   RoomReadinessService,
   SpacesService,
@@ -121,6 +122,7 @@ function harness(options: HarnessOptions = {}) {
   const media = { releaseAll: vi.fn() };
   const rooms = {
     clearMarkedUnread: vi.fn(() => of(void 0)),
+    createDirectMessage: vi.fn(() => of('!dm:example.org')),
     selectionAvailability: (accountId: string, roomId: string) => {
       const client = clients.get(accountId);
       if (!client) return 'unavailable' as const;
@@ -130,6 +132,8 @@ function harness(options: HarnessOptions = {}) {
     },
   };
   const spaces = { openSpace: vi.fn(() => of(void 0)) };
+  const waitForRoom = vi.fn(() => of(void 0));
+  const acceptInvite = vi.fn(() => of(void 0));
 
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
@@ -161,8 +165,9 @@ function harness(options: HarnessOptions = {}) {
       { provide: RoomLibraryService, useValue: rooms },
       {
         provide: RoomReadinessService,
-        useValue: { waitForRoom: () => of(void 0) },
+        useValue: { waitForRoom },
       },
+      { provide: InvitesService, useValue: { acceptInvite } },
       { provide: SpacesService, useValue: spaces },
     ],
   });
@@ -179,6 +184,8 @@ function harness(options: HarnessOptions = {}) {
     media,
     rooms,
     spaces,
+    waitForRoom,
+    acceptInvite,
   };
 }
 
@@ -671,6 +678,170 @@ describe('WorkspaceService', () => {
         }),
       );
       expect(mru.visited()).toEqual([{ accountId: ALICE, roomId: secondRoom }]);
+    });
+
+    it('opens exact Conversation and Space search results', async () => {
+      const spaceId = '!space:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM], [BOB]: [ROOM, spaceId] },
+      });
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'conversation',
+            accountId: BOB,
+            roomId: ROOM,
+          }),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+      expect(h.service.view()).toMatchObject({
+        accountId: BOB,
+        roomId: ROOM,
+      });
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'space',
+          accountId: BOB,
+          spaceId,
+        }),
+      );
+      expect(h.service.view()).toMatchObject({
+        accountId: BOB,
+        scope: { kind: 'space', spaceId },
+      });
+    });
+
+    it('prepares an exact Account before creating and opening a direct Conversation', async () => {
+      const dm = '!dm:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM], [BOB]: [ROOM, dm] },
+      });
+      h.navigate.mockClear();
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'person',
+            accountId: BOB,
+            userId: '@person:example.org',
+          }),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+
+      expect(h.rooms.createDirectMessage).toHaveBeenCalledWith(
+        '@person:example.org',
+      );
+      expect(h.waitForRoom).toHaveBeenCalledWith(BOB, dm);
+      expect(h.service.view()).toEqual({
+        accountId: BOB,
+        scope: { kind: 'home' },
+        roomId: dm,
+        pane: 'conversation',
+      });
+      expect(h.navigate).toHaveBeenNthCalledWith(1, ['/rooms'], {
+        queryParams: { account: BOB, view: 'home' },
+        replaceUrl: true,
+      });
+      expect(h.navigate).toHaveBeenNthCalledWith(
+        2,
+        ['/rooms', encodeRoomSegment(dm)],
+        {
+          queryParams: { account: BOB, view: 'home' },
+          replaceUrl: false,
+        },
+      );
+    });
+
+    it('joins an invitation before opening its exact Account destination', async () => {
+      const invitedSpace = '!invited-space:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM], [BOB]: [ROOM, invitedSpace] },
+      });
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'invitation',
+          accountId: BOB,
+          roomId: invitedSpace,
+          target: 'space',
+        }),
+      );
+
+      expect(h.acceptInvite).toHaveBeenCalledWith(invitedSpace, BOB);
+      expect(h.waitForRoom).toHaveBeenCalledWith(BOB, invitedSpace);
+      expect(h.service.view()).toMatchObject({
+        accountId: BOB,
+        scope: { kind: 'space', spaceId: invitedSpace },
+      });
+    });
+
+    it('projects and republishes a same-Room notification event target', async () => {
+      const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM });
+      h.navigate.mockClear();
+      h.conversations.focus.mockClear();
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'notification',
+          accountId: ALICE,
+          roomId: ROOM,
+          eventId: '$event',
+        }),
+      );
+      const firstTarget = h.service.eventTarget();
+      expect(firstTarget).toEqual({ eventId: '$event' });
+      expect(h.navigate).toHaveBeenCalledWith(
+        ['/rooms', encodeRoomSegment(ROOM)],
+        {
+          queryParams: { account: ALICE, event: '$event' },
+          replaceUrl: false,
+        },
+      );
+
+      h.navigate.mockClear();
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'notification',
+          accountId: ALICE,
+          roomId: ROOM,
+          eventId: '$event',
+        }),
+      );
+      expect(h.service.eventTarget()).toEqual({ eventId: '$event' });
+      expect(h.service.eventTarget()).not.toBe(firstTarget);
+      expect(h.navigate).not.toHaveBeenCalled();
+      expect(h.conversations.focus).not.toHaveBeenCalled();
+    });
+
+    it('repairs an unavailable notification through normal Workspace policy', async () => {
+      const h = harness({ routeAccountId: ALICE });
+      h.navigate.mockClear();
+
+      await expect(
+        firstValueFrom(
+          h.service.navigate({
+            kind: 'notification',
+            accountId: BOB,
+            roomId: '!missing:example.org',
+            eventId: '$event',
+          }),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready', change: 'committed' });
+      expect(h.service.view()).toMatchObject({
+        accountId: BOB,
+        roomId: null,
+        pane: 'list',
+      });
+      expect(h.service.eventTarget()).toBeNull();
+      expect(h.navigate).toHaveBeenLastCalledWith(['/rooms'], {
+        queryParams: { account: BOB },
+        replaceUrl: true,
+      });
     });
   });
 

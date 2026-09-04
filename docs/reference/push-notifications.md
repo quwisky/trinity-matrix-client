@@ -121,13 +121,14 @@ registration when a service worker controls the page, because mobile browsers th
 `new Notification()`, and through the constructor otherwise. Angular's service-worker click stream
 is validated before its typed destination is admitted back into the application.
 
-A click emits an immutable `{accountId, roomId, eventId}` destination. The app composition adapter
-focuses the window and projects that value into `/rooms/<segment>?account=…&event=…`, where the
-segment is the room id encoded with `encodeRoomSegment` (base64url — the raw id ends in a dotted
-server name, which both SPA fallbacks refuse to answer with `index.html`). Workspace consumes that
-URL through its normal cold transition, so inactive Accounts switch atomically, unavailable Rooms
-repair to the safe list, and a valid event becomes the Conversation jump target only after the Room
-is ready.
+A click emits an immutable `{accountId, roomId, eventId}` destination. Application Runtime focuses
+the window and submits that host-neutral intent to Workspace; it does not construct Room URLs.
+Workspace performs its normal cold transition, so inactive Accounts switch atomically, unavailable
+Rooms repair to the safe list, and a valid event becomes the Conversation jump target only after
+the Room is ready. Workspace alone projects the canonical
+`/rooms/<segment>?account=…&event=…` location, including base64url Room encoding. Repeating the same
+event activation in the already-open Room republishes the target without reporting unchanged
+navigation as failure.
 
 Nothing consumes and strips a parameter any more: the open room IS the URL.
 `RoomShellStore.activeRoomId` derives from `ActivatedRoute.paramMap`, so a tap arriving

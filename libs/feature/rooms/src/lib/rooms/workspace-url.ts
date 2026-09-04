@@ -64,6 +64,7 @@ export function parseWorkspaceUrl(
 
 export function workspaceUrlOf(
   destination: WorkspaceDestination,
+  eventId?: string | null,
 ): WorkspaceUrlCommands {
   const commands = destination.roomId
     ? ['/rooms', encodeRoomSegment(destination.roomId)]
@@ -71,6 +72,7 @@ export function workspaceUrlOf(
   const queryParams: Record<string, string> = {
     account: destination.accountId,
   };
+  if (destination.roomId && eventId) queryParams['event'] = eventId;
   if (destination.roomId && destination.pane === 'list') {
     queryParams['pane'] = 'list';
   }

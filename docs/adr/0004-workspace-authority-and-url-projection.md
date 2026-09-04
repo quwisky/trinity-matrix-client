@@ -46,7 +46,16 @@ shortcut never re-derives ownership from a mixed projection. An exact-current in
 typed `unavailable` reasons; Router booleans and legacy destinations do not cross the semantic
 interface.
 
+Global Search, local-notification activation, native-push activation, and inbound URL restoration
+use the same command. Conversation and Space results retain exact Account ownership; person and
+invitation results complete their Account-scoped create or join work before opening the ready
+destination. Notification activation carries an optional event anchor through Workspace's
+canonical URL projection. Repeating the same anchor in the already-open Room republishes a fresh
+event target without treating unchanged Router state as failure. Application Runtime submits only
+the host-neutral intent. When the lazy Room shell is absent, a composition adapter mounts it without
+changing browser location, then the registered Workspace implementation performs the transition.
+
 During the incremental migration, the destination-based `open` seam has zero production callers
 outside Workspace. `scripts/workspace-navigation-contract.spec.mjs` freezes that empty allowlist.
-Search and inbound activation/restoration still resolve through the compatibility implementation
-inside Workspace; issue #368 migrates those paths and issue #369 deletes the seam.
+Issue #368 migrated the final search and activation/restoration callers; issue #369 deletes the
+remaining package-internal destination and page-scoped transition implementation.

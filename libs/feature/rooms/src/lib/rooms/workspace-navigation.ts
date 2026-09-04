@@ -42,7 +42,10 @@ export function resolveWorkspaceNavigation(
           roomId: null,
           pane: 'list',
         },
-        options: { source: 'user', history: 'push' },
+        options:
+          intent.origin === 'search-preparation'
+            ? { source: 'repair', history: 'replace' }
+            : { source: 'user', history: 'push' },
       };
     case 'scope':
       return {
@@ -68,6 +71,54 @@ export function resolveWorkspaceNavigation(
           history: 'push',
         },
       };
+    case 'conversation':
+      return resolveWorkspaceNavigation(
+        {
+          kind: 'room',
+          accountId: intent.accountId,
+          roomId: intent.roomId,
+          origin: 'global-search',
+        },
+        current,
+      );
+    case 'space':
+      return resolveWorkspaceNavigation(
+        {
+          kind: 'scope',
+          accountId: intent.accountId,
+          scope: { kind: 'space', spaceId: intent.spaceId },
+        },
+        current,
+      );
+    case 'notification': {
+      const accountId = intent.accountId ?? current.accountId;
+      if (!accountId) return null;
+      return {
+        destination: {
+          accountId,
+          scope: RECENT_WORKSPACE_SCOPE,
+          roomId: intent.roomId ?? null,
+          pane: intent.roomId ? 'conversation' : 'list',
+        },
+        options: { source: 'user', history: 'push' },
+      };
+    }
+    case 'restoration':
+      return {
+        destination: {
+          accountId: intent.accountId,
+          scope: intent.scope,
+          roomId: intent.roomId,
+          pane: intent.pane,
+        },
+        options: {
+          source: intent.canonical ? 'restore' : 'repair',
+          history: 'replace',
+        },
+      };
+    case 'person':
+    case 'invitation':
+      return null;
     case 'list': {
       if (!current.accountId) return null;
       const roomRemoved = intent.origin === 'room-removed';

@@ -382,7 +382,9 @@ multi-account design.
 
     The caller-built `WorkspaceService.open()` seam is temporary compatibility debt. Its external
     production allowlist is empty and guarded by `scripts/workspace-navigation-contract.spec.mjs`.
-    Search and inbound restoration remain internal users until #368; issue #369 owns removal.
+    Global Search, notification activation, native push, and inbound restoration now enter through
+    semantic `navigate()` intent. The legacy destination is package-internal only; issue #369 owns
+    its removal together with the page-scoped transition implementation.
 
 ## Who takes the whole primitive, and who takes only the batching
 

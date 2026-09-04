@@ -629,11 +629,17 @@ describe('PushService', () => {
 
     h.listeners['pushNotificationActionPerformed']({
       notification: {
-        data: { trinity_user_id: '@alt:hs', room_id: '!r:hs' },
+        data: {
+          trinity_user_id: '@alt:hs',
+          room_id: '!r:hs',
+          event_id: '$event',
+        },
       },
     });
 
-    expect(activations).toEqual([{ accountId: '@alt:hs', roomId: '!r:hs' }]);
+    expect(activations).toEqual([
+      { accountId: '@alt:hs', roomId: '!r:hs', eventId: '$event' },
+    ]);
   });
 
   it('opens the room but does not switch when the tagged account is gone or already active', async () => {

@@ -22,6 +22,7 @@ import { PushGatewayService } from './push-gateway.service';
 export interface NativePushActivation {
   readonly accountId?: string;
   readonly roomId?: string;
+  readonly eventId?: string;
 }
 
 /** Pusher `data` key carrying the owning account's user id (see docs/reference/push-notifications.md). The
@@ -443,12 +444,19 @@ export class PushService {
       typeof data?.['room_id'] === 'string'
         ? (data['room_id'] as string)
         : null;
+    const eventId =
+      typeof data?.['event_id'] === 'string' &&
+      data['event_id'].startsWith('$') &&
+      data['event_id'].length > 1
+        ? (data['event_id'] as string)
+        : null;
 
     return {
       ...(userId && this.matrix.accountIds().includes(userId)
         ? { accountId: userId }
         : {}),
       ...(roomId ? { roomId } : {}),
+      ...(eventId ? { eventId } : {}),
     };
   }
 }

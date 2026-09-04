@@ -92,9 +92,9 @@ function callsLegacyOpen(file, contents) {
 /**
  * Freeze the expand-migrate-contract boundary introduced by #366.
  *
- * Room-shell callers use semantic intent. Search and inbound restoration still resolve
- * through the package-private compatibility implementation; #368 migrates those paths and
- * #369 removes the seam. Any external `workspace.open()` call is now a regression.
+ * Room-shell, search, notification activation, and inbound restoration all use semantic
+ * intent. Issue #369 removes the now-internal destination implementation. Any external
+ * `workspace.open()` call is a regression.
  */
 describe('Workspace semantic navigation boundary', () => {
   const productionSources = globSync(['apps/**/*.ts', 'libs/**/*.ts'], {
@@ -162,7 +162,22 @@ describe('Workspace semantic navigation boundary', () => {
     );
   });
 
-  it('records the legacy counter and removal owner in the Workspace ADR', () => {
+  it('keeps search and notification activation on the semantic path', () => {
+    const shortcuts = source(
+      'libs/feature/rooms/src/lib/rooms/shell-shortcuts.service.ts',
+    );
+    const session = source(
+      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    );
+
+    expect(shortcuts).toContain('this.workspace.navigate(selection)');
+    expect(source(implementation)).not.toContain('openSearchIntent(');
+    expect(source(implementation)).toContain("kind: 'restoration'");
+    expect(session).toContain('this.workspaceNavigation.navigate(intent)');
+    expect(session).not.toContain('encodeRoomSegment');
+  });
+
+  it('records the internal legacy seam and its removal owner in the Workspace ADR', () => {
     const adr = source(
       'docs/adr/0004-workspace-authority-and-url-projection.md',
     );

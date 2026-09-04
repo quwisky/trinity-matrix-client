@@ -12,8 +12,10 @@ All notable changes to this project are documented here. The format is based on
   exact Room opens, compact-list close, Room removal, shortcuts, Room hopping, and Workspace Back
   submit product intent while Workspace owns scope retention, pane and history policy, canonical
   URL projection, Account readiness, Conversation focus, and typed outcomes. Shortcut history
-  retains exact Account-and-Room identities across mixed accounts. No Room-shell caller
-  constructs a destination; search and inbound restoration remain the final internal migration.
+  retains exact Account-and-Room identities across mixed accounts. Global Search, local and native
+  notification activation, and inbound restoration now use that same cold semantic command;
+  Application Runtime no longer constructs Room URLs, and repeated same-Room event activations
+  publish a fresh target without reporting a navigation failure.
 
 - **The atomic design-system migration is integrated and ready for delivery.** Tailwind,
   Theme and Appearance ownership, public component recipes, the authored cascade, accessibility
