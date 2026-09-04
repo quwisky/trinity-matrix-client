@@ -655,10 +655,36 @@ async function main(): Promise<void> {
   await selectOrStartDevice();
   await validateAndWaitForBoot();
   process.env['TRINITY_E2E_PLATFORM'] = 'android';
+  const reusePrebuiltBundle = Boolean(
+    process.env['TRINITY_E2E_PREBUILT_WWW'],
+  );
+  if (reusePrebuiltBundle) {
+    await run(process.execPath, [
+      'scripts/web-bundle-manifest.mjs',
+      'verify',
+      'dist/web-bundle-manifest.json',
+      'www',
+    ]);
+  }
   await run('pnpm', [
-    process.env['TRINITY_E2E_PREBUILT_WWW']
+    reusePrebuiltBundle
       ? 'android:build:prebuilt'
       : 'android:build',
+  ]);
+  if (!reusePrebuiltBundle) {
+    await run(process.execPath, [
+      'scripts/web-bundle-manifest.mjs',
+      'write',
+      'www',
+    ]);
+  }
+  await run(process.execPath, [
+    'scripts/web-bundle-manifest.mjs',
+    'verify-with-extras',
+    'dist/web-bundle-manifest.json',
+    'android/app/src/main/assets/public',
+    'cordova.js',
+    'cordova_plugins.js',
   ]);
   await run(join(workspaceRoot, 'android/gradlew'), [
     '-p',

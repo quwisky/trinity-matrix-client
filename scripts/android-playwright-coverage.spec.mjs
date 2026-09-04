@@ -43,6 +43,14 @@ describe('Android Playwright canonical coverage', () => {
     expect(runner).not.toContain('preexistingDriverPackages');
   });
 
+  it('installs only the manifest-verified shared renderer', () => {
+    const runner = code('e2e/android/run.mts');
+    expect(runner).toContain("'scripts/web-bundle-manifest.mjs'");
+    expect(runner).toContain("'verify-with-extras'");
+    expect(runner).toContain("'android/app/src/main/assets/public'");
+    expect(runner).toContain("'cordova_plugins.js'");
+  });
+
   it('pins the long-run renderer and suite-level infrastructure boundary', () => {
     const runner = code('e2e/android/run.mts');
     const fixture = code('e2e/android/fixtures.mts');

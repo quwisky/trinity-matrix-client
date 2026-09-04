@@ -54,6 +54,7 @@ const androidPluginMarkers = [
   ':capacitor-filesystem',
   ':capacitor-local-notifications',
   ':capacitor-push-notifications',
+  ':capacitor-status-bar',
   ':capawesome-capacitor-badge',
 ];
 
@@ -64,6 +65,7 @@ const iosPluginMarkers = [
   'CapacitorFilesystem',
   'CapacitorLocalNotifications',
   'CapacitorPushNotifications',
+  'CapacitorStatusBar',
   'CapawesomeCapacitorBadge',
 ];
 
@@ -281,6 +283,15 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
     !iosInfo.includes('<string>eu.qwky.trinity</string>')
   ) {
     errors.push('iOS host is missing the authentication deep-link scheme');
+  }
+  if (
+    !/<key>UIViewControllerBasedStatusBarAppearance<\/key>\s*<true\s*\/>/u.test(
+      iosInfo,
+    )
+  ) {
+    errors.push(
+      'iOS host must delegate status-bar appearance to its view controller',
+    );
   }
 }
 
