@@ -14,7 +14,7 @@ export const COMPONENT_E2E_SUITES = defineSuites([
     ciTier: 'pull-request',
     cachePolicy: 'never',
     serializationKeys: [],
-    timeoutClass: 'medium',
+    timeoutClass: 'long',
     canonicalScript: 'e2e:components',
     currentArtifactRoot: 'dist/.playwright/trinity-e2e-components/<run-id>',
     targetArtifactRoot: 'dist/.playwright/trinity-e2e-components/<run-id>',

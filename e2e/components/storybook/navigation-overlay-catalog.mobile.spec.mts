@@ -53,6 +53,10 @@ test('Overlay catalog keeps portal and structural surfaces inside the mobile vie
   await page.getByTestId('sheet-canonical').tap();
   const sheet = page.getByTestId('action-sheet-surface');
   await expect(sheet).toBeVisible();
+  const sheetBounds = await sheet.boundingBox();
+  expect(sheetBounds).not.toBeNull();
+  expect(sheetBounds!.x).toBeCloseTo(0, 1);
+  expect(sheetBounds!.width).toBeCloseTo(viewport!.width, 1);
   for (const control of [
     page.getByTestId('sheet-react-👍'),
     page.getByTestId('sheet-danger'),

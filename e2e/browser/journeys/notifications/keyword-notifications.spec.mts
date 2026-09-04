@@ -133,7 +133,12 @@ test.describe('Keyword notifications', () => {
           (action as { set_tweak?: string }).set_tweak === tweak,
       );
     expect(hasTweak(rule, 'sound')).toBe(true);
-    await page.getByTestId('keyword-sound').first().locator('button').click();
+    await page
+      .getByRole('switch', {
+        name: `Play a sound for ${KEYWORD}`,
+        exact: true,
+      })
+      .click();
     await expect
       .poll(async () => hasTweak(await contentRule(), 'sound'), {
         timeout: 20_000,

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **The atomic design-system migration is integrated and ready for delivery.** Tailwind,
+  Theme and Appearance ownership, public component recipes, the authored cascade, accessibility
+  catalogs and host-specific proof now form one documented route across Web, PWA, Electron,
+  Android and static iOS contracts. The final audit also removes stale migration wording and
+  restores repository-wide formatting conformance.
+
 - **Native Appearance now has installed Android and static iOS proof.** The real Capacitor WebView
   exercises Mode, Theme, density and text size, verifies native status-bar style,
   safe-area/coarse-pointer geometry and exact shared-bundle parity, and retains successful

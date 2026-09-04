@@ -27,7 +27,7 @@ import {
     >
       <h2 class="text-lg font-semibold">Message source</h2>
       <pre
-        class="min-h-0 flex-1 overflow-auto rounded bg-muted p-3 text-xs leading-relaxed"
+        class="rounded min-h-0 flex-1 overflow-auto bg-muted p-3 text-xs leading-relaxed"
         data-testid="message-source-json"
         >{{ source() }}</pre>
       <div class="flex justify-end gap-2">

@@ -50,7 +50,7 @@ export class TrnActionSheetService {
         .position()
         .global()
         .centerHorizontally()
-        .bottom('12px'),
+        .bottom('0'),
     });
     return new TrnActionSheetRef(
       new TrnDialogRef<void>(ref),

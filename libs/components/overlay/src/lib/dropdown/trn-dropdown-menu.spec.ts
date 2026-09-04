@@ -98,7 +98,10 @@ describe('Trinity dropdown menu', () => {
     );
 
     expect(canonical?.dataset['trnVariant']).toBe('danger');
-    expect(trnDropdownMenuItemRecipe('danger')).toContain('text-danger');
+    const dangerRecipe = trnDropdownMenuItemRecipe('danger');
+    expect(dangerRecipe).toContain('text-danger');
+    expect(dangerRecipe).toContain('hover:bg-[var(--trinity-danger-tint-10)]');
+    expect(dangerRecipe).toContain('focus:bg-[var(--trinity-danger-tint-10)]');
     expect(disabled?.getAttribute('data-disabled')).not.toBeNull();
   });
 

@@ -15,7 +15,7 @@ import { classes } from '@trinity/helm/utils';
 /**
  * ┌─ VENDORED FILE — @spartan-ng/cli generated, then diverged ────────────────────────────┐
  *
- * One deliberate local override: every `hostDirectives` entry states its `inputs` and
+ * Two deliberate local overrides. First, every `hostDirectives` entry states its `inputs` and
  * `outputs` explicitly, even when both are empty. `hostDirectives` is public API — a
  * composed directive's input or output is bindable on our element only if the entry lists
  * it — so the generator's shorthand form makes that decision by omission. It hid a real
@@ -25,6 +25,12 @@ import { classes } from '@trinity/helm/utils';
  * A regenerate drops this and restores the shorthand. `scripts/host-directives.spec.mjs`
  * fails when it does, rather than letting it ship. See "Registered vendored divergences"
  * in docs/architecture/ui-and-theming.md.
+ *
+ * Second, the avatar, fallback, image and decorative outline consume Trinity's inherited
+ * `--trn-avatar-radius` when present, retaining Helm's full radius as their standalone fallback.
+ * The generated `rounded-full` utilities otherwise outrank the public wrapper's component-layer
+ * shape rule and turn rooms and spaces back into circles. `theme-foundation-contract.spec.mjs`
+ * pins all four consumers.
  * └──────────────────────────────────────────────────────────────────────────────────────┘
  */
 
@@ -59,7 +65,7 @@ export class HlmAvatarFallback {
   constructor() {
     classes(
       () =>
-        'bg-muted text-muted-foreground rounded-full flex size-full items-center justify-center text-sm group-data-[size=sm]/avatar:text-xs',
+        'bg-muted text-muted-foreground rounded-[var(--trn-avatar-radius,var(--radius-full))] flex size-full items-center justify-center text-sm group-data-[size=sm]/avatar:text-xs',
     );
   }
 }
@@ -108,7 +114,10 @@ export class HlmAvatarImage {
   public readonly canShow = inject(BrnAvatarImage).canShow;
 
   constructor() {
-    classes(() => 'rounded-full aspect-square size-full object-cover');
+    classes(
+      () =>
+        'rounded-[var(--trn-avatar-radius,var(--radius-full))] aspect-square size-full object-cover',
+    );
   }
 }
 
@@ -135,7 +144,7 @@ export class HlmAvatar extends BrnAvatar {
     super();
     classes(
       () =>
-        'size-8 rounded-full after:rounded-full data-[size=lg]:size-10 data-[size=sm]:size-6 group/avatar after:border-border relative flex shrink-0 select-none after:absolute after:inset-0 after:border after:mix-blend-darken dark:after:mix-blend-lighten',
+        'size-8 rounded-[var(--trn-avatar-radius,var(--radius-full))] after:rounded-[var(--trn-avatar-radius,var(--radius-full))] data-[size=lg]:size-10 data-[size=sm]:size-6 group/avatar after:border-border relative flex shrink-0 select-none after:absolute after:inset-0 after:border after:mix-blend-darken dark:after:mix-blend-lighten',
     );
   }
 }

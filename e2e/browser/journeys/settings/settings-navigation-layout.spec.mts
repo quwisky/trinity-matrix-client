@@ -226,6 +226,13 @@ test.describe('Settings', () => {
     // keyboard focus still reaches the editor's supported outer focus treatment.
     const editor = page.getByTestId('advanced-config-editor');
     const editorFrame = page.locator('.cm-editor', { has: editor });
+    if (isAndroidE2E) {
+      await expect(editor).toHaveCount(0);
+      await expect(
+        page.getByTestId('advanced-editing-unavailable'),
+      ).toBeVisible();
+      return;
+    }
     await expect(editor).toBeVisible({ timeout: 20_000 });
     const editorPaint = await editorFrame.evaluate((element) => {
       const editorStyle = getComputedStyle(element);

@@ -27,12 +27,18 @@ describe('Trinity overlay surface recipe', () => {
   it('keeps semantic treatment independent from size and layout', () => {
     const neutral = trnOverlaySurfaceRecipe('neutral', 'sm', 'dialog');
     const accent = trnOverlaySurfaceRecipe('accent', 'sm', 'dialog');
+    const sheet = trnOverlaySurfaceRecipe('neutral', 'md', 'sheet');
     const panel = trnOverlaySurfaceRecipe('neutral', 'xl', 'panel');
     const workspace = trnOverlaySurfaceRecipe('neutral', '2xl', 'workspace');
 
     expect(neutral).toContain('var(--trinity-surface-raised)');
     expect(accent).toContain('var(--trinity-state-attention-surface)');
     expect(neutral).toContain('--trn-overlay-inline-size:20rem');
+    expect(sheet).toContain('w-screen');
+    expect(sheet).toContain('max-w-[100vw]');
+    expect(sheet).toContain('rounded-b-none');
+    expect(sheet).toContain('border-x-0');
+    expect(sheet).toContain('border-b-0');
     expect(panel).toContain('--trn-overlay-inline-size:40rem');
     expect(panel).toContain('w-screen');
     expect(panel).toContain('h-dvh');
