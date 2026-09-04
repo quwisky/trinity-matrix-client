@@ -239,13 +239,16 @@ export class WorkspaceNavigationService {
     const accountId = this.activeAccountId();
     const roomId = this.activeRoomId();
     const current = accountId && roomId ? { accountId, roomId } : null;
-    const known = [...(current ? [current] : []), ...this.mru.visited()].filter(
+    const known = [
+      ...(current ? [current] : []),
+      ...intent.availableRooms,
+    ].filter(
       (room, index, rooms) =>
         rooms.findIndex(
           (candidate) =>
             candidate.accountId === room.accountId &&
             candidate.roomId === room.roomId,
-        ) === index && this.selectionAvailable(room.accountId, room.roomId),
+        ) === index,
     );
     const target =
       intent.action === 'hop'

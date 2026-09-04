@@ -67,23 +67,27 @@ describe('ServerRailComponent', () => {
 
   it('emits selectSpace(null) when Home is clicked', async () => {
     const { fixture, container } = await render(ServerRailComponent, {
+      inputs: { activeAccountId: '@me:hs' },
       imports: [MockComponent(AvatarComponent)],
     });
 
-    let selected: string | null = 'unset';
+    let selected: unknown = 'unset';
     fixture.componentInstance.selectSpace.subscribe((v) => (selected = v));
     container.querySelector<HTMLElement>('.pill.home')!.click();
 
-    expect(selected).toBeNull();
+    expect(selected).toEqual({ spaceId: null, accountId: '@me:hs' });
   });
 
   it('emits selectSpace(spaceId) when a space pill is clicked', async () => {
     const { fixture, container } = await render(ServerRailComponent, {
-      inputs: { spaces: [space({ id: '!s:hs' })] },
+      inputs: {
+        activeAccountId: '@me:hs',
+        spaces: [space({ id: '!s:hs', accountId: '@owner:hs' })],
+      },
       imports: [MockComponent(AvatarComponent)],
     });
 
-    let selected: string | null = null;
+    let selected: unknown = null;
     fixture.componentInstance.selectSpace.subscribe((v) => (selected = v));
     container
       .querySelector<HTMLElement>(
@@ -91,7 +95,7 @@ describe('ServerRailComponent', () => {
       )!
       .click();
 
-    expect(selected).toBe('!s:hs');
+    expect(selected).toEqual({ spaceId: '!s:hs', accountId: '@owner:hs' });
   });
 
   it('emits createSpace when the add ("+") pill is clicked', async () => {

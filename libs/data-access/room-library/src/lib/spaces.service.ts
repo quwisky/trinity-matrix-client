@@ -21,6 +21,7 @@ import {
   switchMap,
   takeUntil,
   tap,
+  throwError,
 } from 'rxjs';
 import {
   MatrixClientService,
@@ -93,6 +94,8 @@ export interface SpaceSummary {
  * the UI can offer a Join action.
  */
 export interface SpaceChildRoom {
+  /** Account whose hierarchy produced this row and must handle its actions. */
+  accountId: string;
   roomId: string;
   name: string;
   /** Uppercased first character (sans sigil), for the avatar initials fallback. */
@@ -366,9 +369,13 @@ export class SpacesService {
    * listeners pick it up); callers select it by id. Cold: the request runs on
    * subscribe.
    */
-  createSpace(options: CreateSpaceOptions): Observable<string> {
+  createSpace(
+    accountId: string,
+    options: CreateSpaceOptions,
+  ): Observable<string> {
     return defer(() => {
-      const client = this.matrix.instance;
+      const client = this.matrix.clientFor(accountId);
+      if (!client) return throwError(() => new Error('Account unavailable.'));
       return from(
         client.createRoom({
           // `creation_content.type` is what marks the room as a Space; the SDK
@@ -395,10 +402,17 @@ export class SpacesService {
     options: CreateRoomInSpaceOptions,
   ): Observable<string> {
     return defer(() => {
-      assertRoomLibraryGovernance(
-        this.governance.authorize(spaceId, 'curate-space'),
-      );
       const client = this.matrix.instance;
+      const accountId = client.getUserId();
+      if (!accountId) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      assertRoomLibraryGovernance(
+        this.governance.authorize(
+          { accountId, roomId: spaceId },
+          'curate-space',
+        ),
+      );
       const via = serverNameOf(client.getUserId());
       return from(
         client.createRoom({
@@ -456,15 +470,21 @@ export class SpacesService {
    * into the rail — and its {@link SpaceChildRoom.joined} flag flips live. Cold: runs
    * on subscribe.
    */
-  joinRoom(roomId: string, via?: string[]): Observable<void> {
-    return defer(() =>
-      from(
-        this.matrix.instance.joinRoom(
+  joinRoom(
+    accountId: string,
+    roomId: string,
+    via?: string[],
+  ): Observable<void> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) return throwError(() => new Error('Account unavailable.'));
+      return from(
+        client.joinRoom(
           roomId,
           via && via.length > 0 ? { viaServers: via } : undefined,
         ),
-      ),
-    ).pipe(map(() => void 0));
+      ).pipe(map(() => void 0));
+    });
   }
 
   /**
@@ -477,16 +497,19 @@ export class SpacesService {
    */
   removeRoomFromSpace(spaceId: string, childId: string): Observable<void> {
     return defer(() => {
+      const client = this.matrix.instance;
+      const accountId = client.getUserId();
+      if (!accountId) {
+        return throwError(() => new Error('Not signed in.'));
+      }
       assertRoomLibraryGovernance(
-        this.governance.authorize(spaceId, 'curate-space'),
+        this.governance.authorize(
+          { accountId, roomId: spaceId },
+          'curate-space',
+        ),
       );
       return from(
-        this.matrix.instance.sendStateEvent(
-          spaceId,
-          EventType.SpaceChild,
-          {},
-          childId,
-        ),
+        client.sendStateEvent(spaceId, EventType.SpaceChild, {}, childId),
       ).pipe(map(() => void 0));
     });
   }
@@ -496,11 +519,14 @@ export class SpacesService {
    * project them to {@link SpaceChildBase}, excluding the space root itself. Cold.
    */
   private fetchHierarchy(spaceId: string): Observable<SpaceChildBase[]> {
-    return defer(() =>
-      from(this.fetchHierarchyRooms(spaceId)).pipe(
-        map((rooms) => this.projectHierarchy(spaceId, rooms)),
-      ),
-    );
+    return defer(() => {
+      const client = this.matrix.instance;
+      const accountId = client.getUserId();
+      if (!accountId) throw new Error('Account unavailable.');
+      return from(this.fetchHierarchyRooms(client, spaceId)).pipe(
+        map((rooms) => this.projectHierarchy(accountId, spaceId, rooms)),
+      );
+    });
   }
 
   /**
@@ -509,8 +535,10 @@ export class SpacesService {
    * a huge/looping hierarchy can't fan out unbounded). Without this, spaces with
    * more than {@link HIERARCHY_LIMIT} children silently dropped the overflow.
    */
-  private async fetchHierarchyRooms(spaceId: string): Promise<HierarchyRoom[]> {
-    const client = this.matrix.instance;
+  private async fetchHierarchyRooms(
+    client: MatrixClient,
+    spaceId: string,
+  ): Promise<HierarchyRoom[]> {
     const rooms: HierarchyRoom[] = [];
     let fromToken: string | undefined;
     for (let page = 0; page < HIERARCHY_MAX_PAGES; page++) {
@@ -538,6 +566,7 @@ export class SpacesService {
    * match the joined-children ordering.
    */
   private projectHierarchy(
+    accountId: string,
     spaceId: string,
     rooms: HierarchyRoom[],
   ): SpaceChildBase[] {
@@ -566,6 +595,7 @@ export class SpacesService {
         const link = links.get(r.room_id);
         const name = r.name || r.canonical_alias || r.room_id;
         const base: SpaceChildBase = {
+          accountId,
           roomId: r.room_id,
           name,
           initial: initialOf(name),

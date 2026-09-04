@@ -8,6 +8,11 @@ export type RoomLibraryGovernanceDecision =
   | { readonly kind: 'allowed' }
   | { readonly kind: 'rejected'; readonly reason: string };
 
+export interface RoomLibraryGovernanceKey {
+  readonly accountId: string;
+  readonly roomId: string;
+}
+
 /**
  * Narrow policy interface consumed by Room Library.
  *
@@ -16,7 +21,7 @@ export type RoomLibraryGovernanceDecision =
  */
 export interface RoomLibraryGovernancePolicy {
   authorize(
-    roomId: string,
+    key: RoomLibraryGovernanceKey,
     action: RoomLibraryGovernanceAction,
   ): RoomLibraryGovernanceDecision;
 }

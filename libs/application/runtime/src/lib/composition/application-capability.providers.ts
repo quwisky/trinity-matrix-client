@@ -107,11 +107,11 @@ export function applicationCapabilityProviders(
       useFactory: (): RoomLibraryGovernancePolicy => {
         const permissions = inject(RoomActionPermissionsService);
         return {
-          authorize: (roomId, action) => {
+          authorize: (key, action) => {
             const availability =
               action === 'invite'
-                ? permissions.room(roomId).invite
-                : permissions.room(roomId).curateSpace;
+                ? permissions.roomFor(key).invite
+                : permissions.roomFor(key).curateSpace;
             return availability.available
               ? { kind: 'allowed' }
               : {

@@ -163,38 +163,41 @@ export class RoomActionsService {
 
   /** Browse the public directory; open a room — or select a space — joined from it. */
   onExploreRooms(): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     this.dialog
       .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent, {
         ariaLabel: 'Explore rooms and spaces',
         autoFocus: '[data-autofocus]',
+        inputs: { accountId },
       })
       .pipe(
         filter((joined): joined is DirectoryJoin => joined !== null),
         switchMap((joined) => {
-          const accountId = this.store.activeAccountId();
-          if (!accountId) {
-            return EMPTY;
-          }
           // The join endpoint can close the dialog before /sync publishes the Room. Workspace
           // correctly rejects an unavailable destination, so cross that finite readiness
           // barrier before asking it to select the new Room or Space.
           return this.roomReadiness
-            .waitForRoom(accountId, joined.roomId)
-            .pipe(map(() => ({ joined, accountId })));
+            .waitForRoom(joined.accountId, joined.roomId)
+            .pipe(map(() => joined));
         }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
-        next: ({ joined, accountId }) => {
+        next: (joined) => {
           if (joined.isSpace) {
             // A joined space lands in the rail — select it there.
-            this.nav.onSelectSpace(joined.roomId, accountId);
+            this.nav.onSelectSpace({
+              spaceId: joined.roomId,
+              accountId: joined.accountId,
+            });
           } else {
             // A joined public room is a spaceless non-DM, so it lives in the Rooms view
             // (Home shows DMs only) — select both coordinates in one Workspace command.
-            this.nav.onSelectRoomInScope(joined.roomId, accountId, {
-              kind: 'rooms',
-            });
+            this.nav.onSelectRoomInScope(
+              { roomId: joined.roomId, accountId: joined.accountId },
+              { kind: 'rooms' },
+            );
           }
         },
         error: () =>
@@ -208,7 +211,7 @@ export class RoomActionsService {
     if (!accountId) return;
     this.status.error.set(null);
     runWithBusy(
-      this.publicRooms.join(roomId),
+      this.publicRooms.join(accountId, roomId),
       this.status,
       matrixRequestErrorHandling(
         'join upgraded room',
@@ -217,7 +220,10 @@ export class RoomActionsService {
     ).subscribe((joinedId) => {
       // Surface the successor in the sidebar (Home shows DMs only) so it isn't
       // opened-but-invisible, mirroring onExploreRooms.
-      this.nav.onSelectRoomInScope(joinedId, accountId, { kind: 'rooms' });
+      this.nav.onSelectRoomInScope(
+        { roomId: joinedId, accountId },
+        { kind: 'rooms' },
+      );
     });
   }
 
@@ -260,7 +266,7 @@ export class RoomActionsService {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(({ roomId, accountId }) =>
-        this.nav.onSelectRoom(roomId, accountId),
+        this.nav.onSelectRoom({ roomId, accountId }),
       );
   }
 
@@ -287,7 +293,7 @@ export class RoomActionsService {
     const accountId = this.store.activeAccountId();
     if (!accountId) return;
     runWithBusy(this.rooms.createRoom({ name }), this.status).subscribe(
-      (roomId) => this.nav.onSelectRoom(roomId, accountId),
+      (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
     );
   }
 

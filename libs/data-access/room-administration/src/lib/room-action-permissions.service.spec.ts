@@ -87,6 +87,9 @@ function clientFixture(
 
 function setup(initial = clientFixture()) {
   let current = initial;
+  const clients = new Map<string, ClientFixture>([
+    [initial.client.getUserId() as string, initial],
+  ]);
   let initialized = true;
   TestBed.configureTestingModule({
     providers: [
@@ -98,6 +101,8 @@ function setup(initial = clientFixture()) {
         get instance() {
           return current.client as never;
         },
+        clientFor: (accountId: string) =>
+          (clients.get(accountId)?.client as never) ?? null,
         activeUserId: activeUserId.asReadonly(),
       }),
     ],
@@ -106,6 +111,7 @@ function setup(initial = clientFixture()) {
     service: TestBed.inject(RoomActionPermissionsService),
     useClient: (next: ClientFixture, userId = '@other:hs') => {
       current = next;
+      clients.set(userId, next);
       activeUserId.set(userId);
     },
     signOut: () => {
@@ -126,6 +132,22 @@ function event(type: string) {
 }
 
 describe('RoomActionPermissionsService', () => {
+  it('reads exact-account permissions independently of the active account', () => {
+    const selected = clientFixture('@selected:hs', { myPower: 100 });
+    const active = clientFixture('@active:hs', { myPower: 0 });
+    const { service, useClient } = setup(selected);
+
+    useClient(active, '@active:hs');
+
+    expect(service.room('!room:hs').curateSpace.available).toBe(false);
+    expect(
+      service.roomFor({
+        accountId: '@selected:hs',
+        roomId: '!room:hs',
+      }).curateSpace.available,
+    ).toBe(true);
+  });
+
   it('requires a joined actor and the effective invite/state thresholds', () => {
     const fixture = clientFixture('@me:hs', { myPower: 49 });
     const { service } = setup(fixture);

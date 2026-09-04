@@ -773,6 +773,10 @@ describe('WorkspaceNavigationService', () => {
             kind: 'history',
             action: 'jump',
             position: 1,
+            availableRooms: [
+              { accountId: ALICE, roomId: ROOM },
+              { accountId: ALICE, roomId: secondRoom },
+            ],
           }),
         ),
       ).resolves.toEqual({ kind: 'ready', change: 'committed' });

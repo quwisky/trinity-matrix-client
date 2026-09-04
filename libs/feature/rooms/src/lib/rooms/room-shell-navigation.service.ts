@@ -19,6 +19,10 @@ import {
 } from '@trinity/application/workspace';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
+import {
+  type ExactRoomSelection,
+  type ExactSpaceSelection,
+} from '../shared/exact-selection';
 
 /**
  * UI-local navigation adapter around the authoritative Workspace workflow.
@@ -58,9 +62,9 @@ export class RoomShellNavigationService {
     this.openScope({ kind: 'recent' });
   }
 
-  onSelectSpace(id: string | null, accountId: string): void {
+  onSelectSpace({ spaceId, accountId }: ExactSpaceSelection): void {
     this.openScope(
-      id ? { kind: 'space', spaceId: id } : { kind: 'home' },
+      spaceId ? { kind: 'space', spaceId } : { kind: 'home' },
       accountId,
     );
   }
@@ -70,21 +74,19 @@ export class RoomShellNavigationService {
   }
 
   onSelectRoom(
-    id: string,
-    accountId: string,
+    { roomId, accountId }: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
   ): void {
-    this.navigate({ kind: 'room', accountId, roomId: id, origin });
+    this.navigate({ kind: 'room', accountId, roomId, origin });
   }
 
   /** Change sidebar scope and open its room as one atomic Workspace destination. */
   onSelectRoomInScope(
-    id: string,
-    accountId: string,
+    { roomId, accountId }: ExactRoomSelection,
     scope: WorkspaceNavigationScope,
     origin: WorkspaceRoomNavigationOrigin = 'room-action',
   ): void {
-    this.navigate({ kind: 'room', accountId, roomId: id, scope, origin });
+    this.navigate({ kind: 'room', accountId, roomId, scope, origin });
   }
 
   closeOpenRoom(): void {

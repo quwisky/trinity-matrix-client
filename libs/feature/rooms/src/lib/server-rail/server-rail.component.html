@@ -32,7 +32,7 @@
     <button
       trnIconButton
       class="pill home"
-      (click)="selectSpace.emit(null)"
+      (click)="selectHome()"
       [attr.aria-current]="
         activeSpaceId() === null && !roomsActive() && !recentActive()
           ? 'true'
@@ -87,7 +87,9 @@
       <span class="indicator"></span>
       <button
         class="pill"
-        (click)="selectSpace.emit(space.id)"
+        (click)="
+          selectSpace.emit({ spaceId: space.id, accountId: space.accountId })
+        "
         [attr.aria-current]="
           activeSpaceId() === space.id && !roomsActive() ? 'true' : null
         "

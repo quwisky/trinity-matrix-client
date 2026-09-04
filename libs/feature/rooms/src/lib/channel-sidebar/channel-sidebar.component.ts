@@ -34,6 +34,7 @@ import {
   SelectedRoomLibraryService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
+import { type ExactSpaceSelection } from '../shared/exact-selection';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   DEFAULT_ROOM_SORT,
@@ -244,7 +245,7 @@ export class ChannelSidebarComponent {
    * account so a mixed-in row leaves on ITS account, never the active one. */
   readonly leaveRoom = output<{ roomId: string; accountId: string }>();
   /** Open a joined sub-space (select it in the rail), by room id. */
-  readonly openChildSpace = output<string>();
+  readonly openChildSpace = output<ExactSpaceSelection>();
   /** Accept / decline a pending invite by room id. */
   readonly acceptInvite = output<PendingInvite>();
   readonly declineInvite = output<PendingInvite>();

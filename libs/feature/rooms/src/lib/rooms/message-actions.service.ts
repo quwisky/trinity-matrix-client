@@ -134,18 +134,24 @@ export class MessageActionsService {
       .subscribe((result) => {
         if (!result) return;
         if (result.membershipChanged) {
-          this.routing.openConfirmedLinkedRoom(
-            result.roomId,
-            result.accountId,
-            result.isSpace,
-          );
+          this.routing.openConfirmedLinkedRoom({
+            kind: result.isSpace ? 'space' : 'room',
+            roomId: result.roomId,
+            accountId: result.accountId,
+          });
           return;
         }
         if (result.isSpace) {
-          this.routing.onSelectSpaceRow(result.roomId);
+          this.routing.onSelectSpaceRow({
+            spaceId: result.roomId,
+            accountId: result.accountId,
+          });
           return;
         }
-        this.routing.openLinkedRoom(result.roomId);
+        this.routing.onSelectRoomSelection(
+          { roomId: result.roomId, accountId: result.accountId },
+          'room-action',
+        );
       });
   }
 

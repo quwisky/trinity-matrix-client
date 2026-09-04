@@ -88,6 +88,7 @@ function invite(over: Partial<PendingInvite> = {}): PendingInvite {
 
 function child(over: Partial<SpaceChildRoom> = {}): SpaceChildRoom {
   return {
+    accountId: '@me:hs',
     roomId: '!c:hs',
     name: 'announcements',
     initial: 'A',
@@ -715,9 +716,13 @@ describe('ChannelSidebarComponent', () => {
       ],
     });
 
-    let opened: string | undefined;
+    let opened:
+      | { readonly spaceId: string | null; readonly accountId: string }
+      | undefined;
     let joined: SpaceChildRoom | undefined;
-    fixture.componentInstance.openChildSpace.subscribe((id) => (opened = id));
+    fixture.componentInstance.openChildSpace.subscribe(
+      (selection) => (opened = selection),
+    );
     fixture.componentInstance.joinRoom.subscribe((c) => (joined = c));
 
     container
@@ -727,7 +732,7 @@ describe('ChannelSidebarComponent', () => {
       .querySelector<HTMLElement>('[aria-label="Join New Sub"]')!
       .click();
 
-    expect(opened).toBe('!j:hs');
+    expect(opened).toEqual({ spaceId: '!j:hs', accountId: '@me:hs' });
     expect(joined?.roomId).toBe('!n:hs');
   });
 

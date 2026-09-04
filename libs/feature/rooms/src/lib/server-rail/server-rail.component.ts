@@ -13,6 +13,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
 import { type SpaceSummary } from '@trinity/data-access/room-library';
 import { unreadBadgeLabel } from '../shared/unread-badge';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { type ExactSpaceSelection } from '../shared/exact-selection';
 
 /** Unread notification counts driving the rail's badges. */
 export interface RailUnread {
@@ -39,6 +40,7 @@ export interface RailUnread {
 })
 export class ServerRailComponent {
   readonly spaces = input<readonly SpaceSummary[]>([]);
+  readonly activeAccountId = input.required<string | null>();
   readonly activeSpaceId = input<string | null>(null);
   /** Whether the Recent activity view is active (drives its pill's active state). */
   readonly recentActive = input(false);
@@ -56,13 +58,18 @@ export class ServerRailComponent {
    * initial/name. Empty when not in mixed mode — space pills then show no badge.
    */
   readonly accountBadges = input<ReadonlyMap<string, AccountBadge>>(new Map());
-  readonly selectSpace = output<string | null>();
+  readonly selectSpace = output<ExactSpaceSelection>();
   /** The "+" pill at the end of the rail — raise the create-a-space flow. */
   readonly createSpace = output<void>();
   /** Show the Recent activity view (all DMs + rooms, mixed by recency). */
   readonly showRecent = output<void>();
   /** Show the Rooms view (non-DM rooms). */
   readonly showRooms = output<void>();
+
+  selectHome(): void {
+    const accountId = this.activeAccountId();
+    if (accountId) this.selectSpace.emit({ spaceId: null, accountId });
+  }
 
   /** The account badge for a space pill (mixed view), or null when not badged. */
   badgeFor(accountId: string): AccountBadge | null {

@@ -33,6 +33,7 @@ function provideMatrix(client: unknown): MatrixClientService {
   const matrix = TestBed.inject(MatrixClientService);
   ngMocks.stubMember(matrix, 'isInitialized', true);
   ngMocks.stubMember(matrix, 'instance', client as MatrixClient);
+  ngMocks.stubMember(matrix, 'clientFor', () => client as MatrixClient);
   return matrix;
 }
 
@@ -86,6 +87,7 @@ function fakeRoom(opts: RoomOpts) {
 function setup(rooms: ReturnType<typeof fakeRoom>[]) {
   const byId = new Map(rooms.map((r) => [r.roomId, r]));
   const client = {
+    getUserId: () => '@me:hs',
     getRooms: () => rooms,
     getRoom: (id: string) => byId.get(id) ?? null,
     on: vi.fn(),
@@ -381,7 +383,7 @@ describe('SpacesService writes', () => {
     const { svc, createRoom } = setupWrites();
 
     const id = await firstValueFrom(
-      svc.createSpace({ name: '  My Space  ', topic: '  hi  ' }),
+      svc.createSpace('@me:hs', { name: '  My Space  ', topic: '  hi  ' }),
     );
 
     expect(id).toBe('!new:hs');
@@ -399,7 +401,9 @@ describe('SpacesService writes', () => {
   it('createSpace uses public visibility/preset when isPublic', async () => {
     const { svc, createRoom } = setupWrites();
 
-    await firstValueFrom(svc.createSpace({ name: 'Open', isPublic: true }));
+    await firstValueFrom(
+      svc.createSpace('@me:hs', { name: 'Open', isPublic: true }),
+    );
 
     expect(createRoom).toHaveBeenCalledWith(
       expect.objectContaining({ visibility: 'public', preset: 'public_chat' }),
@@ -456,7 +460,9 @@ describe('SpacesService writes', () => {
   it('joinRoom routes through the via servers when provided', async () => {
     const { svc, joinRoom } = setupWrites();
 
-    await firstValueFrom(svc.joinRoom('!c:hs', ['a.example', 'b.example']));
+    await firstValueFrom(
+      svc.joinRoom('@me:hs', '!c:hs', ['a.example', 'b.example']),
+    );
 
     expect(joinRoom).toHaveBeenCalledWith('!c:hs', {
       viaServers: ['a.example', 'b.example'],
@@ -466,8 +472,8 @@ describe('SpacesService writes', () => {
   it('joinRoom passes no opts when there are no via servers', async () => {
     const { svc, joinRoom } = setupWrites();
 
-    await firstValueFrom(svc.joinRoom('!c:hs'));
-    await firstValueFrom(svc.joinRoom('!c:hs', []));
+    await firstValueFrom(svc.joinRoom('@me:hs', '!c:hs'));
+    await firstValueFrom(svc.joinRoom('@me:hs', '!c:hs', []));
 
     expect(joinRoom).toHaveBeenNthCalledWith(1, '!c:hs', undefined);
     expect(joinRoom).toHaveBeenNthCalledWith(2, '!c:hs', undefined);
@@ -569,6 +575,7 @@ function setupHierarchy(opts: {
     joinedRooms.push(joinedRoom(id));
   };
   const client = {
+    getUserId: () => '@me:hs',
     getRooms: () => joinedRooms,
     getRoom: (id: string) =>
       joined.has(id) ? { getMyMembership: () => 'join' } : null,
@@ -640,6 +647,7 @@ describe('SpacesService hierarchy', () => {
       '!b:hs',
     ]);
     expect(children[0]).toMatchObject({
+      accountId: '@me:hs',
       roomId: '!a:hs',
       name: 'alpha',
       initial: 'A',
@@ -885,6 +893,7 @@ describe('SpacesService hierarchy', () => {
         rooms: [hroom({ roomId: '!b:hs', name: 'bravo' })],
       });
     const client = {
+      getUserId: () => '@me:hs',
       getRooms: () => [],
       getRoom: () => null,
       getRoomHierarchy,

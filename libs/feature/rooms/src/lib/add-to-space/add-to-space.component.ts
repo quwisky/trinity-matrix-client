@@ -72,10 +72,6 @@ export interface AddCandidate {
   styleUrl: './add-to-space.component.scss',
 })
 export class AddToSpaceComponent {
-  /** The space being added to. */
-  readonly spaceId = input.required<string>();
-  readonly spaceName = input('this space');
-
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
   private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
@@ -88,11 +84,17 @@ export class AddToSpaceComponent {
    * copying it, so `searchModel()` IS the live value — no `valueChanges` to project.
    */
   private readonly searchModel = signal({ query: '' });
+  private readonly selected = signal<ReadonlySet<string>>(new Set());
+
+  /** Account that owns the target Space and must perform every link write. */
+  readonly accountId = input.required<string>();
+  /** The space being added to. */
+  readonly spaceId = input.required<string>();
+  readonly spaceName = input('this space');
   readonly search = form(this.searchModel);
 
   /** True while the add writes are in flight. */
   readonly adding = signal(false);
-  private readonly selected = signal<ReadonlySet<string>>(new Set());
 
   /**
    * Everything the user could add: their joined rooms and spaces, minus the target space
@@ -179,7 +181,11 @@ export class AddToSpaceComponent {
     }
     const writes: FieldWrite[] = chosen.map((candidate) => ({
       field: candidate.name,
-      op: this.children.addExistingRoom(spaceId, candidate.id),
+      op: this.children.addExistingRoom(
+        this.accountId(),
+        spaceId,
+        candidate.id,
+      ),
     }));
     this.adding.set(true);
     saveFields(writes)

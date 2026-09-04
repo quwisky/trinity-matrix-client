@@ -385,7 +385,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('opens the space members dialog and routes a pick to member info', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     const picked = {
@@ -413,7 +413,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('does not open member info when the members dialog is dismissed', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     dialogOpen.mockReturnValue(of(null));
@@ -425,7 +425,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('creates a subspace and links it into the active space', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!parent:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!parent:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!parent:hs')]);
     alertConfirm.mockReturnValue(of(true));
@@ -433,14 +433,18 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onCreateSubspace();
 
-    expect(createSpace).toHaveBeenCalledWith({ name: 'Sub' });
+    expect(createSpace).toHaveBeenCalledWith('@me:hs', { name: 'Sub' });
     // The link is the whole point — a space created and not nested is just a space.
-    expect(addExistingRoom).toHaveBeenCalledWith('!parent:hs', '!new-space:hs');
+    expect(addExistingRoom).toHaveBeenCalledWith(
+      '@me:hs',
+      '!parent:hs',
+      '!new-space:hs',
+    );
   });
 
   it('does not create a subspace without power to curate', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!parent:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!parent:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!parent:hs')]);
     canCurate.mockReturnValue(false);
@@ -452,7 +456,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('opens the add-rooms picker for the active space', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
@@ -461,14 +465,17 @@ describe('RoomsPage action error feedback', () => {
     expect(dialogOpen).toHaveBeenCalledWith(
       AddToSpaceComponent,
       expect.objectContaining({
-        inputs: expect.objectContaining({ spaceId: '!s:hs' }),
+        inputs: expect.objectContaining({
+          accountId: '@me:hs',
+          spaceId: '!s:hs',
+        }),
       }),
     );
   });
 
   it('opens the curation dialog for the active space', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
@@ -484,7 +491,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('refuses both curation dialogs without power to curate', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     canCurate.mockReturnValue(false);
@@ -500,7 +507,7 @@ describe('RoomsPage action error feedback', () => {
     // Same reasoning as Space settings: the write goes through the ACTIVE client, so it
     // would land on the wrong account or nowhere.
     const shell = build();
-    shell.nav.onSelectSpace('!theirs:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!theirs:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
     canCurate.mockReturnValue(true);
@@ -511,7 +518,7 @@ describe('RoomsPage action error feedback', () => {
   it('separates curating from configuring, which are different power levels', async () => {
     // A moderator can curate the child list without being able to rename the space.
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     canCurate.mockReturnValue(false);
@@ -522,7 +529,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('opens space settings seeded from raw state and the viewer’s permissions', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     currentIdentity.mockReturnValue({
@@ -572,7 +579,7 @@ describe('RoomsPage action error feedback', () => {
     // A space has no timeline to hide, and the dialog has no control for it — passing one
     // would be a seed for a field that cannot be saved.
     const shell = build();
-    shell.nav.onSelectSpace('!s:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
@@ -585,7 +592,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('does not open space settings when no space is active', async () => {
     const shell = build();
-    shell.nav.onSelectSpace(null, '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
     await settleWorkspace();
 
     shell.spaces.onOpenSpaceSettings();
@@ -597,7 +604,7 @@ describe('RoomsPage action error feedback', () => {
     // RoomSettingsService resolves the ACTIVE client, so this dialog would seed blank and
     // every write would land on the wrong account — or nowhere.
     const shell = build();
-    shell.nav.onSelectSpace('!theirs:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!theirs:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!theirs:hs', '@other:hs')]);
 
@@ -611,7 +618,7 @@ describe('RoomsPage action error feedback', () => {
 
   it('allows configuring a space on the signed-in account', async () => {
     const shell = build();
-    shell.nav.onSelectSpace('!mine:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!mine:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!mine:hs', '@me:hs')]);
 
@@ -622,11 +629,11 @@ describe('RoomsPage action error feedback', () => {
     const shell = build();
     railSpacesSignal.set([railSpace('!s:hs')]);
 
-    shell.nav.onSelectSpace(null, '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: null, accountId: '@me:hs' });
     await settleWorkspace();
     expect(shell.vm.canConfigureSpace()).toBe(false);
 
-    shell.nav.onSelectSpace('!gone:hs', '@me:hs');
+    shell.nav.onSelectSpace({ spaceId: '!gone:hs', accountId: '@me:hs' });
     await settleWorkspace();
     expect(shell.vm.canConfigureSpace()).toBe(false);
   });

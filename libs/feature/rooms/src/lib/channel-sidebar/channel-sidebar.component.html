@@ -197,7 +197,12 @@
               @if (child.joined) {
                 <button
                   class="joinable__action"
-                  (click)="openChildSpace.emit(child.roomId)"
+                  (click)="
+                    openChildSpace.emit({
+                      spaceId: child.roomId,
+                      accountId: child.accountId,
+                    })
+                  "
                   [attr.aria-label]="'Open ' + child.name"
                 >
                   Open

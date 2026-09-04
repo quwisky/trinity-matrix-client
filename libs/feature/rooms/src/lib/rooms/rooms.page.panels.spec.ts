@@ -267,6 +267,7 @@ describe('RoomsPage panels, pins and media', () => {
     vi.mocked(TestBed.inject(Router).navigate).mockResolvedValueOnce(true);
     dialogOpen.mockReturnValue(
       of({
+        accountId: '@me:hs',
         roomId: '!joined:hs',
         isSpace: false,
       }),
@@ -277,6 +278,7 @@ describe('RoomsPage panels, pins and media', () => {
     expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent, {
       ariaLabel: 'Explore rooms and spaces',
       autoFocus: '[data-autofocus]',
+      inputs: { accountId: '@me:hs' },
     });
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!joined:hs');
     await vi.waitFor(() =>
@@ -291,6 +293,7 @@ describe('RoomsPage panels, pins and media', () => {
     const shell = build();
     dialogOpen.mockReturnValue(
       of({
+        accountId: '@me:hs',
         roomId: '!space:hs',
         isSpace: true,
       }),
@@ -320,7 +323,7 @@ describe('RoomsPage panels, pins and media', () => {
     shell.rooms.onGoToUpgradedRoom('!old:hs');
     await settleWorkspace();
 
-    expect(joinPublicRoom).toHaveBeenCalledWith('!old:hs');
+    expect(joinPublicRoom).toHaveBeenCalledWith('@me:hs', '!old:hs');
     expect(shell.store.roomsView()).toBe(true); // surfaced in the Rooms view, not opened invisibly
     expect(shell.store.activeRoomId()).toBe('!new:hs'); // onSelectRoom ran with the joined id
   });
@@ -394,9 +397,12 @@ describe('RoomsPage panels, pins and media', () => {
     // shown is not a room that was opened.
     const shell = build();
 
-    shell.nav.onSelectRoom('!r:hs', '@me:hs');
+    shell.nav.onSelectRoom({ roomId: '!r:hs', accountId: '@me:hs' });
     await settleWorkspace();
-    shell.nav.onSelectRoom('!h:hs', '@me:hs', 'room-hop');
+    shell.nav.onSelectRoom(
+      { roomId: '!h:hs', accountId: '@me:hs' },
+      'room-hop',
+    );
     await settleWorkspace();
 
     expect(clearMarkedUnreadFn).toHaveBeenCalledWith('!r:hs');

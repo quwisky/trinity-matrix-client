@@ -9,6 +9,14 @@ import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
+import {
+  type ExactRoomSelection,
+  type ExactSpaceSelection,
+} from '../shared/exact-selection';
+
+interface ConfirmedRoomLinkTarget extends ExactRoomSelection {
+  readonly kind: 'room' | 'space';
+}
 
 /**
  * Routing a selection to the account that owns it.
@@ -56,10 +64,7 @@ export class AccountRoutingService {
 
   /** Open the exact Account-and-Room identity emitted by a visible Room row. */
   onSelectRoomSelection(
-    selection: {
-      readonly roomId: string;
-      readonly accountId: string;
-    },
+    selection: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin = 'room-list',
   ): void {
     this.openRoom(selection, origin);
@@ -69,17 +74,13 @@ export class AccountRoutingService {
    * Select a space pill from the rail. In mixed mode a foreign account's space switches to
    * that account first; Home (`null`) and same-account spaces select directly.
    */
-  onSelectSpaceRow(id: string | null): void {
-    const accountId = id
-      ? this.vm.railSpaces().find((s) => s.id === id)?.accountId
-      : this.workspace.activeAccountId();
-    if (!accountId) return;
+  onSelectSpaceRow({ spaceId, accountId }: ExactSpaceSelection): void {
     const changesAccount = accountId !== this.workspace.activeAccountId();
     this.navigate(
       {
         kind: 'scope',
         accountId,
-        scope: id ? { kind: 'space', spaceId: id } : { kind: 'home' },
+        scope: spaceId ? { kind: 'space', spaceId } : { kind: 'home' },
       },
       changesAccount
         ? 'Unable to open that account right now.'
@@ -115,17 +116,13 @@ export class AccountRoutingService {
    * path checks the synced sidebar projection and can briefly reject the new membership
    * before `/sync` catches up, so confirmed membership deliberately bypasses that stale read.
    */
-  openConfirmedLinkedRoom(
-    roomId: string,
-    accountId: string,
-    isSpace: boolean,
-  ): void {
-    if (isSpace) {
+  openConfirmedLinkedRoom(target: ConfirmedRoomLinkTarget): void {
+    if (target.kind === 'space') {
       this.navigate(
         {
           kind: 'scope',
-          accountId,
-          scope: { kind: 'space', spaceId: roomId },
+          accountId: target.accountId,
+          scope: { kind: 'space', spaceId: target.roomId },
         },
         'Unable to open that destination right now.',
       );
@@ -134,8 +131,8 @@ export class AccountRoutingService {
     this.navigate(
       {
         kind: 'room',
-        accountId,
-        roomId,
+        accountId: target.accountId,
+        roomId: target.roomId,
         scope: { kind: 'rooms' },
         origin: 'room-action',
       },
@@ -143,27 +140,8 @@ export class AccountRoutingService {
     );
   }
 
-  /** Open a newly accepted invite on its exact Account without waiting for sidebar sync. */
-  openConfirmedInviteRoom(
-    roomId: string,
-    accountId: string,
-    isDirect: boolean,
-  ): void {
-    this.navigate(
-      {
-        kind: 'room',
-        accountId,
-        roomId,
-        origin: isDirect ? 'direct-invitation' : 'room-invitation',
-      },
-      accountId !== this.workspace.activeAccountId()
-        ? 'Unable to open that account right now.'
-        : 'Unable to open that destination right now.',
-    );
-  }
-
   private openRoom(
-    selection: { readonly roomId: string; readonly accountId: string },
+    selection: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin,
   ): void {
     const changesAccount =

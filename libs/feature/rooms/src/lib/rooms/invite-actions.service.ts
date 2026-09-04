@@ -45,7 +45,10 @@ export class InviteActionsService {
       if (invite.isSpace) {
         return;
       }
-      this.routing.openConfirmedInviteRoom(roomId, accountId, invite.isDirect);
+      this.routing.onSelectRoomSelection(
+        { roomId, accountId },
+        invite.isDirect ? 'direct-invitation' : 'room-invitation',
+      );
     });
   }
 

@@ -90,7 +90,7 @@ export class MemberActionsService {
     const accountId = this.store.activeAccountId();
     if (!accountId) return;
     runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
-      (roomId) => this.nav.onSelectRoom(roomId, accountId),
+      (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
     );
   }
 
