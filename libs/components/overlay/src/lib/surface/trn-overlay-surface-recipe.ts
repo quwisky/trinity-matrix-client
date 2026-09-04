@@ -31,7 +31,7 @@ const layoutRecipe = {
   dialog:
     'max-h-[calc(100dvh-1.5rem)] w-[min(92vw,var(--trn-overlay-inline-size))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
   sheet:
-    'max-h-[80svh] w-[min(96vw,var(--trn-overlay-inline-size))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
+    'max-h-[80svh] w-screen max-w-[100vw] rounded-t-[var(--trinity-shape-overlay-radius)] rounded-b-none border-x-0 border-b-0',
   popover:
     'max-h-[calc(100dvh-1rem)] min-w-full w-max max-w-[min(92vw,var(--trn-overlay-inline-size))] rounded-[var(--trinity-shape-overlay-radius)]',
   panel:
@@ -53,7 +53,7 @@ export function trnOverlaySurfaceRecipe(
   layout: TrnOverlaySurfaceLayout,
 ): string {
   return hlm(
-    'block overflow-hidden border border-solid shadow-[var(--trinity-shadow-overlay)]',
+    'block overflow-hidden border border-solid shadow-overlay',
     variantRecipe[variant],
     sizeRecipe[size],
     layoutRecipe[layout],

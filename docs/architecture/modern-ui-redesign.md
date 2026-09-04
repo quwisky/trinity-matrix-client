@@ -1,7 +1,7 @@
 # Modern UI redesign plan
 
-Status: implemented through Phase 7; the human direction approval and explicitly deferred items
-below remain open.
+Status: implemented through Phase 7. The Tailwind, Theme and Appearance migration is complete;
+the explicitly deferred product items below remain separate work.
 
 This plan modernises Trinity using the interaction and visual-system ideas behind Discord's
 2025-2026 refresh while keeping Trinity recognisably its own Matrix client. It is not a request
@@ -264,9 +264,8 @@ stable. The floating/bounded layout does not depend on search.
 ### Tokens
 
 Use `libs/theme-foundation` as the single Theme owner. Its supported interface is one aggregate
-stylesheet plus one read-only catalog; the old application theme paths are temporary compatibility
-entrypoints during migration. Add or clarify semantic roles only when at least two components need
-them. Likely additions are:
+stylesheet plus one read-only catalog; no compatibility Theme entrypoint remains. Add or clarify
+semantic roles only when at least two components need them. The migration added:
 
 - outer app frame, workspace and raised-control surfaces;
 - selected, selected-hover and attention surfaces;

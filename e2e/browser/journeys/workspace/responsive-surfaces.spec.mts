@@ -169,7 +169,7 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
       runId,
     );
     await seedPreference(page, 'trinity.text-scale', 'larger');
-    await seedPreference(page, 'trinity.density', 'compact');
+    await seedPreference(page, 'trinity.appearance.density', 'compact');
 
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto('/login', { waitUntil: 'networkidle' });

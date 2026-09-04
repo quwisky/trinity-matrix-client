@@ -3,6 +3,7 @@ import {
   test,
   expect,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '../../../fixtures.mts';
 import {
@@ -130,6 +131,21 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+async function activateRoomLinkPrimary(
+  page: Page,
+  primary: Locator,
+): Promise<void> {
+  if (isAndroidE2E) {
+    // Remote debugging can report a viewport shorter than the physical WebView,
+    // even though the portrait geometry check proves the footer is on-screen.
+    await primary.focus();
+    await page.keyboard.press('Enter');
+    return;
+  }
+
+  await primary.click();
+}
+
 test.describe('Matrix room links', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.skip(
@@ -197,15 +213,14 @@ test.describe('Matrix room links', () => {
     const preview = page.getByTestId('room-link-preview');
     await expect(preview).toBeVisible();
     await expect(preview.getByTestId('room-link-name')).toHaveText(targetName);
-    await expect(preview.getByTestId('room-link-primary')).toHaveText(
-      'Open room',
-    );
+    const primary = preview.getByTestId('room-link-primary');
+    await expect(primary).toHaveText('Open room');
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',
       new RegExp(sourceName),
     );
 
-    await preview.getByTestId('room-link-primary').click();
+    await activateRoomLinkPrimary(page, primary);
 
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',
@@ -297,7 +312,7 @@ test.describe('Matrix room links', () => {
       document.documentElement.classList.toggle('dark', restoreDark);
     }, initiallyDark);
 
-    await primary.click();
+    await activateRoomLinkPrimary(page, primary);
     await expect(page.getByTestId('composer-input')).toHaveAttribute(
       'placeholder',
       new RegExp(remoteName),

@@ -76,12 +76,24 @@ test.describe('Code block rendering', () => {
       await page.evaluate((value) => {
         document.documentElement.classList.toggle('dark', value === 'dark');
       }, mode);
-      return keyword.evaluate((element) => getComputedStyle(element).color);
+      return keyword.evaluate((element) => {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--trinity-syntax-keyword)';
+        element.append(probe);
+        const colours = {
+          actual: getComputedStyle(element).color,
+          expected: getComputedStyle(probe).color,
+        };
+        probe.remove();
+        return colours;
+      });
     };
 
-    // The two --trinity-syntax-keyword values: #a626a4 light, #c678dd dark.
-    expect(await colourIn('light')).toBe('rgb(166, 38, 164)');
-    expect(await colourIn('dark')).toBe('rgb(198, 120, 221)');
+    const lightColours = await colourIn('light');
+    const darkColours = await colourIn('dark');
+    expect(lightColours.actual).toBe(lightColours.expected);
+    expect(darkColours.actual).toBe(darkColours.expected);
+    expect(lightColours.expected).not.toBe(darkColours.expected);
 
     // The language is captioned on the block, and only shown while pointing at it. The
     // caption is generated content from a `language` attribute, so it never becomes part of

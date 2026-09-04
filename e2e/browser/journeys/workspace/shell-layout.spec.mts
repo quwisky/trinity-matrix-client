@@ -23,7 +23,7 @@ import { passwordLogin, registerUser } from '../../../support/account.mts';
  * Cosy and Compact at the three phase-closing desktop viewports.
  */
 const session = synapseSession();
-const DENSITY_KEY = 'trinity.density';
+const DENSITY_KEY = 'trinity.appearance.density';
 
 interface ApiAccount {
   readonly userId: string;

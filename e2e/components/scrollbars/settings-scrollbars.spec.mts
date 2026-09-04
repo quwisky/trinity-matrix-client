@@ -71,11 +71,16 @@ async function visibleScrollbarPaint(scroller: Locator) {
     const railProbe = document.createElement('span');
     railProbe.style.cssText =
       'position:absolute;background:var(--trinity-rail)';
+    const trackProbe = document.createElement('span');
+    trackProbe.style.cssText =
+      'position:absolute;background:var(--trinity-scrollbar-track)';
     element.append(probe);
     element.append(railProbe);
+    element.append(trackProbe);
 
     const probeStyle = getComputedStyle(probe);
     const railProbeStyle = getComputedStyle(railProbe);
+    const trackProbeStyle = getComputedStyle(trackProbe);
     const usesWebkit =
       !navigator.userAgent.includes('Firefox') &&
       CSS.supports('selector(::-webkit-scrollbar-thumb)');
@@ -105,10 +110,12 @@ async function visibleScrollbarPaint(scroller: Locator) {
       expectedSize: probeStyle.width,
       expectedThumb: probeStyle.backgroundColor,
       expectedRail: railProbeStyle.backgroundColor,
+      expectedTrack: trackProbeStyle.backgroundColor,
       expectedRadius: probeStyle.borderRadius,
     };
     probe.remove();
     railProbe.remove();
+    trackProbe.remove();
     return paint;
   });
 }
@@ -253,13 +260,10 @@ test.describe('Settings scrollbars', () => {
       .poll(() => scrollbarPainters(page))
       .toEqual(['SECTION[settings-detail]']);
 
+    const railColours: string[] = [];
     for (const theme of [
-      {
-        theme: 'amethyst',
-        dark: false,
-        expectedRail: 'rgb(231, 226, 240)',
-      },
-      { theme: 'onyx', dark: true, expectedRail: 'rgb(0, 0, 0)' },
+      { theme: 'amethyst', dark: false },
+      { theme: 'onyx', dark: true },
     ]) {
       await page.evaluate(({ theme, dark }) => {
         document.documentElement.dataset['theme'] = theme;
@@ -267,19 +271,20 @@ test.describe('Settings scrollbars', () => {
       }, theme);
 
       const paint = await visibleScrollbarPaint(detail);
-      expect.soft(paint.expectedRail).toBe(theme.expectedRail);
+      railColours.push(paint.expectedRail);
       expect.soft(paint.expectedThumb).toBe(paint.expectedRail);
       if (paint.usesWebkit) {
         expect.soft(paint.width).toBe(paint.expectedSize);
         expect.soft(paint.height).toBe(paint.expectedSize);
         expect.soft(paint.thumb).toBe(paint.expectedThumb);
         expect.soft(paint.radius).toBe(paint.expectedRadius);
-        expect.soft(paint.track).toBe('rgba(0, 0, 0, 0)');
-        expect.soft(paint.corner).toBe('rgba(0, 0, 0, 0)');
+        expect.soft(paint.track).toBe(paint.expectedTrack);
+        expect.soft(paint.corner).toBe(paint.expectedTrack);
       } else {
         expect.soft(paint.standardColor).toContain(paint.expectedThumb);
       }
     }
+    expect(new Set(railColours).size).toBe(railColours.length);
 
     const hidden = await nav.evaluate((element) => ({
       standard: getComputedStyle(element).scrollbarWidth,

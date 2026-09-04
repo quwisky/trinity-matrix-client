@@ -11,6 +11,6 @@ export function trnDropdownMenuItemRecipe(
 ): string {
   return hlm(
     variant === 'danger' &&
-      'text-danger hover:bg-destructive/10 hover:text-danger focus:bg-destructive/10 focus:text-danger dark:hover:bg-destructive/20 dark:focus:bg-destructive/20 *:[trn-icon]:text-danger',
+      'text-danger hover:bg-[var(--trinity-danger-tint-10)] hover:text-danger focus:bg-[var(--trinity-danger-tint-10)] focus:text-danger dark:hover:bg-[var(--trinity-danger-tint-20)] dark:focus:bg-[var(--trinity-danger-tint-20)] *:[trn-icon]:text-danger',
   );
 }

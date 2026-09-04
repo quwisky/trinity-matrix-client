@@ -207,6 +207,7 @@ describe('Theme Foundation repository contract', () => {
       ],
       ['libs/spartan/tabs/src/lib/hlm-tabs-trigger.ts', 'shadow-raised', 1],
       ['libs/spartan/badge/src/lib/hlm-badge.ts', 'rounded-full', 1],
+      ['libs/spartan/avatar/src/lib/hlm-avatar.ts', '--trn-avatar-radius', 4],
     ];
 
     for (const [file, token, count] of expected) {

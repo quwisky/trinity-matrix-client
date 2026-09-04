@@ -34,9 +34,9 @@ test('the action sheet stays bottom-bound, scrollable, touch-sized, and disabled
   const viewport = page.viewportSize();
   expect(bounds).not.toBeNull();
   expect(viewport).not.toBeNull();
-  expect(bounds!.x).toBeGreaterThanOrEqual(0);
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport!.width);
-  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport!.height);
+  expect(bounds!.x).toBeCloseTo(0, 1);
+  expect(bounds!.width).toBeCloseTo(viewport!.width, 1);
+  expect(bounds!.y + bounds!.height).toBeCloseTo(viewport!.height, 1);
   expect(bounds!.height).toBeLessThanOrEqual(viewport!.height * 0.8 + 1);
 
   const danger = page.getByTestId('sheet-danger');
