@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Workspace restoration now waits for its Room Library projections.** Application Runtime owns
+  one cold Room Library lifetime after Account restoration, prepares Rooms, Spaces, invitations,
+  hierarchy and the selected-Account view through Projection Runtime, and keeps live deep-link,
+  Back, notification, update and presentation streams gated until final readiness. Blocked startup,
+  stop and restart release and reacquire that lifetime without retaining listeners.
+
 - **Room Library now owns one selected-Account projection path.** The selected view directly
   reconciles live Account clients through one internal listener registry and projects Rooms,
   Spaces, and invitations behind its public interface. The three compatibility mixed services,

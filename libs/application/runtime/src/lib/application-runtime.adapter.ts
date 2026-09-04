@@ -2,6 +2,7 @@ import { InjectionToken } from '@angular/core';
 import type { Observable } from 'rxjs';
 import type {
   ApplicationRecoveryAdapterOutcome,
+  ApplicationSessionEvent,
   ApplicationRuntimeWarning,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
@@ -22,8 +23,8 @@ export interface ApplicationRuntimeAdapter {
   /** Starts after preference hydration and lives until the Application Runtime stops. */
   runPreferenceLifetime(): Observable<ApplicationRuntimeWarning>;
 
-  /** Lives until Application Runtime is stopped or the host application is destroyed. */
-  runSession(): Observable<ApplicationRuntimeWarning>;
+  /** Prepares before Workspace restoration and opens live streams after final readiness. */
+  runSession(readiness: Observable<void>): Observable<ApplicationSessionEvent>;
 }
 
 export const APPLICATION_RUNTIME_ADAPTER =

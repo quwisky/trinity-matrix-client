@@ -41,3 +41,10 @@ The three legacy mixed services and their public exports are removed. The source
 their files, symbols, exports, page fan-out, and direct active-projection reads from the Room-shell
 view model. Shared SDK events attach once per selected Account, domain-specific invalidation is
 coalesced, and unaffected projection slices retain their identity.
+
+Application Runtime owns the selected view through Room Library's named cold session lifetime.
+After Account restoration, that lifetime connects joined Rooms, Spaces, invitations, Space
+hierarchy and the selected view, then waits for Projection Runtime's active-Account barrier before
+Workspace restoration. The lifetime survives Active Account reattachment without a runtime
+restart and releases all five connections on blocked startup, stop, destruction, or restart.
+Conversation children remain demand-owned and outside this preparation boundary.

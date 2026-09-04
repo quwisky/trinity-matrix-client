@@ -43,6 +43,19 @@ export interface ApplicationStartupFailure {
   readonly diagnostic: ApplicationRuntimeDiagnostic;
 }
 
+/** Preparation and live events from the one owned Application Runtime session source. */
+export type ApplicationSessionEvent =
+  | { readonly kind: 'prepared' }
+  | {
+      readonly kind: 'blocked';
+      readonly recovery: ApplicationStartupRecovery;
+      readonly diagnostic: ApplicationRuntimeDiagnostic;
+    }
+  | {
+      readonly kind: 'warning';
+      readonly warning: ApplicationRuntimeWarning;
+    };
+
 export type ApplicationStartupStageOutcome =
   | {
       readonly kind: 'ready';

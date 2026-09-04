@@ -7,6 +7,7 @@ import {
 } from './application-runtime.adapter';
 import type {
   ApplicationRuntimeWarning,
+  ApplicationSessionEvent,
   ApplicationStartOutcome,
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
@@ -18,7 +19,8 @@ describe('ApplicationRuntimeService', () => {
   let order: string[];
   let preferenceLifetime: Subject<ApplicationRuntimeWarning>;
   let preferenceLifetimeStopped: Mock<() => void>;
-  let session: Subject<ApplicationRuntimeWarning>;
+  let session: Subject<ApplicationSessionEvent>;
+  let sessionPreparation: ApplicationSessionEvent;
   let sessionStopped: Mock<() => void>;
   let adapter: ApplicationRuntimeAdapter;
   let runtime: ApplicationRuntimeService;
@@ -27,7 +29,8 @@ describe('ApplicationRuntimeService', () => {
     order = [];
     preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
     preferenceLifetimeStopped = vi.fn<() => void>();
-    session = new Subject<ApplicationRuntimeWarning>();
+    session = new Subject<ApplicationSessionEvent>();
+    sessionPreparation = { kind: 'prepared' };
     sessionStopped = vi.fn<() => void>();
     const stage = (name: string) =>
       vi.fn(() => {
@@ -53,12 +56,21 @@ describe('ApplicationRuntimeService', () => {
             };
           }),
       ),
-      runSession: vi.fn<() => Observable<ApplicationRuntimeWarning>>(
-        () =>
-          new Observable<ApplicationRuntimeWarning>((subscriber) => {
-            order.push('session');
+      runSession: vi.fn<ApplicationRuntimeAdapter['runSession']>(
+        (readiness) =>
+          new Observable<ApplicationSessionEvent>((subscriber) => {
+            order.push('session-preparation');
+            subscriber.next(sessionPreparation);
+            if (sessionPreparation.kind === 'blocked') {
+              subscriber.complete();
+              return sessionStopped;
+            }
+            const readinessSubscription = readiness.subscribe(() =>
+              order.push('session-ready'),
+            );
             const subscription = session.subscribe(subscriber);
             return () => {
+              readinessSubscription.unsubscribe();
               subscription.unsubscribe();
               sessionStopped();
             };
@@ -87,10 +99,11 @@ describe('ApplicationRuntimeService', () => {
       'preference-hydration',
       'preference-lifetime',
       'account-restoration',
+      'session-preparation',
       'session-capabilities',
       'workspace-restoration',
       'readiness',
-      'session',
+      'session-ready',
     ]);
     expect(outcomes).toEqual([{ kind: 'ready', attempt: 1, warnings: [] }]);
     expect(adapter.runSession).toHaveBeenCalledOnce();
@@ -183,10 +196,13 @@ describe('ApplicationRuntimeService', () => {
     await vi.waitFor(() => expect(runtime.state().phase).toBe('ready'));
 
     session.next({
-      stage: 'session',
-      scope: 'badge',
-      diagnostic: { code: 'badge-update-failed' },
-      recovery: 'retry-startup',
+      kind: 'warning',
+      warning: {
+        stage: 'session',
+        scope: 'badge',
+        diagnostic: { code: 'badge-update-failed' },
+        recovery: 'retry-startup',
+      },
     });
 
     expect(runtime.state()).toMatchObject({
@@ -195,6 +211,79 @@ describe('ApplicationRuntimeService', () => {
     });
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
+  });
+
+  it('blocks failed session preparation before Workspace and retries cleanly', async () => {
+    sessionPreparation = {
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'room-library-projection-preparation-failed' },
+    };
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+
+    await vi.waitFor(() => expect(runtime.state().phase).toBe('blocked'));
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'session-capabilities',
+        diagnostic: { code: 'room-library-projection-preparation-failed' },
+      },
+    });
+    expect(adapter.establishSessionCapabilities).not.toHaveBeenCalled();
+    expect(adapter.restoreWorkspace).not.toHaveBeenCalled();
+    expect(sessionStopped).toHaveBeenCalledOnce();
+
+    sessionPreparation = { kind: 'prepared' };
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    await vi.waitFor(() =>
+      expect(outcomes.at(-1)).toMatchObject({ kind: 'ready', attempt: 2 }),
+    );
+
+    expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.restoreWorkspace).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('releases prepared projections when Workspace blocks and reacquires them on retry', async () => {
+    vi.mocked(adapter.restoreWorkspace).mockReturnValueOnce(
+      of({
+        kind: 'blocked',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'workspace-navigation-failed' },
+      }),
+    );
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+
+    await vi.waitFor(() => expect(runtime.state().phase).toBe('blocked'));
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'workspace-restoration',
+        diagnostic: { code: 'workspace-navigation-failed' },
+      },
+    });
+    expect(sessionStopped).toHaveBeenCalledOnce();
+
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    await vi.waitFor(() =>
+      expect(outcomes.at(-1)).toMatchObject({ kind: 'ready', attempt: 2 }),
+    );
+    expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.restoreWorkspace).toHaveBeenCalledTimes(2);
+
+    lifetime.unsubscribe();
+    expect(sessionStopped).toHaveBeenCalledTimes(2);
   });
 
   it('tears down session ownership and can restart after shutdown', async () => {

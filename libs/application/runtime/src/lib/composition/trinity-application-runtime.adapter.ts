@@ -9,6 +9,7 @@ import {
 import type { ApplicationRuntimeAdapter } from '../application-runtime.adapter';
 import type {
   ApplicationRecoveryAdapterOutcome,
+  ApplicationSessionEvent,
   ApplicationRuntimeWarning,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
@@ -39,7 +40,6 @@ import {
 } from '@trinity/platform-native';
 import {
   HostCapabilitiesService,
-  HostUpdatesService,
   type HostCapabilityManifest,
 } from '@trinity/runtime/host';
 import {
@@ -81,7 +81,6 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly location = inject(Location);
   private readonly host = inject(HostCapabilitiesService);
   private readonly accounts = inject(AccountRuntimeService);
-  private readonly updates = inject(HostUpdatesService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly appearance = inject(AppearancePreferences);
   private readonly appearanceEffects = inject(AppearanceEffects);
@@ -241,11 +240,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         persistence: this.storagePersistence
           .requestPersistence()
           .pipe(map(() => null)),
-        updates: this.initialUpdateCheck(),
       }).pipe(
-        map(({ updates }) =>
-          ready([...badgeWarning, ...(updates ? [updates] : [])]),
-        ),
+        map(() => ready(badgeWarning)),
         catchError(() =>
           of({
             kind: 'blocked',
@@ -368,24 +364,11 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
     }
   }
 
-  runSession(): Observable<ApplicationRuntimeWarning> {
-    return this.session.run();
+  runSession(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
+    return this.session.run(readiness);
   }
 
   runPreferenceLifetime(): Observable<ApplicationRuntimeWarning> {
     return this.appearanceEffects.run().pipe(ignoreElements());
-  }
-
-  private initialUpdateCheck(): Observable<ApplicationRuntimeWarning | null> {
-    return this.updates.check().pipe(
-      map((outcome) =>
-        outcome.kind === 'rejected'
-          ? warning('session-capabilities', 'updates', 'update-check-failed')
-          : null,
-      ),
-      catchError(() =>
-        of(warning('session-capabilities', 'updates', 'update-check-failed')),
-      ),
-    );
   }
 }

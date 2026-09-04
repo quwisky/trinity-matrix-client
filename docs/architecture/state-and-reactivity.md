@@ -308,6 +308,15 @@ already wired to the same client, and otherwise disconnects from the previous cl
 `disconnect()` releases the runtime lease, which detaches, calls `unbind`, cancels queued work,
 nulls the connected client, and then calls `reset()`.
 
+Application Runtime owns one cold `RoomLibraryLifetime` after Account restoration. The lifetime
+connects joined Rooms, Spaces, invitations, Space hierarchy and the selected-Account view, then
+waits on Projection Runtime's finite `active-account` barrier before Workspace restores its
+destination. It stays subscribed for the complete ready session, so Active Account transitions
+reattach and acknowledge the same projections without restarting Application Runtime. A blocked
+barrier, later blocked startup stage, stop, or destruction releases the selected sources and each
+runtime lease exactly once; a retry or restart creates one fresh generation. Exact Conversation
+children remain demand-owned and are not part of this preparation lifetime.
+
 A projecting service typically just delegates:
 
 ```ts
@@ -617,7 +626,8 @@ lifecycle hooks and that left the callback unset for every unit test. And a `hos
 only name a member of the component class, so the global keydown listener keeps a one-line
 delegate.
 
-The page still starts its Room-shell projections: `ngOnInit` calls `connect()` on rooms, spaces,
-invites, crypto, presence, space children, room notification rules, and Room permissions. Local
-notification delivery is not page-owned: Application Runtime subscribes to its cold session stream,
-which stays dormant with no Accounts and releases every Matrix and host listener on runtime stop.
+Application Runtime now solely owns the Room Library preparation lifetime; the Rooms route no
+longer attaches joined Rooms, Spaces, invitations, or Space hierarchy. The page temporarily retains
+startup only for Trust, Identity, and Notification projections until their own session lifetimes
+migrate. Local notification delivery is not page-owned: the readiness-gated session stream stays
+dormant until final readiness and releases every Matrix and host listener on runtime stop.

@@ -47,9 +47,12 @@ Tooling and black-box test projects are outside this runtime dependency model. W
 Workspace, Settings, Global Search, Badge coordination, and Application Runtime are application workflows. `BadgeCoordinator` reads Room Library's aggregate unread state without taking ownership of it and writes only through a host-neutral `BadgeSink`; Conversation continues to own read position. Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store, Host Capabilities, pure utilities, and the design system form the deliberately small shared kernel and supporting seams.
 
 Application Runtime is the sole startup and session owner. Its ordered attempt negotiates the
-host, hydrates preferences, restores Accounts, establishes optional session capabilities,
-restores Workspace and crosses one final readiness stage. Required failures block with typed
-executable recovery; optional failures are retained and presented as non-blocking warnings. The
+host, hydrates preferences, restores Accounts, prepares Room Library's active-Account projections
+and selected view, establishes optional session capabilities, restores Workspace and crosses one
+final readiness stage. The Room Library preparation source remains owned throughout the session;
+all deep-link, Back, notification, update, badge, and surface streams stay gated until final
+readiness. Required failures block with typed executable recovery; optional failures are retained
+and presented as non-blocking warnings. The
 application root keeps that warning region visible and keyboard-scrollable, caps it at one quarter
 of the visual viewport, and gives the remaining height to the routed surface. Its one lifetime
 subscription owns every session-long source and can be stopped and restarted without retained
