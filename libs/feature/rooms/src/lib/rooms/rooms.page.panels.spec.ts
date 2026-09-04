@@ -152,10 +152,8 @@ describe('RoomsPage panels, pins and media', () => {
           spaces: railSpacesSignal,
           createSpace,
         }),
-        // `selected` as well as `mixing`: the page's cross-account effect reads it and
-        // hands the result to `MixedRoomsService.setAccounts`, which dereferences `.size`.
-        // ng-mocks does not invent signal members, so an unstubbed one arrives as
-        // `undefined` — invisible until something in this file actually flushes effects.
+        // Account routing reads both signals. ng-mocks does not invent signal members, so
+        // an unstubbed one arrives as `undefined` when this block flushes effects.
         MockProvider(AccountScopeService, {
           mixing: signal(false),
           selected: signal(new Set(['@me:hs'])),

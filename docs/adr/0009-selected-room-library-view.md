@@ -12,9 +12,10 @@ identity emitted from it.
 
 The active Account is always present. Persisted Account identifiers remain stored when their
 accounts are temporarily absent, but only live Account identifiers contribute rows. A one-Account
-selection reads the existing active projections directly, avoiding both duplicate listeners and
-the intentionally empty mixed projection. More than one Account drives the existing mixed
-projectors from one selection observer owned by the selected view.
+selection reads the existing active projections directly and attaches no additional Matrix
+listeners. More than one Account is projected directly behind the selected view. One internal
+Account-source registry owns live-set reconciliation, same-id client replacement, and listener
+attachment and detachment; Room, Space, and invitation projectors own only domain policy.
 
 Room identity is exact. A Room shared by selected Accounts renders once, prefers the active
 Account as its action identity, retains every contributing Account, and carries the loudest unread
@@ -31,10 +32,12 @@ Preference writes are cold and finite, publish only after durable storage succee
 typed recovery when storage is unavailable. A failed write therefore leaves the prior effective
 view visible instead of briefly publishing an unpersisted selection.
 
-This follows the migrate step of ADR-0007. Room-shell presentation and action lookup now read one
+This completes the contract step of ADR-0007. Room-shell presentation and action lookup read one
 selected generation, and page-level Account fan-out is gone. Visible Room and invitation rows carry
 their exact Account identity; shared-row read, notification, favourite, and priority writes dedupe
 and target every contributing Account. Async create, join, permalink, and confirmed-membership
 flows retain the Account that began the action rather than re-reading Active Account on completion.
-The source contract now rejects every production import of the legacy mixed services outside the
-selected implementation. The contract step can therefore remove those implementations and exports.
+The three legacy mixed services and their public exports are removed. The source contract rejects
+their files, symbols, exports, page fan-out, and direct active-projection reads from the Room-shell
+view model. Shared SDK events attach once per selected Account, domain-specific invalidation is
+coalesced, and unaffected projection slices retain their identity.

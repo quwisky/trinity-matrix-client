@@ -12,18 +12,13 @@ import {
   AccountRuntimeService,
   type AccountSwitchCoordination,
 } from '@trinity/data-access/accounts';
-import {
-  MixedInvitesService,
-  type PendingInvite,
-} from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   RoomLibraryService,
+  SelectedRoomLibraryService,
   SpacesService,
   AccountScopeService,
-  MixedRoomsService,
-  MixedSpacesService,
   UnreadAggregatorService,
   type RoomSummary,
   type SpaceSummary,
@@ -114,7 +109,6 @@ describe('RoomsPage mixed-account view', () => {
   ];
 
   let switchAccount: Mock;
-  let setMixedRoomsAccounts: Mock;
   /** The picker's current selection, driven directly by the tests. */
   let shownAccounts: WritableSignal<ReadonlySet<string>>;
   let mixedRooms: WritableSignal<RoomSummary[]>;
@@ -143,7 +137,6 @@ describe('RoomsPage mixed-account view', () => {
           }),
         ),
     );
-    setMixedRoomsAccounts = vi.fn();
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
     mixedRooms = signal(mixedRoomList());
     toggleAccount = vi.fn(() => of({ kind: 'completed' as const }));
@@ -167,26 +160,30 @@ describe('RoomsPage mixed-account view', () => {
           mixing: computed(() => shownAccounts().size > 1),
           toggle: toggleAccount,
         }),
-        MockProvider(MixedRoomsService, {
-          rooms: mixedRooms,
-          setAccounts: setMixedRoomsAccounts,
-        }),
-        MockProvider(MixedSpacesService, {
-          spaces: signal([
-            space('!s-mine:hs', '@me:hs'),
-            space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
-          ]),
-          spaceChildRoomIdsByAccount: signal(
-            new Map([
-              ['@me:hs', new Set<string>()],
-              ['@alt:hs', new Set(['!child-theirs:hs'])],
-            ]),
-          ),
-          setAccounts: vi.fn(),
-        }),
-        MockProvider(MixedInvitesService, {
-          invites: signal<PendingInvite[]>([]),
-          setAccounts: vi.fn(),
+        MockProvider(SelectedRoomLibraryService, {
+          view: computed(() => {
+            const accountIds = shownAccounts();
+            const mixing = accountIds.size > 1;
+            return {
+              accountIds,
+              mode: mixing ? ('mixed' as const) : ('active' as const),
+              rooms: mixing ? mixedRooms() : [room('!mine:hs', '@me:hs')],
+              spaces: mixing
+                ? [
+                    space('!s-mine:hs', '@me:hs'),
+                    space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
+                  ]
+                : [space('!s-mine:hs', '@me:hs')],
+              spaceChildRoomIdsByAccount: mixing
+                ? new Map([
+                    ['@me:hs', new Set<string>()],
+                    ['@alt:hs', new Set(['!child-theirs:hs'])],
+                  ])
+                : new Map([['@me:hs', new Set<string>()]]),
+              invitations: [],
+            };
+          }),
+          toggleAccount,
         }),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
@@ -254,9 +251,6 @@ describe('RoomsPage mixed-account view', () => {
       '!s-mine:hs',
       '!s-alt:hs',
     ]);
-    expect(setMixedRoomsAccounts).toHaveBeenCalledWith(
-      new Set(['@me:hs', '@alt:hs']),
-    );
     expect(shell.vm.accountBadges().size).toBeGreaterThan(0);
   });
 
@@ -427,15 +421,11 @@ describe('RoomsPage mixed-account view', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
     TestBed.tick();
-    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(
-      new Set(['@me:hs', '@alt:hs']),
-    );
+    expect(shell.vm.visibleRooms().length).toBeGreaterThan(1);
 
     shownAccounts.set(new Set(['@me:hs']));
     TestBed.tick();
-    // One account is not a mix — the projection is told so and empties itself.
-    expect(setMixedRoomsAccounts).toHaveBeenLastCalledWith(new Set(['@me:hs']));
-    // Recent falls back to the active account's rooms only.
+    // Recent falls back to the active Account projection only.
     expect(shell.vm.visibleRooms().map((r) => r.id)).toEqual(['!mine:hs']);
   });
 

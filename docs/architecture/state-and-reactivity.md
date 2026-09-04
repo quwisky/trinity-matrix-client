@@ -414,30 +414,32 @@ The library column is the import alias, and it mirrors the directory:
 the third string and keeps the flat hyphenated form, so the command is
 `pnpm nx test data-access-room-library`.
 
-Six take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
+Three take **only** `coalesce()`, and each says why at the call site. The split is not arbitrary — it
 follows from what the service's lifetime is keyed to:
 
 | Service                      | Keyed to                       | Why the client half does not apply                                                                                                       |
 | ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `TimelineService`            | One Conversation child         | Package-internal implementation bound to an immutable Account-and-Room handle; Conversation Runtime owns its `open()`/`close()` lifetime |
 | `ConversationPinsController` | One focused Conversation child | Conversation Runtime binds its exact Room, detaches it on blur, and reconciles from SDK state on refocus                                 |
-| `MixedRoomsService`          | The mixed account set          | Attaches listeners per account and reconciles them against the live set, rather than following one active client                         |
-| `MixedSpacesService`         | The mixed account set          | Same                                                                                                                                     |
-| `MixedInvitesService`        | The mixed account set          | Same                                                                                                                                     |
 | `UnreadAggregatorService`    | The mixed account set          | Same                                                                                                                                     |
 
-`SelectedRoomLibraryService` sits above the active and mixed projections. Its single `view` signal
+`SelectedRoomLibraryService` owns the selected-Account projection path. Its single `view` signal
 publishes the effective Account set, active-or-mixed mode, Rooms, Spaces, and invitations as one
-read model. It observes Account selection once and drives all three mixed projectors; consumers do
-not fan Account ids into them. A one-Account selection delegates to the active projections, while a
-multi-Account selection preserves active-owner preference, every contributing Room Account, the
+read model. A one-Account selection delegates to the active projections without attaching any
+additional Matrix listeners. For multiple Accounts, one internal source registry reconciles the
+selected and live sets, client replacement, and listener attachment. Shared events attach once per
+Account and invalidate the Room, Space, and invitation projectors through one coalescer; a
+Room-only event reuses the unaffected Space and invitation slices by identity. Consumers never fan
+Account ids into projectors or choose an active versus mixed source.
+
+The domain projectors preserve active-owner preference, every contributing Room Account, the
 loudest unread state, unioned Space children, per-Account space-child membership, and every
 Account-scoped invitation. Local search and the Room shell's Recent, Home, Rooms, Space, rail,
 badge, invitation presentation, action lookup, and shortcut validation read that same generation.
 Rows emit exact Account identities; shared-row commands deduplicate and target every contributing
 Account, while create, join, permalink, and confirmed-membership flows retain their initiating
-Account across asynchronous work. No production consumer imports a compatibility mixed projector
-outside `SelectedRoomLibraryService`.
+Account across asynchronous work. The former public mixed Room, Space, and invitation projections
+no longer exist.
 
 The selected Account set is a Room Library-owned typed installation preference. Its command writes
 before publishing, so unavailable storage returns typed retry guidance while the prior selected
@@ -567,7 +569,7 @@ it decides listener lifecycle, coalescing and account-switch re-projection for a
 keyed on ONE active client. `ConversationPinsController` is exact-Conversation-scoped and takes
 `coalesce` alone; `membersFor` writes per-room signals from the owning service's own listeners. Where the
 projection is keyed on the ACCOUNT SET rather than one active client, reconcile a listener per
-account instead (`AccountIdentitiesService`, `MixedRoomsService`, `UnreadAggregatorService`) — and
+account instead (`AccountIdentitiesService`, selected Room Library, `UnreadAggregatorService`) — and
 keep the `held.client === client` identity re-check, or re-adding a signed-in account strands
 the listener on a stopped client.
 

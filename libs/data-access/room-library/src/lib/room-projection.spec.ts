@@ -85,7 +85,7 @@ describe('spaceRankOf', () => {
 
   it('keeps the first occurrence of a repeated id', () => {
     // Neither producer repeats a child today — `spaceChildIdsOf` reads one state event per
-    // child and `MixedSpacesService` dedupes as it concatenates — so this pins the contract
+    // child and the selected projector dedupes as it concatenates — so this pins the contract
     // of an exported pure function rather than a scenario the app reaches.
     expect([...spaceRankOf(['!a:hs', '!b:hs', '!a:hs'])]).toEqual([
       ['!a:hs', 0],

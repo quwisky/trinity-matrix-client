@@ -11,10 +11,7 @@ import {
   TrustVerificationService,
   TrustService,
 } from '@trinity/data-access/trust';
-import {
-  InvitesService,
-  MixedInvitesService,
-} from '@trinity/data-access/room-library';
+import { InvitesService } from '@trinity/data-access/room-library';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   IgnoredUsersService,
@@ -22,9 +19,8 @@ import {
 } from '@trinity/data-access/identity';
 import {
   AccountScopeService,
-  MixedRoomsService,
-  MixedSpacesService,
   RoomLibraryService,
+  SelectedRoomLibraryService,
   SpaceChildrenService,
   SpacesService,
   type RoomSummary,
@@ -164,13 +160,20 @@ describe('RoomsPage rendered right-panel focus', () => {
           openSpace: () => of(void 0),
           spaces: signal([]),
         }),
-        MockProvider(MixedRoomsService, { setAccounts: vi.fn() }),
-        MockProvider(MixedSpacesService, { setAccounts: vi.fn() }),
         MockProvider(AccountScopeService, {
           selected: signal(new Set(['@me:hs'])),
           mixing: signal(false),
         }),
-        MockProvider(MixedInvitesService, { setAccounts: vi.fn() }),
+        MockProvider(SelectedRoomLibraryService, {
+          view: signal({
+            accountIds: new Set(['@me:hs']),
+            mode: 'active' as const,
+            rooms: [ROOM],
+            spaces: [],
+            spaceChildRoomIdsByAccount: new Map(),
+            invitations: [],
+          }),
+        }),
         MockProvider(InvitesService, { connect: vi.fn() }),
         MockProvider(TimelineActionsService),
         MockProvider(FeatureFlagsService, { virtualTimeline: signal(false) }),

@@ -40,7 +40,7 @@ interface AccountListener {
  *
  * Listener set rather than {@link projectFromClient}: this is keyed on the ACCOUNT SET, not
  * on one active client, so it takes the batching primitive alone and reconciles its own
- * listeners — the same shape `MixedRoomsService` and `UnreadAggregatorService` use,
+ * listeners — the same shape selected Room Library and `UnreadAggregatorService` use,
  * including the identity re-check that catches a new client object for the same user id.
  *
  * **Why it listens to `ClientEvent.Sync` and not only to `UserEvent.*`**, which is the trap
