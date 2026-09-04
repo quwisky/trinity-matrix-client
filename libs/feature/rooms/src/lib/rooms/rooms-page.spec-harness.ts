@@ -5,7 +5,7 @@
 // fork crossed the 2 GB heap ceiling around test 77 and died mid-run. vitest isolates per
 // FILE, so splitting the describes across files is what bounds the peak; this holds the
 // pieces they all shared.
-import { inject, signal, type Provider } from '@angular/core';
+import { computed, inject, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
@@ -23,6 +23,9 @@ import {
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   InvitesService,
+  RoomLibraryService,
+  SelectedRoomLibraryService,
+  SpacesService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import {
@@ -403,6 +406,41 @@ export function invitesProvider(over: Partial<InvitesService> = {}) {
     declineInvite: () => of(undefined),
     ...over,
   });
+}
+
+/** Keep single-Account page tests on their directly driven projection signals. */
+export function selectedRoomLibraryProvider(): Provider {
+  return {
+    provide: SelectedRoomLibraryService,
+    useFactory: () => {
+      const matrix = inject(MatrixClientService);
+      const rooms = inject(RoomLibraryService);
+      const spaces = inject(SpacesService);
+      const invites = inject(InvitesService);
+      return {
+        view: computed(() => {
+          const activeAccountId = matrix.activeUserId();
+          return {
+            accountIds: new Set(activeAccountId ? [activeAccountId] : []),
+            mode: 'active' as const,
+            rooms: rooms.rooms(),
+            spaces: spaces.spaces(),
+            spaceChildRoomIdsByAccount: activeAccountId
+              ? new Map([
+                  [
+                    activeAccountId,
+                    new Set(
+                      spaces.spaces().flatMap((space) => space.childRoomIds),
+                    ),
+                  ],
+                ])
+              : new Map(),
+            invitations: invites.pendingInvites(),
+          };
+        }),
+      };
+    },
+  };
 }
 
 /**

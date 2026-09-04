@@ -60,6 +60,7 @@ function setup(
           mode: options.mixing ? 'mixed' : 'active',
           rooms: options.rooms ?? [],
           spaces: options.spaces ?? [],
+          spaceChildRoomIdsByAccount: new Map(),
           invitations: options.invites ?? [],
         }),
       }),

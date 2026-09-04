@@ -176,6 +176,12 @@ describe('RoomsPage mixed-account view', () => {
             space('!s-mine:hs', '@me:hs'),
             space('!s-alt:hs', '@alt:hs', ['!child-theirs:hs']),
           ]),
+          spaceChildRoomIdsByAccount: signal(
+            new Map([
+              ['@me:hs', new Set<string>()],
+              ['@alt:hs', new Set(['!child-theirs:hs'])],
+            ]),
+          ),
           setAccounts: vi.fn(),
         }),
         MockProvider(MixedInvitesService, {
@@ -259,6 +265,7 @@ describe('RoomsPage mixed-account view', () => {
       '@alt:hs': 'mxc://hs/alt-avatar',
     });
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
 
     // The badge exposes the account's own avatar (resolved to the real image downstream)…
     expect(shell.vm.accountBadges().get('@alt:hs')?.avatarMxc).toBe(
@@ -271,6 +278,7 @@ describe('RoomsPage mixed-account view', () => {
   it('Home shows every account’s DMs in mixed mode', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
     shell.nav.onSelectSpace(null); // Home — leaves Recent
     await settleWorkspace();
 
@@ -285,6 +293,7 @@ describe('RoomsPage mixed-account view', () => {
   it('Rooms shows every account’s non-DM, non-space rooms in mixed mode', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
     shell.nav.onShowRooms();
     await settleWorkspace();
 
@@ -383,6 +392,7 @@ describe('RoomsPage mixed-account view', () => {
   it('switches to the owning account before selecting a foreign space', async () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
 
     shell.routing.onSelectSpaceRow('!s-alt:hs'); // belongs to @alt:hs
     await vi.waitFor(() =>
@@ -427,6 +437,7 @@ describe('RoomsPage mixed-account view', () => {
   it('sums the rail unread badges across the mixed accounts', () => {
     const shell = build(['@me:hs', '@alt:hs']);
     shownAccounts.set(new Set(['@me:hs', '@alt:hs']));
+    TestBed.tick();
 
     expect(shell.vm.recentUnread()).toBe(15); // 7 + 3 + 5 across both accounts
     expect(shell.vm.homeUnread()).toBe(3); // the foreign account's DM
@@ -435,6 +446,7 @@ describe('RoomsPage mixed-account view', () => {
 
     // Unticking drops back to the active account's own totals (all zero here).
     shownAccounts.set(new Set(['@me:hs']));
+    TestBed.tick();
     expect(shell.vm.recentUnread()).toBe(0);
   });
 

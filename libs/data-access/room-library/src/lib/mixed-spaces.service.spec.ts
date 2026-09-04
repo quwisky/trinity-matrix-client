@@ -196,6 +196,12 @@ describe('MixedSpacesService', () => {
       '!x:hs',
       '!y:hs',
     ]);
+    expect(svc.spaceChildRoomIdsByAccount()).toEqual(
+      new Map([
+        ['@a:hs', new Set(['!x:hs'])],
+        ['@b:hs', new Set(['!x:hs', '!y:hs'])],
+      ]),
+    );
   });
 
   it('re-attributes a shared space when the active account changes', async () => {

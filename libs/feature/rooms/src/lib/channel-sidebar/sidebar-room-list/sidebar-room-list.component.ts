@@ -90,7 +90,7 @@ export class SidebarRoomListComponent {
   private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly rooms = input<RoomSummary[]>([]);
+  readonly rooms = input<readonly RoomSummary[]>([]);
   readonly invites = input<readonly PendingInvite[]>([]);
   readonly activeRoomId = input<string | null>(null);
   /**

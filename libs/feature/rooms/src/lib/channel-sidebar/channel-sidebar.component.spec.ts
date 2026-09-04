@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { type AccountBadge } from '@trinity/components/generic-content';
@@ -9,13 +9,11 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, type Mock } from 'vitest';
 import {
-  InvitesService,
-  MixedInvitesService,
+  SelectedRoomLibraryService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
-  AccountScopeService,
   RoomLibraryService,
   SpacesService,
   TRINITY_ROOM_SORTS,
@@ -137,9 +135,6 @@ async function renderSidebar(
     childrenLoading?: boolean;
     childrenError?: string | null;
     invites?: PendingInvite[];
-    /** Cross-account invites, used instead of `invites` when `mixing` is true. */
-    mixedInvites?: PendingInvite[];
-    mixing?: boolean;
     notifyMode?: RoomNotifyDisplayMode;
     typingByRoom?: Record<string, readonly string[]>;
   } = {},
@@ -150,8 +145,7 @@ async function renderSidebar(
     childSpaces: signal<SpaceChildRoom[]>(opts.childSpaces ?? []),
     childrenLoading: signal(opts.childrenLoading ?? false),
     childrenError: signal<string | null>(opts.childrenError ?? null),
-    pendingInvites: signal<PendingInvite[]>(opts.invites ?? []),
-    mixedInvites: signal<PendingInvite[]>(opts.mixedInvites ?? []),
+    invitations: signal<PendingInvite[]>(opts.invites ?? []),
   };
 
   const rendered = await render(ChannelSidebarComponent, {
@@ -164,10 +158,17 @@ async function renderSidebar(
         childrenLoading: signals.childrenLoading,
         childrenError: signals.childrenError,
       }),
-      MockProvider(InvitesService, { pendingInvites: signals.pendingInvites }),
-      MockProvider(MixedInvitesService, { invites: signals.mixedInvites }),
-      MockProvider(AccountScopeService, {
-        mixing: signal(opts.mixing ?? false).asReadonly(),
+      MockProvider(SelectedRoomLibraryService, {
+        view: computed(() => ({
+          accountIds: new Set(
+            signals.invitations().map((invite) => invite.accountId),
+          ),
+          mode: 'active' as const,
+          rooms: [],
+          spaces: [],
+          spaceChildRoomIdsByAccount: new Map(),
+          invitations: signals.invitations(),
+        })),
       }),
       // Seeded because `typingByRoom` is an INSTANCE field, which ng-mocks does not
       // reflect: left out it is undefined and the sidebar throws on every render here.
@@ -1415,7 +1416,7 @@ describe('ChannelSidebarComponent', () => {
 
   // An invite to an account you're SHOWING but not acting as must be visible here, or it
   // stays hidden until you happen to switch to that account.
-  it('lists invites from every mixed account, badged, while mixing', async () => {
+  it('lists selected-account invites with their exact ownership badge', async () => {
     const badges = new Map([
       [
         '@alt:hs',
@@ -1423,8 +1424,7 @@ describe('ChannelSidebarComponent', () => {
       ],
     ]);
     const { container } = await renderSidebar({
-      mixing: true,
-      mixedInvites: [
+      invites: [
         {
           roomId: '!i:hs',
           accountId: '@alt:hs',
@@ -1449,8 +1449,7 @@ describe('ChannelSidebarComponent', () => {
 
   it('answers an invite on the account it was sent to', async () => {
     const { fixture, container } = await renderSidebar({
-      mixing: true,
-      mixedInvites: [
+      invites: [
         {
           roomId: '!i:hs',
           accountId: '@alt:hs',
@@ -1471,7 +1470,7 @@ describe('ChannelSidebarComponent', () => {
     expect(accepted).toEqual([{ roomId: '!i:hs', accountId: '@alt:hs' }]);
   });
 
-  it('falls back to the active account’s invites when not mixing', async () => {
+  it('renders the invitations from the selected generation', async () => {
     const single: PendingInvite = {
       roomId: '!mine:hs',
       accountId: '@me:hs',
@@ -1483,9 +1482,7 @@ describe('ChannelSidebarComponent', () => {
       isDirect: false,
     };
     const { container } = await renderSidebar({
-      mixing: false,
       invites: [single],
-      mixedInvites: [{ ...single, roomId: '!other:hs', name: 'Other' }],
     });
 
     expect(container.querySelector('.invite__name')?.textContent).toContain(

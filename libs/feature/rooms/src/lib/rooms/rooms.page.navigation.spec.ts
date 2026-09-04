@@ -388,7 +388,10 @@ describe('RoomsPage mobile navigation', () => {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
-        MockProvider(SpacesService, { openSpace: () => of(void 0) }),
+        MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
+          spaces: signal([]),
+        }),
         {
           provide: RoomsTimelineStub,
           useFactory: () => {
@@ -966,7 +969,10 @@ describe('RoomsPage account switcher summary', () => {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
-        MockProvider(SpacesService, { openSpace: () => of(void 0) }),
+        MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
+          spaces: signal([]),
+        }),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -1420,7 +1426,10 @@ describe('RoomsPage room-in-URL deep link', () => {
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
-        MockProvider(SpacesService, { openSpace: () => of(void 0) }),
+        MockProvider(SpacesService, {
+          openSpace: () => of(void 0),
+          spaces: signal([]),
+        }),
         MockProvider(ConversationRuntime, {
           focus: conversationFocus,
           blur: conversationBlur,

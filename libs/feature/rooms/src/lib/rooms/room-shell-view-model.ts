@@ -7,12 +7,9 @@ import {
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
 import {
-  AccountScopeService,
-  MixedRoomsService,
-  MixedSpacesService,
   RoomLibraryService,
+  SelectedRoomLibraryService,
   SpaceRoomOrderService,
-  SpacesService,
   UnreadAggregatorService,
   comparatorFor,
   filterRoomLibraryItems,
@@ -44,12 +41,9 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
 export class RoomShellViewModel {
   private readonly store = inject(RoomShellStore);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly membersProjection = inject(RoomMembersService);
-  private readonly spaces = inject(SpacesService);
   private readonly permissions = inject(RoomActionPermissionsService);
-  private readonly mixedRooms = inject(MixedRoomsService);
-  private readonly mixedSpaces = inject(MixedSpacesService);
-  private readonly accountScope = inject(AccountScopeService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly accountBadgesSvc = inject(AccountBadgesService);
   private readonly unreadAgg = inject(UnreadAggregatorService);
@@ -58,31 +52,15 @@ export class RoomShellViewModel {
   private readonly homeservers = inject(HomeserverInfoService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** Ids of every joined room that is a child of some space, unioned across all spaces.
-   * Used to keep space-owned rooms out of the flat Rooms view (they live in their space).
-   * In mixed mode this spans every account's spaces so the global Rooms list excludes
-   * space-owned rooms from all accounts, matching the single-account view. */
-  private readonly spaceChildRoomIds = computed<Map<string, Set<string>>>(
-    () => {
-      const byAccount = new Map<string, Set<string>>();
-      const spaces = this.accountScope.mixing()
-        ? this.mixedSpaces.spaces()
-        : this.spaces.spaces();
-      for (const space of spaces) {
-        const ids = byAccount.get(space.accountId) ?? new Set<string>();
-        for (const id of space.childRoomIds) ids.add(id);
-        byAccount.set(space.accountId, ids);
-      }
-      return byAccount;
-    },
-  );
-
-  /** Whether a row is filed under one of ITS OWN account's spaces. Keyed per account: a
-   * room that is top-level for the account you're acting as must not vanish from the Rooms
-   * view just because a different mixed account files it inside one of its spaces. */
+  /** Whether a row is filed under one of its selected owner's spaces. A shared Room uses
+   * the hierarchy of the Account that won the selected-view row, just as its actions do. */
   private isSpaceChild(room: RoomSummary): boolean {
-    const byAccount = this.spaceChildRoomIds();
-    return room.accountIds.some((id) => byAccount.get(id)?.has(room.id));
+    return (
+      this.selectedLibrary
+        .view()
+        .spaceChildRoomIdsByAccount.get(room.accountId)
+        ?.has(room.id) ?? false
+    );
   }
 
   /**
@@ -94,20 +72,16 @@ export class RoomShellViewModel {
    * box). All read live signals, so the list reacts to sync, membership, `m.space.child`
    * changes, and to the ordering being changed from the sidebar or Settings.
    *
-   * When the global "All accounts" scope is on ({@link mixedOn}), every list — Recent,
-   * Home's DMs and the Rooms view — reads the cross-account {@link MixedRoomsService}
-   * instead of the active account's rooms, classifying DMs by each row's own-account
-   * `m.direct` (`directUserId`) rather than the active account's `directRoomIds()`.
+   * Every list reads one selected Room Library generation. Room ownership, deduplication,
+   * and active-versus-mixed source choice are already resolved by that boundary.
    */
-  readonly visibleRooms = computed<RoomSummary[]>(() => {
-    const mixed = this.accountScope.mixing();
-    // Recent activity: every joined DM + room, mixed by recency. In mixed mode that spans
-    // every signed-in account (each row badged); otherwise the active account's `rooms()`
-    // — already exactly that list, favourite-first then most-recent, used unfiltered.
+  readonly visibleRooms = computed<readonly RoomSummary[]>(() => {
+    const view = this.selectedLibrary.view();
+    // Recent activity is already ordered by the selected projection and is used unfiltered.
     if (this.store.recentView()) {
-      return mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
+      return view.rooms;
     }
-    const all = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
+    const all = view.rooms;
     // Rooms view: non-DM joined rooms that aren't owned by a space (overrides the space scope).
     if (this.store.roomsView()) {
       return all.filter(
@@ -119,16 +93,11 @@ export class RoomShellViewModel {
       // Home: direct messages only.
       return all.filter((room) => this.isDirectRow(room));
     }
-    // While mixing, take the children from the mixed projection — the same union the space
-    // pill's unread badge is summed over. Reading the active account's SpacesService here
-    // would list fewer rooms than the badge counted for a space BOTH accounts have joined,
-    // leaving an unread total with nothing on screen to clear it. Foreign children are safe:
-    // every row opens through onSelectRoomRow, which switches accounts first.
+    // The selected projection carries the same child union the space pill's unread badge
+    // counts. Foreign children are safe: every row carries the Account that owns its action.
     const byId = new Map(all.map((room) => [room.id, room] as const));
-    const childIds = this.accountScope.mixing()
-      ? (this.mixedSpaces.spaces().find((s) => s.id === spaceId)
-          ?.childRoomIds ?? [])
-      : this.spaces.childRoomIds(spaceId);
+    const childIds =
+      view.spaces.find((space) => space.id === spaceId)?.childRoomIds ?? [];
     // `map().filter()` already allocates, so sorting in place here cannot reach the shared
     // `rooms()` array these rows came from — `sort` mutates, and the Recent branch above
     // hands that array out by identity.
@@ -148,7 +117,7 @@ export class RoomShellViewModel {
    * rather than displaying them — "mark all as read", name lookup — stays on the
    * unfiltered {@link visibleRooms}.
    */
-  readonly filteredRooms = computed<RoomSummary[]>(() => {
+  readonly filteredRooms = computed<readonly RoomSummary[]>(() => {
     return filterRoomLibraryItems(this.visibleRooms(), this.store.roomFilter());
   });
 
@@ -185,7 +154,10 @@ export class RoomShellViewModel {
     if (!id) {
       return 'Home';
     }
-    return this.spaces.spaces().find((s) => s.id === id)?.name ?? 'Home';
+    return (
+      this.selectedLibrary.view().spaces.find((space) => space.id === id)
+        ?.name ?? 'Home'
+    );
   });
 
   /** Channel-sidebar header: Recent activity, the Rooms view, a selected space, else Home's DMs. */
@@ -202,23 +174,17 @@ export class RoomShellViewModel {
   });
 
   /**
-   * Whether a room row counts as a direct message in the current scope: in mixed mode by
-   * the row's own-account `m.direct` (`directUserId`), otherwise by the active account's
-   * `directRoomIds()` set. Shared by {@link visibleRooms} and the rail unread badges so the
-   * badges count exactly what their view shows.
+   * Whether a selected row is a direct message. The selected projection preserves the
+   * exact owning Account's `m.direct` classification on every row.
    */
   private isDirectRow(room: RoomSummary): boolean {
-    return this.accountScope.mixing()
-      ? room.directUserId != null
-      : this.rooms.directRoomIds().has(room.id);
+    return room.directUserId != null;
   }
 
   /** The room list the rail badges count over — every account's in mixed mode, else the
    * active account's — so each badge matches what its view renders. */
-  private railRoomSource(): RoomSummary[] {
-    return this.accountScope.mixing()
-      ? this.mixedRooms.rooms()
-      : this.rooms.rooms();
+  private railRoomSource(): readonly RoomSummary[] {
+    return this.selectedLibrary.view().rooms;
   }
 
   /** Total unread notifications across everything the Recent view lists (its rail badge). */
@@ -247,16 +213,12 @@ export class RoomShellViewModel {
   /** Unread notifications summed per space, keyed by space id (space-pill badges). In mixed
    * mode this covers every account's space pills, summing over that account's child rooms. */
   readonly spaceUnread = computed<Record<string, number>>(() => {
-    const mixed = this.accountScope.mixing();
-    const source = mixed ? this.mixedRooms.rooms() : this.rooms.rooms();
+    const view = this.selectedLibrary.view();
+    const source = view.rooms;
     const byId = new Map(source.map((r) => [r.id, r] as const));
-    const spaces = mixed ? this.mixedSpaces.spaces() : this.spaces.spaces();
     const totals: Record<string, number> = {};
-    for (const space of spaces) {
-      const childIds = mixed
-        ? space.childRoomIds
-        : this.spaces.childRoomIds(space.id);
-      totals[space.id] = childIds.reduce((sum, id) => {
+    for (const space of view.spaces) {
+      totals[space.id] = space.childRoomIds.reduce((sum, id) => {
         const room = byId.get(id);
         // A flagged room has no notification count behind it, so it counts as one —
         // otherwise the pill for the space holding it stays blank and the flag is
@@ -371,13 +333,10 @@ export class RoomShellViewModel {
   readonly activeAccountId = this.matrix.activeUserId;
 
   /**
-   * Space pills for the rail: every signed-in account's spaces (badged) in mixed mode,
-   * else just the active account's.
+   * Space pills for the rail from the same selected generation as the Room lists.
    */
-  readonly railSpaces = computed<SpaceSummary[]>(() =>
-    this.accountScope.mixing()
-      ? this.mixedSpaces.spaces()
-      : this.spaces.spaces(),
+  readonly railSpaces = computed<readonly SpaceSummary[]>(
+    () => this.selectedLibrary.view().spaces,
   );
 
   /**

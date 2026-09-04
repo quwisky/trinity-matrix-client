@@ -17,7 +17,21 @@ export interface SelectedRoomLibraryView {
   readonly mode: SelectedRoomLibraryMode;
   readonly rooms: readonly RoomSummary[];
   readonly spaces: readonly SpaceSummary[];
+  /** Joined space children indexed by the Account whose hierarchy declared them. */
+  readonly spaceChildRoomIdsByAccount: ReadonlyMap<string, ReadonlySet<string>>;
   readonly invitations: readonly PendingInvite[];
+}
+
+function indexSpaceChildrenByAccount(
+  spaces: readonly SpaceSummary[],
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const byAccount = new Map<string, Set<string>>();
+  for (const space of spaces) {
+    const childIds = byAccount.get(space.accountId) ?? new Set<string>();
+    for (const roomId of space.childRoomIds) childIds.add(roomId);
+    byAccount.set(space.accountId, childIds);
+  }
+  return byAccount;
 }
 
 /**
@@ -41,6 +55,9 @@ export class SelectedRoomLibraryService {
     mode: 'active',
     rooms: this.activeRooms.rooms(),
     spaces: this.activeSpaces.spaces(),
+    spaceChildRoomIdsByAccount: indexSpaceChildrenByAccount(
+      this.activeSpaces.spaces(),
+    ),
     invitations: this.activeInvites.pendingInvites(),
   });
 
@@ -90,6 +107,8 @@ export class SelectedRoomLibraryService {
             mode,
             rooms: this.mixedRooms.rooms(),
             spaces: this.mixedSpaces.spaces(),
+            spaceChildRoomIdsByAccount:
+              this.mixedSpaces.spaceChildRoomIdsByAccount(),
             invitations: this.mixedInvites.invites(),
           }
         : {
@@ -97,6 +116,9 @@ export class SelectedRoomLibraryService {
             mode,
             rooms: this.activeRooms.rooms(),
             spaces: this.activeSpaces.spaces(),
+            spaceChildRoomIdsByAccount: indexSpaceChildrenByAccount(
+              this.activeSpaces.spaces(),
+            ),
             invitations: this.activeInvites.pendingInvites(),
           },
     );

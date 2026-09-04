@@ -38,7 +38,7 @@ export interface RailUnread {
   styleUrl: './server-rail.component.scss',
 })
 export class ServerRailComponent {
-  readonly spaces = input<SpaceSummary[]>([]);
+  readonly spaces = input<readonly SpaceSummary[]>([]);
   readonly activeSpaceId = input<string | null>(null);
   /** Whether the Recent activity view is active (drives its pill's active state). */
   readonly recentActive = input(false);
