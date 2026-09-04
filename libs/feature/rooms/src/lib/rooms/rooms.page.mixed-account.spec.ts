@@ -146,7 +146,7 @@ describe('RoomsPage mixed-account view', () => {
     setMixedRoomsAccounts = vi.fn();
     shownAccounts = signal<ReadonlySet<string>>(new Set(['@me:hs']));
     mixedRooms = signal(mixedRoomList());
-    toggleAccount = vi.fn(() => of(void 0));
+    toggleAccount = vi.fn(() => of({ kind: 'completed' as const }));
     TestBed.configureTestingModule({
       providers: [
         RoomsPage,

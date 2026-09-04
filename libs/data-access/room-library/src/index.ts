@@ -14,3 +14,4 @@ export * from './lib/room-library-governance-policy';
 export * from './lib/room-filter';
 export * from './lib/room-library-search.service';
 export * from './lib/room-readiness.service';
+export * from './lib/selected-room-library.service';

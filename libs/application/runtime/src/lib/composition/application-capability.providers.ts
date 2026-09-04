@@ -40,6 +40,7 @@ import {
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   type RoomLibraryGovernancePolicy,
+  provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import {
   CONVERSATION_MESSAGE_POLICY,
@@ -82,6 +83,7 @@ export function applicationCapabilityProviders(
     provideAppearancePreferences(),
     provideAppearanceConfigEntries(),
     provideConversationPrivacyPreferences(),
+    provideRoomLibraryPreferences(),
     providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
     {
       provide: APPEARANCE_NATIVE_CHROME_ADAPTER,

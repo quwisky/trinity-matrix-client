@@ -107,14 +107,12 @@ export class GlobalSearchService {
     injector: Injector,
   ): GlobalSearchSession {
     const localResults = computed<readonly SwitcherResult[]>(() =>
-      this.qualifyLocalResults(
-        this.local.search(
-          query(),
-          undefined,
-          activeAccountOnly()
-            ? (this.identity.activeUserId() ?? undefined)
-            : undefined,
-        ),
+      this.local.search(
+        query(),
+        undefined,
+        activeAccountOnly()
+          ? (this.identity.activeUserId() ?? undefined)
+          : undefined,
       ),
     );
 
@@ -235,23 +233,6 @@ export class GlobalSearchService {
       default:
         return this.unreachableResult(result);
     }
-  }
-
-  private qualifyLocalResults(
-    results: ReturnType<RoomLibrarySearchService['search']>,
-  ): readonly SwitcherResult[] {
-    const activeAccountId = this.identity.activeUserId();
-    return results.flatMap((result) => {
-      const accountId = result.accountId ?? activeAccountId;
-      return accountId
-        ? [
-            {
-              ...result,
-              accountId,
-            } as SwitcherResult,
-          ]
-        : [];
-    });
   }
 
   private unreachableResult(result: never): never {

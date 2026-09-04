@@ -2,13 +2,11 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AccountScopeService } from './account-scope.service';
-import { InvitesService, type PendingInvite } from './invites.service';
-import { MixedRoomsService } from './mixed-rooms.service';
-import { MixedSpacesService } from './mixed-spaces.service';
+import { type PendingInvite } from './invites.service';
 import { RoomLibrarySearchService } from './room-library-search.service';
-import { RoomLibraryService, type RoomSummary } from './room-library.service';
-import { SpacesService, type SpaceSummary } from './spaces.service';
+import { type RoomSummary } from './room-library.service';
+import { SelectedRoomLibraryService } from './selected-room-library.service';
+import { type SpaceSummary } from './spaces.service';
 
 function room(over: Partial<RoomSummary> = {}): RoomSummary {
   return {
@@ -48,33 +46,22 @@ function space(over: Partial<SpaceSummary> = {}): SpaceSummary {
 function setup(
   options: {
     rooms?: RoomSummary[];
-    directIds?: ReadonlySet<string>;
     spaces?: SpaceSummary[];
     mixing?: boolean;
-    mixedRooms?: RoomSummary[];
-    mixedSpaces?: SpaceSummary[];
     invites?: PendingInvite[];
   } = {},
 ): RoomLibrarySearchService {
   TestBed.configureTestingModule({
     providers: [
       RoomLibrarySearchService,
-      MockProvider(RoomLibraryService, {
-        rooms: signal(options.rooms ?? []),
-        directRoomIds: signal(options.directIds ?? new Set<string>()),
-      }),
-      MockProvider(SpacesService, { spaces: signal(options.spaces ?? []) }),
-      MockProvider(InvitesService, {
-        pendingInvites: signal(options.invites ?? []),
-      }),
-      MockProvider(AccountScopeService, {
-        mixing: signal(options.mixing ?? false),
-      }),
-      MockProvider(MixedRoomsService, {
-        rooms: signal(options.mixedRooms ?? []),
-      }),
-      MockProvider(MixedSpacesService, {
-        spaces: signal(options.mixedSpaces ?? []),
+      MockProvider(SelectedRoomLibraryService, {
+        view: signal({
+          accountIds: new Set(['@me:hs']),
+          mode: options.mixing ? 'mixed' : 'active',
+          rooms: options.rooms ?? [],
+          spaces: options.spaces ?? [],
+          invitations: options.invites ?? [],
+        }),
       }),
     ],
   });
@@ -104,8 +91,7 @@ describe('RoomLibrarySearchService', () => {
 
   it('classifies DMs and spaces without reaching outside Room Library', () => {
     const search = setup({
-      rooms: [room({ id: '!dm:hs', name: 'Bob' })],
-      directIds: new Set(['!dm:hs']),
+      rooms: [room({ id: '!dm:hs', name: 'Bob', directUserId: '@bob:hs' })],
       spaces: [space({ id: '!space:hs', name: 'Team' })],
     });
 
@@ -157,7 +143,7 @@ describe('RoomLibrarySearchService', () => {
   it('scopes before applying the result limit in mixed-account mode', () => {
     const search = setup({
       mixing: true,
-      mixedRooms: [
+      rooms: [
         room({ id: '!mine:hs', accountId: '@me:hs', name: 'room' }),
         room({ id: '!other:hs', accountId: '@other:hs', name: 'room' }),
       ],
@@ -165,6 +151,53 @@ describe('RoomLibrarySearchService', () => {
 
     expect(search.search('', 1, '@me:hs').map((result) => result.id)).toEqual([
       '!mine:hs',
+    ]);
+  });
+
+  it('searches invitations from every selected Account', () => {
+    const search = setup({
+      mixing: true,
+      invites: [
+        {
+          roomId: '!mine:hs',
+          accountId: '@me:hs',
+          name: 'Team mine',
+          initial: 'T',
+          avatarMxc: null,
+          inviterName: 'Alice',
+          isSpace: false,
+          isDirect: false,
+        },
+        {
+          roomId: '!other:hs',
+          accountId: '@other:hs',
+          name: 'Team other',
+          initial: 'T',
+          avatarMxc: null,
+          inviterName: 'Bob',
+          isSpace: false,
+          isDirect: false,
+        },
+      ],
+    });
+
+    expect(
+      search.search('team').map(({ id, accountId, accountBadgeId }) => ({
+        id,
+        accountId,
+        accountBadgeId,
+      })),
+    ).toEqual([
+      {
+        id: '!mine:hs',
+        accountId: '@me:hs',
+        accountBadgeId: '@me:hs',
+      },
+      {
+        id: '!other:hs',
+        accountId: '@other:hs',
+        accountBadgeId: '@other:hs',
+      },
     ]);
   });
 });

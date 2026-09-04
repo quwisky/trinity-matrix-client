@@ -1,10 +1,53 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  inject,
+  type EnvironmentProviders,
+} from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { DevicePreferenceStorageService } from '@trinity/platform-native';
-import { Observable, catchError, defer, map, of, tap } from 'rxjs';
+import {
+  INSTALLATION_PREFERENCE_CONTEXT,
+  PreferenceStoreService,
+  definePreference,
+  providePreferenceDescriptors,
+  type PreferenceCommandOutcome,
+  type PreferenceDescriptor,
+  type PreferenceValidation,
+  type StoredPreference,
+} from '@trinity/runtime/preferences';
+import { Observable, defer, map, of } from 'rxjs';
 
 /** Persisted set of account ids the user has opted into mixing. */
 const SCOPE_KEY = 'trinity.accounts.mixed';
+
+type AccountScopePreference = readonly string[];
+
+/** Capability-owned policy for the device-local selected Account set. */
+export const ACCOUNT_SCOPE_PREFERENCE = definePreference({
+  id: 'room-library.selected-accounts',
+  owner: 'room-library',
+  section: 'room-library',
+  order: 10,
+  scope: 'installation',
+  defaultValue: [],
+  sensitivity: 'private',
+  storage: 'device-preferences',
+  export: 'excluded',
+  editor: { kind: 'none' },
+  persistence: {
+    key: SCOPE_KEY,
+    migration: {
+      currentVersion: 1,
+      migrate: validateAccountScopePreference,
+    },
+  },
+  validate: validateAccountIds,
+} satisfies PreferenceDescriptor<AccountScopePreference>);
+
+/** Contributes Room Library's selection policy to the application preference catalog. */
+export function provideRoomLibraryPreferences(): EnvironmentProviders {
+  return providePreferenceDescriptors(() => [ACCOUNT_SCOPE_PREFERENCE]);
+}
 
 /** Whether two id sets hold the same members (order-independent). */
 export function sameAccountSet(
@@ -42,10 +85,17 @@ export function sameAccountSet(
 @Injectable({ providedIn: 'root' })
 export class AccountScopeService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly storage = inject(DevicePreferenceStorageService);
+  private readonly preferences = inject(PreferenceStoreService);
+  private readonly persisted = this.preferences.stateFor(
+    ACCOUNT_SCOPE_PREFERENCE,
+    INSTALLATION_PREFERENCE_CONTEXT,
+  );
 
   /** Raw persisted selection; may name accounts that aren't signed in right now. */
-  private readonly stored = signal<ReadonlySet<string>>(new Set());
+  private readonly stored = computed<ReadonlySet<string>>(
+    () => new Set(this.persisted().value),
+    { equal: sameAccountSet },
+  );
 
   /**
    * The accounts actually shown: the stored selection ∩ signed-in accounts, plus the active
@@ -76,21 +126,11 @@ export class AccountScopeService {
 
   /** Restore the saved selection. Wired as an app initializer at startup. */
   init(): Observable<void> {
-    return this.storage.get(SCOPE_KEY).pipe(
-      tap((value) => {
-        const parsed: unknown = value ? JSON.parse(value) : null;
-        if (Array.isArray(parsed)) {
-          this.stored.set(
-            new Set(
-              parsed.filter((id): id is string => typeof id === 'string'),
-            ),
-          );
-        }
-      }),
-      map(() => void 0),
-      // Absent, unavailable or corrupt → start with just the active account.
-      catchError(() => of(void 0)),
-    );
+    return this.preferences
+      .hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
+        ACCOUNT_SCOPE_PREFERENCE,
+      ])
+      .pipe(map(() => void 0));
   }
 
   /** Whether an account is currently included in the view. */
@@ -108,11 +148,14 @@ export class AccountScopeService {
    * account, and the account you were mixing *from* — never stored, only implied — would
    * drop straight back out.
    */
-  setSelected(userId: string, included: boolean): Observable<void> {
+  setSelected(
+    userId: string,
+    included: boolean,
+  ): Observable<PreferenceCommandOutcome> {
     return defer(() => {
       const active = this.matrix.activeUserId();
       if (!included && userId === active) {
-        return of(void 0);
+        return of({ kind: 'completed' } as const);
       }
       const next = new Set(this.stored());
       if (included) {
@@ -130,29 +173,54 @@ export class AccountScopeService {
         }
       }
       if (sameAccountSet(next, this.stored())) {
-        return of(void 0);
+        return of({ kind: 'completed' } as const);
       }
-      this.stored.set(next);
-      return this.persist(next);
+      return this.preferences.setPreference(
+        ACCOUNT_SCOPE_PREFERENCE,
+        INSTALLATION_PREFERENCE_CONTEXT,
+        [...next],
+      );
     });
   }
 
   /** Flip an account's inclusion (the picker's checkbox). */
-  toggle(userId: string): Observable<void> {
+  toggle(userId: string): Observable<PreferenceCommandOutcome> {
     return defer(() => this.setSelected(userId, !this.isSelected(userId)));
   }
+}
 
-  /**
-   * Write the selection back verbatim. Deliberately *not* pruned against the live accounts:
-   * an account that is soft-logged-out (revoked token) or still starting up is absent from
-   * `accountIds()`, and pruning here would silently discard the user's pick the next time
-   * they touched the picker — losing it for good on the next launch. Stale ids are inert
-   * anyway, since {@link selected} intersects with the live accounts on read, and the set is
-   * bounded by the number of accounts the user has ever mixed.
-   */
-  private persist(selection: ReadonlySet<string>): Observable<void> {
-    return this.storage
-      .set(SCOPE_KEY, JSON.stringify([...selection]))
-      .pipe(map(() => void 0));
+function validateAccountScopePreference(
+  stored: StoredPreference,
+): PreferenceValidation<AccountScopePreference> {
+  if (stored.version === 0 && Array.isArray(stored.value)) {
+    return {
+      kind: 'accepted',
+      value: [
+        ...new Set(
+          stored.value.filter((id): id is string => typeof id === 'string'),
+        ),
+      ],
+    };
   }
+  return stored.version === 1
+    ? validateAccountIds(stored.value)
+    : {
+        kind: 'rejected',
+        diagnostic: { code: 'room-library-account-scope-version-unsupported' },
+      };
+}
+
+function validateAccountIds(
+  value: unknown,
+): PreferenceValidation<AccountScopePreference> {
+  return isStringArray(value)
+    ? { kind: 'accepted', value: [...new Set<string>(value)] }
+    : {
+        kind: 'rejected',
+        diagnostic: { code: 'room-library-account-scope-invalid' },
+      };
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((id) => typeof id === 'string');
 }

@@ -45,6 +45,13 @@ export class AccountRoutingService {
       .toggle(userId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
+        next: (outcome) => {
+          if (outcome.kind !== 'completed') {
+            this.status.showError(
+              'Unable to update the accounts shown right now.',
+            );
+          }
+        },
         error: () =>
           this.status.showError(
             'Unable to update the accounts shown right now.',
