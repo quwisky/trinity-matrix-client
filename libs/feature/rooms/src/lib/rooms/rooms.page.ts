@@ -22,6 +22,7 @@ import {
 import { Router } from '@angular/router';
 import {
   WorkspaceBackService,
+  WorkspaceNavigationService,
   type WorkspaceDismissResult,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
@@ -101,8 +102,6 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { WorkspaceService } from './workspace.service';
-import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
 /**
@@ -127,8 +126,6 @@ const PANEL_DRAWER_PX = 480;
   // Page-scoped, not root: these share the page's lifetime and its DestroyRef, which is
   // what every runWithBusy subscription is tied to. See shell-invariants.spec.ts.
   providers: [
-    WorkspaceTransitionWorkflow,
-    WorkspaceService,
     RoomShellStore,
     ShellStatusService,
     RoomShellViewModel,
@@ -302,7 +299,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
-  private readonly workspace = inject(WorkspaceService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
   readonly nav = inject(RoomShellNavigationService);
@@ -512,10 +509,6 @@ export class RoomsPage implements OnInit, OnDestroy {
    */
   ngOnDestroy(): void {
     this.backRegistration();
-    // `releaseOpenRoom`, not `closeOpenRoom`: closing NAVIGATES now, and the router is
-    // already on its way to wherever the user actually went. This only has to stop the
-    // root-scoped projections following a room nobody is looking at.
-    this.nav.releaseOpenRoom();
   }
 
   /**

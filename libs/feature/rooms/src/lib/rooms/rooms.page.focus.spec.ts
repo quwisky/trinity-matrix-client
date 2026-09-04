@@ -64,8 +64,7 @@ import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
-import { WorkspaceService } from './workspace.service';
-import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 const BOB: MemberSummary = {
   userId: '@bob:hs',
@@ -206,8 +205,6 @@ describe('RoomsPage rendered right-panel focus', () => {
           MessageActionsService,
           ShellShortcutsService,
           SessionActionsService,
-          WorkspaceService,
-          WorkspaceTransitionWorkflow,
         ],
         imports: [
           ServerRailComponent,
@@ -227,7 +224,7 @@ describe('RoomsPage rendered right-panel focus', () => {
           { provide: RoomShellViewModel, useValue: vm },
           { provide: RoomShellNavigationService, useValue: nav },
           {
-            provide: WorkspaceService,
+            provide: WorkspaceNavigationService,
             useValue: {
               activeAccountId: signal<string | null>('@me:hs'),
               activeSpaceId: signal<string | null>(null),

@@ -7,7 +7,7 @@ import {
 } from '@angular/core';
 import type { MemberSummary } from '@trinity/data-access/room-administration';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
-import { WorkspaceService } from './workspace.service';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 /**
  * The surfaces that can occupy the shell's right-hand slot.
@@ -63,7 +63,7 @@ function seedRightPanel(): RightPanel {
  */
 @Injectable()
 export class RoomShellStore {
-  private readonly workspace = inject(WorkspaceService);
+  private readonly workspace = inject(WorkspaceNavigationService);
 
   readonly activeAccountId = this.workspace.activeAccountId;
   readonly activeSpaceId = this.workspace.activeSpaceId;

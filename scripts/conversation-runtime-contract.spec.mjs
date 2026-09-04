@@ -85,7 +85,7 @@ describe('Conversation Runtime production boundary', () => {
       'libs/feature/rooms/src/lib/rooms/room-shell-navigation.service.ts',
     );
     const workspace = source(
-      'libs/feature/rooms/src/lib/rooms/workspace.service.ts',
+      'libs/application/workspace/src/lib/workspace-navigation.service.ts',
     );
 
     expect(workspace).toContain(

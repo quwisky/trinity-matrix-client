@@ -1,4 +1,4 @@
-import type { WorkspaceNavigationIntent } from '@trinity/application/workspace';
+import type { WorkspaceNavigationIntent } from './workspace-navigation.models';
 import {
   RECENT_WORKSPACE_SCOPE,
   type WorkspaceDestination,
@@ -118,6 +118,7 @@ export function resolveWorkspaceNavigation(
       };
     case 'person':
     case 'invitation':
+    case 'history':
       return null;
     case 'list': {
       if (!current.accountId) return null;

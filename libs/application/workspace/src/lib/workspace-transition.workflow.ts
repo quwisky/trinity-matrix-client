@@ -1,5 +1,4 @@
 import { Injectable, inject } from '@angular/core';
-import { Router } from '@angular/router';
 import {
   AccountRuntimeService,
   type AccountSwitchOutcome,
@@ -12,7 +11,6 @@ import {
   catchError,
   defer,
   finalize,
-  from,
   map,
   of,
   switchMap,
@@ -29,7 +27,7 @@ import {
   type WorkspaceView,
   workspaceViewOf,
 } from './workspace.models';
-import { workspaceUrlOf } from './workspace-url';
+import { WorkspaceLocationAdapter } from './workspace-location.adapter';
 
 interface WorkspaceAttempt {
   readonly destination: WorkspaceDestination;
@@ -67,16 +65,15 @@ const NOOP_TRANSITION_METRICS = {
 class WorkspaceNavigationRejected extends Error {}
 
 /** Package-internal, joining transition engine behind Workspace's small public API. */
-@Injectable()
+@Injectable({ providedIn: 'root' })
 export class WorkspaceTransitionWorkflow {
-  private readonly router = inject(Router);
+  private readonly location = inject(WorkspaceLocationAdapter);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly rooms = inject(RoomLibraryService);
   private attempt: WorkspaceAttempt | null = null;
-  private routeWrites = 0;
 
-  get projectingUrl(): boolean {
-    return this.routeWrites > 0;
+  get projectingLocation(): boolean {
+    return this.location.projecting;
   }
 
   run(
@@ -90,7 +87,8 @@ export class WorkspaceTransitionWorkflow {
         return sameWorkspaceDestination(this.attempt.destination, requested) &&
           this.attempt.options.source === options.source &&
           this.attempt.options.history === options.history &&
-          this.attempt.options.eventId === options.eventId
+          this.attempt.options.eventId === options.eventId &&
+          this.attempt.options.force === options.force
           ? this.attempt.outcome
           : of({
               kind: 'transition-in-progress',
@@ -121,6 +119,7 @@ export class WorkspaceTransitionWorkflow {
 
     if (
       options.source !== 'repair' &&
+      !options.force &&
       !Object.hasOwn(options, 'eventId') &&
       !resolved.repaired &&
       !accountChanges &&
@@ -143,18 +142,20 @@ export class WorkspaceTransitionWorkflow {
         routeDurationMs = 0;
         return of(true);
       }
-      return this.navigate(
-        resolved.destination,
-        options.history === 'replace' || resolved.repaired,
-        options.eventId,
-        () => {
-          routeProjectionStarted = true;
-        },
-      ).pipe(
-        tap(() => {
-          routeDurationMs = performance.now() - routeStartedAt;
-        }),
-      );
+      routeProjectionStarted = true;
+      return this.location
+        .project(resolved.destination, {
+          history:
+            options.history === 'replace' || resolved.repaired
+              ? 'replace'
+              : 'push',
+          eventId: options.eventId,
+        })
+        .pipe(
+          tap(() => {
+            routeDurationMs = performance.now() - routeStartedAt;
+          }),
+        );
     };
 
     const source = this.activateAccount(
@@ -266,52 +267,19 @@ export class WorkspaceTransitionWorkflow {
     });
   }
 
-  private navigate(
-    destination: WorkspaceDestination,
-    replaceUrl: boolean,
-    eventId?: string | null,
-    onStarted?: () => void,
-  ): Observable<boolean> {
-    const projection = workspaceUrlOf(destination, eventId);
-    return defer(() => {
-      this.routeWrites += 1;
-      let navigation: Promise<boolean>;
-      try {
-        navigation = this.router.navigate([...projection.commands], {
-          queryParams: { ...projection.queryParams },
-          replaceUrl,
-        });
-        onStarted?.();
-      } catch (error) {
-        this.routeWrites -= 1;
-        throw error;
-      }
-      void navigation.then(
-        () => {
-          this.routeWrites -= 1;
-        },
-        () => {
-          this.routeWrites -= 1;
-        },
-      );
-      return from(navigation);
-    });
-  }
-
   private restoreUrlIfNeeded(
     previous: WorkspaceView,
     routeProjectionStarted: boolean,
   ): Observable<boolean> {
     if (!routeProjectionStarted || !previous.accountId) return of(true);
-    return this.navigate(
+    return this.location.project(
       {
         accountId: previous.accountId,
         scope: previous.scope,
         roomId: previous.roomId,
         pane: previous.pane,
       },
-      true,
-      undefined,
+      { history: 'replace' },
     );
   }
 

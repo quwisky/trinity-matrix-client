@@ -25,7 +25,7 @@ import {
 import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
-import { WorkspaceService } from './workspace.service';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 /**
  * The view model's own spec, for the two surfaces it derives from the projections this
@@ -106,7 +106,7 @@ function build(opts: { members?: Record<string, MemberSummary[]> } = {}) {
         accountIds: accountIds.asReadonly(),
       }),
       {
-        provide: WorkspaceService,
+        provide: WorkspaceNavigationService,
         useValue: {
           activeAccountId: activeUserId.asReadonly(),
           activeSpaceId: signal<string | null>(null).asReadonly(),

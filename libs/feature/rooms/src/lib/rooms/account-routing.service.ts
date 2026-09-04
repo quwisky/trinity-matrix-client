@@ -1,15 +1,15 @@
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type {
-  WorkspaceNavigationIntent,
-  WorkspaceRoomNavigationOrigin,
+import {
+  type WorkspaceNavigationIntent,
+  WorkspaceNavigationService,
+  type WorkspaceRoomNavigationOrigin,
 } from '@trinity/application/workspace';
 import { AccountScopeService } from '@trinity/data-access/room-library';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
-import { WorkspaceService } from './workspace.service';
 
 /**
  * Routing a selection to the account that owns it.
@@ -27,7 +27,7 @@ export class AccountRoutingService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
-  private readonly workspace = inject(WorkspaceService);
+  private readonly workspace = inject(WorkspaceNavigationService);
   private readonly accountScope = inject(AccountScopeService);
   private readonly destroyRef = inject(DestroyRef);
 

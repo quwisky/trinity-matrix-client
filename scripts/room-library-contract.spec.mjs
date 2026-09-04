@@ -62,10 +62,10 @@ describe('Room Library production boundary', () => {
 
   it('keeps Workspace selection on typed Room Library projections', () => {
     const workspace = source(
-      'libs/feature/rooms/src/lib/rooms/workspace.service.ts',
+      'libs/application/workspace/src/lib/workspace-navigation.service.ts',
     );
     const transition = source(
-      'libs/feature/rooms/src/lib/rooms/workspace-transition.workflow.ts',
+      'libs/application/workspace/src/lib/workspace-transition.workflow.ts',
     );
 
     expect(workspace).toContain("from '@trinity/data-access/room-library'");

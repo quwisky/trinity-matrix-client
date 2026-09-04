@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { RoomShellStore } from './room-shell-store';
-import { WorkspaceService } from './workspace.service';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 describe('RoomShellStore Workspace lifetimes', () => {
   afterEach(() => TestBed.resetTestingModule());
@@ -13,7 +13,7 @@ describe('RoomShellStore Workspace lifetimes', () => {
       providers: [
         RoomShellStore,
         {
-          provide: WorkspaceService,
+          provide: WorkspaceNavigationService,
           useValue: {
             activeAccountId: activeAccountId.asReadonly(),
             activeSpaceId: signal<string | null>(null).asReadonly(),

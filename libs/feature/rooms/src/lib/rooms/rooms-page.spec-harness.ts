@@ -9,6 +9,8 @@ import { inject, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
+  DefaultUrlSerializer,
+  NavigationEnd,
   Router,
   convertToParamMap,
   type ParamMap,
@@ -40,7 +42,7 @@ import {
 
 import { TrnActionSheetService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { BehaviorSubject, of, switchMap } from 'rxjs';
+import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
@@ -57,8 +59,7 @@ import { encodeRoomSegment } from '@trinity/util/matrix';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { WorkspaceService } from './workspace.service';
-import { WorkspaceTransitionWorkflow } from './workspace-transition.workflow';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import {
   ConversationComposeStub,
   ConversationTimelineStub,
@@ -81,6 +82,15 @@ const queryParamMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
  * every store constructed in a test with `activeRoomId` stuck at its initial value.
  */
 const paramMap = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+const routerEvents = new Subject<NavigationEnd>();
+const urlSerializer = new DefaultUrlSerializer();
+let currentRouteUrl = `/rooms?account=${encodeURIComponent('@me:hs')}`;
+let navigationId = 0;
+
+function moveRoute(url: string): void {
+  currentRouteUrl = url;
+  routerEvents.next(new NavigationEnd(++navigationId, url, url));
+}
 
 /**
  * Open a room BY URL, the way the router does — the only way to open one now.
@@ -107,6 +117,9 @@ export function setRouteRoom(roomId: string | null): void {
   paramMap.next(
     convertToParamMap(roomId ? { roomId: encodeRoomSegment(roomId) } : {}),
   );
+  moveRoute(
+    `/rooms${roomId ? `/${encodeRoomSegment(roomId)}` : ''}?account=${encodeURIComponent('@me:hs')}`,
+  );
 }
 
 /**
@@ -119,6 +132,8 @@ export function setRouteRoom(roomId: string | null): void {
  */
 export function setRouteSegment(segment: string): void {
   paramMap.next(convertToParamMap({ roomId: segment }));
+  queryParamMap.next(convertToParamMap({ account: '@me:hs' }));
+  moveRoute(`/rooms/${segment}?account=${encodeURIComponent('@me:hs')}`);
 }
 
 /** The ActivatedRoute stub, for the one block that builds RoomsPage without SHARED_MOCKS. */
@@ -157,8 +172,7 @@ export const SHARED_MOCKS: Provider[] = [
   MessageActionsService,
   ShellShortcutsService,
   SessionActionsService,
-  WorkspaceTransitionWorkflow,
-  WorkspaceService,
+  WorkspaceNavigationService,
   ConversationTimelineStub,
   {
     provide: ConversationRuntime,
@@ -314,21 +328,41 @@ export const SHARED_MOCKS: Provider[] = [
   //
   // Only `/rooms` is interpreted; every other destination is swallowed as before, since no
   // spec here asserts on those.
-  MockProvider(Router, {
-    // `vi.fn` wrapping the behaviour, not a bare function: several specs assert on the
-    // navigation itself (`expect(router.navigate).toHaveBeenCalledWith(...)`), and a plain
-    // function fails those with "is not a spy" rather than with anything informative.
-    navigate: vi.fn(
-      (commands: unknown[], extras?: { queryParams?: object }) => {
-        const [head, segment] = commands as [string, string | undefined];
-        if (head === '/rooms') {
-          paramMap.next(convertToParamMap(segment ? { roomId: segment } : {}));
-          queryParamMap.next(convertToParamMap(extras?.queryParams ?? {}));
-        }
-        return Promise.resolve(true);
+  {
+    provide: Router,
+    useFactory: () => ({
+      get url() {
+        return currentRouteUrl;
       },
-    ) as unknown as Router['navigate'],
-  }),
+      events: routerEvents,
+      parseUrl: (url: string) => urlSerializer.parse(url),
+      // `vi.fn` wrapping the behaviour, not a bare function: several specs assert on the
+      // navigation itself (`expect(router.navigate).toHaveBeenCalledWith(...)`), and a plain
+      // function fails those with "is not a spy" rather than with anything informative.
+      navigate: vi.fn(
+        (commands: unknown[], extras?: { queryParams?: object }) => {
+          const [head, segment] = commands as [string, string | undefined];
+          if (head === '/rooms') {
+            const queryParams = extras?.queryParams ?? {};
+            paramMap.next(
+              convertToParamMap(segment ? { roomId: segment } : {}),
+            );
+            queryParamMap.next(convertToParamMap(queryParams));
+            const tree = urlSerializer.parse(
+              segment ? `/rooms/${segment}` : '/rooms',
+            );
+            tree.queryParams = queryParams;
+            moveRoute(urlSerializer.serialize(tree));
+          }
+          return Promise.resolve(true);
+        },
+      ) as unknown as Router['navigate'],
+      navigateByUrl: vi.fn((url: string) => {
+        moveRoute(url);
+        return Promise.resolve(true);
+      }) as unknown as Router['navigateByUrl'],
+    }),
+  },
   ROUTE_PROVIDER,
   MockProvider(TrnActionSheetService),
 ];

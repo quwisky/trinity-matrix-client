@@ -1567,14 +1567,9 @@ describe('RoomsPage room-in-URL deep link', () => {
     restore();
   });
 
-  // `releaseOpenRoom` is the teardown half of closing, and the ONLY thing that stops the
-  // Conversation Runtime and root-scoped projections following a room nobody is looking
-  // at once the page is gone.
-  // `closeOpenRoom` cannot do it here: it navigates, and the router is already on its way
-  // to wherever the user actually went.
-  it('stops the projections when the page is destroyed', () => {
+  it('stops the projections when the Router leaves Workspace', () => {
     setRouteRoom('!open:hs');
-    const shell = build();
+    build();
     TestBed.tick();
     expect(conversationFocus).toHaveBeenCalledWith({
       accountId: '@me:hs',
@@ -1587,7 +1582,7 @@ describe('RoomsPage room-in-URL deep link', () => {
     // below could not fail — deleting it from `releaseOpenRoom` left the suite green.
     vi.mocked(media.releaseAll).mockClear();
 
-    shell.page.ngOnDestroy();
+    void TestBed.inject(Router).navigateByUrl('/settings');
 
     expect(conversationBlur).toHaveBeenCalled();
     expect(media.releaseAll).toHaveBeenCalled();

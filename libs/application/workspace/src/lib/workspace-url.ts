@@ -1,4 +1,3 @@
-import type { ParamMap } from '@angular/router';
 import {
   decodeRoomSegment,
   encodeRoomSegment,
@@ -21,9 +20,13 @@ export interface WorkspaceUrlCommands {
   readonly queryParams: Readonly<Record<string, string>>;
 }
 
+interface WorkspaceParameters {
+  get(name: string): string | null;
+}
+
 export function parseWorkspaceUrl(
-  params: ParamMap,
-  query: ParamMap,
+  params: WorkspaceParameters,
+  query: WorkspaceParameters,
   activeAccountId: string | null,
 ): ParsedWorkspaceUrl {
   const requestedAccount = query.get('account');
@@ -99,7 +102,7 @@ function parseEventId(
   return roomId && value?.startsWith('$') && value.length > 1 ? value : null;
 }
 
-function parseScope(query: ParamMap): {
+function parseScope(query: WorkspaceParameters): {
   readonly scope: WorkspaceScope;
   readonly canonical: boolean;
   readonly valid: boolean;
@@ -128,7 +131,7 @@ function parseScope(query: ParamMap): {
 }
 
 function parsePane(
-  query: ParamMap,
+  query: WorkspaceParameters,
   roomId: string | null,
 ): {
   readonly pane: 'list' | 'conversation';
