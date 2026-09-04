@@ -5,7 +5,11 @@ import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
 import type { ApplicationRuntimeWarning } from '../application-runtime.models';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  WorkspaceBackService,
+  WorkspaceNavigationService,
+  type WorkspaceNavigationIntent,
+} from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationService,
@@ -41,7 +45,6 @@ import {
 } from 'rxjs';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
-import { encodeRoomSegment } from '@trinity/util/matrix';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -56,6 +59,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnDialogService);
   private readonly workspaceBack = inject(WorkspaceBackService);
+  private readonly workspaceNavigation = inject(WorkspaceNavigationService);
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
@@ -106,29 +110,25 @@ export class TrinityApplicationSessionAdapter {
   private openNotification(
     destination: NotificationDestination,
   ): Observable<ApplicationRuntimeWarning> {
-    return this.openWorkspaceDestination(
-      ['/rooms', encodeRoomSegment(destination.roomId)],
-      {
-        account: destination.accountId,
-        event: destination.eventId,
-      },
-    );
+    return this.openWorkspaceIntent({
+      kind: 'notification',
+      accountId: destination.accountId,
+      roomId: destination.roomId,
+      eventId: destination.eventId,
+    });
   }
 
   private openNativePush(
     activation: NativePushActivation,
   ): Observable<ApplicationRuntimeWarning> {
-    return this.openWorkspaceDestination(
-      activation.roomId
-        ? ['/rooms', encodeRoomSegment(activation.roomId)]
-        : ['/rooms'],
-      activation.accountId ? { account: activation.accountId } : undefined,
-    );
+    return this.openWorkspaceIntent({
+      kind: 'notification',
+      ...activation,
+    });
   }
 
-  private openWorkspaceDestination(
-    commands: readonly string[],
-    queryParams?: Readonly<Record<string, string | undefined>>,
+  private openWorkspaceIntent(
+    intent: WorkspaceNavigationIntent,
   ): Observable<ApplicationRuntimeWarning> {
     return defer(() => {
       try {
@@ -136,13 +136,9 @@ export class TrinityApplicationSessionAdapter {
       } catch {
         // Browser focus may be denied; Workspace navigation is still valid.
       }
-      return from(
-        this.router.navigate([...commands], {
-          ...(queryParams ? { queryParams } : {}),
-        }),
-      ).pipe(
-        switchMap((navigated) =>
-          navigated
+      return this.workspaceNavigation.navigate(intent).pipe(
+        switchMap((outcome) =>
+          outcome.kind === 'ready'
             ? EMPTY
             : of(warning('workspace', 'notification-navigation-rejected')),
         ),

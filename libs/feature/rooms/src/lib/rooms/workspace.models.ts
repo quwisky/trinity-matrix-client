@@ -24,6 +24,8 @@ export type WorkspaceNavigationSource =
 export interface WorkspaceOpenOptions {
   readonly source: WorkspaceNavigationSource;
   readonly history: 'push' | 'replace';
+  /** Present when a semantic command also owns the canonical event-anchor projection. */
+  readonly eventId?: string | null;
 }
 
 export interface WorkspaceTransitionMetrics {

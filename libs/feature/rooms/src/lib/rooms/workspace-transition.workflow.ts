@@ -89,7 +89,8 @@ export class WorkspaceTransitionWorkflow {
       if (this.attempt) {
         return sameWorkspaceDestination(this.attempt.destination, requested) &&
           this.attempt.options.source === options.source &&
-          this.attempt.options.history === options.history
+          this.attempt.options.history === options.history &&
+          this.attempt.options.eventId === options.eventId
           ? this.attempt.outcome
           : of({
               kind: 'transition-in-progress',
@@ -120,6 +121,7 @@ export class WorkspaceTransitionWorkflow {
 
     if (
       options.source !== 'repair' &&
+      !Object.hasOwn(options, 'eventId') &&
       !resolved.repaired &&
       !accountChanges &&
       sameWorkspaceDestination(previous, resolved.destination)
@@ -144,6 +146,7 @@ export class WorkspaceTransitionWorkflow {
       return this.navigate(
         resolved.destination,
         options.history === 'replace' || resolved.repaired,
+        options.eventId,
         () => {
           routeProjectionStarted = true;
         },
@@ -266,9 +269,10 @@ export class WorkspaceTransitionWorkflow {
   private navigate(
     destination: WorkspaceDestination,
     replaceUrl: boolean,
+    eventId?: string | null,
     onStarted?: () => void,
   ): Observable<boolean> {
-    const projection = workspaceUrlOf(destination);
+    const projection = workspaceUrlOf(destination, eventId);
     return defer(() => {
       this.routeWrites += 1;
       let navigation: Promise<boolean>;
@@ -307,6 +311,7 @@ export class WorkspaceTransitionWorkflow {
         pane: previous.pane,
       },
       true,
+      undefined,
     );
   }
 
@@ -381,13 +386,13 @@ export class WorkspaceTransitionWorkflow {
           },
           error: (error: unknown) => {
             sourceSettled = true;
-            replay?.error(error);
             releaseAttempt();
+            replay?.error(error);
           },
           complete: () => {
             sourceSettled = true;
-            replay?.complete();
             releaseAttempt();
+            replay?.complete();
           },
         });
       }

@@ -24,8 +24,8 @@ import type {
   WorkspaceNavigation,
   WorkspaceNavigationIntent,
   WorkspaceNavigationOutcome,
-  WorkspaceSearchIntent,
 } from '@trinity/application/workspace';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
@@ -35,6 +35,7 @@ import {
   concatMap,
   defer,
   filter,
+  last,
   map,
   of,
   startWith,
@@ -61,7 +62,7 @@ import { resolveWorkspaceNavigation } from './workspace-navigation';
  * The application workflow that owns the semantic Workspace destination.
  *
  * The Router is an inbound/outbound projection rather than a second store: URL restoration
- * enters through {@link open}, while every successful command publishes one immutable view
+ * enters through {@link navigate}, while every successful command publishes one immutable view
  * only after Account readiness and the canonical navigation have both settled.
  */
 @Injectable()
@@ -77,6 +78,7 @@ export class WorkspaceService implements WorkspaceNavigation {
   private readonly invites = inject(InvitesService);
   private readonly spaces = inject(SpacesService);
   private readonly mru = inject(MruRoomsService);
+  private readonly navigation = inject(WorkspaceNavigationService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly compact = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
   private readonly routeMaps = toSignal(
@@ -106,6 +108,8 @@ export class WorkspaceService implements WorkspaceNavigation {
   );
 
   constructor() {
+    const unregisterNavigation = this.navigation.register(this);
+    this.destroyRef.onDestroy(unregisterNavigation);
     this.project(this.view(), true);
     // The Router adapter writes both maps before its navigation settles. Those emissions
     // are projections of the in-flight command, not a second inbound destination.
@@ -120,30 +124,15 @@ export class WorkspaceService implements WorkspaceNavigation {
             this.eventTargetState.set(null);
             return of(null);
           }
-          if (
-            parsed.canonical &&
-            sameWorkspaceDestination(this.view(), parsed.destination)
-          ) {
-            this.publishEventTarget(parsed.eventId ?? null);
-            return of(null);
-          }
-          return this.open(parsed.destination, {
-            // A canonical Router emission already projected its URL (Back/Forward,
-            // reload, or a deep link). A legacy URL still needs one canonical repair.
-            source: parsed.canonical ? 'restore' : 'repair',
-            history: 'replace',
-          }).pipe(
-            map((outcome) => {
-              if (outcome.kind === 'ready') {
-                this.publishEventTarget(
-                  outcome.view.roomId === parsed.destination?.roomId
-                    ? (parsed.eventId ?? null)
-                    : null,
-                );
-              }
-              return outcome;
-            }),
-          );
+          return this.navigate({
+            kind: 'restoration',
+            accountId: parsed.destination.accountId,
+            scope: parsed.destination.scope,
+            roomId: parsed.destination.roomId,
+            pane: parsed.destination.pane,
+            ...(parsed.eventId ? { eventId: parsed.eventId } : {}),
+            canonical: parsed.canonical,
+          });
         }),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -172,6 +161,13 @@ export class WorkspaceService implements WorkspaceNavigation {
           const changed = !sameWorkspaceDestination(this.view(), view);
           this.workspaceView.set(view);
           this.transitionMetrics.set(metrics);
+          if (Object.hasOwn(committedOptions, 'eventId')) {
+            this.publishEventTarget(
+              view.roomId && committedOptions.eventId
+                ? committedOptions.eventId
+                : null,
+            );
+          }
           if (changed) this.project(view);
           if (
             committedOptions.source === 'user' &&
@@ -195,6 +191,8 @@ export class WorkspaceService implements WorkspaceNavigation {
     intent: WorkspaceNavigationIntent,
   ): Observable<WorkspaceNavigationOutcome> {
     return defer(() => {
+      if (intent.kind === 'person') return this.navigatePerson(intent);
+      if (intent.kind === 'invitation') return this.navigateInvitation(intent);
       const resolved = resolveWorkspaceNavigation(intent, this.view());
       if (!resolved) {
         return of({
@@ -206,15 +204,32 @@ export class WorkspaceService implements WorkspaceNavigation {
         this.view(),
         resolved.destination,
       );
-      return this.open(resolved.destination, resolved.options).pipe(
+      const eventId =
+        intent.kind === 'notification' || intent.kind === 'restoration'
+          ? normalizeEventId(intent.eventId)
+          : null;
+      const currentEventId = this.eventTarget()?.eventId ?? null;
+      const options =
+        eventId === currentEventId
+          ? resolved.options
+          : { ...resolved.options, eventId };
+      return this.open(resolved.destination, options).pipe(
         map((outcome): WorkspaceNavigationOutcome => {
           switch (outcome.kind) {
-            case 'ready':
+            case 'ready': {
+              if (!Object.hasOwn(options, 'eventId')) {
+                this.publishEventTarget(
+                  outcome.view.roomId === resolved.destination.roomId
+                    ? eventId
+                    : null,
+                );
+              }
               return {
                 kind: 'ready',
                 change:
                   unchanged && !outcome.repaired ? 'unchanged' : 'committed',
               };
+            }
             case 'failed':
               return { kind: 'unavailable', reason: outcome.failure };
             case 'transition-in-progress':
@@ -228,92 +243,69 @@ export class WorkspaceService implements WorkspaceNavigation {
     });
   }
 
-  /**
-   * Resolve one fully qualified Global Search intent through the authoritative
-   * Workspace workflow. Account context is never re-derived from a mutable row list:
-   * exact Rooms/Spaces open directly, while people and invitations first perform the
-   * named Account action and then open the resulting semantic destination.
-   */
-  openSearchIntent(
-    intent: WorkspaceSearchIntent,
-  ): Observable<WorkspaceOpenOutcome> {
-    return defer(() => {
-      switch (intent.kind) {
-        case 'conversation':
-          return this.open(
-            this.roomDestination(intent.accountId, intent.roomId),
-            { source: 'user', history: 'push' },
-          );
-        case 'space':
-          return this.open(
-            this.scopeDestination(intent.accountId, {
-              kind: 'space',
-              spaceId: intent.spaceId,
-            }),
-            { source: 'user', history: 'push' },
-          );
-        case 'person':
-          return this.ensureSearchAccount(intent.accountId).pipe(
-            switchMap((activation) =>
-              activation
-                ? of(activation)
-                : this.rooms
-                    .createDirectMessage(intent.userId)
-                    .pipe(
-                      switchMap((roomId) =>
-                        this.roomReadiness
-                          .waitForRoom(intent.accountId, roomId)
-                          .pipe(
-                            switchMap(() =>
-                              this.open(
-                                this.roomInScopeDestination(
-                                  intent.accountId,
-                                  roomId,
-                                  { kind: 'home' },
-                                ),
-                                { source: 'user', history: 'push' },
-                              ),
-                            ),
-                          ),
-                      ),
-                    ),
-            ),
-          );
-        case 'invitation':
-          return this.invites
-            .acceptInvite(intent.roomId, intent.accountId)
-            .pipe(
-              switchMap(() =>
-                this.roomReadiness
-                  .waitForRoom(intent.accountId, intent.roomId)
-                  .pipe(
-                    switchMap(() =>
-                      intent.target === 'space'
-                        ? this.open(
-                            this.scopeDestination(intent.accountId, {
-                              kind: 'space',
-                              spaceId: intent.roomId,
-                            }),
-                            { source: 'user', history: 'push' },
-                          )
-                        : this.open(
-                            this.roomInScopeDestination(
-                              intent.accountId,
-                              intent.roomId,
-                              intent.target === 'direct'
-                                ? { kind: 'home' }
-                                : RECENT_WORKSPACE_SCOPE,
-                            ),
-                            { source: 'user', history: 'push' },
-                          ),
-                    ),
+  private navigatePerson(
+    intent: Extract<WorkspaceNavigationIntent, { readonly kind: 'person' }>,
+  ): Observable<WorkspaceNavigationOutcome> {
+    const prepare =
+      this.activeAccountId() === intent.accountId
+        ? of({ kind: 'ready', change: 'unchanged' } as const)
+        : this.navigate({
+            kind: 'account',
+            accountId: intent.accountId,
+            origin: 'search-preparation',
+          });
+    return prepare.pipe(
+      // The next semantic command starts only after the Account transition has released
+      // its join/conflict lock, not merely after its terminal value was published.
+      last(),
+      switchMap((outcome) =>
+        outcome.kind === 'unavailable'
+          ? of(outcome)
+          : this.rooms.createDirectMessage(intent.userId).pipe(
+              switchMap((roomId) =>
+                this.roomReadiness.waitForRoom(intent.accountId, roomId).pipe(
+                  switchMap(() =>
+                    this.navigate({
+                      kind: 'room',
+                      accountId: intent.accountId,
+                      roomId,
+                      scope: { kind: 'home' },
+                      origin: 'global-search',
+                    }),
                   ),
+                ),
               ),
-            );
-        default:
-          return this.unreachableSearchIntent(intent);
-      }
-    });
+            ),
+      ),
+    );
+  }
+
+  private navigateInvitation(
+    intent: Extract<WorkspaceNavigationIntent, { readonly kind: 'invitation' }>,
+  ): Observable<WorkspaceNavigationOutcome> {
+    return this.invites.acceptInvite(intent.roomId, intent.accountId).pipe(
+      switchMap(() =>
+        this.roomReadiness.waitForRoom(intent.accountId, intent.roomId),
+      ),
+      switchMap(() =>
+        intent.target === 'space'
+          ? this.navigate({
+              kind: 'space',
+              accountId: intent.accountId,
+              spaceId: intent.roomId,
+            })
+          : this.navigate({
+              kind: 'room',
+              accountId: intent.accountId,
+              roomId: intent.roomId,
+              scope:
+                intent.target === 'direct'
+                  ? { kind: 'home' }
+                  : RECENT_WORKSPACE_SCOPE,
+              origin: 'global-search',
+            }),
+      ),
+    );
   }
 
   /** Preserve a non-space scope when a room on another Account is selected. */
@@ -381,21 +373,6 @@ export class WorkspaceService implements WorkspaceNavigation {
       roomId: null,
       pane: 'list',
     };
-  }
-
-  /** Null means the requested Account is ready; a non-ready outcome stops resolution. */
-  private ensureSearchAccount(
-    accountId: string,
-  ): Observable<WorkspaceOpenOutcome | null> {
-    if (this.activeAccountId() === accountId) return of(null);
-    return this.open(this.accountDestination(accountId), {
-      source: 'repair',
-      history: 'replace',
-    }).pipe(map((outcome) => (outcome.kind === 'ready' ? null : outcome)));
-  }
-
-  private unreachableSearchIntent(intent: never): never {
-    throw new Error(`Unsupported Workspace search intent: ${String(intent)}`);
   }
 
   /** Release page-scoped projection ownership without changing semantic history. */
@@ -486,4 +463,8 @@ export class WorkspaceService implements WorkspaceNavigation {
     }
     return combineLatest([this.route.paramMap, this.route.queryParamMap]);
   }
+}
+
+function normalizeEventId(eventId: string | undefined): string | null {
+  return eventId?.startsWith('$') && eventId.length > 1 ? eventId : null;
 }

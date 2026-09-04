@@ -13,7 +13,10 @@ import {
   withRouterConfig,
   type Routes,
 } from '@angular/router';
-import { WORKSPACE_APPLICATION_SURFACE_PRESENTER } from '@trinity/application/workspace';
+import {
+  WORKSPACE_APPLICATION_SURFACE_PRESENTER,
+  WORKSPACE_NAVIGATION_ACTIVATOR,
+} from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 import type { PushConfig } from '@trinity/data-access/notifications';
@@ -33,6 +36,7 @@ import {
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
+import { WorkspaceNavigationActivatorAdapter } from './workspace-navigation.activator';
 
 export interface TrinityApplicationDialogLoaders {
   readonly settings: ApplicationDialogLoader;
@@ -79,6 +83,11 @@ export function provideTrinityApplication(
     {
       provide: WORKSPACE_APPLICATION_SURFACE_PRESENTER,
       useExisting: WorkspaceApplicationSurfacePresenterAdapter,
+    },
+    WorkspaceNavigationActivatorAdapter,
+    {
+      provide: WORKSPACE_NAVIGATION_ACTIVATOR,
+      useExisting: WorkspaceNavigationActivatorAdapter,
     },
     {
       provide: SETTINGS_DIALOG_COMPONENT,

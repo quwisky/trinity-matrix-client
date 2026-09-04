@@ -27,6 +27,20 @@ describe('Workspace URL projection', () => {
     ).toMatchObject({ canonical: false });
   });
 
+  it('projects an optional semantic event anchor into the canonical Room URL', () => {
+    const destination = {
+      accountId: '@alice:example.org',
+      scope: { kind: 'recent' },
+      roomId: '!room:example.org',
+      pane: 'conversation',
+    } as const;
+
+    expect(workspaceUrlOf(destination, '$notification').queryParams).toEqual({
+      account: '@alice:example.org',
+      event: '$notification',
+    });
+  });
+
   it('round-trips an exact Account, space, and room destination', () => {
     const destination = {
       accountId: '@alice:example.org',

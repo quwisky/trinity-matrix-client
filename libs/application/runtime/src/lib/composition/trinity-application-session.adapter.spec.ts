@@ -9,7 +9,10 @@ import {
 } from '@angular/service-worker';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import {
+  WorkspaceBackService,
+  WorkspaceNavigationService,
+} from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationService,
@@ -42,6 +45,7 @@ interface SessionHarness {
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
   readonly navigate: ReturnType<typeof vi.fn>;
+  readonly workspaceNavigate: ReturnType<typeof vi.fn>;
   readonly closeAuthentication: ReturnType<typeof vi.fn>;
   readonly locationBack: ReturnType<typeof vi.fn>;
   readonly background: ReturnType<typeof vi.fn>;
@@ -69,6 +73,9 @@ function setup(pushSession?: Observable<NativePushActivation>): SessionHarness {
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
   const navigate = vi.fn().mockResolvedValue(true);
+  const workspaceNavigate = vi.fn(() =>
+    of({ kind: 'ready', change: 'committed' } as const),
+  );
   const closeAuthentication = vi.fn(() => of({ kind: 'completed' as const }));
   const locationBack = vi.fn();
   const background = vi.fn(() => of({ kind: 'completed' as const }));
@@ -117,6 +124,7 @@ function setup(pushSession?: Observable<NativePushActivation>): SessionHarness {
         activeOwnsTopmostOverlay: workspaceOwnsOverlay,
         back: workspaceBack,
       }),
+      MockProvider(WorkspaceNavigationService, { navigate: workspaceNavigate }),
       MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
       {
         provide: SwUpdate,
@@ -139,6 +147,7 @@ function setup(pushSession?: Observable<NativePushActivation>): SessionHarness {
     pushActivations,
     lifecycleEvents,
     navigate,
+    workspaceNavigate,
     closeAuthentication,
     locationBack,
     background,
@@ -192,7 +201,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     lifetime.unsubscribe();
   });
 
-  it('projects typed notification activation into a Workspace-owned destination URL', async () => {
+  it('submits typed notification activation to semantic Workspace navigation', async () => {
     const test = setup();
     const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
     const lifetime = test.adapter.run().subscribe();
@@ -207,16 +216,14 @@ describe('TrinityApplicationSessionAdapter', () => {
     });
 
     await vi.waitFor(() =>
-      expect(test.navigate).toHaveBeenCalledWith(
-        ['/rooms', 'IXJvb206ZXhhbXBsZS5vcmc'],
-        {
-          queryParams: {
-            account: '@background:example.org',
-            event: '$event',
-          },
-        },
-      ),
+      expect(test.workspaceNavigate).toHaveBeenCalledWith({
+        kind: 'notification',
+        accountId: '@background:example.org',
+        roomId: '!room:example.org',
+        eventId: '$event',
+      }),
     );
+    expect(test.navigate).not.toHaveBeenCalled();
     expect(focus).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
@@ -229,6 +236,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       subscriber.next({
         accountId: '@background:example.org',
         roomId: '!room:example.org',
+        eventId: '$event',
       });
       return () => teardowns++;
     });
@@ -236,17 +244,21 @@ describe('TrinityApplicationSessionAdapter', () => {
     const firstLifetime = test.adapter.run().subscribe();
 
     await vi.waitFor(() =>
-      expect(test.navigate).toHaveBeenCalledWith(
-        ['/rooms', 'IXJvb206ZXhhbXBsZS5vcmc'],
-        { queryParams: { account: '@background:example.org' } },
-      ),
+      expect(test.workspaceNavigate).toHaveBeenCalledWith({
+        kind: 'notification',
+        accountId: '@background:example.org',
+        roomId: '!room:example.org',
+        eventId: '$event',
+      }),
     );
     firstLifetime.unsubscribe();
     expect(teardowns).toBe(1);
 
-    test.navigate.mockClear();
+    test.workspaceNavigate.mockClear();
     const secondLifetime = test.adapter.run().subscribe();
-    await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(test.workspaceNavigate).toHaveBeenCalledOnce(),
+    );
     expect(subscriptions).toBe(2);
     secondLifetime.unsubscribe();
     expect(teardowns).toBe(2);
@@ -254,7 +266,9 @@ describe('TrinityApplicationSessionAdapter', () => {
 
   it('reports rejected notification navigation without ending the session', async () => {
     const test = setup();
-    test.navigate.mockResolvedValueOnce(false);
+    test.workspaceNavigate.mockReturnValueOnce(
+      of({ kind: 'unavailable', reason: 'navigation-rejected' }),
+    );
     const warnings: unknown[] = [];
     const lifetime = test.adapter
       .run()
@@ -281,6 +295,37 @@ describe('TrinityApplicationSessionAdapter', () => {
     lifetime.unsubscribe();
   });
 
+  it('reports broken notification navigation without ending the session', async () => {
+    const test = setup();
+    test.workspaceNavigate.mockReturnValueOnce(
+      new Observable((subscriber) => subscriber.error(new Error('broken'))),
+    );
+    const warnings: unknown[] = [];
+    const lifetime = test.adapter
+      .run()
+      .subscribe((value) => warnings.push(value));
+
+    test.notificationEvents.next({
+      kind: 'activated',
+      destination: {
+        accountId: '@me:example.org',
+        roomId: '!room:example.org',
+        eventId: '$event',
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(warnings).toContainEqual(
+        expect.objectContaining({
+          scope: 'workspace',
+          diagnostic: { code: 'notification-navigation-failed' },
+        }),
+      ),
+    );
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
   it('reports presentation failures without navigating or ending the session', () => {
     const test = setup();
     const warnings: unknown[] = [];
@@ -299,7 +344,7 @@ describe('TrinityApplicationSessionAdapter', () => {
         diagnostic: { code: 'notification-presentation-failed' },
       }),
     );
-    expect(test.navigate).not.toHaveBeenCalled();
+    expect(test.workspaceNavigate).not.toHaveBeenCalled();
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });

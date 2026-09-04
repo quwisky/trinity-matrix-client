@@ -226,7 +226,7 @@ export class ShellShortcutsService {
       .pick$()
       .pipe(
         filter((selection) => selection !== null),
-        switchMap((selection) => this.workspace.openSearchIntent(selection)),
+        switchMap((selection) => this.workspace.navigate(selection)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
