@@ -102,6 +102,8 @@ one entry. Authoritative success clears only that entry; waiting cannot hide an 
 required failure. Disabled, not-applicable and retired demand remove its actionable status without
 claiming recovery. Recovery commands are cold and finite, serialize conflicting attempts, and
 publish pending plus success, unavailable, transition-in-progress, failure or partial outcomes.
+A recovery blocks another attempt for the same scoped operation, while independent Account scopes
+may recover concurrently.
 A command result alone never replaces authoritative producer health. Contextual incidents remain
 separate from persistent health.
 

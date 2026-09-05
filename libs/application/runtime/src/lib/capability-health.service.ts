@@ -3,6 +3,7 @@ import type {
   IdentityPresenceIncident,
 } from '@trinity/data-access/identity';
 import { Injectable, computed, signal } from '@angular/core';
+import type { Observable } from 'rxjs';
 import {
   catchError,
   concat,
@@ -28,6 +29,23 @@ export interface ApplicationCapabilityHealth extends IdentityPresenceHealth {
   readonly severity: 'none' | 'limited' | 'blocking';
 }
 
+export type ApplicationCapabilityRecoveryTarget = Pick<
+  ApplicationCapabilityHealth,
+  'reference' | 'generation'
+>;
+
+export interface ApplicationCapabilityDiagnostic {
+  readonly reference: string;
+  readonly capability: string;
+  readonly operation: string;
+  readonly code: string;
+  readonly condition: ApplicationCapabilityHealth['condition'];
+  readonly stage: 'startup' | 'session';
+  readonly attempt: number;
+  readonly version: string;
+  readonly platform: 'web' | 'ios' | 'android' | 'desktop';
+}
+
 interface Registration {
   readonly fact: ApplicationCapabilityHealth;
   readonly recovery: CapabilityRecovery;
@@ -43,18 +61,19 @@ export class CapabilityHealthService {
   private readonly snapshot = signal<readonly ApplicationCapabilityHealth[]>(
     [],
   );
-  private readonly pending = signal(false);
+  private readonly recoveringReferences = signal<ReadonlySet<string>>(
+    new Set(),
+  );
+  private readonly incidentState = signal<readonly IdentityPresenceIncident[]>(
+    [],
+  );
   private readonly stopped = new Subject<void>();
   private nextReference = 0;
   private epoch = 0;
 
   readonly health = this.snapshot.asReadonly();
-  readonly recovering = this.pending.asReadonly();
   readonly problems = computed(() =>
     this.health().filter((entry) => entry.severity !== 'none'),
-  );
-  private readonly incidentState = signal<readonly IdentityPresenceIncident[]>(
-    [],
   );
   readonly incidents = this.incidentState.asReadonly();
 
@@ -128,22 +147,30 @@ export class CapabilityHealthService {
     ]);
   }
 
-  recover(reference: string, generation: number) {
+  recoveryInProgress(target: ApplicationCapabilityRecoveryTarget): boolean {
+    return this.recoveringReferences().has(target.reference);
+  }
+
+  recover(
+    target: ApplicationCapabilityRecoveryTarget,
+  ): Observable<CapabilityRecoveryOutcome> {
     return defer(() => {
-      if (this.pending())
-        return of({ kind: 'transition-in-progress' } as const);
       const registration = [...this.registrations.values()]
         .flatMap((entries) => [...entries.values()])
         .find(
           ({ fact }) =>
-            fact.reference === reference &&
-            fact.generation === generation &&
+            fact.reference === target.reference &&
+            fact.generation === target.generation &&
             fact.demanded &&
             fact.severity !== 'none',
         );
       if (!registration) return of({ kind: 'unavailable' } as const);
+      if (this.recoveryInProgress(target))
+        return of({ kind: 'transition-in-progress' } as const);
       const epoch = this.epoch;
-      this.pending.set(true);
+      this.recoveringReferences.update((references) =>
+        new Set(references).add(target.reference),
+      );
       return concat(
         of({ kind: 'pending' } as const),
         defer(registration.recovery).pipe(
@@ -156,7 +183,12 @@ export class CapabilityHealthService {
       ).pipe(
         takeUntil(this.stopped),
         finalize(() => {
-          if (epoch === this.epoch) this.pending.set(false);
+          if (epoch !== this.epoch) return;
+          this.recoveringReferences.update((references) => {
+            const next = new Set(references);
+            next.delete(target.reference);
+            return next;
+          });
         }),
       );
     });
@@ -168,7 +200,7 @@ export class CapabilityHealthService {
     attempt: number,
     version: string,
     platform: 'web' | 'ios' | 'android' | 'desktop',
-  ) {
+  ): readonly ApplicationCapabilityDiagnostic[] {
     return this.health().map((entry) => ({
       reference: entry.reference,
       capability: entry.capability,
@@ -185,7 +217,7 @@ export class CapabilityHealthService {
   reset(): void {
     this.epoch += 1;
     this.stopped.next();
-    this.pending.set(false);
+    this.recoveringReferences.set(new Set());
     this.registrations.clear();
     this.snapshot.set([]);
     this.incidentState.set([]);

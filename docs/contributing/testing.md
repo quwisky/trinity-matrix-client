@@ -188,8 +188,9 @@ prove a spec or template type-correct.
 For changes to capability health, run the affected Nx test, typecheck and lint targets, including
 Application Runtime, Identity and Projection Runtime. Their behavioral tests cover simultaneous
 Account isolation, expected dormancy, retained reconciliation failure/success, released ownership,
-retry generations, stop/restart rejection, diagnostic serialization and finite preparation/recovery
-observation. `scripts:test` includes the frozen warning compatibility and session-owner guards.
+retry generations, same-scope recovery serialization, independent-scope recovery, stop/restart
+rejection, diagnostic serialization and finite preparation/recovery observation. `scripts:test`
+includes the frozen warning compatibility and session-owner guards.
 
 The `identity/presence.spec.mts` browser journey injects a failing Identity read through Angular's
 development-only debug API, then exercises the real projection, health ledger and visible retry.
