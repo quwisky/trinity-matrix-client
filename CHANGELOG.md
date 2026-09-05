@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- The CLI-managed Angular developer skill now comes from `angular/angular`, including its
+  updated Angular Aria guidance.
+
 - Agent guidance now shares contributor policies for branching, releases and validation:
   `develop` is the default, integration branches are task-specific, and checks are selected
   by the changed behavior, including single-component browser layout checks.

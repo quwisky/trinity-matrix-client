@@ -2,10 +2,10 @@
   "version": 1,
   "skills": {
     "angular-developer": {
-      "source": "angular/skills",
+      "source": "angular/angular",
       "sourceType": "github",
-      "skillPath": "angular-developer/SKILL.md",
-      "computedHash": "3faf142c1524f6d006621e1485810d15ee975bdfddb6d0f80c2b367b3a596a44"
+      "skillPath": "skills/dev-skills/angular-developer/SKILL.md",
+      "computedHash": "0850aa966b6a7da1151daa9d0ef2081bf397f052573a35c1643fb92b948f0f00"
     },
     "brandkit": {
       "source": "leonxlnx/taste-skill",
