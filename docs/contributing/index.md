@@ -38,17 +38,17 @@ A directory name is not always an Nx project name: nested libraries use names su
 
 ## Use the right guide
 
-| Task                                             | Guide                                                |
-| ------------------------------------------------ | ---------------------------------------------------- |
-| Install and run the web app                      | [Getting started](getting-started.md)                |
-| Look up an exact command or focus a target       | [Commands](commands.md)                              |
-| Decide what check proves a change                | [Testing](testing.md)                                |
-| Understand shared E2E resources and coverage     | [End-to-end test architecture](e2e-architecture.md)  |
-| Follow code, commit, and publication conventions | [Conventions](conventions.md)                        |
-| Work on web, desktop, Android, or iOS delivery   | [Platforms](../platforms/index.md)                   |
-| Understand CI or release preparation             | [CI and releases](../maintaining/ci-and-releases.md) |
-| Work with repository agent roles and rules       | [Working with agents](../agents/index.md)            |
-| Find a known local failure                       | [Troubleshooting](../reference/troubleshooting.md)   |
+| Task                                               | Guide                                                |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| Install and run the web app                        | [Getting started](getting-started.md)                |
+| Look up an exact command or focus a target         | [Commands](commands.md)                              |
+| Decide what check proves a change                  | [Testing](testing.md)                                |
+| Understand shared E2E resources and coverage       | [End-to-end test architecture](e2e-architecture.md)  |
+| Follow code, commit, and publication conventions   | [Conventions](conventions.md)                        |
+| Work on web, desktop, Android, or iOS delivery     | [Platforms](../platforms/index.md)                   |
+| Understand CI or release preparation               | [CI and releases](../maintaining/ci-and-releases.md) |
+| Give an agent a task or maintain its skill catalog | [Working with agents](../agents/index.md)            |
+| Find a known local failure                         | [Troubleshooting](../reference/troubleshooting.md)   |
 
 The [documentation map](../documentation-map.md) is the migration ownership inventory.
 It is for maintaining the documentation set, not the normal starting point for a contribution.

@@ -26,7 +26,7 @@ Start with the [documentation guide](docs/index.md), organized around what you w
 | [Using Trinity](docs/users/index.md)                 | What the app can do, installing, signing in, encryption, messaging, settings       |
 | [Developing Trinity](docs/contributing/index.md)     | First run, commands, testing, conventions and the change workflow                  |
 | [Maintaining Trinity](docs/maintaining/index.md)     | CI, releases, platform delivery, validation warnings and dependency upkeep         |
-| [Working with agents](docs/agents/index.md)          | Repository skills, role handoffs and Codex agent configuration                     |
+| [Working with agents](docs/agents/index.md)          | Choose an agent role, hand off verified work, or maintain the skill catalog        |
 | [Architecture](docs/architecture/index.md)           | Libraries and boundaries, the state pattern, Matrix and encryption, UI and theming |
 | [Platforms](docs/platforms/index.md)                 | Web, the Electron desktop shell, and the Capacitor mobile targets                  |
 | [Stack reference](docs/reference/stack.md)           | Pinned versions and the integration note for each dependency                       |

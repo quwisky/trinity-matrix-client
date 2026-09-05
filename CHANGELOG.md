@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Agent documentation now separates task onboarding from catalog maintenance, explains role
+  models and runtime limits, and provides one compact handoff. Local desktop and UX references
+  follow Trinity contracts, with duplicated architecture and command guidance consolidated.
+
 - Maintainer documentation now connects CI diagnosis, coordinated release preparation, signing,
   partial-artifact recovery and dependency updates, with a canonical warning guide and explicit
   distinctions between current automation, historical evidence and pending proposals.

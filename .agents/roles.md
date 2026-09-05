@@ -1,63 +1,96 @@
-# Planning, implementation and review
+# Planning, implementation, and review
 
-The main agent coordinates the task and retains the user's chosen session model.
-For substantive work, delegate a bounded assignment to the appropriate role when the
-coordinator can make useful progress alongside it. Handle trivial edits and short answers
-directly. A planning request authorizes planning; implementation starts only within the
-user's accepted scope. Explicit user model choices take precedence over these defaults.
+The coordinator keeps the user's chosen session model, accepted decisions,
+integration, and authorized publication. Choose a role for substantive work;
+handle a short, unambiguous edit directly.
 
-## Roles and skills
+## Select a role
 
-| Role          | Assignment                                                                                       | Skills to load when relevant                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| `planner`     | Investigate requirements and architecture; return a decision frontier and implementation slices. | `grill-me` / `grilling`, `domain-modeling`, `to-tickets`, planning with `wayfinder` |
-| `implementer` | Implement an accepted slice, update its documentation and validate the changed behavior.         | Angular, Spartan, Nx, diagnosis, testing and optional `ponytail` guidance           |
-| `reviewer`    | Independently review a stable change against its requirements and repository rules.              | `code-review`, optional `ponytail` for complexity findings                          |
+| Role        | Use it for                                                              | Return                                                                                    |
+| ----------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Planner     | Investigating requirements or architecture before a change is accepted. | Evidence, unresolved decisions, dependencies, scoped slices, and validation choices.      |
+| Implementer | Completing an accepted slice with defined ownership.                    | Changed files, behavior, actual checks, and limits.                                       |
+| Reviewer    | Independently checking a frozen artifact.                               | Evidence-backed findings with locations, or a clear no-findings result and review limits. |
 
-Model and reasoning defaults live in the project-local definitions:
-[`planner`](../.codex/agents/planner.toml),
-[`implementer`](../.codex/agents/implementer.toml) and
-[`reviewer`](../.codex/agents/reviewer.toml).
-Change those files when changing the defaults. Role definitions are repository-owned
-configuration; they are separate from the managed skill catalog.
+Assign one writer to a set of files. Delegate only bounded work that can proceed
+independently. The coordinator may prepare integration or inspect dependencies
+while that work proceeds, then routes material findings to the implementer.
+
+## Use the configured defaults deliberately
+
+The repository-owned definitions record the default model and reasoning effort
+for delegated work:
+
+| Role        | Configuration                                                         | Default                 |
+| ----------- | --------------------------------------------------------------------- | ----------------------- |
+| Planner     | [`.codex/agents/planner.toml`](../.codex/agents/planner.toml)         | `gpt-6-astra`, `high`   |
+| Implementer | [`.codex/agents/implementer.toml`](../.codex/agents/implementer.toml) | `gpt-5.6-terra`, `high` |
+| Reviewer    | [`.codex/agents/reviewer.toml`](../.codex/agents/reviewer.toml)       | `gpt-6-astra`, `high`   |
+
+These defaults do not change the main session's user-selected model. For a client
+that supports named custom agents, ask it to delegate a bounded task to `planner`,
+`implementer`, or `reviewer`, then confirm the selected role and model in its result.
+The [Codex custom-agent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+specifies that a named file's model and effort take precedence over explicit spawn
+arguments. Where those file values are absent, selection falls through spawn
+arguments, configured agent defaults, and the parent session. Changing a named
+role's defaults means reviewing its TOML; a prompt alone does not replace them.
+Project configuration is also subject to [project trust](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+In the coordination runtime inspected for this guide, delegated tasks can receive
+explicit model and reasoning arguments, but there is no named-custom-agent field.
+A full-history fork cannot combine those overrides; use a bounded context packet.
+Explicit Terra/high implementation and Astra/high review were exercised during this
+rewrite. The TOMLs and Codex CLI 0.153.4 help were inspected; named-role loading and
+the built-in review command were not exercised. When a role or model override is
+unavailable, apply its instructions with the available model and record that limit.
+
+[`review_model`](../.codex/config.toml) is independent model-only configuration
+for the built-in review feature, as described in the [Codex configuration
+reference](https://learn.chatgpt.com/docs/config-file/config-reference). It
+currently names `gpt-6-astra`; it does not set reasoning effort and does not
+control the `code-review` skill.
+
+## Work in sequence
+
+1. **Plan when needed.** Reuse accepted decisions and current evidence. Ask
+   again only when a material scope change or unresolved decision requires it.
+   The planner returns slices that another person can implement and test.
+2. **Implement an accepted slice.** Give the implementer file ownership,
+   acceptance criteria, applicable references, and the handoff below. They
+   change only that slice, select validation from repository policy, and report
+   what actually happened.
+3. **Freeze and review.** Record the comparison base and head plus staged,
+   unstaged, and relevant untracked files. The reviewer inspects this stable
+   artifact independently against the requirements and repository rules.
+4. **Resolve and re-check.** The coordinator routes material findings to the
+   implementer, verifies affected behavior, and requests focused follow-up
+   review. Track unrelated concerns separately.
+5. **Publish when authorized.** The coordinator keeps prior authorization for
+   the same necessary reviewable work; it does not ask again merely because a
+   plan or handoff was reused. New external actions remain the coordinator's
+   responsibility and need the authorization required by repository policy.
 
 ## Handoffs
 
-- The coordinator supplies the exact worktree, branch/base, task scope, accepted decisions,
-  applicable skills, owned files and acceptance criteria. Handoffs use a compact evidence packet:
-  conclusions, decision status, evidence references and limitations; retain full logs and artifacts
-  at their locations. Reuse accepted decisions and verified investigation until affected evidence
-  changes. A model override may require a fresh agent context rather than a full conversation fork.
-- Planning returns evidence, unresolved decisions and testable slices to the coordinator.
-  The coordinator handles user questions and authorized ticket publication, preserving prior
-  approvals. An implementer receives the accepted slice after its dependencies are resolved.
-- Assign one writer to a given set of files. Delegate only bounded work that can progress
-  independently; dependent planning, implementation and review steps wait for their input. The
-  coordinator can inspect dependencies or prepare integration checks while a role works.
-- Implementers return changed files, behavior, checks actually run and remaining limitations.
-  Freeze the review scope before assigning the reviewer: base and head identifiers, plus
-  staged, unstaged and relevant untracked changes for work in progress. Keep that artifact
-  stable during review. Findings include concrete evidence and file locations.
-- The coordinator evaluates findings, routes in-scope fixes to the implementer and verifies
-  the affected behavior. Re-review material changes against the stable artifact and affected
-  behavior; track unrelated concerns separately. The coordinator owns authorized commits,
-  pushes and issue/PR updates.
-- Delegated roles complete their assignment directly and return to the coordinator. Generic
-  skill instructions to spawn more reviewers or researchers do not create recursive delegation.
+Use this single compact template for a substantive handoff. Replace bracketed
+text, keep full logs at their existing paths, and link to the evidence needed
+to act on the next step.
 
-## Runtime support
+```text
+Task: [outcome and bounded scope]
+Status: [planned | implementing | ready for review | blocked] — [what changed or remains]
+Decisions and authorization: [accepted decisions; authorized work; unresolved decision, if any]
+Worktree and revision: [directory] — [branch] — base [commit] — head [commit] — patch [clean | staged/unstaged/untracked paths]
+Ownership: [files/capability owned by this handoff]
+Evidence and revision: [source/config/issue links and the revision they describe]
+Validation: [command or check] — [pass/fail/not run] — [environment/log or artifact path]
+Limits: [unavailable host, unrun check, stale or unresolved evidence]
+Next owner and action: [role/person] — [specific next action]
+```
 
-Use named custom agents when the Codex runtime exposes them. When only explicit model and
-reasoning overrides are available, read the matching TOML and pass its settings and instructions
-to the delegated agent. If a user requests a different model, use explicit overrides without a
-named definition that would take precedence over them.
-
-If delegation or the selected model is unavailable, report the limitation and apply the role's
-instructions with the current model. Never claim that reading a skill or entering Plan mode
-changed the main agent's model. These instructions do not require every task to run all three roles.
-
-Codex loads [custom agent definitions](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-from trusted project configuration. Start a new task in this checkout to load the definitions;
-other coding tools can follow this document using their own model-selection mechanism.
-The project [`review_model`](../.codex/config.toml) separately selects the model for Codex's
-built-in `/review`; it does not control the `code-review` skill.
+The receiver reuses the packet while its relevant inputs remain unchanged.
+Refresh validation or investigation after changed code, dependencies,
+configuration, environment, a failure, or an unresolved concern. A handoff
+does not transfer publication ownership: the coordinator handles authorized
+commits, pushes, issue updates, and pull requests.

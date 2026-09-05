@@ -1,21 +1,17 @@
 ---
 id: readme-accuracy
 name: README Accuracy
-description: Keep README.md accurate — update it whenever features, setup steps, or APIs change
+description: Update affected README claims and navigation when behavior or setup changes
 category: docs
 recommended: true
 ---
 
-# README Accuracy
+# README accuracy
 
-The README is the first thing contributors and users read. Keep it correct.
+When a change affects a README claim, command, prerequisite, limitation, or link,
+update that passage and its canonical guide before final validation. Remove obsolete
+claims and repair navigation when a guide moves.
 
-**Update the README when:**
-- A feature is added or removed
-- Setup steps, environment variables, or dependencies change
-- A public API, CLI interface, or configuration format changes
-
-**Rules:**
-- Never leave outdated command examples, screenshots, or version references
-- If a section is no longer relevant, remove it rather than leaving it stale
-- The README does not need to be exhaustive — it needs to be correct
+Keep the README a useful entry point. A change already covered accurately by its
+linked guide does not require an unrelated README edit. Check links and formatting
+and distinguish available features from proposals or unverified platforms.
