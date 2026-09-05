@@ -1,0 +1,2 @@
+# The main session model remains the user's choice; delegated roles have their own definitions.
+review_model = "gpt-6-astra"

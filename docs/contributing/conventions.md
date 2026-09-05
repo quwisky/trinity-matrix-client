@@ -200,16 +200,49 @@ rules". A breaking change takes a `!` after the type or scope, or a
 `BREAKING CHANGE:` footer. Never use a bare "fix", "update" or "WIP" as the whole
 message.
 
-Branches are named `type/short-description`: `feat/user-auth`, `fix/login-crash`,
-`chore/update-deps`. Cut them from `develop`, which is the repository's default base
-and what `nx affected` diffs against.
+Commit types classify the change; commitlint validates the message. Neither a `feat`
+nor a `fix` commit automatically changes a version or publishes a release.
+
+## Branches and publication
+
+Use `develop` as the standard branch base and pull-request target. A temporary integration
+branch applies only when the task explicitly requires it; it is not a permanent default for
+an architectural area. Verify the target before creating a branch. Name work branches
+`type/short-description`, including the issue number when one exists.
+
+Inspect branch, worktree and local-change state before editing. Use a separate worktree when
+the checkout contains unrelated work. Work on a task branch rather than committing directly
+to shared branches. Before an authorized PR, rebase on its agreed target and preserve
+unrelated work. Do not rewrite pushed history without explicit authorization.
+
+Commits, pushes and PR creation follow the user's authorization; a generic skill workflow does
+not grant it. Stage only task-owned files. Report uncommitted changes when no commit was
+requested, and leave PR merging to the user. Run the required checks and state any unavailable
+validation accurately.
+
+## Changelog and releases
 
 Every feature, bug fix or breaking change gets an entry under `## [Unreleased]` in
-`CHANGELOG.md` before it is done. Entries are written for humans: describe the impact,
-not the implementation. Version numbers are **not** touched in ordinary work commits —
-they move only in a dedicated release commit alongside the changelog rename, and both
-`package.json` and `electron/package.json` must agree with the tag or the release
-workflow refuses to build.
+`CHANGELOG.md` before it is done. Entries describe the user impact under `Added`, `Fixed`,
+`Changed`, `Removed` or `Security` as appropriate.
+
+Version numbers stay unchanged in ordinary work commits. An authorized release uses a
+dedicated release commit that updates both `package.json` and `electron/package.json`
+to the same version, renames the Unreleased changelog section to that version and date,
+and starts a fresh Unreleased section. The version tag must match both manifests or the
+release workflow refuses to build. Tagging and publishing require their own authorization.
+See [CI and releases](ci-and-releases.md#releases) for the executable release process.
+
+Choose the release version from its full set of changes:
+
+| Bump  | Change                                           | Reset                   |
+| ----- | ------------------------------------------------ | ----------------------- |
+| PATCH | Backwards-compatible fixes without a new feature | None                    |
+| MINOR | A new backwards-compatible capability            | PATCH to zero           |
+| MAJOR | A breaking config or API change                  | MINOR and PATCH to zero |
+
+A new user-visible capability calls for a MINOR bump rather than PATCH. Commit types inform
+this decision; they do not perform the bump.
 
 ## Hooks and formatting
 
