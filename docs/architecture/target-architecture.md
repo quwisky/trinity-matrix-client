@@ -77,7 +77,9 @@ Preserve these lifetime boundaries; their sequences and cancellation rules live 
   complete staged path. Required Host, Active Account, Room Library, safe Workspace destination,
   and readiness failures block; optional operations settle independently, dependent operations
   record an explicit skipped settlement, and recovery resumes at the narrowest stage that can
-  recreate required ownership. The warning region
+  recreate required ownership. Notification rules, presentation, native push, badge support and
+  update checks publish distinct health; failed notification, badge and Host navigation actions
+  remain contextual incidents. The warning region
   stays keyboard scrollable and occupies at most a quarter of the visual viewport.
 - A session-owned capability exposes a cold `runProjection()` lifetime. Subscription owns
   attachment and acknowledgement; teardown releases listeners, pending work, warnings and

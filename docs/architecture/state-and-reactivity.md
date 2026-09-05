@@ -195,6 +195,30 @@ unavailable read to a negative security assertion. Security settings hide setup,
 actions that require current state, while the root surface explains that existing encrypted
 Conversations remain usable and offers exact-scope recovery.
 
+Notifications keep three authorities distinct. The active-Account Room-rule projection reports
+`notifications:room-rules` health only while a Room route demands it; no Account and no Room demand
+are expected dormancy. A retained reconciliation failure retries the existing projection, while
+released ownership is explicitly reacquired. Neither state claims that desktop presentation or
+mobile push delivery failed. The host presentation lifetime separately reports supported,
+disabled, unavailable and released-activation states. An individual presentation or notification
+navigation failure is a contextual incident and never becomes persistent health merely because it
+repeats.
+
+Native push owns one session-long activation-listener lifetime and a finite registration state.
+Missing platform support, gateway configuration or Account prerequisites are expected states;
+permission denial is disabled rather than failed initialization. Device-token, Matrix-pusher and
+readback failures publish only stable codes. Recovery retries registration in place while the
+listener is retained, or reattaches released listener ownership, without restarting notification
+rules, Workspace or other session capabilities.
+
+Badge support and update-check availability are installation-scoped Host health. Unsupported
+hosts are not problems. A rejected badge write is a one-shot incident because a later unread total
+can still succeed; a failed update check is health because automatic discovery is unavailable
+until an authoritative later check succeeds. Initial checks and foreground retries are finite,
+but live notification, push, deep-link, Back and lifecycle streams have no idle deadline. Failed
+deep-link handoff, notification navigation and Back/background actions remain contextual incidents
+with stable operation identities.
+
 Saved-Account restoration is the first startup producer using the same health contract. A failed
 inactive Account becomes one opaque limited scope while the Active Account, unrelated Accounts,
 Workspace, and open Conversations remain usable. Its retry calls Account Runtime for that exact
@@ -203,8 +227,8 @@ inactive-Account retry. A required Active Account or registry failure remains a 
 
 ### Diagnostic privacy
 
-Health facts copy only typed fields. Trust's, Identity's and startup composition's concrete Account
-IDs stay inside their producers;
+Health facts copy only typed fields. Trust's, Identity's, Notifications' and startup composition's
+concrete Account IDs stay inside their producers;
 no Account ID, personal label, token, preference value, exception or server response enters the
 health ledger. On-screen Account identity is a separate future presentation concern.
 `CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
@@ -219,7 +243,8 @@ legacy warning files are frozen by `scripts/capability-health-compatibility.spec
 also prevents Trust, Identity, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
 coverage remains in the Application Runtime adapter and root tests. The removal owner is
 [Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
-Later producer slices shrink this ledger; final System Status presentation removes it.
+Notification and Host producers no longer publish through this warning path; its source guard pins
+that absence. Later producer slices shrink the remaining ledger; final System Status presentation removes it.
 Required startup producers already have a compatibility count of zero: their blockers or scoped
 health outcomes come from the producer policy rather than a second warning orchestrator.
 

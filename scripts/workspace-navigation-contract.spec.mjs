@@ -146,29 +146,29 @@ describe('Workspace semantic navigation boundary', () => {
     const routing = source(`${featureRoot}/account-routing.service.ts`);
     const shell = source(`${featureRoot}/room-shell-navigation.service.ts`);
     const shortcuts = source(`${featureRoot}/shell-shortcuts.service.ts`);
-    const session = source(
-      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    const notificationSession = source(
+      'libs/application/runtime/src/lib/composition/notification-session.service.ts',
     );
     const back = source(`${applicationRoot}/workspace-back.service.ts`);
     const accountSession =
       'libs/feature/rooms/src/lib/rooms/session-actions.service.ts';
 
-    for (const consumer of [routing, shell, shortcuts, session]) {
+    for (const consumer of [routing, shell, shortcuts, notificationSession]) {
       expect(consumer).toContain('WorkspaceNavigationService');
       expect(consumer).not.toContain('WorkspaceService');
     }
     expect(routing).toContain('this.workspace\n      .navigate(intent)');
     expect(shortcuts).toContain('this.workspace.navigate(selection)');
-    expect(session).toContain('this.workspaceNavigation.navigate(intent)');
-    expect(session).not.toContain('encodeRoomSegment');
+    expect(notificationSession).toContain('this.navigation.navigate(intent)');
+    expect(notificationSession).not.toContain('encodeRoomSegment');
     for (const consumer of [routing, shell, shortcuts, back]) {
       expect(consumer).not.toContain("from '@angular/router'");
     }
     expect(
       methodSource(
-        'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
-        'TrinityApplicationSessionAdapter',
-        'openWorkspaceIntent',
+        'libs/application/runtime/src/lib/composition/notification-session.service.ts',
+        'NotificationSessionService',
+        'openIntent',
       ),
     ).not.toContain('this.router');
     expect(

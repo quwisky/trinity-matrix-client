@@ -60,18 +60,8 @@ export class ApplicationRootComponent {
       recovering: this.health.recoveryInProgress(problem),
       message: capabilityProblemMessage(problem),
       retryLabel: capabilityRetryLabel(problem),
-      statusTestId:
-        problem.capability === 'identity'
-          ? 'app-presence-health'
-          : problem.capability === 'trust'
-            ? 'app-trust-health'
-            : 'app-capability-health',
-      retryTestId:
-        problem.capability === 'identity'
-          ? 'app-presence-retry'
-          : problem.capability === 'trust'
-            ? 'app-trust-retry'
-            : 'app-capability-retry',
+      statusTestId: capabilityStatusTestId(problem),
+      retryTestId: capabilityRetryTestId(problem),
     })),
   );
   readonly booting = computed(() => {
@@ -151,6 +141,16 @@ function capabilityProblemMessage(
       return 'Saved room ordering is unavailable for one Account. The default order remains usable.';
     case 'trust':
       return 'Current encryption trust status is unavailable. Verification and recovery state are unknown; encrypted conversations remain usable.';
+    case 'notifications':
+      return problem.operation === 'room-rules'
+        ? 'Room notification settings are unavailable. Their last known values may be stale; notification delivery continues independently.'
+        : 'Trinity cannot currently show new device notifications. Messaging and Room notification settings remain usable.';
+    case 'push':
+      return 'Mobile push registration is unavailable. Notifications may not arrive while Trinity is closed; in-app messaging remains usable.';
+    case 'badge':
+      return 'App-icon badge support is unavailable. Unread counts remain visible inside Trinity.';
+    case 'updates':
+      return 'Automatic update checks are unavailable. Trinity remains usable; check the app store or reload the installed app later.';
     default:
       return 'One optional capability is unavailable. The rest of Trinity remains usable.';
   }
@@ -168,9 +168,36 @@ function capabilityRetryLabel(problem: ApplicationCapabilityHealth): string {
       return 'Retry room ordering';
     case 'trust':
       return 'Retry Trust status';
+    case 'notifications':
+      return problem.operation === 'room-rules'
+        ? 'Retry Room settings'
+        : 'Retry notifications';
+    case 'push':
+      return 'Retry mobile push';
+    case 'badge':
+      return 'Retry badge support';
+    case 'updates':
+      return 'Retry update check';
     default:
       return 'Retry capability';
   }
+}
+
+function capabilityStatusTestId(problem: ApplicationCapabilityHealth): string {
+  if (problem.capability === 'identity') return 'app-presence-health';
+  if (problem.capability === 'trust') return 'app-trust-health';
+  if (problem.capability === 'notifications')
+    return problem.operation === 'room-rules'
+      ? 'app-notification-rules-health'
+      : 'app-notification-presentation-health';
+  if (problem.capability === 'push') return 'app-push-health';
+  if (problem.capability === 'badge') return 'app-badge-health';
+  if (problem.capability === 'updates') return 'app-updates-health';
+  return 'app-capability-health';
+}
+
+function capabilityRetryTestId(problem: ApplicationCapabilityHealth): string {
+  return capabilityStatusTestId(problem).replace('-health', '-retry');
 }
 
 function recoveryAction(recovery: ApplicationStartupRecovery): {

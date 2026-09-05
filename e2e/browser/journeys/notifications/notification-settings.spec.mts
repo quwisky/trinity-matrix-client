@@ -16,6 +16,27 @@ const session = synapseSession();
 
 const RULE_ID = '.m.rule.is_room_mention';
 
+interface NotificationFaultWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      runtime: {
+        state(): unknown;
+        adapter: {
+          session: {
+            notificationLifetime: {
+              roomNotifications: {
+                rebindClients(): void;
+                retryProjection(): void;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  restoreNotificationRules?: () => void;
+}
+
 test.describe('Notification settings', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -59,5 +80,68 @@ test.describe('Notification settings', () => {
 
     // The toggle round-trips: the rule's enabled flag flips server-side.
     await expect.poll(ruleEnabled, { timeout: 20_000 }).toBe(!before);
+  });
+
+  test('recovers Room-rule projection health without claiming delivery failed', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const hs = session.hs as string;
+    const user = `notif-health-${testResourceId('run')}`;
+    const pass = `${user}-pass`;
+    await registerUser(request, user, pass);
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    const startupBlocked = page.getByTestId('app-startup-blocked');
+    const runtimePhase = () =>
+      page.evaluate(() => {
+        const target = window as unknown as NotificationFaultWindow;
+        const root = document.querySelector('trn-root');
+        if (!root) throw new Error('Application root unavailable');
+        const state = target.ng.getComponent(root).runtime.state();
+        return (state as { readonly phase?: string }).phase;
+      });
+    await expect.poll(runtimePhase).toBe('ready');
+
+    await page.evaluate(() => {
+      const target = window as unknown as NotificationFaultWindow;
+      const root = document.querySelector('trn-root');
+      if (!root) throw new Error('Application root unavailable');
+      const rules =
+        target.ng.getComponent(root).runtime.adapter.session
+          .notificationLifetime.roomNotifications;
+      const rebind = rules.rebindClients;
+      target.restoreNotificationRules = () => {
+        rules.rebindClients = rebind;
+      };
+      rules.rebindClients = () => {
+        throw new Error('synthetic private notification response');
+      };
+      rules.retryProjection();
+    });
+
+    const health = page.getByTestId('app-notification-rules-health');
+    await expect(health).toContainText(
+      'notification delivery continues independently',
+    );
+    await expect(health).not.toContainText('synthetic');
+    await expect.poll(runtimePhase).toBe('ready');
+    await testInfo.attach('notification-rules-unavailable', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+
+    await page.evaluate(() => {
+      const target = window as unknown as NotificationFaultWindow;
+      target.restoreNotificationRules?.();
+      delete target.restoreNotificationRules;
+    });
+    await page.getByTestId('app-notification-rules-retry').click();
+    await expect(startupBlocked).toHaveCount(0);
+    await expect(health).toHaveCount(0);
+    await expect(page).toHaveURL(/\/rooms/);
+    await testInfo.attach('notification-rules-recovered', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
   });
 });

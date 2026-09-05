@@ -57,6 +57,33 @@ describe('capability health expand-migrate-contract ledger', () => {
     expect(sessionAdapter).not.toContain('room-order-hydration-failed');
   });
 
+  it('keeps migrated notification and Host outcomes out of permanent warnings', () => {
+    const runtimeAdapter = read(
+      'libs/application/runtime/src/lib/composition/trinity-application-runtime.adapter.ts',
+    );
+    const sessionAdapter = read(
+      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    );
+
+    for (const code of [
+      'room-notification-projection-unavailable',
+      'notification-navigation-rejected',
+      'notification-navigation-failed',
+      'notification-presentation-failed',
+      'push-session-failed',
+      'badge-update-failed',
+      'update-check-failed',
+    ]) {
+      expect(sessionAdapter).not.toContain(`warning('${code}`);
+      expect(sessionAdapter).not.toContain(`warning('host', '${code}')`);
+      expect(sessionAdapter).not.toContain(`warning('badge', '${code}')`);
+      expect(sessionAdapter).not.toContain(`warning('updates', '${code}')`);
+    }
+    expect(runtimeAdapter).not.toContain(
+      "warning('session-capabilities', 'badge'",
+    );
+  });
+
   it('keeps required startup producers out of warning compatibility', () => {
     const policy = read(
       'libs/application/runtime/src/lib/application-startup.policy.ts',

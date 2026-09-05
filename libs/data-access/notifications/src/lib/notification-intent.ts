@@ -34,8 +34,12 @@ export type NotificationRuntimeEvent =
       readonly destination: NotificationDestination;
     }
   | {
-      readonly kind: 'warning';
-      readonly diagnostic: { readonly code: string };
+      readonly kind: 'health';
+      readonly fact: import('./notification-health.models').NotificationPresentationHealth;
+    }
+  | {
+      readonly kind: 'incident';
+      readonly incident: import('./notification-health.models').NotificationIncident;
     };
 
 export interface NotificationPolicyInput {

@@ -12,6 +12,8 @@ import { ProjectionRuntime } from './projection-runtime.service';
 export interface ActiveAccountProjectionLifetimeConfig {
   readonly activeAccountId: Signal<string | null>;
   readonly demanded?: Signal<boolean>;
+  /** Projection IDs owned by this lifetime's readiness barrier. */
+  readonly projectionIds?: readonly string[];
   /** Cold projection lifetime that emits once after attachment and stays open. */
   readonly runProjection: () => Observable<void>;
   /** Optional cold preparation that must settle before the initial ready event. */
@@ -67,9 +69,10 @@ export class ActiveAccountProjectionLifetime {
         let projectionOwned = false;
         const startPreparation = (): void => {
           try {
-            const projectionReadiness = this.projections.waitFor({
-              kind: 'active-account',
-            });
+            const scope = { kind: 'active-account' } as const;
+            const projectionReadiness = config.projectionIds
+              ? this.projections.waitFor(scope, config.projectionIds)
+              : this.projections.waitFor(scope);
             const preparation: Observable<unknown> = config.prepare
               ? forkJoin([projectionReadiness, config.prepare()])
               : projectionReadiness;

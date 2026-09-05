@@ -52,6 +52,7 @@ import {
 } from './optional-startup-outcome';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { TrinityPreferenceStartupSources } from './trinity-preference-startup-sources';
+import { HostSessionHealthService } from './host-session-health.service';
 
 const ready = (
   warnings: readonly ApplicationRuntimeWarning[] = [],
@@ -89,6 +90,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly preferenceEffects = inject(PreferenceEffectHealthService);
   private readonly roomOrderHealth = inject(RoomOrderHealthService);
   private readonly preferenceSources = inject(TrinityPreferenceStartupSources);
+  private readonly hostHealth = inject(HostSessionHealthService);
   private manifest: HostCapabilityManifest | null = null;
   private accountRecoveryId: string | null = null;
   private preferenceResetAttempt: number | null = null;
@@ -180,12 +182,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   establishSessionCapabilities(): Observable<ApplicationStartupStageOutcome> {
     return defer(() => {
       const badgeSupport = this.manifest?.operations.badge;
-      const badgeWarning =
-        badgeSupport?.kind === 'unavailable' &&
-        badgeSupport.reason !== 'not-supported' &&
-        badgeSupport.reason !== 'not-implemented'
-          ? [warning('session-capabilities', 'badge', 'badge-unavailable')]
-          : [];
+      if (badgeSupport) this.hostHealth.badgeSupport(badgeSupport);
       const persistence =
         APPLICATION_STARTUP_PRODUCER_POLICIES['browser-storage-persistence'];
       return forkJoin({
@@ -245,7 +242,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
       }).pipe(
         map(({ ordering, persistence }) =>
           ready(
-            [...badgeWarning, ...ordering.warnings, ...persistence.warnings],
+            [...ordering.warnings, ...persistence.warnings],
             [ordering.settlement, persistence.settlement],
           ),
         ),

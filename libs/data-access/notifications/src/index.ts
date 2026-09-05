@@ -1,5 +1,14 @@
 export * from './lib/notification.service';
 export * from './lib/notification-lifetime';
+export * from './lib/native-push-lifetime';
+export type {
+  NotificationLifetimeEvent,
+  NativePushHealth,
+  NativePushLifetimeEvent,
+  NotificationIncident,
+  NotificationPresentationHealth,
+  NotificationRuleHealth,
+} from './lib/notification-health.models';
 export * from './lib/notification-sound.service';
 export * from './lib/push-config';
 export * from './lib/push.service';

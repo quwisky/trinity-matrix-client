@@ -275,4 +275,34 @@ describe('ProjectionRuntime', () => {
       firstValueFrom(runtime.waitFor(accountScope('@alice:example.org'))),
     ).rejects.toBe(defect);
   });
+
+  it('isolates a named readiness barrier from failed sibling projections', async () => {
+    const runtime = new ProjectionRuntime();
+    const scope = { kind: 'active-account' } as const;
+    runtime.activate(
+      definition({
+        id: 'owned.projection',
+        scope,
+      }),
+    );
+    runtime.activate(
+      definition({
+        id: 'failed.sibling',
+        scope,
+        reconcile: () => throwError(() => new Error('sibling failed')),
+      }),
+    );
+
+    await expect(
+      firstValueFrom(runtime.waitFor(scope, ['owned.projection'])),
+    ).resolves.toMatchObject({
+      projectionCount: 1,
+      acknowledgements: [
+        expect.objectContaining({ projectionId: 'owned.projection' }),
+      ],
+    });
+    await expect(firstValueFrom(runtime.waitFor(scope))).rejects.toThrow(
+      'sibling failed',
+    );
+  });
 });

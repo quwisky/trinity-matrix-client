@@ -9,7 +9,7 @@ For setup and command selection, use [getting started](../contributing/getting-s
 [commands](../contributing/commands.md) and [testing](../contributing/testing.md).
 Do not include tokens, recovery keys or real message content in shared diagnostics.
 
-Trust, Identity, Preference and Room-order health diagnostics contain only generated scope references, stable
+Trust, Identity, Notification, native-push, Badge, Update, Preference and Room-order health diagnostics contain only generated scope references, stable
 capability/operation identities and codes. A partial reset may list exported setting paths and
 statuses, but never old, default or candidate values. Do not add thrown storage text, Account IDs,
 Room IDs, API keys, raw SDK errors or preference values when copying these diagnostics into an issue. Retry the

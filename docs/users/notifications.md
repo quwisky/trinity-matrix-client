@@ -90,6 +90,12 @@ deployment and credentials are maintained separately; see
 | Mobile gateway Save reports an error           | Follow the displayed error. Allow OS notifications if permission was denied; resolve a native token error with the device/platform guidance. Correct URL/App ID only when configuration is wrong. A homeserver registration failure may need a connection check or administrator help. |
 | Mobile says it registered but no alert arrives | Registration is not delivery. Check device notification permissions, battery or background restrictions, the gateway operator and APNs or FCM.                                                                                                                                         |
 
+Trinity's capability status keeps these failures separate. **Room notification settings are
+unavailable** means the cached rule value may be stale while delivery continues independently.
+**Device notifications are unavailable** concerns local host presentation. **Mobile push
+registration is unavailable** concerns notifications while the app is closed. The displayed Retry
+action targets only that function and keeps the current room and the rest of the session open.
+
 ## Use badges as a summary
 
 Trinity mirrors the total unread count across its supported app-icon badges: desktop dock or

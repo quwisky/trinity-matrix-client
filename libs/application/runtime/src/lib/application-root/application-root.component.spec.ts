@@ -284,4 +284,84 @@ describe('ApplicationRootComponent', () => {
       'Message swipe actions are turned off.',
     );
   });
+
+  it('does not describe failed Room-rule projection as a delivery outage', async () => {
+    const { fixture, health, getByTestId, queryByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+      settlements: [],
+    });
+    health.report(
+      {
+        capability: 'notifications',
+        operation: 'room-rules',
+        context: Symbol('@private:example.org'),
+        generation: 1,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'room-rules-reconciliation-failed',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+    fixture.detectChanges();
+
+    const status = getByTestId('app-notification-rules-health');
+    expect(status.textContent).toContain(
+      'notification delivery continues independently',
+    );
+    expect(status.textContent).not.toContain('@private:example.org');
+    expect(queryByTestId('app-notification-presentation-health')).toBeNull();
+    expect(getByTestId('app-notification-rules-retry')).toBeTruthy();
+  });
+
+  it('presents the fallback and exact retry for each degraded host capability', async () => {
+    const { fixture, health, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+      settlements: [],
+    });
+    for (const [capability, operation, code] of [
+      [
+        'notifications',
+        'presentation',
+        'notification-presentation-unavailable',
+      ],
+      ['push', 'registration', 'push-device-registration-failed'],
+      ['badge', 'support', 'badge-support-unavailable'],
+      ['updates', 'check', 'update-check-failed'],
+    ] as const) {
+      health.report(
+        {
+          capability,
+          operation,
+          context: Symbol(),
+          generation: 1,
+          demanded: true,
+          preparation: 'failed',
+          ownership: 'released',
+          condition: 'degraded',
+          code,
+        },
+        () => of({ kind: 'success' as const }),
+      );
+    }
+    fixture.detectChanges();
+
+    expect(
+      getByTestId('app-notification-presentation-health').textContent,
+    ).toContain('Messaging and Room notification settings remain usable');
+    expect(getByTestId('app-push-health').textContent).toContain(
+      'while Trinity is closed',
+    );
+    expect(getByTestId('app-badge-health').textContent).toContain(
+      'Unread counts remain visible',
+    );
+    expect(getByTestId('app-updates-health').textContent).toContain(
+      'Trinity remains usable',
+    );
+  });
 });
