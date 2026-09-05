@@ -83,6 +83,7 @@ describe('CapabilityHealthService', () => {
     expect(service.problems()).toHaveLength(0);
     const tainted = {
       ...fact(context),
+      code: 'presence-private-secret-response',
       accountId: '@private:server',
       token: 'secret-token',
       error: new Error('secret-response'),
@@ -92,6 +93,7 @@ describe('CapabilityHealthService', () => {
       service.diagnostics('session', 2, '0.1.0', 'web'),
     );
     expect(json).not.toMatch(/private|secret|accountId|context|token|error/);
+    expect(json).toContain('unrecognized-capability-status');
     expect(json).toContain('scope-1');
     expect(JSON.stringify(service.health())).not.toContain('secret');
   });
@@ -146,7 +148,7 @@ describe('CapabilityHealthService', () => {
     const entry = service.problems()[0]!;
     const recovery = firstValueFrom(service.recover(entry).pipe(toArray()));
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(await recovery).toEqual([{ kind: 'pending' }, { kind: 'failure' }]);
+    expect(await recovery).toEqual([{ kind: 'pending' }, { kind: 'timeout' }]);
     service.reset();
     expect(await firstValueFrom(service.recover(entry))).toEqual({
       kind: 'unavailable',

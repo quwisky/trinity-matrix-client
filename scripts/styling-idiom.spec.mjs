@@ -59,6 +59,7 @@ const componentStylesheets = stylesheets.filter(
  */
 const COMPONENT_STYLESHEET_LEDGER = [
   'libs/application/runtime/src/lib/application-root/application-root.component.scss',
+  'libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss',
   'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
   'libs/components/controls/src/lib/field/field/trn-field.component.scss',
   'libs/components/controls/src/lib/qr-scanner/qr-scanner/qr-scanner.component.scss',

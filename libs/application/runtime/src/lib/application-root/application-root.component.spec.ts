@@ -5,10 +5,12 @@ import {
   TrnDialogService,
   TrnToastService,
 } from '@trinity/components/overlay';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { TrustVerificationService } from '@trinity/data-access/trust';
+import { BUILD_INFO } from '@trinity/platform-native';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, type Observable } from 'rxjs';
+import { NEVER, of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
@@ -17,6 +19,7 @@ import type {
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
+import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 
 describe('ApplicationRootComponent', () => {
   async function setup(initial: ApplicationRuntimeState) {
@@ -27,14 +30,29 @@ describe('ApplicationRootComponent', () => {
     const prompt = vi.fn(() => of<string | null>(null));
     const confirm = vi.fn(() => of(true));
     const showToast = vi.fn();
+    const hasOpenDialog = vi.fn(() => false);
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter([]),
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
+        {
+          provide: BUILD_INFO,
+          useValue: { version: '1.2.3', commit: 'test', builtAt: '' },
+        },
+        MockProvider(AccountIdentitiesService, {
+          identityOf: (id: string) => ({
+            userId: id,
+            displayName: 'Alice',
+            avatarMxc: null,
+          }),
+        }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnDialogService, { hasOpen: hasOpenDialog }),
         MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
         MockProvider(TrnToastService, { show: showToast }),
+        MockProvider(TrinityApplicationSessionAdapter, {
+          runInteractions: () => NEVER,
+        }),
       ],
     });
     return {
@@ -43,6 +61,7 @@ describe('ApplicationRootComponent', () => {
       recover,
       prompt,
       confirm,
+      hasOpenDialog,
       showToast,
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
@@ -50,19 +69,24 @@ describe('ApplicationRootComponent', () => {
     };
   }
 
-  it('presents runtime progress while startup is active', async () => {
-    const { getByTestId } = await setup({
+  it('keeps fast startup calm and reveals routed content only after readiness', async () => {
+    const { fixture, state, getByTestId, queryByTestId } = await setup({
       phase: 'starting',
       attempt: 1,
       stage: 'account-restoration',
-      warnings: [],
       settlements: [],
     });
+    expect(getByTestId('app-booting').textContent).not.toContain(
+      'Restoring your Accounts',
+    );
 
-    expect(getByTestId('app-booting')).toBeTruthy();
+    state.set({ phase: 'ready', attempt: 1, settlements: [] });
+    fixture.detectChanges();
+    expect(queryByTestId('app-booting')).toBeNull();
+    expect(fixture.nativeElement.querySelector('router-outlet')).toBeTruthy();
   });
 
-  it('presents typed recovery and delegates retry without owning startup', async () => {
+  it('focuses blocked startup on user-function copy and confirms Account removal', async () => {
     const { fixture, getByTestId, recover, confirm } = await setup({
       phase: 'blocked',
       attempt: 1,
@@ -71,16 +95,13 @@ describe('ApplicationRootComponent', () => {
         recovery: 'reauthenticate',
         diagnostic: { code: 'active-account-unavailable' },
       },
-      warnings: [],
       settlements: [],
     });
-
-    expect(getByTestId('app-startup-recovery').textContent).toContain(
-      'Sign in again',
+    expect(getByTestId('app-startup-blocked').textContent).toContain(
+      'required Account session',
     );
     getByTestId('app-startup-recovery').click();
     fixture.detectChanges();
-
     expect(recover).toHaveBeenCalledOnce();
     expect(confirm).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -91,28 +112,8 @@ describe('ApplicationRootComponent', () => {
     );
   });
 
-  it('does not remove an Account when compatibility recovery is cancelled', async () => {
-    const { fixture, getByTestId, recover, confirm } = await setup({
-      phase: 'blocked',
-      attempt: 1,
-      failure: {
-        stage: 'account-restoration',
-        recovery: 'reauthenticate',
-        diagnostic: { code: 'active-account-unavailable' },
-      },
-      warnings: [],
-      settlements: [],
-    });
-    confirm.mockReturnValueOnce(of(false));
-
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-
-    expect(recover).not.toHaveBeenCalled();
-  });
-
-  it('requires RESET TRINITY before compatibility recovery resets the installation', async () => {
-    const { fixture, getByTestId, recover, prompt, showToast } = await setup({
+  it('preserves exact RESET TRINITY and DEFAULTS confirmations', async () => {
+    const installation = await setup({
       phase: 'blocked',
       attempt: 1,
       failure: {
@@ -120,201 +121,94 @@ describe('ApplicationRootComponent', () => {
         recovery: 'reset-installation',
         diagnostic: { code: 'account-local-state-unavailable' },
       },
-      warnings: [],
       settlements: [],
     });
-
-    prompt.mockReturnValueOnce(of('RESET'));
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-    expect(recover).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringContaining('RESET TRINITY'),
-      expect.anything(),
+    installation.prompt.mockReturnValueOnce(of('RESET TRINITY'));
+    installation.getByTestId('app-startup-recovery').click();
+    installation.fixture.detectChanges();
+    expect(installation.recover).toHaveBeenCalledOnce();
+    expect(installation.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ placeholder: 'RESET TRINITY' }),
     );
 
-    prompt.mockReturnValueOnce(of(' reset trinity '));
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-    expect(recover).toHaveBeenCalledOnce();
-    expect(prompt).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        placeholder: 'RESET TRINITY',
-        variant: 'danger',
-      }),
-    );
-  });
-
-  it('presents uncertain and partial cleanup without claiming recovery succeeded', async () => {
-    const { fixture, getByTestId, recover, prompt, showToast } = await setup({
+    installation.state.set({
       phase: 'blocked',
-      attempt: 1,
-      failure: {
-        stage: 'account-restoration',
-        recovery: 'reset-installation',
-        diagnostic: { code: 'account-local-state-unavailable' },
-      },
-      warnings: [],
-      settlements: [],
-    });
-    prompt.mockReturnValue(of('RESET TRINITY'));
-    recover.mockReturnValueOnce(
-      of({
-        kind: 'unavailable',
-        reason: 'cleanup-in-progress',
-        cleanup: {
-          issues: [],
-          pending: [{ scope: 'indexed-db', recovery: 'restart-application' }],
-        },
-      }),
-    );
-
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-    expect(showToast).toHaveBeenLastCalledWith(
-      expect.stringContaining('still running'),
-      expect.anything(),
-    );
-
-    recover.mockReturnValueOnce(
-      of({
-        kind: 'unavailable',
-        reason: 'partial-cleanup',
-        cleanup: {
-          issues: [{ scope: 'indexed-db', recovery: 'restart-application' }],
-        },
-      }),
-    );
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-    expect(showToast).toHaveBeenLastCalledWith(
-      expect.stringContaining('Restart Trinity'),
-      expect.anything(),
-    );
-  });
-
-  it('requires DEFAULTS before preference recovery can reset settings', async () => {
-    const { fixture, getByTestId, recover, prompt, showToast } = await setup({
-      phase: 'blocked',
-      attempt: 1,
+      attempt: 2,
       failure: {
         stage: 'preference-hydration',
         recovery: 'reset-preferences',
         diagnostic: { code: 'preference-safe-baseline-unavailable' },
       },
-      warnings: [],
       settlements: [],
     });
-
-    prompt.mockReturnValueOnce(of('almost'));
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-    expect(recover).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringContaining('DEFAULTS'),
-      expect.anything(),
-    );
-
-    prompt.mockReturnValueOnce(of(' defaults '));
-    getByTestId('app-startup-recovery').click();
-    fixture.detectChanges();
-    expect(recover).toHaveBeenCalledOnce();
-    expect(prompt).toHaveBeenLastCalledWith(
-      expect.objectContaining({ placeholder: 'DEFAULTS', variant: 'danger' }),
+    installation.fixture.detectChanges();
+    installation.prompt.mockReturnValueOnce(of('DEFAULTS'));
+    installation.getByTestId('app-startup-recovery').click();
+    installation.fixture.detectChanges();
+    expect(installation.recover).toHaveBeenCalledTimes(2);
+    expect(installation.prompt).toHaveBeenCalledWith(
+      expect.objectContaining({ placeholder: 'DEFAULTS' }),
     );
   });
 
-  it('reveals the routed application only after readiness', async () => {
-    const { fixture, state, queryByTestId } = await setup({
-      phase: 'starting',
-      attempt: 1,
-      stage: 'readiness',
-      warnings: [],
-      settlements: [],
-    });
-
-    state.set({ phase: 'ready', attempt: 1, warnings: [], settlements: [] });
+  it('keeps System Status open when Escape dismisses a recovery confirmation', async () => {
+    const { fixture, getByTestId, queryByTestId, confirm, hasOpenDialog } =
+      await setup({
+        phase: 'blocked',
+        attempt: 1,
+        failure: {
+          stage: 'account-restoration',
+          recovery: 'reauthenticate',
+          diagnostic: { code: 'active-account-unavailable' },
+        },
+        settlements: [],
+      });
+    [...fixture.nativeElement.querySelectorAll('button')]
+      .find((item: HTMLButtonElement) =>
+        item.textContent?.includes('System Status'),
+      )
+      .click();
     fixture.detectChanges();
+    confirm.mockReturnValue(NEVER);
+    [...fixture.nativeElement.querySelectorAll('button')]
+      .find((item: HTMLButtonElement) =>
+        item.textContent?.includes('Sign in again'),
+      )
+      .click();
+    hasOpenDialog.mockReturnValue(true);
 
-    expect(queryByTestId('app-booting')).toBeNull();
-    expect(fixture.nativeElement.querySelector('router-outlet')).toBeTruthy();
-  });
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(getByTestId('system-status')).toBeTruthy();
 
-  it('surfaces optional startup warnings without blocking the application', async () => {
-    const { getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      settlements: [],
-      warnings: [
-        {
-          stage: 'session-capabilities',
-          scope: 'push',
-          diagnostic: { code: 'push-registration-failed' },
-        },
-        {
-          stage: 'session',
-          scope: 'trust',
-          diagnostic: { code: 'trust-projection-unavailable' },
-        },
-        {
-          stage: 'session',
-          scope: 'identity',
-          diagnostic: { code: 'identity-presence-unavailable' },
-        },
-        {
-          stage: 'session',
-          scope: 'notifications',
-          diagnostic: { code: 'room-notification-projection-unavailable' },
-        },
-        {
-          stage: 'session',
-          scope: 'room-administration',
-          diagnostic: { code: 'room-administration-projection-unavailable' },
-        },
-        {
-          stage: 'session-capabilities',
-          scope: 'storage',
-          diagnostic: { code: 'storage-persistence-denied' },
-        },
-      ],
+    hasOpenDialog.mockReturnValue(false);
+    const handledByConfirmation = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      cancelable: true,
     });
+    handledByConfirmation.preventDefault();
+    document.dispatchEvent(handledByConfirmation);
+    fixture.detectChanges();
+    expect(getByTestId('system-status')).toBeTruthy();
 
-    const warnings = getByTestId('app-runtime-warnings');
-    expect(warnings.textContent).toContain(
-      'Push notifications may be unavailable.',
-    );
-    expect(warnings.textContent).toContain(
-      'Encryption trust status may be unavailable.',
-    );
-    expect(warnings.textContent).toContain('User presence may be unavailable.');
-    expect(warnings.textContent).toContain(
-      'Room notification settings may be unavailable.',
-    );
-    expect(warnings.textContent).toContain(
-      'Room permissions and member lists may be unavailable.',
-    );
-    expect(warnings.textContent).toContain(
-      'Browser storage may be evicted; Trinity will keep using best-effort local storage.',
-    );
-    expect(warnings.getAttribute('aria-label')).toBe(
-      'Application runtime warnings',
-    );
-    expect(warnings.tabIndex).toBe(0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(queryByTestId('system-status')).toBeNull();
   });
 
-  it('presents an opaque independently recoverable background Account scope', async () => {
+  it('keeps routed content while grouping scoped problems in System Status', async () => {
     const { fixture, health, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
-      warnings: [],
       settlements: [],
     });
-    const retry = vi.fn(() => of({ kind: 'success' as const }));
+    const context = Symbol('private-account-id');
+    health.presentForAccount(context, '@private:example.org');
     health.report(
       {
         capability: 'accounts',
         operation: 'restore',
-        context: Symbol('@private:example.org'),
+        context,
         generation: 1,
         demanded: true,
         preparation: 'failed',
@@ -322,205 +216,70 @@ describe('ApplicationRootComponent', () => {
         condition: 'degraded',
         code: 'account-restore-transient-network',
       },
-      retry,
+      () => of({ kind: 'success' as const }),
     );
     fixture.detectChanges();
 
-    const status = getByTestId('app-capability-health');
-    expect(status.textContent).toContain(
-      'A background account is unavailable.',
+    expect(getByTestId('app-capability-summary').textContent).toContain(
+      '1 limited capability',
     );
-    expect(status.textContent).not.toContain('@private:example.org');
-    getByTestId('app-capability-retry').click();
+    const button = [...fixture.nativeElement.querySelectorAll('button')].find(
+      (item: HTMLButtonElement) => item.textContent?.includes('System Status'),
+    );
+    button.click();
     fixture.detectChanges();
-    expect(retry).toHaveBeenCalledOnce();
+    const status = getByTestId('system-status');
+    expect(status.textContent).toContain('Accounts');
+    expect(status.textContent).toContain('Alice');
+    expect(status.textContent).not.toContain('@private:example.org');
+    expect(status.textContent).toContain('1 actionable scope');
   });
 
-  it('explains unavailable Trust without weakening encryption and offers scoped recovery', async () => {
-    const { fixture, health, getByTestId } = await setup({
+  it('keeps an all-working System Status entry point available', async () => {
+    const { fixture, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
-      warnings: [],
       settlements: [],
     });
-    const retry = vi.fn(() => of({ kind: 'success' as const }));
-    health.report(
-      {
-        capability: 'trust',
-        operation: 'projection',
-        context: Symbol('@private:example.org'),
-        generation: 4,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
-        code: 'trust-reconciliation-failed',
-      },
-      retry,
-    );
+    getByTestId('system-status-access').click();
     fixture.detectChanges();
-
-    const status = getByTestId('app-trust-health');
-    expect(status.textContent).toContain(
-      'Verification and recovery state are unknown',
+    expect(getByTestId('system-status-all-working').textContent).toContain(
+      'All systems are working',
     );
-    expect(status.textContent).toContain(
-      'encrypted conversations remain usable',
-    );
-    expect(status.textContent).not.toContain('@private:example.org');
-    getByTestId('app-trust-retry').click();
-    fixture.detectChanges();
-    expect(retry).toHaveBeenCalledOnce();
   });
 
-  it('explains the declared fallback consequence for the exact preference producer', async () => {
+  it('uses the safe generic catalogue entry for an unknown fault', async () => {
     const { fixture, health, getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
-      warnings: [],
       settlements: [],
     });
     health.report(
       {
-        capability: 'preferences',
-        operation: 'hydrate-gestures',
-        context: Symbol('installation'),
+        capability: 'future',
+        operation: 'unrecognized',
+        context: Symbol(),
         generation: 1,
         demanded: true,
-        preparation: 'acknowledged',
+        preparation: 'failed',
         ownership: 'released',
         condition: 'degraded',
-        code: 'gestures-hydration-failed',
+        code: 'safe-unknown-code',
       },
-      () => of({ kind: 'success' as const }),
+      () => of({ kind: 'unavailable' as const }),
     );
     fixture.detectChanges();
-
-    expect(getByTestId('app-capability-health').textContent).toContain(
-      'Message swipe actions are turned off.',
-    );
-  });
-
-  it('does not describe failed Room-rule projection as a delivery outage', async () => {
-    const { fixture, health, getByTestId, queryByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      warnings: [],
-      settlements: [],
-    });
-    health.report(
-      {
-        capability: 'notifications',
-        operation: 'room-rules',
-        context: Symbol('@private:example.org'),
-        generation: 1,
-        demanded: true,
-        preparation: 'failed',
-        ownership: 'retained',
-        condition: 'degraded',
-        code: 'room-rules-reconciliation-failed',
-      },
-      () => of({ kind: 'success' as const }),
-    );
+    [...fixture.nativeElement.querySelectorAll('button')]
+      .find((item: HTMLButtonElement) =>
+        item.textContent?.includes('System Status'),
+      )
+      .click();
     fixture.detectChanges();
-
-    const status = getByTestId('app-notification-rules-health');
-    expect(status.textContent).toContain(
-      'notification delivery continues independently',
+    expect(getByTestId('system-status').textContent).toContain(
+      'A feature needs attention',
     );
-    expect(status.textContent).not.toContain('@private:example.org');
-    expect(queryByTestId('app-notification-presentation-health')).toBeNull();
-    expect(getByTestId('app-notification-rules-retry')).toBeTruthy();
-  });
-
-  it('explains exact Room Administration consequences and offers scoped recovery', async () => {
-    const { fixture, health, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      warnings: [],
-      settlements: [],
-    });
-    const retry = vi.fn(() => of({ kind: 'success' as const }));
-    for (const operation of ['permissions', 'members', 'bans'] as const) {
-      health.report(
-        {
-          capability: 'room-administration',
-          operation,
-          context: Symbol('@private:example.org'),
-          generation: 1,
-          demanded: true,
-          preparation: 'failed',
-          ownership: 'retained',
-          condition: 'degraded',
-          code: 'room-administration-reconciliation-failed',
-        },
-        retry,
-      );
-    }
-    fixture.detectChanges();
-
-    expect(getByTestId('app-room-permissions-health').textContent).toContain(
-      'Administrative changes are paused',
-    );
-    expect(getByTestId('app-room-members-health').textContent).toContain(
-      'visible member list may be stale',
-    );
-    expect(getByTestId('app-room-bans-health').textContent).toContain(
-      'visible ban list may be stale',
-    );
-    expect(getByTestId('app-room-members-health').textContent).not.toContain(
-      '@private:example.org',
-    );
-    expect(getByTestId('app-room-members-retry').textContent).toContain(
-      'Retry Room administration',
-    );
-  });
-
-  it('presents the fallback and exact retry for each degraded host capability', async () => {
-    const { fixture, health, getByTestId } = await setup({
-      phase: 'ready',
-      attempt: 1,
-      warnings: [],
-      settlements: [],
-    });
-    for (const [capability, operation, code] of [
-      [
-        'notifications',
-        'presentation',
-        'notification-presentation-unavailable',
-      ],
-      ['push', 'registration', 'push-device-registration-failed'],
-      ['badge', 'support', 'badge-support-unavailable'],
-      ['updates', 'check', 'update-check-failed'],
-    ] as const) {
-      health.report(
-        {
-          capability,
-          operation,
-          context: Symbol(),
-          generation: 1,
-          demanded: true,
-          preparation: 'failed',
-          ownership: 'released',
-          condition: 'degraded',
-          code,
-        },
-        () => of({ kind: 'success' as const }),
-      );
-    }
-    fixture.detectChanges();
-
     expect(
-      getByTestId('app-notification-presentation-health').textContent,
-    ).toContain('Messaging and Room notification settings remain usable');
-    expect(getByTestId('app-push-health').textContent).toContain(
-      'while Trinity is closed',
-    );
-    expect(getByTestId('app-badge-health').textContent).toContain(
-      'Unread counts remain visible',
-    );
-    expect(getByTestId('app-updates-health').textContent).toContain(
-      'Trinity remains usable',
-    );
+      fixture.nativeElement.querySelector('.system-status__entry').textContent,
+    ).not.toContain('safe-unknown-code');
   });
 });

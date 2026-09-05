@@ -4,25 +4,24 @@ import {
   DestroyRef,
   computed,
   inject,
+  signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
-import { TrnToasterComponent } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import { TrnToasterComponent } from '@trinity/components/overlay';
 import { take } from 'rxjs';
-import {
-  CapabilityHealthService,
-  type ApplicationCapabilityHealth,
-} from '../capability-health.service';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import type {
-  ApplicationRuntimeWarning,
   ApplicationStartupRecovery,
+  ApplicationStartupStage,
 } from '../application-runtime.models';
-import { preferenceFallbackMessage } from '../composition/preference-startup.policy';
+import { CapabilityStatusService } from '../capability-status.service';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
 import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
+import { SystemStatusComponent } from './system-status/system-status.component';
+import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 
 @Component({
   selector: 'trn-root',
@@ -35,28 +34,27 @@ import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
     VerificationHostComponent,
     TrnToasterComponent,
     TrnSpinnerComponent,
+    SystemStatusComponent,
   ],
 })
 export class ApplicationRootComponent {
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly recovery = inject(ApplicationRecoveryPresenter);
+  private readonly session = inject(TrinityApplicationSessionAdapter);
+  private readonly showStartupDetail = signal(false);
 
-  readonly health = inject(CapabilityHealthService);
+  readonly status = inject(CapabilityStatusService);
   readonly state = this.runtime.state;
-  readonly capabilityProblems = computed(() =>
-    this.health.problems().map((problem) => ({
-      problem,
-      recovering: this.health.recoveryInProgress(problem),
-      message: capabilityProblemMessage(problem),
-      retryLabel: capabilityRetryLabel(problem),
-      statusTestId: capabilityStatusTestId(problem),
-      retryTestId: capabilityRetryTestId(problem),
-    })),
-  );
   readonly booting = computed(() => {
     const phase = this.state().phase;
     return phase === 'stopped' || phase === 'starting' || phase === 'stopping';
+  });
+  readonly startupStep = computed(() => {
+    const state = this.state();
+    return state.phase === 'starting' && this.showStartupDetail()
+      ? startupStep(state.stage)
+      : null;
   });
   readonly blocked = computed(() => {
     const state = this.state();
@@ -65,18 +63,22 @@ export class ApplicationRootComponent {
   readonly recoveryAction = computed(() =>
     recoveryAction(this.blocked()?.failure.recovery ?? 'retry-startup'),
   );
-  readonly warnings = computed(() => {
-    const state = this.state();
-    return state.phase === 'ready'
-      ? state.warnings.map(warningMessage)
-      : ([] as readonly string[]);
-  });
 
-  retryCapability(problem: ApplicationCapabilityHealth): void {
-    this.health
-      .recover(problem)
+  constructor() {
+    this.session
+      .runInteractions()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+    const timer = window.setTimeout(
+      () => this.showStartupDetail.set(true),
+      500,
+    );
+    this.destroyRef.onDestroy(() => window.clearTimeout(timer));
+  }
+
+  dismissSummary(): void {
+    for (const entry of this.status.visibleEntries())
+      this.status.dismiss(entry);
   }
 
   recover(): void {
@@ -89,99 +91,21 @@ export class ApplicationRootComponent {
   }
 }
 
-function capabilityProblemMessage(
-  problem: ApplicationCapabilityHealth,
-): string {
-  if (problem.capability === 'accounts') {
-    return 'A background account is unavailable. Other accounts and open conversations remain usable.';
+function startupStep(stage: ApplicationStartupStage): string {
+  switch (stage) {
+    case 'host-negotiation':
+      return 'Checking this device…';
+    case 'preference-hydration':
+      return 'Restoring your preferences…';
+    case 'account-restoration':
+      return 'Restoring your Accounts…';
+    case 'session-capabilities':
+      return 'Preparing messaging…';
+    case 'workspace-restoration':
+      return 'Opening your Workspace…';
+    case 'readiness':
+      return 'Finishing startup…';
   }
-  switch (problem.capability) {
-    case 'identity':
-      return 'User presence is unavailable. Online status is unknown; you can keep messaging.';
-    case 'preferences':
-      if (problem.operation === 'apply-appearance') {
-        return 'Appearance updates are paused. The last applied appearance remains active.';
-      }
-      return (
-        preferenceFallbackMessage(problem.operation) ??
-        'One preference operation is using a safe default. Other settings remain available.'
-      );
-    case 'room-library':
-      return 'Saved room ordering is unavailable for one Account. The default order remains usable.';
-    case 'trust':
-      return 'Current encryption trust status is unavailable. Verification and recovery state are unknown; encrypted conversations remain usable.';
-    case 'notifications':
-      return problem.operation === 'room-rules'
-        ? 'Room notification settings are unavailable. Their last known values may be stale; notification delivery continues independently.'
-        : 'Trinity cannot currently show new device notifications. Messaging and Room notification settings remain usable.';
-    case 'room-administration':
-      switch (problem.operation) {
-        case 'permissions':
-          return 'Current Room permissions are unavailable. Administrative changes are paused; messaging remains usable.';
-        case 'members':
-          return 'Current Room membership is unavailable. A visible member list may be stale; messaging remains usable.';
-        case 'bans':
-          return 'Current Room bans are unavailable. A visible ban list may be stale; other Room settings remain usable.';
-        default:
-          return 'Current Room administration data is unavailable. Existing informational data may be stale.';
-      }
-    case 'push':
-      return 'Mobile push registration is unavailable. Notifications may not arrive while Trinity is closed; in-app messaging remains usable.';
-    case 'badge':
-      return 'App-icon badge support is unavailable. Unread counts remain visible inside Trinity.';
-    case 'updates':
-      return 'Automatic update checks are unavailable. Trinity remains usable; check the app store or reload the installed app later.';
-    default:
-      return 'One optional capability is unavailable. The rest of Trinity remains usable.';
-  }
-}
-
-function capabilityRetryLabel(problem: ApplicationCapabilityHealth): string {
-  switch (problem.capability) {
-    case 'accounts':
-      return 'Retry background account';
-    case 'identity':
-      return 'Retry presence';
-    case 'preferences':
-      return 'Retry preference';
-    case 'room-library':
-      return 'Retry room ordering';
-    case 'trust':
-      return 'Retry Trust status';
-    case 'notifications':
-      return problem.operation === 'room-rules'
-        ? 'Retry Room settings'
-        : 'Retry notifications';
-    case 'room-administration':
-      return 'Retry Room administration';
-    case 'push':
-      return 'Retry mobile push';
-    case 'badge':
-      return 'Retry badge support';
-    case 'updates':
-      return 'Retry update check';
-    default:
-      return 'Retry capability';
-  }
-}
-
-function capabilityStatusTestId(problem: ApplicationCapabilityHealth): string {
-  if (problem.capability === 'identity') return 'app-presence-health';
-  if (problem.capability === 'trust') return 'app-trust-health';
-  if (problem.capability === 'notifications')
-    return problem.operation === 'room-rules'
-      ? 'app-notification-rules-health'
-      : 'app-notification-presentation-health';
-  if (problem.capability === 'room-administration')
-    return `app-room-${problem.operation}-health`;
-  if (problem.capability === 'push') return 'app-push-health';
-  if (problem.capability === 'badge') return 'app-badge-health';
-  if (problem.capability === 'updates') return 'app-updates-health';
-  return 'app-capability-health';
-}
-
-function capabilityRetryTestId(problem: ApplicationCapabilityHealth): string {
-  return capabilityStatusTestId(problem).replace('-health', '-retry');
 }
 
 function recoveryAction(recovery: ApplicationStartupRecovery): {
@@ -192,52 +116,26 @@ function recoveryAction(recovery: ApplicationStartupRecovery): {
     case 'reauthenticate':
       return {
         label: 'Sign in again',
-        detail: 'Remove the unavailable account session and return to sign in.',
+        detail:
+          'The required Account session is unavailable. Remove it and return to sign in.',
       };
     case 'reset-installation':
       return {
         label: 'Reset this installation',
-        detail: 'Clear local application data, then return to sign in.',
+        detail:
+          'Required local application data is unavailable. Erase it and return to sign in.',
       };
     case 'reset-preferences':
       return {
         label: 'Reset preferences',
         detail:
-          'Restore local preferences to their defaults and try startup again.',
+          'Required preferences could not be read. Restore local defaults and try again.',
       };
     case 'retry-startup':
       return {
-        label: 'Retry',
-        detail: 'Try the complete startup sequence again.',
+        label: 'Retry startup',
+        detail:
+          'A required part of Trinity did not become ready. Your data was not rolled back.',
       };
-  }
-}
-
-function warningMessage(warning: ApplicationRuntimeWarning): string {
-  switch (warning.scope) {
-    case 'push':
-      return 'Push notifications may be unavailable.';
-    case 'notifications':
-      return 'Room notification settings may be unavailable.';
-    case 'badge':
-      return 'App badge updates may be unavailable.';
-    case 'updates':
-      return 'Automatic update checks may be unavailable.';
-    case 'accounts':
-      return 'One inactive account could not be restored.';
-    case 'preferences':
-      return 'Some preferences could not be restored.';
-    case 'host':
-      return 'Some host integrations may be unavailable.';
-    case 'workspace':
-      return 'Some workspace state could not be restored.';
-    case 'trust':
-      return 'Encryption trust status may be unavailable.';
-    case 'identity':
-      return 'User presence may be unavailable.';
-    case 'room-administration':
-      return 'Room permissions and member lists may be unavailable.';
-    case 'storage':
-      return 'Browser storage may be evicted; Trinity will keep using best-effort local storage.';
   }
 }

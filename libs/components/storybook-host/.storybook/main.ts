@@ -17,6 +17,7 @@ const config: StorybookConfig = {
     '../../*/src/**/*.stories.@(ts|tsx|mdx)',
     '../../../feature/rooms/src/lib/media-bubble/*.stories.@(ts|tsx|mdx)',
     '../../../feature/rooms/src/lib/message-toolbar/*.stories.@(ts|tsx|mdx)',
+    '../../../application/runtime/src/lib/application-root/system-status/*.stories.@(ts|tsx|mdx)',
   ],
   addons: ['@storybook/addon-a11y'],
   framework: {

@@ -122,6 +122,7 @@ export class RoomOrderHealthService {
     const accountId = settlement.accountId;
     const context = this.contexts.get(accountId) ?? Symbol('room-order-health');
     this.contexts.set(accountId, context);
+    this.health.presentForAccount(context, accountId);
     const generation = (this.generations.get(accountId) ?? 0) + 1;
     this.generations.set(accountId, generation);
     const ready = settlement.kind === 'ready';

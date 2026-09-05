@@ -26,13 +26,6 @@ export type ApplicationSessionStartupEvent =
       readonly outcome: ApplicationStartupStageOutcome;
     }
   | {
-      readonly kind: 'warning';
-      readonly warning: Extract<
-        ApplicationSessionEvent,
-        { readonly kind: 'warning' }
-      >['warning'];
-    }
-  | {
       readonly kind: 'blocked';
       readonly outcome: Extract<
         ApplicationStartupStageOutcome,
@@ -63,14 +56,7 @@ export class ApplicationSessionStartupWorkflow {
         forkJoin({
           preparation: events.pipe(
             take(1),
-            map((event) => {
-              if (event.kind === 'warning') {
-                throw new Error(
-                  'Application Runtime session warned before preparation.',
-                );
-              }
-              return event;
-            }),
+            map((event) => event),
           ),
           optional: this.adapter.establishSessionCapabilities().pipe(
             take(1),
@@ -91,7 +77,6 @@ export class ApplicationSessionStartupWorkflow {
               of({ kind: 'settled', outcome } as const),
               events.pipe(
                 map((event): ApplicationSessionStartupEvent => {
-                  if (event.kind === 'warning') return event;
                   if (event.kind === 'blocked') {
                     return { kind: 'blocked', outcome: event };
                   }
@@ -108,7 +93,7 @@ export class ApplicationSessionStartupWorkflow {
   }
 
   private stageOutcome(
-    preparation: Exclude<ApplicationSessionEvent, { readonly kind: 'warning' }>,
+    preparation: ApplicationSessionEvent,
     optional: ApplicationStartupStageOutcome,
   ): ApplicationStartupStageOutcome {
     const roomLibrary: ApplicationStartupProducerSettlement = {
@@ -122,7 +107,6 @@ export class ApplicationSessionStartupWorkflow {
     return preparation.kind === 'blocked'
       ? {
           ...preparation,
-          warnings: optional.warnings,
           settlements: [roomLibrary, ...optionalSessionSettlements(optional)],
         }
       : {

@@ -119,9 +119,16 @@ test.describe('Notification settings', () => {
       rules.retryProjection();
     });
 
-    const health = page.getByTestId('app-notification-rules-health');
+    await page
+      .getByTestId('app-capability-summary')
+      .getByRole('button', { name: 'System Status' })
+      .click();
+    const status = page.getByRole('dialog', { name: 'System Status' });
+    const health = status
+      .locator('article')
+      .filter({ hasText: 'Room notification settings are unavailable' });
     await expect(health).toContainText(
-      'notification delivery continues independently',
+      'Notification delivery continues independently',
     );
     await expect(health).not.toContainText('synthetic');
     await expect.poll(runtimePhase).toBe('ready');
@@ -135,9 +142,10 @@ test.describe('Notification settings', () => {
       target.restoreNotificationRules?.();
       delete target.restoreNotificationRules;
     });
-    await page.getByTestId('app-notification-rules-retry').click();
+    await health.getByRole('button', { name: 'Retry Room settings' }).click();
     await expect(startupBlocked).toHaveCount(0);
     await expect(health).toHaveCount(0);
+    await status.getByRole('button', { name: 'Close' }).click();
     await expect(page).toHaveURL(/\/rooms/);
     await testInfo.attach('notification-rules-recovered', {
       body: await page.screenshot(),

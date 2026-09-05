@@ -31,6 +31,7 @@ export class AccountStartupHealthService {
     const accountId = outcome.accountId;
     const context = this.contexts.get(accountId) ?? Symbol('account-health');
     this.contexts.set(accountId, context);
+    this.health.presentForAccount(context, accountId);
     const generation = (this.generations.get(accountId) ?? 0) + 1;
     this.generations.set(accountId, generation);
     const available = outcome.kind === 'ready';

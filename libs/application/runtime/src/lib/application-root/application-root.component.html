@@ -1,22 +1,4 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-  @for (state of capabilityProblems(); track state.problem.reference) {
-    <aside
-      class="border-b border-border bg-muted px-4 py-3 text-sm"
-      role="status"
-      [attr.data-testid]="state.statusTestId"
-    >
-      <p>{{ state.message }}</p>
-      <button
-        trnBtn
-        type="button"
-        [attr.data-testid]="state.retryTestId"
-        [disabled]="state.recovering"
-        (click)="retryCapability(state.problem)"
-      >
-        {{ state.recovering ? 'Retrying…' : state.retryLabel }}
-      </button>
-    </aside>
-  }
   @if (booting()) {
     <div
       class="flex flex-1 flex-col items-center justify-center gap-4"
@@ -25,9 +7,9 @@
       data-testid="app-booting"
     >
       <trn-spinner />
-      <span class="text-sm text-[var(--trinity-text-muted)]">
-        Restoring your session…
-      </span>
+      @if (startupStep(); as step) {
+        <span class="text-sm text-[var(--trinity-text-muted)]">{{ step }}</span>
+      }
     </div>
   } @else if (blocked(); as blockedState) {
     <main
@@ -35,43 +17,99 @@
       role="alert"
       data-testid="app-startup-blocked"
     >
-      <h1 class="text-xl font-semibold">Trinity could not finish starting</h1>
+      <p class="text-sm font-semibold tracking-wider text-danger uppercase">
+        Startup needs attention
+      </p>
+      <h1 class="text-xl font-semibold" tabindex="-1" autofocus>
+        Trinity could not finish starting
+      </h1>
       <p class="max-w-md text-sm text-[var(--trinity-text-muted)]">
         {{ recoveryAction().detail }}
       </p>
-      <button
-        trnBtn
-        type="button"
-        data-testid="app-startup-recovery"
-        [attr.data-recovery]="blockedState.failure.recovery"
-        (click)="recover()"
+      <div class="flex flex-wrap justify-center gap-2">
+        <button
+          trnBtn
+          type="button"
+          data-testid="app-startup-recovery"
+          [attr.data-recovery]="blockedState.failure.recovery"
+          (click)="recover()"
+        >
+          {{ recoveryAction().label }}
+        </button>
+        <button
+          trnBtn
+          presentation="outline"
+          type="button"
+          (click)="status.show()"
+        >
+          System Status
+        </button>
+      </div>
+      <span class="sr-only"
+        >Startup stage: {{ blockedState.failure.stage }}. Recovery:
+        {{ blockedState.failure.recovery }}.</span
       >
-        {{ recoveryAction().label }}
-      </button>
-      <span class="sr-only">
-        Startup stage: {{ blockedState.failure.stage }}. Recovery:
-        {{ blockedState.failure.recovery }}.
-      </span>
     </main>
   } @else {
-    @if (warnings().length > 0) {
+    @if (status.visibleEntries().length > 0) {
       <aside
-        class="runtime-warnings border-b border-border bg-muted px-4 py-3 text-sm text-foreground"
-        role="status"
-        aria-label="Application runtime warnings"
-        tabindex="0"
-        data-testid="app-runtime-warnings"
+        class="runtime-status border-b border-border bg-muted px-4 py-3 text-sm text-foreground"
+        [attr.role]="status.hasBlocking() ? 'alert' : 'status'"
+        [attr.aria-live]="status.hasBlocking() ? 'assertive' : 'polite'"
+        data-testid="app-capability-summary"
       >
-        <p class="font-medium">Trinity started with limited capabilities.</p>
-        <ul class="mt-1 list-disc pl-5 text-[var(--trinity-text-muted)]">
-          @for (message of warnings(); track message) {
-            <li>{{ message }}</li>
-          }
-        </ul>
+        <span
+          >Trinity is usable with {{ status.visibleEntries().length }} limited
+          {{
+            status.visibleEntries().length === 1
+              ? 'capability'
+              : 'capabilities'
+          }}.</span
+        >
+        <span class="runtime-status__actions">
+          <button
+            trnBtn
+            presentation="outline"
+            type="button"
+            (click)="status.show()"
+          >
+            System Status
+          </button>
+          <button
+            trnBtn
+            presentation="ghost"
+            type="button"
+            (click)="dismissSummary()"
+          >
+            Dismiss
+          </button>
+        </span>
       </aside>
+    } @else {
+      <button
+        trnBtn
+        presentation="ghost"
+        size="sm"
+        class="system-status-access"
+        type="button"
+        data-testid="system-status-access"
+        (click)="status.show()"
+      >
+        System Status
+      </button>
     }
     <router-outlet></router-outlet>
     <trn-verification-host />
   }
 </div>
+<p
+  class="sr-only"
+  aria-live="polite"
+  data-testid="capability-recovery-announcement"
+>
+  {{ status.recoveryAnnouncement() }}
+</p>
+@if (status.open()) {
+  <trn-system-status />
+}
 <trn-toaster />

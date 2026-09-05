@@ -294,9 +294,15 @@ for (const mobile of [false, true]) {
           };
           presence.projection.schedule();
         });
-        const status = page.getByTestId('app-presence-health');
-        await expect(status).toBeVisible();
-        await expect(status).toContainText('Online status is unknown');
+        await page
+          .getByTestId('app-capability-summary')
+          .getByRole('button', { name: 'System Status' })
+          .click();
+        const status = page.getByRole('dialog', { name: 'System Status' });
+        const problem = status
+          .locator('article')
+          .filter({ hasText: 'Presence is unavailable' });
+        await expect(problem).toContainText('Online status may be out of date');
         await expect
           .poll(() =>
             page.evaluate(() =>
@@ -318,8 +324,8 @@ for (const mobile of [false, true]) {
           target.restorePresenceRead?.();
           delete target.restorePresenceRead;
         });
-        await page.getByTestId('app-presence-retry').click();
-        await expect(status).toHaveCount(0);
+        await problem.getByRole('button', { name: 'Retry presence' }).click();
+        await expect(problem).toHaveCount(0);
         await expect
           .poll(() =>
             page.evaluate(() =>
@@ -331,6 +337,7 @@ for (const mobile of [false, true]) {
           .toBe('online');
         await expect(page.getByTestId('composer-input')).toBeVisible();
         await expect(page).toHaveURL(conversationUrl);
+        await status.getByRole('button', { name: 'Close' }).click();
         await testInfo.attach('presence-recovered', {
           body: await page.screenshot(),
           contentType: 'image/png',

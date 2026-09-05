@@ -233,10 +233,23 @@ test.describe('Remove a member', () => {
       members.retryProjection();
     });
 
-    const memberHealth = page.getByTestId('app-room-members-health');
-    const banHealth = page.getByTestId('app-room-bans-health');
-    await expect(memberHealth).toContainText('member list may be stale');
-    await expect(banHealth).toContainText('ban list may be stale');
+    await page
+      .getByTestId('app-capability-summary')
+      .getByRole('button', { name: 'System Status' })
+      .click();
+    const status = page.getByRole('dialog', { name: 'System Status' });
+    const memberHealth = status
+      .locator('article')
+      .filter({ hasText: 'The current Room member list is unavailable' });
+    const banHealth = status
+      .locator('article')
+      .filter({ hasText: 'The current Room ban list is unavailable' });
+    await expect(memberHealth).toContainText(
+      'Administrative actions that depend on it are paused',
+    );
+    await expect(banHealth).toContainText(
+      'Administrative actions that depend on it are paused',
+    );
     await expect(memberHealth).not.toContainText('synthetic');
     await expect(page.getByTestId('member-list-freshness')).toContainText(
       'Showing the last known member list',
@@ -256,10 +269,13 @@ test.describe('Remove a member', () => {
       target.restoreRoomAdministrationMembers?.();
       delete target.restoreRoomAdministrationMembers;
     });
-    await page.getByTestId('app-room-members-retry').click();
+    await memberHealth
+      .getByRole('button', { name: 'Retry Room administration' })
+      .click();
 
     await expect(memberHealth).toHaveCount(0);
     await expect(banHealth).toHaveCount(0);
+    await status.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByTestId('member-list-freshness')).toHaveCount(0);
     await expect(roster).toBeVisible();
     await expect(memberRow).toBeVisible();

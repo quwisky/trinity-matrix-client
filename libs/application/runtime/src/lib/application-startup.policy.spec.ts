@@ -4,7 +4,6 @@ import { APPLICATION_STARTUP_STAGES } from './application-runtime.models';
 import {
   APPLICATION_STARTUP_PRODUCER_POLICIES,
   APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
-  REQUIRED_STARTUP_PRODUCER_COMPATIBILITY,
 } from './application-startup.policy';
 
 describe('Application startup producer policy', () => {
@@ -30,11 +29,6 @@ describe('Application startup producer policy', () => {
     expect(
       APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
     ).toMatchObject({ budgetMs: 10_000, required: false });
-    expect(
-      'compatibility' in
-        APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
-    ).toBe(false);
-    expect(REQUIRED_STARTUP_PRODUCER_COMPATIBILITY).toHaveLength(0);
   });
 
   it('budgets the watchdog for every serial stage and its longest parallel producer', () => {

@@ -489,12 +489,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       firstValueFrom(adapter.establishSessionCapabilities()),
     ).resolves.toMatchObject({
       kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          scope: 'storage',
-          diagnostic: { code: 'storage-persistence-denied' },
-        }),
-      ],
       settlements: [
         expect.objectContaining({
           producer: 'room-order',
@@ -518,6 +512,12 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       operation: 'hydrate-order',
       code: 'room-order-storage-unavailable',
     });
+    expect(
+      health.problems().find((problem) => problem.capability === 'storage'),
+    ).toMatchObject({
+      operation: 'persistence',
+      code: 'storage-persistence-denied',
+    });
   });
 
   it('bounds unresponsive optional startup siblings with exact identities', async () => {
@@ -532,11 +532,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     await expect(outcome).resolves.toMatchObject({
       kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          diagnostic: { code: 'storage-persistence-timeout' },
-        }),
-      ],
       settlements: [
         expect.objectContaining({
           producer: 'room-order',
@@ -654,13 +649,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
     await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
       kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          scope: 'workspace',
-          diagnostic: { code: 'workspace-safe-root-fallback' },
-        }),
-      ],
     });
+    expect(health.incidents()).toContainEqual(
+      expect.objectContaining({
+        capability: 'workspace',
+        operation: 'routing',
+        code: 'workspace-safe-root-fallback',
+      }),
+    );
     expect(navigateByUrl).toHaveBeenNthCalledWith(1, '/', {
       replaceUrl: true,
     });
@@ -701,11 +697,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     await expect(restoration).resolves.toEqual({
       kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          diagnostic: { code: 'workspace-safe-root-fallback' },
-        }),
-      ],
     });
     expect(navigateByUrl).toHaveBeenCalledWith('/', { replaceUrl: true });
   });
