@@ -7,20 +7,12 @@ import {
   type IPushRule,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import {
-  NEVER,
-  Observable,
-  concat,
-  defer,
-  finalize,
-  from,
-  of,
-  throwError,
-} from 'rxjs';
+import { Observable, defer, from, throwError } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
+import { ownedProjection } from '@trinity/runtime/projection';
 
 /**
  * Per-room notification level:
@@ -93,10 +85,10 @@ export class RoomNotificationsService {
 
   /** Cold rule projection retained by the named Notification session lifetime. */
   runProjection(): Observable<void> {
-    return defer(() => {
-      this.connect();
-      return concat(of(void 0), NEVER);
-    }).pipe(finalize(() => this.disconnect()));
+    return ownedProjection(
+      () => this.connect(),
+      () => this.disconnect(),
+    );
   }
 
   private connect(): void {

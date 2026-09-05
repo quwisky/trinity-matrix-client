@@ -64,23 +64,29 @@ export class ActiveAccountProjectionLifetime {
         if (attached) return;
         attached = true;
         let started = false;
-        const held = new Subscription();
-        projection = held;
-        held.add(
-          config.runProjection().subscribe({
+        let projectionOwned = false;
+        const startPreparation = (): void => {
+          try {
+            const projectionReadiness = this.projections.waitFor({
+              kind: 'active-account',
+            });
+            const preparation: Observable<unknown> = config.prepare
+              ? forkJoin([projectionReadiness, config.prepare()])
+              : projectionReadiness;
+            barrier = preparation.subscribe({
+              next: finishPreparation,
+              error: fail,
+            });
+          } catch (error: unknown) {
+            fail(error);
+          }
+        };
+        try {
+          const nextProjection = config.runProjection().subscribe({
             next: () => {
               if (started) return;
               started = true;
-              const projectionReadiness = this.projections.waitFor({
-                kind: 'active-account',
-              });
-              const preparation: Observable<unknown> = config.prepare
-                ? forkJoin([projectionReadiness, config.prepare()])
-                : projectionReadiness;
-              barrier = preparation.subscribe({
-                next: finishPreparation,
-                error: fail,
-              });
+              if (projectionOwned) startPreparation();
             },
             error: fail,
             complete: () =>
@@ -91,8 +97,17 @@ export class ActiveAccountProjectionLifetime {
                     : 'Projection lifetime emitted nothing.',
                 ),
               ),
-          }),
-        );
+          });
+          if (attached) {
+            projection = nextProjection;
+            projectionOwned = true;
+            if (started) startPreparation();
+          } else {
+            nextProjection.unsubscribe();
+          }
+        } catch (error: unknown) {
+          if (!subscriber.closed) fail(error);
+        }
       };
       const apply = (): void => {
         if (!accountId || !demanded) {

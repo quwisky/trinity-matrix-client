@@ -1,7 +1,8 @@
 import { inject } from '@angular/core';
 import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
-import { NEVER, Observable, concat, defer, finalize, of } from 'rxjs';
+import { Observable, defer, of } from 'rxjs';
 import {
+  ownedProjection,
   ProjectionRuntime,
   type ProjectionLease,
 } from '@trinity/runtime/projection';
@@ -10,7 +11,7 @@ import { reprojectOnAccountSwitch } from './reproject-on-switch';
 
 /** What a projecting service exposes; its own `connect`/`disconnect` delegate to this. */
 export interface ClientProjection {
-  /** Cold owned lifetime: attach on subscribe and release on unsubscribe. */
+  /** Cold owned lifetime: retain attachment demand until the final unsubscribe. */
   run(): Observable<void>;
   /** Attach listeners and do the first read. Idempotent per client. */
   connect(): void;
@@ -120,18 +121,22 @@ export function projectFromClient(
   // The client we currently have listeners on — the instance, not a boolean (see 2 above).
   let connectedClient: MatrixClient | null = null;
   let lease: ProjectionLease | null = null;
+  let lifetimeOwners = 0;
   let invalidate = (): void => undefined;
   const onEvent = (): void => invalidate();
 
   const projection: ClientProjection = {
     run(): Observable<void> {
-      return defer(() => {
-        projection.connect();
-        if (!projection.isConnected()) {
-          throw new Error(`Matrix projection "${id}" could not attach.`);
-        }
-        return concat(of(void 0), NEVER);
-      }).pipe(finalize(() => projection.disconnect()));
+      return ownedProjection(
+        () => {
+          lifetimeOwners += 1;
+          projection.connect();
+        },
+        () => {
+          lifetimeOwners -= 1;
+          if (lifetimeOwners === 0) projection.disconnect();
+        },
+      );
     },
 
     connect(): void {
@@ -148,21 +153,51 @@ export function projectFromClient(
         scope: { kind: 'active-account' },
         attach: (nextInvalidate) => {
           invalidate = nextInvalidate;
-          connectedClient = matrix.instance;
-          for (const event of events) {
-            connectedClient.on(event, onEvent);
-          }
-          bind?.(connectedClient);
-          return () => {
+          const client = matrix.instance;
+          connectedClient = client;
+          const detachClient = (): void => {
             const attachedClient = connectedClient;
             if (!attachedClient) return;
+            const failures: unknown[] = [];
             for (const event of events) {
-              attachedClient.off(event, onEvent);
+              try {
+                attachedClient.off(event, onEvent);
+              } catch (error: unknown) {
+                failures.push(error);
+              }
             }
-            unbind?.(attachedClient);
+            try {
+              unbind?.(attachedClient);
+            } catch (error: unknown) {
+              failures.push(error);
+            }
             connectedClient = null;
             invalidate = () => undefined;
+            if (failures.length === 1) throw failures[0];
+            if (failures.length > 1) {
+              throw new AggregateError(
+                failures,
+                'Matrix projection listener cleanup failed.',
+              );
+            }
           };
+          try {
+            for (const event of events) {
+              client.on(event, onEvent);
+            }
+            bind?.(client);
+          } catch (error: unknown) {
+            try {
+              detachClient();
+            } catch (cleanupError: unknown) {
+              throw new AggregateError(
+                [error, cleanupError],
+                'Matrix projection attachment and cleanup failed.',
+              );
+            }
+            throw error;
+          }
+          return detachClient;
         },
         reconcile: ({ publish }) =>
           defer(() => {
@@ -194,7 +229,7 @@ export function projectFromClient(
   if (reprojectOnSwitch) {
     reprojectOnAccountSwitch(
       matrix,
-      () => projection.isConnected(),
+      () => lifetimeOwners > 0 || projection.isConnected(),
       () => projection.connect(),
       () => projection.disconnect(),
     );

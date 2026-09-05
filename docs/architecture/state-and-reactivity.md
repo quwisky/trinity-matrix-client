@@ -310,9 +310,9 @@ its event bursts, lifecycle, generation safety, and switch acknowledgements use 
 new architecture slices. The internal `ClientProjection` exposes a cold `run()` lifetime alongside
 the lower-level `connect()`, `disconnect()`, `isConnected()`, `client()`, and `schedule()` adapter
 operations. Subscribing to `run()` attaches and emits once; it then remains open until unsubscribe
-releases the runtime lease. Attachment fails through the Observable error channel when no Matrix
-client is available. Release detaches, calls `unbind`, cancels queued work, nulls the connected
-client, and then calls `reset()`.
+releases the runtime lease. With no active Account, the lifetime remains prepared but dormant and
+retains its demand so a later login attaches without restarting Application Runtime. Release
+detaches, calls `unbind`, cancels queued work, nulls the connected client, and then calls `reset()`.
 
 Application Runtime owns one cold `RoomLibraryLifetime` after Account restoration. The lifetime
 connects joined Rooms, Spaces, invitations, Space hierarchy and the selected-Account view, then

@@ -12,8 +12,9 @@ All notable changes to this project are documented here. The format is based on
   Trust, Identity, Notification, and Room Administration services now expose cold owned
   `runProjection()` sources instead of public generic connect/disconnect pairs. Application Runtime
   is their sole lifetime subscriber; stopping it releases listeners, queued reconciliation,
-  warning collection, and projected state, while restart creates a fresh generation. Exact
-  Conversation and settings projections keep their independent local lifetimes.
+  warning collection, and projected state, while restart creates a fresh generation. An empty
+  Account scope remains prepared and dormant, then attaches on a later login. Exact Conversation
+  and settings projections keep their independent local lifetimes.
 
 - **Notification and Room Administration projections now belong to Application Runtime.** Named
   cold lifetimes retain per-Room notification rules, permissions, and member summaries while a
