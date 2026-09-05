@@ -7,7 +7,11 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  type TrustHealth,
+  type TrustStatus,
+} from '@trinity/data-access/trust';
 import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { SecuritySectionComponent } from './security-section.component';
@@ -17,6 +21,7 @@ async function build(
     status?: TrustStatus;
     verified?: boolean;
     backup?: boolean;
+    availability?: TrustHealth['availability'];
   } = {},
   over: {
     exportRoomKeys?: Mock;
@@ -25,7 +30,17 @@ async function build(
     fileSave?: Mock;
   } = {},
 ) {
-  const refresh = vi.fn(() => of(undefined));
+  const snapshot = {
+    status: opts.status === 'unknown' ? 'ready' : (opts.status ?? 'ready'),
+    keyBackupActive: opts.backup ?? false,
+    thisDeviceVerified: opts.verified ?? false,
+  } as const;
+  const health: TrustHealth =
+    opts.availability === 'unavailable'
+      ? { availability: 'unavailable', current: null, stale: null }
+      : opts.availability === 'stale'
+        ? { availability: 'stale', current: null, stale: snapshot }
+        : { availability: 'coherent', current: snapshot, stale: null };
   const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
     of({ kind: 'presented' as const, surface: request.surface }),
   );
@@ -38,10 +53,16 @@ async function build(
   const { fixture, container } = await render(SecuritySectionComponent, {
     providers: [
       MockProvider(TrustService, {
-        status: signal<TrustStatus>(opts.status ?? 'ready').asReadonly(),
-        keyBackupActive: signal(opts.backup ?? false).asReadonly(),
-        thisDeviceVerified: signal(opts.verified ?? false).asReadonly(),
-        refresh,
+        health: signal(health).asReadonly(),
+        status: signal<TrustStatus>(
+          health.current?.status ?? 'unknown',
+        ).asReadonly(),
+        keyBackupActive: signal(
+          health.current?.keyBackupActive ?? null,
+        ).asReadonly(),
+        thisDeviceVerified: signal(
+          health.current?.thisDeviceVerified ?? null,
+        ).asReadonly(),
         exportRoomKeys,
         importRoomKeys,
       }),
@@ -55,7 +76,6 @@ async function build(
     fixture,
     cmp: fixture.componentInstance,
     container,
-    refresh,
     open,
     exportRoomKeys,
     importRoomKeys,
@@ -74,11 +94,6 @@ function fileEvent(text?: string): Event {
 }
 
 describe('SecuritySectionComponent', () => {
-  it('refreshes the crypto status on open', async () => {
-    const { refresh } = await build();
-    expect(refresh).toHaveBeenCalled();
-  });
-
   it('offers setup when encryption needs setting up', async () => {
     const { container, cmp, open } = await build({ status: 'needs-setup' });
     expect(
@@ -194,6 +209,27 @@ describe('SecuritySectionComponent', () => {
   it('reflects key backup being off', async () => {
     const { container } = await build({ backup: false });
     expect(container.textContent).toContain('Key backup is off');
+  });
+
+  it('labels stale Trust and offers no actions that infer current state', async () => {
+    const { container } = await build({
+      status: 'needs-recovery',
+      verified: false,
+      backup: false,
+      availability: 'stale',
+    });
+
+    expect(container.textContent).toContain(
+      'last known status may be outdated',
+    );
+    expect(container.textContent).toContain(
+      'Current session verification is unavailable',
+    );
+    expect(container.textContent).toContain(
+      'Current key-backup status is unavailable',
+    );
+    expect(container.querySelector('[data-testid=security-unlock]')).toBeNull();
+    expect(container.querySelector('[data-testid=security-verify]')).toBeNull();
   });
 
   it('exports room keys with the entered passphrase and toasts', async () => {

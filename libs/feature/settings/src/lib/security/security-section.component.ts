@@ -3,7 +3,6 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  OnInit,
   inject,
   input,
   signal,
@@ -31,7 +30,7 @@ import { SettingsSectionHeadingComponent } from '../shared/settings-section-head
   templateUrl: './security-section.component.html',
   imports: [TrnButton, SettingsSectionHeadingComponent],
 })
-export class SecuritySectionComponent implements OnInit {
+export class SecuritySectionComponent {
   private readonly crypto = inject(TrustService);
   private readonly applicationSurfaces = inject(
     WorkspaceApplicationSurfaceService,
@@ -49,6 +48,7 @@ export class SecuritySectionComponent implements OnInit {
     viewChild<ElementRef<HTMLInputElement>>('keyFile');
 
   /** Where this device stands on encryption setup (drives the encryption card). */
+  readonly health = this.crypto.health;
   readonly status = this.crypto.status;
   /** Whether a server-side key backup is active for this session. */
   readonly keyBackupActive = this.crypto.keyBackupActive;
@@ -62,12 +62,6 @@ export class SecuritySectionComponent implements OnInit {
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
     });
-  }
-
-  ngOnInit(): void {
-    // Recompute against the live crypto state when the page opens (it's connected at
-    // shell startup, but a re-read guarantees the panel reflects the current account).
-    this.crypto.refresh().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
   }
 
   /** First-device setup: generate a recovery key + bootstrap cross-signing/backup. */

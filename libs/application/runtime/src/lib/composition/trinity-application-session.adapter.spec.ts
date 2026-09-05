@@ -35,7 +35,11 @@ import {
   RoomAdministrationLifetime,
   RoomAdministrationLifetimeError,
 } from '@trinity/data-access/room-administration';
-import { TrustLifetime, TrustOperationError } from '@trinity/data-access/trust';
+import {
+  TrustLifetime,
+  type TrustCapabilityHealth,
+  type TrustLifetimeEvent,
+} from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -44,11 +48,19 @@ import {
   HostUpdatesService,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, Observable, Subject, of, throwError } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  Subject,
+  lastValueFrom,
+  of,
+  throwError,
+} from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
+import { CapabilityHealthService } from '../capability-health.service';
 
 interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
@@ -77,6 +89,8 @@ interface SessionHarness {
   readonly hostUpdateCheck: ReturnType<typeof vi.fn>;
   readonly activateUpdate: ReturnType<typeof vi.fn>;
   readonly showToast: ReturnType<typeof vi.fn>;
+  readonly health: CapabilityHealthService;
+  readonly recoverTrust: ReturnType<typeof vi.fn>;
 }
 
 function setup(
@@ -84,7 +98,7 @@ function setup(
   roomLibrarySession: Observable<RoomLibraryLifetimeEvent> = of({
     kind: 'prepared',
   }),
-  trustSession: Observable<void> = of(void 0),
+  trustSession: Observable<TrustLifetimeEvent> = of({ kind: 'prepared' }),
   identitySession: Observable<IdentityLifetimeEvent> = of({ kind: 'prepared' }),
   notificationSession: Observable<void> = of(void 0),
   roomAdministrationSession: Observable<void> = of(void 0),
@@ -117,6 +131,7 @@ function setup(
   const activateUpdate = vi.fn().mockResolvedValue(true);
   const showToast = vi.fn();
   const roomProjectionDemand = signal(true);
+  const recoverTrust = vi.fn(() => of({ kind: 'success' as const }));
 
   TestBed.configureTestingModule({
     providers: [
@@ -138,7 +153,10 @@ function setup(
       MockProvider(RoomLibraryLifetime, {
         run: () => roomLibrarySession,
       }),
-      MockProvider(TrustLifetime, { run: () => trustSession }),
+      MockProvider(TrustLifetime, {
+        run: () => trustSession,
+        recover: recoverTrust,
+      }),
       MockProvider(IdentityLifetime, { run: () => identitySession }),
       MockProvider(NotificationLifetime, { run: () => notificationSession }),
       MockProvider(RoomAdministrationLifetime, {
@@ -201,6 +219,26 @@ function setup(
     hostUpdateCheck,
     activateUpdate,
     showToast,
+    health: TestBed.inject(CapabilityHealthService),
+    recoverTrust,
+  };
+}
+
+function trustHealth(
+  context: symbol,
+  over: Partial<TrustCapabilityHealth> = {},
+): TrustCapabilityHealth {
+  return {
+    capability: 'trust',
+    operation: 'projection',
+    context,
+    generation: 1,
+    demanded: true,
+    preparation: 'failed',
+    ownership: 'retained',
+    condition: 'degraded',
+    code: 'trust-reconciliation-failed',
+    ...over,
   };
 }
 
@@ -312,7 +350,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
   it('releases optional projection lifetimes when preparation blocks', () => {
     const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
-    const trust = new Subject<void>();
+    const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<void>();
     const roomAdministration = new Subject<void>();
@@ -327,7 +365,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const events: unknown[] = [];
 
     test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
-    trust.next();
+    trust.next({ kind: 'prepared' });
     identity.next({ kind: 'prepared' });
     notifications.next();
     roomAdministration.next();
@@ -350,7 +388,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   });
 
   it('retains all optional capability lifetimes across readiness until teardown', () => {
-    const trust = new Subject<void>();
+    const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<void>();
     const roomAdministration = new Subject<void>();
@@ -389,7 +427,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
   it('does not let an unsettled optional lifetime hold required preparation open', () => {
     const readiness = new Subject<void>();
-    const optional = new Subject<void>();
+    const optional = new Subject<TrustLifetimeEvent>();
     const test = setup(
       undefined,
       of({ kind: 'prepared' }),
@@ -417,7 +455,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const test = setup(
       undefined,
       of({ kind: 'prepared' }),
-      of(void 0),
+      of({ kind: 'prepared' }),
       of({ kind: 'prepared' }),
       throwError(() => new NotificationLifetimeError()),
       throwError(() => new RoomAdministrationLifetimeError()),
@@ -470,7 +508,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const test = setup(
       undefined,
       of({ kind: 'prepared' }),
-      of(void 0),
+      of({ kind: 'prepared' }),
       of({ kind: 'prepared' }),
       notifications,
       roomAdministration,
@@ -491,45 +529,31 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(administrationTeardowns).toBe(2);
   });
 
-  it('reports optional Trust failures after readiness', () => {
-    const trustFailure = new TrustOperationError(
-      'refresh-health',
-      'server-failure',
-      'retry',
-      'Trust is temporarily unavailable.',
-    );
+  it('registers scoped Trust health and recovery without a permanent warning', async () => {
+    const context = Symbol();
+    const trust = new Subject<TrustLifetimeEvent>();
     const readiness = new Subject<void>();
-    const test = setup(
-      undefined,
-      of({ kind: 'prepared' }),
-      throwError(() => trustFailure),
-    );
+    const test = setup(undefined, of({ kind: 'prepared' }), trust);
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
       .subscribe((event) => events.push(event));
 
+    trust.next({ kind: 'health', fact: trustHealth(context) });
+    trust.next({ kind: 'prepared' });
     expect(events).toEqual([{ kind: 'prepared' }]);
-
     readiness.next();
 
-    expect(events).toEqual([
-      { kind: 'prepared' },
-      {
-        kind: 'warning',
-        warning: {
-          stage: 'session',
-          scope: 'trust',
-          diagnostic: { code: 'trust-projection-unavailable' },
-          recovery: 'retry-startup',
-        },
-      },
-    ]);
+    expect(events).toEqual([{ kind: 'prepared' }]);
+    expect(test.health.problems()).toHaveLength(1);
+    const problem = test.health.problems()[0];
+    await lastValueFrom(test.health.recover(problem));
+    expect(test.recoverTrust).toHaveBeenCalledWith(context, 1);
     lifetime.unsubscribe();
   });
 
-  it('reports a late optional failure without preparing or restarting live work again', () => {
-    const trust = new Subject<void>();
+  it('reports a late Trust degradation without preparing or restarting live work again', () => {
+    const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
     const readiness = new Subject<void>();
     const test = setup(undefined, of({ kind: 'prepared' }), trust, identity);
@@ -538,30 +562,15 @@ describe('TrinityApplicationSessionAdapter', () => {
       .run(readiness)
       .subscribe((event) => events.push(event));
 
-    trust.next();
+    trust.next({ kind: 'prepared' });
     identity.next({ kind: 'prepared' });
     readiness.next();
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
-    trust.error(
-      new TrustOperationError(
-        'refresh-health',
-        'server-failure',
-        'retry',
-        'Trust is temporarily unavailable.',
-      ),
-    );
+    trust.next({ kind: 'health', fact: trustHealth(Symbol()) });
 
-    expect(events).toEqual([
-      { kind: 'prepared' },
-      {
-        kind: 'warning',
-        warning: expect.objectContaining({
-          scope: 'trust',
-          diagnostic: { code: 'trust-projection-unavailable' },
-        }),
-      },
-    ]);
+    expect(events).toEqual([{ kind: 'prepared' }]);
+    expect(test.health.problems()).toHaveLength(1);
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
     expect(test.deepLinks.observed).toBe(true);
     expect(lifetime.closed).toBe(false);

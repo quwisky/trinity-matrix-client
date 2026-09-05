@@ -1,129 +1,278 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
-import { ProjectionRuntime } from '@trinity/runtime/projection';
+import {
+  ProjectionRuntime,
+  type CapabilityHealthFact,
+} from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, concat, defer, finalize, of, throwError } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TrustLifetime } from './trust-lifetime';
-import { TrustOperationError } from './trust-operation-error';
+import { NEVER, Observable, firstValueFrom, of, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TrustLifetime, type TrustLifetimeEvent } from './trust-lifetime';
 import { TrustService } from './trust.service';
 import { TrustVerificationService } from './trust-verification.service';
 
 describe('TrustLifetime', () => {
   const activeAccountId = signal<string | null>('@a:example.org');
-  const healthConnect = vi.fn();
-  const healthDisconnect = vi.fn();
-  const verificationConnect = vi.fn();
-  const verificationDisconnect = vi.fn();
-  const refresh = vi.fn(() => of(void 0));
-  const projection = (connect: () => void, disconnect: () => void) => () =>
-    defer(() => {
-      connect();
-      return concat(of(void 0), NEVER);
-    }).pipe(finalize(disconnect));
+  let runtime: ProjectionRuntime;
+  let service: TrustLifetime;
+  let healthFailure: boolean;
+  let verificationFailure: boolean;
+  let stallHealth: boolean;
+  let healthConnections: number;
+  let verificationConnections: number;
+  let healthRetries: number;
+  let verificationRetries: number;
+  let releaseHealth: () => void;
+  let invalidateHealth: () => void;
+  let invalidateVerification: () => void;
+  let events: TrustLifetimeEvent[];
+
+  const latest = (): CapabilityHealthFact => {
+    const event = events
+      .filter((candidate) => candidate.kind === 'health')
+      .at(-1);
+    if (!event || event.kind !== 'health')
+      throw new Error('Missing Trust health');
+    return event.fact;
+  };
 
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
-    vi.clearAllMocks();
+    healthFailure = false;
+    verificationFailure = false;
+    stallHealth = false;
+    healthConnections = 0;
+    verificationConnections = 0;
+    healthRetries = 0;
+    verificationRetries = 0;
+    events = [];
     TestBed.configureTestingModule({
       providers: [
-        TrustLifetime,
-        MockProvider(TrustCryptoPort, {
-          activeAccountId: activeAccountId.asReadonly(),
-        }),
+        MockProvider(TrustCryptoPort, { activeAccountId }),
         MockProvider(TrustService, {
-          runProjection: projection(healthConnect, healthDisconnect),
-          refresh,
+          runProjection: () =>
+            projection('trust.health', {
+              failed: () => healthFailure,
+              stalled: () => stallHealth,
+              connected: () => (healthConnections += 1),
+              controls: (invalidate, release) => {
+                invalidateHealth = invalidate;
+                releaseHealth = release;
+              },
+            }),
+          retryProjection: () => {
+            healthRetries += 1;
+            invalidateHealth();
+          },
         }),
         MockProvider(TrustVerificationService, {
-          runProjection: projection(
-            verificationConnect,
-            verificationDisconnect,
-          ),
-        }),
-        MockProvider(ProjectionRuntime, {
-          waitFor: () => of(readiness()),
+          runProjection: () =>
+            projection('crypto.verification-requests', {
+              failed: () => verificationFailure,
+              stalled: () => false,
+              connected: () => (verificationConnections += 1),
+              controls: (invalidate) => {
+                invalidateVerification = invalidate;
+              },
+            }),
+          retryProjection: () => {
+            verificationRetries += 1;
+            invalidateVerification();
+          },
         }),
       ],
     });
+    runtime = TestBed.inject(ProjectionRuntime);
+    service = TestBed.inject(TrustLifetime);
   });
 
-  it('is cold and retains both Trust projections until teardown', () => {
-    const source = TestBed.inject(TrustLifetime).run();
-    const prepared = vi.fn();
-
-    expect(healthConnect).not.toHaveBeenCalled();
-    expect(verificationConnect).not.toHaveBeenCalled();
-
-    const lifetime = source.subscribe(prepared);
-
-    expect(prepared).toHaveBeenCalledWith(undefined);
-    expect(lifetime.closed).toBe(false);
-    expect(healthConnect).toHaveBeenCalledOnce();
-    expect(verificationConnect).toHaveBeenCalledOnce();
-
-    lifetime.unsubscribe();
-
-    expect(verificationDisconnect).toHaveBeenCalledOnce();
-    expect(healthDisconnect).toHaveBeenCalledOnce();
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    vi.useRealTimers();
   });
 
-  it('reacquires projections when an Account appears after an empty set', () => {
+  const run = () => service.run().subscribe((event) => events.push(event));
+
+  it('is cold, acknowledges once, and owns both Trust projections until teardown', () => {
+    const source = service.run();
+    expect(healthConnections).toBe(0);
+    expect(verificationConnections).toBe(0);
+
+    const subscription = source.subscribe((event) => events.push(event));
+
+    expect(latest()).toMatchObject({
+      condition: 'available',
+      ownership: 'retained',
+      preparation: 'acknowledged',
+    });
+    expect(events.filter((event) => event.kind === 'prepared')).toHaveLength(1);
+    expect(healthConnections).toBe(1);
+    expect(verificationConnections).toBe(1);
+    expect(subscription.closed).toBe(false);
+    subscription.unsubscribe();
+  });
+
+  it('treats no-Account dormancy as expected and attaches when an Account appears', () => {
     activeAccountId.set(null);
-    const lifetime = TestBed.inject(TrustLifetime).run().subscribe();
+    const subscription = run();
     TestBed.tick();
 
-    expect(healthConnect).not.toHaveBeenCalled();
-    expect(verificationConnect).not.toHaveBeenCalled();
+    expect(latest()).toMatchObject({
+      demanded: false,
+      condition: 'not-applicable',
+      code: 'trust-dormant',
+    });
+    expect(healthConnections).toBe(0);
 
     activeAccountId.set('@b:example.org');
     TestBed.tick();
-
-    expect(healthConnect).toHaveBeenCalledOnce();
-    expect(verificationConnect).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
+    expect(latest().condition).toBe('available');
+    expect(healthConnections).toBe(1);
+    subscription.unsubscribe();
   });
 
-  it('uses the Observable error channel and cleans up a partial attachment', () => {
-    const failure = new Error('broken Trust adapter');
-    verificationConnect.mockImplementationOnce(() => {
-      throw failure;
+  it('reports an initial refresh failure and repairs the retained failed projection only', async () => {
+    healthFailure = true;
+    const subscription = run();
+    const failed = latest();
+
+    expect(failed).toMatchObject({
+      condition: 'degraded',
+      ownership: 'retained',
+      preparation: 'failed',
+      code: 'trust-reconciliation-failed',
     });
-    const error = vi.fn();
+    healthFailure = false;
 
-    TestBed.inject(TrustLifetime).run().subscribe({ error });
-
-    expect(error).toHaveBeenCalledWith(failure);
-    expect(verificationDisconnect).toHaveBeenCalledOnce();
-    expect(healthDisconnect).toHaveBeenCalledOnce();
+    await expect(
+      firstValueFrom(service.recover(failed.context, failed.generation)),
+    ).resolves.toEqual({ kind: 'success' });
+    expect(healthRetries).toBe(1);
+    expect(verificationRetries).toBe(0);
+    expect(healthConnections).toBe(1);
+    expect(latest().condition).toBe('available');
+    subscription.unsubscribe();
   });
 
-  it('surfaces an expected health preparation failure for runtime classification', () => {
-    const failure = new TrustOperationError(
-      'refresh-health',
-      'server-failure',
-      'retry',
-      'Trust health is temporarily unavailable.',
-    );
-    refresh.mockReturnValueOnce(throwError(() => failure));
-    const error = vi.fn();
+  it('reports a later event failure without releasing ownership and clears it on current success', async () => {
+    const subscription = run();
+    healthFailure = true;
+    invalidateHealth();
+    await Promise.resolve();
 
-    TestBed.inject(TrustLifetime).run().subscribe({ error });
-
-    expect(error).toHaveBeenCalledWith(failure);
-    expect(verificationDisconnect).toHaveBeenCalledOnce();
-    expect(healthDisconnect).toHaveBeenCalledOnce();
+    expect(latest()).toMatchObject({
+      condition: 'degraded',
+      ownership: 'retained',
+      preparation: 'acknowledged',
+    });
+    healthFailure = false;
+    invalidateHealth();
+    await Promise.resolve();
+    expect(latest().condition).toBe('available');
+    subscription.unsubscribe();
   });
+
+  it('targets a retained verification projection failure without restarting Trust health', async () => {
+    verificationFailure = true;
+    const subscription = run();
+    const failed = latest();
+    verificationFailure = false;
+
+    await expect(
+      firstValueFrom(service.recover(failed.context, failed.generation)),
+    ).resolves.toEqual({ kind: 'success' });
+    expect(verificationRetries).toBe(1);
+    expect(healthRetries).toBe(0);
+    expect(healthConnections).toBe(1);
+    expect(verificationConnections).toBe(1);
+    subscription.unsubscribe();
+  });
+
+  it('recreates both Trust projections when owned lifetime was released', async () => {
+    const subscription = run();
+    releaseHealth();
+    const failed = latest();
+    expect(failed).toMatchObject({
+      condition: 'degraded',
+      ownership: 'released',
+      code: 'trust-ownership-released',
+    });
+
+    await expect(
+      firstValueFrom(service.recover(failed.context, failed.generation)),
+    ).resolves.toEqual({ kind: 'success' });
+    expect(healthConnections).toBe(2);
+    expect(verificationConnections).toBe(2);
+    expect(latest().condition).toBe('available');
+    subscription.unsubscribe();
+  });
+
+  it('isolates Accounts and rejects recovery from an obsolete generation', async () => {
+    healthFailure = true;
+    const subscription = run();
+    const failedA = latest();
+
+    healthFailure = false;
+    activeAccountId.set('@b:example.org');
+    expect(
+      await firstValueFrom(
+        service.recover(failedA.context, failedA.generation),
+      ),
+    ).toEqual({ kind: 'unavailable' });
+    TestBed.tick();
+    expect(latest().context).not.toBe(failedA.context);
+    expect(latest().condition).toBe('available');
+    subscription.unsubscribe();
+  });
+
+  it('bounds preparation without completing the retained session lifetime', () => {
+    vi.useFakeTimers();
+    stallHealth = true;
+    const subscription = run();
+    expect(latest().preparation).toBe('pending');
+
+    vi.advanceTimersByTime(10_000);
+
+    expect(latest()).toMatchObject({
+      condition: 'degraded',
+      ownership: 'retained',
+      code: 'trust-preparation-timeout',
+    });
+    expect(subscription.closed).toBe(false);
+    subscription.unsubscribe();
+  });
+
+  function projection(
+    id: string,
+    options: {
+      failed: () => boolean;
+      stalled: () => boolean;
+      connected: () => void;
+      controls: (invalidate: () => void, release: () => void) => void;
+    },
+  ): Observable<void> {
+    return new Observable((subscriber) => {
+      options.connected();
+      let release = (): void => undefined;
+      const lease = runtime.activate({
+        id,
+        scope: { kind: 'active-account' },
+        attach: (invalidate) => {
+          options.controls(invalidate, () => release());
+          return () => undefined;
+        },
+        reconcile: () =>
+          options.stalled()
+            ? NEVER
+            : options.failed()
+              ? throwError(() => new Error('private Trust fault'))
+              : of(undefined),
+        reset: () => undefined,
+      });
+      release = () => lease.release();
+      subscriber.next();
+      return release;
+    });
+  }
 });
-
-function readiness() {
-  return {
-    scope: { kind: 'active-account' } as const,
-    durationMs: 0,
-    projectionCount: 2,
-    listenerCount: 2,
-    retainedBytes: 0,
-    acknowledgements: [],
-  };
-}

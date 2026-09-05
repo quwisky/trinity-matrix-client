@@ -29,6 +29,7 @@ import {
   SecretStorageKeyHolder,
 } from '@trinity/data-access/matrix-client';
 import { UiaCancelledError, UiaUnsupportedError } from '@trinity/util/matrix';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 
 /** A 401 UIA challenge carrying flows + session, as the SDK surfaces it. */
 function uiaError(session: string): MatrixError {
@@ -302,6 +303,7 @@ describe('TrustService', () => {
       expect(svc.status()).toBe('ready');
       expect(svc.keyBackupActive()).toBe(true);
       expect(svc.thisDeviceVerified()).toBe(true);
+      expect(svc.health()).toMatchObject({ availability: 'coherent' });
     });
 
     it('is "needs-setup" when no secret storage exists yet', async () => {
@@ -325,6 +327,13 @@ describe('TrustService', () => {
       await firstValueFrom(svc.refresh());
 
       expect(svc.status()).toBe('unknown');
+      expect(svc.keyBackupActive()).toBeNull();
+      expect(svc.thisDeviceVerified()).toBeNull();
+      expect(svc.health()).toEqual({
+        availability: 'unavailable',
+        current: null,
+        stale: null,
+      });
     });
   });
 
@@ -1642,7 +1651,68 @@ describe('TrustService', () => {
         kind: 'server-failure',
         recovery: 'retry',
       });
-      expect(svc.status()).toBe('needs-recovery');
+      expect(svc.status()).toBe('unknown');
+      expect(svc.keyBackupActive()).toBeNull();
+      expect(svc.thisDeviceVerified()).toBeNull();
+      expect(svc.health()).toMatchObject({
+        availability: 'stale',
+        current: null,
+        stale: { status: 'needs-recovery' },
+      });
+    });
+
+    it('labels an event-driven read failure stale and reports the retained projection failed', async () => {
+      const { svc, client, crypto } = setup({
+        crossSigningReady: true,
+        secretStorageReady: true,
+        backupVersion: '1',
+        deviceVerified: true,
+        defaultKeyId: 'k',
+      });
+      const observations: string[] = [];
+      const lifetime = svc.runProjection().subscribe();
+      const observation = TestBed.inject(ProjectionRuntime)
+        .observe('trust.health', { kind: 'active-account' })
+        .subscribe((state) => observations.push(state.condition));
+      await vi.waitFor(() => expect(svc.status()).toBe('ready'));
+
+      crypto.isCrossSigningReady.mockImplementation(async () => {
+        throw new Error('private SDK fault');
+      });
+      client.emit(CryptoEvent.KeysChanged);
+      await vi.waitFor(() => expect(observations.at(-1)).toBe('failed'));
+      expect(svc.health()).toMatchObject({
+        availability: 'stale',
+        current: null,
+        stale: { status: 'ready' },
+      });
+      expect(svc.status()).toBe('unknown');
+      expect(svc.thisDeviceVerified()).toBeNull();
+      expect(JSON.stringify(svc.health())).not.toContain('private SDK fault');
+      observation.unsubscribe();
+      lifetime.unsubscribe();
+    });
+
+    it('reports missing crypto for a demanded Account as unavailable projection health', async () => {
+      const { svc } = setup({ hasCrypto: false });
+      const observations: string[] = [];
+      const runtime = TestBed.inject(ProjectionRuntime);
+      const lifetime = svc.runProjection().subscribe();
+      const observation = runtime
+        .observe('trust.health', { kind: 'active-account' })
+        .subscribe((state) => observations.push(state.condition));
+
+      await vi.waitFor(() => expect(observations.at(-1)).toBe('failed'));
+      expect(svc.health()).toEqual({
+        availability: 'unavailable',
+        current: null,
+        stale: null,
+      });
+      expect(svc.status()).toBe('unknown');
+      expect(svc.thisDeviceVerified()).toBeNull();
+
+      observation.unsubscribe();
+      lifetime.unsubscribe();
     });
 
     it('wires crypto listeners once and is idempotent', () => {

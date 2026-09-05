@@ -5,6 +5,7 @@ import {
   ownedProjection,
   ProjectionRuntime,
   type ProjectionLease,
+  type ProjectionReconcileContext,
 } from '@trinity/runtime/projection';
 import { MatrixClientService } from './matrix-client.service';
 import { reprojectOnAccountSwitch } from './reproject-on-switch';
@@ -56,7 +57,10 @@ export interface ProjectFromClientConfig {
    * re-projection effect was about to do anyway. New code should take the argument and
    * avoid the window entirely.
    */
-  rebuild?: (client: MatrixClient) => void;
+  rebuild?: (
+    client: MatrixClient,
+    context: ProjectionReconcileContext,
+  ) => void | Observable<void>;
 
   /**
    * Events that mean "the model changed". Bound to a coalesced rebuild.
@@ -199,13 +203,15 @@ export function projectFromClient(
           }
           return detachClient;
         },
-        reconcile: ({ publish }) =>
+        reconcile: (context) =>
           defer(() => {
             const attachedClient = connectedClient;
-            if (attachedClient) {
-              publish(() => rebuild?.(attachedClient));
-            }
-            return of(void 0);
+            if (!attachedClient) return of(void 0);
+            let result: void | Observable<void> = undefined;
+            const accepted = context.publish(() => {
+              result = rebuild?.(attachedClient, context);
+            });
+            return accepted ? (result ?? of(void 0)) : of(void 0);
           }),
         reset: () => reset?.(),
       });

@@ -43,7 +43,11 @@ import {
 } from './trust-provider-recovery.port';
 import { TrustHealthService } from './trust-health.service';
 
-export type { TrustHealth, TrustStatus } from './trust-health.service';
+export type {
+  TrustHealth,
+  TrustHealthSnapshot,
+  TrustStatus,
+} from './trust-health.service';
 
 const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
 
@@ -78,6 +82,11 @@ export class TrustService {
   /** Cold Trust-health projection retained by the named session lifetime. */
   runProjection(): Observable<void> {
     return this.healthRuntime.runProjection();
+  }
+
+  /** Retry a retained failed health projection without replacing its session owner. */
+  retryProjection(): void {
+    this.healthRuntime.retryProjection();
   }
 
   /** Re-evaluate the status signals against the current crypto state. */
@@ -357,7 +366,7 @@ export class TrustService {
       await repairStaleCrossSigning(crypto, storage, deviceId);
     } catch (err) {
       await this.healthRuntime.reconcile();
-      if (!this.health().thisDeviceVerified) {
+      if (this.health().current?.thisDeviceVerified !== true) {
         throw err;
       }
     }

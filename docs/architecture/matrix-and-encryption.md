@@ -298,17 +298,30 @@ its exact client and holder before awaiting work, so an Account switch cannot re
 
 ## TrustStatus
 
-`TrustHealth` atomically publishes status, backup activity and this-device verification.
-Its status is `unknown`, `ready`, `needs-setup` or `needs-recovery`. Cross-signing and secret
-storage readiness both produce `ready`; otherwise an existing default key produces
-`needs-recovery`, and its absence produces `needs-setup`.
+`TrustHealth` atomically publishes status, backup activity and this-device verification as a
+discriminated availability view. `coherent` places one authoritative snapshot in `current`;
+`stale` moves the last coherent snapshot into the explicitly named `stale` field; and
+`unavailable` exposes neither. Compatibility signals return `unknown` or `null` unless the view is
+coherent, so an unavailable read cannot imply that this device is unverified, key backup is off,
+or setup/recovery is safe to start. In a coherent snapshot, cross-signing and secret storage
+readiness both produce `ready`; otherwise an existing default key produces `needs-recovery`, and
+its absence produces `needs-setup`.
 
 [Trust health](../../libs/data-access/trust/src/lib/trust-health.service.ts) reconciles crypto
-readiness, backup and device verification from coalesced SDK invalidations. A generation token
-prevents an older asynchronous read from overwriting a new Account/view. Transient event-driven
-failures retain the last coherent state. Explicit `refresh()` instead reports a sanitized
-`TrustOperationError` for `refresh-health`. The Rooms encryption banner reads this public view;
-it does not import the crypto feature.
+readiness, backup and device verification from coalesced SDK invalidations. Its asynchronous read
+is part of Projection Runtime reconciliation rather than detached promise work, so initial and
+later failures mark the retained projection failed. Runtime and local generation gates prevent an
+older asynchronous read from overwriting a new Account/view. Explicit `refresh()` reports a
+sanitized `TrustOperationError` for `refresh-health` and updates the availability view, but it does
+not claim that a failed projection was reattached. The Rooms encryption banner reads the coherent
+compatibility status; it does not import the crypto feature.
+
+Application Runtime retains one Trust lifetime for health and incoming verification. The lifetime
+publishes opaque, active-Account-scoped health with bounded preparation and recovery observation.
+No Account is expected dormancy. Recovery invalidates only a retained failed projection; if either
+owned lease was released, it recreates both under the single session owner. Only a successful
+current-generation reconciliation resolves the scope, leaving Workspace, Conversations and
+unrelated session subscriptions intact throughout a Trust outage.
 
 ## Setup and recovery
 
@@ -430,7 +443,7 @@ valid result, not proof that a different subsequent endpoint will also accept th
 [TrustVerificationService](../../libs/data-access/trust/src/lib/trust-verification.service.ts)
 projects one active verification. Self-verification offers advertised Matrix QR show/scan
 methods with emoji SAS fallback. Cross-user DM verification remains SAS-only. Only one request
-runs at a time. Application Runtime owns Trust's `runProjection()` lifetime;
+runs at a time. Application Runtime owns Trust's combined session lifetime;
 `VerificationHostComponent` presents incoming/cross-user dialogs but does not own a generic
 `connect()` call. Outgoing self-verification belongs to `/encryption/verify`. Lazy dialog
 components enter through `ENCRYPTION_DIALOG_COMPONENTS`, keeping feature imports contained.

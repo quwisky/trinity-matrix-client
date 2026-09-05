@@ -16,6 +16,34 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
 
+interface TrustFaultWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      runtime: {
+        adapter: {
+          session: {
+            trust: {
+              health: {
+                healthRuntime: {
+                  cryptoPort: {
+                    active(): {
+                      crypto: {
+                        isCrossSigningReady: () => Promise<boolean>;
+                      } | null;
+                    };
+                  };
+                  retryProjection(): void;
+                };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  restoreTrustRead?: () => void;
+}
+
 test.describe('Security settings', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -104,5 +132,80 @@ test.describe('Security settings', () => {
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     await expect(page).toHaveURL(roomUrl);
     await expect(verify).toBeFocused();
+  });
+
+  test('labels failed Trust reads and recovers through the scoped action', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}trust-health`;
+    const user = `trust-health-${runId}`;
+    const pass = `${user}-pass`;
+
+    await registerUser(request, user, pass);
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openSettingsSection(page, 'security');
+    await expect(page.getByTestId('security-setup')).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId('security-verify')).toBeVisible();
+
+    await page.evaluate(() => {
+      const target = window as unknown as TrustFaultWindow;
+      const root = document.querySelector('trn-root');
+      if (!root) throw new Error('Application root unavailable');
+      const health =
+        target.ng.getComponent(root).runtime.adapter.session.trust.health
+          .healthRuntime;
+      const crypto = health.cryptoPort.active().crypto;
+      if (!crypto) throw new Error('Trust crypto unavailable');
+      const read = crypto.isCrossSigningReady;
+      target.restoreTrustRead = () => {
+        crypto.isCrossSigningReady = read;
+      };
+      crypto.isCrossSigningReady = async () => {
+        throw new Error('synthetic private Trust response');
+      };
+      health.retryProjection();
+    });
+
+    const problem = page.getByTestId('app-trust-health');
+    await expect(problem).toContainText(
+      'Verification and recovery state are unknown',
+    );
+    await expect(
+      page.getByTestId('security-encryption-unavailable'),
+    ).toContainText('last known status may be outdated');
+    await expect(
+      page.getByTestId('security-session-unavailable'),
+    ).toBeVisible();
+    await expect(page.getByTestId('security-setup')).toHaveCount(0);
+    await expect(page.getByTestId('security-unlock')).toHaveCount(0);
+    await expect(page.getByTestId('security-verify')).toHaveCount(0);
+    await testInfo.attach('trust-unavailable', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+
+    await page.evaluate(() => {
+      const target = window as unknown as TrustFaultWindow;
+      target.restoreTrustRead?.();
+      delete target.restoreTrustRead;
+    });
+    await page.getByRole('button', { name: 'Close settings' }).click();
+    await page.getByTestId('app-trust-retry').click();
+
+    await expect(problem).toHaveCount(0);
+    await openSettingsSection(page, 'security');
+    await expect(
+      page.getByTestId('security-encryption-unavailable'),
+    ).toHaveCount(0);
+    await expect(page.getByTestId('security-setup')).toBeVisible();
+    await expect(page.getByTestId('security-verify')).toBeVisible();
+    await testInfo.attach('trust-recovered', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
   });
 });
