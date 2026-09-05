@@ -92,6 +92,11 @@ describe('ApplicationRootComponent', () => {
           scope: 'identity',
           diagnostic: { code: 'identity-presence-unavailable' },
         },
+        {
+          stage: 'session',
+          scope: 'room-administration',
+          diagnostic: { code: 'room-administration-projection-unavailable' },
+        },
       ],
     });
 
@@ -103,6 +108,9 @@ describe('ApplicationRootComponent', () => {
       'Encryption trust status may be unavailable.',
     );
     expect(warnings.textContent).toContain('User presence may be unavailable.');
+    expect(warnings.textContent).toContain(
+      'Room permissions and member lists may be unavailable.',
+    );
     expect(warnings.getAttribute('aria-label')).toBe(
       'Application runtime warnings',
     );

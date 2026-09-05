@@ -42,6 +42,11 @@ the transaction's own writes; a newer edit from another device is left untouched
 reports that restoration could not be confirmed. The row aggregates all contributing accounts
 and exposes `mixed` when their modes differ.
 
+Application Runtime owns the service's named cold projection lifetime. It observes every live
+Account client while a routed Room surface needs per-Room rule state, becomes dormant off Room
+routes, and releases on blocked startup, stop, or restart. Route components only read the resulting
+signals. This lifecycle is separate from local-notification delivery and Workspace activation.
+
 `PushRulesService` exposes nine labelled account-level toggles backed by predefined
 rules: the master kill switch (marked `invert`, because the rule being _enabled_ means
 "do not notify"), invites, user mention, `@room`, call invitations, direct chats,

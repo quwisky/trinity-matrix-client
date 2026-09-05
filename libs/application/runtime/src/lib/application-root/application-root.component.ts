@@ -111,5 +111,7 @@ function warningMessage(warning: ApplicationRuntimeWarning): string {
       return 'Encryption trust status may be unavailable.';
     case 'identity':
       return 'User presence may be unavailable.';
+    case 'room-administration':
+      return 'Room permissions and member lists may be unavailable.';
   }
 }

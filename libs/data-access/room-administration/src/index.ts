@@ -1,5 +1,6 @@
 export * from './lib/room-action-permissions.service';
 export * from './lib/room-administration-error';
+export * from './lib/room-administration-lifetime';
 export * from './lib/room-members.service';
 export * from './lib/room-member-role';
 export * from './lib/room-settings.service';

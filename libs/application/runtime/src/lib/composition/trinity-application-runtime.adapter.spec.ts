@@ -27,10 +27,12 @@ import {
 import { GifSettingsService } from '@trinity/data-access/gif';
 import { IdentityLifetime } from '@trinity/data-access/identity';
 import {
+  NotificationLifetime,
   NotificationService,
   PushGatewayService,
   PushService,
 } from '@trinity/data-access/notifications';
+import { RoomAdministrationLifetime } from '@trinity/data-access/room-administration';
 import {
   AccountScopeService,
   RoomLibraryLifetime,
@@ -208,7 +210,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(HostUpdatesService, { check: updateCheck }),
         MockProvider(NavigationFocusService, { run: () => focusSession }),
         MockProvider(WorkspaceRoutedSurfaceAdapter, {
-          identityPresenceDemand: signal(true).asReadonly(),
+          roomProjectionDemand: signal(true).asReadonly(),
           run: () => routedSession,
         }),
         MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -240,6 +242,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(TrustLifetime, { run: () => trustSession }),
         MockProvider(IdentityLifetime, { run: () => identitySession }),
+        MockProvider(NotificationLifetime, { run: () => of(void 0) }),
+        MockProvider(RoomAdministrationLifetime, { run: () => of(void 0) }),
         MockProvider(StoragePersistenceService, {
           requestPersistence: vi.fn(() => of(true)),
         }),

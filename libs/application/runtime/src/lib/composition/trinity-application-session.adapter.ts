@@ -15,6 +15,8 @@ import {
 } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
+  NotificationLifetime,
+  NotificationLifetimeError,
   NotificationService,
   PushService,
   type NativePushActivation,
@@ -30,6 +32,10 @@ import {
   SpaceRoomOrderService,
   type RoomLibraryLifetimeEvent,
 } from '@trinity/data-access/room-library';
+import {
+  RoomAdministrationLifetime,
+  RoomAdministrationLifetimeError,
+} from '@trinity/data-access/room-administration';
 import { TrustLifetime, TrustOperationError } from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
@@ -88,14 +94,15 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomLibrary = inject(RoomLibraryLifetime);
   private readonly trust = inject(TrustLifetime);
   private readonly identity = inject(IdentityLifetime);
+  private readonly notificationLifetime = inject(NotificationLifetime);
+  private readonly roomAdministration = inject(RoomAdministrationLifetime);
 
   run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
     return new Observable<ApplicationSessionEvent>((subscriber) => {
       const subscriptions = new Subscription();
       const queuedWarnings: ApplicationRuntimeWarning[] = [];
       let roomLibrary: RoomLibraryLifetimeEvent | null = null;
-      let trustPrepared = false;
-      let identityPrepared = false;
+      let pendingOptionalLifetimes = 4;
       let sessionPrepared = false;
       let readinessOpen = false;
 
@@ -122,12 +129,7 @@ export class TrinityApplicationSessionAdapter {
         );
       };
       const prepareSession = (): void => {
-        if (
-          sessionPrepared ||
-          !roomLibrary ||
-          !trustPrepared ||
-          !identityPrepared
-        ) {
+        if (sessionPrepared || !roomLibrary || pendingOptionalLifetimes > 0) {
           return;
         }
         sessionPrepared = true;
@@ -150,7 +152,6 @@ export class TrinityApplicationSessionAdapter {
       };
       const observeOptional = (
         lifetime: Observable<ApplicationRuntimeWarning | null>,
-        markPrepared: () => void,
       ): void => {
         let initial = true;
         subscriptions.add(
@@ -158,7 +159,7 @@ export class TrinityApplicationSessionAdapter {
             next: (runtimeWarning) => {
               if (initial) {
                 initial = false;
-                markPrepared();
+                pendingOptionalLifetimes -= 1;
                 prepareSession();
               }
               if (runtimeWarning) publishWarning(runtimeWarning);
@@ -185,16 +186,32 @@ export class TrinityApplicationSessionAdapter {
           'trust-projection-unavailable',
           (error) => error instanceof TrustOperationError,
         ),
-        () => (trustPrepared = true),
       );
       observeOptional(
         this.optionalLifetime(
-          this.identity.run(this.routedSurfaces.identityPresenceDemand),
+          this.identity.run(this.routedSurfaces.roomProjectionDemand),
           'identity',
           'identity-presence-unavailable',
           (error) => error instanceof IdentityOperationError,
         ),
-        () => (identityPrepared = true),
+      );
+      observeOptional(
+        this.optionalLifetime(
+          this.notificationLifetime.run(
+            this.routedSurfaces.roomProjectionDemand,
+          ),
+          'push',
+          'room-notification-projection-unavailable',
+          (error) => error instanceof NotificationLifetimeError,
+        ),
+      );
+      observeOptional(
+        this.optionalLifetime(
+          this.roomAdministration.run(this.routedSurfaces.roomProjectionDemand),
+          'room-administration',
+          'room-administration-projection-unavailable',
+          (error) => error instanceof RoomAdministrationLifetimeError,
+        ),
       );
 
       return () => subscriptions.unsubscribe();
@@ -203,7 +220,7 @@ export class TrinityApplicationSessionAdapter {
 
   private optionalLifetime(
     lifetime: Observable<void>,
-    scope: 'trust' | 'identity',
+    scope: ApplicationRuntimeWarning['scope'],
     code: string,
     isOperational: (error: unknown) => boolean,
   ): Observable<ApplicationRuntimeWarning | null> {

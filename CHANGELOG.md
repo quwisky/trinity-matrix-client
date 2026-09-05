@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Notification and Room Administration projections now belong to Application Runtime.** Named
+  cold lifetimes retain per-Room notification rules, permissions, and member summaries while a
+  routed Room surface needs them. They follow active-Account projection transitions, release on
+  blocked startup, stop, or restart, and report expected preparation failures as safe optional
+  warnings. The Rooms route now only consumes their state; notification delivery and activation
+  still flow through host-neutral intents and Workspace.
+
 - **Trust and Identity projections now belong to Application Runtime.** Named cold lifetimes retain
   Trust health and incoming verification across routes, while Identity presence attaches only when
   the routed Workspace can display it. They reattach when an Account becomes active and release on

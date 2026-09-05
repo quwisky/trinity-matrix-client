@@ -12,7 +12,6 @@ import {
   ElementRef,
   Injector,
   OnDestroy,
-  OnInit,
   afterNextRender,
   effect,
   inject,
@@ -41,11 +40,6 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
-import { RoomNotificationsService } from '@trinity/data-access/notifications';
-import {
-  RoomActionPermissionsService,
-  RoomMembersService,
-} from '@trinity/data-access/room-administration';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import {
@@ -170,7 +164,7 @@ const PANEL_DRAWER_PX = 480;
     '(document:keydown.escape)': 'onEscapeKey()',
   },
 })
-export class RoomsPage implements OnInit, OnDestroy {
+export class RoomsPage implements OnDestroy {
   /**
    * The two viewport predicates the shell branches on, live for the page's lifetime.
    *
@@ -270,9 +264,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
-  private readonly roomPermissions = inject(RoomActionPermissionsService);
-  private readonly roomMembers = inject(RoomMembersService);
-  private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly accountPicker = inject(AccountPickerService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
@@ -440,13 +431,6 @@ export class RoomsPage implements OnInit, OnDestroy {
       : null;
   }
 
-  /** Temporary route wiring for the remaining session lifetimes. */
-  ngOnInit(): void {
-    this.roomNotifications.connect(); // live per-room push rules from every account
-    this.roomPermissions.connect(); // live power/membership gates for room actions
-    this.roomMembers.connect(); // authoritative Room Administration member summaries
-  }
-
   /**
    * Global keyboard chords. Kept on the page, unlike every other workflow: a `host`
    * binding can only name a member of the component class, so this one cannot be bound
@@ -459,9 +443,7 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Only the open room's panes are torn down here.
    *
-   * The remaining three `ngOnInit` connections are root-scoped compatibility lifetimes until
-   * Notification and Room Administration preparation moves into Application Runtime. Room
-   * Library, Trust, and Identity are Runtime-owned and are not started or stopped by this route.
+   * Session projections are retained by Application Runtime; this route owns only its open panes.
    */
   ngOnDestroy(): void {
     this.backRegistration();

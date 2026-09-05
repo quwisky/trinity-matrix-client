@@ -201,6 +201,12 @@ used by Conversations. Its membership projection listens to Matrix room-state ev
 per-Room read-only signals; successful moderation waits for the SDK sync echo instead of editing a
 membership view optimistically.
 
+Its named cold lifetime lets Application Runtime retain permission and member projections while a
+routed Room surface needs them. The lifetime crosses Projection Runtime's active-Account boundary,
+so Account transitions reattach the same session-owned sources without route code starting them.
+Leaving Room routes makes the projections dormant; blocked startup, stop, destruction, and restart
+release them exactly once.
+
 Configuration and moderation commands are cold finite RxJS Observables. Permission is re-read from
 the latest Room state inside subscription, and failures carry value-safe recovery metadata for
 permission refresh, invalid input, homeserver rejection, and a completed upload whose later avatar
@@ -317,16 +323,21 @@ barrier, later blocked startup stage, stop, or destruction releases the selected
 runtime lease exactly once; a retry or restart creates one fresh generation. Exact Conversation
 children remain demand-owned and are not part of this preparation lifetime.
 
-The same Application Runtime session owns `TrustLifetime` and `IdentityLifetime`. Trust retains
-encryption-health and incoming-verification projections across routes. Application Runtime derives
-Identity demand from the routed Workspace: the presence listener attaches on a Room route and
-detaches when no routed Room surface can display it, while the Identity lifetime itself stays
-session-owned. `ActiveAccountProjectionLifetime` centralizes this demand and initially-empty-Account
-handling; ordinary Account-to-Account reattachment remains Projection Runtime's responsibility.
-Both capabilities release on blocked startup, stop, destruction, or restart. Trust's initial health
-refresh makes an expected operational preparation failure a secret-safe runtime warning; an
-unexpected adapter defect remains on the Observable error channel. Presentation hosts read their
-signals and never call `connect()`.
+The same Application Runtime session owns `TrustLifetime`, `IdentityLifetime`,
+`NotificationLifetime`, and `RoomAdministrationLifetime`. Trust retains encryption-health and
+incoming-verification projections across routes. Application Runtime derives one demand signal from
+the routed Workspace: Identity presence, per-Room notification-rule observation, and Room
+Administration permission/member projections attach on a Room route and detach when no routed Room
+surface can display them, while their lifetimes remain session-owned. Notification rule observation
+continues to cover every live Account client, so an active switch changes the exact Account read by
+the UI without losing another Account's rule updates. Room Administration's client projections
+reattach through Projection Runtime's active-Account transition.
+
+`ActiveAccountProjectionLifetime` centralizes route demand and initially-empty-Account handling;
+ordinary Account-to-Account reattachment remains Projection Runtime's responsibility. All four
+capabilities release on blocked startup, stop, destruction, or restart. Expected preparation
+failures become secret-safe optional runtime warnings; an unexpected adapter defect remains on the
+Observable error channel. Presentation hosts read their signals and never call `connect()`.
 
 A projecting service typically just delegates:
 
@@ -637,9 +648,9 @@ lifecycle hooks and that left the callback unset for every unit test. And a `hos
 only name a member of the component class, so the global keydown listener keeps a one-line
 delegate.
 
-Application Runtime now solely owns the Room Library preparation lifetime; the Rooms route no
-longer attaches joined Rooms, Spaces, invitations, or Space hierarchy. The page temporarily retains
-startup only for Notification and Room Administration projections until their own session lifetimes
-migrate. Trust and Identity are already session-owned, and the verification host only presents
-state. Local notification delivery is not page-owned: the readiness-gated session stream stays
-dormant until final readiness and releases every Matrix and host listener on runtime stop.
+Application Runtime now solely owns the Room Library, Trust, Identity, Notification, and Room
+Administration preparation lifetimes. The Rooms route only consumes joined Rooms, Spaces,
+invitations, hierarchy, notification-rule, permission, member, Trust, and Identity state; it starts
+none of those projections. Local notification delivery remains a separate readiness-gated session
+stream: it stays dormant until final readiness and releases every Matrix and host listener on
+runtime stop.

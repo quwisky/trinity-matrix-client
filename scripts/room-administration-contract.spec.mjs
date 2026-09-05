@@ -29,6 +29,7 @@ describe('Room Administration production boundary', () => {
     for (const module of [
       'room-action-permissions.service',
       'room-administration-error',
+      'room-administration-lifetime',
       'room-members.service',
       'room-member-role',
       'room-settings.service',
@@ -44,6 +45,22 @@ describe('Room Administration production boundary', () => {
     );
     expect(productionSources).not.toContain(
       'libs/feature/rooms/src/lib/shared/member-role.ts',
+    );
+  });
+
+  it('keeps projection ownership in Application Runtime rather than the Rooms route', () => {
+    const lifetime = source(
+      'libs/data-access/room-administration/src/lib/room-administration-lifetime.ts',
+    );
+    const session = source(
+      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    );
+    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
+
+    expect(lifetime).toContain('class RoomAdministrationLifetime');
+    expect(session).toContain('inject(RoomAdministrationLifetime)');
+    expect(page).not.toMatch(
+      /this\.(?:roomPermissions|roomMembers)\.connect\(\)/u,
     );
   });
 
