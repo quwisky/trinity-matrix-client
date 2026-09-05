@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   WorkspaceBackService,
@@ -6,8 +6,12 @@ import {
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { firstValueFrom, of } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import {
+  RoomSurfaceLifecycle,
+  type RenderedRoomSurface,
+  type RoomSurfaceTransition,
+} from './room-surface-lifecycle';
 
 const BOB = {
   userId: '@bob:example.org',
@@ -100,6 +104,35 @@ function build(roomId: string | null = '!room:example.org') {
 }
 
 describe('RoomSurfaceLifecycle', () => {
+  it('exposes only read-only presentation signals and semantic transitions', () => {
+    expectTypeOf<keyof RoomSurfaceLifecycle>().toEqualTypeOf<
+      | 'membersAreDrawer'
+      | 'membersVisible'
+      | 'renderedSurface'
+      | 'jumpTarget'
+      | 'jumpRevision'
+      | 'transition'
+    >();
+    expectTypeOf<RoomSurfaceLifecycle['renderedSurface']>().toEqualTypeOf<
+      Signal<RenderedRoomSurface | null>
+    >();
+    expectTypeOf<RoomSurfaceLifecycle['jumpTarget']>().toEqualTypeOf<
+      Signal<string | null>
+    >();
+    expectTypeOf<RoomSurfaceLifecycle['jumpRevision']>().toEqualTypeOf<
+      Signal<number>
+    >();
+    expectTypeOf<RoomSurfaceLifecycle['membersVisible']>().toEqualTypeOf<
+      Signal<boolean>
+    >();
+    expectTypeOf<RoomSurfaceLifecycle['membersAreDrawer']>().toEqualTypeOf<
+      Signal<boolean>
+    >();
+    expectTypeOf<
+      Extract<RoomSurfaceTransition, { kind: 'open' }>
+    >().toBeNever();
+  });
+
   afterEach(() => {
     TestBed.resetTestingModule();
     vi.unstubAllGlobals();
@@ -112,6 +145,28 @@ describe('RoomSurfaceLifecycle', () => {
     TestBed.resetTestingModule();
     stubMedia({ [BELOW_MEMBERS_QUERY]: true });
     expect(build().lifecycle.renderedSurface()).toBeNull();
+  });
+
+  it('constructs and replaces message surfaces from semantic intent', () => {
+    stubMedia();
+    const { lifecycle } = build();
+    lifecycle.transition({ kind: 'open-threads' });
+    expect(lifecycle.renderedSurface()).toEqual({ kind: 'threads' });
+
+    const intent = { kind: 'open-thread' as const, rootEventId: '$root' };
+    lifecycle.transition(intent);
+    intent.rootEventId = '$changed-by-caller';
+    expect(lifecycle.renderedSurface()).toEqual({
+      kind: 'thread',
+      rootEventId: '$root',
+    });
+
+    lifecycle.transition({ kind: 'open-pinned' });
+    expect(lifecycle.renderedSurface()).toEqual({ kind: 'pinned' });
+    lifecycle.transition({ kind: 'open-search' });
+    expect(lifecycle.renderedSurface()).toEqual({ kind: 'search' });
+    lifecycle.transition({ kind: 'dismiss' });
+    expect(lifecycle.renderedSurface()).toBeNull();
   });
 
   it('focuses the member filter when the drawer opens', () => {
@@ -197,7 +252,7 @@ describe('RoomSurfaceLifecycle', () => {
     stubMedia();
     const { lifecycle } = build();
     lifecycle.transition({ kind: 'open-members' });
-    lifecycle.transition({ kind: 'open', surface: { kind: 'threads' } });
+    lifecycle.transition({ kind: 'open-threads' });
 
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'threads' });
     expect(lifecycle.membersVisible()).toBe(false);
@@ -221,7 +276,7 @@ describe('RoomSurfaceLifecycle', () => {
     lifecycle.transition({ kind: 'dismiss' });
     expect(lifecycle.renderedSurface()).toBeNull();
 
-    lifecycle.transition({ kind: 'open', surface: { kind: 'search' } });
+    lifecycle.transition({ kind: 'open-search' });
     lifecycle.transition({ kind: 'open-member', member: BOB, direct: false });
     lifecycle.transition({ kind: 'dismiss' });
     expect(lifecycle.renderedSurface()).toEqual({ kind: 'search' });
@@ -231,12 +286,12 @@ describe('RoomSurfaceLifecycle', () => {
     stubMedia();
     const { lifecycle } = build();
     lifecycle.transition({ kind: 'open-members' });
-    lifecycle.transition({ kind: 'open', surface: { kind: 'pinned' } });
+    lifecycle.transition({ kind: 'open-pinned' });
 
     lifecycle.transition({ kind: 'clear' });
     expect(lifecycle.renderedSurface()).toBeNull();
 
-    lifecycle.transition({ kind: 'open', surface: { kind: 'threads' } });
+    lifecycle.transition({ kind: 'open-threads' });
     lifecycle.transition({ kind: 'dismiss' });
     expect(lifecycle.renderedSurface()).toBeNull();
   });
@@ -259,7 +314,7 @@ describe('RoomSurfaceLifecycle', () => {
     lifecycle.transition({ kind: 'escape' });
     expect(lifecycle.renderedSurface()).toBeNull();
 
-    lifecycle.transition({ kind: 'open', surface: { kind: 'threads' } });
+    lifecycle.transition({ kind: 'open-threads' });
     lifecycle.transition({ kind: 'escape' });
     expect(lifecycle.renderedSurface()).toBeNull();
   });
@@ -268,7 +323,7 @@ describe('RoomSurfaceLifecycle', () => {
     const resize = stubMedia({ [BELOW_MEMBERS_QUERY]: false });
     const { lifecycle } = build();
     lifecycle.transition({ kind: 'open-members' });
-    lifecycle.transition({ kind: 'open', surface: { kind: 'threads' } });
+    lifecycle.transition({ kind: 'open-threads' });
 
     resize(BELOW_MEMBERS_QUERY, true);
     TestBed.tick();
@@ -291,34 +346,27 @@ describe('RoomSurfaceLifecycle', () => {
   it('drops temporary and jump state when the exact Conversation changes', () => {
     stubMedia();
     const { activeAccountId, activeRoomId, lifecycle } = build();
-    lifecycle.transition({ kind: 'open', surface: { kind: 'pinned' } });
+    lifecycle.transition({ kind: 'open-pinned' });
     lifecycle.transition({ kind: 'reveal-message', eventId: '$one' });
     TestBed.tick();
 
     activeRoomId.set('!other:example.org');
-    expect(lifecycle.state()).toEqual({
-      conversation: {
-        accountId: '@alice:example.org',
-        roomId: '!other:example.org',
-      },
-      surface: null,
-      memberReturnSurface: null,
-      jumpTarget: null,
-      jumpRevision: 0,
-    });
+    expect(lifecycle.renderedSurface()).toBeNull();
+    expect(lifecycle.jumpTarget()).toBeNull();
+    expect(lifecycle.jumpRevision()).toBe(0);
 
-    lifecycle.transition({ kind: 'open', surface: { kind: 'threads' } });
+    lifecycle.transition({ kind: 'open-threads' });
     activeAccountId.set('@bob:example.org');
-    expect(lifecycle.surface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toBeNull();
   });
 
   it('closes temporary state before a deferred message reveal', () => {
     stubMedia();
     const { lifecycle } = build();
-    lifecycle.transition({ kind: 'open', surface: { kind: 'search' } });
+    lifecycle.transition({ kind: 'open-search' });
 
     lifecycle.transition({ kind: 'reveal-message', eventId: '$event' });
-    expect(lifecycle.surface()).toBeNull();
+    expect(lifecycle.renderedSurface()).toBeNull();
     expect(lifecycle.jumpTarget()).toBeNull();
 
     TestBed.tick();
@@ -330,7 +378,7 @@ describe('RoomSurfaceLifecycle', () => {
     stubMedia();
     const { lifecycle } = build();
     lifecycle.transition({ kind: 'reveal-message', eventId: '$stale' });
-    lifecycle.transition({ kind: 'open', surface: { kind: 'threads' } });
+    lifecycle.transition({ kind: 'open-threads' });
 
     TestBed.tick();
     expect(lifecycle.jumpTarget()).toBeNull();
@@ -346,10 +394,7 @@ describe('RoomSurfaceLifecycle', () => {
     activeRoomId.set('!other:example.org');
     TestBed.tick();
 
-    expect(lifecycle.conversation()).toEqual({
-      accountId: '@alice:example.org',
-      roomId: '!other:example.org',
-    });
+    expect(lifecycle.renderedSurface()).toBeNull();
     expect(lifecycle.jumpTarget()).toBeNull();
     expect(lifecycle.jumpRevision()).toBe(0);
   });
@@ -402,9 +447,7 @@ describe('RoomSurfaceLifecycle', () => {
     stubMedia();
     const { lifecycle } = build(null);
 
-    expect(
-      lifecycle.transition({ kind: 'open', surface: { kind: 'search' } }),
-    ).toEqual({
+    expect(lifecycle.transition({ kind: 'open-search' })).toEqual({
       kind: 'rejected',
       reason: 'no-active-conversation',
     });

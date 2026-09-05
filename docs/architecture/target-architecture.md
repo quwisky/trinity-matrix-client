@@ -82,6 +82,18 @@ opened drawer preserves it as a static column. Message reveal, focus handoff, Es
 swipe intent, and Workspace Back enter the same semantic boundary. Consumers read its state while
 the page only renders and forwards intent; `RoomShellStore` holds no surface state.
 
+The Room-surface compatibility caller count is zero. The lifecycle constructs its own surface
+records from explicit intents and exposes only read-only presentation signals; even test fixtures
+cannot seed panel state, return origins, or jump counters directly.
+
+```text
+Page events / action coordinators ── semantic intent ──→ RoomSurfaceLifecycle
+Workspace event target / Back ────────────────────────→         │
+                                                   private state + focus
+                                                              │
+Page template ←── read-only surface, member visibility, and jump signals ──┘
+```
+
 ## State and commands
 
 The Matrix SDK remains authoritative for protocol state. Adapters normalize SDK input before capabilities consume it. Capabilities project state to private writable signals and expose only read-only signals and computed views.

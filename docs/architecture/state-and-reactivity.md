@@ -631,6 +631,15 @@ focus adapter, responsive member policy, and Back registration; coordinators sub
 while the page only renders its read-only state. Remembered member visibility lasts for that page
 scope, while temporary payloads are keyed to the exact Account and Room.
 
+The Room-surface contraction is complete: compatibility callers are zero, including test
+fixtures. `transition()` accepts semantic intents (`open-threads`, `open-thread`, `open-pinned`,
+`open-search`, member actions, retreat, clear, Escape, and message reveal), never a caller-built
+surface record. Consumers read only `renderedSurface`, `membersVisible`, `membersAreDrawer`,
+`jumpTarget`, and `jumpRevision`. The exact Conversation, remembered return surface, writable
+signals, and reveal generation stay internal. Tests drive the same transitions and observe the
+rendered result; type contracts and source guards prevent generic setters or direct writes from
+returning.
+
 !!! warning "Never `providedIn: 'root'` for one of these"
 
     They are `@Injectable()` with no `providedIn`, listed in the page's `providers:` array, so

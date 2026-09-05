@@ -71,13 +71,19 @@ function showSurface(
   shell: ReturnType<typeof shellFrom>,
   surface: RenderedRoomSurface,
 ): void {
+  if (surface.kind === 'thread') {
+    shell.surfaces.transition({
+      kind: 'open-thread',
+      rootEventId: surface.rootEventId,
+    });
+    return;
+  }
   if (
     surface.kind === 'threads' ||
-    surface.kind === 'thread' ||
     surface.kind === 'pinned' ||
     surface.kind === 'search'
   ) {
-    shell.surfaces.transition({ kind: 'open', surface });
+    shell.surfaces.transition({ kind: `open-${surface.kind}` });
     return;
   }
   if (surface.kind === 'members') {
@@ -484,7 +490,7 @@ describe('RoomsPage mobile navigation', () => {
       setRouteRoom('!r:hs');
       const shell = build();
       await settleWorkspace();
-      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+      shell.surfaces.transition({ kind: 'open-threads' });
       const workspaceBack = TestBed.inject(WorkspaceBackService);
 
       await expect(firstValueFrom(workspaceBack.back())).resolves.toMatchObject(
@@ -556,7 +562,7 @@ describe('RoomsPage mobile navigation', () => {
     shell.page.onDrawerSwipedClosed();
     expect(shell.surfaces.membersVisible()).toBe(false);
 
-    shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+    shell.surfaces.transition({ kind: 'open-threads' });
     shell.page.onDrawerSwipedClosed();
     shell.page.closeRightPanel();
     expect(shell.surfaces.membersVisible()).toBe(false);
@@ -589,7 +595,7 @@ describe('RoomsPage mobile navigation', () => {
     // the guard that used to read `membersAreDrawer()` alone made Escape a no-op here.
     const shell = build();
     setRouteRoom('!r:hs');
-    shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+    shell.surfaces.transition({ kind: 'open-threads' });
 
     shell.page.onEscapeKey();
 
@@ -645,7 +651,7 @@ describe('RoomsPage mobile navigation', () => {
     try {
       trigger.focus();
 
-      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+      shell.surfaces.transition({ kind: 'open-threads' });
       TestBed.tick();
       trigger.blur(); // the panel took focus, then its removal orphans it
       shell.page.clearRightPanel();
@@ -669,7 +675,7 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, elsewhere);
     try {
       trigger.focus();
-      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+      shell.surfaces.transition({ kind: 'open-threads' });
       TestBed.tick();
 
       shell.page.clearRightPanel();
@@ -764,15 +770,15 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, slot);
     try {
       trigger.focus();
-      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+      shell.surfaces.transition({ kind: 'open-threads' });
       TestBed.tick();
 
       const source = document.createElement('button');
       slot.append(source);
       source.focus();
       shell.surfaces.transition({
-        kind: 'open',
-        surface: { kind: 'thread', rootEventId: '$root' },
+        kind: 'open-thread',
+        rootEventId: '$root',
       });
       source.remove();
       const threadClose = document.createElement('button');
@@ -806,15 +812,15 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, slot);
     try {
       trigger.focus();
-      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+      shell.surfaces.transition({ kind: 'open-threads' });
       TestBed.tick();
 
       const threadRow = document.createElement('button');
       slot.append(threadRow);
       threadRow.focus();
       shell.surfaces.transition({
-        kind: 'open',
-        surface: { kind: 'thread', rootEventId: '$root' },
+        kind: 'open-thread',
+        rootEventId: '$root',
       });
       threadRow.remove();
       const threadClose = document.createElement('button');
@@ -850,8 +856,8 @@ describe('RoomsPage mobile navigation', () => {
     try {
       timelineTrigger.focus();
       shell.surfaces.transition({
-        kind: 'open',
-        surface: { kind: 'thread', rootEventId: '$root' },
+        kind: 'open-thread',
+        rootEventId: '$root',
       });
       TestBed.tick();
 
@@ -886,15 +892,15 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, elsewhere, slot);
     try {
       trigger.focus();
-      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+      shell.surfaces.transition({ kind: 'open-threads' });
       TestBed.tick();
 
       const source = document.createElement('button');
       slot.append(source);
       source.focus();
       shell.surfaces.transition({
-        kind: 'open',
-        surface: { kind: 'thread', rootEventId: '$root' },
+        kind: 'open-thread',
+        rootEventId: '$root',
       });
       source.remove();
       const target = document.createElement('button');
@@ -929,7 +935,7 @@ describe('RoomsPage mobile navigation', () => {
     shell.surfaces.transition({ kind: 'clear' });
     expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
 
-    shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+    shell.surfaces.transition({ kind: 'open-threads' });
     expect(widthOf()).toBe(Math.min(480, window.innerWidth));
   });
 
@@ -1472,7 +1478,7 @@ describe('RoomsPage keyboard room switching', () => {
     const shell = build();
     await visitABC(shell); // in c, MRU [c, b, a]
 
-    shell.surfaces.transition({ kind: 'open', surface: { kind: 'search' } });
+    shell.surfaces.transition({ kind: 'open-search' });
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // suppressed
 

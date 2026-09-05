@@ -160,16 +160,15 @@ export class MessageActionsService {
    */
   onOpenThread(rootEventId: string): void {
     this.roomSurfaces.transition({
-      kind: 'open',
-      surface: { kind: 'thread', rootEventId },
+      kind: 'open-thread',
+      rootEventId,
     });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */
   openThreadsList(): void {
     this.roomSurfaces.transition({
-      kind: 'open',
-      surface: { kind: 'threads' },
+      kind: 'open-threads',
     });
   }
 
@@ -235,8 +234,7 @@ export class MessageActionsService {
   /** Show the pinned-messages panel in the slot; rows arrive back via {@link onPanelJump}. */
   openPinnedPanel(): void {
     this.roomSurfaces.transition({
-      kind: 'open',
-      surface: { kind: 'pinned' },
+      kind: 'open-pinned',
     });
   }
 
@@ -433,8 +431,7 @@ export class MessageActionsService {
    */
   openMessageSearch(): void {
     this.roomSurfaces.transition({
-      kind: 'open',
-      surface: { kind: 'search' },
+      kind: 'open-search',
     });
   }
 

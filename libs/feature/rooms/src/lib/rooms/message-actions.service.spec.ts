@@ -305,7 +305,7 @@ describe('MessageActionsService', () => {
 
       actions.onOpenThread('$root');
 
-      expect(surfaces.surface()).toEqual({
+      expect(surfaces.renderedSurface()).toEqual({
         kind: 'thread',
         rootEventId: '$root',
       });
@@ -313,12 +313,12 @@ describe('MessageActionsService', () => {
 
     it('does nothing when no room is open', () => {
       const { actions, surfaces } = build();
-      const before = surfaces.state();
 
       actions.onOpenThread('$root');
 
-      // Reference identity, so this fails for ANY write to the slot, not just a thread.
-      expect(surfaces.state()).toBe(before);
+      expect(surfaces.renderedSurface()).toBeNull();
+      expect(surfaces.jumpTarget()).toBeNull();
+      expect(surfaces.jumpRevision()).toBe(0);
     });
 
     it('paginates older history', () => {
