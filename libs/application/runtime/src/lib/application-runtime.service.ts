@@ -5,7 +5,10 @@ import {
   Subject,
   concat,
   connect,
+  catchError,
+  timeout,
   defer,
+  defaultIfEmpty,
   finalize,
   ignoreElements,
   map,
@@ -18,6 +21,7 @@ import {
   throwIfEmpty,
   throwError,
 } from 'rxjs';
+import { CapabilityHealthService } from './capability-health.service';
 import { APPLICATION_RUNTIME_ADAPTER } from './application-runtime.adapter';
 import {
   APPLICATION_STARTUP_STAGES,
@@ -39,6 +43,7 @@ export class ApplicationRuntimeAlreadyRunningError extends Error {
 @Injectable({ providedIn: 'root' })
 export class ApplicationRuntimeService {
   private readonly adapter = inject(APPLICATION_RUNTIME_ADAPTER);
+  private readonly health = inject(CapabilityHealthService);
   private readonly runtimeState = signal<ApplicationRuntimeState>({
     phase: 'stopped',
   });
@@ -57,30 +62,57 @@ export class ApplicationRuntimeService {
       if (this.activeStop) {
         throw new ApplicationRuntimeAlreadyRunningError();
       }
+      this.health.reset();
       const stop = new Subject<void>();
-      const preferenceLifetimeStart = new ReplaySubject<void>(1);
       this.activeStop = stop;
+      return this.runOwnedSession().pipe(
+        takeUntil(stop),
+        tap({
+          finalize: () => {
+            stop.complete();
+            if (this.activeStop === stop) this.activeStop = null;
+            this.health.reset();
+            this.runtimeState.set({ phase: 'stopped' });
+          },
+        }),
+      );
+    });
+  }
+
+  private runOwnedSession(): Observable<ApplicationStartOutcome> {
+    return defer(() => {
+      const preferenceLifetimeStart = new ReplaySubject<void>(1);
+      let preferenceFailed = false;
       return merge(
         preferenceLifetimeStart.pipe(
           take(1),
           switchMap(() => this.adapter.runPreferenceLifetime()),
-          tap((warning) => this.recordSessionWarning(warning)),
+          tap({
+            next: (warning) => this.recordSessionWarning(warning),
+            error: () => {
+              preferenceFailed = true;
+            },
+          }),
           ignoreElements(),
         ),
         this.attemptUntilReady(() => {
           preferenceLifetimeStart.next();
           preferenceLifetimeStart.complete();
+          // A synchronous source fault closes the merged owner during this callback.
+          // Do not advance startup and overwrite its classified blocker afterward.
+          if (preferenceFailed) throw new Error('Preference lifetime failed.');
         }),
       ).pipe(
-        takeUntil(stop),
-        tap({
-          finalize: () => {
-            preferenceLifetimeStart.complete();
-            stop.complete();
-            if (this.activeStop === stop) this.activeStop = null;
-            this.runtimeState.set({ phase: 'stopped' });
-          },
-        }),
+        finalize(() => preferenceLifetimeStart.complete()),
+        catchError(() =>
+          concat(
+            of(this.unknownFailure(this.attempt)),
+            this.retries.pipe(
+              take(1),
+              switchMap(() => this.runOwnedSession()),
+            ),
+          ),
+        ),
       );
     });
   }
@@ -91,13 +123,27 @@ export class ApplicationRuntimeService {
       if (state.phase !== 'blocked') {
         return of({ kind: 'unavailable', reason: 'not-blocked' } as const);
       }
-      return this.adapter.recover(state.failure.recovery).pipe(
-        take(1),
-        throwIfEmpty(
-          () => new Error('Application Runtime recovery emitted nothing.'),
+      const owner = this.activeStop;
+      return defer(() => this.adapter.recover(state.failure.recovery)).pipe(
+        timeout(10_000),
+        catchError(() =>
+          of({ kind: 'unavailable', reason: 'recovery-failed' } as const),
         ),
+        take(1),
+        defaultIfEmpty({
+          kind: 'unavailable',
+          reason: 'recovery-failed',
+        } as const),
         map((outcome): ApplicationRecoveryOutcome => {
           if (outcome.kind === 'unavailable') return outcome;
+          const current = this.runtimeState();
+          if (
+            owner !== this.activeStop ||
+            current.phase !== 'blocked' ||
+            current.attempt !== state.attempt
+          ) {
+            return { kind: 'unavailable', reason: 'transition-in-progress' };
+          }
           this.retries.next();
           return { kind: 'accepted' };
         }),
@@ -138,8 +184,25 @@ export class ApplicationRuntimeService {
   ): Observable<ApplicationStartOutcome> {
     return defer(() => {
       const attempt = ++this.attempt;
-      return this.runStage(attempt, 0, [], onPreferencesHydrated);
+      this.health.reset();
+      return defer(() =>
+        this.runStage(attempt, 0, [], onPreferencesHydrated),
+      ).pipe(catchError(() => of(this.unknownFailure(attempt))));
     });
+  }
+
+  private unknownFailure(attempt: number): ApplicationStartOutcome {
+    const current = this.runtimeState();
+    const stage =
+      current.phase === 'starting' ? current.stage : 'session-capabilities';
+    const warnings = 'warnings' in current ? current.warnings : [];
+    const failure = {
+      stage,
+      recovery: 'retry-startup',
+      diagnostic: { code: 'application-adapter-failed' },
+    } as const;
+    this.runtimeState.set({ phase: 'blocked', attempt, failure, warnings });
+    return { kind: 'blocked', attempt, failure, warnings };
   }
 
   private runStage(

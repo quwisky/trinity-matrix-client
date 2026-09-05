@@ -38,7 +38,7 @@ import {
 /** A member decorated with their live presence and role, for the section list. */
 interface MemberRow {
   readonly member: MemberSummary;
-  readonly presence: PresenceState;
+  readonly presence: PresenceState | null;
   readonly role: MemberRole;
 }
 
@@ -209,7 +209,11 @@ export class MemberListComponent {
     return MEMBER_ROLE_ORDER.map((role) => {
       const sectionRows = rows
         .filter((row) => row.role === role)
-        .sort((a, b) => PRESENCE_RANK[a.presence] - PRESENCE_RANK[b.presence]);
+        .sort(
+          (a, b) =>
+            (a.presence === null ? 3 : PRESENCE_RANK[a.presence]) -
+            (b.presence === null ? 3 : PRESENCE_RANK[b.presence]),
+        );
       const label = MEMBER_ROLE_LABEL[role];
       const noun = sectionRows.length === 1 ? 'member' : 'members';
       return {

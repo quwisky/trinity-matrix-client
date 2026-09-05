@@ -1,5 +1,13 @@
 import { Injectable, signal } from '@angular/core';
-import { Observable, Subject, Subscription, defer } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  Subscription,
+  defer,
+  distinctUntilChanged,
+  map,
+  startWith,
+} from 'rxjs';
 import type {
   ProjectionDefinition,
   ProjectionLease,
@@ -128,6 +136,33 @@ export class ProjectionRuntime {
       this.announceRuntimeChange();
       return this.waitFor(scope);
     });
+  }
+
+  /** Observe current reconciliation without taking ownership or exposing adapter errors. */
+  observe(
+    id: string,
+    scope: ProjectionScope,
+  ): Observable<ProjectionObservation> {
+    return this.runtimeChanges.pipe(
+      startWith(undefined),
+      map((): ProjectionObservation => {
+        const entry = this.entries.get(projectionKey(id, scope));
+        if (!entry) return { condition: 'released', generation: 0 };
+        return {
+          generation: entry.generation,
+          condition: entry.failure
+            ? 'failed'
+            : entry.acknowledgedGeneration === entry.generation
+              ? 'available'
+              : 'reconciling',
+        };
+      }),
+      distinctUntilChanged(
+        (left, right) =>
+          left.condition === right.condition &&
+          left.generation === right.generation,
+      ),
+    );
   }
 
   waitFor(scope: ProjectionScope): Observable<ProjectionReadiness> {
@@ -403,4 +438,9 @@ function sumResources(
       retainedBytes: total.retainedBytes + current.retainedBytes,
     };
   }, EMPTY_RESOURCES);
+}
+
+export interface ProjectionObservation {
+  readonly generation: number;
+  readonly condition: 'released' | 'reconciling' | 'failed' | 'available';
 }

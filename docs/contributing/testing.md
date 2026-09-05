@@ -182,3 +182,18 @@ Vitest transpiles specs without type checking, while the desktop shell has its o
 `electron:typecheck` target. Run the affected project typecheck or the cross-project
 `pnpm nx run-many -t typecheck` gate for TypeScript changes; `pnpm test` alone cannot
 prove a spec or template type-correct.
+
+## Scoped capability-health validation
+
+For changes to capability health, run the affected Nx test, typecheck and lint targets, including
+Application Runtime, Identity and Projection Runtime. Their behavioral tests cover simultaneous
+Account isolation, expected dormancy, retained reconciliation failure/success, released ownership,
+retry generations, stop/restart rejection, diagnostic serialization and finite preparation/recovery
+observation. `scripts:test` includes the frozen warning compatibility and session-owner guards.
+
+The `identity/presence.spec.mts` browser journey injects a failing Identity read through Angular's
+development-only debug API, then exercises the real projection, health ledger and visible retry.
+Desktop Chromium and the full Pixel 5 browser profile prove unknown status, failure presentation,
+restored presence and an unchanged Conversation URL. It introduces no production test hook.
+Screenshots are Playwright attachments under ignored invocation output, never tracked media.
+Browser mobile emulation does not establish native Android or iOS runtime validation.

@@ -11,6 +11,7 @@ import { TrnToasterComponent } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { take } from 'rxjs';
+import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import type {
   ApplicationRuntimeWarning,
@@ -35,6 +36,7 @@ export class ApplicationRootComponent {
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly destroyRef = inject(DestroyRef);
 
+  readonly health = inject(CapabilityHealthService);
   readonly state = this.runtime.state;
   readonly booting = computed(() => {
     const phase = this.state().phase;
@@ -53,6 +55,13 @@ export class ApplicationRootComponent {
       ? state.warnings.map(warningMessage)
       : ([] as readonly string[]);
   });
+
+  retryPresence(reference: string, generation: number): void {
+    this.health
+      .recover(reference, generation)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
 
   recover(): void {
     this.runtime

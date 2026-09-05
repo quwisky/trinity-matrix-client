@@ -81,6 +81,55 @@ projections. It publishes prepared only after its room, Space, invitation,
 hierarchy, and selected projections are ready. If it blocks, Workspace does not
 restore a destination against an unprepared library.
 
+## Capability health and targeted recovery
+
+Application Runtime retains one session subscription. Identity emits typed health facts within
+that lifetime; a preparation acknowledgement is separate from retained projection ownership and
+current availability. No Account or Room demand is expected dormancy. Projection Runtime's
+`observe` is a read-only stream of current reconciliation generations, including failure and
+release; it adds no subscription owner and does not export raw adapter errors.
+
+Identity presence is the first migrated producer. Its Account contexts are opaque symbols held
+inside Identity, and its generation changes when demand or retry replaces ownership. Account
+switches invalidate recovery immediately, before effects flush. A reconciliation failure leaves
+ownership retained, while a completed or released projection reports missing ownership. Explicit
+retry tears down the affected projection and reacquires it; an empty readiness barrier cannot
+claim to restore a released subscription. Preparation and recovery observation have ten-second
+bounds; the healthy session lifetime has no completion deadline.
+
+Application Runtime keys health by capability, operation and context. Duplicate reports update
+one entry. Authoritative success clears only that entry; waiting cannot hide an unresolved
+required failure. Disabled, not-applicable and retired demand remove its actionable status without
+claiming recovery. Recovery commands are cold and finite, serialize conflicting attempts, and
+publish pending plus success, unavailable, transition-in-progress, failure or partial outcomes.
+A command result alone never replaces authoritative producer health. Contextual incidents remain
+separate from persistent health.
+
+Presence read models retain their last values internally when reconciliation fails, but expose
+unknown status to consumers until current reconciliation succeeds. Unknown members have no
+online/offline badge and sort after known presence. The existing root surface displays the
+consequence and a scoped retry while preserving the Conversation and unrelated lifetimes.
+Unknown Application Runtime adapter faults become safe blockers with executable startup retry.
+
+### Diagnostic privacy
+
+Health facts copy only typed fields. Identity's concrete Account IDs stay inside its producer;
+no Account ID, personal label, token, preference value, exception or server response enters the
+health ledger. On-screen Account identity is a separate future presentation concern.
+`CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
+operation, stable code/condition, startup or session stage, attempt, version and platform kind.
+It neither uploads nor copies automatically. References are stable within a scoped operation's
+session history and are regenerated after the application lifetime resets.
+
+### Temporary warning compatibility
+
+Unmigrated producers retain their existing warning, blocker and recovery behavior. The exact six
+legacy warning files are frozen by `scripts/capability-health-compatibility.spec.mjs`; the guard
+also prevents Identity from returning to permanent warning publication. Existing warning parity
+coverage remains in the Application Runtime adapter and root tests. The removal owner is
+[Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
+Later producer slices shrink this ledger; final System Status presentation removes it.
+
 ## Account lifecycle
 
 Account Runtime owns saved-account restoration, authenticated establishment,

@@ -24,7 +24,7 @@ import {
 } from '@trinity/data-access/notifications';
 import {
   IdentityLifetime,
-  IdentityOperationError,
+  type IdentityLifetimeEvent,
 } from '@trinity/data-access/identity';
 import {
   RoomLibraryLifetime,
@@ -85,7 +85,7 @@ function setup(
     kind: 'prepared',
   }),
   trustSession: Observable<void> = of(void 0),
-  identitySession: Observable<void> = of(void 0),
+  identitySession: Observable<IdentityLifetimeEvent> = of({ kind: 'prepared' }),
   notificationSession: Observable<void> = of(void 0),
   roomAdministrationSession: Observable<void> = of(void 0),
 ): SessionHarness {
@@ -280,7 +280,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('releases optional projection lifetimes when preparation blocks', () => {
     const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
     const trust = new Subject<void>();
-    const identity = new Subject<void>();
+    const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<void>();
     const roomAdministration = new Subject<void>();
     const test = setup(
@@ -295,7 +295,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
     trust.next();
-    identity.next();
+    identity.next({ kind: 'prepared' });
     notifications.next();
     roomAdministration.next();
     roomLibrary.next({
@@ -318,7 +318,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
   it('retains all optional capability lifetimes across readiness until teardown', () => {
     const trust = new Subject<void>();
-    const identity = new Subject<void>();
+    const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<void>();
     const roomAdministration = new Subject<void>();
     const readiness = new Subject<void>();
@@ -343,7 +343,7 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     trust.next();
     expect(events).toEqual([]);
-    identity.next();
+    identity.next({ kind: 'prepared' });
     expect(events).toEqual([]);
     notifications.next();
     expect(events).toEqual([]);
@@ -369,7 +369,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       undefined,
       of({ kind: 'prepared' }),
       of(void 0),
-      of(void 0),
+      of({ kind: 'prepared' }),
       throwError(() => new NotificationLifetimeError()),
       throwError(() => new RoomAdministrationLifetimeError()),
     );
@@ -422,7 +422,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       undefined,
       of({ kind: 'prepared' }),
       of(void 0),
-      of(void 0),
+      of({ kind: 'prepared' }),
       notifications,
       roomAdministration,
     );
@@ -442,25 +442,18 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(administrationTeardowns).toBe(2);
   });
 
-  it('reports optional Trust and Identity failures after readiness', () => {
+  it('reports optional Trust failures after readiness', () => {
     const trustFailure = new TrustOperationError(
       'refresh-health',
       'server-failure',
       'retry',
       'Trust is temporarily unavailable.',
     );
-    const identityFailure = new IdentityOperationError(
-      'set-presence',
-      'offline',
-      'retry',
-      'Identity is temporarily unavailable.',
-    );
     const readiness = new Subject<void>();
     const test = setup(
       undefined,
       of({ kind: 'prepared' }),
       throwError(() => trustFailure),
-      throwError(() => identityFailure),
     );
     const events: unknown[] = [];
     const lifetime = test.adapter
@@ -482,22 +475,13 @@ describe('TrinityApplicationSessionAdapter', () => {
           recovery: 'retry-startup',
         },
       },
-      {
-        kind: 'warning',
-        warning: {
-          stage: 'session',
-          scope: 'identity',
-          diagnostic: { code: 'identity-presence-unavailable' },
-          recovery: 'retry-startup',
-        },
-      },
     ]);
     lifetime.unsubscribe();
   });
 
   it('reports a late optional failure without preparing or restarting live work again', () => {
     const trust = new Subject<void>();
-    const identity = new Subject<void>();
+    const identity = new Subject<IdentityLifetimeEvent>();
     const readiness = new Subject<void>();
     const test = setup(undefined, of({ kind: 'prepared' }), trust, identity);
     const events: unknown[] = [];
@@ -506,7 +490,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       .subscribe((event) => events.push(event));
 
     trust.next();
-    identity.next();
+    identity.next({ kind: 'prepared' });
     readiness.next();
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
