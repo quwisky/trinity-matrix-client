@@ -191,7 +191,7 @@ and Projection Runtime. Their behavioral tests cover simultaneous
 Account isolation, expected dormancy, retained reconciliation failure/success, released ownership,
 retry generations, same-scope recovery serialization, independent-scope recovery, stop/restart
 rejection, diagnostic serialization and finite preparation/recovery observation. `scripts:test`
-includes the frozen warning compatibility and session-owner guards.
+includes the System Status retirement/privacy contract and session-owner guards.
 
 The `identity/presence.spec.mts` browser journey injects a failing Identity read through Angular's
 development-only debug API, then exercises the real projection, health ledger and visible retry.
@@ -245,7 +245,7 @@ settled partial residue and local-only retry separately from `uncertain-cleanup`
 IndexedDB that later succeeds. Application Runtime must preserve the complete value-free ledger of
 scopes and recoveries;
 tests and source guards must reject Account identities, database names, values, tokens, raw errors,
-false rollback language, false cancellation, and legacy-warning compatibility.
+false rollback language, false cancellation, and any return of the retired warning channel.
 
 ## Required startup-policy validation
 
@@ -262,6 +262,6 @@ budgets rather than copying values.
 Timeout tests must prove late results cannot advance an obsolete attempt. They must not imply
 that wrapping a Promise cancelled its underlying work, and must advance beyond a preparation
 deadline after readiness to prove that a healthy retained lifetime remains owned. Source guards
-verify the one producer ledger and zero required-producer compatibility path. Browser proof is
+verify the one producer ledger and the absence of a parallel warning path. Browser proof is
 needed for visible eviction-risk and scoped-recovery consequences; keep that proof in ignored
 Playwright output and attach it to the pull request.

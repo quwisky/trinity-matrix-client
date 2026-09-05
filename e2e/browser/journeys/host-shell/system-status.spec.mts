@@ -1,0 +1,185 @@
+import { devices } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '../../../fixtures.mts';
+
+interface SystemStatusDebugWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      status: {
+        health: {
+          report(
+            fact: Record<string, unknown>,
+            recovery: () => Promise<{ kind: string }>,
+          ): void;
+        };
+      };
+    };
+  };
+  settleSystemStatusRecovery?: (outcome: { kind: string }) => void;
+}
+
+async function openStatus(page: Page): Promise<Locator> {
+  await page.goto('/login');
+  const trigger = page
+    .getByRole('button', { name: 'System Status', exact: true })
+    .first();
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(
+    page.getByRole('dialog', { name: 'System Status' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'System Status', level: 1 }),
+  ).toBeFocused();
+  return trigger;
+}
+
+test.describe('System Status on desktop', () => {
+  test('retains the route, protects support details and rejoins recovery', async ({
+    page,
+  }, testInfo) => {
+    const initialTrigger = await openStatus(page);
+    const dialog = page.getByRole('dialog', { name: 'System Status' });
+    await expect(page.locator('trn-system-status')).not.toHaveClass(
+      /system-status--mobile/,
+    );
+
+    const support = dialog.getByText('Support details', { exact: true });
+    await page.keyboard.press('Shift+Tab');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Boolean(document.activeElement?.closest('[role="dialog"]')),
+        ),
+      )
+      .toBe(true);
+    await support.focus();
+    await page.keyboard.press('Tab');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Boolean(document.activeElement?.closest('[role="dialog"]')),
+        ),
+      )
+      .toBe(true);
+
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(initialTrigger).toBeFocused();
+
+    await page.evaluate(() => {
+      const target = window as unknown as SystemStatusDebugWindow;
+      const root = document.querySelector('trn-root');
+      if (!root) throw new Error('Application root unavailable');
+      const health = target.ng.getComponent(root).status.health;
+      const context = Symbol('private-account-context');
+      health.report(
+        {
+          capability: 'future-capability',
+          operation: 'future-operation',
+          context,
+          generation: 1,
+          demanded: true,
+          preparation: 'failed',
+          ownership: 'retained',
+          condition: 'degraded',
+          code: 'safe-unknown-fault',
+          accountId: '@private:example.org',
+          rawError: 'synthetic private adapter response',
+        },
+        () =>
+          new Promise((resolve) => {
+            target.settleSystemStatusRecovery = resolve;
+          }),
+      );
+    });
+
+    await expect(page.getByTestId('app-capability-summary')).toBeVisible();
+    await expect(
+      page.getByRole('textbox', { name: 'Homeserver' }),
+    ).toBeVisible();
+    await page
+      .getByTestId('app-capability-summary')
+      .getByRole('button', { name: 'System Status' })
+      .click();
+    const unknownEntry = dialog
+      .locator('article')
+      .filter({ hasText: 'A feature needs attention' });
+    await expect(unknownEntry).toBeVisible();
+    await expect(unknownEntry).not.toContainText('safe-unknown-fault');
+    await support.click();
+    const details = dialog.locator('pre');
+    await expect(details).toContainText('safe-unknown-fault');
+    await expect(details).not.toContainText('@private:example.org');
+    await expect(details).not.toContainText(
+      'synthetic private adapter response',
+    );
+
+    await unknownEntry.getByRole('button', { name: 'Try again' }).click();
+    const recovering = unknownEntry.getByRole('button', { name: /Recovering/ });
+    await expect(recovering).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await page
+      .getByTestId('app-capability-summary')
+      .getByRole('button', { name: 'System Status' })
+      .click();
+    await expect(recovering).toBeDisabled();
+    await expect(dialog).toContainText(
+      'Reopening this view follows the same attempt',
+    );
+
+    await page.evaluate(() => {
+      const target = window as unknown as SystemStatusDebugWindow;
+      target.settleSystemStatusRecovery?.({ kind: 'failure' });
+      delete target.settleSystemStatusRecovery;
+    });
+    await expect(dialog).toContainText(
+      'Recovery settled without restoring this capability',
+    );
+    await testInfo.attach('system-status-desktop', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+  });
+});
+
+test.describe('System Status on a touch-capable desktop', () => {
+  test.use({ hasTouch: true });
+
+  test('keeps the desktop interaction model', async ({ page }) => {
+    await openStatus(page);
+    await expect(page.locator('trn-system-status')).not.toHaveClass(
+      /system-status--mobile/,
+    );
+  });
+});
+
+test.describe('System Status on a mobile OS', () => {
+  const profile = devices['Pixel 5'];
+  test.use({
+    viewport: profile.viewport,
+    userAgent: profile.userAgent,
+    deviceScaleFactor: profile.deviceScaleFactor,
+    isMobile: profile.isMobile,
+    hasTouch: profile.hasTouch,
+  });
+
+  test('uses the viewport-safe bottom-sheet interaction model', async ({
+    page,
+  }, testInfo) => {
+    await openStatus(page);
+    const host = page.locator('trn-system-status');
+    const dialog = page.getByRole('dialog', { name: 'System Status' });
+    await expect(host).toHaveClass(/system-status--mobile/);
+    await expect(dialog).toHaveCSS('border-bottom-left-radius', '0px');
+    const box = await dialog.boundingBox();
+    expect(box).not.toBeNull();
+    expect(
+      Math.abs((box?.y ?? 0) + (box?.height ?? 0) - profile.viewport.height),
+    ).toBeLessThanOrEqual(1);
+    await testInfo.attach('system-status-mobile', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+  });
+});

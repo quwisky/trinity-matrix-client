@@ -240,23 +240,29 @@ inactive-Account retry. A required Active Account or registry failure remains a 
 Health facts copy only typed fields. Trust's, Identity's, Notifications', Room Administration's
 and startup composition's concrete Account and Room IDs stay inside their producers;
 no Account ID, personal label, token, preference value, exception or server response enters the
-health ledger. On-screen Account identity is a separate future presentation concern.
+health ledger. System Status resolves Account names and avatars through a separate view-only
+presentation map; those values never enter the diagnostic export.
 `CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
 operation, stable code/condition, startup or session stage, attempt, version and platform kind.
 It neither uploads nor copies automatically. References are stable within a scoped operation's
 session history and are regenerated after the application lifetime resets.
 
-### Temporary warning compatibility
+### System Status presentation
 
-Unmigrated producers retain their existing warning, blocker and recovery behavior. The exact five
-legacy warning files are frozen by `scripts/capability-health-compatibility.spec.mjs`; the guard
-also prevents Trust, Identity, Room Administration, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
-coverage remains in the Application Runtime adapter and root tests. The removal owner is
-[Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
-Notification and Host producers no longer publish through this warning path; its source guard pins
-that absence. Later producer slices shrink the remaining ledger; final System Status presentation removes it.
-Required startup producers already have a compatibility count of zero: their blockers or scoped
-health outcomes come from the producer policy rather than a second warning orchestrator.
+Application Runtime owns the complete English capability catalogue and a generic unknown entry.
+Each entry names the user-facing condition, consequence, safe fallback and supported recovery.
+The compact degraded summary can be dismissed for one occurrence; a new scope, a materially worse
+condition, failed recovery or a new outage after resolution resurfaces it, while System Status
+always reflects current health. Expected disabled, dormant and not-applicable states never count
+as outages. Contextual incidents remain toast-level feedback and do not enter the persistent list.
+
+System Status is startup-safe and independent of readiness-gated Settings and session surfaces.
+Web and Electron use a centred dialog treatment; native mobile interaction uses a bottom sheet
+selected by operating system rather than pointer type. The one shared Host Back owner starts with
+the application root, closes the topmost confirmation before System Status, and remains shared as
+the live session opens. Support details are generated locally and copied only on explicit request;
+there is no upload path. `scripts/system-status-contract.spec.mjs` prevents the retired append-only
+warning types, events and compatibility counter from returning.
 
 ## Account lifecycle
 

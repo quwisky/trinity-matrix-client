@@ -9,7 +9,6 @@ import {
 interface ApplicationStartupProducerPolicy {
   readonly stage: ApplicationStartupStage;
   readonly required: boolean;
-  readonly compatibility?: boolean;
   readonly budgetMs: number;
   readonly automaticRetryLimit: 0;
   readonly timeoutCode: string;
@@ -83,9 +82,6 @@ export const APPLICATION_STARTUP_PRODUCER_POLICIES = {
   ApplicationStartupProducer,
   ApplicationStartupProducerPolicy
 >;
-
-/** No required producer remains behind the legacy warning compatibility path. */
-export const REQUIRED_STARTUP_PRODUCER_COMPATIBILITY = [] as const;
 
 /**
  * The stages are serial, while producers within one stage settle in parallel. The watchdog

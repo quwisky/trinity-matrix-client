@@ -1,6 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
-  EMPTY,
   Observable,
   ReplaySubject,
   Subject,
@@ -28,7 +27,6 @@ import {
   recoveryStartIndex,
   settlementsBefore,
   stageSettlements,
-  warningsBefore,
   withDependencySkips,
 } from './application-startup-settlements';
 import { ApplicationSessionStartupWorkflow } from './application-session-startup.workflow';
@@ -38,7 +36,6 @@ import {
   APPLICATION_STARTUP_STAGES,
   type ApplicationRecoveryOutcome,
   type ApplicationRuntimeState,
-  type ApplicationRuntimeWarning,
   type ApplicationStartOutcome,
   type ApplicationStartupStage,
   type ApplicationStartupStageOutcome,
@@ -122,7 +119,6 @@ export class ApplicationRuntimeService {
           },
           0,
           [],
-          [],
         ),
       ).pipe(
         finalize(() => preferenceLifetimeStart.complete()),
@@ -186,15 +182,9 @@ export class ApplicationRuntimeService {
   private attemptUntilReady(
     onPreferencesHydrated: () => void,
     startIndex: number,
-    warnings: readonly ApplicationRuntimeWarning[],
     settlements: readonly ApplicationStartupProducerSettlement[],
   ): Observable<ApplicationStartOutcome> {
-    return this.runAttempt(
-      onPreferencesHydrated,
-      startIndex,
-      warnings,
-      settlements,
-    ).pipe(
+    return this.runAttempt(onPreferencesHydrated, startIndex, settlements).pipe(
       switchMap((outcome) =>
         outcome.kind === 'ready'
           ? of(outcome)
@@ -207,7 +197,6 @@ export class ApplicationRuntimeService {
                   return this.attemptUntilReady(
                     onPreferencesHydrated,
                     resumeIndex,
-                    warningsBefore(resumeIndex, outcome.warnings),
                     settlementsBefore(resumeIndex, outcome.settlements),
                   );
                 }),
@@ -220,19 +209,12 @@ export class ApplicationRuntimeService {
   private runAttempt(
     onPreferencesHydrated: () => void,
     startIndex: number,
-    warnings: readonly ApplicationRuntimeWarning[],
     settlements: readonly ApplicationStartupProducerSettlement[],
   ): Observable<ApplicationStartOutcome> {
     return defer(() => {
       const attempt = ++this.attempt;
       return defer(() =>
-        this.runStage(
-          attempt,
-          startIndex,
-          warnings,
-          settlements,
-          onPreferencesHydrated,
-        ),
+        this.runStage(attempt, startIndex, settlements, onPreferencesHydrated),
       ).pipe(
         timeout({
           first: APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
@@ -270,7 +252,6 @@ export class ApplicationRuntimeService {
       phase: 'blocked',
       attempt: outcome.attempt,
       failure: outcome.failure,
-      warnings: outcome.warnings,
       settlements: outcome.settlements,
     });
     return outcome;
@@ -279,7 +260,6 @@ export class ApplicationRuntimeService {
   private runStage(
     attempt: number,
     index: number,
-    warnings: readonly ApplicationRuntimeWarning[],
     settlements: readonly ApplicationStartupProducerSettlement[],
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
@@ -288,17 +268,15 @@ export class ApplicationRuntimeService {
       const outcome = {
         kind: 'ready',
         attempt,
-        warnings,
         settlements,
       } as const;
-      this.runtimeState.set({ phase: 'ready', attempt, warnings, settlements });
+      this.runtimeState.set({ phase: 'ready', attempt, settlements });
       return of(outcome);
     }
     this.runtimeState.set({
       phase: 'starting',
       attempt,
       stage,
-      warnings,
       settlements,
     });
     if (stage === 'session-capabilities') {
@@ -306,7 +284,6 @@ export class ApplicationRuntimeService {
         attempt,
         index,
         stage,
-        warnings,
         settlements,
         onPreferencesHydrated,
       );
@@ -319,7 +296,6 @@ export class ApplicationRuntimeService {
             attempt,
             index,
             stage,
-            warnings,
             settlements,
             outcome,
             onPreferencesHydrated,
@@ -332,7 +308,6 @@ export class ApplicationRuntimeService {
     attempt: number,
     index: number,
     stage: ApplicationStartupStage,
-    warnings: readonly ApplicationRuntimeWarning[],
     settlements: readonly ApplicationStartupProducerSettlement[],
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
@@ -354,7 +329,6 @@ export class ApplicationRuntimeService {
               attempt,
               index,
               stage,
-              warnings,
               settlements,
               event.outcome,
               onPreferencesHydrated,
@@ -365,14 +339,8 @@ export class ApplicationRuntimeService {
             return merge(
               events.pipe(
                 switchMap((event) => {
-                  if (event.kind === 'warning') {
-                    this.recordSessionWarning(event.warning);
-                    return EMPTY;
-                  }
                   if (event.kind === 'blocked') {
                     const current = this.runtimeState();
-                    const currentWarnings =
-                      'warnings' in current ? current.warnings : warnings;
                     const currentSettlements =
                       'settlements' in current
                         ? current.settlements
@@ -381,7 +349,6 @@ export class ApplicationRuntimeService {
                       attempt,
                       index,
                       stage,
-                      currentWarnings,
                       currentSettlements,
                       event.outcome,
                       onPreferencesHydrated,
@@ -412,12 +379,10 @@ export class ApplicationRuntimeService {
     attempt: number,
     index: number,
     stage: ApplicationStartupStage,
-    warnings: readonly ApplicationRuntimeWarning[],
     settlements: readonly ApplicationStartupProducerSettlement[],
     outcome: ApplicationStartupStageOutcome,
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
-    const nextWarnings = [...warnings, ...(outcome.warnings ?? [])];
     const outcomeSettlements = stageSettlements(stage, outcome);
     const settledProducers = new Set(
       outcomeSettlements.map((settlement) => settlement.producer),
@@ -438,14 +403,12 @@ export class ApplicationRuntimeService {
         kind: 'blocked',
         attempt,
         failure,
-        warnings: nextWarnings,
         settlements: withDependencySkips(stage, nextSettlements, []),
       } as const;
       this.runtimeState.set({
         phase: 'blocked',
         attempt,
         failure,
-        warnings: nextWarnings,
         settlements: blocked.settlements,
       });
       return of(blocked);
@@ -456,18 +419,8 @@ export class ApplicationRuntimeService {
     return this.runStage(
       attempt,
       index + 1,
-      nextWarnings,
       nextSettlements,
       onPreferencesHydrated,
     );
-  }
-
-  private recordSessionWarning(warning: ApplicationRuntimeWarning): void {
-    const state = this.runtimeState();
-    if (state.phase !== 'ready') return;
-    this.runtimeState.set({
-      ...state,
-      warnings: [...state.warnings, warning],
-    });
   }
 }

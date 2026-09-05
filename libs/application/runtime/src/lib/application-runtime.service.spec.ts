@@ -357,7 +357,6 @@ describe('ApplicationRuntimeService', () => {
       {
         kind: 'ready',
         attempt: 1,
-        warnings: [],
         settlements: [
           expect.objectContaining({
             producer: 'host-contract',
@@ -387,45 +386,6 @@ describe('ApplicationRuntimeService', () => {
     ]);
     expect(adapter.runSession).toHaveBeenCalledOnce();
     expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
-  });
-
-  it('preserves partial-account and optional-capability warnings', async () => {
-    vi.mocked(adapter.restoreAccounts).mockReturnValueOnce(
-      of({
-        kind: 'ready',
-        warnings: [
-          {
-            stage: 'account-restoration',
-            scope: 'accounts',
-            diagnostic: { code: 'inactive-account-restore-failed' },
-            recovery: 'retry-startup',
-          },
-        ],
-      }),
-    );
-    vi.mocked(adapter.establishSessionCapabilities).mockReturnValueOnce(
-      of({
-        kind: 'ready',
-        warnings: [
-          {
-            stage: 'session-capabilities',
-            scope: 'push',
-            diagnostic: { code: 'push-registration-failed' },
-            recovery: 'retry-startup',
-          },
-        ],
-      }),
-    );
-
-    const lifetime = runtime.run().subscribe();
-    await vi.waitFor(() => expect(runtime.state().phase).toBe('ready'));
-
-    const state = runtime.state();
-    expect(state.phase === 'ready' ? state.warnings : []).toEqual([
-      expect.objectContaining({ scope: 'accounts' }),
-      expect.objectContaining({ scope: 'push' }),
-    ]);
     lifetime.unsubscribe();
   });
 
@@ -469,28 +429,6 @@ describe('ApplicationRuntimeService', () => {
     expect(adapter.restoreAccounts).toHaveBeenCalledTimes(2);
     expect(adapter.runSession).toHaveBeenCalledOnce();
     expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
-    lifetime.unsubscribe();
-  });
-
-  it('records session warnings without ending the application lifetime', async () => {
-    const lifetime = runtime.run().subscribe();
-    await vi.waitFor(() => expect(runtime.state().phase).toBe('ready'));
-
-    session.next({
-      kind: 'warning',
-      warning: {
-        stage: 'session',
-        scope: 'badge',
-        diagnostic: { code: 'badge-update-failed' },
-        recovery: 'retry-startup',
-      },
-    });
-
-    expect(runtime.state()).toMatchObject({
-      phase: 'ready',
-      warnings: [expect.objectContaining({ scope: 'badge' })],
-    });
-    expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
 

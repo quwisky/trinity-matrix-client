@@ -10,7 +10,6 @@ import type { ApplicationRuntimeAdapter } from '../application-runtime.adapter';
 import type {
   ApplicationRecoveryAdapterOutcome,
   ApplicationSessionEvent,
-  ApplicationRuntimeWarning,
   ApplicationStartupProducerSettlement,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
@@ -26,6 +25,10 @@ import {
   HostCapabilitiesService,
   type HostCapabilityManifest,
 } from '@trinity/runtime/host';
+import type {
+  CapabilityContext,
+  CapabilityRecoveryOutcome,
+} from '@trinity/runtime/projection';
 import {
   Observable,
   TimeoutError,
@@ -47,31 +50,18 @@ import { PreferenceEffectHealthService } from './preference-effect-health.servic
 import { RoomOrderHealthService } from './room-order-health.service';
 import {
   optionalProducerDegraded,
-  optionalProducerHealthDegraded,
   optionalProducerReady,
 } from './optional-startup-outcome';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { TrinityPreferenceStartupSources } from './trinity-preference-startup-sources';
 import { HostSessionHealthService } from './host-session-health.service';
+import { CapabilityHealthService } from '../capability-health.service';
 
 const ready = (
-  warnings: readonly ApplicationRuntimeWarning[] = [],
   settlements: readonly ApplicationStartupProducerSettlement[] = [],
 ): ApplicationStartupStageOutcome => ({
   kind: 'ready',
-  ...(warnings.length > 0 ? { warnings } : {}),
   ...(settlements.length > 0 ? { settlements } : {}),
-});
-
-const warning = (
-  stage: ApplicationRuntimeWarning['stage'],
-  scope: ApplicationRuntimeWarning['scope'],
-  code: string,
-): ApplicationRuntimeWarning => ({
-  stage,
-  scope,
-  diagnostic: { code },
-  recovery: 'retry-startup',
 });
 
 @Injectable({ providedIn: 'root' })
@@ -91,6 +81,9 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly roomOrderHealth = inject(RoomOrderHealthService);
   private readonly preferenceSources = inject(TrinityPreferenceStartupSources);
   private readonly hostHealth = inject(HostSessionHealthService);
+  private readonly health = inject(CapabilityHealthService);
+  private readonly healthContexts = new Map<string, CapabilityContext>();
+  private readonly healthGenerations = new Map<string, number>();
   private manifest: HostCapabilityManifest | null = null;
   private accountRecoveryId: string | null = null;
   private preferenceResetAttempt: number | null = null;
@@ -107,11 +100,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
             support.kind === 'unavailable' &&
             support.reason === 'protocol-mismatch',
         );
-        return ready(
-          protocolMismatch
-            ? [warning('host-negotiation', 'host', 'host-protocol-mismatch')]
-            : [],
-        );
+        this.reportHostContract(protocolMismatch);
+        return ready();
       }),
       catchError(() =>
         of({
@@ -192,7 +182,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
             map((outcome) =>
               outcome.kind === 'ready'
                 ? optionalProducerReady('room-order')
-                : optionalProducerHealthDegraded(
+                : optionalProducerDegraded(
                     'room-order',
                     'room-order-hydration-degraded',
                   ),
@@ -204,47 +194,25 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           timeout({ first: persistence.budgetMs }),
           map((persisted) =>
             persisted
-              ? optionalProducerReady('browser-storage-persistence')
-              : optionalProducerDegraded(
-                  'browser-storage-persistence',
-                  warning(
-                    'session-capabilities',
-                    'storage',
-                    'storage-persistence-denied',
-                  ),
-                ),
+              ? this.storageReady()
+              : this.storageDegraded('storage-persistence-denied'),
           ),
           defaultIfEmpty(
-            optionalProducerDegraded(
-              'browser-storage-persistence',
-              warning(
-                'session-capabilities',
-                'storage',
-                'storage-persistence-unavailable',
-              ),
-            ),
+            this.storageDegraded('storage-persistence-unavailable'),
           ),
           catchError((error: unknown) =>
             of(
-              optionalProducerDegraded(
-                'browser-storage-persistence',
-                warning(
-                  'session-capabilities',
-                  'storage',
-                  error instanceof TimeoutError
-                    ? persistence.timeoutCode
-                    : 'storage-persistence-unavailable',
-                ),
+              this.storageDegraded(
+                error instanceof TimeoutError
+                  ? persistence.timeoutCode
+                  : 'storage-persistence-unavailable',
               ),
             ),
           ),
         ),
       }).pipe(
         map(({ ordering, persistence }) =>
-          ready(
-            [...ordering.warnings, ...persistence.warnings],
-            [ordering.settlement, persistence.settlement],
-          ),
+          ready([ordering.settlement, persistence.settlement]),
         ),
       );
     });
@@ -271,13 +239,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
             : this.navigateWorkspace('/', generation).pipe(
                 map((fallback) =>
                   fallback
-                    ? ready([
-                        warning(
-                          'workspace-restoration',
-                          'workspace',
-                          'workspace-safe-root-fallback',
-                        ),
-                      ])
+                    ? this.workspaceFallback()
                     : ({
                         kind: 'blocked',
                         recovery: 'retry-startup',
@@ -401,6 +363,102 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
 
   runPreferenceLifetime(): Observable<never> {
     return this.preferenceEffects.run();
+  }
+
+  private reportHostContract(protocolMismatch: boolean): void {
+    this.reportHealth(
+      'host',
+      'contract',
+      protocolMismatch ? 'degraded' : 'available',
+      protocolMismatch ? 'host-protocol-mismatch' : 'host-contract-ready',
+      () =>
+        this.host.manifest().pipe(
+          take(1),
+          map((manifest): CapabilityRecoveryOutcome => {
+            this.manifest = manifest;
+            const mismatch = Object.values(manifest.operations).some(
+              (support) =>
+                support.kind === 'unavailable' &&
+                support.reason === 'protocol-mismatch',
+            );
+            this.reportHostContract(mismatch);
+            return mismatch ? { kind: 'failure' } : { kind: 'success' };
+          }),
+          catchError(() => of({ kind: 'failure' } as const)),
+        ),
+    );
+  }
+
+  private storageReady() {
+    this.reportStorage('available', 'storage-persistence-ready');
+    return optionalProducerReady('browser-storage-persistence');
+  }
+
+  private storageDegraded(code: string) {
+    this.reportStorage('degraded', code);
+    return optionalProducerDegraded('browser-storage-persistence', code);
+  }
+
+  private reportStorage(
+    condition: 'available' | 'degraded',
+    code: string,
+  ): void {
+    this.reportHealth('storage', 'persistence', condition, code, () =>
+      defer(() => this.storagePersistence.requestPersistence()).pipe(
+        take(1),
+        map((persisted): CapabilityRecoveryOutcome => {
+          if (persisted) {
+            this.reportStorage('available', 'storage-persistence-ready');
+            return { kind: 'success' };
+          }
+          this.reportStorage('degraded', 'storage-persistence-denied');
+          return { kind: 'failure' };
+        }),
+        catchError(() => of({ kind: 'failure' } as const)),
+      ),
+    );
+  }
+
+  private workspaceFallback(): ApplicationStartupStageOutcome {
+    this.health.incident({
+      context: this.context('workspace:routing'),
+      capability: 'workspace',
+      operation: 'routing',
+      code: 'workspace-safe-root-fallback',
+    });
+    return ready();
+  }
+
+  private reportHealth(
+    capability: string,
+    operation: string,
+    condition: 'available' | 'degraded',
+    code: string,
+    recovery: () => Observable<CapabilityRecoveryOutcome>,
+  ): void {
+    const key = `${capability}:${operation}`;
+    const generation = (this.healthGenerations.get(key) ?? 0) + 1;
+    this.healthGenerations.set(key, generation);
+    this.health.report(
+      {
+        capability,
+        operation,
+        context: this.context(key),
+        generation,
+        demanded: true,
+        preparation: condition === 'available' ? 'acknowledged' : 'failed',
+        ownership: 'released',
+        condition,
+        code,
+      },
+      recovery,
+    );
+  }
+
+  private context(key: string): CapabilityContext {
+    const context = this.healthContexts.get(key) ?? Symbol(key);
+    this.healthContexts.set(key, context);
+    return context;
   }
 
   private initialWorkspaceNavigation(): Observable<boolean> {

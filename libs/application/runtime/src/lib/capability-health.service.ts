@@ -8,6 +8,7 @@ import {
   filter,
   finalize,
   of,
+  tap,
   take,
   takeUntil,
   timeout,
@@ -25,6 +26,22 @@ export interface ApplicationCapabilityHealth extends CapabilityHealthFact {
   readonly reference: string;
   readonly occurrence: number;
   readonly severity: 'none' | 'limited' | 'blocking';
+}
+
+export interface CapabilityPresentationScope {
+  readonly kind: 'account';
+  readonly accountId: string;
+}
+
+export interface CapabilityRecoveryState {
+  readonly reference: string;
+  readonly generation: number;
+  readonly outcome: CapabilityRecoveryOutcome;
+}
+
+export interface CapabilityRecoveryNotice {
+  readonly sequence: number;
+  readonly fact: ApplicationCapabilityHealth;
 }
 
 export type ApplicationCapabilityRecoveryTarget = Pick<
@@ -62,9 +79,19 @@ export class CapabilityHealthService {
   private readonly recoveringReferences = signal<ReadonlySet<string>>(
     new Set(),
   );
+  private readonly presentationScopes = new Map<
+    CapabilityContext,
+    CapabilityPresentationScope
+  >();
+  private readonly recoveryState = signal<
+    ReadonlyMap<string, CapabilityRecoveryState>
+  >(new Map());
   private readonly incidentState = signal<readonly CapabilityIncident[]>([]);
+  private readonly recoveryNoticeState =
+    signal<CapabilityRecoveryNotice | null>(null);
   private readonly stopped = new Subject<void>();
   private nextReference = 0;
+  private nextRecoveryNotice = 0;
   private epoch = 0;
 
   readonly health = this.snapshot.asReadonly();
@@ -72,6 +99,8 @@ export class CapabilityHealthService {
     this.health().filter((entry) => entry.severity !== 'none'),
   );
   readonly incidents = this.incidentState.asReadonly();
+  readonly recoveries = this.recoveryState.asReadonly();
+  readonly recoveryNotice = this.recoveryNoticeState.asReadonly();
 
   /** Session identity for retained producers that must reject publication after reset. */
   ownershipGeneration(): number {
@@ -108,7 +137,9 @@ export class CapabilityHealthService {
     const severity = expected
       ? 'none'
       : failed || unresolved
-        ? 'limited'
+        ? condition === 'blocked'
+          ? 'blocking'
+          : 'limited'
         : 'none';
     const reference = previous?.reference ?? `scope-${++this.nextReference}`;
     // Copy explicitly: adapter additions must never leak through health or diagnostics.
@@ -129,11 +160,25 @@ export class CapabilityHealthService {
       severity,
       occurrence:
         (previous?.occurrence ?? 0) +
-        (severity !== 'none' && previous?.severity !== 'limited' ? 1 : 0),
+        (severity !== 'none' && (previous?.severity ?? 'none') !== severity
+          ? 1
+          : 0),
     };
+    this.publishRecoveryNotice(previous, current);
     operations.set(key, { fact: current, recovery });
     this.registrations.set(fact.context, operations);
     this.publish();
+  }
+
+  /** Associate opaque health identity with view-only Account presentation. */
+  presentForAccount(context: CapabilityContext, accountId: string): void {
+    this.presentationScopes.set(context, { kind: 'account', accountId });
+  }
+
+  presentationScope(
+    target: Pick<ApplicationCapabilityHealth, 'context'>,
+  ): CapabilityPresentationScope | null {
+    return this.presentationScopes.get(target.context) ?? null;
   }
 
   incident(incident: CapabilityIncident): void {
@@ -172,16 +217,21 @@ export class CapabilityHealthService {
       this.recoveringReferences.update((references) =>
         new Set(references).add(target.reference),
       );
+      this.publishRecovery(target, { kind: 'pending' });
       return concat(
         of({ kind: 'pending' } as const),
         defer(registration.recovery).pipe(
           filter((outcome) => outcome.kind !== 'pending'),
           take(1),
-          timeout(10_000),
+          timeout({
+            first: 10_000,
+            with: () => of({ kind: 'timeout' } as const),
+          }),
           defaultIfEmpty({ kind: 'failure' } as CapabilityRecoveryOutcome),
           catchError(() => of({ kind: 'failure' } as const)),
         ),
       ).pipe(
+        tap((outcome) => this.publishRecovery(target, outcome)),
         takeUntil(this.stopped),
         finalize(() => {
           if (epoch !== this.epoch) return;
@@ -219,9 +269,12 @@ export class CapabilityHealthService {
     this.epoch += 1;
     this.stopped.next();
     this.recoveringReferences.set(new Set());
+    this.presentationScopes.clear();
+    this.recoveryState.set(new Map());
     this.registrations.clear();
     this.snapshot.set([]);
     this.incidentState.set([]);
+    this.recoveryNoticeState.set(null);
   }
 
   private publish(): void {
@@ -230,5 +283,39 @@ export class CapabilityHealthService {
     );
     if (JSON.stringify(next) !== JSON.stringify(this.snapshot()))
       this.snapshot.set(next);
+  }
+
+  private publishRecovery(
+    target: ApplicationCapabilityRecoveryTarget,
+    outcome: CapabilityRecoveryOutcome,
+  ): void {
+    this.recoveryState.update((recoveries) => {
+      const next = new Map(recoveries);
+      next.set(target.reference, { ...target, outcome });
+      return next;
+    });
+  }
+
+  private publishRecoveryNotice(
+    previous: ApplicationCapabilityHealth | undefined,
+    current: ApplicationCapabilityHealth,
+  ): void {
+    if (JSON.stringify(previous) === JSON.stringify(current)) return;
+    if (
+      previous?.severity !== 'none' &&
+      current.severity === 'none' &&
+      current.condition === 'available'
+    ) {
+      this.recoveryNoticeState.set({
+        sequence: ++this.nextRecoveryNotice,
+        fact: current,
+      });
+      return;
+    }
+    if (
+      previous?.severity !== current.severity ||
+      previous?.condition !== current.condition
+    )
+      this.recoveryNoticeState.set(null);
   }
 }

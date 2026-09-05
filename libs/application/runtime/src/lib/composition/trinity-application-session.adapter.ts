@@ -2,13 +2,11 @@ import { Location } from '@angular/common';
 import { Injectable, Injector, effect, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { SwUpdate, type VersionReadyEvent } from '@angular/service-worker';
-import type {
-  ApplicationRuntimeWarning,
-  ApplicationSessionEvent,
-} from '../application-runtime.models';
+import type { ApplicationSessionEvent } from '../application-runtime.models';
 import { CapabilityHealthService } from '../capability-health.service';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
@@ -50,6 +48,7 @@ import {
   of,
   repeat,
   retry,
+  share,
   switchMap,
   take,
   tap,
@@ -63,6 +62,7 @@ import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapte
 import { RoomOrderHealthService } from './room-order-health.service';
 import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
+import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -91,36 +91,28 @@ export class TrinityApplicationSessionAdapter {
   private readonly trust = inject(TrustLifetime);
   private readonly identity = inject(IdentityLifetime);
   private readonly health = inject(CapabilityHealthService);
+  private readonly accounts = inject(AccountRuntimeService);
   private readonly notificationLifetime = inject(NotificationLifetime);
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
   private readonly notificationSession = inject(NotificationSessionService);
+  private readonly statusVisibility = inject(SystemStatusVisibilityService);
+  private readonly interactions = defer(() =>
+    merge(
+      this.runBackIntents().pipe(ignoreElements()),
+      this.runNavigationGesturePolicy().pipe(ignoreElements()),
+    ),
+  ).pipe(share());
 
   run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
     return new Observable<ApplicationSessionEvent>((subscriber) => {
       const subscriptions = new Subscription();
-      const queuedWarnings: ApplicationRuntimeWarning[] = [];
       let roomLibrary: RoomLibraryLifetimeEvent | null = null;
       let sessionPrepared = false;
-      let readinessOpen = false;
 
       const fail = (error: unknown): void => subscriber.error(error);
-      const publishWarning = (
-        runtimeWarning: ApplicationRuntimeWarning,
-      ): void => {
-        if (!readinessOpen) {
-          queuedWarnings.push(runtimeWarning);
-          return;
-        }
-        subscriber.next({ kind: 'warning', warning: runtimeWarning });
-      };
       const openLiveSession = (): void => {
-        readinessOpen = true;
-        for (const runtimeWarning of queuedWarnings.splice(0)) {
-          publishWarning(runtimeWarning);
-        }
         subscriptions.add(
           this.runLive().subscribe({
-            next: (runtimeWarning) => publishWarning(runtimeWarning),
             error: fail,
           }),
         );
@@ -145,14 +137,9 @@ export class TrinityApplicationSessionAdapter {
           }),
         );
       };
-      const observeOptional = (
-        lifetime: Observable<ApplicationRuntimeWarning | null>,
-      ): void => {
+      const observeOptional = (lifetime: Observable<unknown>): void => {
         subscriptions.add(
           lifetime.subscribe({
-            next: (runtimeWarning) => {
-              if (runtimeWarning) publishWarning(runtimeWarning);
-            },
             error: fail,
           }),
         );
@@ -182,6 +169,8 @@ export class TrinityApplicationSessionAdapter {
         this.trust.run().pipe(
           tap((event) => {
             if (event.kind === 'health')
+              this.reportForActiveAccount(event.fact.context);
+            if (event.kind === 'health')
               this.health.report(event.fact, () =>
                 this.trust.recover(event.fact.context, event.fact.generation),
               );
@@ -193,6 +182,8 @@ export class TrinityApplicationSessionAdapter {
       observeOptional(
         this.identity.run(this.routedSurfaces.roomProjectionDemand).pipe(
           tap((event) => {
+            if (event.kind === 'health')
+              this.reportForActiveAccount(event.fact.context);
             if (event.kind === 'health')
               this.health.report(event.fact, () =>
                 this.identity.recover(
@@ -210,6 +201,8 @@ export class TrinityApplicationSessionAdapter {
           .run(this.routedSurfaces.roomProjectionDemand)
           .subscribe({
             next: (event: NotificationLifetimeEvent) => {
+              if (event.kind === 'health')
+                this.reportForActiveAccount(event.fact.context);
               if (event.kind === 'health')
                 this.health.report(event.fact, () =>
                   this.notificationLifetime.recover(
@@ -230,6 +223,8 @@ export class TrinityApplicationSessionAdapter {
           .subscribe({
             next: (event: RoomAdministrationLifetimeEvent) => {
               if (event.kind === 'health')
+                this.reportForActiveAccount(event.fact.context);
+              if (event.kind === 'health')
                 this.health.report(event.fact, () =>
                   this.roomAdministration.recover(
                     event.fact.operation,
@@ -246,7 +241,7 @@ export class TrinityApplicationSessionAdapter {
     });
   }
 
-  private runLive(): Observable<ApplicationRuntimeWarning> {
+  private runLive(): Observable<never> {
     return merge(
       this.badge.run().pipe(
         tap((outcome) => {
@@ -266,10 +261,19 @@ export class TrinityApplicationSessionAdapter {
         ignoreElements(),
       ),
       this.runDeepLinks().pipe(ignoreElements()),
-      this.runBackIntents().pipe(ignoreElements()),
-      this.runNavigationGesturePolicy().pipe(ignoreElements()),
+      this.runInteractions(),
       this.runUpdates().pipe(ignoreElements()),
     );
+  }
+
+  /** One shared Back/gesture owner, subscribed by the root before readiness. */
+  runInteractions(): Observable<never> {
+    return this.interactions;
+  }
+
+  private reportForActiveAccount(context: symbol): void {
+    const accountId = this.accounts.activeAccountId();
+    if (accountId) this.health.presentForAccount(context, accountId);
   }
 
   private runDeepLinks(): Observable<void> {
@@ -365,6 +369,10 @@ export class TrinityApplicationSessionAdapter {
                 !this.workspaceBack.activeOwnsTopmostOverlay()
               ) {
                 this.dialog.closeTopmost();
+                return of(void 0);
+              }
+              if (this.statusVisibility.open()) {
+                this.statusVisibility.close();
                 return of(void 0);
               }
               if (this.workspaceBack.hasActive()) {

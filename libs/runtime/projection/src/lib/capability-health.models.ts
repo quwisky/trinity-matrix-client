@@ -34,8 +34,10 @@ export type CapabilityRecoveryOutcome =
   | { readonly kind: 'success' }
   | { readonly kind: 'unavailable' }
   | { readonly kind: 'transition-in-progress' }
+  | { readonly kind: 'timeout' }
   | { readonly kind: 'failure' }
-  | { readonly kind: 'partial' };
+  | { readonly kind: 'partial' }
+  | { readonly kind: 'uncertain' };
 
 export type CapabilityRecovery = () => Observable<CapabilityRecoveryOutcome>;
 

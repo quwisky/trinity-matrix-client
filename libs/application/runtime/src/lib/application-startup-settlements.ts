@@ -18,17 +18,6 @@ export function recoveryStartIndex(stage: ApplicationStartupStage): number {
   return failedIndex > sessionIndex ? sessionIndex : failedIndex;
 }
 
-export function warningsBefore(
-  index: number,
-  warnings: NonNullable<ApplicationStartupStageOutcome['warnings']>,
-): NonNullable<ApplicationStartupStageOutcome['warnings']> {
-  return warnings.filter(
-    (warning) =>
-      warning.stage !== 'session' &&
-      APPLICATION_STARTUP_STAGES.indexOf(warning.stage) < index,
-  );
-}
-
 export function settlementsBefore(
   index: number,
   settlements: readonly ApplicationStartupProducerSettlement[],

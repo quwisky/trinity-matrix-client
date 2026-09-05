@@ -16,7 +16,6 @@ export function startupFailureOutcome(
 ): Extract<ApplicationStartOutcome, { readonly kind: 'blocked' }> {
   const stage =
     current.phase === 'starting' ? current.stage : 'session-capabilities';
-  const warnings = 'warnings' in current ? current.warnings : [];
   const settlements = 'settlements' in current ? current.settlements : [];
   const stageOutcome: ApplicationStartupStageOutcome = {
     kind: 'blocked',
@@ -32,7 +31,6 @@ export function startupFailureOutcome(
     kind: 'blocked',
     attempt,
     failure,
-    warnings,
     settlements: withDependencySkips(
       stage,
       settlements,

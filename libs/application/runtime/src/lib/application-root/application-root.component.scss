@@ -3,14 +3,31 @@
     display: block;
   }
 
-  // Optional capabilities can produce several long diagnostics at once. Keep the status visible
-  // without letting it displace the routed application surface: at most one quarter of the visual
-  // viewport belongs to warnings, and the focusable region above remains keyboard-scrollable when
-  // its complete list needs more room.
-  .runtime-warnings {
-    min-block-size: 0;
-    max-block-size: 25dvh;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+  .runtime-status {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .runtime-status__actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+  }
+
+  .system-status-access {
+    position: fixed;
+    z-index: var(--trinity-z-sticky);
+    inset-inline-end: 0.75rem;
+    inset-block-end: 0.75rem;
+    opacity: 0.72;
+  }
+
+  @media (max-width: 32rem) {
+    .runtime-status {
+      align-items: flex-start;
+      flex-direction: column;
+    }
   }
 }

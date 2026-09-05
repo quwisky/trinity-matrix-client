@@ -31,6 +31,7 @@
         "{workspaceRoot}/libs/components/*/src/**/*",
         "{workspaceRoot}/libs/feature/rooms/src/lib/media-bubble/**/*",
         "{workspaceRoot}/libs/feature/rooms/src/lib/message-toolbar/**/*",
+        "{workspaceRoot}/libs/application/runtime/src/lib/application-root/system-status/**/*",
         "{workspaceRoot}/libs/theme-foundation/**/*",
         "{workspaceRoot}/apps/trinity/src/global.scss",
         { "externalDependencies": ["storybook"] }

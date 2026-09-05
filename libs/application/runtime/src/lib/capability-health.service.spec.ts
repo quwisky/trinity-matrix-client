@@ -146,7 +146,7 @@ describe('CapabilityHealthService', () => {
     const entry = service.problems()[0]!;
     const recovery = firstValueFrom(service.recover(entry).pipe(toArray()));
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(await recovery).toEqual([{ kind: 'pending' }, { kind: 'failure' }]);
+    expect(await recovery).toEqual([{ kind: 'pending' }, { kind: 'timeout' }]);
     service.reset();
     expect(await firstValueFrom(service.recover(entry))).toEqual({
       kind: 'unavailable',

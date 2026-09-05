@@ -79,6 +79,14 @@ or clearing local data, check your
 
 ## When an action is unavailable
 
+If Trinity starts with a limited capability, its compact summary keeps the Workspace available.
+Open **System Status** to see which user-facing feature and Account are affected, what remains
+safe to use, and whether a scoped retry is available. Dismissing the summary hides only that
+occurrence; System Status continues to show current health, and a new or worse outage resurfaces
+the summary. **Support details** contain only generated references and safe operation metadata.
+They are copied locally only when you choose **Copy support details** and are never uploaded by
+Trinity.
+
 Room and Space permissions belong to the homeserver and the Account performing the action.
 A hidden or disabled editing or moderation action can mean you lack permission. Check the acting
 Account and the explanation in [Rooms and Spaces](rooms-and-spaces.md) before retrying.

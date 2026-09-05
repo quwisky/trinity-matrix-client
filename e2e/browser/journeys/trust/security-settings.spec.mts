@@ -170,10 +170,6 @@ test.describe('Security settings', () => {
       health.retryProjection();
     });
 
-    const problem = page.getByTestId('app-trust-health');
-    await expect(problem).toContainText(
-      'Verification and recovery state are unknown',
-    );
     await expect(
       page.getByTestId('security-encryption-unavailable'),
     ).toContainText('last known status may be outdated');
@@ -183,6 +179,18 @@ test.describe('Security settings', () => {
     await expect(page.getByTestId('security-setup')).toHaveCount(0);
     await expect(page.getByTestId('security-unlock')).toHaveCount(0);
     await expect(page.getByTestId('security-verify')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close settings' }).click();
+    await page
+      .getByTestId('app-capability-summary')
+      .getByRole('button', { name: 'System Status' })
+      .click();
+    const status = page.getByRole('dialog', { name: 'System Status' });
+    const problem = status
+      .locator('article')
+      .filter({ hasText: 'Encryption trust status is unavailable' });
+    await expect(problem).toContainText(
+      'Verification and recovery status may be out of date',
+    );
     await testInfo.attach('trust-unavailable', {
       body: await page.screenshot(),
       contentType: 'image/png',
@@ -193,10 +201,10 @@ test.describe('Security settings', () => {
       target.restoreTrustRead?.();
       delete target.restoreTrustRead;
     });
-    await page.getByRole('button', { name: 'Close settings' }).click();
-    await page.getByTestId('app-trust-retry').click();
+    await problem.getByRole('button', { name: 'Retry trust status' }).click();
 
     await expect(problem).toHaveCount(0);
+    await status.getByRole('button', { name: 'Close' }).click();
     await openSettingsSection(page, 'security');
     await expect(
       page.getByTestId('security-encryption-unavailable'),

@@ -63,6 +63,7 @@ import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-applica
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { CapabilityHealthService } from '../capability-health.service';
+import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 interface SessionHarness {
   readonly adapter: TrinityApplicationSessionAdapter;
@@ -95,6 +96,7 @@ interface SessionHarness {
   readonly recoverTrust: ReturnType<typeof vi.fn>;
   readonly recoverPresentation: ReturnType<typeof vi.fn>;
   readonly recoverRoomAdministration: ReturnType<typeof vi.fn>;
+  readonly statusVisibility: SystemStatusVisibilityService;
 }
 
 function setup(
@@ -253,6 +255,7 @@ function setup(
     recoverTrust,
     recoverPresentation,
     recoverRoomAdministration,
+    statusVisibility: TestBed.inject(SystemStatusVisibilityService),
   };
 }
 
@@ -345,6 +348,45 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(preparation.observed).toBe(false);
     expect(test.deepLinks.observed).toBe(false);
     expect(test.notificationEvents.observed).toBe(false);
+  });
+
+  it('owns Back before readiness and shares that listener through the running transition', () => {
+    const readiness = new Subject<void>();
+    const test = setup();
+    const startupOwner = test.adapter.runInteractions().subscribe();
+    const sessionOwner = test.adapter.run(readiness).subscribe();
+
+    expect(test.backIntents.observed).toBe(true);
+    test.statusVisibility.show();
+    test.backIntents.next({ canGoBack: true });
+    expect(test.statusVisibility.open()).toBe(false);
+    expect(test.locationBack).not.toHaveBeenCalled();
+
+    readiness.next();
+    test.backIntents.next({ canGoBack: true });
+    expect(test.locationBack).toHaveBeenCalledOnce();
+
+    startupOwner.unsubscribe();
+    sessionOwner.unsubscribe();
+  });
+
+  it('returns from a topmost confirmation to System Status before returning to the blocker', () => {
+    const test = setup();
+    const owner = test.adapter.runInteractions().subscribe();
+    test.statusVisibility.show();
+    test.dialogOpen.set(true);
+    test.closeTopmost.mockReturnValue(true);
+
+    test.backIntents.next({ canGoBack: false });
+    expect(test.closeTopmost).toHaveBeenCalledOnce();
+    expect(test.statusVisibility.open()).toBe(true);
+    expect(test.background).not.toHaveBeenCalled();
+
+    test.dialogOpen.set(false);
+    test.backIntents.next({ canGoBack: false });
+    expect(test.statusVisibility.open()).toBe(false);
+    expect(test.background).not.toHaveBeenCalled();
+    owner.unsubscribe();
   });
 
   it('maps blocked Room Library preparation without opening live streams', () => {

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- System Status now presents startup blockers and live capability limits from one application-owned
+  English catalogue, grouped by user-facing capability and Account with scoped recovery, recurrence-aware
+  dismissal, explicit recovery outcomes, and privacy-safe copyable support details. Startup stays calm for
+  fast paths before naming its current step; Android Back is owned before readiness and remains single-owned
+  afterward. The append-only runtime-warning model and its compatibility ledger have been removed.
+
 - Account removal and installation reset now require complete operation-specific confirmation,
   own destructive cleanup after UI detachment, bound every finite cleanup step without cancelling
   underlying work, and distinguish pending uncertainty from settled residue and success. Reopened
