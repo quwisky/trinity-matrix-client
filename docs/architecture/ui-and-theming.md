@@ -488,6 +488,13 @@ these current contracts intact:
   make the shell contain its panes; the timeline and each navigation surface
   own their own scrolling instead of growing document scroll. At wide widths a
   side panel remains in the row; at narrow widths it becomes a fixed drawer.
+- [member-list virtualization](../../libs/feature/rooms/src/lib/member-list/member-list.component.ts)
+  uses 34px headers and 44px member rows, matched by its stylesheet across pointer
+  types and densities. Change measurements and spacer calculations together. The
+  floating identity dock must leave the last Room and Space reachable, including
+  keyboard-driven scrolling; [shell layout](../../e2e/browser/journeys/workspace/shell-layout.spec.mts)
+  and [sidebar touch](../../e2e/browser/journeys/room-library/sidebar-touch.spec.mts)
+  cover these geometry contracts.
 - [pane handle](../../libs/feature/rooms/src/lib/rooms/pane-handle.component.ts)
   writes one CSS custom property during a drag, then commits once. Its keyboard
   separator supports arrows and Home/End. Do not replace this with signal
@@ -518,13 +525,23 @@ these current contracts intact:
   every width because Enter can mean a newline or IME confirmation. Its
   [stylesheet](../../libs/feature/rooms/src/lib/message-composer/message-composer.component.scss)
   owns the feature-specific resting geometry, density-driven action sizing,
-  semantic shapes, and motion tokens.
+  semantic shapes, and motion tokens. The ordinary input and recording replacement
+  keep equal resting heights, as covered by
+  [composer formatting](../../e2e/browser/journeys/conversations/composer-formatting.spec.mts).
 - The [composer insert menu](../../libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.ts)
   uses an action sheet on iOS and Android, including installed and browser
   mobile hosts, and an anchored menu for desktop interaction. A changed room,
   thread, or capability invalidates the sheet's action snapshot. On dismissal
   it restores a viable trigger; an action that opens another surface transfers
   focus to that surface instead.
+
+- [message-row styles](../../libs/feature/rooms/src/lib/message-row/message-row.component.scss)
+  keep the toolbar from being clipped at conversation boundaries and preserve
+  clearance on hybrid touch desktops without changing virtual-row height when
+  actions appear. The authenticity shield reserves a column for message content
+  only; receipts remain in flow, span the full message width, and follow writing
+  direction. Preserve the [message-shield geometry checks](../../e2e/browser/journeys/trust/message-shield.spec.mts)
+  when changing that layout.
 
 These are feature contracts, not generic recipes. Use the linked sources and
 their focused tests when a public component change can affect them.

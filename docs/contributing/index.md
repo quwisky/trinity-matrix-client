@@ -50,5 +50,5 @@ A directory name is not always an Nx project name: nested libraries use names su
 | Give an agent a task or maintain its skill catalog | [Working with agents](../agents/index.md)            |
 | Find a known local failure                         | [Troubleshooting](../reference/troubleshooting.md)   |
 
-The [documentation map](../documentation-map.md) is the migration ownership inventory.
+The [documentation map](../documentation-map.md) records current topic ownership and the rewrite dispositions.
 It is for maintaining the documentation set, not the normal starting point for a contribution.

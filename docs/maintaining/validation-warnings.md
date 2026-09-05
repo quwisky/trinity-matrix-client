@@ -88,7 +88,7 @@ visible. Use the [mobile host guide](../platforms/mobile.md) to reproduce the ow
 check and report the distinction between static contracts, toolchain compilation and device
 behavior.
 
-## Storybook diagnostics under investigation
+## Storybook diagnostics and failure evidence
 
 The UI documentation validation on 2026-09-05 produced the following diagnostics from a fresh
 catalog build. The build completed, but this is not a blanket harmless-warning classification.
@@ -112,8 +112,21 @@ The same validation also exposed two failures, which do not belong in a warning 
   browser received “Not found”. The owned run was interrupted after confirming missing output.
 - The separate fresh build's browser suite finished with **154 passed and 1 failed**, retries
   disabled. The failing overlay accessibility case reported `Axe is already running` while
-  invoking the shared scan helper. Identify the overlapping scan owners and preserve the
-  accessibility assertion; a passing rerun alone would not resolve it.
+  invoking the shared scan helper.
 
-These dated results are evidence for follow-up, not the current merge status. Check the
-linked issue and a fresh run at the exact candidate commit before declaring them resolved.
+Final integration isolated that scan race: Storybook's accessibility addon can replace
+`window.axe` and start scanning between the helper's injection and its later global lookup.
+The [shared helper](../../e2e/components/storybook/catalog-accessibility.mts) now captures its
+injected instance in the same browser operation and disposes the retained handle after its
+scan. The [regression](../../e2e/components/storybook/navigation-overlay-catalog.spec.mts)
+holds the actual addon module response until injection, then checks that both owners finish
+using distinct instances. Restoring the former helper failed that regression; the corrected
+helper passed. Accessibility rules and result assertions remain intact.
+
+On 2026-09-05, the full corrected catalog passed **156 tests** with retries disabled,
+including the final regression's identity-order and independent-completion assertions.
+A separate normal Nx cache-hit probe restored both missing HTML artifacts after moving
+aside only the owned generated output. That establishes current restoration behavior,
+not the cause of the earlier missing output. These results do not resolve the compiler
+and bundle diagnostics above or substitute for validation of the final candidate. Record
+its complete checks and any remaining limits on the pull request.

@@ -1,431 +1,191 @@
 # Push notifications
 
-Trinity has three separate notification systems that people routinely confuse with each
-other: the **push rules** that decide whether an event is worth notifying about, the
-**local notifications** that a permanently-connected client raises itself, and the
-**mobile push** path that wakes a phone that is not connected at all. Only the last one
-needs an operator to deploy anything.
-
-## The three layers
-
-| Layer               | Owns                                                            | Runs on                        |
-| ------------------- | --------------------------------------------------------------- | ------------------------------ |
-| Push rules          | Whether an event should notify at all, per account and per room | Every platform, server-side    |
-| Local notifications | Turning a live sync event into an OS toast                      | Web, Electron, iOS and Android |
-| Mobile push         | Waking the app when it is not running                           | iOS and Android only           |
-
-Push rules are Matrix account data, so they are shared by every client the user signs in
-with. The other two layers are delivery mechanisms and are per-install.
-
-### Push rules
-
-Three services in `@trinity/data-access/notifications` write push rules, and they are
-deliberately separate because they address different rule buckets.
-
-`RoomNotificationsService` maps a per-room mode onto rules. `all` has no enabled
-room-specific mute rule. `mentions` enables a room-kind rule with no effective actions,
-which leaves the override highlight rules free to fire. `mute` enables the same shape as an
-**override**, because overrides are evaluated ahead of the highlight rules and a room-kind
-rule would not silence a mention. Matrix v1.7 made an empty action list canonical; Trinity
-also reads legacy `dont_notify`/`coalesce`-only rules so mutes created by older clients remain
-interoperable. After a write it refreshes the client's cached ruleset, so the UI
-shows the new level without waiting for the `m.push_rules` sync echo. It also listens for
-that account-data event on every live account and writes a revision signal, which is required
-to repaint the zoneless room list when another client changes a rule. Writes are compensating
-transactions: each one refreshes the homeserver before snapshotting the exact affected rules,
-serializes all writes that could replace an account's shared rules cache, verifies the requested
-postcondition, and on a partial endpoint failure restores the full rule bodies and enabled states
-on every account in a merged row. Existing standard rules are disabled rather than deleted, so
-their priority among user rules survives both normal changes and rollback. Unrecognized custom
-rules are preserved rather than rewritten. Compensation restores only states that still match
-the transaction's own writes; a newer edit from another device is left untouched and the UI
-reports that restoration could not be confirmed. The row aggregates all contributing accounts
-and exposes `mixed` when their modes differ.
-
-Application Runtime owns the service's named cold projection lifetime. It observes every live
-Account client while a routed Room surface needs per-Room rule state, becomes dormant off Room
-routes, and releases on blocked startup, stop, or restart. Projection Runtime reattaches the active
-Account listener during an Account transition while background Account listeners remain retained.
-Route components only read the resulting signals. This lifecycle is separate from
-local-notification delivery and Workspace activation.
-
-`PushRulesService` exposes nine labelled account-level toggles backed by predefined
-rules: the master kill switch (marked `invert`, because the rule being _enabled_ means
-"do not notify"), invites, user mention, `@room`, call invitations, direct chats,
-encrypted direct chats, room messages and encrypted room messages. Each toggle carries an
-`aliases` list, because MSC3952 intentional mentions replaced
-`.m.rule.contains_display_name` with `.m.rule.is_user_mention` and a homeserver may
-expose either or, as current Synapse does, both.
-
-`KeywordRulesService` manages `content`-kind rules and has three constraints worth
-knowing about:
-
-- Server-defined rules are filtered out of the list. The spec reserves a leading dot for
-  them, and one of them, `.m.rule.contains_user_name`, lives in the same `content` bucket
-  as user keywords. Listing it would show someone their own username as a keyword they
-  could delete.
-- Writes are keyed by `ruleId`, not by `pattern`. Element happens to make them identical,
-  but the spec permits any id, and addressing a rule by its pattern 404s whenever they
-  differ.
-- Glob metacharacters `*` and `?` are **rejected**, not escaped. A stray `*` would
-  silently become "notify on every message in every room", stored on the account and
-  therefore active on every device and in every other client, with nothing to say where
-  it came from.
-
-## Local notifications on every host
-
-The Notifications capability splits local delivery into three seams. Its Matrix adapter narrows a
-live SDK event into a bounded value record. `NotificationPolicy` combines that normalized event with
-normalized user rules, foreground Conversation visibility and bounded deduplication state to produce
-an immutable `NotificationIntent`. `NotificationPresenterService` alone asks the selected Host
-Capability for permission and delivery. The policy therefore imports no Router, DOM, platform or SDK
-API. Local delivery uses the same cold intent contract on Web, Electron, iOS and Android. Mobile
-push remains a separate transport for waking or notifying a device when the live client is
-suspended or not running.
-
-It listens per account, not just for the active one, and reconciles those listeners
-against the live account set, so an account that finishes its background warm start later
-still gets bound. A notification fires only when all of the following hold:
-
-- the event arrives after the Account's first successful sync, because the SDK labels
-  historical events in the initial `/sync` batch as live while its sync state is still unset,
-- the event is live, not backfill (`data.liveEvent === true`),
-- the sender is not you,
-- the user is not already looking at that room, which means the window is focused **and**
-  this is the active account **and** that room is open,
-- the account's own push rules say to notify (`getPushActionsForEvent().notify`),
-- and the event has not already notified on that account.
-
-!!! note "Encrypted rooms notify one emit later"
-
-    The `RoomEvent.Timeline` emit for an encrypted room carries ciphertext. Scoring push
-    rules against it would miss mentions, and the preview would be generic. Those events
-    are parked in a pending set and re-evaluated on `MatrixEventEvent.Decrypted` with
-    `getPushActionsForEvent(event, true)` so the rules run against cleartext. A decryption
-    failure keeps the event pending for a later retry rather than dropping it, and both
-    the pending set and the already-notified set are capped at 500 entries so a long
-    session cannot grow them without bound.
-
-The collapse `tag` is `` `${accountId} ${roomId}` ``, so a newer message replaces the previous
-toast from the same room on the same account, while the same room on a second account
-stays a separate toast.
-
-Application Runtime owns the long-lived notification stream. It stays dormant rather than prompting
-when there are no Accounts, attaches Accounts that appear later, and tears down both host activation
-and Matrix listeners on runtime stop.
-
-There are three delivery backends. On the Electron desktop shell the preload
-`trinityDesktop` bridge is present, and notifications are handed to the **main process** through a
-versioned request/response operation;
-renderer Web notifications from Electron are unreliably surfaced and attributed by the OS,
-notably on macOS. The operation completes only after Electron reports `show`, or returns a typed
-unavailable/failure outcome. Clicks come back through the typed host activation stream carrying the
-account, room and event destination. On Capacitor, `@capacitor/local-notifications` checks or
-requests display permission, schedules the typed intent, and validates `extra` before admitting a
-tap destination. Silent Android intents use a dedicated no-sound/no-vibration channel; on iOS the
-notification stays foreground-visible while omitting `sound`. On web, the Web `Notification` API is used — through the service worker
-registration when a service worker controls the page, because mobile browsers throw on
-`new Notification()`, and through the constructor otherwise. Angular's service-worker click stream
-is validated before its typed destination is admitted back into the application.
-
-A click emits an immutable `{accountId, roomId, eventId}` destination. Application Runtime focuses
-the window and submits that host-neutral intent to Workspace; it does not construct Room URLs.
-Workspace performs its normal cold transition, so inactive Accounts switch atomically, unavailable
-Rooms repair to the safe list, and a valid event becomes the Conversation jump target only after
-the Room is ready. Workspace alone projects the canonical
-`/rooms/<segment>?account=…&event=…` location, including base64url Room encoding. Repeating the same
-event activation in the already-open Room republishes the target without reporting unchanged
-navigation as failure.
-
-Nothing consumes and strips a parameter any more: the open room IS the URL.
-`RoomShellStore.activeRoomId` derives from `ActivatedRoute.paramMap`, so a tap arriving
-while `/rooms` is already the active route still lands — the component is not re-created,
-but `paramMap` is a stream and fires anyway. Back closing the room is now the intended
-behaviour rather than something to prevent.
-
-!!! warning "macOS silently drops notifications from unsigned builds"
-
-    Electron posts through macOS `UNUserNotification`, which requires a stable code
-    signature. An unsigned or ad-hoc-signed build fails with `UNErrorDomain error 1`
-    instead of displaying anything. The shell logs that explicitly on the notification's
-    `failed` event so it is diagnosable. To test it directly, launch the packaged binary
-    with `TRINITY_NOTIFY_TEST=1` set and it posts one notification a few seconds after
-    startup. See [the desktop platform page](../platforms/desktop.md) for signing.
-
-The Electron shell also keeps notifying while it is in the background. Closing the window
-hides it to the system tray rather than quitting, so the process, the renderer and the
-`/sync` long-poll all stay alive, and the window is created with
-`backgroundThrottling: false` so Chromium does not throttle that long-poll when the window
-is hidden or minimized. A real quit is available from the tray menu and the app menu. On
-web there is no equivalent: notifications fire while the tab is open but unfocused, and
-stop when it is closed.
-
-## The app badge
-
-`BadgeCoordinator` is an application workflow. It observes Room Library's aggregate Room and Space
-unread signal, summed across every signed-in Account, and writes only through the injected
-`BadgeSink`. Conversation still owns read position; Notifications owns delivery policy and never
-imports unread state. Composition selects exactly one host sink:
-
-| Platform              | Sink                                                             |
-| --------------------- | ---------------------------------------------------------------- |
-| Electron desktop      | `trinityDesktop.capabilities.badge.set` over protocol-v1 IPC     |
-| iOS and Android       | `@capawesome/capacitor-badge` through `MobileBadgeService`       |
-| Web and installed PWA | The W3C Badging API, `navigator.setAppBadge` and `clearAppBadge` |
-
-Where none is available — a plain browser tab that is not an installed PWA — it is a
-no-op. The count is clamped to 9999.
-
-On the desktop side the main process picks the per-OS affordance. macOS and Linux Unity
-get a numeric badge from `app.setBadgeCount`. Windows has no numeric taskbar badge at
-all, so the shell draws a red overlay icon on the taskbar button and carries the number
-in the overlay's accessibility description, collapsing anything past 99 to `99+`. The
-count arriving over IPC is untrusted and is validated and clamped before it reaches any
-native call.
-
-Every probe and write is a cold, finite command, and a newer aggregate cancels a stale write.
-Native plugin probes, permission requests, and writes have the same finite bound as other optional
-host capabilities; a timed-out readiness attempt is discarded so a later attempt can retry it.
-Unsupported hosts remain a no-op; rejected, timed-out, or failed sinks emit a non-blocking
-Application Runtime warning. They do not change readiness, unread ownership, or notification
-navigation.
-
-## Mobile push
-
-```text
-homeserver ──(push rules match)──► push gateway ──► FCM or APNs ──► device
-    ▲                                                                 │
-    └──────────── client.setPusher, pushkey = device token ◄───────────┘
-```
-
-The homeserver cannot talk to FCM or APNs directly, so a Matrix client always needs an
-HTTP **push gateway** in between — [Sygnal](https://github.com/matrix-org/sygnal) is the
-reference implementation. The gateway holds the platform credentials. The client's job is
-to obtain a device token and register a **pusher** with each homeserver pointing at that
-gateway.
-
-`PushService` does that. It is gated on `Capacitor.getPlatform()` being `ios` or
-`android`, on the push plugin being available, and on a gateway being configured. It is
-deliberately **not** gated on `isNativePlatform()`, which is also false in the Electron
-shell where there is no push plugin at all.
-
-Trinity uses the `event_id_only` push format, so the gateway sees only identifiers —
-`room_id`, `event_id`, unread counts and a priority flag — never message content, sender
-or type. The client fetches the event itself after sync.
-
-### One device token, one pusher per account
-
-Every signed-in account gets its own pusher, and they all share the single device token as
-their `pushkey`. Two consequences follow from that.
-
-**`append` must be `true`.** The flag governs pushers belonging to _other users_ for the
-same `(app_id, pushkey)` pair. With `append: false`, each account in the registration loop
-deletes the previous one's pusher whenever two accounts live on the same homeserver,
-leaving only the last one able to receive push. It does not duplicate this user's own
-pusher, because the homeserver replaces that unconditionally on the `(app_id, pushkey)`
-key, so a repeat `register()` stays at one pusher per account. Both halves were verified
-against Synapse.
-
-**Each pusher tags itself with its owner.** The `data` object carries
-`trinity_user_id: <userId>` alongside `url` and `format`:
-
-```ts
-const data = {
-  url: config.gatewayUrl,
-  format: 'event_id_only',
-  trinity_user_id: account.userId,
-};
-```
-
-A tapped notification reads that key, switches to the tagged account if it is signed in
-and not already active, and then opens the room. **This only works if the gateway forwards
-`data.trinity_user_id` from the pusher into the delivered push payload's `data`.** Sygnal
-does not do that out of the box. Until it is configured, every account's pusher is still
-registered and delivery still works, but a tap cannot attribute the notification and opens
-whichever account happens to be active.
-
-### Registration lifecycle
-
-`register()` is idempotent and best-effort. The authenticated shell calls it on mount, so
-a fresh login, a restored session and an added account all converge on the same path: once
-the token is known, a repeat call re-applies pushers for every account. On Android it
-first creates a notification channel, because Android O and later silently drop
-notifications that have none.
-
-`unregister(userId)` removes just that account's pusher on a per-account sign-out.
-`unregister()` with no argument removes every account's pusher and detaches the plugin
-listeners. Either must run **before** the access token is invalidated, or the gateway
-keeps delivering.
-
-### Changing the app id strands a pusher
-
-A pusher's identity is the tuple `(user_id, app_id, pushkey)`. Changing the app id does
-not update the existing pusher; it creates a second one, and the first keeps delivering to
-the old gateway indefinitely. Confirmed against Synapse: `GET /pushers` returns two rows
-after such a change.
-
-`PushGatewayService` therefore keeps a ledger. `appId` is what the user wants;
-`appliedAppId` is what actually reached the homeservers, persisted so it survives the app
-being killed between the remove and the set. It lives in its own preferences key
-(`trinity.push.applied-app-id`) rather than inside the user's gateway override. Holding it
-in the override meant it was never written at all on a device still using the build-time
-default — so the first time such a user set their own gateway, nothing knew which app id
-was already live and the original pusher was stranded on the old gateway forever. When they differ, `setPushers()` removes the
-stale pusher **before** setting the new one — interrupted after the remove, the account is
-merely unregistered until the next `register()`; interrupted the other way round, the old
-gateway would keep receiving forever. The ledger only advances once every account
-succeeded.
-
-This implies an ordering contract for the settings UI: tear the pushers down _before_
-clearing the stored gateway, because clearing drops the ledger and with it the only record
-of what to remove.
-
-### What the client can and cannot verify
-
-After a successful round, `setPushers()` reads the pushers back with `getPushers()` and
-confirms the `(app_id, pushkey)` tuple is present. That catches a homeserver that accepts
-the POST but does not persist it — a real risk on the non-Synapse homeservers this feature
-invites people to point at. Matching is on the identity tuple rather than the URL, because
-a homeserver that canonicalises the URL differently must not read as a failure, and only a
-definitive absence downgrades the state.
-
-The `registration` signal is a discriminated union of `idle`, `applied` and `error`, so
-"succeeded and failed" is unrepresentable. `applied` means the pushers were accepted and
-are queryable. It does **not** mean a notification will arrive: the gateway to FCM or APNs
-to device leg is completely invisible from the client.
-
-## Configuring a gateway from the app
-
-**Settings, then Notifications, then Push gateway** lets a user point mobile push at a
-gateway they run or trust rather than one baked into the build. A stock build ships
-`environment.push` as `null`, so this is the path that takes push from dead to live
-without a rebuild.
-
-Resolution is `user override ?? PUSH_CONFIG ?? null`, and `null` from both leaves
-`PushService` a clean no-op.
-
-The override lives in Capacitor `Preferences` under `trinity.push.gateway`. It is
-deliberately device-local rather than Matrix account data: `app_id` is per-platform and
-the `pushkey` is this install's device token, so an iOS gateway config is meaningless to
-the Android install on the same account. It is equally deliberately not secure storage —
-the URL is published to the homeserver as `pusher.data.url` and any client can read it
-back from `GET /pushers`, so the UI must not imply it is a secret.
-
-### URL validation
-
-`normalizeGatewayUrl` is pure, unit-tested, and its rules were probed against Synapse
-rather than invented:
-
-| Input                                         | Synapse             | Trinity                               |
-| --------------------------------------------- | ------------------- | ------------------------------------- |
-| `https://host/_matrix/push/v1/notify`         | accepted            | accepted                              |
-| Bare origin, wrong path, or a sub-path prefix | 400 M_MISSING_PARAM | bare origin normalized, rest rejected |
-| The correct path with a trailing slash        | 400 M_MISSING_PARAM | normalized                            |
-| `http://`                                     | accepted            | accepted, flagged as insecure         |
-| Embedded credentials                          | accepted            | rejected                              |
-
-The notify path is an **exact** match server-side, so a gateway cannot be mounted under a
-sub-path. A fragment is dropped, because a `#hash` is meaningless to a server-to-server
-POST and would be sent verbatim; a query string is preserved, because Synapse accepts one
-and multi-tenant gateways use it. Embedded credentials are rejected even though Synapse
-allows them, since they would be persisted in plain text on the device and re-served by
-`GET /pushers`.
-
-None of this is a security control. The **homeserver**, not the client, makes the outbound
-request, and any user can POST to `/pushers/set` directly. It catches typos.
-
-### The trust dialog
-
-Saving a custom URL raises a dialog naming the gateway host and stating what its operator
-can see, because moving the gateway choice to the user moves the trust decision too.
-
-The strongest correlator the operator receives is the `pushkey` itself: a globally unique
-per-install token that every account's pusher shares, so the gateway can link all of a
-device's accounts as one person regardless of any identifier. On top of that,
-`trinity_user_id` hands it each account's MXID directly, and each notification carries
-`room_id`, `event_id`, priority and unread counts, which fingerprint activity — how many
-rooms, which are busy, waking hours, direct versus group — even though message content
-never reaches it. That is expected for a self-hosted gateway and a metadata tradeoff for a
-shared one.
-
-## What an operator must set up
-
-Push delivers nothing until a gateway exists and platform credentials are provisioned.
-None of this can be exercised in CI, on the iOS Simulator, or on web and desktop.
-
-1. **Deploy a push gateway** and note its notify endpoint, for example
-   `https://push.example/_matrix/push/v1/notify`.
-
-2. **Point the app at it**, either per-device in Settings or as a build default in
-   `apps/trinity/src/environments/environment.ts` and `environment.prod.ts`:
+Use this reference when changing, operating, or diagnosing Trinity's notification
+pipeline. For a person's settings and recovery steps, use
+[Control notifications](../users/notifications.md). Host prerequisites belong in
+[the platform guides](../platforms/index.md).
+
+## Choose the layer that owns the task
+
+| Need                                               | Owner and boundary                                                                                                     |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Decide whether a Matrix event is eligible          | Server-side Matrix push rules, stored per account and shared with that account's other clients.                        |
+| Present an alert while Trinity is connected        | The Notifications capability and the selected web, desktop, or native host presentation adapter.                       |
+| Wake a suspended iOS or Android installation       | A Matrix pusher registered for the device token and its configured push gateway.                                       |
+| Open an account, room, or event from an activation | Application Runtime submits a typed intent; Workspace owns the account transition, room readiness, and URL projection. |
+
+Keep those paths separate. A successful pusher registration does not prove FCM or
+APNs delivery, and a local alert does not require mobile-push infrastructure.
+
+## Change Matrix push rules
+
+Room modes map to Matrix rules in [`RoomNotificationsService`](../../libs/data-access/notifications/src/lib/room-notifications.service.ts).
+`all` has no enabled room-specific mute rule; `mentions` leaves highlight rules
+available; `mute` uses an override rule so it wins before highlights. Existing
+standard rules are disabled rather than deleted, and legacy action shapes remain
+readable for interoperability.
+
+A rule write is a compensating transaction. It refreshes the server rules before
+snapshotting affected rules, serializes writes that replace the shared rules
+cache, verifies the requested postcondition, and restores exact prior bodies and
+enabled states after a partial failure. Restoration does not overwrite a newer
+remote edit; an unconfirmed restoration remains visible as an error. A merged
+room row applies the operation to its contributing accounts and reports a mixed
+result when their modes differ.
+
+Account toggles map to predefined rule aliases, because homeservers can expose
+both legacy and current intentional-mention rules. Keyword rules address their
+rule ID, preserve server-defined rules, and reject `*` and `?`: those characters
+would create a cross-client wildcard notification rule rather than a literal
+keyword.
+
+## Deliver and activate local notifications
+
+Notifications are projected from each live account after its first successful
+sync. The policy suppresses historical/backfilled events, self-sent events, an
+already focused active room, events whose account rules do not notify, and
+previously delivered events. Encrypted events wait for their decrypted form so
+rule scoring and previews do not use ciphertext; pending and delivered state is
+each capped at 500 entries.
+
+Host presentation is a separate capability. Electron requests native display
+through its main-process bridge, Capacitor uses the native presentation adapter,
+and the web adapter uses the browser or controlling service worker. A host result
+can be unavailable, denied, timed out, or failed without changing Matrix read
+state or Workspace ownership.
+
+An accepted activation is an immutable account, room, and event destination.
+[`runNotificationActivations`](../../libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts)
+forwards it to Workspace. Workspace performs the account switch and room-ready
+transition, repairs an unavailable room to a safe destination, and projects the
+location. Do not derive activation authority from a Room component, route
+parameter, or shell store.
+
+## Configure and register mobile push
+
+Mobile push needs a gateway that can deliver to the platform service. Trinity
+registers one pusher per signed-in account using the installation's device token
+as the shared `pushkey`. It uses `event_id_only`, so the gateway receives event
+and room identifiers, unread counts, priority, and pusher metadata rather than
+message text.
+
+### Provision the gateway and native build
+
+1. Deploy a Matrix push gateway and expose its notify endpoint, for example
+   `https://push.example/_matrix/push/v1/notify`. Configure its platform credentials
+   using the gateway's own instructions; [Sygnal's application configuration](https://github.com/matrix-org/sygnal/blob/main/docs/applications.md)
+   describes its FCM and APNs integrations. Platform credentials belong on the
+   gateway, not in Trinity's `PushConfig`.
+2. Select the endpoint in **Settings → Notifications → Push gateway**, or set
+   `environment.push` in the appropriate build environment:
+   [`environment.ts`](../../apps/trinity/src/environments/environment.ts) or
+   [`environment.prod.ts`](../../apps/trinity/src/environments/environment.prod.ts).
+   Both checked-in defaults are `null`. A saved device override takes precedence
+   over the build default; with neither configured, registration is disabled.
 
    ```ts
    push: { gatewayUrl: 'https://push.example/_matrix/push/v1/notify' },
    ```
 
-   `appId` is optional and defaults to `eu.qwky.trinity`, the app's own bundle id. Set it
-   only for a gateway that registered this app under some other key. `PushService` appends
-   `.ios` or `.android` to whichever base id applies, and those per-platform ids are what
-   the gateway keys its credentials by.
+   [`PushConfig`](../../libs/data-access/notifications/src/lib/push-config.ts)
+   accepts `gatewayUrl` and an optional base `appId`. Omitting `appId` uses
+   `eu.qwky.trinity`. `PushService` appends the platform suffix, so configure the
+   gateway entries as `eu.qwky.trinity.android` and `eu.qwky.trinity.ios`, or the
+   equivalent suffixed names for a custom base ID. The gateway's app key is
+   distinct from the native bundle/package ID, which has no platform suffix.
 
-3. **Android, FCM.** Create a Firebase project and add an Android app with package
-   `eu.qwky.trinity`. Put `google-services.json` at `android/app/google-services.json` —
-   Gradle already applies the google-services plugin conditionally on that file being
-   present, and logs a warning when it is not. `POST_NOTIFICATIONS` is already declared in
-   the manifest. Configure the gateway's FCM app key as `eu.qwky.trinity.android`.
+3. For Android, register package `eu.qwky.trinity` in the matching Firebase
+   project and place its downloaded configuration at
+   `android/app/google-services.json`, following [Firebase's Android setup](https://firebase.google.com/docs/android/setup).
+   [`build.gradle`](../../android/app/build.gradle) applies Google Services only
+   when this nonempty file exists. The manifest already declares
+   `POST_NOTIFICATIONS` and the `messages` channel; runtime permission and a
+   correctly configured gateway are still required for delivery.
+4. For iOS, provision the App ID and signing profile with Push Notifications
+   enabled, then add that capability to the App target in Xcode as described in
+   [Capacitor's iOS push setup](https://capacitorjs.com/docs/apis/push-notifications#ios).
+   The checked-in project has registration callbacks in
+   [`AppDelegate.swift`](../../ios/App/App/AppDelegate.swift), but no push
+   entitlement; callback code alone does not provision the capability. Configure
+   the gateway with credentials permitted for this bundle and APNs environment.
+   For token authentication, [create an APNs-enabled private key](https://developer.apple.com/help/account/keys/create-a-private-key)
+   and supply its key file, Key ID and Team ID through the gateway's configuration.
+   Do not infer silent background handling from notification registration: the
+   [Capacitor plugin does not implement iOS silent push](https://capacitorjs.com/docs/apis/push-notifications#silent-push-notifications--data-only-notifications).
+5. Rebuild, sync and install the native host with `pnpm android:run`, or
+   `pnpm ios:run` on macOS with Xcode and signing configured. These commands own
+   the web build and Capacitor sync; see [mobile run and debug guidance](../platforms/mobile.md).
+   Verify delivery with an installed native build, a device token and the deployed
+   gateway. Browser tests and successful registration do not exercise that path.
 
-4. **iOS, APNs.** Needs an Apple Developer account and a real device. Create an APNs auth
-   key (`.p8`) and give the Key ID, Team ID and key file to the gateway's `apns` config
-   under app key `eu.qwky.trinity.ios`. Enable Push Notifications on the App ID. In Xcode,
-   on the App target's Signing and Capabilities, add **Push Notifications** and
-   **Background Modes, Remote notifications**. `AppDelegate.swift` already forwards the
-   APNs registration callbacks the plugin needs.
+### Preserve account attribution
 
-5. **Sync and rebuild the native projects.** The plugin registration and the iOS SPM
-   manifest are generated:
+Each pusher includes `data.trinity_user_id` containing its owning Matrix user ID.
+The gateway must forward that exact field into the delivered payload's `data`
+alongside the destination identifiers. Trinity reads `trinity_user_id` when
+admitting a notification activation; a gateway that drops it prevents reliable
+account attribution. Check the gateway's forwarding behavior explicitly rather
+than assuming arbitrary pusher metadata survives delivery.
 
-   ```bash
-   pnpm build && pnpm exec cap sync
-   ```
+### Registration lifetime
 
-   Then do a full native rebuild and reinstall on device, not just a `cap copy`.
+`PushService` owns registration:
 
-If the bundle id ever changes, `DEFAULT_APP_ID`, `capacitor.config.ts`,
-`android/app/build.gradle` and the Xcode `PRODUCT_BUNDLE_IDENTIFIER` must move together.
-APNs binds its auth key to the bundle id and FCM binds to the sender project.
+1. Its cold `run()` lifetime listens for native events only while Application
+   Runtime subscribes to it. `NativePushRegistrationService.listen()` supplies
+   the platform callbacks.
+2. `register()` is best-effort and idempotent. When a token is already known, a
+   repeat call reapplies pushers for every current account. An unavailable
+   platform, plugin, or gateway remains a no-op; denied permission and native
+   registration errors are reported in the registration state.
+3. Each pusher uses `append: true`, so accounts on the same homeserver do not
+   remove each other's pusher.
+4. `unregister(userId)` removes that account's pushers. `unregister()` removes
+   pushers for every account and clears local token/registration state; the
+   listener ends with the runtime `run()` subscription, rather than during
+   unregister. Remove pushers before invalidating credentials or clearing the
+   gateway configuration.
 
-## Limits worth knowing
+The gateway setting is device-local and not secret: its URL is sent to the
+homeserver in pusher metadata. The user-facing settings flow validates and
+explains it in [Control notifications](../users/notifications.md#configure-mobile-push-carefully).
 
-- **Web Push is not implemented.** It would need a VAPID or Web Push pushgen plus service
-  worker handling. On web, the local notifications above cover the foreground tab.
-- **Per-account attribution needs the gateway change** described above. The client half —
-  one tagged pusher per account, tap to switch — is in place.
-- **A rotated device token leaves the previous pusher behind.** An app-id change is swept;
-  a new `pushkey` is a different orphan class that nothing currently removes until logout.
-- **Foreground pushes are not surfaced separately**, because live sync has already updated
-  the UI.
-- **The full loop ships unverified end to end.** Registration, the readback and the app-id
-  swap are all verified against a disposable Synapse. Everything past the homeserver's
-  outbound POST needs a real device, a deployed gateway and real credentials.
+Treat the gateway as a metadata boundary. Its shared device token can correlate
+the installation's account pushers, and the pusher owner tag can identify an
+account when forwarded for activation. `event_id_only` excludes message text,
+but it does not make room/event identifiers, unread counts, priority, or account
+metadata private from the gateway operator.
 
-## Alternatives to running a gateway
+## Keep a gateway migration recoverable
 
-matrix.org's public Sygnal only serves Element's app ids, so it is not an option for a
-custom app.
+A pusher is identified by account, app ID, and device token. Changing the app ID
+creates another pusher; it does not update the old one. The separate
+`appliedAppId` ledger records the app ID that reached the homeserver. On an app
+ID change, `PushService` removes stale pushers before setting replacements. If
+that sequence stops after removal, the account stays unregistered until the next
+registration; setting first would leave the old gateway receiving events.
 
-- **Android, UnifiedPush.** The user installs a distributor such as ntfy or NextPush that
-  holds the connection, and the app registers a pusher pointing at the _distributor's_
-  gateway. No server to operate. It would need a native UnifiedPush connector, since there
-  is no off-the-shelf Capacitor plugin, plus a distributor picker. The `setPusher` shape is
-  identical to FCM, so it is additive.
-- **Android, foreground service.** Keep `/sync` alive in a foreground service and raise
-  local notifications. Zero push infrastructure, at the cost of a persistent notification
-  and battery.
-- **iOS, not possible.** APNs is mandatory for background delivery and requires a gateway
-  holding the APNs key.
+The ledger advances only after every account succeeds. Clearing a gateway must
+therefore unregister first, while the ledger still identifies every app ID to
+remove. The service attempts a pusher readback for the app-ID/token identity. A
+definitive missing tuple changes registration to an error; a failed readback is
+inconclusive and preserves the applied result. Neither result proves a gateway
+or platform service delivered an alert.
 
-## Related pages
+A rotated device token has a different identity from an app-ID change. Current
+registration does not remove the old-token pusher automatically; logout or
+explicit cleanup remains the recovery path.
 
-- [Notification settings](../users/notifications.md) from a user's point of view
-- [Mobile platforms](../platforms/mobile.md) for the Capacitor build and sync flow
-- [Desktop](../platforms/desktop.md) for the tray, background sync and macOS signing
+## Verify the boundary you changed
+
+- Use notification and push-service unit tests for rule translation,
+  transactions, account attribution, error states, and gateway migration.
+- Use the browser journey for web notification policy and activation rendering.
+  It cannot prove FCM, APNs, operating-system delivery, or a deployed gateway.
+- Use a real native host, token, gateway, and credentials before claiming mobile
+  delivery. Record unavailable platform or operator prerequisites plainly.
+
+The source of truth is
+[`push.service.ts`](../../libs/data-access/notifications/src/lib/push.service.ts),
+[`push-gateway.service.ts`](../../libs/data-access/notifications/src/lib/push-gateway.service.ts),
+and [`native-push-registration.service.ts`](../../libs/platform-native/src/lib/native-push-registration.service.ts).
