@@ -1,41 +1,26 @@
-import { Injectable, Injector, effect, inject } from '@angular/core';
-import { Observable, defer, finalize } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { Observable } from 'rxjs';
 import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import { ActiveAccountProjectionLifetime } from '@trinity/runtime/projection';
 import { TrustService } from './trust.service';
 import { TrustVerificationService } from './trust-verification.service';
 
 /** Trust projections retained for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
 export class TrustLifetime {
-  private readonly injector = inject(Injector);
+  private readonly lifetime = inject(ActiveAccountProjectionLifetime);
   private readonly crypto = inject(TrustCryptoPort);
   private readonly health = inject(TrustService);
   private readonly verification = inject(TrustVerificationService);
 
-  /** Attach on subscribe, reattach after an empty Account set, and release on teardown. */
+  /** Attach on subscribe and release with the owning Application Runtime session. */
   run(): Observable<void> {
-    return defer(() => {
-      let accountId = this.crypto.activeAccountId();
-      this.connect();
-      return new Observable<void>((subscriber) => {
-        const accountChanges = effect(
-          () => {
-            const nextAccountId = this.crypto.activeAccountId();
-            if (nextAccountId === accountId) return;
-            accountId = nextAccountId;
-            if (!nextAccountId) return;
-            try {
-              this.connect();
-            } catch (error: unknown) {
-              subscriber.error(error);
-            }
-          },
-          { injector: this.injector },
-        );
-        subscriber.next();
-        return () => accountChanges.destroy();
-      });
-    }).pipe(finalize(() => this.disconnect()));
+    return this.lifetime.run({
+      activeAccountId: this.crypto.activeAccountId,
+      connect: () => this.connect(),
+      disconnect: () => this.disconnect(),
+      prepare: () => this.health.refresh(),
+    });
   }
 
   private connect(): void {

@@ -9,10 +9,11 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - **Trust and Identity projections now belong to Application Runtime.** Named cold lifetimes retain
-  Trust health, incoming verification, and demand-sensitive Identity presence across route changes,
-  reattach when an Account becomes active, and release on blocked startup, stop, or restart. The
-  Rooms route and verification host now consume state without starting session projections, while
-  expected capability failures become safe runtime warnings and broken adapters still error.
+  Trust health and incoming verification across routes, while Identity presence attaches only when
+  the routed Workspace can display it. They reattach when an Account becomes active and release on
+  blocked startup, stop, or restart. The Rooms route and verification host now consume state without
+  starting session projections; expected capability failures become safe runtime warnings and
+  broken adapters still error.
 
 - **Workspace restoration now waits for its Room Library projections.** Application Runtime owns
   one cold Room Library lifetime after Account restoration, prepares Rooms, Spaces, invitations,

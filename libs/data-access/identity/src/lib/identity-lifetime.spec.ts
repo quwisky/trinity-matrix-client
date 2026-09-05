@@ -1,7 +1,9 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { IdentityMatrixPort } from '@trinity/data-access/matrix-client';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
+import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IdentityLifetime } from './identity-lifetime';
 import { IdentityPresenceService } from './identity-presence.service';
@@ -21,12 +23,15 @@ describe('IdentityLifetime', () => {
           activeAccountId: activeAccountId.asReadonly(),
         }),
         MockProvider(IdentityPresenceService, { connect, disconnect }),
+        MockProvider(ProjectionRuntime, {
+          waitFor: () => of(readiness()),
+        }),
       ],
     });
   });
 
   it('is cold and retains Identity presence until teardown', () => {
-    const source = TestBed.inject(IdentityLifetime).run();
+    const source = TestBed.inject(IdentityLifetime).run(signal(true));
     const prepared = vi.fn();
 
     expect(connect).not.toHaveBeenCalled();
@@ -44,15 +49,17 @@ describe('IdentityLifetime', () => {
 
   it('reacquires presence when an Account appears after an empty set', () => {
     activeAccountId.set(null);
-    const lifetime = TestBed.inject(IdentityLifetime).run().subscribe();
+    const lifetime = TestBed.inject(IdentityLifetime)
+      .run(signal(true))
+      .subscribe();
     TestBed.tick();
 
-    expect(connect).toHaveBeenCalledOnce();
+    expect(connect).not.toHaveBeenCalled();
 
     activeAccountId.set('@b:example.org');
     TestBed.tick();
 
-    expect(connect).toHaveBeenCalledTimes(2);
+    expect(connect).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
@@ -63,25 +70,38 @@ describe('IdentityLifetime', () => {
     });
     const error = vi.fn();
 
-    TestBed.inject(IdentityLifetime).run().subscribe({ error });
+    TestBed.inject(IdentityLifetime).run(signal(true)).subscribe({ error });
 
     expect(error).toHaveBeenCalledWith(failure);
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
-  it('reports a broken Account reattachment through the same error channel', () => {
-    const failure = new Error('broken Identity reattachment');
-    const error = vi.fn();
-    TestBed.inject(IdentityLifetime).run().subscribe({ error });
-    TestBed.tick();
-    connect.mockImplementationOnce(() => {
-      throw failure;
-    });
+  it('stays dormant until Workspace demands presence', () => {
+    const demanded = signal(false);
+    const lifetime = TestBed.inject(IdentityLifetime)
+      .run(demanded.asReadonly())
+      .subscribe();
 
-    activeAccountId.set('@b:example.org');
-    TestBed.tick();
+    expect(connect).not.toHaveBeenCalled();
 
-    expect(error).toHaveBeenCalledWith(failure);
+    demanded.set(true);
+    TestBed.tick();
+    expect(connect).toHaveBeenCalledOnce();
+
+    demanded.set(false);
+    TestBed.tick();
     expect(disconnect).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
   });
 });
+
+function readiness() {
+  return {
+    scope: { kind: 'active-account' } as const,
+    durationMs: 0,
+    projectionCount: 1,
+    listenerCount: 1,
+    retainedBytes: 0,
+    acknowledgements: [],
+  };
+}

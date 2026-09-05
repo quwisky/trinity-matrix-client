@@ -318,13 +318,15 @@ runtime lease exactly once; a retry or restart creates one fresh generation. Exa
 children remain demand-owned and are not part of this preparation lifetime.
 
 The same Application Runtime session owns `TrustLifetime` and `IdentityLifetime`. Trust retains
-encryption-health and incoming-verification projections; Identity retains the presence listener,
-while `presenceFor()` still creates per-user state only when a Workspace surface requests that user
-and ignores events for everyone else. Both lifetimes reconnect after an initially empty Account set
-gains an Active Account, survive route changes, and release their projections on blocked startup,
-stop, destruction, or restart. A known capability operation failure is a secret-safe runtime
-warning; an unexpected adapter defect remains on the Observable error channel. Presentation hosts
-read their signals and never call `connect()`.
+encryption-health and incoming-verification projections across routes. Application Runtime derives
+Identity demand from the routed Workspace: the presence listener attaches on a Room route and
+detaches when no routed Room surface can display it, while the Identity lifetime itself stays
+session-owned. `ActiveAccountProjectionLifetime` centralizes this demand and initially-empty-Account
+handling; ordinary Account-to-Account reattachment remains Projection Runtime's responsibility.
+Both capabilities release on blocked startup, stop, destruction, or restart. Trust's initial health
+refresh makes an expected operational preparation failure a secret-safe runtime warning; an
+unexpected adapter defect remains on the Observable error channel. Presentation hosts read their
+signals and never call `connect()`.
 
 A projecting service typically just delegates:
 

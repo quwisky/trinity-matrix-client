@@ -1,9 +1,12 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
+import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrustLifetime } from './trust-lifetime';
+import { TrustOperationError } from './trust-operation-error';
 import { TrustService } from './trust.service';
 import { TrustVerificationService } from './trust-verification.service';
 
@@ -13,6 +16,7 @@ describe('TrustLifetime', () => {
   const healthDisconnect = vi.fn();
   const verificationConnect = vi.fn();
   const verificationDisconnect = vi.fn();
+  const refresh = vi.fn(() => of(void 0));
 
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
@@ -26,10 +30,14 @@ describe('TrustLifetime', () => {
         MockProvider(TrustService, {
           connect: healthConnect,
           disconnect: healthDisconnect,
+          refresh,
         }),
         MockProvider(TrustVerificationService, {
           connect: verificationConnect,
           disconnect: verificationDisconnect,
+        }),
+        MockProvider(ProjectionRuntime, {
+          waitFor: () => of(readiness()),
         }),
       ],
     });
@@ -60,14 +68,14 @@ describe('TrustLifetime', () => {
     const lifetime = TestBed.inject(TrustLifetime).run().subscribe();
     TestBed.tick();
 
-    expect(healthConnect).toHaveBeenCalledOnce();
-    expect(verificationConnect).toHaveBeenCalledOnce();
+    expect(healthConnect).not.toHaveBeenCalled();
+    expect(verificationConnect).not.toHaveBeenCalled();
 
     activeAccountId.set('@b:example.org');
     TestBed.tick();
 
-    expect(healthConnect).toHaveBeenCalledTimes(2);
-    expect(verificationConnect).toHaveBeenCalledTimes(2);
+    expect(healthConnect).toHaveBeenCalledOnce();
+    expect(verificationConnect).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
@@ -85,20 +93,31 @@ describe('TrustLifetime', () => {
     expect(healthDisconnect).toHaveBeenCalledOnce();
   });
 
-  it('reports a broken Account reattachment through the same error channel', () => {
-    const failure = new Error('broken Trust reattachment');
+  it('surfaces an expected health preparation failure for runtime classification', () => {
+    const failure = new TrustOperationError(
+      'refresh-health',
+      'server-failure',
+      'retry',
+      'Trust health is temporarily unavailable.',
+    );
+    refresh.mockReturnValueOnce(throwError(() => failure));
     const error = vi.fn();
-    TestBed.inject(TrustLifetime).run().subscribe({ error });
-    TestBed.tick();
-    verificationConnect.mockImplementationOnce(() => {
-      throw failure;
-    });
 
-    activeAccountId.set('@b:example.org');
-    TestBed.tick();
+    TestBed.inject(TrustLifetime).run().subscribe({ error });
 
     expect(error).toHaveBeenCalledWith(failure);
     expect(verificationDisconnect).toHaveBeenCalledOnce();
     expect(healthDisconnect).toHaveBeenCalledOnce();
   });
 });
+
+function readiness() {
+  return {
+    scope: { kind: 'active-account' } as const,
+    durationMs: 0,
+    projectionCount: 2,
+    listenerCount: 2,
+    retainedBytes: 0,
+    acknowledgements: [],
+  };
+}

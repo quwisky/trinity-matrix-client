@@ -25,6 +25,7 @@ import {
   type AccountRestoreResult,
 } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
+import { IdentityLifetime } from '@trinity/data-access/identity';
 import {
   NotificationService,
   PushGatewayService,
@@ -36,6 +37,7 @@ import {
   type RoomLibraryLifetimeEvent,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
+import { TrustLifetime } from '@trinity/data-access/trust';
 import {
   ComposerSettingsService,
   AppConfigService,
@@ -81,6 +83,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let surfaceSession: Subject<void>;
   let orderSession: Subject<void>;
   let roomLibrarySession: Subject<RoomLibraryLifetimeEvent>;
+  let trustSession: Subject<void>;
+  let identitySession: Subject<void>;
   let deepLinks: Subject<{ readonly url: string }>;
   let backIntents: Subject<{ readonly canGoBack: boolean }>;
   let versionUpdates: Subject<never>;
@@ -125,6 +129,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     surfaceSession = new Subject<void>();
     orderSession = new Subject<void>();
     roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
+    trustSession = new Subject<void>();
+    identitySession = new Subject<void>();
     deepLinks = new Subject<{ readonly url: string }>();
     backIntents = new Subject<{ readonly canGoBack: boolean }>();
     versionUpdates = new Subject<never>();
@@ -202,6 +208,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(HostUpdatesService, { check: updateCheck }),
         MockProvider(NavigationFocusService, { run: () => focusSession }),
         MockProvider(WorkspaceRoutedSurfaceAdapter, {
+          identityPresenceDemand: signal(true).asReadonly(),
           run: () => routedSession,
         }),
         MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -231,6 +238,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(RoomLibraryLifetime, {
           run: () => roomLibrarySession,
         }),
+        MockProvider(TrustLifetime, { run: () => trustSession }),
+        MockProvider(IdentityLifetime, { run: () => identitySession }),
         MockProvider(StoragePersistenceService, {
           requestPersistence: vi.fn(() => of(true)),
         }),
@@ -451,6 +460,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     TestBed.tick();
 
     expect(roomLibrarySession.observed).toBe(true);
+    expect(trustSession.observed).toBe(true);
+    expect(identitySession.observed).toBe(true);
     expect([
       badgeSession.observed,
       notificationSession.observed,
@@ -464,6 +475,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       unrecoverable.observed,
     ]).toEqual(Array(10).fill(false));
     roomLibrarySession.next({ kind: 'prepared' });
+    trustSession.next();
+    identitySession.next();
     expect(events).toEqual([{ kind: 'prepared' }]);
     readiness.next();
     readiness.complete();
@@ -500,6 +513,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     first.unsubscribe();
     expect(roomLibrarySession.observed).toBe(false);
+    expect(trustSession.observed).toBe(false);
+    expect(identitySession.observed).toBe(false);
     expect([
       badgeSession.observed,
       notificationSession.observed,
@@ -520,6 +535,8 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     const secondReadiness = new Subject<void>();
     const second = adapter.runSession(secondReadiness).subscribe();
     roomLibrarySession.next({ kind: 'prepared' });
+    trustSession.next();
+    identitySession.next();
     secondReadiness.next();
     TestBed.tick();
     expect(badgeSession.observed).toBe(true);

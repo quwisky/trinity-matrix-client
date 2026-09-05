@@ -138,8 +138,6 @@ describe('Trust production boundary', () => {
     );
 
     expect(lifetime).toContain('class TrustLifetime');
-    expect(lifetime).toContain('this.health.connect()');
-    expect(lifetime).toContain('this.verification.connect()');
     expect(session).toContain('inject(TrustLifetime)');
     expect(page).not.toContain('this.crypto.connect()');
     expect(host).not.toContain('this.verification.connect()');

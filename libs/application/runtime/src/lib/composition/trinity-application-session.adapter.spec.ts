@@ -108,6 +108,7 @@ function setup(
   const hostUpdateCheck = vi.fn(() => of({ kind: 'completed' as const }));
   const activateUpdate = vi.fn().mockResolvedValue(true);
   const showToast = vi.fn();
+  const identityPresenceDemand = signal(true);
 
   TestBed.configureTestingModule({
     providers: [
@@ -118,7 +119,10 @@ function setup(
       MockProvider(NotificationService, { run: () => notificationEvents }),
       MockProvider(PushService, { run: () => pushSession ?? pushActivations }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
-      MockProvider(WorkspaceRoutedSurfaceAdapter, { run: () => EMPTY }),
+      MockProvider(WorkspaceRoutedSurfaceAdapter, {
+        identityPresenceDemand: identityPresenceDemand.asReadonly(),
+        run: () => EMPTY,
+      }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
         run: () => EMPTY,
       }),
@@ -261,6 +265,32 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.lifecycleEvents.observed).toBe(false);
   });
 
+  it('releases optional projection lifetimes when preparation blocks', () => {
+    const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
+    const trust = new Subject<void>();
+    const identity = new Subject<void>();
+    const test = setup(undefined, roomLibrary, trust, identity);
+    const events: unknown[] = [];
+
+    test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
+    trust.next();
+    identity.next();
+    roomLibrary.next({
+      kind: 'blocked',
+      diagnostic: { code: 'room-library-projection-preparation-failed' },
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        kind: 'blocked',
+        diagnostic: { code: 'room-library-projection-preparation-failed' },
+      }),
+    ]);
+    expect(roomLibrary.observed).toBe(false);
+    expect(trust.observed).toBe(false);
+    expect(identity.observed).toBe(false);
+  });
+
   it('retains Trust and Identity lifetimes across readiness until teardown', () => {
     const trust = new Subject<void>();
     const identity = new Subject<void>();
@@ -339,6 +369,46 @@ describe('TrinityApplicationSessionAdapter', () => {
         },
       },
     ]);
+    lifetime.unsubscribe();
+  });
+
+  it('reports a late optional failure without preparing or restarting live work again', () => {
+    const trust = new Subject<void>();
+    const identity = new Subject<void>();
+    const readiness = new Subject<void>();
+    const test = setup(undefined, of({ kind: 'prepared' }), trust, identity);
+    const events: unknown[] = [];
+    const lifetime = test.adapter
+      .run(readiness)
+      .subscribe((event) => events.push(event));
+
+    trust.next();
+    identity.next();
+    readiness.next();
+    expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
+
+    trust.error(
+      new TrustOperationError(
+        'refresh-health',
+        'server-failure',
+        'retry',
+        'Trust is temporarily unavailable.',
+      ),
+    );
+
+    expect(events).toEqual([
+      { kind: 'prepared' },
+      {
+        kind: 'warning',
+        warning: expect.objectContaining({
+          scope: 'trust',
+          diagnostic: { code: 'trust-projection-unavailable' },
+        }),
+      },
+    ]);
+    expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
+    expect(test.deepLinks.observed).toBe(true);
+    expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
 

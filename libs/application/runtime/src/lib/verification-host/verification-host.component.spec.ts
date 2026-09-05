@@ -107,4 +107,16 @@ describe('VerificationHostComponent', () => {
 
     expect(close).toHaveBeenCalledOnce();
   });
+
+  it('dismisses stale presentation when the session projection clears', async () => {
+    const { fixture, active, open, close } = await setup();
+    active.set(incoming());
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+
+    active.set(null);
+    fixture.detectChanges();
+
+    expect(close).toHaveBeenCalledOnce();
+  });
 });
