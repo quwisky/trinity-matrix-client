@@ -1,5 +1,5 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-  @for (problem of health.problems(); track problem.reference) {
+  @for (state of presenceProblems(); track state.problem.reference) {
     <aside
       class="border-b border-border bg-muted px-4 py-3 text-sm"
       role="status"
@@ -13,10 +13,10 @@
         trnBtn
         type="button"
         data-testid="app-presence-retry"
-        [disabled]="health.recovering()"
-        (click)="retryPresence(problem.reference, problem.generation)"
+        [disabled]="state.recovering"
+        (click)="retryPresence(state.problem)"
       >
-        {{ health.recovering() ? 'Retrying presence…' : 'Retry presence' }}
+        {{ state.recovering ? 'Retrying presence…' : 'Retry presence' }}
       </button>
     </aside>
   }
