@@ -181,14 +181,13 @@ async function openRoomWithMembers(
   await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 
   const members = page.locator('.members');
-  if (!(await members.isVisible().catch(() => false))) {
-    const toggle = page.getByTestId('toggle-members');
-    if (await toggle.isVisible().catch(() => false)) {
-      await toggle.click();
-    } else {
-      await page.getByTestId('room-actions-overflow').click();
-      await page.getByTestId('overflow-toggle-members').click();
-    }
+  await expect(members).toBeHidden();
+  const toggle = page.getByTestId('toggle-members');
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+  } else {
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-toggle-members').click();
   }
   await expect(members).toBeVisible({ timeout: 15_000 });
 }
@@ -340,9 +339,8 @@ test.describe('Member role sections', () => {
     await row.first().click();
     await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
     const members = page.locator('.members');
-    if (!(await members.isVisible().catch(() => false))) {
-      await page.getByTestId('toggle-members').click();
-    }
+    await expect(members).toBeHidden();
+    await page.getByTestId('toggle-members').click();
     await expect(members).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.members .member')).toHaveCount(2, {
       timeout: 20_000,

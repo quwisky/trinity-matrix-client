@@ -72,6 +72,24 @@ export class AccountRoutingService {
     this.openRoom(selection, origin);
   }
 
+  /** Open one exact Conversation and present its member roster once Workspace is ready. */
+  onOpenRoomMembers(
+    selection: ExactRoomSelection,
+    origin: WorkspaceRoomNavigationOrigin = 'room-action',
+  ): void {
+    if (
+      selection.accountId === this.workspace.activeAccountId() &&
+      selection.roomId === this.workspace.activeRoomId() &&
+      this.workspace.pane() === 'conversation'
+    ) {
+      this.roomSurfaces.transition({ kind: 'open-members' });
+      return;
+    }
+    this.openRoom(selection, origin, () => {
+      this.roomSurfaces.transition({ kind: 'open-members' });
+    });
+  }
+
   /**
    * Select a space pill from the rail. In mixed mode a foreign account's space switches to
    * that account first; Home (`null`) and same-account spaces select directly.
@@ -107,7 +125,10 @@ export class AccountRoutingService {
       this.openRoom(
         { roomId, accountId: room.accountId },
         'room-action',
-        eventId,
+        eventId
+          ? () =>
+              this.roomSurfaces.transition({ kind: 'reveal-message', eventId })
+          : undefined,
       );
       return;
     }
@@ -148,7 +169,7 @@ export class AccountRoutingService {
   private openRoom(
     selection: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin,
-    eventId?: string,
+    onReady?: () => void,
   ): void {
     const changesAccount =
       selection.accountId !== this.workspace.activeAccountId();
@@ -157,14 +178,14 @@ export class AccountRoutingService {
       changesAccount
         ? 'Unable to open that account right now.'
         : 'Unable to open that destination right now.',
-      eventId,
+      onReady,
     );
   }
 
   private navigate(
     intent: WorkspaceNavigationIntent,
     error: string,
-    eventId?: string,
+    onReady?: () => void,
   ): void {
     this.workspace
       .navigate(intent)
@@ -172,8 +193,8 @@ export class AccountRoutingService {
       .subscribe((outcome) => {
         if (outcome.kind !== 'ready') {
           void this.status.showError(error);
-        } else if (eventId) {
-          this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+        } else {
+          onReady?.();
         }
       });
   }

@@ -357,8 +357,9 @@ export class SpaceActionsService {
    * for it. One moderation surface rather than a space-shaped copy of it.
    */
   onOpenSpaceMembers(): void {
+    const accountId = this.store.activeAccountId();
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId) {
+    if (!accountId || !spaceId) {
       return;
     }
     this.dialog
@@ -374,7 +375,10 @@ export class SpaceActionsService {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((member) => {
-        this.memberActions.openMemberInfo(member, spaceId);
+        this.memberActions.openMemberInfo(member, {
+          accountId,
+          roomId: spaceId,
+        });
       });
   }
 }

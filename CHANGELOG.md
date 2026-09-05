@@ -8,12 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- **Message-related Room surfaces now share one page-scoped lifecycle.** Threads, thread detail,
-  pinned messages, in-Room search, message reveal, and Workspace Back use one synchronous
-  transition over read-only exact-Conversation state. Conversation changes discard transient
-  panels and jump targets, while reveal closes the slot before the post-render jump and repeats
-  the same event through a revision. Writable shell state remains temporarily limited to the
-  member-family compatibility path for its follow-up migration.
+- **Room panels now share one predictable lifecycle.** Every shell starts with the member list
+  closed. An explicit member choice survives Room and Account changes for that shell, while
+  Threads, thread detail, pinned messages, search, and member details temporarily take the same
+  slot and retreat to the remembered member list. The lifecycle also owns responsive drawer
+  cleanup, focus restoration, Escape, swipe, and Workspace Back behavior; stale Conversation
+  payloads and message reveals cannot leak into the next Room.
 
 - **Session projection startup no longer belongs to routes or presentation hosts.** Room Library,
   Trust, Identity, Notification, and Room Administration services now expose cold owned

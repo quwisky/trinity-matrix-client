@@ -416,11 +416,12 @@ test.describe('Pin messages', () => {
     await channel.first().click();
     await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 
-    // 1. The slot is seeded to the member roster at this width, and the roster is a fixed
-    //    240px navigation column that does not read `--shell-right-panel-w`. A divider there
-    //    highlights and moves its value while the pane beside it stays put — and it is the
-    //    first divider anyone meets.
+    // 1. Explicitly open the fixed 240px member column. It does not read
+    //    `--shell-right-panel-w`, so a divider there would move a value while the pane beside
+    //    it stayed put.
     const divider = page.getByRole('separator', { name: 'Panel width' });
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible({
       timeout: 10_000,
     });

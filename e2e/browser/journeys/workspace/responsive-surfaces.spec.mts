@@ -211,12 +211,8 @@ test.describe('Responsive auth, crypto, and overlay surfaces', () => {
     await page.keyboard.press('Escape');
     await expect(picker).toBeHidden();
 
-    // The wide shell deliberately starts with the member column open. Close it before
-    // exercising the phone reflow so a desktop-only panel is not left covering the
-    // composer while the media query transition settles.
+    // Every shell starts with the member column closed, including the wide layout.
     const members = page.getByTestId('toggle-members');
-    await expect(members).toHaveAttribute('aria-pressed', 'true');
-    await members.click();
     await expect(members).toHaveAttribute('aria-pressed', 'false');
 
     await page.setViewportSize({ width: 320, height: 568 });

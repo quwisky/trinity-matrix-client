@@ -253,7 +253,7 @@
               shape="icon"
               class="max-md:hidden"
               (click)="toggleMembers()"
-              [attr.aria-pressed]="store.membersOpen()"
+              [attr.aria-pressed]="roomSurfaces.membersVisible()"
               trnTooltip="Members"
               aria-label="Members"
               data-testid="toggle-members"
@@ -361,7 +361,7 @@
         class="chat-body"
         data-right-panel-slot
         trnDrawerSwipe
-        [drawerEnabled]="membersAreDrawer()"
+        [drawerEnabled]="roomSurfaces.membersAreDrawer()"
         [drawerOpen]="!!roomSurfaces.renderedSurface()"
         [drawerWidth]="drawerWidth()"
         (opened)="onDrawerSwipedOpen()"
@@ -459,8 +459,7 @@
                    that does not read `--shell-right-panel-w` (and 240 is below this
                    handle's own minimum). Rendered there it was a divider that highlighted,
                    moved its `aria-valuenow` and rewrote the stored width while the pane
-                   beside it stayed put — and the roster is what the slot is seeded to, so
-                   that was the first divider anyone met. -->
+                   beside it stayed put. -->
               <trn-pane-handle
                 class="hidden members:block"
                 cssVariable="--shell-right-panel-w"
@@ -484,7 +483,7 @@
                cannot rely on is worse than not claiming it. -->
             <div
               class="fixed inset-0 z-[var(--trinity-z-scrim)] hidden bg-overlay-scrim max-members:block"
-              (click)="closeRightPanel()"
+              (click)="clearRightPanel()"
               aria-hidden="true"
               data-testid="members-backdrop"
             ></div>

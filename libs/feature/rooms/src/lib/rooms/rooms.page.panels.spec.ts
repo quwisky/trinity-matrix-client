@@ -551,9 +551,8 @@ describe('RoomsPage panels, pins and media', () => {
   it('does not open the threads-list panel without an active room', () => {
     const shell = build();
     setRouteRoom(null);
-    // Whatever the slot was showing before the press (the member list, seeded at this
-    // width). Identity, so "opened threads" and "re-opened members" both fail: nothing at
-    // all may be written when there is no room for the list to be about.
+    // The empty slot must keep its identity. That makes both "opened threads" and
+    // "re-opened members" fail: nothing at all may be written without a Room for the list.
     const before = shell.surfaces.renderedSurface();
 
     shell.messages.openThreadsList();
@@ -594,7 +593,7 @@ describe('RoomsPage panels, pins and media', () => {
     await settleWorkspace();
     expect(shell.surfaces.renderedSurface()).toBeNull();
 
-    shell.store.rightPanel.set({ kind: 'members' });
+    shell.surfaces.transition({ kind: 'open-members' });
     setRouteRoom('!c:hs');
     await settleWorkspace();
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });

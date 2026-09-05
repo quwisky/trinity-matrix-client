@@ -114,6 +114,9 @@ test.describe('Remove a member', () => {
         pass: adminPass,
       } as SynapseSession);
       await openRoom(page, roomName);
+      await expect(page.locator('.chat-members')).toBeHidden();
+      await page.getByTestId('toggle-members').click();
+      await expect(page.locator('.chat-members')).toBeVisible();
 
       const memberRow = page.locator('[data-testid="member-row"]', {
         hasText: memberName,

@@ -56,6 +56,17 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
   });
 }
 
+async function openMembers(page: Page): Promise<void> {
+  const toggle = page.getByTestId('toggle-members');
+  if (await toggle.isVisible().catch(() => false)) {
+    await toggle.click();
+  } else {
+    await page.getByTestId('room-actions-overflow').click();
+    await page.getByTestId('overflow-toggle-members').click();
+  }
+  await expect(page.locator('.chat-members')).toBeVisible();
+}
+
 test.describe('Member info panel', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -106,8 +117,10 @@ test.describe('Member info panel', () => {
       pass: adminPass,
     } as SynapseSession);
     await openRoom(page, roomName);
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await openMembers(page);
 
-    // The member list is open by default — click the member's row.
+    // The member list is explicit shell state — open it before selecting a row.
     const memberRow = page.locator('[data-testid="member-row"]', {
       hasText: memberName,
     });

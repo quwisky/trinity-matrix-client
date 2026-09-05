@@ -223,6 +223,13 @@ offered at all.
 
 ## Members and moderation
 
+Rooms start with the member list closed. Use **Members** in the room header (or its compact
+overflow menu) to show it. Trinity remembers whether you left the list open while you move between
+Rooms or Accounts in the same shell, but does not persist that choice after a reload or restart.
+Threads, pinned messages, search, and a member profile temporarily use the same panel; closing one
+returns to the member list only when you had it open. On a phone the list is a drawer that closes
+with its backdrop, a swipe, Escape, or Back.
+
 The member list groups joined members into role sections, highest first: Owner, Admin,
 Moderator, Member. Within a section, members who are online sort above away and offline.
 Owner means the room's creator, which is why it is a separate section rather than a

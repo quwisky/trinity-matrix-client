@@ -87,11 +87,9 @@ export function mediaQuerySignal(
 /**
  * Whether `query` matches RIGHT NOW, with no subscription and no lifetime to manage.
  *
- * The one-shot counterpart to {@link mediaQuerySignal}, and the difference is a behavioural
- * decision rather than a convenience: a value read once SEEDS a state the user can then
- * change, while a signal keeps overwriting it. `RoomShellStore.membersOpen` is the seed case
- * — it decides whether the member column starts open, and a live signal there would reopen
- * the column on every rotation across the boundary, stomping an explicit close.
+ * The one-shot counterpart to {@link mediaQuerySignal}. Use it only when the caller
+ * intentionally needs a snapshot; responsive state that must follow viewport changes uses
+ * the signal form and applies any user-state policy explicitly.
  *
  * `matchMedia` is feature-detected on the same terms as the signal above: a context without
  * it reads `false`, so callers must pick the direction whose `false` is the safe fallback.

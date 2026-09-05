@@ -173,8 +173,8 @@ describe('Workspace semantic navigation boundary', () => {
     ).not.toContain('this.router');
     expect(
       methodSource(
-        `${featureRoot}/rooms.page.ts`,
-        'RoomsPage',
+        `${featureRoot}/room-surface-lifecycle.ts`,
+        'RoomSurfaceLifecycle',
         'dismissWorkspaceSurface',
       ),
     ).not.toContain('this.router');

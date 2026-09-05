@@ -5,6 +5,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
+import { devices } from '@playwright/test';
 import {
   login,
   synapseSession,
@@ -29,7 +30,7 @@ const session = synapseSession();
 // A phone viewport: below md (768) so the header uses the kebab, and below the
 // `members` breakpoint (1100) so
 // the member list is a drawer.
-test.use({ viewport: { width: 390, height: 844 } });
+test.use({ ...devices['Pixel 5'] });
 
 interface ApiUser {
   userId: string;
@@ -181,6 +182,7 @@ test.describe('Mobile room navigation', () => {
     await openOverflowMenu(page);
     await page.getByTestId('overflow-toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
+    await expect(page.getByTestId('member-filter')).toBeFocused();
     await expect(page.getByTestId('members-backdrop')).toBeVisible();
     // Both the reader and the buddy have synced into the list.
     await expect(page.locator('.members .member')).toHaveCount(2, {
@@ -243,10 +245,9 @@ test.describe('Mobile room navigation', () => {
     page,
     request,
   }) => {
-    // This is the half that actually pins `onEscapeKey`'s guard. Above the `members`
-    // breakpoint the member list is a static column that starts OPEN, so a handler that
-    // closed it unconditionally would hide it here. Verified by mutation: dropping the
-    // `membersOpen() && membersShownAsDrawer()` guard fails this test and only this test.
+    // This is the half that pins the document-Escape guard. Above the `members`
+    // breakpoint the explicitly opened member list is a static column, so Escape belongs
+    // to the focused editor rather than closing the column.
     const runId = `${testResourceId('run')}w`;
     const { reader, roomName } = await seedRoom(
       request,
@@ -260,10 +261,76 @@ test.describe('Mobile room navigation', () => {
     const channel = page.locator('.channel', { hasText: roomName });
     await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
     await channel.first().click();
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible();
 
     await page.keyboard.press('Escape');
 
     await expect(page.locator('.chat-members')).toBeVisible();
+  });
+
+  test('remembers member choice while temporary surfaces and widths change', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}l`;
+    const { reader, roomName } = await seedRoom(request, hs, runId);
+    const actor = await apiLogin(
+      request,
+      hs,
+      reader.user as string,
+      reader.pass as string,
+    );
+    const otherRoomName = `Mobile Other ${runId}`;
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: actor.headers,
+      data: { name: otherRoomName, preset: 'private_chat' },
+    });
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await login(page, reader);
+    const firstRoom = page.locator('.channel', { hasText: roomName }).first();
+    await firstRoom.waitFor({ state: 'visible', timeout: 30_000 });
+    await firstRoom.click();
+
+    const members = page.locator('.chat-members');
+    const toggle = page.getByTestId('toggle-members');
+    await expect(members).toBeHidden();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await toggle.click();
+    await expect(members).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(toggle).toBeFocused();
+
+    await page.getByTestId('open-threads').click();
+    await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
+    await expect(members).toBeHidden();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+    await page.setViewportSize(devices['Pixel 5'].viewport);
+    await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
+    await page.getByRole('button', { name: 'Close threads' }).click();
+    await expect(members).toBeHidden();
+
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-toggle-members').click();
+    await expect(members).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await expect(members).toBeVisible();
+
+    const otherRoom = page
+      .locator('.channel', { hasText: otherRoomName })
+      .first();
+    await otherRoom.waitFor({ state: 'visible', timeout: 30_000 });
+    await otherRoom.click();
+    await expect(members).toBeVisible();
+
+    await toggle.click();
+    await expect(members).toBeHidden();
+    await firstRoom.click();
+    await expect(members).toBeHidden();
   });
 });

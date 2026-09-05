@@ -35,7 +35,7 @@ function publicMethods(file, className) {
     .map((member) => member.name.getText(parsed));
 }
 
-/** Freeze the #378 message-surface boundary and #379 member compatibility path. */
+/** Freeze the #378/#379 single Room-surface lifecycle boundary. */
 describe('Room surface lifecycle boundary', () => {
   const lifecycleFile = `${featureRoot}/room-surface-lifecycle.ts`;
 
@@ -74,7 +74,7 @@ describe('Room surface lifecycle boundary', () => {
     expect(page).not.toContain('this.workspace.eventTarget()');
   });
 
-  it('freezes writable shell state to the member-family compatibility callers', () => {
+  it('keeps every Room surface and its browser lifecycle out of the shell store and page', () => {
     const productionSources = globSync(`${featureRoot}/**/*.ts`, {
       cwd: workspaceRoot,
     }).filter(
@@ -85,16 +85,19 @@ describe('Room surface lifecycle boundary', () => {
       .filter((file) => /\.rightPanel\.(?:set|update)\(/u.test(source(file)))
       .sort();
 
-    expect(writers).toEqual([
-      `${featureRoot}/member-actions.service.ts`,
-      `${featureRoot}/room-shell-navigation.service.ts`,
-      `${featureRoot}/room-surface-lifecycle.ts`,
-      `${featureRoot}/rooms.page.ts`,
-    ]);
+    expect(writers).toEqual([]);
     const store = source(`${featureRoot}/room-shell-store.ts`);
-    expect(store).not.toMatch(
-      /readonly kind: '(?:threads|thread|pinned|search)'/u,
-    );
-    expect(store).toContain('until the member family follows in issue #379');
+    expect(store).not.toContain('rightPanel');
+    expect(store).not.toContain('membersOpen');
+
+    const page = source(`${featureRoot}/rooms.page.ts`);
+    expect(page).not.toContain('WorkspaceBackService');
+    expect(page).not.toContain('BELOW_MEMBERS_QUERY');
+    expect(page).not.toContain('manageRightPanelFocus');
+    expect(page).not.toContain('activeWorkspaceSurface');
+
+    const memberActions = source(`${featureRoot}/member-actions.service.ts`);
+    expect(memberActions).toContain('RoomSurfaceLifecycle');
+    expect(memberActions).toContain("kind: 'open-member'");
   });
 });

@@ -222,7 +222,7 @@ export class ShellShortcutsService {
    * The right-hand slot is deliberately not part of this guard, unlike
    * {@link onGlobalKeydown}'s: this is also the header search button's handler, reachable
    * while a panel is open, and a button that silently does nothing is worse than a switch.
-   * Picking a room takes the slot with it — `rightPanel` is keyed on the open room.
+   * Picking a room retires any temporary surface with the old Conversation lifecycle.
    */
   openSwitcher(): void {
     if (this.dialog.hasOpen()) {
