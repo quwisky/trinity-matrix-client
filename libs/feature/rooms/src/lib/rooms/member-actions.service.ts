@@ -4,6 +4,7 @@ import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
 import { MemberInfoService } from '../member-info/member-info.service';
+import { type ExactRoomSelection } from '../shared/exact-selection';
 import { UserCardService } from '../user-card/user-card.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -33,35 +34,45 @@ export class MemberActionsService {
 
   /** Member-list row: open the member's info panel; "Message" opens/reuses a DM. */
   onSelectMember(member: MemberSummary): void {
+    const accountId = this.store.activeAccountId();
     const roomId = this.store.activeRoomId();
-    if (roomId) {
+    if (accountId && roomId) {
       // No need to close the list first any more: member info goes into the same slot, so
       // it REPLACES the roster rather than stacking over it. That closing step existed only
       // because the info panel was a dialog that would otherwise sit on top of the drawer.
-      this.openMemberInfo(member, roomId);
+      this.openMemberInfo(member, { accountId, roomId });
     }
   }
 
   /**
    * Show a member's info — in the shell's slot for the OPEN room, as a dialog anywhere else.
    *
-   * The discriminator is the room id, not "is a room open". `space-actions.service.ts` opens
-   * this from inside the space-members dialog with a SPACE id: there is no slot for a space,
-   * and the shell behind it may even have a different room open, so putting it there would
-   * show member info for one room while the timeline showed another. Comparing against
-   * `activeRoomId` is what keeps the slot meaning "the open room's right-hand panel".
+   * The discriminator is the exact Account-and-Room owner, not "is a room open".
+   * `space-actions.service.ts` opens this from inside the space-members dialog with a SPACE
+   * id: there is no slot for a space, and the shell behind it may even have a different
+   * Conversation open. Exact comparison keeps the slot tied to the open Conversation even
+   * when two Accounts contain the same Matrix room id.
    */
-  openMemberInfo(member: MemberSummary, roomId: string): void {
-    const direct = this.rooms.directRoomIds().has(roomId);
+  openMemberInfo(member: MemberSummary, owner: ExactRoomSelection): void {
+    const activeAccountId = this.store.activeAccountId();
+    const direct =
+      owner.accountId === activeAccountId &&
+      this.rooms.directRoomIds().has(owner.roomId);
 
-    if (roomId === this.store.activeRoomId()) {
-      this.roomSurfaces.transition({ kind: 'dismiss' });
-      this.store.rightPanel.set({ kind: 'member', member, direct });
+    if (
+      owner.accountId === activeAccountId &&
+      owner.roomId === this.store.activeRoomId()
+    ) {
+      this.roomSurfaces.transition({
+        kind: 'open-member',
+        member,
+        direct,
+      });
       return;
     }
 
     this.memberInfo
-      .open$(member, roomId, direct)
+      .open$(member, owner.roomId, direct)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messageUserId) => {
         if (messageUserId) this.startDirectMessage(messageUserId);
@@ -70,7 +81,7 @@ export class MemberActionsService {
 
   /** "Message" picked in the slot's member panel — the dialog path resolves this itself. */
   onMemberMessage(userId: string): void {
-    this.store.rightPanel.set(null);
+    this.roomSurfaces.transition({ kind: 'dismiss' });
     this.startDirectMessage(userId);
   }
 
@@ -85,7 +96,7 @@ export class MemberActionsService {
    * them under a Moderator heading; that heading is in the roster.
    */
   onMemberPanelDismissed(): void {
-    this.store.rightPanel.set({ kind: 'members' });
+    this.roomSurfaces.transition({ kind: 'dismiss' });
   }
 
   /** Open (or reuse) a direct message with `userId` and navigate to it. */

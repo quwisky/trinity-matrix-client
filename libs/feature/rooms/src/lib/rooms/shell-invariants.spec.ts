@@ -14,6 +14,7 @@ import { MockProvider } from 'ng-mocks';
 import { TrnToastService } from '@trinity/components/overlay';
 import { describe, expect, it } from 'vitest';
 import { RoomShellStore } from './room-shell-store';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -182,12 +183,13 @@ describe('one error channel produces one toast per turn', () => {
 });
 
 /**
- * The thirteen classes that must be page-scoped rather than root-provided. Typed as
+ * The fourteen classes that must be page-scoped rather than root-provided. Typed as
  * `Type<unknown>` so the array is a list of tokens rather than a union TestBed.inject
  * cannot resolve to one instance type.
  */
 const COORDINATORS: Type<unknown>[] = [
   RoomShellStore,
+  RoomSurfaceLifecycle,
   ShellStatusService,
   RoomShellViewModel,
   RoomShellNavigationService,

@@ -80,8 +80,15 @@ function showSurface(
     shell.surfaces.transition({ kind: 'open', surface });
     return;
   }
-  shell.surfaces.transition({ kind: 'dismiss' });
-  shell.store.rightPanel.set(surface);
+  if (surface.kind === 'members') {
+    shell.surfaces.transition({ kind: 'open-members' });
+    return;
+  }
+  shell.surfaces.transition({
+    kind: 'open-member',
+    member: surface.member,
+    direct: surface.direct,
+  });
 }
 
 // The quick switcher (Ctrl/Cmd+K) presents a modal and, on a selection, jumps per
@@ -505,55 +512,75 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('closing a room resets an open members drawer so it does not carry to the next room', () => {
+  it('remembers members through the list pane and restores them in the next room', async () => {
     // Force the narrow (drawer) layout so the member list reads as an overlay.
     const restore = stubNarrowLayout();
     try {
       const shell = build();
       shell.nav.onSelectRoom({ roomId: '!a:hs', accountId: '@me:hs' });
-      shell.store.rightPanel.set({ kind: 'members' }); // the drawer is open in room A
-      expect(shell.store.membersOpen()).toBe(true);
+      await settleWorkspace();
+      shell.surfaces.transition({ kind: 'open-members' });
+      expect(shell.surfaces.membersVisible()).toBe(true);
 
       shell.page.backToList();
+      await settleWorkspace();
+      expect(shell.surfaces.renderedSurface()).toBeNull();
 
-      // The drawer state is dropped, so it won't slide in over the next room.
-      expect(shell.store.membersOpen()).toBe(false);
+      shell.nav.onSelectRoom({ roomId: '!b:hs', accountId: '@me:hs' });
+      await settleWorkspace();
+      expect(shell.surfaces.membersVisible()).toBe(true);
     } finally {
       restore();
     }
   });
 
-  it('seeds the members list open as the wide static column and toggleMembers flips it', () => {
-    // The base stub reports non-drawer (matches:false) — the wide layout — so the static
-    // members column shows by default; toggleMembers hides and re-shows it.
+  it('starts the wide member column closed and toggleMembers flips it', () => {
+    setRouteRoom('!r:hs');
     const shell = build();
-    expect(shell.store.membersOpen()).toBe(true);
+    expect(shell.surfaces.membersVisible()).toBe(false);
 
     shell.page.toggleMembers();
-    expect(shell.store.membersOpen()).toBe(false);
+    expect(shell.surfaces.membersVisible()).toBe(true);
 
     shell.page.toggleMembers();
-    expect(shell.store.membersOpen()).toBe(true);
+    expect(shell.surfaces.membersVisible()).toBe(false);
+  });
+
+  it('updates remembered member visibility from drawer swipe intents', () => {
+    setRouteRoom('!r:hs');
+    const shell = build();
+
+    shell.page.onDrawerSwipedOpen();
+    expect(shell.surfaces.membersVisible()).toBe(true);
+
+    shell.page.onDrawerSwipedClosed();
+    expect(shell.surfaces.membersVisible()).toBe(false);
+
+    shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
+    shell.page.onDrawerSwipedClosed();
+    shell.page.closeRightPanel();
+    expect(shell.surfaces.membersVisible()).toBe(false);
   });
 
   it('seeds the members drawer closed on the narrow layout', () => {
-    // At/below the drawer cutoff the list is the overlay drawer, which starts closed
-    // rather than defaulting open like the wide static column.
+    // At/below the drawer cutoff the list is an overlay drawer, and every new shell starts
+    // with that user-owned surface closed.
     const restore = stubNarrowLayout();
     try {
-      expect(build().store.membersOpen()).toBe(false);
+      expect(build().surfaces.membersVisible()).toBe(false);
     } finally {
       restore();
     }
   });
 
-  it('closeRightPanel empties the slot (the mobile drawer backdrop)', () => {
+  it('dismisses the visible roster through the panel-close intent', () => {
+    setRouteRoom('!r:hs');
     const shell = build();
     showSurface(shell, { kind: 'members' });
-    expect(shell.store.membersOpen()).toBe(true);
+    expect(shell.surfaces.membersVisible()).toBe(true);
 
     shell.page.closeRightPanel();
-    expect(shell.store.membersOpen()).toBe(false);
+    expect(shell.surfaces.membersVisible()).toBe(false);
   });
 
   it('Escape closes a panel at the WIDE layout, where nothing else does', () => {
@@ -575,7 +602,7 @@ describe('RoomsPage mobile navigation', () => {
     // is an overlay like the rest and goes — covered by the drawer test above.
     const shell = build();
     setRouteRoom('!r:hs');
-    shell.store.rightPanel.set({ kind: 'members' });
+    showSurface(shell, { kind: 'members' });
 
     shell.page.onEscapeKey();
 
@@ -587,7 +614,8 @@ describe('RoomsPage mobile navigation', () => {
     // land in the same place. Only the mobile backdrop empties the slot outright.
     const shell = build();
     setRouteRoom('!r:hs');
-    shell.store.rightPanel.set({
+    showSurface(shell, { kind: 'members' });
+    showSurface(shell, {
       kind: 'member',
       member: {
         userId: '@bob:hs',
@@ -620,7 +648,7 @@ describe('RoomsPage mobile navigation', () => {
       shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
       trigger.blur(); // the panel took focus, then its removal orphans it
-      shell.page.closeRightPanel();
+      shell.page.clearRightPanel();
       TestBed.tick();
       TestBed.tick(); // the restore is deferred to after the render that removes the panel
 
@@ -644,7 +672,7 @@ describe('RoomsPage mobile navigation', () => {
       shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
 
-      shell.page.closeRightPanel();
+      shell.page.clearRightPanel();
       elsewhere.focus();
       TestBed.tick();
       TestBed.tick();
@@ -754,7 +782,7 @@ describe('RoomsPage mobile navigation', () => {
       TestBed.tick();
       expect(document.activeElement).toBe(threadClose);
 
-      shell.page.closeRightPanel();
+      shell.page.clearRightPanel();
       slot.remove();
       TestBed.tick();
       TestBed.tick();
@@ -766,9 +794,10 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('remembers an outside opener when the wide roster was already seeded', () => {
+  it('remembers an outside opener when the wide roster was already open', () => {
     const shell = build();
     setRouteRoom('!r:hs');
+    showSurface(shell, { kind: 'members' });
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     TestBed.tick(); // establish the already-rendered roster before its toolbar replacement
     const trigger = document.createElement('button');
@@ -795,7 +824,7 @@ describe('RoomsPage mobile navigation', () => {
       TestBed.tick();
       expect(document.activeElement).toBe(threadClose);
 
-      shell.page.closeRightPanel();
+      shell.page.clearRightPanel();
       slot.remove();
       TestBed.tick();
       TestBed.tick();
@@ -807,9 +836,10 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  it('remembers a timeline opener beside the seeded wide roster', () => {
+  it('remembers a timeline opener beside an open wide roster', () => {
     const shell = build();
     setRouteRoom('!r:hs');
+    showSurface(shell, { kind: 'members' });
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     TestBed.tick();
     const slot = document.createElement('div');
@@ -833,7 +863,7 @@ describe('RoomsPage mobile navigation', () => {
       slot.append(panel);
       threadClose.focus();
 
-      shell.page.closeRightPanel();
+      shell.page.clearRightPanel();
       panel.remove();
       TestBed.tick();
       TestBed.tick();
@@ -893,10 +923,10 @@ describe('RoomsPage mobile navigation', () => {
     const widthOf = () =>
       (shell.page as unknown as { drawerWidth(): number }).drawerWidth();
 
-    shell.store.rightPanel.set({ kind: 'members' });
+    showSurface(shell, { kind: 'members' });
     expect(widthOf()).toBe(240);
 
-    shell.store.rightPanel.set(null);
+    shell.surfaces.transition({ kind: 'clear' });
     expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
 
     shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
@@ -904,8 +934,8 @@ describe('RoomsPage mobile navigation', () => {
   });
 
   it('a swipe with no room open opens nothing', () => {
-    // The slot's template is gated on an open room, so writing the state without one leaves
-    // a roster queued for whichever room is opened next.
+    // The lifecycle rejects presentation without an exact Conversation, so the gesture
+    // cannot queue a roster for whichever Room is opened next.
     const shell = build();
     setRouteRoom(null);
     const before = shell.surfaces.renderedSurface();
@@ -927,6 +957,20 @@ describe('RoomsPage mobile navigation', () => {
     expect(shell.store.activeRoomId()).toBe('!r:hs');
     expect(timelineOpen).toHaveBeenCalledWith('!r:hs');
     expect(releaseAll).toHaveBeenCalled();
+  });
+
+  it('opens an exact target Room and its roster from one Members intent', async () => {
+    const shell = build();
+
+    shell.routing.onOpenRoomMembers({
+      roomId: '!members:hs',
+      accountId: '@me:hs',
+    });
+    await settleWorkspace();
+
+    expect(shell.store.activeAccountId()).toBe('@me:hs');
+    expect(shell.store.activeRoomId()).toBe('!members:hs');
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('silently ignores selecting the exact Room that is already open', async () => {

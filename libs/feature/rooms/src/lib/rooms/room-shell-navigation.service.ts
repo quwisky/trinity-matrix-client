@@ -10,7 +10,6 @@ import {
   SelectedRoomLibraryService,
   type RoomSummary,
 } from '@trinity/data-access/room-library';
-import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
   type WorkspaceNavigationIntent,
   WorkspaceNavigationService,
@@ -19,7 +18,6 @@ import {
 } from '@trinity/application/workspace';
 import { RoomShellStore } from './room-shell-store';
 import { ShellStatusService } from './shell-status.service';
-import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import {
   type ExactRoomSelection,
   type ExactSpaceSelection,
@@ -35,15 +33,10 @@ import {
 @Injectable()
 export class RoomShellNavigationService {
   private readonly store = inject(RoomShellStore);
-  private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly status = inject(ShellStatusService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly membersAreDrawer = mediaQuerySignal(
-    BELOW_MEMBERS_QUERY,
-    this.destroyRef,
-  );
   private focusActiveView!: () => void;
   private hasProjected = false;
 
@@ -92,24 +85,17 @@ export class RoomShellNavigationService {
   }
 
   closeOpenRoom(): void {
-    if (this.membersAreDrawer()) this.clearDrawerSurface();
     this.navigate({ kind: 'list', origin: 'compact-close' });
   }
 
   /** Clear selection after the Room is removed rather than merely hiding its pane. */
   clearOpenRoom(): void {
-    if (this.membersAreDrawer()) this.clearDrawerSurface();
     this.navigate({ kind: 'list', origin: 'room-removed' });
   }
 
   /** Every room the shell can currently open, independent of the active sidebar scope. */
   knownRooms(): readonly RoomSummary[] {
     return this.selected.view().rooms;
-  }
-
-  private clearDrawerSurface(): void {
-    this.roomSurfaces.transition({ kind: 'dismiss' });
-    this.store.rightPanel.set(null);
   }
 
   private openScope(

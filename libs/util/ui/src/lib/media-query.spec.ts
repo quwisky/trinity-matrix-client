@@ -99,10 +99,10 @@ describe('media queries', () => {
     });
 
     it('registers no listener, which is the whole difference from the signal', () => {
-      // Not a style point. `RoomShellStore.membersOpen` SEEDS from this, and a listener here
-      // would keep overwriting a state the user owns — reopening the member column on every
-      // rotation across the breakpoint. Asserted as listener count rather than as "the
-      // returned boolean did not change", which a primitive cannot do anyway.
+      // Snapshot callers ask again for each new intent. A listener here would instead create
+      // a hidden live resource with no owner to observe or destroy it. Asserted as listener
+      // count rather than as "the returned boolean did not change", which a primitive cannot
+      // do anyway.
       const list = fakeList(false);
       vi.stubGlobal('matchMedia', vi.fn().mockReturnValue(list.list));
 

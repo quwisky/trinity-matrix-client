@@ -618,18 +618,18 @@ open, and most of them report failure through the same channel — so domain-fir
 reach back into the page, or into each other, on day one. Cutting horizontally instead removes
 the collision before it can happen:
 
-| Layer                     | What it holds                                                  | Depends on                     |
-| ------------------------- | -------------------------------------------------------------- | ------------------------------ |
-| `RoomShellStore`          | Sidebar filter and temporary member-family compatibility state | Workspace                      |
-| `RoomSurfaceLifecycle`    | Exact-Conversation message surfaces, reveal, and Back          | Workspace and the legacy store |
-| `ShellStatusService`      | One busy/error pair, and the toasts it drives                  | nothing                        |
-| `RoomShellViewModel`      | Every `computed()` the shell derives                           | the store                      |
-| Ten workflow coordinators | Prompts, confirmations, writes, terminal navigation            | the layers above               |
+| Layer                     | What it holds                                                   | Depends on       |
+| ------------------------- | --------------------------------------------------------------- | ---------------- |
+| `RoomShellStore`          | Sidebar filter and Workspace-derived shell coordinates          | Workspace        |
+| `RoomSurfaceLifecycle`    | Room surfaces, responsive and focus lifecycle, reveal, and Back | Workspace        |
+| `ShellStatusService`      | One busy/error pair, and the toasts it drives                   | nothing          |
+| `RoomShellViewModel`      | Every `computed()` the shell derives                            | the store        |
+| Ten workflow coordinators | Prompts, confirmations, writes, terminal navigation             | the layers above |
 
-The view model stays pure. The Room-surface lifecycle owns the one semantic state machine and Back
-registration; coordinators submit transitions while the page only renders its read-only state.
-The remaining direct `RoomShellStore.rightPanel` writers are a frozen member-family compatibility
-allowlist removed by the next migration slice.
+The view model stays pure. The Room-surface lifecycle owns the one semantic state machine, browser
+focus adapter, responsive member policy, and Back registration; coordinators submit transitions
+while the page only renders its read-only state. Remembered member visibility lasts for that page
+scope, while temporary payloads are keyed to the exact Account and Room.
 
 !!! warning "Never `providedIn: 'root'` for one of these"
 
@@ -641,7 +641,7 @@ allowlist removed by the next migration slice.
     navigations, so returning to `/rooms` would show a room marked active whose panes
     `ngOnDestroy` already closed.
 
-    `shell-invariants.spec.ts` pins both halves: that none of the thirteen resolves from a bare
+    `shell-invariants.spec.ts` pins both halves: that none of the fourteen resolves from a bare
     injector, and that the page really declares them itself.
 
 Two things stay on the component because they cannot leave it. A `viewChild` query only exists

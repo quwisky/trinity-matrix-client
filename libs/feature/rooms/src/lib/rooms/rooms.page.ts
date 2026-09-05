@@ -11,26 +11,14 @@ import {
   computed,
   ElementRef,
   Injector,
-  OnDestroy,
   afterNextRender,
   effect,
   inject,
-  untracked,
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import {
-  WorkspaceBackService,
-  WorkspaceNavigationService,
-  type WorkspaceDismissResult,
-  type WorkspaceSurface,
-} from '@trinity/application/workspace';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
-import {
-  BELOW_MD_QUERY,
-  BELOW_MEMBERS_QUERY,
-  mediaQuerySignal,
-} from '@trinity/util/ui';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
@@ -49,7 +37,6 @@ import {
   FeatureFlagsService,
   ShellLayoutService,
 } from '@trinity/platform-native';
-import { Observable, defer, map, of } from 'rxjs';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { ServerRailComponent } from '../server-rail/server-rail.component';
@@ -70,11 +57,8 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { type SwipeDirection } from '../message-row/message-row.component';
-import { RoomShellStore, type LegacyMemberSurface } from './room-shell-store';
-import {
-  RoomSurfaceLifecycle,
-  type RenderedRoomSurface,
-} from './room-surface-lifecycle';
+import { RoomShellStore } from './room-shell-store';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -169,7 +153,7 @@ const PANEL_DRAWER_PX = 480;
     '(document:keydown.escape)': 'onEscapeKey()',
   },
 })
-export class RoomsPage implements OnDestroy {
+export class RoomsPage {
   /**
    * The two viewport predicates the shell branches on, live for the page's lifetime.
    *
@@ -180,17 +164,6 @@ export class RoomsPage implements OnDestroy {
     BELOW_MD_QUERY,
     inject(DestroyRef),
   );
-  /**
-   * Whether the slot is currently the overlay drawer rather than a column.
-   *
-   * `protected` rather than private: the template reads it to tell `DrawerSwipeDirective`
-   * whether there is a drawer to swipe at all.
-   */
-  protected readonly membersAreDrawer = mediaQuerySignal(
-    BELOW_MEMBERS_QUERY,
-    inject(DestroyRef),
-  );
-
   /**
    * Which way a message row is dragged to act on it, HERE and not in the list.
    *
@@ -215,7 +188,7 @@ export class RoomsPage implements OnDestroy {
    * tablets and iPads, which run wider than that in landscape.
    */
   protected readonly messageSwipeDirection = computed<SwipeDirection>(() => {
-    if (!this.membersAreDrawer() || !isMobileOs()) {
+    if (!this.roomSurfaces.membersAreDrawer() || !isMobileOs()) {
       return 'off';
     }
     if (this.roomSurfaces.renderedSurface()) {
@@ -255,12 +228,6 @@ export class RoomsPage implements OnDestroy {
     return Math.min(PANEL_DRAWER_PX, window.innerWidth);
   }
 
-  /** Offer Room and compact-Conversation surfaces to Workspace's fixed Back order. */
-  private readonly backRegistration = inject(WorkspaceBackService).register({
-    surface: () => this.activeWorkspaceSurface(),
-    dismiss: (surface) => this.dismissWorkspaceSurface(surface),
-  });
-
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
   private readonly conversations = inject(ConversationRuntime);
   readonly timeline = this.conversations.timeline;
@@ -274,7 +241,6 @@ export class RoomsPage implements OnDestroy {
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
   readonly roomSurfaces = inject(RoomSurfaceLifecycle);
-  private readonly workspace = inject(WorkspaceNavigationService);
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
   readonly nav = inject(RoomShellNavigationService);
@@ -340,95 +306,6 @@ export class RoomsPage implements OnDestroy {
       this.imagePackService.connect(roomId);
       onCleanup(() => this.imagePackService.disconnect(roomId));
     });
-    // The `?room=` deep link is gone. A notification tap now navigates to `/rooms/:roomId`
-    // like everything else, so the room it asked for arrives through `paramMap` and needs no
-    // handling here — and none of the strip-the-param-afterwards dance that went with it.
-    this.manageRightPanelFocus();
-  }
-
-  /**
-   * Hand focus into an inline replacement, or back to the trigger when the slot closes.
-   *
-   * CDK did this for the four dialogs these panels replaced. Without it a keyboard user who
-   * presses "Threads", reads the list and closes it lands on `<body>` and has to tab in from
-   * the top of the document again — and in-room search makes it worse, because it
-   * deliberately takes focus when it opens.
-   *
-   * Opening remembers the external trigger without moving focus: a destination such as
-   * search may already own autofocus. Replacing one inline panel with another preserves that
-   * trigger and focuses the destination's marked control after render. Emptying the slot
-   * restores the original trigger and ends the sequence.
-   *
-   * Both deferred paths only act when removal actually orphaned focus. Anything that has
-   * claimed it since (another panel's own autofocus, the room-change handoff, a DM the panel
-   * just opened) has a better idea than this effect does.
-   */
-  private manageRightPanelFocus(): void {
-    let trigger: HTMLElement | null = null;
-    let previousPanel: RenderedRoomSurface | null = null;
-    effect(() => {
-      const panel = this.roomSurfaces.renderedSurface();
-      untracked(() => {
-        const previous = previousPanel;
-        previousPanel = panel;
-        if (panel) {
-          trigger ??= this.activeElementOutsideRightPanel();
-          if (previous) {
-            this.focusRightPanelAfterSwap(panel);
-          }
-          return;
-        }
-        const target = trigger;
-        trigger = null;
-        if (!target) {
-          return;
-        }
-        // After the render that removes the panel, or the element is still in the way.
-        afterNextRender(
-          () => {
-            if (
-              this.roomSurfaces.renderedSurface() === null &&
-              target.isConnected &&
-              document.activeElement === document.body
-            ) {
-              target.focus();
-            }
-          },
-          { injector: this.injector },
-        );
-      });
-    });
-  }
-
-  /** Focus the destination of a panel-to-panel replacement after its template exists. */
-  private focusRightPanelAfterSwap(panel: RenderedRoomSurface): void {
-    afterNextRender(
-      () => {
-        if (
-          this.roomSurfaces.renderedSurface() !== panel ||
-          document.activeElement !== document.body
-        ) {
-          return;
-        }
-        const target = document.querySelector<HTMLElement>(
-          '[data-right-panel-slot] [data-right-panel-focus]',
-        );
-        if (target?.isConnected) {
-          target.focus();
-        }
-      },
-      { injector: this.injector },
-    );
-  }
-
-  /** Return the current focus only when it can meaningfully reopen this panel sequence. */
-  private activeElementOutsideRightPanel(): HTMLElement | null {
-    const active = document.activeElement;
-    return active instanceof HTMLElement &&
-      active !== document.body &&
-      !active.closest('[data-right-panel-surface]')
-      ? active
-      : null;
   }
 
   /**
@@ -438,15 +315,6 @@ export class RoomsPage implements OnDestroy {
    */
   onGlobalKeydown(event: Event): void {
     this.shortcutActions.onGlobalKeydown(event);
-  }
-
-  /**
-   * Only the open room's panes are torn down here.
-   *
-   * Session projections are retained by Application Runtime; this route owns only its open panes.
-   */
-  ngOnDestroy(): void {
-    this.backRegistration();
   }
 
   /**
@@ -485,125 +353,44 @@ export class RoomsPage implements OnDestroy {
 
   /** Show/hide the member list from the toolbar / overflow menu. */
   toggleMembers(): void {
-    // Toggling OFF only when the member list is what is showing. With one slot, pressing
-    // "Members" while a thread is open means "show me members instead", not "close the
-    // thread" — the button is a destination, not a switch.
-    if (this.roomSurfaces.renderedSurface()?.kind === 'members') {
-      this.store.rightPanel.set(null);
+    if (this.roomSurfaces.membersVisible()) {
+      this.roomSurfaces.transition({ kind: 'toggle-members' });
       return;
     }
-    this.roomSurfaces.transition({ kind: 'dismiss' });
-    this.store.rightPanel.set({ kind: 'members' });
+    const accountId = this.store.activeAccountId();
+    const roomId = this.store.activeRoomId();
+    if (accountId && roomId) {
+      this.routing.onOpenRoomMembers({ accountId, roomId });
+    }
   }
 
-  /** Empty the slot — the mobile drawer's backdrop, and every panel's own close button. */
+  /** Retreat to the remembered Room surface. */
   closeRightPanel(): void {
-    if (this.roomSurfaces.surface()) {
-      this.roomSurfaces.transition({ kind: 'dismiss' });
-    } else {
-      this.store.rightPanel.set(null);
-    }
+    this.roomSurfaces.transition({ kind: 'dismiss' });
   }
 
-  /**
-   * A swipe in from the right edge opens the member list.
-   *
-   * The roster and not, say, threads, because the gesture has to mean ONE thing and this is
-   * what the toolbar's own button opens — a gesture that guessed differently from the button
-   * beside it would be a gesture nobody could predict.
-   */
+  /** Empty the slot and record the roster closed. */
+  clearRightPanel(): void {
+    this.roomSurfaces.transition({ kind: 'clear' });
+  }
+
+  /** A right-edge swipe opens members, matching the toolbar intent. */
   onDrawerSwipedOpen(): void {
-    if (!this.store.activeRoomId()) {
-      return; // no room, no roster to show — the slot's template is gated on one
-    }
-    this.roomSurfaces.transition({ kind: 'dismiss' });
-    this.store.rightPanel.set({ kind: 'members' });
-    this.haptics.gestureCommitted();
+    const outcome = this.roomSurfaces.transition({ kind: 'open-members' });
+    if (outcome.kind === 'applied') this.haptics.gestureCommitted();
   }
 
   /** A swipe away dismisses whatever the slot was showing. */
   onDrawerSwipedClosed(): void {
-    this.closeRightPanel();
-    this.haptics.gestureCommitted();
+    const outcome = this.roomSurfaces.transition({ kind: 'clear' });
+    if (outcome.kind === 'applied') this.haptics.gestureCommitted();
   }
 
   /**
-   * Do what the current surface's own close button does.
-   *
-   * Not the same as {@link closeRightPanel} for member info, which goes BACK to the roster
-   * it replaced rather than to an empty slot. Escape is the keyboard spelling of pressing
-   * that button, so it has to land in the same place; the mobile backdrop is the one
-   * gesture that genuinely means "get this overlay off my screen" and keeps emptying it.
-   */
-  dismissRightPanel(): void {
-    if (this.store.rightPanel()?.kind === 'member') {
-      this.memberActions.onMemberPanelDismissed();
-      return;
-    }
-    this.closeRightPanel();
-  }
-
-  /** Legacy member surface, then the compact Conversation beneath it. */
-  private activeWorkspaceSurface(): WorkspaceSurface | null {
-    const panel: LegacyMemberSurface = this.store.rightPanel();
-    if (panel) {
-      return {
-        layer: 'room',
-        surface:
-          panel.kind === 'member'
-            ? { kind: 'member', userId: panel.member.userId }
-            : panel,
-      };
-    }
-    const accountId = this.store.activeAccountId();
-    const roomId = this.store.activeRoomId();
-    return this.mobileMasterDetail() &&
-      this.store.pane() === 'conversation' &&
-      accountId &&
-      roomId
-      ? {
-          layer: 'conversation',
-          surface: { kind: 'conversation', accountId, roomId },
-        }
-      : null;
-  }
-
-  /** Cold adapter from Workspace's semantic claim to this page's presentation. */
-  private dismissWorkspaceSurface(
-    surface: WorkspaceSurface,
-  ): Observable<WorkspaceDismissResult> {
-    return defer(() => {
-      if (surface.layer === 'room') {
-        this.dismissRightPanel();
-        return of('dismissed' as const);
-      }
-      if (surface.layer !== 'conversation') return of('blocked' as const);
-      return this.workspace
-        .navigate({ kind: 'list', origin: 'workspace-back' })
-        .pipe(
-          map((outcome) =>
-            outcome.kind === 'ready'
-              ? ('dismissed' as const)
-              : ('blocked' as const),
-          ),
-        );
-    });
-  }
-
-  /**
-   * Escape dismisses whatever the slot is showing — the panels are plain components now, so
-   * nothing else offers the Escape that CDK gave them for free as dialogs.
-   *
-   * The roster is the exception, and only at the wide layout, where it is a persistent
-   * column rather than an overlay: this is a DOCUMENT listener, so an unguarded Escape there
-   * would close the member list every time someone pressed Escape to cancel an edit in the
-   * composer. As the narrow drawer it is an overlay like the rest and goes with them.
+   * Escape dismisses the slot, except a wide static roster where the composer owns Escape.
+   * Drawer members remain an overlay and dismiss like the temporary surfaces.
    */
   onEscapeKey(): void {
-    const panel = this.roomSurfaces.renderedSurface();
-    if (!panel || (panel.kind === 'members' && !this.membersAreDrawer())) {
-      return;
-    }
-    this.dismissRightPanel();
+    this.roomSurfaces.transition({ kind: 'escape' });
   }
 }

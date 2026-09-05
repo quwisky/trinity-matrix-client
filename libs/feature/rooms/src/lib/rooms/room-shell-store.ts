@@ -1,42 +1,5 @@
-import { Injectable, computed, inject, linkedSignal } from '@angular/core';
-import type { MemberSummary } from '@trinity/data-access/room-administration';
-import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
+import { Injectable, inject, linkedSignal } from '@angular/core';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
-
-/**
- * The member-family surfaces still on the writable compatibility path.
- *
- * `null` is "nothing showing", which on the narrow layout is the only honest state — the slot
- * is an overlay drawer there, and an overlay that is always open is what the member list used
- * to be before this phase.
- */
-export type LegacyMemberSurface =
-  | { readonly kind: 'members' }
-  // Member info carries its subject. Permission is deliberately not snapshotted here: the
-  // panel projects it from live room state so a remote promotion/demotion updates in place.
-  | {
-      readonly kind: 'member';
-      readonly member: MemberSummary;
-      readonly direct: boolean;
-    }
-  | null;
-
-/**
- * What the legacy member path shows with nothing else asked for: the member list at the
- * wide layout, closed below it — which is what the member column has always done.
- *
- * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this SEEDS a state the
- * user then owns, and a live signal would re-evaluate on every rotation across the boundary
- * and reopen a panel the user had explicitly closed.
- *
- * Negated rather than asking `MEMBERS_QUERY` directly, because `matchesQuery` answers
- * `false` where `matchMedia` does not exist and the two directions disagree about what that
- * should mean. Asking the BELOW query makes the unknown case the static column, which is
- * what this has always done.
- */
-function seedRightPanel(): LegacyMemberSurface {
-  return matchesQuery(BELOW_MEMBERS_QUERY) ? null : { kind: 'members' };
-}
 
 /**
  * The rooms shell's own selection and pane state.
@@ -110,32 +73,4 @@ export class RoomShellStore {
       `${this.workspace.activeAccountId() ?? ''}|${this.recentView()}|${this.roomsView()}|${this.activeSpaceId() ?? ''}`,
     computation: () => '',
   });
-
-  /**
-   * What the legacy member-family path is showing, if anything.
-   *
-   * Message-related surfaces moved to `RoomSurfaceLifecycle`. This writable signal remains
-   * only until the member family follows in issue #379; its production caller allowlist is
-   * frozen by `room-surface-lifecycle-contract.spec.mjs`.
-   */
-  readonly rightPanel = linkedSignal<string, LegacyMemberSurface>({
-    // Member info carries a Room-scoped subject and cannot follow the user out of its exact
-    // Conversation. Account is equally load-bearing: two Accounts may share one Room id but
-    // own distinct handles.
-    source: () =>
-      `${this.workspace.activeAccountId() ?? ''}|${this.activeRoomId() ?? ''}|${this.pane()}`,
-    computation: (_conversationKey, previous) => {
-      const panel = previous?.value;
-      // The roster and "nothing" are the column's own open/closed state, which the user owns
-      // and which has always survived a room change — the list re-projects itself onto the
-      // new room. Member info goes back to whatever this width shows by default. (On the
-      // first read `previous` is undefined, which falls through to the seed.)
-      return panel === null || panel?.kind === 'members'
-        ? panel
-        : seedRightPanel();
-    },
-  });
-
-  /** Whether the member list is the surface currently in the slot. */
-  readonly membersOpen = computed(() => this.rightPanel()?.kind === 'members');
 }

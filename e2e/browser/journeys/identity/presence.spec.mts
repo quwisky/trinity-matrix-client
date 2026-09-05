@@ -96,9 +96,8 @@ async function openRoomWithMembers(
   await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 
   const members = page.locator('.members');
-  if (!(await members.isVisible().catch(() => false))) {
-    await page.getByTestId('toggle-members').click();
-  }
+  await expect(members).toBeHidden();
+  await page.getByTestId('toggle-members').click();
   await expect(members).toBeVisible({ timeout: 15_000 });
 }
 

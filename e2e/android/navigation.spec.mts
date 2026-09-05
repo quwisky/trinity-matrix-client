@@ -241,5 +241,60 @@ test.describe('Android navigation', () => {
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
       await expect(page.getByTestId('composer-input')).toBeVisible();
     });
+
+    test('dismisses members before the compact Conversation on hardware Back', async ({
+      app,
+      page,
+    }) => {
+      await login(page, composerSession, app.navigate);
+      await app.touch(page.getByTestId('rail-rooms'));
+      const room = page
+        .locator('button.channel', { hasText: composerRoomName })
+        .first();
+      await room.waitFor({ state: 'visible', timeout: 30_000 });
+      await app.touch(room);
+      await expect(page.getByTestId('composer-input')).toBeVisible();
+      await expect(page.locator('.chat-members')).toBeHidden();
+      const fullViewportHeight = await page.evaluate(
+        () => window.visualViewport?.height ?? window.innerHeight,
+      );
+
+      await app.touch(page.getByTestId('room-actions-overflow'));
+      await app.touch(page.getByTestId('overflow-toggle-members'));
+      await expect(page.locator('.chat-members')).toBeVisible();
+      await expect(page.getByTestId('member-filter')).toBeFocused();
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => window.visualViewport?.height ?? window.innerHeight,
+            ),
+          { timeout: 10_000 },
+        )
+        .toBeLessThan(fullViewportHeight - 100);
+
+      // Android consumes Back at the IME before Capacitor can publish a host
+      // intent. Once the focused filter's keyboard has gone, the next Back is
+      // offered to the Room surface and only the following one to Conversation.
+      await app.pressBack();
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => window.visualViewport?.height ?? window.innerHeight,
+            ),
+          { timeout: 10_000 },
+        )
+        .toBeGreaterThan(fullViewportHeight - 20);
+      await expect(page.locator('.chat-members')).toBeVisible();
+
+      await app.pressBack();
+      await expect(page.locator('.chat-members')).toBeHidden();
+      await expect(page.getByTestId('composer-input')).toBeVisible();
+
+      await app.pressBack();
+      await expect(room).toBeVisible();
+      await expect(page.getByTestId('composer-input')).toBeHidden();
+    });
   });
 });

@@ -100,6 +100,9 @@ test.describe('Promote a member', () => {
       pass: adminPass,
     } as SynapseSession);
     await openRoom(page, roomName);
+    await expect(page.locator('.chat-members')).toBeHidden();
+    await page.getByTestId('toggle-members').click();
+    await expect(page.locator('.chat-members')).toBeVisible();
 
     // No Moderator section yet — the member is a plain member.
     await expect(

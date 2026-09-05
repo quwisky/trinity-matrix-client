@@ -154,6 +154,15 @@ test.describe('Verify another user', () => {
     await openRoom(page, roomName);
 
     // Open the other member's info panel and start verifying them.
+    await expect(page.locator('.chat-members')).toBeHidden();
+    const memberToggle = page.getByTestId('toggle-members');
+    if (await memberToggle.isVisible().catch(() => false)) {
+      await memberToggle.click();
+    } else {
+      await page.getByTestId('room-actions-overflow').click();
+      await page.getByTestId('overflow-toggle-members').click();
+    }
+    await expect(page.locator('.chat-members')).toBeVisible();
     const memberRow = page.locator('[data-testid="member-row"]', {
       hasText: otherName,
     });

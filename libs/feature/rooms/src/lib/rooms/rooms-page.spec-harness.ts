@@ -449,12 +449,10 @@ export function selectedRoomLibraryProvider(): Provider {
  * overlay drawer. Returns a restore function to reinstate the previous stub.
  *
  * CALL IT BEFORE `build()`, not after. The shell's viewport predicates are read early: the
- * page and its coordinators create their `mediaQuerySignal` fields in their initialisers, each
- * of which takes its value from `matchMedia` at that moment, and `RoomShellStore` SEEDS
- * `rightPanel` from a one-shot `matchesQuery` the first time anything reads it. Stubbing
- * afterwards changes what a later call would return and nothing that has already been built —
- * the test then asserts against the wide layout while reading as though it asked for the
- * narrow one.
+ * page and its coordinators create their `mediaQuerySignal` fields in initialisers, each of
+ * which takes its value from `matchMedia` at that moment. Stubbing afterwards changes what a
+ * later call would return and nothing already built, so the test would assert against the
+ * wide layout while reading as though it asked for the narrow one.
  */
 /**
  * A LIVE matchMedia stub: it keeps its `change` listeners, so {@link setMediaQuery} can move

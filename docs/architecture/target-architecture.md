@@ -74,13 +74,13 @@ destination nor history. A cold RxJS transition validates and projects the URL b
 Account commit can begin, publishes the view only after Account readiness, and retains ownership
 through post-commit completion if its initiating subscriber disappears.
 
-The Room shell owns one page-scoped surface lifecycle for message-related work. Threads, a thread,
-pinned messages, in-Room search, and message reveal enter one synchronous semantic transition;
-consumers read exact Account-and-Room state without a writable panel handle. Opening replaces the
-current surface, a Conversation change drops its transient state, and reveal closes before a
-post-render jump whose revision makes repeated event selection observable. The lifecycle registers
-its semantic Room surface with Workspace Back while the page remains the renderer. The member and
-member-detail path stays on a frozen writable compatibility allowlist until its next contraction.
+The Room shell owns one page-scoped surface lifecycle. Members are remembered independently for
+the shell lifetime, while member detail, Threads, a thread, pinned messages, and in-Room search are
+exact-Conversation temporary surfaces that replace the roster without erasing that choice. Every
+shell starts closed; entering drawer layout clears remembered members, while widening an explicitly
+opened drawer preserves it as a static column. Message reveal, focus handoff, Escape, backdrop and
+swipe intent, and Workspace Back enter the same semantic boundary. Consumers read its state while
+the page only renders and forwards intent; `RoomShellStore` holds no surface state.
 
 ## State and commands
 

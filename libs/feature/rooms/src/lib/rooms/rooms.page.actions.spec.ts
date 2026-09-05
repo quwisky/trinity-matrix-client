@@ -736,6 +736,62 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
   });
 
+  it('dismisses member detail when Message reuses the active DM', async () => {
+    const shell = build();
+    setRouteRoom('!dm:hs');
+    await settleWorkspace();
+    createDirectMessage.mockReturnValue(of('!dm:hs'));
+    shell.surfaces.transition({ kind: 'open-members' });
+    shell.members.onSelectMember({
+      userId: '@bob:hs',
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    });
+    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
+
+    shell.members.onMemberMessage('@bob:hs');
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!dm:hs');
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+  });
+
+  it('cannot dismiss a newer Room surface when DM creation finishes late', async () => {
+    const shell = build();
+    const pendingDm = new Subject<string>();
+    createDirectMessage.mockReturnValue(pendingDm);
+    setRouteRoom('!first:hs');
+    await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
+    shell.members.onSelectMember({
+      userId: '@bob:hs',
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    });
+
+    shell.members.onMemberMessage('@bob:hs');
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+    shell.routing.onSelectRoomSelection({
+      accountId: '@me:hs',
+      roomId: '!second:hs',
+    });
+    await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
+
+    pendingDm.next('!second:hs');
+    pendingDm.complete();
+    await settleWorkspace();
+
+    expect(shell.store.activeRoomId()).toBe('!second:hs');
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
+  });
+
   it('tells the member panel when the room is a direct message', async () => {
     // Both participants of a DM sit at 100 (trusted_private_chat), so without this the
     // person who started the chat is labelled Owner and their friend Admin.
@@ -764,8 +820,8 @@ describe('RoomsPage room / DM / invite actions', () => {
   it('opens no member info panel without an active room', () => {
     const shell = build();
     setRouteRoom(null);
-    // Whatever the slot happens to be seeded with at this width — the roster, here — must
-    // be left exactly as it is. Reference identity, so any write to it fails this.
+    // The empty slot must be left exactly as it is. Reference identity, so any write to it
+    // fails this rather than merely producing another falsy presentation.
     const before = shell.surfaces.renderedSurface();
 
     shell.members.onSelectMember({
@@ -791,8 +847,8 @@ describe('RoomsPage room / DM / invite actions', () => {
       const shell = build();
       setRouteRoom('!r:hs');
       await settleWorkspace();
-      shell.store.rightPanel.set({ kind: 'members' });
-      expect(shell.store.membersOpen()).toBe(true);
+      shell.surfaces.transition({ kind: 'open-members' });
+      expect(shell.surfaces.membersVisible()).toBe(true);
 
       shell.members.onSelectMember({
         userId: '@bob:hs',
@@ -803,7 +859,7 @@ describe('RoomsPage room / DM / invite actions', () => {
         isCreator: false,
       });
 
-      expect(shell.store.membersOpen()).toBe(false);
+      expect(shell.surfaces.membersVisible()).toBe(false);
       expect(shell.surfaces.renderedSurface()).toMatchObject({
         kind: 'member',
       });
@@ -820,7 +876,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
-    shell.store.rightPanel.set({ kind: 'members' });
+    shell.surfaces.transition({ kind: 'open-members' });
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -831,7 +887,7 @@ describe('RoomsPage room / DM / invite actions', () => {
       isCreator: false,
     });
 
-    expect(shell.store.membersOpen()).toBe(false);
+    expect(shell.surfaces.membersVisible()).toBe(false);
     expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
     expect(memberInfoOpen).not.toHaveBeenCalled();
   });
@@ -844,6 +900,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
     shell.members.onSelectMember({
       userId: '@bob:hs',
       roomDisplayName: 'Bob',
@@ -867,6 +924,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();
+    shell.surfaces.transition({ kind: 'open-members' });
     shell.members.onSelectMember({
       userId: '@bob:hs',
       roomDisplayName: 'Bob',
@@ -902,11 +960,35 @@ describe('RoomsPage room / DM / invite actions', () => {
         powerLevel: 0,
         isCreator: false,
       },
-      '!space:hs',
+      { accountId: '@me:hs', roomId: '!space:hs' },
     );
 
     expect(memberInfoOpen).toHaveBeenCalled();
     // And the open room's slot is left exactly as it was.
+    expect(shell.surfaces.renderedSurface()).toBe(before);
+  });
+
+  it('keeps same-room member info in a dialog when another Account owns it', async () => {
+    const shell = build();
+    setRouteRoom('!shared:hs');
+    await settleWorkspace();
+    const before = shell.surfaces.renderedSurface();
+    const bob = {
+      userId: '@bob:hs',
+      roomDisplayName: 'Bob',
+      roomInitial: 'B',
+      roomAvatarMxc: null,
+      powerLevel: 0,
+      isCreator: false,
+    };
+
+    shell.members.openMemberInfo(bob, {
+      accountId: '@other:hs',
+      roomId: '!shared:hs',
+    });
+    await Promise.resolve();
+
+    expect(memberInfoOpen).toHaveBeenCalledWith(bob, '!shared:hs', false);
     expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 

@@ -52,7 +52,7 @@ import { PaneHandleComponent } from './pane-handle.component';
 import { ReadStateService } from './read-state.service';
 import { RoomActionsService } from './room-actions.service';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
-import { RoomShellStore } from './room-shell-store';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomsPage } from './rooms.page';
 import { ROUTE_PROVIDER, setRouteRoom } from './rooms-page.spec-harness';
@@ -239,15 +239,15 @@ describe('RoomsPage rendered right-panel focus', () => {
           },
           {
             provide: MemberActionsService,
-            useFactory: (store: RoomShellStore) => ({
+            useFactory: (surfaces: RoomSurfaceLifecycle) => ({
               onSelectMember: (member: MemberSummary) =>
-                store.rightPanel.set({
-                  kind: 'member',
+                surfaces.transition({
+                  kind: 'open-member',
                   member,
                   direct: false,
                 }),
             }),
-            deps: [RoomShellStore],
+            deps: [RoomSurfaceLifecycle],
           },
           { provide: AccountRoutingService, useValue: {} },
           { provide: InviteActionsService, useValue: {} },
@@ -276,6 +276,9 @@ describe('RoomsPage rendered right-panel focus', () => {
     });
     setRouteRoom('!r:hs');
     const fixture = TestBed.createComponent(RoomsPage);
+    fixture.debugElement.injector
+      .get(RoomSurfaceLifecycle)
+      .transition({ kind: 'open-members' });
     fixture.detectChanges();
     const host = fixture.nativeElement as HTMLElement;
     const row = host.querySelector<HTMLElement>('[data-testid="member-row"]');
