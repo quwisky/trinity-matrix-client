@@ -7,7 +7,10 @@ import { MockProvider } from 'ng-mocks';
 import { NEVER, Subject, concat, defer, finalize, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { InvitesService } from './invites.service';
-import { RoomLibraryLifetime } from './room-library-lifetime';
+import {
+  ROOM_LIBRARY_PREPARATION_BUDGET_MS,
+  RoomLibraryLifetime,
+} from './room-library-lifetime';
 import { RoomLibraryService } from './room-library.service';
 import { SelectedRoomLibraryService } from './selected-room-library.service';
 import { SpaceChildrenService } from './space-children.service';
@@ -101,6 +104,33 @@ describe('RoomLibraryLifetime', () => {
 
     expect(events).toEqual([{ kind: 'prepared' }]);
     subscription.unsubscribe();
+  });
+
+  it('bounds preparation without timing out retained healthy ownership', async () => {
+    vi.useFakeTimers();
+    const events: unknown[] = [];
+    const subscription = lifetime
+      .run()
+      .subscribe((event) => events.push(event));
+
+    await vi.advanceTimersByTimeAsync(ROOM_LIBRARY_PREPARATION_BUDGET_MS);
+
+    expect(events).toEqual([
+      {
+        kind: 'blocked',
+        diagnostic: { code: 'room-library-projection-preparation-timeout' },
+      },
+    ]);
+    expect(subscription.closed).toBe(true);
+    expect(
+      disconnects.every((disconnect) => disconnect.mock.calls.length === 1),
+    ).toBe(true);
+
+    waitFor.mockReturnValue(of(readiness()));
+    const healthy = lifetime.run().subscribe();
+    await vi.advanceTimersByTimeAsync(ROOM_LIBRARY_PREPARATION_BUDGET_MS * 2);
+    expect(healthy.closed).toBe(false);
+    healthy.unsubscribe();
   });
 
   it('emits a typed block and releases every projection on preparation failure', () => {

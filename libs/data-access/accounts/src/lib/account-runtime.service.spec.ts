@@ -245,6 +245,114 @@ describe('AccountRuntimeService', () => {
     });
   });
 
+  it('retries only one failed inactive Account and joins its duplicate recovery', async () => {
+    const recovery = new Subject<AdapterAccountRestoreOutcome>();
+    let inactiveAttempt = 0;
+    const test = testAdapter(
+      {
+        kind: 'available',
+        activeAccountId: '@active:hs',
+        accountIds: ['@active:hs', '@failed:hs', '@healthy:hs'],
+      },
+      (accountId) => {
+        if (accountId === '@active:hs' || accountId === '@healthy:hs') {
+          return of({ kind: 'ready' });
+        }
+        return inactiveAttempt++ === 0
+          ? of({ kind: 'failed', failure: 'transient-network' })
+          : recovery;
+      },
+    );
+    const runtime = setup(test);
+    await firstValueFrom(runtime.restoreSavedAccounts());
+
+    const first = firstValueFrom(runtime.retryInactiveAccount('@failed:hs'));
+    const duplicate = firstValueFrom(
+      runtime.retryInactiveAccount('@failed:hs'),
+    );
+
+    expect(test.restoreAccount.mock.calls).toEqual([
+      ['@active:hs', 'active'],
+      ['@failed:hs', 'inactive'],
+      ['@healthy:hs', 'inactive'],
+      ['@failed:hs', 'inactive'],
+    ]);
+    recovery.next({ kind: 'ready' });
+    recovery.complete();
+
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      expect.objectContaining({ kind: 'ready', accountId: '@failed:hs' }),
+      expect.objectContaining({ kind: 'ready', accountId: '@failed:hs' }),
+    ]);
+    expect(runtime.state()).toMatchObject({
+      phase: 'settled',
+      result: { kind: 'restored' },
+    });
+  });
+
+  it('rejects recovery for a healthy or unknown inactive Account', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@active:hs',
+      accountIds: ['@active:hs', '@healthy:hs'],
+    });
+    const runtime = setup(test);
+    await firstValueFrom(runtime.restoreSavedAccounts());
+
+    await expect(
+      firstValueFrom(runtime.retryInactiveAccount('@healthy:hs')),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    await expect(
+      firstValueFrom(runtime.retryInactiveAccount('@unknown:hs')),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    expect(test.restoreAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it('settles independent inactive Account recoveries without serializing their scopes', async () => {
+    const firstRecovery = new Subject<AdapterAccountRestoreOutcome>();
+    const secondRecovery = new Subject<AdapterAccountRestoreOutcome>();
+    const attempts = new Map<string, number>();
+    const test = testAdapter(
+      {
+        kind: 'available',
+        activeAccountId: '@active:hs',
+        accountIds: ['@active:hs', '@first:hs', '@second:hs'],
+      },
+      (accountId) => {
+        if (accountId === '@active:hs') return of({ kind: 'ready' });
+        const attempt = attempts.get(accountId) ?? 0;
+        attempts.set(accountId, attempt + 1);
+        if (attempt === 0) {
+          return of({ kind: 'failed', failure: 'transient-network' });
+        }
+        return accountId === '@first:hs' ? firstRecovery : secondRecovery;
+      },
+    );
+    const runtime = setup(test);
+    await firstValueFrom(runtime.restoreSavedAccounts());
+
+    const first = firstValueFrom(runtime.retryInactiveAccount('@first:hs'));
+    const second = firstValueFrom(runtime.retryInactiveAccount('@second:hs'));
+    expect(firstRecovery.observed).toBe(true);
+    expect(secondRecovery.observed).toBe(true);
+
+    firstRecovery.next({ kind: 'ready' });
+    firstRecovery.complete();
+    await expect(first).resolves.toMatchObject({ kind: 'ready' });
+    expect(runtime.state()).toMatchObject({
+      phase: 'settled',
+      result: { kind: 'restored-with-inactive-failures' },
+    });
+
+    secondRecovery.next({ kind: 'ready' });
+    secondRecovery.complete();
+    await expect(second).resolves.toMatchObject({ kind: 'ready' });
+    expect(runtime.state()).toMatchObject({
+      phase: 'settled',
+      result: { kind: 'restored' },
+    });
+  });
+
   it.each([
     ['reauthentication-required', { kind: 'reauthentication-required' }],
     ['crypto-failure', { kind: 'failed', failure: 'crypto-failure' }],
