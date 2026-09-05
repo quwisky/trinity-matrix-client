@@ -19,11 +19,16 @@ shipped code; the things that are not are listed at the bottom of this page.
 
 ## Getting in
 
-- [Installing Trinity](install.md) covers each of the four platforms, what a packaged
-  desktop build contains, and the current code-signing state.
-- [Signing in](signing-in.md) covers homeserver discovery and the three sign-in paths a
-  server may offer, the one thing Trinity deliberately does not do — create an account for
-  you — and how to erase everything on the device when Trinity itself will not start.
+1. [Choose a host and install Trinity](install.md). Check the requirements for your browser,
+   desktop or mobile device, then follow the source-build route for that host.
+2. [Sign in or create a Matrix account](signing-in.md). Choose your homeserver and use the
+   sign-in or registration method it offers. Learn what happens when your Account opens
+   the Workspace, or when a saved session needs reconnecting.
+3. [Set up or restore encrypted access](encryption.md). Save your recovery key, verify a new
+   device, and check recovery options before resetting encryption or erasing local data.
+
+Once you can open your rooms, continue with [messaging](messaging.md) and
+[Rooms and Spaces](rooms-and-spaces.md).
 
 ## Talking
 

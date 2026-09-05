@@ -1,178 +1,95 @@
-# Signing in
+# Sign in to a Matrix account
 
-Trinity does not have a Trinity account. It signs you in to a Matrix homeserver, and that
-homeserver decides how you prove who you are. The sign-in screen is therefore two steps:
-first name the server, then use whichever method that server offers.
+Trinity has no separate Trinity account. You sign in to a Matrix homeserver, and that server
+chooses the authentication method. Start with the homeserver your organisation, community or
+contact gave you; `matrix.org` is prefilled as a common public example.
 
-## Step one, finding the homeserver
+## 1. Find the homeserver
 
-The first field is labelled **Homeserver** and starts pre-filled with `matrix.org`. It
-accepts three shapes and treats them identically:
+On the first screen, enter a homeserver domain. You can also paste a Matrix ID such as
+`@you:example.org`; Trinity uses the domain portion. Select **Continue**.
 
-- `@you:example.org`
-- `you:example.org`
-- `example.org`
+Trinity asks Matrix discovery for the server address before it asks for credentials. The address
+shown after discovery can differ from the name you entered. That is normal: a Matrix domain can
+delegate its client API to another address.
 
-Everything after the first colon is taken as the domain, so pasting your full Matrix user
-id works.
+If discovery fails, check the spelling with your server administrator and try again. Do not work
+around an error by entering a password at a different address unless that administrator has told
+you to use it.
 
-Trinity then runs Matrix `.well-known` auto-discovery against that domain. Three outcomes
-are possible:
+## 2. Use the method your server offers
 
-- The domain publishes a client configuration. Trinity uses the `base_url` from it, which
-  is frequently a different host from the one you typed. Typing `matrix.org` is normal and
-  correct even though the API lives elsewhere.
-- The domain publishes nothing. Trinity falls back to `https://<domain>`.
-- The domain publishes something invalid or unreachable. Discovery fails and you get an
-  error, rather than a silent fallback that would send your password to the wrong place.
+The next screen shows only the methods the resolved homeserver supports.
 
-Press **Continue** and Trinity asks the resolved server what it supports.
+| What you see                                                       | What to do                                                                                                                                                        |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Username**, **Password**, and **Sign in**                        | Enter the Matrix username and password for that homeserver. A full Matrix ID is accepted where a username is requested.                                           |
+| **Continue with SSO**                                              | Continue to the homeserver's sign-in page. Your organisation may use a company account, hardware key or another provider there.                                   |
+| **Continue**                                                       | The homeserver delegates sign-in to an OpenID Connect provider. Continue in that provider's flow; it owns your credentials and may offer account creation itself. |
+| **Create account**                                                 | The homeserver has explicitly allowed account creation. Follow the server's requested registration steps.                                                         |
+| “This homeserver doesn't offer a sign-in method Trinity supports.” | The server offers no supported password, SSO or delegated sign-in route. Contact its administrator or use another homeserver.                                     |
 
-## Step two, the method the server offers
+For SSO and delegated sign-in, Trinity opens the provider through the host's authentication
+handoff. Web returns to the app in the browser; the mobile and desktop hosts return through the
+operating system after the provider flow completes. Return promptly and do not start a second
+attempt while one is open: an abandoned or reused authorization state is rejected and you must
+start again from the sign-in screen.
 
-Trinity queries two things in parallel: the server's legacy login flows, and its delegated
-authentication metadata. They are asked for independently on purpose. A homeserver built
-around next-generation auth may not serve the legacy login-flows endpoint at all, and a
-conventional homeserver has no auth metadata. A failure on either side must not hide what
-the other found.
+## Create an account only when the server allows it
 
-What appears next depends on the answer.
+**Create account** appears only after the server reports that registration is open. Trinity then
+collects your username and password and presents any registration steps the homeserver requires,
+such as terms, email confirmation, a registration token, or a hosted challenge. The homeserver,
+not Trinity, decides whether registration exists and which proof it needs.
 
-### Password
+For delegated sign-in, account creation belongs to the identity provider. Trinity offers its
+provider-hosted account-creation action only when that provider advertises one.
 
-If the server advertises password login you get **Username** and **Password** fields and a
-**Sign in** button.
+After a new legacy account is established, Trinity moves to encryption setup. Save the recovery
+key before continuing; it is the route back to encrypted history on another device. Existing
+accounts enter the workspace and show the appropriate encryption action when that device still
+needs setup, recovery, or verification.
 
-The username field accepts either the localpart (`you`) or your full user id
-(`@you:example.org`); Trinity strips it down to the localpart before sending. The new
-session appears in your account's device list under the name `Trinity`.
+## Reach the workspace safely
 
-### Single sign-on
+After a successful sign-in, Trinity opens the room workspace. You can add another account later
+without signing out of the current one. Before sending or expecting older encrypted messages on
+a new device, follow the banner or visit Settings → Security:
 
-If the server advertises SSO you get **Continue with SSO**. Trinity hands you to the
-homeserver's own SSO page, where the identity provider takes over. What you see there —
-a corporate login, a social provider, a hardware key — is entirely the server's business.
+- The encryption banner's **Set up** action starts encryption setup for an account without
+  recovery.
+- **Use recovery key** unlocks encrypted access on this device.
+- **Verify another device** lets an already trusted session vouch for this one.
 
-Where that page opens differs by platform, and it matters:
+The next page explains what those actions prove and what they cannot recover:
+[encryption and verification](encryption.md).
 
-| Platform        | Where the provider page opens | How the answer comes back                                             |
-| --------------- | ----------------------------- | --------------------------------------------------------------------- |
-| Web             | The same tab                  | A redirect back to the app's own origin                               |
-| iOS and Android | The system browser            | The `eu.qwky.trinity` URL scheme, handed to the running app by the OS |
-| Desktop         | An external browser window    | The same URL scheme, routed into the app by the Electron shell        |
+## When sign-in needs help
 
-On mobile and desktop the sign-in genuinely happens outside the application. That is
-deliberate: it means the provider's page runs in a real browser with its own cookies and
-password manager, and Trinity never sees your credentials.
-
-### Next-generation auth with OIDC
-
-If the server delegates authentication to an OIDC provider, Trinity shows a single
-**Continue** button and suppresses the password and SSO buttons entirely — even if the
-server still advertises them. A homeserver part-way through migrating often keeps
-advertising the old flows for compatibility, but the provider is now the authority on your
-credentials, so offering the legacy paths would just be a way to fail.
-
-Trinity registers itself with the provider the first time you sign in, using OAuth dynamic
-client registration, and uses PKCE for the authorization code exchange. As with SSO, the
-provider's page opens in the system browser on mobile and in an external window on desktop.
-
-!!! warning "Finish within ten minutes"
-
-    The state Trinity keeps while you are away at the provider is deliberately short-lived
-    and single-use. If you leave the provider's page open longer than ten minutes, or start
-    a second sign-in while one is in flight, the callback will be refused and you will need
-    to start again from the sign-in screen.
-
-### If none of the three are offered
-
-If discovery finds no OIDC provider and no password or SSO flow, Trinity says so plainly
-rather than leaving you on an empty card: "This homeserver doesn't offer a sign-in method
-Trinity supports."
-
-## Creating an account
-
-After homeserver discovery, Trinity shows **Create account** only when the server positively
-reports that legacy password registration is available. You choose a username and password
-inside Trinity, then complete the steps the homeserver requires. Trinity handles simple
-confirmation, terms, email verification, and registration-token stages directly.
-
-Some stages, most notably CAPTCHA, must run on a homeserver-hosted page. Trinity opens that
-page in the system browser and waits for you to return and confirm completion. If a server
-returns a terms stage Trinity cannot render safely, that entire stage uses the same hosted
-fallback rather than accepting policies you could not review.
-
-When the homeserver delegates authentication to an OIDC provider, its provider remains in
-charge of registration. If the provider advertises a registration prompt, Trinity's
-**Create account** button opens that hosted sign-up flow instead of showing the legacy form.
-
-After a legacy registration succeeds, Trinity signs in the new device and takes you straight
-to encryption setup so you can create and save the account's recovery key.
-
-## What happens after you sign in
-
-After signing in to an existing account, you land in the room list. Trinity does not force
-that account through an encryption wizard, but if the account or device is not ready for
-encrypted messages, a banner appears above the room list with the action that applies:
-
-- **Set up** when the account has no recovery set up yet. This is the first-device path,
-  and it ends by showing a recovery key exactly once.
-- **Use recovery key** or **Verify another device** when the account already has encryption
-  set up but this device is not yet trusted.
-
-Both are explained in [Encryption and verification](encryption.md).
-
-## Adding another account
-
-Trinity keeps several accounts signed in at the same time rather than switching between
-them. Adding one returns you to this same sign-in screen with the existing accounts left
-running, so you go through homeserver discovery again for the new account. See
-[Using more than one account](index.md#using-more-than-one-account).
-
-## When a session is dropped
-
-If your homeserver revokes your access token but keeps the device — a "soft logout" —
-Trinity does not throw the account away. It stops that account's client, drops the dead
-token, and marks the account as needing to sign in again. Your other accounts keep running.
-
-Signing in again from that prompt reuses the same device id. That matters more than it
-sounds: the device keeps its existing encryption store, its cross-signing trust and its
-message keys, so you come back without re-verifying anything. A hard logout, where the
-homeserver has deleted the device outright, does discard the local stores, because the
-device they belong to no longer exists.
+| Symptom                                                          | Useful next action                                                                                                                                                                                          |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The address after **Continue** is unexpected                     | Stop before entering credentials and confirm the homeserver with its administrator. Delegation can be normal, but an unexpected destination deserves confirmation.                                          |
+| Your password form is absent                                     | Use the SSO or delegated button the server provides. Trinity does not add a password route when the server has not offered one.                                                                             |
+| The provider flow returns to a refused or expired attempt        | Start again from Trinity and complete one attempt without leaving a second sign-in in progress.                                                                                                             |
+| A server requires a registration step Trinity cannot complete    | Follow the hosted step shown by the server, or ask its administrator what registration route it supports.                                                                                                   |
+| A previously working account asks you to sign in again           | Reauthenticate that account. When the server retains the device, Trinity reuses its local device identity; if the server removed the device, encrypted access may need recovery or verification again.      |
+| Trinity opens but ordinary sign-in or sign-out cannot recover it | When the sign-in screen still opens, use **Erase all data on this device** only as a last resort and read its consequences below first.                                                                     |
+| Trinity cannot reach the sign-in screen                          | Use the relevant [web](../platforms/web.md), [desktop](../platforms/desktop.md) or [mobile](../platforms/mobile.md) troubleshooting first. The local-data action is available only from the sign-in screen. |
 
 ## Starting over when Trinity will not work
 
-At the bottom of the sign-in screen there is **Erase all data on this device**. It is the way
-out when Trinity is stuck in a way signing out cannot fix — it will not start, it will not
-sign in, or it renders wrongly — and it is on the sign-in screen on purpose, because Settings
-is behind the sign-in you cannot get past. On a phone or the desktop app there is no browser
-"clear site data" to fall back on, so without it the only answer is reinstalling.
+**Erase all data on this device** removes Trinity's local accounts, encryption keys, settings,
+drafts and cached messages, then restarts the app. It requires typing `ERASE`.
 
-It removes everything Trinity keeps on this device: your accounts, your encryption keys, your
-settings and appearance, your drafts, and the cached copies of your messages.
+Be online before using this action. It also removes the Web/PWA offline cache; an offline web
+app may not open again until connectivity returns.
 
-**It cannot be undone, so it asks you to type `ERASE` first.** The word is deliberately not
-the `RESET` used by the encryption reset — the two guard different things, and typing one out
-of habit should not carry you through the other.
+Use it only when normal sign-in or sign-out cannot recover the installation. It does not delete
+your Matrix account, rooms or messages from the homeserver. It can, however, make messages
+permanently unreadable when their keys existed only on this device and no other device or server
+backup can provide them. Signed-in devices can also remain listed on the homeserver when the
+client cannot complete a network sign-out.
 
-Read this part before you use it:
-
-- **Any message that only this device could decrypt becomes permanently unreadable.** If your
-  encryption keys are backed up on the server, or another device of yours can already read
-  those messages, nothing is lost. If neither is true, they are gone.
-- **Nothing on the server is deleted.** Your account, your rooms and your messages are all
-  still there, and you can sign straight back in.
-- **Your devices may still be listed on your homeserver afterwards.** Trinity tries to sign
-  out properly, but it deliberately does not wait long and does not require it — a server you
-  cannot reach is one of the reasons you might be doing this. Remove any leftover devices from
-  another device, or from your account settings.
-- **Trinity reloads when it finishes, so you need to be online to use it again.**
-
-If Trinity is open in another window as well, some of its stored data can be locked and left
-behind. It does not stop; it finishes, tells the console what it could not remove, and clears
-the rest up the next time you open the app.
-
-Two things it does not remove: files you saved to your device through the share or save
-button, which are yours and stay where you put them, and on the desktop app the browser-level
-cache the shell itself keeps.
+This is different from resetting a lost recovery key: that action concerns the encrypted backup
+for an account and uses a separate `RESET` confirmation. Read [lost recovery key](encryption.md#lost-recovery-key)
+before choosing either destructive action.

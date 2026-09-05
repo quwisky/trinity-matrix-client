@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- First-use documentation now guides host choice, installation, sign-in and registration,
+  device verification and encrypted-access recovery, with explicit limits and recovery
+  consequences checked against the implementation.
+
 - Documentation now offers task-based entry points for users, contributors, maintainers and
   agent users, with a content ownership and migration inventory for the ongoing rewrite.
 

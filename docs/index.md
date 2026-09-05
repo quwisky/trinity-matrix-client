@@ -22,8 +22,9 @@ it is put together is in
 [Matrix and encryption](architecture/matrix-and-encryption.md).
 
 > [!WARNING]
-> **Early development.** Trinity is at version 0.1.0 and there are no published releases yet.
-> Every platform today means building from source. See [Installing Trinity](users/install.md).
+> **Early development.** Check [Installing Trinity](users/install.md) for current availability,
+> host requirements and source-build instructions before starting. Then follow
+> [signing in](users/signing-in.md) and [encrypted access](users/encryption.md).
 
 ## Choose your task
 
