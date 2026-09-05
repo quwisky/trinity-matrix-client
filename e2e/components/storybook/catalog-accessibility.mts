@@ -58,20 +58,26 @@ export async function runAxe(
   page: Page,
   excludedSelectors: readonly string[] = [],
 ): Promise<AxeScan> {
-  await page.addScriptTag({ content: axe.source });
-  return page.evaluate(async (selectors) => {
-    const browserAxe = (
-      window as typeof window & { readonly axe: AxeBrowserApi }
-    ).axe;
-    // Story canvases are fragments, so an application-level landmark is not required.
-    browserAxe.configure({ rules: [{ id: 'region', enabled: false }] });
-    return selectors.length === 0
-      ? browserAxe.run(document.body)
-      : browserAxe.run({
-          include: [['body']],
-          exclude: selectors.map((selector) => [selector]),
-        });
-  }, excludedSelectors);
+  // Storybook's a11y addon dynamically imports Axe after a story renders. Keep the
+  // injected object instead of reading window.axe in a later browser call: the addon
+  // may replace that global and begin its own scan in between.
+  const browserAxe = await page.evaluateHandle<AxeBrowserApi>(
+    `${axe.source}; window.axe`,
+  );
+  try {
+    return await browserAxe.evaluate(async (instance, selectors) => {
+      // Story canvases are fragments, so an application-level landmark is not required.
+      instance.configure({ rules: [{ id: 'region', enabled: false }] });
+      return selectors.length === 0
+        ? instance.run(document.body)
+        : instance.run({
+            include: [['body']],
+            exclude: selectors.map((selector) => [selector]),
+          });
+    }, excludedSelectors);
+  } finally {
+    await browserAxe.dispose();
+  }
 }
 
 export function formatAxeResults(results: readonly AxeRuleResult[]): string[] {
