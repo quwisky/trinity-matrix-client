@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room-surface compatibility access is removed.** Explicit thread, pins, search, member, and
+  reveal intents now form the only mutation boundary. Internal state records no longer leak into
+  callers or tests, and structural and type guards keep panel and jump state private.
+
 - **Room panels now share one predictable lifecycle.** Every shell starts with the member list
   closed. An explicit member choice survives Room and Account changes for that shell, while
   Threads, thread detail, pinned messages, search, and member details temporarily take the same

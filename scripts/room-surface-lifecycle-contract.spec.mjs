@@ -35,7 +35,12 @@ function publicMethods(file, className) {
     .map((member) => member.name.getText(parsed));
 }
 
-/** Freeze the #378/#379 single Room-surface lifecycle boundary. */
+/** The completed #378–#380 contraction has no compatibility caller allowlist.
+ * Include specs: setting implementation state in a fixture would bypass the same
+ * transitions production callers must use. Behavioral tests and the typecheck gate
+ * verify read-only signals, focus, Back, reset, and reveal ordering without pinning
+ * the implementation's signal constructors or scheduling operators here.
+ */
 describe('Room surface lifecycle boundary', () => {
   const lifecycleFile = `${featureRoot}/room-surface-lifecycle.ts`;
 
@@ -45,11 +50,9 @@ describe('Room surface lifecycle boundary', () => {
     expect(publicMethods(lifecycleFile, 'RoomSurfaceLifecycle')).toEqual([
       'transition',
     ]);
-    expect(lifecycle).toContain('readonly state = computed(');
-    expect(lifecycle).toContain('readonly surface = computed(');
-    expect(lifecycle).toContain('readonly renderedSurface = computed<');
-    expect(lifecycle).toContain('WorkspaceBackService).register({');
-    expect(lifecycle).toContain('afterNextRender(');
+    expect(lifecycle).not.toContain('export interface RoomSurfaceState');
+    expect(lifecycle).not.toContain('readonly state =');
+    expect(lifecycle).not.toContain('readonly surface =');
   });
 
   it('routes every message-surface caller through the lifecycle', () => {
@@ -70,22 +73,10 @@ describe('Room surface lifecycle boundary', () => {
     expect(template).toContain('roomSurfaces.jumpRevision()');
     expect(template).not.toContain('store.rightPanel()');
     expect(lifecycle).toContain('this.workspace.eventTarget()');
-    expect(lifecycle).toContain('untracked(() =>');
     expect(page).not.toContain('this.workspace.eventTarget()');
   });
 
   it('keeps every Room surface and its browser lifecycle out of the shell store and page', () => {
-    const productionSources = globSync(`${featureRoot}/**/*.ts`, {
-      cwd: workspaceRoot,
-    }).filter(
-      (file) =>
-        !file.endsWith('.spec.ts') && !file.endsWith('.spec-harness.ts'),
-    );
-    const writers = productionSources
-      .filter((file) => /\.rightPanel\.(?:set|update)\(/u.test(source(file)))
-      .sort();
-
-    expect(writers).toEqual([]);
     const store = source(`${featureRoot}/room-shell-store.ts`);
     expect(store).not.toContain('rightPanel');
     expect(store).not.toContain('membersOpen');
@@ -99,5 +90,31 @@ describe('Room surface lifecycle boundary', () => {
     const memberActions = source(`${featureRoot}/member-actions.service.ts`);
     expect(memberActions).toContain('RoomSurfaceLifecycle');
     expect(memberActions).toContain("kind: 'open-member'");
+  });
+
+  it('keeps legacy surface compatibility usage at zero, including tests and templates', () => {
+    const callers = globSync(['apps/**/*.{ts,html}', 'libs/**/*.{ts,html}'], {
+      cwd: workspaceRoot,
+    });
+    expect(
+      callers.filter((file) =>
+        /\b(?:rightPanel|messageSearchTarget|jumpRequest|membersOpen)\b/u.test(
+          source(file),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps all surface and jump writes inside the implementation, including test setup', () => {
+    const callers = globSync(`${featureRoot}/**/*.{ts,html}`, {
+      cwd: workspaceRoot,
+    }).filter((file) => file !== lifecycleFile);
+    expect(
+      callers.filter((file) =>
+        /\b(?:writableState|membersRequested|revealGeneration)\b|\b(?:renderedSurface|jumpTarget|jumpRevision|membersVisible|membersAreDrawer)\s*\.\s*(?:set|update)\s*\(/u.test(
+          source(file),
+        ),
+      ),
+    ).toEqual([]);
   });
 });

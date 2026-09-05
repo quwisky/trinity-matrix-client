@@ -26,12 +26,12 @@ import {
 import { Observable, defer, map, of } from 'rxjs';
 import type { ExactRoomSelection } from '../shared/exact-selection';
 
-export type MessageRoomSurface = Extract<
+type MessageRoomSurface = Extract<
   WorkspaceRoomSurface,
   { readonly kind: 'threads' | 'thread' | 'pinned' | 'search' }
 >;
 
-export interface MemberRoomSurface {
+interface MemberRoomSurface {
   readonly kind: 'member';
   readonly member: MemberSummary;
   readonly direct: boolean;
@@ -43,7 +43,7 @@ type MemberReturnSurface = MessageRoomSurface | MembersRoomSurface | null;
 
 export type RenderedRoomSurface = TemporaryRoomSurface | MembersRoomSurface;
 
-export interface RoomSurfaceState {
+interface RoomSurfaceState {
   readonly conversation: ExactRoomSelection;
   readonly surface: TemporaryRoomSurface | null;
   readonly memberReturnSurface: MemberReturnSurface;
@@ -52,7 +52,10 @@ export interface RoomSurfaceState {
 }
 
 export type RoomSurfaceTransition =
-  | { readonly kind: 'open'; readonly surface: MessageRoomSurface }
+  | { readonly kind: 'open-threads' }
+  | { readonly kind: 'open-thread'; readonly rootEventId: string }
+  | { readonly kind: 'open-pinned' }
+  | { readonly kind: 'open-search' }
   | {
       readonly kind: 'open-member';
       readonly member: MemberSummary;
@@ -119,11 +122,6 @@ export class RoomSurfaceLifecycle {
     BELOW_MEMBERS_QUERY,
     this.destroyRef,
   );
-  readonly state = computed(() => this.writableState());
-  readonly conversation = computed(
-    () => this.writableState()?.conversation ?? null,
-  );
-  readonly surface = computed(() => this.writableState()?.surface ?? null);
   readonly jumpTarget = computed(
     () => this.writableState()?.jumpTarget ?? null,
   );
@@ -179,10 +177,23 @@ export class RoomSurfaceLifecycle {
     if (intent.kind !== 'reveal-message') this.revealGeneration += 1;
 
     switch (intent.kind) {
-      case 'open':
+      case 'open-threads':
+      case 'open-thread':
+      case 'open-pinned':
+      case 'open-search':
         this.writableState.set({
           ...state,
-          surface: intent.surface,
+          surface:
+            intent.kind === 'open-thread'
+              ? { kind: 'thread', rootEventId: intent.rootEventId }
+              : {
+                  kind:
+                    intent.kind === 'open-threads'
+                      ? 'threads'
+                      : intent.kind === 'open-pinned'
+                        ? 'pinned'
+                        : 'search',
+                },
           memberReturnSurface: null,
         });
         return { kind: 'applied' };
