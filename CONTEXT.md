@@ -59,6 +59,17 @@ The current availability of one capability operation in an opaque Account or Con
 context, independent from whether its preparation completed or its lifetime remains owned.
 _Avoid_: Global health, error log
 
+**Preference preparation**:
+Independent hydration of one capability-owned preference producer into its declared safe
+defaults and committed device state. A failure degrades that producer without erasing sibling
+results.
+_Avoid_: Global settings load, preference transaction
+
+**Preference reset attempt**:
+A bounded, value-free ledger over the exported preference catalogue. Completed entries stay
+completed; only outstanding entries are eligible for exact retry.
+_Avoid_: Atomic reset, rollback
+
 **Workspace**:
 The semantic presentation state that says which Account, Space, Room, panes, and application surfaces a person is using.
 _Avoid_: Router state, layout state, shell

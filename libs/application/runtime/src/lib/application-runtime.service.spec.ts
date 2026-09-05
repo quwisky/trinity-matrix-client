@@ -14,7 +14,6 @@ import {
   type ApplicationRuntimeAdapter,
 } from './application-runtime.adapter';
 import type {
-  ApplicationRuntimeWarning,
   ApplicationSessionEvent,
   ApplicationStartOutcome,
   ApplicationStartupStageOutcome,
@@ -29,7 +28,7 @@ const ready = (): ApplicationStartupStageOutcome => ({ kind: 'ready' });
 
 describe('ApplicationRuntimeService', () => {
   let order: string[];
-  let preferenceLifetime: Subject<ApplicationRuntimeWarning>;
+  let preferenceLifetime: Subject<never>;
   let preferenceLifetimeStopped: Mock<() => void>;
   let session: Subject<ApplicationSessionEvent>;
   let sessionPreparation: ApplicationSessionEvent;
@@ -39,7 +38,7 @@ describe('ApplicationRuntimeService', () => {
 
   beforeEach(() => {
     order = [];
-    preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
+    preferenceLifetime = new Subject<never>();
     preferenceLifetimeStopped = vi.fn<() => void>();
     session = new Subject<ApplicationSessionEvent>();
     sessionPreparation = { kind: 'prepared' };
@@ -57,9 +56,9 @@ describe('ApplicationRuntimeService', () => {
       restoreWorkspace: stage('workspace-restoration'),
       awaitReadiness: stage('readiness'),
       recover: vi.fn(() => of({ kind: 'ready' as const })),
-      runPreferenceLifetime: vi.fn<() => Observable<ApplicationRuntimeWarning>>(
+      runPreferenceLifetime: vi.fn<() => Observable<never>>(
         () =>
-          new Observable<ApplicationRuntimeWarning>((subscriber) => {
+          new Observable<never>((subscriber) => {
             order.push('preference-lifetime');
             const subscription = preferenceLifetime.subscribe(subscriber);
             return () => {
@@ -217,7 +216,7 @@ describe('ApplicationRuntimeService', () => {
     preferenceLifetime.error(new Error('private preference fault'));
     expect(runtime.state().phase).toBe('blocked');
     expect(lifetime.closed).toBe(false);
-    preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
+    preferenceLifetime = new Subject<never>();
     await firstValueFrom(runtime.recover());
     expect(runtime.state().phase).toBe('ready');
     expect(preferenceLifetime.observed).toBe(true);

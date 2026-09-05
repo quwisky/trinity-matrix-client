@@ -318,9 +318,18 @@ describe('SpaceRoomOrderService', () => {
       failStorage = true;
       const { svc } = harness();
 
-      await expect(
-        firstValueFrom(svc.hydrateKnownAccounts()),
-      ).resolves.toBeUndefined();
+      await expect(firstValueFrom(svc.hydrateKnownAccounts())).resolves.toEqual(
+        {
+          kind: 'partial',
+          accounts: [
+            {
+              accountId: ME,
+              kind: 'defaulted',
+              diagnostic: { code: 'room-order-storage-unavailable' },
+            },
+          ],
+        },
+      );
       expect(svc.defaultMode()).toBe('recent');
     });
 

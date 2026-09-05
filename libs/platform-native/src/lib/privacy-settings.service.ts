@@ -9,6 +9,7 @@ import {
   INSTALLATION_PREFERENCE_CONTEXT,
   PreferenceStoreService,
   type PreferenceCommandOutcome,
+  type PreferenceFailure,
   type PreferenceDescriptor,
   type PreferenceHydrationOutcome,
   type PreferenceValue,
@@ -49,6 +50,15 @@ export class PrivacySettingsService {
     return this.preferences.hydrateDescriptors(
       INSTALLATION_PREFERENCE_CONTEXT,
       Object.values(this.descriptors),
+    );
+  }
+
+  recoverHydration(
+    failures: readonly PreferenceFailure[],
+  ): Observable<PreferenceHydrationOutcome> {
+    return this.preferences.recoverHydration(
+      INSTALLATION_PREFERENCE_CONTEXT,
+      failures,
     );
   }
 

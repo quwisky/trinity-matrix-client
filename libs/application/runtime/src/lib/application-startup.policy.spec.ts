@@ -28,7 +28,11 @@ describe('Application startup producer policy', () => {
     );
     expect(
       APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
-    ).toMatchObject({ compatibility: true, required: false });
+    ).toMatchObject({ budgetMs: 10_000, required: false });
+    expect(
+      'compatibility' in
+        APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
+    ).toBe(false);
     expect(REQUIRED_STARTUP_PRODUCER_COMPATIBILITY).toHaveLength(0);
   });
 

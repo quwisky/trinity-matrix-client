@@ -31,8 +31,7 @@ export const APPLICATION_STARTUP_PRODUCER_POLICIES = {
   'preference-hydration': {
     stage: 'preference-hydration',
     required: false,
-    compatibility: true,
-    budgetMs: 30_000,
+    budgetMs: 10_000,
     automaticRetryLimit: 0,
     timeoutCode: 'preference-hydration-timeout',
   },
@@ -96,17 +95,9 @@ const REQUIRED_PATH_BUDGET_MS = Object.values(
 )
   .filter((policy) => policy.required)
   .reduce((total, policy) => total + policy.budgetMs, 0);
-const COMPATIBILITY_PATH_BUDGET_MS = Object.values(
-  APPLICATION_STARTUP_PRODUCER_POLICIES,
-)
-  .filter((policy) => 'compatibility' in policy && policy.compatibility)
-  .reduce((total, policy) => total + policy.budgetMs, 0);
-
-/** Longest declared required path plus the still-compatible preference stage. */
+/** Longest declared required path plus the longest parallel optional preparation. */
 export const APPLICATION_STARTUP_WATCHDOG_BUDGET_MS =
-  REQUIRED_PATH_BUDGET_MS +
-  COMPATIBILITY_PATH_BUDGET_MS +
-  OPTIONAL_PREPARATION_ALLOWANCE_MS;
+  REQUIRED_PATH_BUDGET_MS + OPTIONAL_PREPARATION_ALLOWANCE_MS;
 
 export function startupProducersForStage(
   stage: ApplicationStartupStage,

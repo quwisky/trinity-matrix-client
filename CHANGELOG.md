@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Preference startup now settles all twelve current producers independently into declared safe
+  defaults and reports exact recoverable health instead of permanent warnings. Room ordering uses
+  opaque per-Account health with its recent-activity default, and the session-owned Appearance
+  effect can restart without a lifetime deadline. Reset still requires `DEFAULTS`, now preserves a
+  value-free per-entry partial ledger, owns late setters, and retries only outstanding exported
+  settings while keeping drafts, Accounts, push ledger and per-Account ordering excluded.
+
 - Application startup now applies one bounded required-producer policy from Host negotiation
   through final readiness. Room Library preparation cannot wait indefinitely, optional session
   work settles independently, failed saved navigation falls back to a safe root, and the overall

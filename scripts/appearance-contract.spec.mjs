@@ -232,7 +232,7 @@ describe('Appearance contraction', () => {
 
   it('gives Application Runtime sole ownership of the Appearance effect lifetime', () => {
     expect(filesContaining('appearanceEffects.run()')).toEqual([
-      'libs/application/runtime/src/lib/composition/trinity-application-runtime.adapter.ts',
+      'libs/application/runtime/src/lib/composition/preference-effect-health.service.ts',
     ]);
   });
 

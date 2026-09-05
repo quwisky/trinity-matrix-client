@@ -12,7 +12,7 @@ import {
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import { TrnTextarea } from '@trinity/components/controls';
 import {
   AppConfigService,
@@ -32,12 +32,9 @@ import {
   readClipboardConfig$,
   readPickedConfigFile$,
 } from './import-config';
-import {
-  RESET_CONFIG_MISTYPED_MESSAGE,
-  confirmResetConfigIntent$,
-} from './reset-config';
+import { AdvancedSettingsResetService } from './advanced-settings-reset.service';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
-import { EMPTY, defer, filter, finalize, switchMap, throwError } from 'rxjs';
+import { defer, filter, throwError } from 'rxjs';
 
 /** Two digits, so the dated filename sorts lexically. */
 function pad(value: number): string {
@@ -101,6 +98,7 @@ function exportFileName(now: Date): string {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './advanced-settings.component.html',
   host: { class: 'block' },
+  providers: [AdvancedSettingsResetService],
   imports: [
     ConfigEditorOutletDirective,
     TrnButton,
@@ -111,10 +109,10 @@ function exportFileName(now: Date): string {
 })
 export class AdvancedSettingsComponent {
   private readonly config = inject(AppConfigService);
-  private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly files = inject(HostFileExportService);
+  private readonly resetWorkflow = inject(AdvancedSettingsResetService);
 
   /**
    * The rich editor, where this platform offers one and the app wired it up. Optional in the
@@ -166,7 +164,9 @@ export class AdvancedSettingsComponent {
   readonly editor = signal<Type<ConfigEditorHost> | null>(null);
 
   /** True while a reset is in flight, so the button can't be pressed twice. */
-  readonly resetting = signal(false);
+  readonly resetting = this.resetWorkflow.resetting;
+  readonly resetResult = this.resetWorkflow.result;
+  readonly outstandingResetEntries = this.resetWorkflow.outstandingEntries;
 
   /** True while an apply is in flight, for the same reason. */
   readonly applying = signal(false);
@@ -384,39 +384,12 @@ export class AdvancedSettingsComponent {
 
   /** Put every exported setting back to its default, behind the type-to-confirm gate. */
   reset(): void {
-    confirmResetConfigIntent$(this.alert)
-      .pipe(
-        switchMap((intent) => {
-          if (intent === 'cancelled') {
-            return EMPTY;
-          }
-          if (intent === 'mistyped') {
-            this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, { duration: 4000 });
-            return EMPTY;
-          }
-          this.resetting.set(true);
-          return this.config
-            .resetToDefaults()
-            .pipe(finalize(() => this.resetting.set(false)));
-        }),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        next: () => {
-          // A reset is an edit of the app, not of the box: show what the app now holds.
-          this.discard();
-          this.toast.show('Settings reset to defaults.', {
-            duration: 3000,
-            variant: 'success',
-          });
-        },
-        error: () => {
-          this.toast.show('Could not reset every setting.', {
-            duration: 4000,
-            variant: 'danger',
-          });
-        },
-      });
+    this.resetWorkflow.start(() => this.discard());
+  }
+
+  /** Continue the exact observed attempt; completed entries are never written again. */
+  retryReset(): void {
+    this.resetWorkflow.retry(() => this.discard());
   }
 
   /**

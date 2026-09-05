@@ -267,8 +267,41 @@
     </button>
     <p class="pt-2 text-13 text-danger" data-testid="advanced-reset-warning">
       ⚠ Puts every setting above back to its default on this device, with no
-      undo — copy or export first. Your signed-in accounts and unsent drafts are
-      left alone.
+      undo — copy or export first. Your Account registry, unsent drafts, push
+      delivery ledger and per-Account Space ordering are left alone.
     </p>
+    @if (resetResult(); as result) {
+      <div
+        class="mt-3 rounded-md border border-solid border-border px-3 py-2"
+        role="status"
+        data-testid="advanced-reset-partial"
+      >
+        <p class="text-13 font-medium">
+          {{ outstandingResetEntries().length }}
+          {{
+            outstandingResetEntries().length === 1
+              ? 'setting still needs'
+              : 'settings still need'
+          }}
+          attention.
+        </p>
+        <ul class="pt-1 font-mono text-13 break-all">
+          @for (entry of outstandingResetEntries(); track entry.entry) {
+            <li>{{ entry.entry }} — {{ entry.status }}</li>
+          }
+        </ul>
+        <button
+          trnBtn
+          presentation="outline"
+          size="sm"
+          class="mt-2"
+          [disabled]="resetting()"
+          (click)="retryReset()"
+          data-testid="advanced-reset-retry"
+        >
+          Retry outstanding settings
+        </button>
+      </div>
+    }
   </div>
 </div>

@@ -3,7 +3,6 @@ import type { Observable } from 'rxjs';
 import type {
   ApplicationRecoveryAdapterOutcome,
   ApplicationSessionEvent,
-  ApplicationRuntimeWarning,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
@@ -21,7 +20,7 @@ export interface ApplicationRuntimeAdapter {
   ): Observable<ApplicationRecoveryAdapterOutcome>;
 
   /** Starts after preference hydration and lives until the Application Runtime stops. */
-  runPreferenceLifetime(): Observable<ApplicationRuntimeWarning>;
+  runPreferenceLifetime(): Observable<never>;
 
   /** Prepares before Workspace restoration and opens live streams after final readiness. */
   runSession(readiness: Observable<void>): Observable<ApplicationSessionEvent>;

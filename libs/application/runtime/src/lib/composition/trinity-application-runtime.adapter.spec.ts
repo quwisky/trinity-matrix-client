@@ -39,6 +39,8 @@ import { RoomAdministrationLifetime } from '@trinity/data-access/room-administra
 import {
   AccountScopeService,
   RoomLibraryLifetime,
+  type RoomOrderRuntimeEvent,
+  type RoomOrderHydrationOutcome,
   type RoomLibraryLifetimeEvent,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
@@ -98,13 +100,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let retryInactiveAccount: Mock<AccountRuntimeService['retryInactiveAccount']>;
   let hostManifest: Subject<HostCapabilityManifest>;
   let appearanceHydrate: Mock<() => Observable<AppearanceHydrationOutcome>>;
+  let appearanceRecover: Mock<AppearancePreferences['recoverHydration']>;
   let badgeSession: Subject<HostOperationOutcome>;
   let appearanceSession: Subject<never>;
   let notificationSession: Subject<never>;
   let focusSession: Subject<void>;
   let routedSession: Subject<void>;
   let surfaceSession: Subject<void>;
-  let orderSession: Subject<void>;
+  let orderSession: Subject<RoomOrderRuntimeEvent>;
   let roomLibrarySession: Subject<RoomLibraryLifetimeEvent>;
   let trustSession: Subject<void>;
   let identitySession: Subject<IdentityLifetimeEvent>;
@@ -120,9 +123,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let signOutAccount: Mock<AccountRuntimeService['signOutAccount']>;
   let resetInstallation: Mock<AccountRuntimeService['resetInstallation']>;
   let resetPreferences: Mock<AppConfigService['resetToDefaults']>;
+  let retryResetPreferences: Mock<AppConfigService['retryResetToDefaults']>;
   let activeAccountId: ReturnType<typeof signal<string | null>>;
   let updateCheck: Mock<HostUpdatesService['check']>;
-  let hydrateOrder: Mock<SpaceRoomOrderService['hydrateKnownAccounts']>;
+  let hydrateOrder: Mock<() => Observable<RoomOrderHydrationOutcome>>;
   let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
   let health: CapabilityHealthService;
   let adapter: TrinityApplicationRuntimeAdapter;
@@ -150,13 +154,16 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
       () => of({ kind: 'ready', hydrated: 6 }),
     );
+    appearanceRecover = vi.fn<AppearancePreferences['recoverHydration']>(() =>
+      of({ kind: 'ready', hydrated: 6 }),
+    );
     badgeSession = new Subject<HostOperationOutcome>();
     appearanceSession = new Subject<never>();
     notificationSession = new Subject<never>();
     focusSession = new Subject<void>();
     routedSession = new Subject<void>();
     surfaceSession = new Subject<void>();
-    orderSession = new Subject<void>();
+    orderSession = new Subject<RoomOrderRuntimeEvent>();
     roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
     trustSession = new Subject<void>();
     identitySession = new Subject<IdentityLifetimeEvent>();
@@ -180,14 +187,17 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       of({ kind: 'ready' as const }),
     );
     resetPreferences = vi.fn<AppConfigService['resetToDefaults']>(() =>
-      of(void 0),
+      of({ kind: 'completed', attempt: 1, entries: [] }),
+    );
+    retryResetPreferences = vi.fn<AppConfigService['retryResetToDefaults']>(
+      () => of({ kind: 'completed', attempt: 2, entries: [] }),
     );
     activeAccountId = signal<string | null>('@active:example.org');
     updateCheck = vi.fn<HostUpdatesService['check']>(() =>
       of({ kind: 'completed' as const }),
     );
-    hydrateOrder = vi.fn<SpaceRoomOrderService['hydrateKnownAccounts']>(() =>
-      of(void 0),
+    hydrateOrder = vi.fn<() => Observable<RoomOrderHydrationOutcome>>(() =>
+      of({ kind: 'ready', accounts: [] }),
     );
     requestPersistence = vi.fn<StoragePersistenceService['requestPersistence']>(
       () => of(true),
@@ -251,11 +261,15 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           run: () => surfaceSession,
         }),
         MockProvider(AppearanceEffects, { run: () => appearanceSession }),
-        MockProvider(AppearancePreferences, { hydrate: appearanceHydrate }),
+        MockProvider(AppearancePreferences, {
+          hydrate: appearanceHydrate,
+          recoverHydration: appearanceRecover,
+        }),
         MockProvider(ShellLayoutService, promiseInit()),
         MockProvider(FeatureFlagsService, promiseInit()),
         MockProvider(PrivacySettingsService, {
           init: () => of({ kind: 'ready' as const, hydrated: 3 }),
+          recoverHydration: () => of({ kind: 'ready' as const, hydrated: 1 }),
         }),
         MockProvider(DraftStoreService, promiseInit()),
         MockProvider(SystemLineSettingsService, promiseInit()),
@@ -264,11 +278,20 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(DateTimeFormatService, promiseInit()),
         MockProvider(KeyboardShortcutsService, promiseInit()),
         MockProvider(GifSettingsService, promiseInit()),
-        MockProvider(AccountScopeService, { init: () => of(void 0) }),
-        MockProvider(AppConfigService, { resetToDefaults: resetPreferences }),
+        MockProvider(AccountScopeService, {
+          init: () => of({ kind: 'ready' as const, hydrated: 1 }),
+          recoverHydration: () => of({ kind: 'ready' as const, hydrated: 1 }),
+        }),
+        MockProvider(AppConfigService, {
+          resetToDefaults: resetPreferences,
+          retryResetToDefaults: retryResetPreferences,
+        }),
         MockProvider(PushGatewayService, promiseInit()),
         MockProvider(SpaceRoomOrderService, {
           hydrateKnownAccounts: hydrateOrder,
+          knownAccountIds: () => ['@active:example.org'],
+          retryHydration: () =>
+            of({ accountId: '@active:example.org', kind: 'ready' as const }),
           run: () => orderSession,
         }),
         MockProvider(RoomLibraryLifetime, {
@@ -296,7 +319,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(appearanceHydrate).toHaveBeenCalledOnce();
   });
 
-  it('maps required preference failure and keeps optional session capabilities non-blocking', async () => {
+  it('keeps declared preference defaults when one initializer rejects', async () => {
     appearanceHydrate.mockReturnValueOnce(
       new Observable((subscriber) =>
         subscriber.error(new Error('preferences unavailable')),
@@ -304,11 +327,22 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     await expect(firstValueFrom(adapter.hydratePreferences())).resolves.toEqual(
       {
-        kind: 'blocked',
-        recovery: 'reset-preferences',
-        diagnostic: { code: 'preference-hydration-failed' },
+        kind: 'ready',
+        settlements: [
+          {
+            producer: 'preference-hydration',
+            stage: 'preference-hydration',
+            status: 'degraded',
+            diagnostic: { code: 'preference-hydration-degraded' },
+          },
+        ],
       },
     );
+    expect(health.problems()[0]).toMatchObject({
+      capability: 'preferences',
+      operation: 'hydrate-appearance',
+      code: 'appearance-hydration-failed',
+    });
 
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
@@ -316,12 +350,19 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(updateCheck).not.toHaveBeenCalled();
   });
 
-  it('publishes one recoverable warning for partial Appearance hydration', async () => {
+  it('publishes scoped health and exact recovery for partial Appearance hydration', async () => {
+    const failures = [
+      {
+        preferenceId: 'design-system.theme',
+        recovery: 'reset-preference' as const,
+        diagnostic: { code: 'preference-migration-rejected' as const },
+      },
+    ];
     appearanceHydrate.mockReturnValueOnce(
       of({
         kind: 'partial',
         hydrated: 5,
-        failures: [],
+        failures,
         warning: {
           code: 'appearance-preference-hydration-partial',
           recovery: 'reset-preferences',
@@ -332,16 +373,26 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await expect(firstValueFrom(adapter.hydratePreferences())).resolves.toEqual(
       {
         kind: 'ready',
-        warnings: [
+        settlements: [
           {
+            producer: 'preference-hydration',
             stage: 'preference-hydration',
-            scope: 'preferences',
-            diagnostic: { code: 'appearance-preference-hydration-partial' },
-            recovery: 'reset-preferences',
+            status: 'degraded',
+            diagnostic: { code: 'preference-hydration-degraded' },
           },
         ],
       },
     );
+    const problem = health.problems()[0]!;
+    expect(problem).toMatchObject({
+      capability: 'preferences',
+      operation: 'hydrate-appearance',
+      code: 'appearance-preference-hydration-partial',
+    });
+    await expect(
+      firstValueFrom(health.recover(problem).pipe(toArray())),
+    ).resolves.toEqual([{ kind: 'pending' }, { kind: 'success' }]);
+    expect(appearanceRecover).toHaveBeenCalledWith(failures);
   });
 
   it('keeps a rejected badge probe as an optional startup warning', async () => {
@@ -401,10 +452,19 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
   });
 
-  it('settles ordering and persistence independently as optional warnings', async () => {
-    hydrateOrder.mockImplementationOnce(() => {
-      throw new Error('ordering unavailable');
-    });
+  it('settles ordering health and persistence independently', async () => {
+    hydrateOrder.mockReturnValueOnce(
+      of({
+        kind: 'partial',
+        accounts: [
+          {
+            accountId: '@active:example.org',
+            kind: 'defaulted',
+            diagnostic: { code: 'room-order-storage-unavailable' },
+          },
+        ],
+      }),
+    );
     requestPersistence.mockReturnValueOnce(of(false));
 
     await expect(
@@ -412,10 +472,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     ).resolves.toMatchObject({
       kind: 'ready',
       warnings: [
-        expect.objectContaining({
-          scope: 'workspace',
-          diagnostic: { code: 'room-order-hydration-failed' },
-        }),
         expect.objectContaining({
           scope: 'storage',
           diagnostic: { code: 'storage-persistence-denied' },
@@ -425,7 +481,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         expect.objectContaining({
           producer: 'room-order',
           status: 'degraded',
-          diagnostic: { code: 'room-order-hydration-failed' },
+          diagnostic: { code: 'room-order-hydration-degraded' },
         }),
         expect.objectContaining({
           producer: 'browser-storage-persistence',
@@ -436,6 +492,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
     expect(hydrateOrder).toHaveBeenCalledOnce();
     expect(requestPersistence).toHaveBeenCalledOnce();
+    expect(
+      health
+        .problems()
+        .find((problem) => problem.capability === 'room-library'),
+    ).toMatchObject({
+      operation: 'hydrate-order',
+      code: 'room-order-storage-unavailable',
+    });
   });
 
   it('bounds unresponsive optional startup siblings with exact identities', async () => {
@@ -452,9 +516,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       kind: 'ready',
       warnings: [
         expect.objectContaining({
-          diagnostic: { code: 'room-order-hydration-timeout' },
-        }),
-        expect.objectContaining({
           diagnostic: { code: 'storage-persistence-timeout' },
         }),
       ],
@@ -462,7 +523,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         expect.objectContaining({
           producer: 'room-order',
           status: 'degraded',
-          diagnostic: { code: 'room-order-hydration-timeout' },
+          diagnostic: { code: 'room-order-hydration-degraded' },
         }),
         expect.objectContaining({
           producer: 'browser-storage-persistence',
@@ -646,6 +707,33 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       firstValueFrom(adapter.recover('reset-installation')),
     ).resolves.toEqual({ kind: 'ready' });
     expect(resetInstallation).toHaveBeenCalledOnce();
+  });
+
+  it('retries only the outstanding entries from a partial preference reset', async () => {
+    resetPreferences.mockReturnValueOnce(
+      of({
+        kind: 'partial',
+        attempt: 41,
+        entries: [
+          { entry: 'appearance.theme', status: 'completed' },
+          {
+            entry: 'privacy.readReceipts',
+            status: 'failed',
+            diagnostic: { code: 'config-reset-entry-failed' },
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      firstValueFrom(adapter.recover('reset-preferences')),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'recovery-failed' });
+    await expect(
+      firstValueFrom(adapter.recover('reset-preferences')),
+    ).resolves.toEqual({ kind: 'ready' });
+
+    expect(resetPreferences).toHaveBeenCalledOnce();
+    expect(retryResetPreferences).toHaveBeenCalledWith(41);
   });
 
   it('owns every concrete session stream across teardown and restart', () => {

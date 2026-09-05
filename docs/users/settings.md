@@ -108,7 +108,14 @@ Matrix account data, encrypted keys or push registrations.
 might need its values again. It resets the exported preferences, including the GIF provider/key
 and push gateway. Clearing the gateway also removes this device's push registrations from the
 homeservers: mobile push notifications stop until you configure a gateway again. You stay signed
-in and keep unsent drafts. This does not delete your account or reset its encryption identity.
+in and keep unsent drafts. The Account registry, push delivery ledger and per-Account Space order
+are outside the reset. This does not delete your account or reset its encryption identity.
+
+Reset can finish partially when a device store or external cleanup is unavailable. Advanced shows
+only safe setting paths—never values—for entries that still need attention. **Retry outstanding
+settings** continues that exact attempt and does not write entries that already completed. A
+setter already in progress may still finish after the first result; the UI does not claim it was
+cancelled.
 
 ## When settings do not work
 

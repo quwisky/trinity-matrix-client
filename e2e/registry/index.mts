@@ -21,7 +21,7 @@ export const E2E_SUITES = [
 ] as const;
 
 export const E2E_INVENTORY = {
-  canonicalBrowserSpecCount: 110,
+  canonicalBrowserSpecCount: 111,
   trackedTargetProjects: [
     {
       project: 'trinity-e2e',

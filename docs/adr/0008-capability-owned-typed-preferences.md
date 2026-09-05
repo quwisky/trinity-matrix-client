@@ -64,6 +64,19 @@ five. Application Runtime hydrates the aggregate before Workspace routing and ow
 Appearance effect subscription for the whole application session; the routed screen owns only
 user commands and failed-axis recovery.
 
+Application composition inventories twelve current preference producers under stable installation
+`hydrate-*` operations. They settle independently into declared defaults; only explicit typed
+evidence that no safe baseline exists may block startup. Observation is finite without placing a
+deadline on the Appearance effect, whose operational failure is now scoped `apply-appearance`
+health with exact restart recovery.
+
+Configuration reset remains the exact exported catalogue rather than becoming a global local-data
+wipe. Its `DEFAULTS` gate precedes both Advanced Settings and startup recovery. The command owns a
+value-free per-entry ledger, retains Promise setters beyond observation cancellation or timeout,
+preserves completed entries, and retries only outstanding entries. Drafts, Account registry, the
+push applied-id ledger, and per-Account Space ordering stay excluded; Room ordering instead uses
+its own per-Account hydration health and the recent-activity default.
+
 The Privacy journey follows the same policy boundary through the shared catalog renderer. Its
 descriptors are defined and exported by the Conversations capability in
 `@trinity/data-access/timeline`. The capability contributes them to the policy-free catalog; the

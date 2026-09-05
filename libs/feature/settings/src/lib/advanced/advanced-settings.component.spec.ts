@@ -168,6 +168,7 @@ describe('AdvancedSettingsComponent', () => {
   let toastShow: Mock;
   let writeText: Mock;
   let resetToDefaults: Mock;
+  let retryResetToDefaults: Mock;
   let fileSave: Mock;
   let fileExportSupported: boolean;
 
@@ -181,7 +182,12 @@ describe('AdvancedSettingsComponent', () => {
     toastShow = vi.fn();
     writeText = vi.fn().mockResolvedValue(undefined);
     readText = vi.fn().mockResolvedValue('');
-    resetToDefaults = vi.fn(() => of(undefined));
+    resetToDefaults = vi.fn(() =>
+      of({ kind: 'completed', attempt: 1, entries: [] }),
+    );
+    retryResetToDefaults = vi.fn(() =>
+      of({ kind: 'completed', attempt: 2, entries: [] }),
+    );
     fileSave = vi.fn(() => of({ kind: 'completed' as const }));
     fileExportSupported = true;
     Object.defineProperty(navigator, 'clipboard', {
@@ -224,6 +230,7 @@ describe('AdvancedSettingsComponent', () => {
       MockProvider(AppConfigService, {
         exportJson: () => json,
         resetToDefaults,
+        retryResetToDefaults,
       }),
       MockProvider(TrnAlertService, { prompt$: alertPrompt }),
       MockProvider(TrnToastService, { show: toastShow }),
@@ -526,6 +533,44 @@ describe('AdvancedSettingsComponent', () => {
       'Could not reset every setting.',
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  it('shows only outstanding reset entries and retries the exact attempt', async () => {
+    resetToDefaults.mockReturnValue(
+      of({
+        kind: 'partial',
+        attempt: 17,
+        entries: [
+          { entry: 'appearance.theme', status: 'completed' },
+          {
+            entry: 'privacy.readReceipts',
+            status: 'failed',
+            diagnostic: { code: 'config-reset-entry-failed' },
+          },
+        ],
+      }),
+    );
+    const { container, fixture } = await render(AdvancedSettingsComponent, {
+      providers: mockedConfig(),
+    });
+
+    button(container, 'advanced-reset')?.click();
+    await flush();
+    fixture.detectChanges();
+
+    expect(textOf(container, 'advanced-reset-partial')).toContain(
+      'privacy.readReceipts',
+    );
+    expect(textOf(container, 'advanced-reset-partial')).not.toContain(
+      'appearance.theme',
+    );
+    button(container, 'advanced-reset-retry')?.click();
+    await flush();
+
+    expect(retryResetToDefaults).toHaveBeenCalledWith(17);
+    expect(
+      container.querySelector('[data-testid=advanced-reset-partial]'),
+    ).toBeNull();
   });
 
   describe('editing and applying', () => {

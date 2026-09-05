@@ -26,16 +26,7 @@ import {
   type PreferenceValue,
 } from '@trinity/runtime/preferences';
 import type { ThemeId, ThemeMode } from '@trinity/theme-foundation';
-import {
-  concatMap,
-  defer,
-  from,
-  map,
-  switchMap,
-  tap,
-  toArray,
-  type Observable,
-} from 'rxjs';
+import { map, tap, type Observable } from 'rxjs';
 import {
   DENSITY_PREFERENCE,
   DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
@@ -142,25 +133,22 @@ export class AppearancePreferences {
   recoverHydration(
     failures: readonly PreferenceFailure[],
   ): Observable<AppearanceHydrationOutcome> {
-    return defer(() => {
-      const failedDescriptors = failures.flatMap((failure) => {
-        const descriptor = APPEARANCE_PREFERENCE_DESCRIPTORS.find(
-          ({ id }) => id === failure.preferenceId,
-        );
-        return descriptor ? [descriptor] : [];
-      });
-      return from(failedDescriptors).pipe(
-        concatMap((descriptor) =>
-          this.preferences.setPreference(
-            descriptor,
-            INSTALLATION_PREFERENCE_CONTEXT,
-            descriptor.defaultValue,
-          ),
+    return this.preferences
+      .recoverHydration(INSTALLATION_PREFERENCE_CONTEXT, failures)
+      .pipe(
+        map((outcome): AppearanceHydrationOutcome =>
+          outcome.kind === 'ready'
+            ? { kind: 'ready', hydrated: 6 }
+            : {
+                ...outcome,
+                warning: {
+                  code: 'appearance-preference-hydration-partial',
+                  recovery: 'reset-preferences',
+                },
+              },
         ),
-        toArray(),
-        switchMap(() => this.hydrate()),
+        tap((outcome) => this._hydration.set(outcome)),
       );
-    });
   }
 
   private axis<T extends PreferenceValue>(

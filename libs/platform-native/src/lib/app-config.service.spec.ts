@@ -4,11 +4,12 @@ import {
   definePreference,
   type PreferenceDescriptor,
 } from '@trinity/runtime/preferences';
-import { firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { firstValueFrom, of, throwError, type Observable } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppConfigService } from './app-config.service';
 import {
   CONFIG_EXPORT_VERSION,
+  CONFIG_RESET_OBSERVATION_BUDGET_MS,
   exportedKeysFor,
   provideConfigEntries,
   type ConfigDocument,
@@ -171,7 +172,7 @@ function flush(): Promise<void> {
 }
 
 /** Run a cold action to completion. */
-function run(action: ReturnType<AppConfigService['resetToDefaults']>) {
+function run(action: Observable<unknown>) {
   return new Promise<void>((resolve, reject) =>
     action.subscribe({ complete: resolve, error: reject }),
   );
@@ -203,6 +204,8 @@ describe('AppConfigService', () => {
     set.mockReset().mockResolvedValue(undefined);
     vi.mocked(Preferences.remove).mockReset().mockResolvedValue(undefined);
   });
+
+  afterEach(() => vi.useRealTimers());
 
   describe('the registry', () => {
     it('is empty, not broken, with no app wiring', () => {
@@ -609,8 +612,16 @@ describe('AppConfigService', () => {
       await run(config.resetToDefaults());
 
       const written = set.mock.calls.map(([options]) => options.key);
-      expect(written).not.toContain('trinity.composer.drafts');
-      expect(written).not.toContain('trinity.accounts.mixed');
+      for (const excluded of [
+        'matrix.accounts',
+        'trinity.composer.drafts',
+        'trinity.accounts.mixed',
+        'trinity.push.applied-app-id',
+        'trinity.spaces.order.default.@alice:example.org',
+        'trinity.spaces.order.overrides.@alice:example.org',
+      ]) {
+        expect(written).not.toContain(excluded);
+      }
       expect(drafts.get('!room:hs')).toBe('half-typed secret');
     });
 
@@ -637,6 +648,146 @@ describe('AppConfigService', () => {
       await reset;
 
       expect(completed).toBe(true);
+    });
+
+    it('preserves exact successful entries when a sibling reset fails', async () => {
+      const first = vi.fn(() => of({ kind: 'completed' as const }));
+      const second = vi.fn(() =>
+        throwError(() => new Error('access_token=do-not-export')),
+      );
+      const third = vi.fn(() => undefined);
+      const config = setupWith([
+        entry('appearance.theme', { reset: first }),
+        entry('privacy.linkPreviews', { reset: second }),
+        entry('timeline.membership', { reset: third }),
+      ]);
+
+      const outcome = await firstValueFrom(config.resetToDefaults());
+
+      expect(outcome).toEqual({
+        kind: 'partial',
+        attempt: 1,
+        entries: [
+          { entry: 'appearance.theme', status: 'completed' },
+          {
+            entry: 'privacy.linkPreviews',
+            status: 'failed',
+            diagnostic: { code: 'config-reset-entry-failed' },
+          },
+          { entry: 'timeline.membership', status: 'completed' },
+        ],
+      });
+      expect(JSON.stringify(outcome)).not.toContain('access_token');
+      expect(config.resetLedger()).toMatchObject({ status: 'settled' });
+    });
+
+    it('contains a synchronous entry failure and continues resetting siblings', async () => {
+      const failed = vi.fn(() => {
+        throw new Error('access_token=do-not-export');
+      });
+      const sibling = vi.fn(() => undefined);
+      const config = setupWith([
+        entry('appearance.theme', { reset: failed }),
+        entry('privacy.linkPreviews', { reset: sibling }),
+      ]);
+
+      const outcome = await firstValueFrom(config.resetToDefaults());
+
+      expect(outcome).toEqual({
+        kind: 'partial',
+        attempt: 1,
+        entries: [
+          {
+            entry: 'appearance.theme',
+            status: 'failed',
+            diagnostic: { code: 'config-reset-entry-failed' },
+          },
+          { entry: 'privacy.linkPreviews', status: 'completed' },
+        ],
+      });
+      expect(JSON.stringify(outcome)).not.toContain('access_token');
+      expect(sibling).toHaveBeenCalledOnce();
+    });
+
+    it('retries only entries still outstanding from the exact attempt', async () => {
+      const completed = vi.fn(() => undefined);
+      const retried = vi
+        .fn()
+        .mockImplementationOnce(() =>
+          throwError(() => new Error('storage unavailable')),
+        )
+        .mockImplementationOnce(() => of({ kind: 'completed' as const }));
+      const config = setupWith([
+        entry('appearance.theme', { reset: completed }),
+        entry('privacy.linkPreviews', { reset: retried }),
+      ]);
+      const first = await firstValueFrom(config.resetToDefaults());
+      if (first.kind !== 'partial') throw new Error('Expected partial reset.');
+
+      const second = await firstValueFrom(
+        config.retryResetToDefaults(first.attempt),
+      );
+
+      expect(second).toEqual({
+        kind: 'completed',
+        attempt: 2,
+        entries: [
+          { entry: 'appearance.theme', status: 'completed' },
+          { entry: 'privacy.linkPreviews', status: 'completed' },
+        ],
+      });
+      expect(completed).toHaveBeenCalledOnce();
+      expect(retried).toHaveBeenCalledTimes(2);
+      await expect(
+        firstValueFrom(config.retryResetToDefaults(first.attempt)),
+      ).resolves.toEqual({ kind: 'unavailable', reason: 'stale-attempt' });
+    });
+
+    it('bounds observation while retaining and joining an uncertain Promise setter', async () => {
+      vi.useFakeTimers();
+      let settle!: () => void;
+      const pending = new Promise<void>((resolve) => (settle = resolve));
+      const reset = vi.fn(() => pending);
+      const config = setupWith([entry('appearance.theme', { reset })]);
+      const first = firstValueFrom(config.resetToDefaults());
+
+      await vi.advanceTimersByTimeAsync(CONFIG_RESET_OBSERVATION_BUDGET_MS);
+      await expect(first).resolves.toEqual({
+        kind: 'partial',
+        attempt: 1,
+        entries: [{ entry: 'appearance.theme', status: 'in-progress' }],
+      });
+
+      const joined = firstValueFrom(config.resetToDefaults());
+      expect(reset).toHaveBeenCalledOnce();
+      settle();
+      await vi.runAllTimersAsync();
+
+      await expect(joined).resolves.toEqual({
+        kind: 'completed',
+        attempt: 1,
+        entries: [{ entry: 'appearance.theme', status: 'completed' }],
+      });
+      expect(reset).toHaveBeenCalledOnce();
+    });
+
+    it('keeps an already-started reset owned after its observer cancels', async () => {
+      let settle!: () => void;
+      const pending = new Promise<void>((resolve) => (settle = resolve));
+      const reset = vi.fn(() => pending);
+      const config = setupWith([entry('appearance.theme', { reset })]);
+
+      const observer = config.resetToDefaults().subscribe();
+      observer.unsubscribe();
+      settle();
+      await flush();
+
+      expect(config.resetLedger()).toEqual({
+        attempt: 1,
+        status: 'settled',
+        entries: [{ entry: 'appearance.theme', status: 'completed' }],
+      });
+      expect(reset).toHaveBeenCalledOnce();
     });
   });
 });

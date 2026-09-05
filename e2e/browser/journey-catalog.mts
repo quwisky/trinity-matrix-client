@@ -487,6 +487,11 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'accessibility',
   },
   {
+    path: 'journeys/settings/preference-reset.spec.mts',
+    capability: 'settings',
+    contractType: 'security',
+  },
+  {
     path: 'journeys/settings/settings-navigation-layout.spec.mts',
     capability: 'settings',
     contractType: 'visual',
