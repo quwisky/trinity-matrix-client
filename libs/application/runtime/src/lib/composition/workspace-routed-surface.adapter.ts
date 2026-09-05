@@ -7,6 +7,7 @@ import {
   type WorkspaceApplicationSurface,
   type WorkspaceSurface,
 } from '@trinity/application/workspace';
+import { decodeRoomSegment } from '@trinity/util/matrix';
 import {
   MD_QUERY,
   matchesQuery,
@@ -31,8 +32,11 @@ export class WorkspaceRoutedSurfaceAdapter {
   private readonly _roomProjectionDemand = signal(
     this.isRoomRoute(this.router.url),
   );
+  private readonly _activeRoomId = signal(this.roomId(this.router.url));
   /** Whether the routed Workspace can currently present Room-scoped projections. */
   readonly roomProjectionDemand = this._roomProjectionDemand.asReadonly();
+  /** Exact routed Room or Space whose administration projections are applicable. */
+  readonly activeRoomId = this._activeRoomId.asReadonly();
   private currentUrl: string | null = null;
   private previousUrl: string | null = null;
 
@@ -61,6 +65,7 @@ export class WorkspaceRoutedSurfaceAdapter {
         unregister();
         this.active.set(null);
         this._roomProjectionDemand.set(false);
+        this._activeRoomId.set(null);
         this.currentUrl = null;
         this.previousUrl = null;
       };
@@ -131,6 +136,7 @@ export class WorkspaceRoutedSurfaceAdapter {
 
   private update(url: string): void {
     this._roomProjectionDemand.set(this.isRoomRoute(url));
+    this._activeRoomId.set(this.roomId(url));
     const surface = this.applicationSurface(url);
     this.active.set(surface ? { layer: 'application', surface } : null);
   }
@@ -140,6 +146,20 @@ export class WorkspaceRoutedSurfaceAdapter {
       .parseUrl(url)
       .root.children['primary']?.segments.map((segment) => segment.path);
     return segments?.[0] === 'rooms';
+  }
+
+  private roomId(url: string): string | null {
+    const tree = this.router.parseUrl(url);
+    const segments = tree.root.children['primary']?.segments.map(
+      (segment) => segment.path,
+    );
+    if (segments?.[0] !== 'rooms') return null;
+    const roomSegment = segments[1];
+    if (roomSegment) return decodeRoomSegment(roomSegment);
+    const spaceSegment = tree.queryParams['space'];
+    return typeof spaceSegment === 'string' && !tree.queryParams['view']
+      ? decodeRoomSegment(spaceSegment)
+      : null;
   }
 
   private applicationSurface(url: string): WorkspaceApplicationSurface | null {

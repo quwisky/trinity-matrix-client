@@ -123,7 +123,7 @@ describe('Room Administration production boundary', () => {
     expect(members).toContain('projectFromClient({');
     expect(moderation).not.toContain('removeMemberFromProjection');
     expect(moderation).not.toContain('bannedMembers(');
-    expect(bannedMembers).toContain('this.members.bannedFor(this.roomId())');
+    expect(bannedMembers).toContain('this.members.bannedView(this.roomId())');
     expect(bannedMembers).not.toContain('this.banned.update');
     expect(roomLibrary).not.toMatch(/\b(?:membersFor|membersOf)\s*\(/);
   });

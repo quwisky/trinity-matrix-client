@@ -249,10 +249,15 @@ export class RoomShellViewModel {
       : { available: false, reason: 'Open a room before inviting people.' };
   });
 
-  readonly members = computed(() => {
+  readonly membersView = computed(() => {
     // Scoped to the open room: the signal is written only when a member event names it,
     // so a busy unrelated room cannot wake this list.
-    return this.membersProjection.membersFor(this.store.activeRoomId())();
+    return this.membersProjection.membersView(this.store.activeRoomId());
+  });
+
+  readonly members = computed(() => {
+    const view = this.membersView();
+    return view.current ?? view.stale ?? [];
   });
 
   /**

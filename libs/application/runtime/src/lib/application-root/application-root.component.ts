@@ -145,6 +145,17 @@ function capabilityProblemMessage(
       return problem.operation === 'room-rules'
         ? 'Room notification settings are unavailable. Their last known values may be stale; notification delivery continues independently.'
         : 'Trinity cannot currently show new device notifications. Messaging and Room notification settings remain usable.';
+    case 'room-administration':
+      switch (problem.operation) {
+        case 'permissions':
+          return 'Current Room permissions are unavailable. Administrative changes are paused; messaging remains usable.';
+        case 'members':
+          return 'Current Room membership is unavailable. A visible member list may be stale; messaging remains usable.';
+        case 'bans':
+          return 'Current Room bans are unavailable. A visible ban list may be stale; other Room settings remain usable.';
+        default:
+          return 'Current Room administration data is unavailable. Existing informational data may be stale.';
+      }
     case 'push':
       return 'Mobile push registration is unavailable. Notifications may not arrive while Trinity is closed; in-app messaging remains usable.';
     case 'badge':
@@ -172,6 +183,8 @@ function capabilityRetryLabel(problem: ApplicationCapabilityHealth): string {
       return problem.operation === 'room-rules'
         ? 'Retry Room settings'
         : 'Retry notifications';
+    case 'room-administration':
+      return 'Retry Room administration';
     case 'push':
       return 'Retry mobile push';
     case 'badge':
@@ -190,6 +203,8 @@ function capabilityStatusTestId(problem: ApplicationCapabilityHealth): string {
     return problem.operation === 'room-rules'
       ? 'app-notification-rules-health'
       : 'app-notification-presentation-health';
+  if (problem.capability === 'room-administration')
+    return `app-room-${problem.operation}-health`;
   if (problem.capability === 'push') return 'app-push-health';
   if (problem.capability === 'badge') return 'app-badge-health';
   if (problem.capability === 'updates') return 'app-updates-health';

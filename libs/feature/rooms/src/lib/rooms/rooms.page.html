@@ -493,6 +493,7 @@
                   class="chat-members"
                   data-right-panel-surface
                   [members]="vm.members()"
+                  [availability]="vm.membersView().availability"
                   [direct]="vm.activeRoomIsDirect()"
                   (selectMember)="memberActions.onSelectMember($event)"
                 />

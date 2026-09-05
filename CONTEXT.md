@@ -59,6 +59,12 @@ The current availability of one capability operation in an opaque Account or Con
 context, independent from whether its preparation completed or its lifetime remains owned.
 _Avoid_: Global health, error log
 
+**Projection freshness**:
+Whether a capability read model is coherent for its exact Account and Room, retained but stale
+after reconciliation failed, or unavailable because no authoritative snapshot or owner remains.
+Stale informational data is never current command authority.
+_Avoid_: Empty state, cached permission
+
 **Preference preparation**:
 Independent hydration of one capability-owned preference producer into its declared safe
 defaults and committed device state. Typed outcome and consequence keys distinguish normal absence

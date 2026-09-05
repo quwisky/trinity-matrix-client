@@ -20,6 +20,20 @@
     />
   </label>
 
+  @if (availability() !== 'coherent') {
+    <p
+      class="mb-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
+      role="status"
+      data-testid="member-list-freshness"
+    >
+      @if (availability() === 'stale') {
+        Showing the last known member list. Current membership is unavailable.
+      } @else {
+        The member list is unavailable. This does not mean the Room is empty.
+      }
+    </p>
+  }
+
   <!-- Always rendered, never behind an @if: a live region that is created at the moment
        its text appears is a region the screen reader was not yet watching, so nothing is
        announced. Only the text changes. Silent until a filter is actually typed. -->
@@ -81,7 +95,7 @@
       </ul>
     </div>
   } @empty {
-    @if (filtering()) {
+    @if (availability() === 'coherent' && filtering()) {
       <trn-empty-state
         layout="line"
         body="No members match that."

@@ -322,7 +322,13 @@ export const SHARED_MOCKS: Provider[] = [
       curateSpace: { available: true, reason: null },
     }),
   }),
-  MockProvider(RoomMembersService),
+  MockProvider(RoomMembersService, {
+    membersView: () => ({
+      availability: 'coherent',
+      current: [],
+      stale: null,
+    }),
+  }),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
   // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`

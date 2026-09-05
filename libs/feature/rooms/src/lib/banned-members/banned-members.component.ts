@@ -41,12 +41,18 @@ export class BannedMembersComponent {
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
-  /** The current authoritative ban list for this Room. */
-  readonly banned = computed(() => this.members.bannedFor(this.roomId())());
+  /** The current or explicitly stale ban-list presentation for this Room. */
+  readonly view = computed(() => this.members.bannedView(this.roomId()));
+  readonly banned = computed(() => {
+    const view = this.view();
+    return view.current ?? view.stale ?? [];
+  });
   /** User IDs whose unban is in flight (disables that row's button). */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
 
-  readonly isEmpty = computed(() => this.banned().length === 0);
+  readonly isEmpty = computed(
+    () => this.view().availability === 'coherent' && this.banned().length === 0,
+  );
 
   /** Release an accepted unban's pending marker once its sync echo removes the row. */
   private readonly _reconcilePending = effect(() => {

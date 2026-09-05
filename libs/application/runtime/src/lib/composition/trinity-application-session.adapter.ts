@@ -23,7 +23,7 @@ import {
 } from '@trinity/data-access/room-library';
 import {
   RoomAdministrationLifetime,
-  RoomAdministrationLifetimeError,
+  type RoomAdministrationLifetimeEvent,
 } from '@trinity/data-access/room-administration';
 import { TrustLifetime } from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
@@ -221,33 +221,29 @@ export class TrinityApplicationSessionAdapter {
             error: fail,
           }),
       );
-      observeOptional(
-        this.optionalLifetime(
-          this.roomAdministration.run(this.routedSurfaces.roomProjectionDemand),
-          'room-administration',
-          'room-administration-projection-unavailable',
-          (error) => error instanceof RoomAdministrationLifetimeError,
-        ),
+      subscriptions.add(
+        this.roomAdministration
+          .run(
+            this.routedSurfaces.roomProjectionDemand,
+            this.routedSurfaces.activeRoomId,
+          )
+          .subscribe({
+            next: (event: RoomAdministrationLifetimeEvent) => {
+              if (event.kind === 'health')
+                this.health.report(event.fact, () =>
+                  this.roomAdministration.recover(
+                    event.fact.operation,
+                    event.fact.context,
+                    event.fact.generation,
+                  ),
+                );
+            },
+            error: fail,
+          }),
       );
 
       return () => subscriptions.unsubscribe();
     });
-  }
-
-  private optionalLifetime(
-    lifetime: Observable<void>,
-    scope: ApplicationRuntimeWarning['scope'],
-    code: string,
-    isOperational: (error: unknown) => boolean,
-  ): Observable<ApplicationRuntimeWarning | null> {
-    return lifetime.pipe(
-      map(() => null),
-      catchError((error: unknown) =>
-        isOperational(error)
-          ? of(warning(scope, code))
-          : throwError(() => error),
-      ),
-    );
   }
 
   private runLive(): Observable<ApplicationRuntimeWarning> {
@@ -504,18 +500,6 @@ export class TrinityApplicationSessionAdapter {
       () => window.location.reload(),
     );
   }
-}
-
-function warning(
-  scope: ApplicationRuntimeWarning['scope'],
-  code: string,
-): ApplicationRuntimeWarning {
-  return {
-    stage: 'session',
-    scope,
-    diagnostic: { code },
-    recovery: 'retry-startup',
-  };
 }
 
 const CALLBACK_PARAMS = [

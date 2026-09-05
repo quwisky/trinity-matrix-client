@@ -111,6 +111,11 @@ describe('RoomsPage rendered right-panel focus', () => {
       filteredRooms: signal<RoomSummary[]>([]),
       loadHomeserverInfo: vi.fn(),
       members: signal<MemberSummary[]>([BOB]),
+      membersView: signal({
+        availability: 'coherent' as const,
+        current: [BOB],
+        stale: null,
+      }),
       railSpaces: signal([]),
       railUnread: signal({ recent: 0, home: 0, rooms: 0, perSpace: {} }),
       reauthAccounts: signal([]),

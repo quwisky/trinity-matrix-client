@@ -14,7 +14,11 @@ import { BannedMembersComponent } from './banned-members.component';
 
 async function build(
   bans: BannedMember[],
-  over: { unban?: Mock; canUnban?: boolean } = {},
+  over: {
+    unban?: Mock;
+    canUnban?: boolean;
+    availability?: 'coherent' | 'stale' | 'unavailable';
+  } = {},
 ) {
   const unban = over.unban ?? vi.fn(() => of(undefined));
   const banned = signal<readonly BannedMember[]>(bans);
@@ -25,6 +29,14 @@ async function build(
       MockProvider(RoomModerationService, { unban }),
       MockProvider(RoomMembersService, {
         bannedFor: () => banned.asReadonly(),
+        bannedView: () => {
+          const availability = over.availability ?? 'coherent';
+          return availability === 'coherent'
+            ? { availability, current: banned(), stale: null }
+            : availability === 'stale'
+              ? { availability, current: null, stale: banned() }
+              : { availability, current: null, stale: null };
+        },
       }),
       MockProvider(RoomActionPermissionsService, {
         unban: () => ({
@@ -65,6 +77,28 @@ describe('BannedMembersComponent', () => {
     expect(
       container.querySelectorAll('[data-testid=banned-member]'),
     ).toHaveLength(1);
+  });
+
+  it('labels retained bans stale while preserving the informational list', async () => {
+    const stale = await build(
+      [{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null }],
+      { availability: 'stale', canUnban: false },
+    );
+    expect(
+      stale.container.querySelector('[data-testid=banned-members-freshness]')
+        ?.textContent,
+    ).toContain('last known ban list');
+    expect(stale.container.textContent).toContain('Bob');
+  });
+
+  it('does not describe unavailable bans as an authoritative empty list', async () => {
+    const unavailable = await build([], { availability: 'unavailable' });
+    expect(unavailable.container.textContent).toContain(
+      'does not mean no one is banned',
+    );
+    expect(
+      unavailable.container.querySelector('[data-testid=banned-members-empty]'),
+    ).toBeNull();
   });
 
   it('waits for the authoritative sync echo after unban succeeds', async () => {

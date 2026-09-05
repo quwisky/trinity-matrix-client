@@ -317,7 +317,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           run: () => of({ kind: 'prepared' as const }),
           recover: () => of({ kind: 'success' as const }),
         }),
-        MockProvider(RoomAdministrationLifetime, { run: () => of(void 0) }),
+        MockProvider(RoomAdministrationLifetime, {
+          run: () => of({ kind: 'prepared' as const }),
+          recover: () => of({ kind: 'success' as const }),
+        }),
         MockProvider(StoragePersistenceService, {
           requestPersistence,
         }),

@@ -8,6 +8,7 @@ import {
   RoomActionPermissionError,
   RoomActionPermissionsService,
 } from './room-action-permissions.service';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
 interface MemberState {
   membership: KnownMembership;
@@ -107,17 +108,24 @@ function setup(initial = clientFixture()) {
       }),
     ],
   });
+  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
+  projectionState.select(activeUserId(), '!room:hs');
+  projectionState.update('permissions', 'available', 'retained');
   return {
     service: TestBed.inject(RoomActionPermissionsService),
     useClient: (next: ClientFixture, userId = '@other:hs') => {
       current = next;
       clients.set(userId, next);
       activeUserId.set(userId);
+      projectionState.select(userId, '!room:hs');
+      projectionState.update('permissions', 'available', 'retained');
     },
     signOut: () => {
       initialized = false;
       activeUserId.set(null);
+      projectionState.release();
     },
+    projectionState,
   };
 }
 
@@ -302,5 +310,28 @@ describe('RoomActionPermissionsService', () => {
     expect(() =>
       service.assert({ available: true, reason: null }),
     ).not.toThrow();
+  });
+
+  it('blocks state-backed actions while current permission authority is unavailable', () => {
+    const { service, projectionState } = setup();
+    projectionState.update('permissions', 'failed', 'retained');
+
+    expect(service.room('!room:hs').invite).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('permissions are unavailable'),
+    });
+    expect(service.settings('!room:hs').topic.available).toBe(false);
+    expect(service.member('!room:hs', '@target:hs').ban.available).toBe(false);
+    expect(service.unban('!room:hs', '@target:hs').available).toBe(false);
+  });
+
+  it('keeps an exact-account read with its own current client authorization usable', () => {
+    const { service, projectionState } = setup();
+    projectionState.update('permissions', 'failed', 'retained');
+
+    expect(
+      service.roomFor({ accountId: '@me:hs', roomId: '!room:hs' }).invite
+        .available,
+    ).toBe(true);
   });
 });

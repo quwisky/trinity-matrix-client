@@ -108,6 +108,14 @@ Room Administration projects membership and power-level policy through
 role assignment also caps the assigned power at the actor's own level, including the SDK's
 room-v12 creator power semantics. Detached Accounts have no authority.
 
+Its Application Runtime lifetime reports separate permissions, members and bans health for the
+exact Active Account and routed Room. A retained failed member projection exposes the last known
+roster or ban list as stale; initial failure or released ownership is unavailable and must not be
+rendered as an authoritative empty list. Permission-backed actions require coherent projected
+authority, while an exact-Account operation with its own current authorization read remains
+independent. Retrying a retained failure schedules only its existing projection; released
+ownership recreates both Room Administration leases without reopening the Room surface.
+
 The live projection updates open Room and Space settings when a remote role change removes
 permission, while preserving drafts and readable alias lists. UI feedback uses focusable
 `trnActionAllowed` controls, keyboard-accessible explanations and a touch status surface.

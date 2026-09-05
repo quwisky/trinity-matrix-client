@@ -1,11 +1,25 @@
 <section class="room-settings__field" data-testid="banned-members">
   <span class="room-settings__label">Banned members</span>
 
+  @if (view().availability !== 'coherent') {
+    <p
+      class="text-13 text-muted-foreground"
+      role="status"
+      data-testid="banned-members-freshness"
+    >
+      @if (view().availability === 'stale') {
+        Showing the last known ban list. Current bans are unavailable.
+      } @else {
+        The ban list is unavailable. This does not mean no one is banned.
+      }
+    </p>
+  }
+
   @if (isEmpty()) {
     <p class="text-13 text-muted-foreground" data-testid="banned-members-empty">
       No one is banned.
     </p>
-  } @else {
+  } @else if (banned().length > 0) {
     <ul class="flex flex-col gap-2">
       @for (member of banned(); track member.userId) {
         @let permission = unbanPermission(member.userId);
