@@ -1,5 +1,10 @@
 import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import {
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+} from './preference-initialization';
 
 const VIRTUAL_TIMELINE_KEY = 'trinity.flags.virtual-timeline';
 
@@ -31,14 +36,18 @@ export class FeatureFlagsService {
   readonly virtualTimeline = this._virtualTimeline.asReadonly();
 
   /** Read the saved flags and apply them. Call once at app startup. */
-  async init(): Promise<void> {
+  async init(): Promise<PreferenceInitializationOutcome> {
     try {
       const { value } = await Preferences.get({ key: VIRTUAL_TIMELINE_KEY });
       if (value !== null) {
+        if (value !== 'true' && value !== 'false') {
+          return preferenceInitializationDefaulted('invalid-stored-value');
+        }
         this._virtualTimeline.set(value === 'true');
       }
+      return preferenceInitializationReady;
     } catch {
-      // No stored value (or storage unavailable) → keep the default (on).
+      return preferenceInitializationDefaulted('storage-unavailable');
     }
   }
 

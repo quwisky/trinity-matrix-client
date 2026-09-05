@@ -10,24 +10,14 @@ import type {
   CapabilityHealthFact,
   CapabilityRecoveryOutcome,
 } from '@trinity/runtime/projection';
-import {
-  Observable,
-  ReplaySubject,
-  Subscription,
-  catchError,
-  defer,
-  map,
-  of,
-  race,
-  take,
-  timer,
-} from 'rxjs';
+import { Observable, catchError, defaultIfEmpty, defer, map, of } from 'rxjs';
 import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
 import { CapabilityHealthService } from '../capability-health.service';
+import { RetainedFirstResult } from './retained-first-result';
 
-interface OwnedRoomOrderHydration {
-  readonly completion: ReplaySubject<RoomOrderHydrationOutcome>;
-  readonly owner: Subscription;
+interface RoomOrderAttemptKey {
+  readonly operation: 'room-order';
+  readonly ownershipGeneration: number;
 }
 
 /** Keeps per-Account ordering identity private while making each failed scope recoverable. */
@@ -38,28 +28,28 @@ export class RoomOrderHealthService {
   private readonly contexts = new Map<string, CapabilityContext>();
   private readonly generations = new Map<string, number>();
   private demanded = new Set<string>();
-  private active: OwnedRoomOrderHydration | null = null;
+  private active: RetainedFirstResult<
+    RoomOrderAttemptKey,
+    RoomOrderHydrationOutcome
+  > | null = null;
 
   hydrate(): Observable<RoomOrderHydrationOutcome> {
     return defer(() => {
+      if (
+        this.active &&
+        this.active.key.ownershipGeneration !==
+          this.health.ownershipGeneration()
+      ) {
+        this.active.owner.unsubscribe();
+        this.active = null;
+      }
       const attempt = this.active ?? this.start();
       const policy = APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'];
-      return race(
-        attempt.completion,
-        timer(policy.budgetMs).pipe(
-          map(() => {
-            const accounts = this.order
-              .knownAccountIds()
-              .map((accountId): RoomOrderHydrationSettlement => ({
-                accountId,
-                kind: 'defaulted',
-                diagnostic: { code: 'room-order-storage-unavailable' },
-              }));
-            this.reportBatch(accounts, policy.timeoutCode);
-            return { kind: 'partial', accounts } as const;
-          }),
-        ),
-      ).pipe(take(1));
+      return attempt.observe(policy.budgetMs, () => {
+        const accounts = this.defaultedAccounts();
+        this.reportBatch(accounts, policy.timeoutCode);
+        return { kind: 'partial', accounts } as const;
+      });
     });
   }
 
@@ -67,42 +57,48 @@ export class RoomOrderHealthService {
     this.reportBatch(event.accounts);
   }
 
-  private start(): OwnedRoomOrderHydration {
-    const completion = new ReplaySubject<RoomOrderHydrationOutcome>(1);
-    const attempt: OwnedRoomOrderHydration = {
-      completion,
-      owner: new Subscription(),
-    };
+  private start(): RetainedFirstResult<
+    RoomOrderAttemptKey,
+    RoomOrderHydrationOutcome
+  > {
+    const attempt = new RetainedFirstResult<
+      RoomOrderAttemptKey,
+      RoomOrderHydrationOutcome
+    >({
+      operation: 'room-order',
+      ownershipGeneration: this.health.ownershipGeneration(),
+    });
     this.active = attempt;
-    attempt.owner.add(
-      this.order.hydrateKnownAccounts().subscribe({
-        next: (outcome) => {
-          if (this.active !== attempt) return;
-          this.reportBatch(outcome.accounts);
-          completion.next(outcome);
-          completion.complete();
-          this.active = null;
-          attempt.owner.unsubscribe();
-        },
-        error: () => {
-          if (this.active !== attempt) return;
-          const accounts = this.order
-            .knownAccountIds()
-            .map((accountId): RoomOrderHydrationSettlement => ({
-              accountId,
-              kind: 'defaulted',
-              diagnostic: { code: 'room-order-storage-unavailable' },
-            }));
-          const outcome = { kind: 'partial', accounts } as const;
-          this.reportBatch(accounts);
-          completion.next(outcome);
-          completion.complete();
-          this.active = null;
-          attempt.owner.unsubscribe();
-        },
-      }),
+    const unavailable = (): RoomOrderHydrationOutcome => ({
+      kind: 'partial',
+      accounts: this.defaultedAccounts(),
+    });
+    attempt.start(
+      this.order.hydrateKnownAccounts().pipe(
+        defaultIfEmpty(unavailable()),
+        catchError(() => of(unavailable())),
+      ),
+      (outcome, settled) => {
+        if (
+          this.active !== settled ||
+          settled.key.ownershipGeneration !== this.health.ownershipGeneration()
+        )
+          return;
+        this.reportBatch(outcome.accounts);
+        this.active = null;
+      },
     );
     return attempt;
+  }
+
+  private defaultedAccounts(): readonly RoomOrderHydrationSettlement[] {
+    return this.order
+      .knownAccountIds()
+      .map((accountId): RoomOrderHydrationSettlement => ({
+        accountId,
+        kind: 'defaulted',
+        diagnostic: { code: 'room-order-storage-unavailable' },
+      }));
   }
 
   private reportBatch(

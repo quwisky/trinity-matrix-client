@@ -30,6 +30,7 @@ import type {
   ApplicationRuntimeWarning,
   ApplicationStartupRecovery,
 } from '../application-runtime.models';
+import { preferenceFallbackMessage } from '../composition/preference-startup.policy';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
 
 @Component({
@@ -135,7 +136,13 @@ function capabilityProblemMessage(
     case 'identity':
       return 'User presence is unavailable. Online status is unknown; you can keep messaging.';
     case 'preferences':
-      return 'One preference operation is using a safe default. Other settings remain available.';
+      if (problem.operation === 'apply-appearance') {
+        return 'Appearance updates are paused. The last applied appearance remains active.';
+      }
+      return (
+        preferenceFallbackMessage(problem.operation) ??
+        'One preference operation is using a safe default. Other settings remain available.'
+      );
     case 'room-library':
       return 'Saved room ordering is unavailable for one Account. The default order remains usable.';
     default:

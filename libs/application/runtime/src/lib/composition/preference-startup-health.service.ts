@@ -2,17 +2,13 @@ import { Injectable, inject } from '@angular/core';
 import type { CapabilityRecoveryOutcome } from '@trinity/runtime/projection';
 import {
   Observable,
-  ReplaySubject,
-  Subscription,
   catchError,
   defaultIfEmpty,
   defer,
   forkJoin,
   map,
   of,
-  race,
   take,
-  timer,
 } from 'rxjs';
 import type { ApplicationStartupStageOutcome } from '../application-runtime.models';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -23,10 +19,11 @@ import {
   type PreferenceStartupProducer,
   type PreferenceStartupSources,
 } from './preference-startup.policy';
+import { RetainedFirstResult } from './retained-first-result';
 
-interface OwnedPreferencePreparation {
-  readonly completion: ReplaySubject<PreferencePreparationEvidence>;
-  readonly owner: Subscription;
+interface PreferenceAttemptKey {
+  readonly producer: PreferenceStartupProducer;
+  readonly ownershipGeneration: number;
 }
 
 /** Owns independent preference preparation and projects only value-free scoped health. */
@@ -36,7 +33,7 @@ export class PreferenceStartupHealthService {
   private readonly installationContext = Symbol('installation-preferences');
   private readonly active = new Map<
     PreferenceStartupProducer,
-    OwnedPreferencePreparation
+    RetainedFirstResult<PreferenceAttemptKey, PreferencePreparationEvidence>
   >();
   private readonly generations = new Map<PreferenceStartupProducer, number>();
 
@@ -56,9 +53,6 @@ export class PreferenceStartupHealthService {
         >,
       ).pipe(
         map((results) => {
-          for (const producer of PREFERENCE_STARTUP_PRODUCERS) {
-            this.report(producer, results[producer], sources[producer]);
-          }
           const blocked = PREFERENCE_STARTUP_PRODUCERS.find(
             (producer) => results[producer].kind === 'blocked',
           );
@@ -111,52 +105,69 @@ export class PreferenceStartupHealthService {
     producer: PreferenceStartupProducer,
     source: () => Observable<PreferencePreparationEvidence>,
   ): Observable<PreferencePreparationEvidence> {
-    const attempt = this.active.get(producer) ?? this.start(producer, source);
+    let attempt = this.active.get(producer);
+    if (
+      attempt &&
+      attempt.key.ownershipGeneration !== this.health.ownershipGeneration()
+    ) {
+      attempt.owner.unsubscribe();
+      this.active.delete(producer);
+      attempt = undefined;
+    }
+    attempt ??= this.start(producer, source);
     const policy = PREFERENCE_STARTUP_PRODUCER_POLICIES[producer];
-    return race(
-      attempt.completion,
-      timer(policy.budgetMs).pipe(
-        map((): PreferencePreparationEvidence => ({
-          kind: 'defaulted',
-          code: policy.timeoutCode,
-        })),
-      ),
-    ).pipe(take(1));
+    return attempt.observe(policy.budgetMs, () => {
+      const evidence = {
+        kind: 'defaulted',
+        code: policy.timeoutCode,
+      } as const;
+      this.report(producer, evidence, source);
+      return evidence;
+    });
   }
 
   private start(
     producer: PreferenceStartupProducer,
     source: () => Observable<PreferencePreparationEvidence>,
-  ): OwnedPreferencePreparation {
+  ): RetainedFirstResult<PreferenceAttemptKey, PreferencePreparationEvidence> {
     const policy = PREFERENCE_STARTUP_PRODUCER_POLICIES[producer];
-    const completion = new ReplaySubject<PreferencePreparationEvidence>(1);
-    const attempt: OwnedPreferencePreparation = {
-      completion,
-      owner: new Subscription(),
-    };
+    const attempt = new RetainedFirstResult<
+      PreferenceAttemptKey,
+      PreferencePreparationEvidence
+    >({
+      producer,
+      ownershipGeneration: this.health.ownershipGeneration(),
+    });
     this.active.set(producer, attempt);
-    attempt.owner.add(
-      defer(source)
-        .pipe(
-          take(1),
-          defaultIfEmpty({
+    attempt.start(
+      defer(source).pipe(
+        take(1),
+        defaultIfEmpty({
+          kind: 'defaulted',
+          code: policy.defaultCode,
+        } as const),
+        catchError(() =>
+          of({
             kind: 'defaulted',
             code: policy.defaultCode,
           } as const),
-          catchError(() =>
-            of({
-              kind: 'defaulted',
-              code: policy.defaultCode,
-            } as const),
-          ),
+        ),
+      ),
+      (evidence, settled) => {
+        if (
+          this.active.get(producer) !== settled ||
+          settled.key.ownershipGeneration !== this.health.ownershipGeneration()
         )
-        .subscribe((evidence) => {
-          if (this.active.get(producer) !== attempt) return;
-          this.active.delete(producer);
-          completion.next(evidence);
-          completion.complete();
-          attempt.owner.unsubscribe();
-        }),
+          return;
+        this.active.delete(producer);
+        this.report(
+          producer,
+          evidence,
+          evidence.kind === 'defaulted' || evidence.kind === 'blocked'
+            ? (evidence.recover ?? source)
+            : source,
+        );
+      },
     );
     return attempt;
   }
@@ -165,10 +176,11 @@ export class PreferenceStartupHealthService {
     producer: PreferenceStartupProducer,
     evidence: PreferencePreparationEvidence,
     source: () => Observable<PreferencePreparationEvidence>,
-  ): void {
+  ): number {
     const generation = (this.generations.get(producer) ?? 0) + 1;
     this.generations.set(producer, generation);
     this.reportGeneration(producer, generation, evidence, source);
+    return generation;
   }
 
   private reportGeneration(
@@ -180,23 +192,33 @@ export class PreferenceStartupHealthService {
     const policy = PREFERENCE_STARTUP_PRODUCER_POLICIES[producer];
     const available = evidence.kind === 'ready';
     const blocked = evidence.kind === 'blocked';
+    const applicable = evidence.kind !== 'not-applicable';
     this.health.report(
       {
         capability: 'preferences',
         operation: policy.operation,
         context: this.installationContext,
         generation,
-        demanded: true,
+        demanded: applicable,
         preparation: blocked ? 'failed' : 'acknowledged',
-        ownership: this.active.has(producer) ? 'retained' : 'released',
-        condition: available ? 'available' : blocked ? 'blocked' : 'degraded',
+        ownership:
+          applicable && this.active.has(producer) ? 'retained' : 'released',
+        condition: available
+          ? 'available'
+          : blocked
+            ? 'blocked'
+            : applicable
+              ? 'degraded'
+              : 'not-applicable',
         code: available ? `${producer}-hydration-ready` : evidence.code,
       },
       () =>
         this.recover(
           producer,
           generation,
-          evidence.kind === 'ready' ? source : (evidence.recover ?? source),
+          evidence.kind === 'defaulted' || evidence.kind === 'blocked'
+            ? (evidence.recover ?? source)
+            : source,
         ),
     );
   }
@@ -228,22 +250,16 @@ export class PreferenceStartupHealthService {
         () => this.recover(producer, nextGeneration, source),
       );
       return this.observe(producer, source).pipe(
-        map((evidence): CapabilityRecoveryOutcome => {
-          this.reportGeneration(
-            producer,
-            nextGeneration,
-            evidence,
-            evidence.kind === 'ready' ? source : (evidence.recover ?? source),
-          );
-          return {
-            kind:
-              evidence.kind === 'ready'
-                ? 'success'
+        map((evidence): CapabilityRecoveryOutcome => ({
+          kind:
+            evidence.kind === 'ready'
+              ? 'success'
+              : evidence.kind === 'not-applicable'
+                ? 'unavailable'
                 : evidence.kind === 'defaulted'
                   ? 'partial'
                   : 'failure',
-          };
-        }),
+        })),
       );
     });
   }

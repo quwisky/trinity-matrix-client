@@ -42,6 +42,8 @@ describe('PreferenceStartupHealthService', () => {
           context: producerPolicy.context,
           storage: producerPolicy.storage,
           budgetMs: producerPolicy.budgetMs,
+          safeDefault: producerPolicy.safeDefault,
+          consequence: producerPolicy.consequence,
         }),
       ),
     ).toEqual(
@@ -51,8 +53,24 @@ describe('PreferenceStartupHealthService', () => {
         context: 'installation',
         storage: 'device-preferences',
         budgetMs: 10_000,
+        safeDefault: expect.any(String),
+        consequence: expect.any(String),
       })),
     );
+    expect(
+      new Set(
+        Object.values(PREFERENCE_STARTUP_PRODUCER_POLICIES).map(
+          (producerPolicy) => producerPolicy.safeDefault,
+        ),
+      ).size,
+    ).toBe(PREFERENCE_STARTUP_PRODUCERS.length);
+    expect(
+      new Set(
+        Object.values(PREFERENCE_STARTUP_PRODUCER_POLICIES).map(
+          (producerPolicy) => producerPolicy.consequence,
+        ),
+      ).size,
+    ).toBe(PREFERENCE_STARTUP_PRODUCERS.length);
   });
 
   it('settles every initializer when one rejects and keeps its declared default', async () => {
@@ -140,6 +158,45 @@ describe('PreferenceStartupHealthService', () => {
     expect(health.problems()).toEqual([]);
   });
 
+  it('publishes a retained late success without requiring a recovery click', async () => {
+    vi.useFakeTimers();
+    const sources = readySources();
+    const late = new Subject<{ readonly kind: 'ready' }>();
+    sources.shortcuts = () => late;
+
+    const hydration = firstValueFrom(service.hydrate(sources));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await hydration;
+    expect(health.problems()[0]).toMatchObject({
+      operation: 'hydrate-shortcuts',
+      condition: 'degraded',
+      ownership: 'retained',
+    });
+
+    late.next({ kind: 'ready' });
+    late.complete();
+
+    expect(health.problems()).toEqual([]);
+  });
+
+  it('drops retained publication from a stopped session before restart', async () => {
+    vi.useFakeTimers();
+    const sources = readySources();
+    const stale = new Subject<{ readonly kind: 'ready' }>();
+    sources.shortcuts = () => stale;
+
+    const first = firstValueFrom(service.hydrate(sources));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await first;
+    health.reset();
+    sources.shortcuts = () => of({ kind: 'ready' as const });
+    await firstValueFrom(service.hydrate(sources));
+
+    expect(stale.observed).toBe(false);
+    stale.next({ kind: 'ready' });
+    expect(health.problems()).toEqual([]);
+  });
+
   it('uses the producer supplied recovery without resetting healthy siblings', async () => {
     const sources = readySources();
     const recover = vi.fn(() => of({ kind: 'ready' as const }));
@@ -174,5 +231,22 @@ describe('PreferenceStartupHealthService', () => {
       operation: 'hydrate-gifs',
       code: 'gifs-hydration-timeout',
     });
+  });
+
+  it('retires an authoritatively removed producer and invalidates its recovery', async () => {
+    const sources = readySources();
+    sources.gifs = () =>
+      of({ kind: 'defaulted', code: 'gifs-hydration-failed' });
+    await firstValueFrom(service.hydrate(sources));
+    const stale = health.problems()[0]!;
+
+    sources.gifs = () =>
+      of({ kind: 'not-applicable', code: 'gifs-capability-removed' });
+    await firstValueFrom(service.hydrate(sources));
+
+    expect(health.problems()).toEqual([]);
+    await expect(
+      firstValueFrom(health.recover(stale).pipe(toArray())),
+    ).resolves.toEqual([{ kind: 'unavailable' }]);
   });
 });

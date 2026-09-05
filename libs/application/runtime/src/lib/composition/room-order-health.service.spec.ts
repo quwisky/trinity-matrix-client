@@ -95,4 +95,31 @@ describe('RoomOrderHealthService', () => {
     source.complete();
     expect(health.problems()).toEqual([]);
   });
+
+  it('invalidates a retained read when a stopped session restarts', async () => {
+    vi.useFakeTimers();
+    const first = firstValueFrom(coordinator.hydrate());
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'].budgetMs,
+    );
+    await first;
+    const stale = source;
+    health.reset();
+    source = new Subject<RoomOrderHydrationOutcome>();
+
+    const restarted = firstValueFrom(coordinator.hydrate());
+    expect(stale.observed).toBe(false);
+    source.next({
+      kind: 'ready',
+      accounts: [
+        { accountId: '@one:example.org', kind: 'ready' },
+        { accountId: '@two:example.org', kind: 'ready' },
+      ],
+    });
+    source.complete();
+    await restarted;
+    stale.next({ kind: 'partial', accounts: [] });
+
+    expect(health.problems()).toEqual([]);
+  });
 });

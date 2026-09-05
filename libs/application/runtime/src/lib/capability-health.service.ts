@@ -73,6 +73,11 @@ export class CapabilityHealthService {
   );
   readonly incidents = this.incidentState.asReadonly();
 
+  /** Session identity for retained producers that must reject publication after reset. */
+  ownershipGeneration(): number {
+    return this.epoch;
+  }
+
   report(fact: CapabilityHealthFact, recovery: CapabilityRecovery): void {
     const operations =
       this.registrations.get(fact.context) ?? new Map<string, Registration>();

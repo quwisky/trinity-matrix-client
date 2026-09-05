@@ -219,4 +219,32 @@ describe('ApplicationRootComponent', () => {
     fixture.detectChanges();
     expect(retry).toHaveBeenCalledOnce();
   });
+
+  it('explains the declared fallback consequence for the exact preference producer', async () => {
+    const { fixture, health, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+      settlements: [],
+    });
+    health.report(
+      {
+        capability: 'preferences',
+        operation: 'hydrate-gestures',
+        context: Symbol('installation'),
+        generation: 1,
+        demanded: true,
+        preparation: 'acknowledged',
+        ownership: 'released',
+        condition: 'degraded',
+        code: 'gestures-hydration-failed',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+    fixture.detectChanges();
+
+    expect(getByTestId('app-capability-health').textContent).toContain(
+      'Message swipe actions are turned off.',
+    );
+  });
 });

@@ -20,6 +20,13 @@ import {
   type DateTimePrefs,
   type TimeFormat,
 } from '@trinity/util/matrix';
+import {
+  combinePreferenceInitialization,
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+  type PreferenceInitializationRead,
+} from './preference-initialization';
 
 const TIME_KEY = 'trinity.format.time';
 const DATE_KEY = 'trinity.format.date';
@@ -138,13 +145,14 @@ export class DateTimeFormatService {
   }
 
   /** Read the saved preferences and apply them. Call once at app startup. */
-  async init(): Promise<void> {
-    this._timeFormat.set(
-      await read(TIME_KEY, isTimeFormat, DEFAULT_TIME_FORMAT),
-    );
-    this._dateFormat.set(
-      await read(DATE_KEY, isDateFormat, DEFAULT_DATE_FORMAT),
-    );
+  async init(): Promise<PreferenceInitializationOutcome> {
+    const [time, date] = await Promise.all([
+      read(TIME_KEY, isTimeFormat, DEFAULT_TIME_FORMAT),
+      read(DATE_KEY, isDateFormat, DEFAULT_DATE_FORMAT),
+    ]);
+    this._timeFormat.set(time.value);
+    this._dateFormat.set(date.value);
+    return combinePreferenceInitialization([time.outcome, date.outcome]);
   }
 
   /** Change + persist how the clock is rendered. */
@@ -199,12 +207,23 @@ async function read<T extends string>(
   key: string,
   isValid: (value: string | null) => value is T,
   fallback: T,
-): Promise<T> {
+): Promise<PreferenceInitializationRead<T>> {
   try {
     const { value } = await Preferences.get({ key });
-    return isValid(value) ? value : fallback;
+    if (value === null) {
+      return { value: fallback, outcome: preferenceInitializationReady };
+    }
+    return isValid(value)
+      ? { value, outcome: preferenceInitializationReady }
+      : {
+          value: fallback,
+          outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+        };
   } catch {
-    return fallback; // storage unavailable → keep the default
+    return {
+      value: fallback,
+      outcome: preferenceInitializationDefaulted('storage-unavailable'),
+    };
   }
 }
 

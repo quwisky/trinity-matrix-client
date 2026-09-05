@@ -38,7 +38,7 @@ describe('ComposerSettingsService', () => {
     const svc = build();
     expect(svc.showFormattingToolbar()).toBe(true);
 
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
 
     expect(svc.showFormattingToolbar()).toBe(true);
   });
@@ -76,23 +76,25 @@ describe('ComposerSettingsService', () => {
   it('leaves someone who never expressed a view on the defaults', async () => {
     const svc = build();
 
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
 
     expect(svc.showFormattingToolbar()).toBe(true);
     expect(svc.formatOnSelection()).toBe(true);
     expect(stored[ON_SELECTION]).toBeUndefined(); // nothing to migrate, nothing written
   });
 
-  it('inherits from a stored value that is neither true nor false', async () => {
-    // A corrupt or hand-edited value is not `'true'`, so the bar reads as unpinned — and the
-    // inheritance has to agree with that rather than testing the raw string for `'false'`.
+  it('reports and ignores a stored value that is neither true nor false', async () => {
     stored[PIN] = 'nope';
     const svc = build();
 
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'invalid-stored-value',
+    });
 
-    expect(svc.showFormattingToolbar()).toBe(false);
-    expect(svc.formatOnSelection()).toBe(false);
+    expect(svc.showFormattingToolbar()).toBe(true);
+    expect(svc.formatOnSelection()).toBe(true);
+    expect(stored[ON_SELECTION]).toBeUndefined();
   });
 
   it('lets the two disagree once both are stored', async () => {
@@ -140,7 +142,10 @@ describe('ComposerSettingsService', () => {
     get.mockRejectedValue(new Error('no storage'));
     const svc = build();
 
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
 
     expect(svc.showFormattingToolbar()).toBe(true);
     expect(svc.formatOnSelection()).toBe(true);

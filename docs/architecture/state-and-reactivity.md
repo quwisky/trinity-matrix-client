@@ -87,10 +87,13 @@ Application Runtime has one producer-policy ledger for Host contract negotiation
 registry restoration, required Room Library preparation, optional preference, Room ordering and
 browser storage preparation, Workspace restoration, and final Angular readiness. Preference
 composition has a second exhaustive ledger for its twelve independent producers; each has a stable
-`hydrate-*` operation, installation context, device-preference storage policy, declared default and
-10-second observation budget. One rejected initializer cannot erase sibling outcomes. A timeout
+`hydrate-*` operation, installation context, device-preference storage policy, typed safe-default
+and consequence presentation keys, and a 10-second observation budget. Legacy device-preference
+initializers return value-free `ready` or `defaulted` evidence, distinguishing a normal absent key
+from invalid stored data or unavailable storage. One rejected initializer cannot erase sibling outcomes. A timeout
 stops observation; it does not claim to cancel an underlying Promise. Owned work may settle later,
-while attempt and Workspace-navigation generations reject obsolete publication.
+and a late success clears its health without requiring another write, while attempt and
+Workspace-navigation generations reject obsolete publication.
 
 | Producer                    | Required | First-result budget | Automatic retries |
 | --------------------------- | -------- | ------------------- | ----------------- |
@@ -119,15 +122,17 @@ local data is at greater eviction risk.
 
 Preference hydration publishes one value-free health operation per producer. Appearance, Privacy
 and Room Library Account-scope recovery reset only failed descriptors through their declared
-defaults. The long-lived Appearance effect has no deadline; Application Runtime owns it through
-stop/restart, and a fault becomes the recoverable `apply-appearance` health operation. Room
+defaults. Every fallback presents the consequence selected by its typed policy key. An
+authoritatively disabled or removed producer publishes `not-applicable`, invalidates its old
+recovery generation, and disappears from problems without announcing a recovery. The long-lived
+Appearance effect has no deadline; Application Runtime owns it through stop/restart, and a fault becomes the recoverable `apply-appearance` health operation. Room
 ordering similarly publishes opaque per-Account scopes and retires a scope as not applicable when
 the Account disappears.
 
 Reset is not atomic. `AppConfigService` owns a per-entry ledger for the exact exported catalogue,
 continues an already-started setter after observer timeout or cancellation, and publishes no
 values. A partial attempt preserves completed entries and exact retry selects only failed or still
-in-progress entries. The Account registry, drafts, push applied-id ledger and per-Account Space
+queued/in-progress entries. The Account registry, drafts, push applied-id ledger and per-Account Space
 ordering remain structurally excluded. Both Advanced Settings and startup compatibility
 presentation require the existing `DEFAULTS` confirmation before starting the attempt.
 

@@ -61,8 +61,9 @@ _Avoid_: Global health, error log
 
 **Preference preparation**:
 Independent hydration of one capability-owned preference producer into its declared safe
-defaults and committed device state. A failure degrades that producer without erasing sibling
-results.
+defaults and committed device state. Typed outcome and consequence keys distinguish normal absence
+from invalid or unavailable storage; a failure degrades that producer without erasing sibling
+results, and authoritative removal retires it.
 _Avoid_: Global settings load, preference transaction
 
 **Preference reset attempt**:

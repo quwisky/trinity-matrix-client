@@ -90,7 +90,10 @@ describe('SystemLineSettingsService', () => {
     store.set(PROFILE, 'false');
     failStorage = true;
     const svc = make();
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
 
     // A read failure must not silently hide half the timeline.
     expect(svc.showProfile()).toBe(true);

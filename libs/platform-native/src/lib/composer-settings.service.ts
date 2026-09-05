@@ -1,5 +1,12 @@
 import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import {
+  combinePreferenceInitialization,
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+  type PreferenceInitializationRead,
+} from './preference-initialization';
 
 const SHOW_TOOLBAR_KEY = 'trinity.composer.show-toolbar';
 const FORMAT_ON_SELECTION_KEY = 'trinity.composer.format-on-selection';
@@ -53,32 +60,50 @@ export class ComposerSettingsService {
    * An absent `show-toolbar` means the user never expressed a view, so both stay at their
    * defaults and the bar behaves as it always has.
    */
-  async init(): Promise<void> {
+  async init(): Promise<PreferenceInitializationOutcome> {
+    const [pin, selection] = await Promise.all([
+      this.readBoolean(SHOW_TOOLBAR_KEY),
+      this.readBoolean(FORMAT_ON_SELECTION_KEY),
+    ]);
+    const storedPin = pin.value;
+    if (storedPin !== null) {
+      this._showFormattingToolbar.set(storedPin);
+    }
+    if (selection.value !== null) {
+      this._formatOnSelection.set(selection.value);
+    } else if (storedPin === false && selection.outcome.kind === 'ready') {
+      this.setFormatOnSelection(false);
+    }
+    return combinePreferenceInitialization([pin.outcome, selection.outcome]);
+  }
+
+  private async readBoolean(
+    key: string,
+  ): Promise<PreferenceInitializationRead<boolean | null>> {
     try {
-      const { value: pinned } = await Preferences.get({
-        key: SHOW_TOOLBAR_KEY,
-      });
+      const { value } = await Preferences.get({ key });
       // Parsed once and reused, so the migration below asks the same question the signal did.
       // Comparing the raw string against `'false'` there instead would let a value that is
       // neither `'true'` nor `'false'` unpin the bar (it is not `'true'`) while skipping the
       // inheritance (it is not `'false'`) — the one combination this is meant to prevent.
-      const storedPin = pinned === null ? null : pinned === 'true';
-      if (storedPin !== null) {
-        this._showFormattingToolbar.set(storedPin);
+      if (value === null) {
+        return { value: null, outcome: preferenceInitializationReady };
       }
-
-      const { value: onSelection } = await Preferences.get({
-        key: FORMAT_ON_SELECTION_KEY,
-      });
-      if (onSelection !== null) {
-        this._formatOnSelection.set(onSelection === 'true');
-        return;
+      if (value === 'true' || value === 'false') {
+        return {
+          value: value === 'true',
+          outcome: preferenceInitializationReady,
+        };
       }
-      if (storedPin === false) {
-        this.setFormatOnSelection(false);
-      }
+      return {
+        value: null,
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
     } catch {
-      // No stored value (or storage unavailable) → keep the defaults.
+      return {
+        value: null,
+        outcome: preferenceInitializationDefaulted('storage-unavailable'),
+      };
     }
   }
 

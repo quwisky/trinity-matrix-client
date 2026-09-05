@@ -1,5 +1,12 @@
 import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import {
+  combinePreferenceInitialization,
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+  type PreferenceInitializationRead,
+} from './preference-initialization';
 
 /**
  * The two pane widths the rooms shell lets you drag, persisted per install.
@@ -67,17 +74,21 @@ export class ShellLayoutService {
    * Registered as an app initializer beside the other preference loads, so a dragged layout
    * is the one that renders rather than the default flashing first.
    */
-  async init(): Promise<void> {
-    this._sidebarWidth.set(
-      await this.read(SIDEBAR_KEY, DEFAULT_SIDEBAR_WIDTH, SIDEBAR_WIDTH_BOUNDS),
-    );
-    this._rightPanelWidth.set(
-      await this.read(
+  async init(): Promise<PreferenceInitializationOutcome> {
+    const [sidebar, secondaryPane] = await Promise.all([
+      this.read(SIDEBAR_KEY, DEFAULT_SIDEBAR_WIDTH, SIDEBAR_WIDTH_BOUNDS),
+      this.read(
         RIGHT_PANEL_KEY,
         DEFAULT_RIGHT_PANEL_WIDTH,
         RIGHT_PANEL_WIDTH_BOUNDS,
       ),
-    );
+    ]);
+    this._sidebarWidth.set(sidebar.value);
+    this._rightPanelWidth.set(secondaryPane.value);
+    return combinePreferenceInitialization([
+      sidebar.outcome,
+      secondaryPane.outcome,
+    ]);
   }
 
   /** Set and persist the sidebar width, clamped. */
@@ -102,17 +113,30 @@ export class ShellLayoutService {
     key: string,
     fallback: number,
     bounds: { min: number; max: number },
-  ): Promise<number> {
+  ): Promise<PreferenceInitializationRead<number>> {
     try {
       const { value } = await Preferences.get({ key });
       const parsed = Number(value);
       // `Number(null)` is 0 and `Number('')` is 0, so a missing key would otherwise read as a
       // width of zero and clamp to the minimum — a pane the user never chose.
-      return value !== null && value !== '' && Number.isFinite(parsed)
-        ? clamp(parsed, bounds)
-        : fallback;
+      if (value === null) {
+        return { value: fallback, outcome: preferenceInitializationReady };
+      }
+      if (value !== '' && Number.isFinite(parsed)) {
+        return {
+          value: clamp(parsed, bounds),
+          outcome: preferenceInitializationReady,
+        };
+      }
+      return {
+        value: fallback,
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
     } catch {
-      return fallback; // storage unavailable → ship default
+      return {
+        value: fallback,
+        outcome: preferenceInitializationDefaulted('storage-unavailable'),
+      };
     }
   }
 

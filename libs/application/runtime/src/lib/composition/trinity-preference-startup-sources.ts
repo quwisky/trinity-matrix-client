@@ -12,12 +12,15 @@ import {
   PrivacySettingsService,
   ShellLayoutService,
   SystemLineSettingsService,
+  type PreferenceInitializationOutcome,
 } from '@trinity/platform-native';
 import { Observable, defer, map } from 'rxjs';
 import type {
   PreferencePreparationEvidence,
+  PreferenceStartupProducer,
   PreferenceStartupSources,
 } from './preference-startup.policy';
+import { PREFERENCE_STARTUP_PRODUCER_POLICIES } from './preference-startup.policy';
 
 /** Concrete Application composition for every registered preference startup producer. */
 @Injectable({ providedIn: 'root' })
@@ -36,10 +39,26 @@ export class TrinityPreferenceStartupSources {
   private readonly pushGateway = inject(PushGatewayService);
 
   sources(): PreferenceStartupSources {
-    const readyAfter = (
-      operation: () => Promise<unknown> | Observable<unknown>,
+    const initialized = (
+      producer: PreferenceStartupProducer,
+      operation: () =>
+        | Promise<PreferenceInitializationOutcome>
+        | Observable<PreferenceInitializationOutcome>,
     ): Observable<PreferencePreparationEvidence> =>
-      defer(operation).pipe(map(() => ({ kind: 'ready' }) as const));
+      defer(operation).pipe(
+        map((outcome) =>
+          outcome.kind === 'ready'
+            ? ({ kind: 'ready' } as const)
+            : ({
+                kind: 'defaulted',
+                code:
+                  outcome.reason === 'storage-unavailable'
+                    ? PREFERENCE_STARTUP_PRODUCER_POLICIES[producer].defaultCode
+                    : PREFERENCE_STARTUP_PRODUCER_POLICIES[producer]
+                        .invalidCode,
+              } as const),
+        ),
+      );
     return {
       appearance: () =>
         this.appearance.hydrate().pipe(
@@ -63,8 +82,10 @@ export class TrinityPreferenceStartupSources {
                 },
           ),
         ),
-      'shell-layout': () => readyAfter(() => this.shellLayout.init()),
-      'feature-flags': () => readyAfter(() => this.featureFlags.init()),
+      'shell-layout': () =>
+        initialized('shell-layout', () => this.shellLayout.init()),
+      'feature-flags': () =>
+        initialized('feature-flags', () => this.featureFlags.init()),
       privacy: () =>
         this.privacy.init().pipe(
           map((outcome): PreferencePreparationEvidence =>
@@ -87,12 +108,13 @@ export class TrinityPreferenceStartupSources {
                 },
           ),
         ),
-      'system-lines': () => readyAfter(() => this.systemLines.init()),
-      composer: () => readyAfter(() => this.composer.init()),
-      gestures: () => readyAfter(() => this.gestures.init()),
-      'date-time': () => readyAfter(() => this.dateTime.init()),
-      shortcuts: () => readyAfter(() => this.shortcuts.init()),
-      gifs: () => readyAfter(() => this.gifs.init()),
+      'system-lines': () =>
+        initialized('system-lines', () => this.systemLines.init()),
+      composer: () => initialized('composer', () => this.composer.init()),
+      gestures: () => initialized('gestures', () => this.gestures.init()),
+      'date-time': () => initialized('date-time', () => this.dateTime.init()),
+      shortcuts: () => initialized('shortcuts', () => this.shortcuts.init()),
+      gifs: () => initialized('gifs', () => this.gifs.init()),
       'account-scope': () =>
         this.accountScope.init().pipe(
           map((outcome): PreferencePreparationEvidence =>
@@ -115,7 +137,17 @@ export class TrinityPreferenceStartupSources {
                 },
           ),
         ),
-      'push-gateway': () => readyAfter(() => this.pushGateway.init()),
+      'push-gateway': () =>
+        initialized('push-gateway', () => this.pushGateway.init()).pipe(
+          map((evidence): PreferencePreparationEvidence =>
+            this.pushGateway.supported()
+              ? evidence
+              : {
+                  kind: 'not-applicable',
+                  code: 'push-gateway-platform-unavailable',
+                },
+          ),
+        ),
     };
   }
 }

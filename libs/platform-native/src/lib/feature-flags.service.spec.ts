@@ -31,14 +31,14 @@ describe('FeatureFlagsService', () => {
 
   it('keeps the default when nothing is stored', async () => {
     const svc = service();
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
     expect(svc.virtualTimeline()).toBe(true);
   });
 
   it('restores a stored "true" flag on init', async () => {
     get.mockResolvedValue({ value: 'true' });
     const svc = service();
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({ kind: 'ready' });
     expect(svc.virtualTimeline()).toBe(true);
     expect(get).toHaveBeenCalledWith({ key: KEY });
   });
@@ -53,7 +53,10 @@ describe('FeatureFlagsService', () => {
   it('keeps the default (on) when storage throws', async () => {
     get.mockRejectedValue(new Error('unavailable'));
     const svc = service();
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
     expect(svc.virtualTimeline()).toBe(true);
   });
 

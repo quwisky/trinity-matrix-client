@@ -1,6 +1,11 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
-import { DevicePreferenceStorageService } from '@trinity/platform-native';
+import {
+  DevicePreferenceStorageService,
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+} from '@trinity/platform-native';
 import {
   isGifProviderId,
   retiredGifProvider,
@@ -43,13 +48,21 @@ export class GifSettingsService {
   readonly migratedFrom = this._migratedFrom.asReadonly();
 
   /** Read the saved config. Wired as an app initializer at startup. */
-  async init(): Promise<void> {
+  async init(): Promise<PreferenceInitializationOutcome> {
+    let value: string | null;
     try {
-      const value = await firstValueFrom(this.storage.get(CONFIG_KEY));
-      const parsed = value ? (JSON.parse(value) as Partial<GifConfig>) : null;
-      if (!parsed) {
-        return;
-      }
+      value = await firstValueFrom(this.storage.get(CONFIG_KEY));
+    } catch {
+      return preferenceInitializationDefaulted('storage-unavailable');
+    }
+    if (!value) return preferenceInitializationReady;
+    let parsed: Partial<GifConfig>;
+    try {
+      parsed = JSON.parse(value) as Partial<GifConfig>;
+    } catch {
+      return preferenceInitializationDefaulted('invalid-stored-value');
+    }
+    try {
       const replacement = retiredGifProvider(parsed.provider);
       if (replacement) {
         // A retired provider keeps NEITHER its id nor its key. Reading the two fields
@@ -59,7 +72,7 @@ export class GifSettingsService {
         // every search, which reads as a broken new provider rather than a migration.
         this._migratedFrom.set(String(parsed.provider));
         this.save(replacement, '');
-        return;
+        return preferenceInitializationDefaulted('invalid-stored-value');
       }
       if (isGifProviderId(parsed.provider)) {
         this._provider.set(parsed.provider);
@@ -67,8 +80,12 @@ export class GifSettingsService {
       if (typeof parsed.apiKey === 'string') {
         this._apiKey.set(parsed.apiKey);
       }
+      return isGifProviderId(parsed.provider) &&
+        typeof parsed.apiKey === 'string'
+        ? preferenceInitializationReady
+        : preferenceInitializationDefaulted('invalid-stored-value');
     } catch {
-      // No stored config (or storage/parse failure) → keep the defaults (unset).
+      return preferenceInitializationDefaulted('invalid-stored-value');
     }
   }
 

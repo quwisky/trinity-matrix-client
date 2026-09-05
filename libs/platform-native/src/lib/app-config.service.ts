@@ -193,8 +193,9 @@ export class AppConfigService {
    * Restore every exported setting to its documented default, through the owning services'
    * setters, so the app follows without a reload.
    *
-   * Cold, like every other one-shot action here: nothing happens until it is subscribed.
-   * Completes once every reset that persists asynchronously has settled.
+   * Starts on the first subscription. Once started, the service owns the attempt even if that
+   * observer leaves; a bounded observer receives a partial ledger while an asynchronous setter
+   * continues, and later callers join the same attempt instead of issuing conflicting writes.
    */
   resetToDefaults(): Observable<ConfigResetOutcome> {
     return defer(() => {

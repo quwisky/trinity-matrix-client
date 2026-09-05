@@ -69,7 +69,10 @@ describe('DateTimeFormatService', () => {
   it('keeps the defaults when storage is unavailable', async () => {
     failStorage = true;
     const svc = make();
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
 
     expect(svc.timeFormat()).toBe('system');
     expect(svc.dateFormat()).toBe('system');

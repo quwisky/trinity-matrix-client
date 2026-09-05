@@ -6,6 +6,7 @@ export * from './lib/app-restart.service';
 export * from './lib/storage-persistence.service';
 export * from './lib/feature-flags.service';
 export * from './lib/privacy-settings.service';
+export * from './lib/preference-initialization';
 export * from './lib/preferences/capacitor-preference-storage.adapter';
 export * from './lib/geolocation.service';
 export * from './lib/voice-recorder.service';
