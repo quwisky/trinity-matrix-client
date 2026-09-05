@@ -104,6 +104,9 @@ export class HostSessionHealthService {
           : 'badge-support-unavailable',
       () =>
         this.badge.support().pipe(
+          take(1),
+          throwIfEmpty(() => new Error('Badge support returned no outcome.')),
+          timeout(UPDATE_CHECK_BUDGET_MS),
           map((next): CapabilityRecoveryOutcome => {
             this.reportSupport(key, next);
             return next.kind === 'supported'

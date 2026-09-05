@@ -257,8 +257,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           navigate: () => of({ kind: 'ready', change: 'committed' }),
         }),
         MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
-        MockProvider(HostDeepLinksService, { received: deepLinks }),
-        MockProvider(HostBackService, { intents: backIntents }),
+        MockProvider(HostDeepLinksService, {
+          support: () => of({ kind: 'supported' }),
+          received: deepLinks,
+        }),
+        MockProvider(HostBackService, {
+          support: () => of({ kind: 'supported' }),
+          intents: backIntents,
+        }),
         MockProvider(HostUpdatesService, { check: updateCheck }),
         MockProvider(NavigationFocusService, { run: () => focusSession }),
         MockProvider(WorkspaceRoutedSurfaceAdapter, {

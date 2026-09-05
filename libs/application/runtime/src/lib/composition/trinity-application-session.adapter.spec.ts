@@ -178,10 +178,15 @@ function setup(
         run: () => roomAdministrationSession,
       }),
       MockProvider(HostDeepLinksService, {
+        support: () => of({ kind: 'supported' as const }),
         received: deepLinks,
         closeAuthentication,
       }),
-      MockProvider(HostBackService, { intents: backIntents, background }),
+      MockProvider(HostBackService, {
+        support: () => of({ kind: 'supported' as const }),
+        intents: backIntents,
+        background,
+      }),
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
       MockProvider(TrnDialogService, {
@@ -720,6 +725,35 @@ describe('TrinityApplicationSessionAdapter', () => {
     await vi.advanceTimersByTimeAsync(1_000);
     expect(deepLinkAttachments).toBe(2);
     expect(backAttachments).toBe(2);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('keeps unsupported deep-link and Back streams dormant without incidents', async () => {
+    vi.useFakeTimers();
+    const test = setup();
+    ngMocks.stubMember(TestBed.inject(HostDeepLinksService), 'support', () =>
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+    ngMocks.stubMember(TestBed.inject(HostBackService), 'support', () =>
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(test.deepLinks.observed).toBe(false);
+    expect(test.backIntents.observed).toBe(false);
+    expect(test.health.incidents()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ operation: 'deep-links' }),
+        expect.objectContaining({ operation: 'back' }),
+      ]),
+    );
+    expect(test.showToast).not.toHaveBeenCalledWith(
+      'A host navigation action could not be completed.',
+      expect.anything(),
+    );
     lifetime.unsubscribe();
     vi.useRealTimers();
   });

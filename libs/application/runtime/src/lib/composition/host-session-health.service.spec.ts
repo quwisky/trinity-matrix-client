@@ -152,6 +152,32 @@ describe('HostSessionHealthService', () => {
     expect(badgeSupport).not.toHaveBeenCalled();
   });
 
+  it('bounds badge support recovery to one finite outcome', async () => {
+    vi.useFakeTimers();
+    const { service, health } = setup();
+    service.badgeSupport({ kind: 'unavailable', reason: 'host-rejected' });
+    const timedOutProblem = health.problems()[0]!;
+    badgeSupport.mockReturnValueOnce(NEVER);
+
+    const timedOut = lastValueFrom(health.recover(timedOutProblem));
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(timedOut).resolves.toEqual({ kind: 'failure' });
+
+    service.badgeSupport({ kind: 'unavailable', reason: 'host-rejected' });
+    const recoveredProblem = health.problems()[0]!;
+    badgeSupport.mockReturnValueOnce(
+      of(
+        { kind: 'supported' as const },
+        { kind: 'unavailable' as const, reason: 'host-rejected' as const },
+      ),
+    );
+    await expect(
+      lastValueFrom(health.recover(recoveredProblem)),
+    ).resolves.toEqual({ kind: 'success' });
+    expect(health.problems()).toHaveLength(0);
+    vi.useRealTimers();
+  });
+
   it('accepts a support failure returned from a badge write as health, not an incident', () => {
     const { service, health } = setup();
     const outcome: HostOperationOutcome = {
