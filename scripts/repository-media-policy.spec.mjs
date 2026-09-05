@@ -24,12 +24,19 @@ const DESIGN_ARTIFACT_PATH =
   /(^|[\/._-])(?:mockups?|prototypes?)(?=$|[\/._-])/i;
 const REVIEW_MEDIA_MARKER =
   /(^|[\/._-])(?:baselines?|evidence|proof|screenshots?)(?=$|[\/._-])/i;
+const MANAGED_PROTOTYPE_SKILL_FILES = new Set([
+  '.agents/skills/prototype/LOGIC.md',
+  '.agents/skills/prototype/SKILL.md',
+  '.agents/skills/prototype/UI.md',
+  '.agents/skills/prototype/agents/openai.yaml',
+]);
 
 const isReviewArtifactPath = (file) =>
-  DESIGN_ARTIFACT_PATH.test(file) ||
-  file.startsWith('docs/evidence/') ||
-  (file.includes('-snapshots/') && RASTER_MEDIA.test(file)) ||
-  (RASTER_MEDIA.test(file) && REVIEW_MEDIA_MARKER.test(file));
+  !MANAGED_PROTOTYPE_SKILL_FILES.has(file) &&
+  (DESIGN_ARTIFACT_PATH.test(file) ||
+    file.startsWith('docs/evidence/') ||
+    (file.includes('-snapshots/') && RASTER_MEDIA.test(file)) ||
+    (RASTER_MEDIA.test(file) && REVIEW_MEDIA_MARKER.test(file)));
 
 describe('repository review-media policy', () => {
   it('keeps prototypes and review evidence out of tracked source', () => {
@@ -52,6 +59,26 @@ describe('repository review-media policy', () => {
     expect(
       isReviewArtifactPath('apps/trinity/src/assets/icon/icon-512.png'),
     ).toBe(false);
+  });
+
+  it('allows only the managed prototype skill instructions', () => {
+    for (const file of MANAGED_PROTOTYPE_SKILL_FILES) {
+      expect(isReviewArtifactPath(file)).toBe(false);
+    }
+
+    expect(isReviewArtifactPath('.agents/skills/prototype/mockup.html')).toBe(
+      true,
+    );
+    expect(isReviewArtifactPath('.agents/skills/prototype/preview.png')).toBe(
+      true,
+    );
+    expect(
+      isReviewArtifactPath('.agents/skills/prototype/review-proof.png'),
+    ).toBe(true);
+    expect(isReviewArtifactPath('.agents/skills/prototype/README.md')).toBe(
+      true,
+    );
+    expect(isReviewArtifactPath('docs/evidence/review-notes.md')).toBe(true);
   });
 
   it('tracks raster media only when it is a shipping application asset', () => {
