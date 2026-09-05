@@ -329,9 +329,26 @@ async function expectScrollContract(
   page: Page,
   viewport: { width: number; height: number },
 ): Promise<void> {
+  const previousViewport = page.viewportSize();
   await page.setViewportSize(viewport);
-  // Member virtualization re-renders its owned DOM on resize, so fill after the viewport
-  // settles rather than assuming the inert overflow copies survive that render.
+  const membersToggle = page.getByTestId('toggle-members');
+  const memberList = page.getByTestId('member-list');
+  if (
+    previousViewport !== null &&
+    previousViewport.width >= 1100 &&
+    viewport.width < 1100
+  ) {
+    // Entering the drawer presentation deliberately closes the remembered wide roster.
+    await expect(membersToggle).toHaveAttribute('aria-pressed', 'false');
+    await expect(memberList).toBeHidden();
+    await membersToggle.click();
+  }
+  await expect(membersToggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(memberList).toBeVisible();
+  await expect(memberList.locator('.member').first()).toBeVisible();
+
+  // The responsive surface may be recreated on resize. Reopen it and wait for its real
+  // rows before adding inert overflow copies to exercise the scroll geometry.
   await fillNavigationScrollers(page);
 
   await expect
