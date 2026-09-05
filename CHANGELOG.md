@@ -9,7 +9,9 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - Repository skills now focus on Trinity client work: removed 18 overlapping or unsuitable
-  skills, retained 25 product and engineering skills, and repaired design-reference routing.
+  skills, added CLI-managed Ponytail simplicity guidance for a total of 26 product and engineering
+  skills, and repaired design-reference routing. Ponytail follows Trinity's architecture and
+  validation requirements through repository-owned overrides.
 
 - The CLI-managed Angular developer skill now comes from `angular/angular`, including its
   updated Angular Aria guidance.

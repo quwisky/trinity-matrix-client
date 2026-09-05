@@ -21,8 +21,8 @@ selects a skill by matching the task to the descriptions below.
 ## Skills (`skills/`)
 
 Skills are loaded on demand — an agent reads a skill's `SKILL.md` when a task matches its
-triggers. The repository keeps 25 skills focused on building and maintaining the Trinity client:
-21 CLI-managed imports and four local references. Repository rules and accepted scope apply to each.
+triggers. The repository keeps 26 skills focused on building and maintaining the Trinity client:
+22 CLI-managed imports and four local references. Repository rules and accepted scope apply to each.
 
 ### Local skills
 
@@ -44,21 +44,22 @@ below. Their upstream source, skill path and content hash are recorded in
 [`skill-overrides.md`](skill-overrides.md) when using these workflows for Trinity-specific
 behavior. These repository-owned overrides survive upstream updates.
 
-| Skill                                                                    | Upstream                   | Use when                                                     |
-| ------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------ |
-| [`grill-me`](skills/grill-me/SKILL.md)                                   | `mattpocock/skills`        | Requesting a design interview; entrypoint to `grilling`.     |
-| [`grilling`](skills/grilling/SKILL.md)                                   | `mattpocock/skills`        | Resolving dependent product decisions with the user.         |
-| [`domain-modeling`](skills/domain-modeling/SKILL.md)                     | `mattpocock/skills`        | Sharpening vocabulary or recording a significant ADR.        |
-| [`wayfinder`](skills/wayfinder/SKILL.md)                                 | `mattpocock/skills`        | Charting or advancing a large issue map.                     |
-| [`to-tickets`](skills/to-tickets/SKILL.md)                               | `mattpocock/skills`        | Publishing approved implementation slices with dependencies. |
-| [`prototype`](skills/prototype/SKILL.md)                                 | `mattpocock/skills`        | Exploring a UI or state model through a throwaway artifact.  |
-| [`research`](skills/research/SKILL.md)                                   | `mattpocock/skills`        | Gathering primary-source facts.                              |
-| [`diagnosing-bugs`](skills/diagnosing-bugs/SKILL.md)                     | `mattpocock/skills`        | Building a reproducible feedback loop for a difficult bug.   |
-| [`code-review`](skills/code-review/SKILL.md)                             | `mattpocock/skills`        | Reviewing standards and originating requirements.            |
-| [`resolving-merge-conflicts`](skills/resolving-merge-conflicts/SKILL.md) | `mattpocock/skills`        | Resolving an authorized merge or rebase.                     |
-| [`nx-generate`](skills/nx-generate/SKILL.md)                             | `nrwl/nx-ai-agents-config` | Discovering and running generators before scaffolding.       |
-| [`nx-run-tasks`](skills/nx-run-tasks/SKILL.md)                           | `nrwl/nx-ai-agents-config` | Running resolved Nx targets.                                 |
-| [`writing-for-agents`](skills/writing-for-agents/SKILL.md)               | `mattpocock/skills`        | Editing agent instructions and skill references.             |
+| Skill                                                                    | Upstream                   | Use when                                                         |
+| ------------------------------------------------------------------------ | -------------------------- | ---------------------------------------------------------------- |
+| [`grill-me`](skills/grill-me/SKILL.md)                                   | `mattpocock/skills`        | Requesting a design interview; entrypoint to `grilling`.         |
+| [`grilling`](skills/grilling/SKILL.md)                                   | `mattpocock/skills`        | Resolving dependent product decisions with the user.             |
+| [`domain-modeling`](skills/domain-modeling/SKILL.md)                     | `mattpocock/skills`        | Sharpening vocabulary or recording a significant ADR.            |
+| [`wayfinder`](skills/wayfinder/SKILL.md)                                 | `mattpocock/skills`        | Charting or advancing a large issue map.                         |
+| [`to-tickets`](skills/to-tickets/SKILL.md)                               | `mattpocock/skills`        | Publishing approved implementation slices with dependencies.     |
+| [`prototype`](skills/prototype/SKILL.md)                                 | `mattpocock/skills`        | Exploring a UI or state model through a throwaway artifact.      |
+| [`research`](skills/research/SKILL.md)                                   | `mattpocock/skills`        | Gathering primary-source facts.                                  |
+| [`diagnosing-bugs`](skills/diagnosing-bugs/SKILL.md)                     | `mattpocock/skills`        | Building a reproducible feedback loop for a difficult bug.       |
+| [`code-review`](skills/code-review/SKILL.md)                             | `mattpocock/skills`        | Reviewing standards and originating requirements.                |
+| [`ponytail`](skills/ponytail/SKILL.md)                                   | `DietrichGebert/ponytail`  | Simplifying implementation and reviewing unnecessary complexity. |
+| [`resolving-merge-conflicts`](skills/resolving-merge-conflicts/SKILL.md) | `mattpocock/skills`        | Resolving an authorized merge or rebase.                         |
+| [`nx-generate`](skills/nx-generate/SKILL.md)                             | `nrwl/nx-ai-agents-config` | Discovering and running generators before scaffolding.           |
+| [`nx-run-tasks`](skills/nx-run-tasks/SKILL.md)                           | `nrwl/nx-ai-agents-config` | Running resolved Nx targets.                                     |
+| [`writing-for-agents`](skills/writing-for-agents/SKILL.md)               | `mattpocock/skills`        | Editing agent instructions and skill references.                 |
 
 Use the [skills CLI](https://github.com/vercel-labs/skills) with pnpm, in project scope:
 
@@ -66,6 +67,7 @@ Use the [skills CLI](https://github.com/vercel-labs/skills) with pnpm, in projec
 pnpm dlx skills list --json
 pnpm dlx skills update wayfinder to-tickets --project --yes
 pnpm dlx skills add mattpocock/skills --skill wayfinder to-tickets --agent codex --yes
+pnpm dlx skills add DietrichGebert/ponytail --skill ponytail --agent codex --yes
 ```
 
 Update only the requested skill names, inspect their diff and lockfile, and check referenced

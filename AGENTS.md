@@ -28,7 +28,7 @@ that directory. Read [the catalog](.agents/README.md) for selection and maintena
 For agent-instruction edits use `writing-for-agents`; for planning use `grill-me`,
 `wayfinder` or `to-tickets` according to the requested outcome. If an environment has no
 Skill tool, read the named `SKILL.md` and follow it with available tools.
-For planning, review, research, prototypes, product design or Nx skills, also read
+For planning, review, simplification (`ponytail`), research, prototypes, product design or Nx skills, also read
 [Trinity skill overrides](.agents/skill-overrides.md); keep CLI-managed skill files unchanged.
 
 ### Working agreement
