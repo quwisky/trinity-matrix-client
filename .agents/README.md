@@ -21,26 +21,20 @@ selects a skill by matching the task to the descriptions below.
 ## Skills (`skills/`)
 
 Skills are loaded on demand — an agent reads a skill's `SKILL.md` when a task matches its
-triggers. Repository rules and the user’s accepted scope apply to every skill. Three kinds live here.
+triggers. The repository keeps 25 skills focused on building and maintaining the Trinity client:
+21 CLI-managed imports and four local references. Repository rules and accepted scope apply to each.
 
 ### Local skills
 
 Authored in this repo. Standalone skills sit at the top level; **collections** group several related
 skills under one directory (the invocable skill is the nested one, named in parentheses).
 
-| Skill                                          | Covers                                                                                                                                      | Don't use for                                                            |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `electron`                                     | Electron desktop apps: architecture, IPC, security, packaging, auto-updates, backend integration.                                           | Tauri apps.                                                              |
-| `typescript`                                   | The TypeScript language: types, generics, advanced patterns, `tsconfig`, utility types, type guards, branded types.                         | Plain JS; Node runtime; framework-specific typing.                       |
-| `pnpm`                                         | pnpm package manager + workspaces: commands, `pnpm-workspace.yaml`, workspace protocol, monorepo setup.                                     | npm / yarn / bun.                                                        |
-| `jsdoc-tsdoc`                                  | JSDoc & TSDoc standards: tags (`@param`, `@returns`), TS integration, TypeDoc / API Extractor, API docs.                                    | JavaScript-only JSDoc.                                                   |
-| `best-practices/performance` (`performance`)   | Web performance: frontend/backend/DB optimisation, Core Web Vitals (LCP/INP/CLS), bundle size, caching, N+1 queries, memory leaks.          | Algorithm complexity; readability (use `quality/common`); security.      |
-| `quality/common` (`quality-common`)            | Universal code quality: Clean Code, SOLID, code smells, cyclomatic/cognitive complexity, refactoring, maintainability.                      | Language-specific linting; security; testing.                            |
-| `state-management/ngrx` (`ngrx`)               | NgRx Store / Effects / Entity / ComponentStore with signals integration.                                                                    | Redux Toolkit, Zustand, Pinia, simple Angular signals state.             |
-| `styling/tailwindcss` (`tailwindcss`)          | Tailwind CSS: utility classes, responsive design, `tailwind.config` customisation.                                                          | CSS-in-JS, CSS-Modules-only, traditional SCSS, MUI-style component libs. |
-| `ux/design-systems` (`design-systems`)         | Design tokens (W3C spec), atomic design, component docs, theming, dark/light mode, CSS custom properties.                                   | Specific component APIs; animation timing; WCAG audits.                  |
-| `ux/interaction-design` (`interaction-design`) | Motion/animation timing, microinteractions, loading & skeleton states, optimistic UI, form UX, touch targets / thumb zones, reduced motion. | CSS animation syntax; perf profiling; WCAG audits.                       |
-| `ux/visual-hierarchy` (`visual-hierarchy`)     | Fluid type scales, spatial layout, colour contrast, cognitive-load reduction, scanning patterns (F-pattern), progressive disclosure.        | WCAG audits; Tailwind utilities; component-library APIs.                 |
+| Skill                                          | Covers                                                                                                                                      | Don't use for                                            |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `electron`                                     | Electron desktop apps: architecture, IPC, security, packaging, auto-updates, backend integration.                                           | Tauri apps.                                              |
+| `ux/design-systems` (`design-systems`)         | Design tokens (W3C spec), atomic design, component docs, theming, dark/light mode, CSS custom properties.                                   | Specific component APIs; animation timing; WCAG audits.  |
+| `ux/interaction-design` (`interaction-design`) | Motion/animation timing, microinteractions, loading & skeleton states, optimistic UI, form UX, touch targets / thumb zones, reduced motion. | CSS animation syntax; perf profiling; WCAG audits.       |
+| `ux/visual-hierarchy` (`visual-hierarchy`)     | Fluid type scales, spatial layout, colour contrast, cognitive-load reduction, scanning patterns (F-pattern), progressive disclosure.        | WCAG audits; Tailwind utilities; component-library APIs. |
 
 ### Workflow skills
 
@@ -78,10 +72,15 @@ Update only the requested skill names, inspect their diff and lockfile, and chec
 skills and supporting files. The existing `.claude/skills` link shares the canonical
 `.agents/skills` directory; no global installation or second copy is needed.
 
-**Selection:** use one relevant design-direction skill plus the applicable implementation or
-validation skill. General examples do not change Trinity's Angular, Signal Forms, SCSS,
-Tailwind v4 token, public-component or Observable ownership rules. In particular, `ngrx` is
-reference material for explicitly requested integration work, not Trinity's state architecture.
+**Selection:** retain skills that support Trinity product work. Branding, marketing-page workflows,
+fixed visual-style presets and generic reference sheets belong outside this repository's skill set.
+Use the UX references for design principles, `redesign-existing-projects` for targeted audits,
+and `imagegen-frontend-mobile` for mobile mockups. Desktop product mockups use the available
+general image-generation capability with Trinity references.
+
+For design work, read [the product-design overrides](skill-overrides.md#product-design).
+Preserve Trinity's tokens, public components, interaction models and behavior. Angular, Spartan,
+Nx and repository documentation cover implementation; diagnosis and testing skills cover measurement.
 No external design service, paid API or plugin is required merely because a skill mentions it.
 
 ### Managed skills
@@ -92,23 +91,12 @@ through the skills tooling, don't hand-edit** the copied files.
 | Skill                        | Upstream                                       | Covers                                                                                                                                                                                                |
 | ---------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `angular-developer`          | `angular/angular`                              | Angular code generation + architecture: signals (`linkedSignal`, `resource`), forms, DI, routing, SSR, ARIA, animations, styling, testing, CLI.                                                       |
-| `brandkit`                   | `leonxlnx/taste-skill`                         | Premium brand-guideline boards, logo systems, identity decks, and visual-world presentations.                                                                                                         |
-| `design-taste-frontend`      | `leonxlnx/taste-skill`                         | Anti-template frontend direction for landing pages, portfolios, and redesigns (current v2).                                                                                                           |
-| `design-taste-frontend-v1`   | `leonxlnx/taste-skill`                         | Original taste-skill behavior for work that requires v1 compatibility.                                                                                                                                |
-| `full-output-enforcement`    | `leonxlnx/taste-skill`                         | Complete, unabridged output for tasks where placeholders or truncation are unacceptable.                                                                                                              |
-| `gpt-taste`                  | `leonxlnx/taste-skill`                         | Editorial UI direction, AIDA structure, varied layouts, and advanced GSAP motion.                                                                                                                     |
-| `high-end-visual-design`     | `leonxlnx/taste-skill`                         | Agency-style typography, spacing, surface treatment, and motion direction.                                                                                                                            |
-| `image-to-code`              | `leonxlnx/taste-skill`                         | Image-first website design references followed by close frontend implementation.                                                                                                                      |
 | `imagegen-frontend-mobile`   | `leonxlnx/taste-skill`                         | Premium mobile-app screen and flow image generation without code generation.                                                                                                                          |
-| `imagegen-frontend-web`      | `leonxlnx/taste-skill`                         | Separate conversion-aware website reference images for every requested section.                                                                                                                       |
-| `industrial-brutalist-ui`    | `leonxlnx/taste-skill`                         | Swiss, industrial, and tactical interface direction for dense or editorial surfaces.                                                                                                                  |
-| `minimalist-ui`              | `leonxlnx/taste-skill`                         | Warm, editorial minimalism with flat grids, muted accents, and restrained effects.                                                                                                                    |
 | `nx-workspace`               | `nrwl/nx-ai-agents-config`                     | Exploring/understanding the Nx workspace — projects, targets, dependencies — and debugging nx task failures. Use the repository-local `nx-generate` for scaffolding and `nx-run-tasks` for execution. |
 | `playwright-best-practices`  | `currents-dev/playwright-best-practices-skill` | Writing & fixing Playwright tests: flakiness, Page Object Model, CI, mocking, auth, accessibility, and more (E2E/component/API/visual/security/Electron).                                             |
 | `playwright-cli`             | `microsoft/playwright-cli`                     | Automating browser interactions and driving Playwright tests from the CLI.                                                                                                                            |
 | `redesign-existing-projects` | `leonxlnx/taste-skill`                         | Audit-first visual upgrades for existing websites and apps without breaking behavior.                                                                                                                 |
 | `spartan`                    | `spartan-ng/spartan`                           | spartan/ui: Brain (headless) + Helm (styled) layers, the `@spartan-ng/cli` generators, `components.json` projects.                                                                                    |
-| `stitch-design-taste`        | `leonxlnx/taste-skill`                         | Premium semantic `DESIGN.md` systems for Google Stitch screen generation.                                                                                                                             |
 | `vitest`                     | `antfu/skills`                                 | Vitest unit testing: mocking, coverage, test filtering, fixtures.                                                                                                                                     |
 
 ---

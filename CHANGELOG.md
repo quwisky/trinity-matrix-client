@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Repository skills now focus on Trinity client work: removed 18 overlapping or unsuitable
+  skills, retained 25 product and engineering skills, and repaired design-reference routing.
+
 - The CLI-managed Angular developer skill now comes from `angular/angular`, including its
   updated Angular Aria guidance.
 

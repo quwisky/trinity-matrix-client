@@ -9,8 +9,8 @@ description: |
   "theming", "dark mode", "light mode", "CSS variables", "atomic design",
   "color palette", "token architecture", "shadcn theming", "brand tokens"
 
-  DO NOT USE FOR: specific component APIs (use styling/shadcn-ui or styling/radix-ui),
-  animation timing (use ux/interaction-design), WCAG audit (use accessibility/wcag)
+  DO NOT USE FOR: specific component APIs (use spartan),
+  animation timing (use ux/interaction-design), WCAG audit (use playwright-best-practices)
 allowed-tools: Read, Grep, Glob, Write, Edit
 ---
 
@@ -33,7 +33,7 @@ The W3C Design Tokens Community Group spec defines a vendor-neutral JSON format 
     },
     "neutral": {
       "$type": "color",
-      "50":  { "$value": "#f8fafc" },
+      "50": { "$value": "#f8fafc" },
       "100": { "$value": "#f1f5f9" },
       "500": { "$value": "#64748b" },
       "900": { "$value": "#0f172a" }
@@ -41,20 +41,20 @@ The W3C Design Tokens Community Group spec defines a vendor-neutral JSON format 
   },
   "spacing": {
     "$type": "dimension",
-    "4":  { "$value": "1rem" },
-    "8":  { "$value": "2rem" },
+    "4": { "$value": "1rem" },
+    "8": { "$value": "2rem" },
     "12": { "$value": "3rem" }
   },
   "font-size": {
     "$type": "dimension",
     "base": { "$value": "1rem" },
-    "lg":   { "$value": "1.125rem" }
+    "lg": { "$value": "1.125rem" }
   },
   "border-radius": {
     "$type": "dimension",
-    "sm":  { "$value": "0.25rem" },
-    "md":  { "$value": "0.375rem" },
-    "lg":  { "$value": "0.5rem" },
+    "sm": { "$value": "0.25rem" },
+    "md": { "$value": "0.375rem" },
+    "lg": { "$value": "0.5rem" },
     "full": { "$value": "9999px" }
   }
 }
@@ -80,37 +80,37 @@ shadcn uses HSL values without the `hsl()` wrapper, enabling opacity modifiers (
 
 ```css
 :root {
-  --background:    0 0% 100%;        /* white */
-  --foreground:    222.2 47.4% 11.2%;
-  --card:          0 0% 100%;
+  --background: 0 0% 100%; /* white */
+  --foreground: 222.2 47.4% 11.2%;
+  --card: 0 0% 100%;
   --card-foreground: 222.2 47.4% 11.2%;
-  --popover:       0 0% 100%;
+  --popover: 0 0% 100%;
   --popover-foreground: 222.2 47.4% 11.2%;
-  --primary:       222.2 47.4% 11.2%;
+  --primary: 222.2 47.4% 11.2%;
   --primary-foreground: 210 40% 98%;
-  --secondary:     210 40% 96.1%;
+  --secondary: 210 40% 96.1%;
   --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted:         210 40% 96.1%;
+  --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
-  --accent:        210 40% 96.1%;
+  --accent: 210 40% 96.1%;
   --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive:   0 84.2% 60.2%;
+  --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
-  --border:        214.3 31.8% 91.4%;
-  --input:         214.3 31.8% 91.4%;
-  --ring:          222.2 47.4% 11.2%;
-  --radius:        0.5rem;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 47.4% 11.2%;
+  --radius: 0.5rem;
 }
 
 .dark {
-  --background:    224 71% 4%;
-  --foreground:    213 31% 91%;
-  --primary:       210 40% 98%;
+  --background: 224 71% 4%;
+  --foreground: 213 31% 91%;
+  --primary: 210 40% 98%;
   --primary-foreground: 222.2 47.4% 1.2%;
-  --muted:         223 47% 11%;
+  --muted: 223 47% 11%;
   --muted-foreground: 215.4 16.3% 56.9%;
-  --border:        216 34% 17%;
-  --input:         216 34% 17%;
+  --border: 216 34% 17%;
+  --input: 216 34% 17%;
 }
 ```
 
@@ -124,21 +124,19 @@ Usage in Tailwind: `bg-background`, `text-foreground`, `border-border`, `bg-prim
 
 ```tsx
 // ThemeProvider — respects system, allows manual override
-type Theme = "light" | "dark" | "system";
+type Theme = 'light' | 'dark' | 'system';
 
 function applyTheme(theme: Theme) {
   const root = document.documentElement;
-  const isDark =
-    theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  root.classList.toggle("dark", isDark);
-  root.setAttribute("data-theme", isDark ? "dark" : "light");
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  root.classList.toggle('dark', isDark);
+  root.setAttribute('data-theme', isDark ? 'dark' : 'light');
 }
 
 // Watch for system changes
-const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-mediaQuery.addEventListener("change", () => {
-  if (currentTheme === "system") applyTheme("system");
+const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+mediaQuery.addEventListener('change', () => {
+  if (currentTheme === 'system') applyTheme('system');
 });
 ```
 
@@ -147,10 +145,9 @@ mediaQuery.addEventListener("change", () => {
 ```html
 <!-- In <head> — prevents flash of wrong theme -->
 <script>
-  const theme = localStorage.getItem("theme") || "system";
-  const isDark = theme === "dark" ||
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.classList.toggle("dark", isDark);
+  const theme = localStorage.getItem('theme') || 'system';
+  const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.classList.toggle('dark', isDark);
 </script>
 ```
 
@@ -158,13 +155,13 @@ mediaQuery.addEventListener("change", () => {
 
 ## Atomic Design Levels
 
-| Level | Description | shadcn/Radix equivalent | Example |
-|-------|-------------|------------------------|---------|
-| **Atoms** | Smallest UI elements | `Button`, `Input`, `Badge`, `Avatar` | `<Button variant="outline">` |
-| **Molecules** | 2–3 atoms combined | `FormField` (Label + Input + Error), `SearchBar` | `<FormField>` |
-| **Organisms** | Complex sections | `DataTable`, `Header`, `Sidebar` | `<Table>` with toolbar |
-| **Templates** | Page-level layout skeleton | `DashboardLayout`, `AuthLayout` | Layout with slots |
-| **Pages** | Fully assembled with real content | `DashboardPage`, `ProfilePage` | Complete screen |
+| Level         | Description                       | shadcn/Radix equivalent                          | Example                      |
+| ------------- | --------------------------------- | ------------------------------------------------ | ---------------------------- |
+| **Atoms**     | Smallest UI elements              | `Button`, `Input`, `Badge`, `Avatar`             | `<Button variant="outline">` |
+| **Molecules** | 2–3 atoms combined                | `FormField` (Label + Input + Error), `SearchBar` | `<FormField>`                |
+| **Organisms** | Complex sections                  | `DataTable`, `Header`, `Sidebar`                 | `<Table>` with toolbar       |
+| **Templates** | Page-level layout skeleton        | `DashboardLayout`, `AuthLayout`                  | Layout with slots            |
+| **Pages**     | Fully assembled with real content | `DashboardPage`, `ProfilePage`                   | Complete screen              |
 
 **Note**: Few teams follow Atomic Design strictly. Use it as a mental model for deciding where a component belongs, not as a rigid rule.
 
@@ -176,27 +173,27 @@ Style Dictionary transforms design token JSON into platform-specific outputs (CS
 
 ```javascript
 // style-dictionary.config.js
-import StyleDictionary from "style-dictionary";
+import StyleDictionary from 'style-dictionary';
 
 export default {
-  source: ["tokens/**/*.json"],
+  source: ['tokens/**/*.json'],
   platforms: {
     css: {
-      transformGroup: "css",
-      prefix: "ds",
-      buildPath: "dist/",
+      transformGroup: 'css',
+      prefix: 'ds',
+      buildPath: 'dist/',
       files: [
         {
-          destination: "tokens.css",
-          format: "css/variables",
+          destination: 'tokens.css',
+          format: 'css/variables',
           options: { outputReferences: true },
         },
       ],
     },
     js: {
-      transformGroup: "js",
-      buildPath: "dist/",
-      files: [{ destination: "tokens.js", format: "javascript/es6" }],
+      transformGroup: 'js',
+      buildPath: 'dist/',
+      files: [{ destination: 'tokens.js', format: 'javascript/es6' }],
     },
   },
 };
@@ -215,13 +212,14 @@ export default {
 
 ## Related Skills
 
-- `styling/shadcn-ui` — component usage and customization
-- `styling/radix-ui` — headless primitive composition
-- `styling/tailwindcss` — utility implementation layer
-- `ux/visual-hierarchy` — type scale and spacing foundation
-- `ux/interaction-design` — animation tokens (duration, easing)
+- [Angular Tailwind v4 reference](../../angular-developer/references/tailwind-css.md) — utility implementation.
+- [Spartan](../../spartan/SKILL.md) — components behind Trinity’s public UI boundaries.
+- [Browser accessibility checks](../../playwright-best-practices/testing-patterns/accessibility.md) — rendered accessibility validation.
+- [visual-hierarchy](../visual-hierarchy/SKILL.md)
+- [interaction-design](../interaction-design/SKILL.md)
 
-## Deep Knowledge
+## Further reference
 
-Load via `mcp__documentation__fetch_docs`:
-- `ux-design-systems` — W3C token spec details, Style Dictionary advanced config, atomic design extended guide
+Use the repository’s [UI and theming documentation](../../../../docs/architecture/ui-and-theming.md) for
+implementation policy. For facts beyond these references, consult the relevant official
+documentation with available browsing tools.

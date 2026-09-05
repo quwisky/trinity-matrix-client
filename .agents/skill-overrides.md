@@ -1,6 +1,6 @@
 # Trinity skill overrides
 
-Read this with planning, review, research, prototype and Nx skills. These repository rules
+Read this with planning, review, research, prototype, product-design and Nx skills. These repository rules
 specialize the generic upstream workflows; maintain them here instead of editing installed
 skills. User instructions and accepted authorization govern the task.
 
@@ -17,6 +17,19 @@ skills. User instructions and accepted authorization govern the task.
   alone does not authorize implementation. Resolve one non-research ticket per session.
 - Use native dependencies, preserve existing issue identities, and verify published bodies,
   labels and relationships by read-back. Use frontier labels when the agreed map requires them.
+
+## Product design
+
+- Use `redesign-existing-projects` for its audit and targeted-fix workflow. Preserve Trinity's
+  existing tokens, typography, public components and platform interaction models. Generic
+  prescriptions for font swaps, palette replacements, decorative textures or cinematic motion
+  do not authorize replacing the product's design system.
+- Use `design-systems`, `visual-hierarchy` and `interaction-design` as conceptual references.
+  Implement through Trinity's Angular and Spartan boundaries; generic React or shadcn examples
+  do not establish a new stack or component API.
+- Use `imagegen-frontend-mobile` for mobile screen and flow mockups. For desktop product
+  concepts, use the available general image-generation capability and existing Trinity references.
+  Preserve agreed behavior, cross-screen consistency and accessibility in every mockup.
 
 ## Prototypes and research
 

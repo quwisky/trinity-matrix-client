@@ -10,9 +10,10 @@ description: |
   DO NOT USE FOR: Tauri applications - use `tauri` skill instead
 allowed-tools: Read, Grep, Glob, Write, Edit
 ---
+
 # Electron Core Knowledge
 
-> **Deep Knowledge**: Use `mcp__documentation__fetch_docs` with technology: `electron` for comprehensive API documentation.
+> **Deep Knowledge**: Consult the [official Electron documentation](https://www.electronjs.org/docs/latest/) with available browsing tools for API details.
 
 ## When NOT to Use This Skill
 
@@ -125,10 +126,10 @@ export function registerIpcHandlers() {
 const win = new BrowserWindow({
   webPreferences: {
     preload: path.join(__dirname, 'preload.js'),
-    contextIsolation: true,      // REQUIRED
-    nodeIntegration: false,      // REQUIRED
-    sandbox: true,               // Recommended
-    webSecurity: true,           // NEVER disable
+    contextIsolation: true, // REQUIRED
+    nodeIntegration: false, // REQUIRED
+    sandbox: true, // Recommended
+    webSecurity: true, // NEVER disable
   },
 });
 
@@ -137,11 +138,7 @@ win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
   callback({
     responseHeaders: {
       ...details.responseHeaders,
-      'Content-Security-Policy': [
-        "default-src 'self'",
-        "script-src 'self'",
-        "connect-src 'self' https://api.example.com",
-      ].join('; '),
+      'Content-Security-Policy': ["default-src 'self'", "script-src 'self'", "connect-src 'self' https://api.example.com"].join('; '),
     },
   });
 });
@@ -190,12 +187,14 @@ publish:
 import { autoUpdater } from 'electron-updater';
 
 autoUpdater.on('update-available', (info) => {
-  dialog.showMessageBox({
-    message: `Version ${info.version} available`,
-    buttons: ['Download', 'Later'],
-  }).then(({ response }) => {
-    if (response === 0) autoUpdater.downloadUpdate();
-  });
+  dialog
+    .showMessageBox({
+      message: `Version ${info.version} available`,
+      buttons: ['Download', 'Later'],
+    })
+    .then(({ response }) => {
+      if (response === 0) autoUpdater.downloadUpdate();
+    });
 });
 
 autoUpdater.on('update-downloaded', () => {
@@ -259,63 +258,66 @@ export const tokenStore = {
 ## Production Checklist
 
 ### Build & Packaging
+
 - [ ] Code signing configured for all platforms
 - [ ] macOS notarization enabled
 - [ ] ASAR packaging enabled
 
 ### Security
+
 - [ ] All security defaults enforced
 - [ ] CSP headers configured
 - [ ] IPC handlers validate all inputs
 - [ ] safeStorage used for credentials
 
 ### Performance
+
 - [ ] Startup time < 3 seconds
 - [ ] Memory usage baseline established
 
 ### Monitoring Metrics
 
-| Metric | Warning | Critical |
-|--------|---------|----------|
-| Startup time | > 3s | > 5s |
-| Memory usage | > 300MB | > 500MB |
-| Crash rate | > 0.1% | > 1% |
+| Metric       | Warning | Critical |
+| ------------ | ------- | -------- |
+| Startup time | > 3s    | > 5s     |
+| Memory usage | > 300MB | > 500MB  |
+| Crash rate   | > 0.1%  | > 1%     |
 
 ---
 
 ## Anti-Patterns
 
-| Anti-Pattern | Problem | Solution |
-|--------------|---------|----------|
-| `nodeIntegration: true` | Major security risk | Use `contextIsolation: true` + preload |
-| `webSecurity: false` | Enables XSS | Never disable |
-| Exposing raw `ipcRenderer` | Security hole | Use `contextBridge.exposeInMainWorld()` |
-| No input validation | Injection attacks | Validate in `ipcMain.handle()` |
-| Hardcoded credentials | Exposed in ASAR | Use `safeStorage` API |
-| `ipcRenderer.sendSync` | Blocks renderer | Use async `invoke()` |
+| Anti-Pattern               | Problem             | Solution                                |
+| -------------------------- | ------------------- | --------------------------------------- |
+| `nodeIntegration: true`    | Major security risk | Use `contextIsolation: true` + preload  |
+| `webSecurity: false`       | Enables XSS         | Never disable                           |
+| Exposing raw `ipcRenderer` | Security hole       | Use `contextBridge.exposeInMainWorld()` |
+| No input validation        | Injection attacks   | Validate in `ipcMain.handle()`          |
+| Hardcoded credentials      | Exposed in ASAR     | Use `safeStorage` API                   |
+| `ipcRenderer.sendSync`     | Blocks renderer     | Use async `invoke()`                    |
 
 ---
 
 ## Quick Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| `require is not defined` | Use preload with `contextBridge` |
-| IPC returns `undefined` | Verify channel names match |
-| White screen on startup | Check DevTools console |
-| Auto-updater not checking | Ensure app is code-signed |
-| High memory usage | Check for unbounded caches |
-| App won't start on macOS | Complete notarization |
+| Issue                     | Solution                         |
+| ------------------------- | -------------------------------- |
+| `require is not defined`  | Use preload with `contextBridge` |
+| IPC returns `undefined`   | Verify channel names match       |
+| White screen on startup   | Check DevTools console           |
+| Auto-updater not checking | Ensure app is code-signed        |
+| High memory usage         | Check for unbounded caches       |
+| App won't start on macOS  | Complete notarization            |
 
 ---
 
 ## Reference Files
 
-| File | Content |
-|------|---------|
-| [ipc-security.md](ipc-security.md) | Type-safe IPC, Security configuration |
-| [packaging.md](packaging.md) | Electron Forge, Builder, Auto-updates |
-| [backend.md](backend.md) | SQLite, Express, Offline-first, WebSocket |
+| File                               | Content                                   |
+| ---------------------------------- | ----------------------------------------- |
+| [ipc-security.md](ipc-security.md) | Type-safe IPC, Security configuration     |
+| [packaging.md](packaging.md)       | Electron Forge, Builder, Auto-updates     |
+| [backend.md](backend.md)           | SQLite, Express, Offline-first, WebSocket |
 
 ---
 
