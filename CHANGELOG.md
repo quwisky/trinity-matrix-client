@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Everyday-use documentation now connects account scope, Rooms and Spaces, messaging,
+  personal settings and notification workflows with implemented permissions and host limits.
+
 - First-use documentation now guides host choice, installation, sign-in and registration,
   device verification and encrypted-access recovery, with explicit limits and recovery
   consequences checked against the implementation.

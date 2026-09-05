@@ -1,185 +1,100 @@
-# Notifications
+# Control notifications
 
-Trinity decides whether something should notify you in one place — your Matrix account's
-push rules, which every client and every device you sign in with shares — and then delivers
-it in a way that depends entirely on the platform you are on. Those two halves fail
-independently, which is why they are described separately here.
+Matrix push rules decide **whether** an event should notify you. Trinity and the host decide
+**how** to show it. A successful rule change does not prove that a browser, operating system or
+push gateway can deliver the alert.
 
-## What notifies you
+## Choose account rules
 
-Three layers stack, in this order.
+Open Settings → Notifications. The account rules apply to every Matrix client signed in to that
+account. You can enable or disable notifications for the account, invitations, direct mentions,
+room-wide mentions, direct chats, rooms, and their encrypted equivalents.
 
-### Account-wide rules
+**Play a sound** is a Trinity setting for notifications shown by this client. It does not choose
+the sound of a mobile operating-system push notification.
 
-**Settings → Notifications** exposes nine predefined rules. They live on your account, so
-changing one here changes it on every device and in every Matrix client you use.
+Trinity has no voice or video calling UI. The **Call invitations** rule remains available because
+it is a standard Matrix account rule and can affect call events from another Matrix client.
 
-| Toggle                                | What it governs                               |
-| ------------------------------------- | --------------------------------------------- |
-| Enable notifications for this account | The master switch. Off suppresses everything. |
-| When I'm invited to a room            | Room invites.                                 |
-| When someone mentions my name         | Direct mentions of you.                       |
-| When someone posts @room              | Room-wide announcements.                      |
-| Call invitations                      | Incoming call events from other clients.      |
-| Messages in direct chats              | One-to-one conversations.                     |
-| Messages in encrypted direct chats    | The encrypted equivalent.                     |
-| Messages in rooms                     | Ordinary rooms.                               |
-| Messages in encrypted rooms           | The encrypted equivalent.                     |
+## Add a keyword
 
-The encrypted and unencrypted variants are genuinely separate rules in the Matrix
-specification, not a presentation choice — a server evaluates a different rule depending on
-whether it can see the event type.
+In Settings → Notifications, add a keyword and optionally enable its sound. Keywords match whole
+words, so a keyword such as “call” does not match “oncall”. They are account-scoped.
 
-!!! note "Trinity has no call UI"
+Trinity refuses wildcard characters and keywords that would conflict with server-managed Matrix
+rules. If a keyword cannot be saved, change the word rather than repeatedly retrying the same
+pattern.
 
-    "Call invitations" is a standard Matrix push rule that your account carries whatever
-    client wrote it. Trinity does not implement voice or video calls, so the toggle only
-    affects call invitations placed by your other clients.
+## Set a room's mode
 
-The mention rule is worth one more sentence. Matrix moved from "does this message contain my
-display name" to explicit, sender-declared mentions (MSC3952). Servers expose the old rule,
-the new one, or — as current Synapse does — both. Trinity's single "mentions my name"
-toggle writes whichever ones your server actually has, so you do not end up with half a
-preference applied.
+Open a room row's overflow menu and choose **Notifications**:
 
-### Keywords
+| Mode                                | Result                                                                       |
+| ----------------------------------- | ---------------------------------------------------------------------------- |
+| **All messages**                    | Account-wide rules decide.                                                   |
+| **Mute except mentions & keywords** | Ordinary messages stay quiet; direct mentions and keywords can still notify. |
+| **Mute everything**                 | Nothing from that room notifies, including mentions.                         |
 
-Below the toggles is a keyword list. A keyword notifies you whenever that **whole word** is
-said in any room you are in: `call` does not match `oncall`. Each keyword has its own
-**Sound** checkbox, so you can have a word that badges quietly and a word that makes noise.
+Room modes are Matrix push rules and follow the account to other Matrix clients. In a combined
+multi-account row, choosing a mode applies it to every account represented by that row. If those
+accounts already differ, the row says **Different across accounts** until you choose a mode.
 
-Keywords are account-wide too. Two constraints exist to stop a keyword from doing something
-you did not intend:
+## Know how delivery works
 
-- `*` and `?` are **rejected**, not escaped. Matrix keyword patterns are globs, so a stray
-  `*` would silently become "notify me about every message in every room" — stored on your
-  account, applied on every device and in every client, with nothing in any UI to say where
-  it came from.
-- A keyword cannot start with `.` or contain `/`. A leading dot is how the specification
-  marks a _server_-defined rule, so such a keyword would be created, would notify, and would
-  then be invisible and unremovable in the list.
+| Host                     | Delivery                                               | When the app is closed                                                |
+| ------------------------ | ------------------------------------------------------ | --------------------------------------------------------------------- |
+| Browser or installed PWA | Browser notifications over Trinity's live connection   | No; closing the tab ends the connection.                              |
+| Desktop                  | The Electron host posts operating-system notifications | Yes while the app remains in the system tray; explicit Quit stops it. |
+| iOS and Android          | APNs or FCM through a configured push gateway          | Yes when gateway registration and the operating system both allow it. |
 
-Trinity also hides your server's own built-in rules from this list — otherwise you would see
-your own username presented as a keyword you could delete.
+The browser asks for permission after an authenticated account is available. If you denied it,
+change the permission in the browser or operating system and reopen Trinity. A focused window
+viewing the active room suppresses its own notification; other rooms and background accounts may
+still notify.
 
-**A muted room stays muted.** Keywords do not override a mute; see below for why.
+Encrypted events are evaluated after Trinity decrypts them, so a mention is not reduced to an
+unhelpful ciphertext notification. Notification previews and timing still depend on the host.
 
-### Per-room mode
+> [!WARNING]
+> Unsigned or ad-hoc-signed macOS desktop builds cannot reliably post notifications. Use a signed
+> build or follow the [desktop guide](../platforms/desktop.md).
 
-Open the `⋮` menu on a room in the sidebar and choose **Notifications**:
+## Configure mobile push carefully
 
-| Mode                            | Behaviour                                                         |
-| ------------------------------- | ----------------------------------------------------------------- |
-| All messages                    | The default. Your account-wide rules decide.                      |
-| Mute except mentions & keywords | Ordinary messages stop notifying; mentions and keywords still do. |
-| Mute everything                 | Nothing from this room notifies, mentions included.               |
+On iOS or Android, open Settings → Notifications → **Push gateway** and enter the gateway URL
+provided by your project or organisation. Use HTTPS unless the gateway is on a trusted local
+network. Leave the App ID blank unless that provider gave you a different value, then select
+**Save** and accept the disclosure.
 
-The difference between the last two is not cosmetic. "Mute except mentions & keywords" is a
-room-scoped rule, and the rules that fire on a mention or a keyword are evaluated _ahead_ of
-it, so they still win. "Mute everything" is written as an override rule that is itself
-evaluated before those, so nothing gets past it. That is the mechanism behind "a muted room
-stays muted".
+The URL is stored on this device, but saving it registers a pusher for every Trinity account
+signed in on that device. The gateway receives a device delivery token and event metadata; its
+operator can learn which rooms receive activity, when it occurs, and correlate Accounts registered
+through that device. Trinity requests event-reference delivery rather than message text. This is
+ongoing metadata access, not just a registration disclosure; read the displayed trust explanation
+before accepting a provider.
 
-Some Matrix clients, including FluffyChat's quick room action, call the first of those modes
-simply **Mute**. FluffyChat writes the modern empty-action Matrix rule; Trinity recognizes it
-as well as the older `dont_notify` form, shows a crossed-out bell in the room list, and names
-the remaining mention behaviour explicitly so it is not confused with silencing everything.
+“Registered on N accounts” confirms that homeservers accepted the registrations. It cannot prove
+that APNs or FCM delivered an alert. **Clear** removes this device's pushers before clearing the
+local gateway override, so mobile push stops until a gateway is configured again. Gateway
+deployment and credentials are maintained separately; see
+[push-notification reference](../reference/push-notifications.md).
 
-Per-room modes are push rules as well, so they follow your account to your other devices.
-Changes made in another client appear as soon as sync delivers them, without reopening the
-menu or reloading Trinity. If one part of a multi-step server update fails, Trinity restores
-the exact previous server rules, including their priority; a merged multi-account row is
-restored on every account rather than left with conflicting settings. Rapid choices—even in
-different rooms—are applied in order because the homeserver returns one shared ruleset per
-account, and custom rules Trinity does not recognize are left untouched. If another device makes
-a newer change while Trinity is restoring a failed update, that newer state wins and Trinity asks
-you to reopen the menu rather than overwriting it. If the accounts behind a merged row already
-disagree, the room shows **Different across accounts** until you choose one mode to apply
-everywhere.
+## Recover from a missing or failed notification
 
-## How a notification reaches you
+| Symptom                                        | What to check                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser permission was denied                  | Allow notifications for the Trinity site in the browser or operating-system settings, then reopen Trinity.                                                                                                                                                                             |
+| Web or desktop notifications stop              | Keep the client connected. A closed browser tab cannot receive live-connection notifications; an explicitly quit desktop app cannot either.                                                                                                                                            |
+| No alert appears while reading a room          | This is expected for the focused active room. Switch rooms or background the window only if you need an alert for later activity.                                                                                                                                                      |
+| Changing a room mode fails                     | If Trinity says the previous setting was restored, retry. Otherwise reopen the room menu to inspect the server's current setting before retrying.                                                                                                                                      |
+| Mobile gateway Save reports an error           | Follow the displayed error. Allow OS notifications if permission was denied; resolve a native token error with the device/platform guidance. Correct URL/App ID only when configuration is wrong. A homeserver registration failure may need a connection check or administrator help. |
+| Mobile says it registered but no alert arrives | Registration is not delivery. Check device notification permissions, battery or background restrictions, the gateway operator and APNs or FCM.                                                                                                                                         |
 
-This is where the platforms diverge sharply.
+## Use badges as a summary
 
-| Platform              | Mechanism                                               | Reaches you with the window shut |
-| --------------------- | ------------------------------------------------------- | -------------------------------- |
-| Web and installed PWA | Browser Notification API, driven by the live connection | No                               |
-| Desktop app           | The Electron main process posts the OS notification     | Yes, while it sits in the tray   |
-| iOS and Android       | APNs or FCM push, routed via a push gateway             | Yes, if a gateway is configured  |
+Trinity mirrors the total unread count across its supported app-icon badges: desktop dock or
+taskbar, Android and iOS launcher, and an installed PWA where the browser supports badges. A plain
+browser tab has no app icon badge.
 
-### Web and desktop
-
-On web and on the desktop app there is no push subscription at all. Trinity holds a live
-sync connection to your homeserver and raises a notification when an event arrives that your
-push rules say should notify. Close the browser tab and notifications stop — there is
-nothing running to receive them.
-
-The desktop app is the exception: closing its window **hides it to the system tray** rather
-than quitting, so the process, the sync connection and notifications all stay alive. Only an
-explicit Quit stops them.
-
-The browser asks for notification permission once, when an authenticated application session first
-has an Account to observe. It does not prompt on the signed-out screen. The
-desktop app does not ask: notifications there are posted by Electron's main process rather
-than by the page, because renderer-side web notifications are unreliably surfaced and
-attributed by macOS.
-
-A notification is **suppressed only when you are demonstrably already looking at it** — the
-window is focused, that account is the one you are acting as, and that room is the one open.
-A message to any other room, or to a background account, still notifies. Clicking one
-focuses the window and emits the exact account, room and event destination. Workspace then switches
-to the owning account if needed, repairs a destination that is no longer available, opens the room,
-and jumps to the event when it is still present.
-
-For an encrypted room the event arrives as ciphertext, so notifying immediately would give
-you a generic preview and would score your push rules against an encrypted payload — missing
-your mentions. Trinity defers those events and re-evaluates them once they decrypt, with a
-guard so each event notifies at most once.
-
-Notifications collapse per account and room: a newer message from the same room replaces the
-still-open toast, while the same room on a second signed-in account stays a separate toast.
-The preview is truncated to 140 characters.
-
-!!! warning "Unsigned macOS desktop builds cannot post notifications"
-
-    Electron posts macOS notifications through `UNUserNotification`, which requires a stable
-    code signature. An unsigned or ad-hoc-signed build fails silently with
-    `UNErrorDomain error 1`. Trinity logs that failure so it is diagnosable rather than
-    mysterious. See [desktop](../platforms/desktop.md).
-
-### iOS and Android
-
-Mobile is the only platform where a notification can reach you with the app closed, and it is
-the only one that depends on infrastructure outside your homeserver.
-
-The Matrix push path is: your homeserver → a **push gateway** → Apple's APNs or Google's FCM
-→ your device. The gateway is a separate service, operated by whoever runs it. It is not part
-of your homeserver, and Trinity's stock builds ship no default gateway — so unless a build
-was configured with one, or you set one yourself, mobile push is off and the app only
-notifies while it is open.
-
-**Settings → Notifications → Push gateway** takes a gateway URL for this device. It applies
-to this device only: the registration is keyed to this install's device token, so an iOS
-gateway setting is meaningless to the Android install on the same account. Saving one
-registers a pusher on **every account signed in on this device**.
-
-Saving a gateway requires confirming a disclosure, because trusting one is the genuinely
-dangerous step. The gateway's operator can see your Matrix ID, that every account on the
-device belongs to one person, which room each message arrived in and exactly when, and your
-device's notification token. They cannot read your messages: Trinity registers the pusher in
-`event_id_only` format, so only a reference to each message is sent and the client fetches
-the content itself.
-
-The settings page reports how many accounts a pusher was accepted for. That is deliberately
-worded as "the pushers were accepted, not that a notification has arrived" — the gateway to
-APNs or FCM to device leg cannot be observed from the client at all.
-
-For the operator side of this — deploying a gateway, FCM and APNs credentials, app ids —
-see [push notifications](../reference/push-notifications.md).
-
-## App icon badges
-
-The unread total, summed across every signed-in account, is mirrored onto whatever app-icon
-badge the platform offers: the dock or taskbar on the desktop app, the launcher badge on iOS
-and Android, and the W3C Badging API on an installed PWA. A plain browser tab has no badge to
-set, so nothing happens there.
+For unread markers and room-level recovery, see [rooms and spaces](rooms-and-spaces.md). For
+browser, desktop and mobile host troubleshooting, see [platform guides](../platforms/index.md).
