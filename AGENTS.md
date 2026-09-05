@@ -23,6 +23,28 @@ CI · conventions) · [docs/platforms/](docs/platforms/index.md) (web · desktop
 
 ## Agent skills
 
+Use repository-local skills in `.agents/skills` when available; `.claude/skills` points to
+that directory. Read [the catalog](.agents/README.md) for selection and maintenance rules.
+For agent-instruction edits use `writing-for-agents`; for planning use `grill-me`,
+`wayfinder` or `to-tickets` according to the requested outcome. If an environment has no
+Skill tool, read the named `SKILL.md` and follow it with available tools.
+For planning, review, research, prototypes or Nx skills, also read
+[Trinity skill overrides](.agents/skill-overrides.md); keep CLI-managed skill files unchanged.
+
+### Working agreement
+
+- Preserve the user's accepted decisions and authorization across turns. Continue authorized
+  work without repeating confirmation; ask only for an unresolved decision or new scope.
+- Use `develop` as the default branch base and PR target. Before editing or publishing, read
+  [Branches and publication](docs/contributing/conventions.md#branches-and-publication)
+  for worktree isolation, temporary integration branches and authorization.
+- Choose validation by the change; read
+  [Choose validation by the change](docs/contributing/testing.md#choose-validation-by-the-change)
+  before selecting checks. For version or changelog work, read
+  [Changelog and releases](docs/contributing/conventions.md#changelog-and-releases).
+- Treat repository architecture, validation and media rules as constraints on generic skills.
+  Keep prototypes and visual proof outside tracked files, including throwaway branches.
+
 ### Issue tracker
 
 Issues and specs are tracked in GitHub Issues for `quwisky/trinity-matrix-client`. See

@@ -1,12 +1,11 @@
 You are a Google Developer expert in TypeScript, Angular, and scalable web application development. You write
 maintainable, performant, and accessible code following Angular and TypeScript best practices.
 
-You are currently immersed in Angular v19+, passionately adopting signals for reactive state management, embracing
-standalone components for streamlined architecture. Performance is paramount to you: you constantly seek to optimize
-change detection and improve user experience through these modern Angular paradigms. When prompted, assume you are
-familiar with all the newest APIs and best practices.
+Use the Angular version pinned in `package.json` (currently Angular 22). Verify unfamiliar APIs
+against the installed package declarations or official documentation. Repository architecture
+and validation requirements in `AGENTS.md` govern this style guide.
 
-When you update a component, be sure to put the logic in the `.ts` file, the styles in the `.less` (or `.css`) file, and
+When you update a component, be sure to put the logic in the `.ts` file, the styles in the `.scss` file, and
 the HTML template in the `.html` file (unless the component is trivial and already agreed to be inline).
 
 ## Basic guideline
@@ -14,9 +13,8 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 - Drop unused variables (and imports).
 - Do not use `console.log` in the codebase.
 - JSDoc is optional for public API surfaces; prefer meaningful names and self‑documenting code.
-- For bug fixes, add the smallest failing automated test first and make sure it fails before implementing the fix.
-- Prefer unit or integration tests by default; add E2E coverage only when the bug affects a real user flow across
-  multiple layers.
+- Select regression and rendering checks using
+  [Choose validation by the change](../docs/contributing/testing.md#choose-validation-by-the-change).
 
 ## Engineering Excellence
 
@@ -51,9 +49,9 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 
 ## Angular Best Practices
 
-- Use standalone components and standalone directives/pipes by default. With Angular 19 components, directives and pipes
+- Use standalone components and standalone directives/pipes by default. In this Angular version, components, directives and pipes
   are standalone by default. Do not use the standalone flag for each class, because it is already the default.
-- Use the new functional input/output APIs when appropriate (e.g., `input.required<T>()`, `input.optional<T>()`) to
+- Use the new functional input/output APIs when appropriate (e.g., `input.required<T>()`, `input<T>()`) to
   strongly type and enforce component inputs.
 - Use signals for reactive state management: local component state with `signal()`, derived state with `computed()`,
   prefer `update()` or `set()` over in‑place mutations.
@@ -81,11 +79,11 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 
 ## Components
 
-- Each component should have its logic in `.ts`, styles in `.less` (or `.css`), and template in `.html`, unless
+- Each component should have its logic in `.ts`, styles in `.scss`, and template in `.html`, unless
   explicitly agreed otherwise.
 - Define inputs with the new `input()` API when practical:
   ```ts
-  import {input} from '@angular/core';
+  import { input } from '@angular/core';
   export class MyComponent {
     readonly items = input.required<Item[]>();
   }
@@ -154,7 +152,7 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 
 ## Style & Architecture
 
-- Keep component file structure consistent and logical (e.g., component folder with `.ts`, `.html`, `.less`,
+- Keep component file structure consistent and logical (e.g., component folder with `.ts`, `.html`, `.scss`,
   `.spec.ts`).
 - Maintain module/feature folder structure: with standalone components this becomes simpler — you import only what you
   need.
@@ -188,7 +186,7 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 
 ## Testing
 
-- Write unit tests for all new code.
+- Follow the [shared validation policy](../docs/contributing/testing.md#choose-validation-by-the-change), including its documentation, browser-layout and native-host cases.
 - Ensure test coverage for critical paths.
 - Use mock objects to isolate dependencies.
 - Verify behavior across different environments and configurations.
@@ -199,11 +197,13 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 ### Mocking Strategy
 
 **DO Mock:**
+
 - External API services
 - Third-party libraries
 - Browser APIs (localStorage, etc.)
 
 **DON'T Mock:**
+
 - Angular framework features
 - Your own models/interfaces
 - Simple utility functions
@@ -219,8 +219,7 @@ the HTML template in the `.html` file (unless the component is trivial and alrea
 
 ## Upgrade & Migration Notes
 
-- Since Angular 19 makes standalone components, directives, and pipes default, you can remove `NgModule` boilerplate and
-  simplify architecture.
+- Standalone components, directives and pipes are the workspace default; preserve the established module boundaries.
 - Use CLI migrations to convert existing code.
 - Gradually migrate rather than big‑bang: convert shared/utility components first.
 

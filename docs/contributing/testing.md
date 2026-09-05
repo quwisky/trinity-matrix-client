@@ -18,6 +18,31 @@ CI tiers and migration destination are in
 layer actually establishes, and about the traps that make a spec pass without
 proving anything.
 
+## Choose validation by the change
+
+Choose checks that can observe the changed behavior, rather than requiring a new test for
+every edit or counting how many components or layers changed.
+
+- **Documentation and formatting:** check syntax, formatting, local references and relevant
+  repository guards. Do not add behavioral tests merely to accompany a prose correction.
+- **Behavior and logic:** use the smallest meaningful unit or integration regression test.
+  For a bug fix, reproduce the reported failure before the fix where a suitable seam exists.
+  If that seam is unavailable, report the limitation and use evidence that exercises the
+  actual symptom rather than an assertion that only mirrors the implementation.
+- **Layout and interaction:** use real-browser component tests or journeys for geometry,
+  responsive behavior, focus and viewport access, even when only one component changes.
+  jsdom cannot establish layout. Mobile claims require the appropriate device profile.
+- **Cross-capability flows:** use integration or end-to-end journeys when narrower tests
+  cannot establish the user's outcome. File count is not the criterion for E2E coverage.
+- **Host behavior:** use the relevant Web, Electron or native-host checks. Browser device
+  emulation is not proof of Capacitor behavior; report native checks that were unavailable.
+
+Run tests and typecheck for affected TypeScript changes; Vitest alone does not typecheck.
+Build changed Angular templates to catch compiler contracts. Include required lint,
+formatting, style and repository guards for the change. These choices do not waive the
+repository's CI gates. Once applicable checks pass, expand validation only when further
+changes, failures or unresolved concerns justify it. Disposable Synapse suites run sequentially.
+
 ## Unit tests
 
 The `test` target is declared once in

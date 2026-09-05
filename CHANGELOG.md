@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Agent guidance now shares contributor policies for branching, releases and validation:
+  `develop` is the default, integration branches are task-specific, and checks are selected
+  by the changed behavior, including single-component browser layout checks.
+
 - **Room-surface compatibility access is removed.** Explicit thread, pins, search, member, and
   reveal intents now form the only mutation boundary. Internal state records no longer leak into
   callers or tests, and structural and type guards keep panel and jump state private.
@@ -136,6 +140,11 @@ All notable changes to this project are documented here. The format is based on
   retired vocabulary; tab panels now own their shared stack layout internally.
 
 ### Added
+
+- CLI-managed repository agent workflows for design interviews, issue maps, ticket publication,
+  research, prototypes, diagnosis, review, conflict resolution and Nx tasks. Shared guidance
+  now preserves accepted approvals, isolates unrelated work and follows Trinity's Angular
+  and prototype-storage conventions through update-safe repository overrides.
 
 - **Navigation, overlays and shipped feature states now have complete browser catalogs.** Every
   public recipe axis and meaningful open, selected, invalid, disabled, destructive, clipped,

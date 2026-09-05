@@ -45,3 +45,40 @@ A wayfinding map is one issue with linked child issues.
   explicit `Part of` or `Blocked by` lines.
 - Claim work by assigning the issue to the current user.
 - Resolve a ticket by recording the answer, closing it, and updating the map.
+
+## Publication and verification
+
+Carry accepted decisions and authorization from the conversation into the tracker operation.
+Prepare a concrete breakdown before requesting approval when approval is still needed. Once
+publication or a parent update is authorized, perform it without repeating that question.
+Use body files for multiline text so Markdown and literal characters survive unchanged.
+
+Search existing children before creating tickets. Reuse their issue identities when revising
+an approved plan. Create new children in dependency order, then wire any remaining native
+blocking edges using real issue numbers. A readable graph is an index of those relationships.
+Read back edited titles/bodies, parent links, blocker sets and labels before reporting success.
+Re-read a parent immediately before editing it and preserve concurrent changes.
+
+## Work through an existing map
+
+- Load the map body first. `Destination` and `Notes` state its goal and mode; older maps may
+  use `Goal` and `Program rules`. Planning is the default. An explicitly approved implementation
+  destination and child acceptance criteria can include execution; preserve that agreement and
+  record it in Notes when updating the map. A `wayfinder:task` label alone is insufficient.
+- Query all native child pages, including each child's state, assignees and blockers. The
+  frontier is open, unassigned children whose blockers are all closed; follow native child order.
+  A closed blocker remains a valid dependency and does not need its edge removed.
+- For maps using frontier labels, apply `ready-for-agent` only to that executable frontier.
+  Labels summarize live dependencies; they do not replace the dependency check.
+- Recheck the selected ticket and its blockers before claiming it with the current GitHub
+  user. Read the assignment back; if another owner has claimed it, choose another frontier
+  ticket. GitHub assignment is not an atomic lock, so coordinate any detected overlap.
+- Refer to tickets by linked title in narration. Load full child bodies and resolution
+  comments only as needed. Use the skills named by the map and resolve one non-research ticket
+  per session.
+- Close a decision ticket only when its answer is established; close an execution ticket only
+  when its acceptance and validation criteria are met. Record evidence and limitations in a
+  resolution comment, then append a linked gist under the map's `Decisions so far`.
+- Preserve open work and native edges when normalizing a legacy map. Keep detail in its owning
+  ticket, query open children as the work index, and keep undecided scope under `Not yet specified`.
+  A published plan alone does not complete an implementation ticket.

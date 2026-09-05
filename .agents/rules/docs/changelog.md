@@ -8,11 +8,6 @@ recommended: true
 
 # Changelog Maintenance
 
-This project maintains a `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com/).
-
-**Rules:**
-- Every feature, bug fix, or breaking change must have an entry under `## [Unreleased]` before it is considered complete
-- Use subsections: `### Added`, `### Fixed`, `### Changed`, `### Removed`, `### Security`
-- Write entries for humans, not machines — describe the impact, not the implementation detail
-- At release time: rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD` and add a new blank `[Unreleased]` above it
-- If the project has no CHANGELOG yet, create one before the next meaningful commit
+For features, fixes, breaking changes and release preparation, follow
+[Changelog and releases](../../../docs/contributing/conventions.md#changelog-and-releases).
+Record user impact in the appropriate Unreleased section before final validation.
