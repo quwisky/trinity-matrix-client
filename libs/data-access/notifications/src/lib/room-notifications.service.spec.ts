@@ -222,7 +222,7 @@ describe('RoomNotificationsService', () => {
       TestBed.runInInjectionContext(() =>
         effect(() => observed.push(svc.modeFor(ROOM))),
       );
-      svc.connect();
+      svc.runProjection().subscribe();
       TestBed.tick();
 
       client.pushRules.global.room = [roomMute(ROOM)];
@@ -771,7 +771,7 @@ describe('RoomNotificationsService per-account rules', () => {
     const service = TestBed.inject(RoomNotificationsService);
     const runtime = TestBed.inject(ProjectionRuntime);
 
-    service.connect();
+    const lifetime = service.runProjection().subscribe();
     expect(first.on).toHaveBeenCalledWith(
       ClientEvent.AccountData,
       expect.any(Function),
@@ -796,7 +796,7 @@ describe('RoomNotificationsService per-account rules', () => {
     expect(first.on).toHaveBeenCalledTimes(2);
     expect(second.on).toHaveBeenCalledTimes(2);
 
-    service.disconnect();
+    lifetime.unsubscribe();
     expect(first.off).toHaveBeenCalledTimes(2);
     expect(second.off).toHaveBeenCalledTimes(2);
   });

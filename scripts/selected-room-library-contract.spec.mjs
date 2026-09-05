@@ -121,18 +121,10 @@ describe('Selected Room Library boundary', () => {
   });
 
   it('keeps selected sources inside the named Room Library lifetime', () => {
-    const selected = source(selectedImplementation);
     const lifetime = source(roomLibraryLifetime);
-    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
 
-    expect(selected).toContain('connect(): void');
-    expect(selected).toContain('disconnect(): void');
     expect(lifetime).toContain('class RoomLibraryLifetime');
     expect(lifetime).toContain("waitFor({ kind: 'active-account' })");
-    expect(lifetime).toContain('this.selected.connect()');
-    expect(lifetime).toContain('this.selected.disconnect()');
-    expect(page).not.toMatch(
-      /this\.(?:rooms|spaces|invites|spaceChildren)\.connect\(\)/u,
-    );
+    expect(lifetime).toContain('this.selected.runProjection()');
   });
 });

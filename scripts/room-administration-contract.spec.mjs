@@ -55,13 +55,9 @@ describe('Room Administration production boundary', () => {
     const session = source(
       'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
     );
-    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
 
     expect(lifetime).toContain('class RoomAdministrationLifetime');
     expect(session).toContain('inject(RoomAdministrationLifetime)');
-    expect(page).not.toMatch(
-      /this\.(?:roomPermissions|roomMembers)\.connect\(\)/u,
-    );
   });
 
   it('keeps former governance barrels and caller allowlists empty', () => {

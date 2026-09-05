@@ -181,7 +181,6 @@ describe('RoomsPage panels, pins and media', () => {
         MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
-          connect: vi.fn(),
           setModeForAccounts: setNotifyMode,
         }),
       ],

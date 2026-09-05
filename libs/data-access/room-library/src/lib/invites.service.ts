@@ -73,17 +73,9 @@ export class InvitesService {
     reset: () => this._pendingInvites.set([]),
   });
 
-  /**
-   * Attach sync listeners and do the first read. Idempotent per client (e.g. the
-   * shell's `ngOnInit`); re-running after a re-login rewires onto the new client.
-   */
-  connect(): void {
-    this.projection.connect();
-  }
-
-  /** Detach listeners from the current client and reset the read model. */
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Cold active-Account projection retained by the Room Library session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   /** Accept an invite by joining the room/space, on the account it was sent to. Cold. */

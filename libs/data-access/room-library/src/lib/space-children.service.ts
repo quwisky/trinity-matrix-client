@@ -139,22 +139,14 @@ export class SpaceChildrenService {
     return state.asReadonly();
   }
 
-  /**
-   * Attach the state listener and seed every watched space. Idempotent per client;
-   * re-running after a re-login rewires onto the new one.
-   */
-  connect(): void {
-    this.projection.connect();
-  }
-
-  /** Detach the state listener. Watched signals keep their last value — see the projection. */
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Cold active-Account projection retained by the Room Library session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   /**
    * The client to read through: the one the listeners are on, falling back to the active
-   * instance so {@link linksFor} still seeds before {@link connect}.
+   * instance so {@link linksFor} still seeds before the session lifetime starts.
    */
   private readClient(): MatrixClient | null {
     return (

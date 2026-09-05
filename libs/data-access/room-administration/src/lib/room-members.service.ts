@@ -21,6 +21,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { initialOf } from '@trinity/util/matrix';
+import type { Observable } from 'rxjs';
 
 /** A joined member projected from authoritative Matrix room state.
  *
@@ -131,14 +132,9 @@ export class RoomMembersService {
     },
   });
 
-  /** Attach the authoritative membership projection. Idempotent per Matrix client. */
-  connect(): void {
-    this.projection.connect();
-  }
-
-  /** Detach listeners and clear values from the outgoing Account. */
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Cold membership projection retained by the Room Administration session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   /** A memoized signal for one Room's joined members. */

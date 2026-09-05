@@ -12,6 +12,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
+import { ownedProjection } from '@trinity/runtime/projection';
 
 /**
  * Per-room notification level:
@@ -82,15 +83,22 @@ export class RoomNotificationsService {
     });
   }
 
-  /** Start projecting remote push-rule changes into the zoneless room list. Idempotent. */
-  connect(): void {
+  /** Cold rule projection retained by the named Notification session lifetime. */
+  runProjection(): Observable<void> {
+    return ownedProjection(
+      () => this.connect(),
+      () => this.disconnect(),
+    );
+  }
+
+  private connect(): void {
     this.connected = true;
     this.activeProjection.connect();
     this.rebindClients();
     this.bumpRevision();
   }
 
-  disconnect(): void {
+  private disconnect(): void {
     this.connected = false;
     for (const client of this.boundClients) {
       client.off(ClientEvent.AccountData, this.onAccountData);

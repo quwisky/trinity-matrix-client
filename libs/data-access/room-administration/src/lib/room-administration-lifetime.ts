@@ -2,7 +2,7 @@ import { Injectable, inject, type Signal } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ActiveAccountProjectionLifetime } from '@trinity/runtime/projection';
 import { isTransientMatrixError } from '@trinity/util/matrix';
-import { Observable, catchError, throwError } from 'rxjs';
+import { Observable, catchError, combineLatest, map, throwError } from 'rxjs';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomMembersService } from './room-members.service';
 
@@ -29,8 +29,11 @@ export class RoomAdministrationLifetime {
       .run({
         activeAccountId: this.matrix.activeUserId,
         demanded,
-        connect: () => this.connect(),
-        disconnect: () => this.disconnect(),
+        runProjection: () =>
+          combineLatest([
+            this.permissions.runProjection(),
+            this.members.runProjection(),
+          ]).pipe(map(() => void 0)),
       })
       .pipe(
         catchError((error: unknown) =>
@@ -41,15 +44,5 @@ export class RoomAdministrationLifetime {
           ),
         ),
       );
-  }
-
-  private connect(): void {
-    this.permissions.connect();
-    this.members.connect();
-  }
-
-  private disconnect(): void {
-    this.members.disconnect();
-    this.permissions.disconnect();
   }
 }

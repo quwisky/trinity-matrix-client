@@ -164,7 +164,6 @@ describe('RoomsPage action error feedback', () => {
         }),
         MockProvider(SpaceChildrenService, { canCurate, addExistingRoom }),
         MockProvider(RoomActionPermissionsService, {
-          connect: vi.fn(),
           room: () => {
             const curate = canCurate();
             return {
@@ -203,7 +202,6 @@ describe('RoomsPage action error feedback', () => {
         MockProvider(TrnDialogService, { openAndWait$: dialogOpen }),
         MockProvider(TrnToastService, { show: toastShow }),
         MockProvider(RoomNotificationsService, {
-          connect: vi.fn(),
           setModeForAccounts: setNotifyMode,
         }),
       ],

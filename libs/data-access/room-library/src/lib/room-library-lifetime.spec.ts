@@ -4,7 +4,7 @@ import {
   type ProjectionReadiness,
 } from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of } from 'rxjs';
+import { NEVER, Subject, concat, defer, finalize, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { InvitesService } from './invites.service';
 import { RoomLibraryLifetime } from './room-library-lifetime';
@@ -34,29 +34,29 @@ describe('RoomLibraryLifetime', () => {
     waitFor = vi.fn<ProjectionRuntime['waitFor']>(() => barrier);
     connects = Array.from({ length: 5 }, () => vi.fn());
     disconnects = Array.from({ length: 5 }, () => vi.fn());
+    const projection = (index: number) => () =>
+      defer(() => {
+        connects[index]();
+        return concat(of(void 0), NEVER);
+      }).pipe(finalize(disconnects[index]));
     TestBed.configureTestingModule({
       providers: [
         RoomLibraryLifetime,
         MockProvider(ProjectionRuntime, { waitFor }),
         MockProvider(RoomLibraryService, {
-          connect: connects[0],
-          disconnect: disconnects[0],
+          runProjection: projection(0),
         }),
         MockProvider(SpacesService, {
-          connect: connects[1],
-          disconnect: disconnects[1],
+          runProjection: projection(1),
         }),
         MockProvider(InvitesService, {
-          connect: connects[2],
-          disconnect: disconnects[2],
+          runProjection: projection(2),
         }),
         MockProvider(SpaceChildrenService, {
-          connect: connects[3],
-          disconnect: disconnects[3],
+          runProjection: projection(3),
         }),
         MockProvider(SelectedRoomLibraryService, {
-          connect: connects[4],
-          disconnect: disconnects[4],
+          runProjection: projection(4),
         }),
       ],
     });

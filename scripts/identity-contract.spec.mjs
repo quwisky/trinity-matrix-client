@@ -146,11 +146,9 @@ describe('Identity production boundary', () => {
     const session = source(
       'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
     );
-    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
 
     expect(lifetime).toContain('class IdentityLifetime');
     expect(session).toContain('inject(IdentityLifetime)');
     expect(session).toContain('roomProjectionDemand');
-    expect(page).not.toContain('this.presence.connect()');
   });
 });

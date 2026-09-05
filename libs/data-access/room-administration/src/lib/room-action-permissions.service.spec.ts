@@ -247,7 +247,7 @@ describe('RoomActionPermissionsService', () => {
   it('invalidates consumers for remote threshold and membership changes only', async () => {
     const fixture = clientFixture('@me:hs', { myPower: 50 });
     const { service } = setup(fixture);
-    service.connect();
+    service.runProjection().subscribe();
     const canInvite = computed(() => service.room('!room:hs').invite.available);
     expect(canInvite()).toBe(true);
 
@@ -270,7 +270,7 @@ describe('RoomActionPermissionsService', () => {
     const first = clientFixture('@me:hs', { myPower: 50 });
     const second = clientFixture('@other:hs', { myPower: 0 });
     const { service, useClient, signOut } = setup(first);
-    service.connect();
+    service.runProjection().subscribe();
     const firstHandler = stateHandler(first.client);
 
     useClient(second);

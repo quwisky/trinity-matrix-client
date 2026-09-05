@@ -1647,14 +1647,14 @@ describe('TrustService', () => {
 
     it('wires crypto listeners once and is idempotent', () => {
       const { svc, client } = setup({ defaultKeyId: 'k' });
-      svc.connect();
-      svc.connect();
+      svc.runProjection().subscribe();
+      svc.runProjection().subscribe();
       expect(client.on).toHaveBeenCalledTimes(4);
     });
 
     it('coalesces a burst of crypto events into one status recompute', async () => {
       const { svc, client, crypto } = setup({ defaultKeyId: 'k' });
-      svc.connect();
+      svc.runProjection().subscribe();
       await Promise.resolve();
       crypto.isCrossSigningReady.mockClear();
 
@@ -1674,7 +1674,7 @@ describe('TrustService', () => {
 
     it('rewires onto a new client after re-login and recomputes status', async () => {
       const { svc, client, matrix } = setup({ defaultKeyId: null }); // A: needs-setup
-      svc.connect();
+      svc.runProjection().subscribe();
       await firstValueFrom(svc.refresh());
       expect(svc.status()).toBe('needs-setup');
 
@@ -1701,7 +1701,7 @@ describe('TrustService', () => {
         clientB as unknown as MatrixClientService['instance'],
       );
 
-      svc.connect();
+      svc.runProjection().subscribe();
       await firstValueFrom(svc.refresh());
 
       expect(client.off).toHaveBeenCalled(); // old listeners detached
@@ -1715,7 +1715,7 @@ describe('TrustService', () => {
         defaultKeyId: null,
       });
       activeUserId.set('@a:hs');
-      svc.connect(); // crypto listeners wired to account A
+      svc.runProjection().subscribe(); // crypto listeners wired to account A
       await firstValueFrom(svc.refresh());
       expect(svc.status()).toBe('needs-setup');
 

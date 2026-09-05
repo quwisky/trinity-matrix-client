@@ -437,7 +437,7 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs' }],
       });
       const links = svc.linksFor('!s:hs');
-      svc.connect();
+      const _lifetime = svc.runProjection().subscribe();
 
       // Exactly what a remote curation change looks like: the space's state gains a child,
       // and the only notice we get is the state event.
@@ -458,7 +458,7 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs' }],
       });
       svc.linksFor('!s:hs');
-      svc.connect();
+      svc.runProjection().subscribe();
       const readsAfterConnect = getStateEvents.mock.calls.length;
       events.push(childEvent({ childId: '!b:hs' }));
 
@@ -477,7 +477,7 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs' }],
       });
       svc.linksFor('!s:hs');
-      svc.connect();
+      svc.runProjection().subscribe();
       const readsAfterConnect = getStateEvents.mock.calls.length;
 
       // A reorder is sent as one state event per sibling, so this is the ordinary case.
@@ -493,7 +493,7 @@ describe('SpaceChildrenService', () => {
     it('holds the same array when the state says the same thing', async () => {
       const { svc, client } = setup({ children: [{ childId: '!a:hs' }] });
       const links = svc.linksFor('!s:hs');
-      svc.connect();
+      svc.runProjection().subscribe();
       const before = links();
 
       handlerFor(
@@ -511,10 +511,10 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs' }],
       });
       const links = svc.linksFor('!s:hs');
-      svc.connect();
+      const lifetime = svc.runProjection().subscribe();
       const onState = handlerFor(client, 'RoomState.events');
 
-      svc.disconnect();
+      lifetime.unsubscribe();
       expect(client.off).toHaveBeenCalledWith('RoomState.events', onState);
 
       const readsAfterDisconnect = getStateEvents.mock.calls.length;
@@ -546,9 +546,10 @@ describe('SpaceChildrenService', () => {
       expect(links()).toEqual([]);
 
       signIn();
-      svc.connect();
+      const lifetime = svc.runProjection().subscribe();
 
       expect(links().map((l) => l.childId)).toEqual(['!a:hs']);
+      lifetime.unsubscribe();
     });
 
     it('re-seeds every watched space when it rewires onto a new client', async () => {
@@ -559,17 +560,18 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs' }],
       });
       const links = svc.linksFor('!s:hs');
-      svc.connect();
+      let lifetime = svc.runProjection().subscribe();
 
       // The same shape the projection sees on a switch: disconnect, then connect again
       // with the client now reporting different state.
-      svc.disconnect();
+      lifetime.unsubscribe();
       events.length = 0;
       events.push(childEvent({ childId: '!b:hs' }));
-      svc.connect();
+      lifetime = svc.runProjection().subscribe();
 
       expect(links().map((l) => l.childId)).toEqual(['!b:hs']);
       expect(client.on).toHaveBeenCalledTimes(2);
+      lifetime.unsubscribe();
     });
   });
 });

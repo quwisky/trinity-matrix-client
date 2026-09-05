@@ -312,17 +312,15 @@ export const SHARED_MOCKS: Provider[] = [
   },
   MockProvider(TrustService),
   MockProvider(RoomNotificationsService, {
-    connect: vi.fn(),
     setModeForAccounts: () => of(undefined),
   }),
   MockProvider(RoomActionPermissionsService, {
-    connect: vi.fn(),
     room: () => ({
       invite: { available: true, reason: null },
       curateSpace: { available: true, reason: null },
     }),
   }),
-  MockProvider(RoomMembersService, { connect: vi.fn() }),
+  MockProvider(RoomMembersService),
   // A Router whose `navigate` actually MOVES the route, because the store now reads the room
   // from `paramMap` and every "opening a room opens it" assertion in these specs depends on
   // that round trip. A bare auto-stub swallows the call, which would leave `activeRoomId`

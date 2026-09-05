@@ -1,6 +1,7 @@
 import { Injectable, inject, type Signal } from '@angular/core';
 import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
 import type { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
+import type { Observable } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { projectFromClient } from './project-from-client';
 import type { SecretStorageKeyHolder } from './secret-storage-key-holder';
@@ -72,6 +73,7 @@ export interface TrustCryptoProjectionConfig {
 
 /** Lifecycle controls for a Trust projection without its raw-client escape hatch. */
 export interface TrustCryptoProjection {
+  run(): Observable<void>;
   connect(): void;
   disconnect(): void;
   isConnected(): boolean;
@@ -142,6 +144,7 @@ export class TrustCryptoPort {
         : { reprojectOnSwitch: config.reprojectOnSwitch }),
     });
     return {
+      run: () => projection.run(),
       connect: () => projection.connect(),
       disconnect: () => projection.disconnect(),
       isConnected: () => projection.isConnected(),

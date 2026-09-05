@@ -1,5 +1,4 @@
 import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
 import { TrnDialogService } from '@trinity/components/overlay';
 import {
   TrustVerificationService,
@@ -53,17 +52,10 @@ async function setup(
     active,
     open,
     close,
-    connect: TestBed.inject(TrustVerificationService).connect,
   };
 }
 
 describe('VerificationHostComponent', () => {
-  it('does not start the session-owned verification projection', async () => {
-    const { connect } = await setup();
-
-    expect(connect).not.toHaveBeenCalled();
-  });
-
   it('presents incoming and cross-user verification outside routed flows', async () => {
     const { fixture, active, open } = await setup();
     active.set(incoming());

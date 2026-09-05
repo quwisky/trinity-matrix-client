@@ -12,6 +12,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import type { Observable } from 'rxjs';
 import { RoomAdministrationError } from './room-administration-error';
 
 export interface ActionAvailability {
@@ -107,12 +108,9 @@ export class RoomActionPermissionsService {
     reset: () => this.revision.update((value) => value + 1),
   });
 
-  connect(): void {
-    this.projection.connect();
-  }
-
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Cold authority projection retained by the Room Administration session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   room(roomId: string): RoomActionPermissions {

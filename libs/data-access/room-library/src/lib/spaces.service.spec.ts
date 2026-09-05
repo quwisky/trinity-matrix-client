@@ -95,8 +95,8 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
   };
   const matrix = provideMatrix(client);
   const svc = TestBed.inject(SpacesService);
-  svc.connect();
-  return { svc, client, matrix };
+  const lifetime = svc.runProjection().subscribe();
+  return { svc, client, matrix, lifetime };
 }
 
 /** Pull a captured client listener by event name (for simulating live updates). */
@@ -306,13 +306,13 @@ describe('SpacesService', () => {
     expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
   });
 
-  it('detaches listeners and clears the model on disconnect (teardown)', () => {
-    const { svc, client } = setup([
+  it('detaches listeners and clears the model on teardown', () => {
+    const { svc, client, lifetime } = setup([
       fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
     ]);
     expect(svc.spaces().length).toBe(1);
 
-    svc.disconnect();
+    lifetime.unsubscribe();
 
     expect(client.off).toHaveBeenCalled();
     expect(svc.spaces()).toEqual([]);
@@ -337,7 +337,7 @@ describe('SpacesService', () => {
       off: vi.fn(),
     };
     ngMocks.stubMember(matrix, 'instance', clientB as unknown as MatrixClient);
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(svc.spaces().map((s) => s.id)).toEqual(['!b:hs']); // not frozen on A
     expect(clientA.off).toHaveBeenCalled(); // old listeners detached
@@ -348,7 +348,7 @@ describe('SpacesService', () => {
     const { svc, client } = setup([]);
     const wired = client.on.mock.calls.length;
 
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(client.on.mock.calls.length).toBe(wired); // no double-wiring
   });
@@ -589,7 +589,7 @@ function setupHierarchy(opts: {
   // from the joined-room set the projection's rebuild fills in, not from a direct client
   // read inside the computed.
   if (!opts.skipConnect) {
-    svc.connect();
+    svc.runProjection().subscribe();
   }
   return { svc, getRoomHierarchy, client, join };
 }
@@ -857,7 +857,7 @@ describe('SpacesService hierarchy', () => {
     await flush();
     expect(svc.openSpaceChildren()[0].joined).toBe(false);
 
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(svc.openSpaceChildren()[0].joined).toBe(true);
   });

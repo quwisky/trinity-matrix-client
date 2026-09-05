@@ -81,7 +81,7 @@ describe('IdentityPresenceService', () => {
   it('keeps the signed-in user online even if a self presence event says otherwise', () => {
     const { svc, client } = setup();
     const state = svc.presenceFor(SELF);
-    svc.connect();
+    svc.runProjection().subscribe();
     presenceHandler(client)(undefined, { userId: SELF, presence: 'offline' });
     expect(state()).toBe('online');
   });
@@ -102,7 +102,7 @@ describe('IdentityPresenceService', () => {
     const state = svc.presenceFor('@a:hs'); // track it (starts offline)
     expect(state()).toBe('offline');
 
-    svc.connect();
+    svc.runProjection().subscribe();
     presenceHandler(client)(undefined, { userId: '@a:hs', presence: 'online' });
     expect(state()).toBe('online');
 
@@ -115,7 +115,7 @@ describe('IdentityPresenceService', () => {
 
   it('ignores presence for users nobody is watching', () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     // No throw, and no signal is created for an untracked user.
     expect(() =>
       presenceHandler(client)(undefined, {
@@ -125,19 +125,19 @@ describe('IdentityPresenceService', () => {
     ).not.toThrow();
   });
 
-  it('connect wires exactly one presence listener and is idempotent per client', () => {
+  it('one owned lifetime wires exactly one presence listener', () => {
     const { svc, client } = setup();
-    svc.connect();
-    svc.connect();
+    const lifetime = svc.runProjection().subscribe();
     expect(
       client.on.mock.calls.filter((c) => c[0] === UserEvent.Presence),
     ).toHaveLength(1);
+    lifetime.unsubscribe();
   });
 
-  it('disconnect detaches the listener', () => {
+  it('teardown detaches the listener', () => {
     const { svc, client } = setup();
-    svc.connect();
-    svc.disconnect();
+    const lifetime = svc.runProjection().subscribe();
+    lifetime.unsubscribe();
     expect(client.off).toHaveBeenCalledWith(
       UserEvent.Presence,
       expect.any(Function),
@@ -147,7 +147,7 @@ describe('IdentityPresenceService', () => {
   it('re-projects onto the newly-active account when the active account switches', () => {
     const { svc, client, matrix, activeUserId } = setup({ '@a:hs': 'online' });
     activeUserId.set('@a:hs');
-    svc.connect(); // wired to the first client
+    svc.runProjection().subscribe(); // wired to the first client
     TestBed.inject(ApplicationRef).tick(); // effect's first run: same client → no-op
     client.off.mockClear();
 
@@ -170,13 +170,13 @@ describe('IdentityPresenceService', () => {
   it('re-binds onto a fresh client after a re-login and re-seeds tracked users', () => {
     const { svc, client, matrix } = setup({ '@a:hs': 'online' });
     const state = svc.presenceFor('@a:hs');
-    svc.connect();
+    svc.runProjection().subscribe();
     expect(state()).toBe('online');
 
     // A re-login hands the service a new client where @a is now offline.
     const client2 = fakeClient({ '@a:hs': 'offline' });
     ngMocks.stubMember(matrix, 'instance', asClient(client2));
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(client.off).toHaveBeenCalledWith(
       UserEvent.Presence,
@@ -226,10 +226,10 @@ describe('IdentityPresenceService', () => {
         { [SELF]: 'unavailable' },
         { [SELF]: 'heads down' },
       );
-      svc.connect();
+      const lifetime = svc.runProjection().subscribe();
       svc.loadOwnPresence();
 
-      svc.disconnect();
+      lifetime.unsubscribe();
 
       expect(svc.myPresence()).toBe('online');
       expect(svc.myStatusMessage()).toBe('');

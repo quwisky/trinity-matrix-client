@@ -87,6 +87,81 @@ function harness(
 }
 
 describe('projectFromClient', () => {
+  it('exposes a cold owned lifetime that releases on unsubscribe', () => {
+    const { projection, client, rebuild, reset } = harness();
+    const source = projection.run();
+
+    expect(rebuild).not.toHaveBeenCalled();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+
+    const lifetime = source.subscribe();
+
+    expect(rebuild).toHaveBeenCalledOnce();
+    expect(client.count(ClientEvent.Sync)).toBe(1);
+    expect(lifetime.closed).toBe(false);
+
+    lifetime.unsubscribe();
+
+    expect(reset).toHaveBeenCalledOnce();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+  });
+
+  it('retains dormant demand while signed out and attaches after login', () => {
+    const { projection, client, activeUserId, initialized, rebuild, tick } =
+      harness({}, { initialized: false });
+    activeUserId.set(null);
+    const lifetime = projection.run().subscribe();
+
+    tick();
+    expect(rebuild).not.toHaveBeenCalled();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+
+    initialized.set(true);
+    activeUserId.set('@a:hs');
+    tick();
+
+    expect(rebuild).toHaveBeenCalledOnce();
+    expect(client.count(ClientEvent.Sync)).toBe(1);
+    lifetime.unsubscribe();
+  });
+
+  it('retains attachment until the final owned lifetime releases', () => {
+    const { projection, client, reset } = harness();
+    const first = projection.run().subscribe();
+    const second = projection.run().subscribe();
+
+    first.unsubscribe();
+    expect(client.count(ClientEvent.Sync)).toBe(1);
+    expect(reset).not.toHaveBeenCalled();
+
+    second.unsubscribe();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+    expect(reset).toHaveBeenCalledOnce();
+  });
+
+  it('reports attachment and cleanup failures together', () => {
+    const attachmentFailure = new Error('broken attachment');
+    const cleanupFailure = new Error('broken cleanup');
+    const { projection } = harness({
+      bind: () => {
+        throw attachmentFailure;
+      },
+      unbind: () => {
+        throw cleanupFailure;
+      },
+    });
+    const error = vi.fn();
+
+    projection.run().subscribe({ error });
+
+    expect(error).toHaveBeenCalledOnce();
+    expect(error.mock.calls[0][0]).toBeInstanceOf(AggregateError);
+    expect((error.mock.calls[0][0] as AggregateError).errors).toEqual([
+      attachmentFailure,
+      cleanupFailure,
+    ]);
+  });
+
   it('binds its events and rebuilds synchronously on connect', () => {
     const { projection, client, rebuild } = harness();
 

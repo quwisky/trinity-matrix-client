@@ -55,6 +55,11 @@ session; Identity, Notification, and Room Administration attach only while a rou
 needs them. All deep-link, Back, notification-delivery, update, badge, and surface streams stay
 gated until final readiness. Required Room Library failures block with typed executable recovery;
 optional projection failures are retained and presented as non-blocking warnings.
+Session-owned capability services expose one cold `runProjection()` lifetime rather than public
+generic `connect()`/`disconnect()` pairs. Subscribing attaches and acknowledges the projection;
+unsubscribing removes its listeners, pending reconciliation, warnings, and read model. Exact
+Conversation children and settings projections keep their symmetric local lifetimes because their
+demand has an independent owner.
 The
 application root keeps that warning region visible and keyboard-scrollable, caps it at one quarter
 of the visual viewport, and gives the remaining height to the routed surface. Its one lifetime

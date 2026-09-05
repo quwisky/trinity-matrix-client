@@ -58,12 +58,8 @@ export class TrustHealthService {
     },
   });
 
-  connect(): void {
-    this.projection.connect();
-  }
-
-  disconnect(): void {
-    this.projection.disconnect();
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   /** Explicit command: unlike event reconciliation, a failed read is visible to callers. */

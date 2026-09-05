@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of } from 'rxjs';
+import { NEVER, Subject, concat, defer, finalize, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ActiveAccountProjectionLifetime } from './active-account-projection-lifetime';
 import { ProjectionRuntime } from './projection-runtime.service';
@@ -11,6 +11,11 @@ describe('ActiveAccountProjectionLifetime', () => {
   const demanded = signal(true);
   const connect = vi.fn();
   const disconnect = vi.fn();
+  const runProjection = () =>
+    defer(() => {
+      connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(disconnect));
   const waitFor = vi.fn(() => of(readiness()));
 
   beforeEach(() => {
@@ -30,8 +35,7 @@ describe('ActiveAccountProjectionLifetime', () => {
     waitFor.mockReturnValueOnce(barrier);
     const source = TestBed.inject(ActiveAccountProjectionLifetime).run({
       activeAccountId: activeAccountId.asReadonly(),
-      connect,
-      disconnect,
+      runProjection,
     });
     const prepared = vi.fn();
 
@@ -56,8 +60,7 @@ describe('ActiveAccountProjectionLifetime', () => {
       .run({
         activeAccountId: activeAccountId.asReadonly(),
         demanded: demanded.asReadonly(),
-        connect,
-        disconnect,
+        runProjection,
       })
       .subscribe(prepared);
 
@@ -84,8 +87,7 @@ describe('ActiveAccountProjectionLifetime', () => {
     const lifetime = TestBed.inject(ActiveAccountProjectionLifetime)
       .run({
         activeAccountId: activeAccountId.asReadonly(),
-        connect,
-        disconnect,
+        runProjection,
       })
       .subscribe();
 
@@ -116,8 +118,7 @@ describe('ActiveAccountProjectionLifetime', () => {
     TestBed.inject(ActiveAccountProjectionLifetime)
       .run({
         activeAccountId: activeAccountId.asReadonly(),
-        connect,
-        disconnect,
+        runProjection,
       })
       .subscribe({ error: attachmentError });
 
@@ -131,8 +132,7 @@ describe('ActiveAccountProjectionLifetime', () => {
     TestBed.inject(ActiveAccountProjectionLifetime)
       .run({
         activeAccountId: activeAccountId.asReadonly(),
-        connect,
-        disconnect,
+        runProjection,
       })
       .subscribe({ error: readinessError });
     const failure = new Error('broken reconciliation');
@@ -141,6 +141,21 @@ describe('ActiveAccountProjectionLifetime', () => {
 
     expect(readinessError).toHaveBeenCalledWith(failure);
     expect(disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a projection lifetime that completes instead of staying open', () => {
+    const error = vi.fn();
+
+    TestBed.inject(ActiveAccountProjectionLifetime)
+      .run({
+        activeAccountId: activeAccountId.asReadonly(),
+        runProjection: () => of(void 0),
+      })
+      .subscribe({ error });
+
+    expect(error).toHaveBeenCalledWith(
+      new Error('Projection lifetime ended before release.'),
+    );
   });
 });
 

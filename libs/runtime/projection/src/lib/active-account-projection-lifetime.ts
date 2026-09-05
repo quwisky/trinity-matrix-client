@@ -12,8 +12,8 @@ import { ProjectionRuntime } from './projection-runtime.service';
 export interface ActiveAccountProjectionLifetimeConfig {
   readonly activeAccountId: Signal<string | null>;
   readonly demanded?: Signal<boolean>;
-  readonly connect: () => void;
-  readonly disconnect: () => void;
+  /** Cold projection lifetime that emits once after attachment and stays open. */
+  readonly runProjection: () => Observable<void>;
   /** Optional cold preparation that must settle before the initial ready event. */
   readonly prepare?: () => Observable<void>;
 }
@@ -32,6 +32,7 @@ export class ActiveAccountProjectionLifetime {
       let attached = false;
       let prepared = false;
       let barrier = new Subscription();
+      let projection = new Subscription();
 
       const finishPreparation = (): void => {
         if (prepared) return;
@@ -43,7 +44,8 @@ export class ActiveAccountProjectionLifetime {
         barrier = new Subscription();
         if (!attached) return;
         attached = false;
-        config.disconnect();
+        projection.unsubscribe();
+        projection = new Subscription();
       };
       const fail = (error: unknown): void => {
         try {
@@ -60,33 +62,51 @@ export class ActiveAccountProjectionLifetime {
       };
       const connect = (): void => {
         if (attached) return;
-        try {
-          config.connect();
-          attached = true;
-          const projectionReadiness = this.projections.waitFor({
-            kind: 'active-account',
-          });
-          const preparation: Observable<unknown> = config.prepare
-            ? forkJoin([projectionReadiness, config.prepare()])
-            : projectionReadiness;
-          barrier = preparation.subscribe({
-            next: finishPreparation,
-            error: fail,
-          });
-        } catch (error: unknown) {
-          attached = false;
+        attached = true;
+        let started = false;
+        let projectionOwned = false;
+        const startPreparation = (): void => {
           try {
-            config.disconnect();
-          } catch (cleanupError: unknown) {
-            subscriber.error(
-              new AggregateError(
-                [error, cleanupError],
-                'Projection attachment and cleanup failed.',
-              ),
-            );
-            return;
+            const projectionReadiness = this.projections.waitFor({
+              kind: 'active-account',
+            });
+            const preparation: Observable<unknown> = config.prepare
+              ? forkJoin([projectionReadiness, config.prepare()])
+              : projectionReadiness;
+            barrier = preparation.subscribe({
+              next: finishPreparation,
+              error: fail,
+            });
+          } catch (error: unknown) {
+            fail(error);
           }
-          subscriber.error(error);
+        };
+        try {
+          const nextProjection = config.runProjection().subscribe({
+            next: () => {
+              if (started) return;
+              started = true;
+              if (projectionOwned) startPreparation();
+            },
+            error: fail,
+            complete: () =>
+              fail(
+                new Error(
+                  started
+                    ? 'Projection lifetime ended before release.'
+                    : 'Projection lifetime emitted nothing.',
+                ),
+              ),
+          });
+          if (attached) {
+            projection = nextProjection;
+            projectionOwned = true;
+            if (started) startPreparation();
+          } else {
+            nextProjection.unsubscribe();
+          }
+        } catch (error: unknown) {
+          if (!subscriber.closed) fail(error);
         }
       };
       const apply = (): void => {

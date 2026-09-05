@@ -17,11 +17,9 @@ describe('Notification projection lifetime', () => {
     const session = source(
       'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
     );
-    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
 
     expect(entrypoint).toContain("export * from './lib/notification-lifetime'");
     expect(lifetime).toContain('class NotificationLifetime');
     expect(session).toContain('inject(NotificationLifetime)');
-    expect(page).not.toContain('this.roomNotifications.connect()');
   });
 });
