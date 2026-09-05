@@ -1,229 +1,122 @@
-# Library inventory
+# Library boundaries
 
-The workspace holds four host applications and 58 libraries. Every shipped project carries its current
-`type:*` and `scope:*` tags plus target `role:*` and `capability:*` metadata; UI libraries also
-carry a `ui:*` tag that
-separates Trinity's own wrapper layer from the vendored kit; those tags are what
-[`@nx/enforce-module-boundaries`](https://github.com/quwisky/trinity-matrix-client/blob/develop/eslint.config.mjs)
-checks. See [the architecture overview](index.md) for what each tag permits.
+Trinity libraries are organised around capability ownership, not around Angular
+artifact types. A library should expose a narrow public API for one owner; its
+internal adapters, projections, and helper types remain inside that boundary.
 
-The role/capability metadata is an incremental overlay, not a claim that the move is already
-complete. Multi-capability projects and cross-capability edges are enumerated with removal issues
-in the [generated dependency map](generated/dependency-map.md); `pnpm architecture:check` rejects
-any unrecorded expansion.
+The [generated dependency map](generated/dependency-map.md) is the canonical
+source for current project roots, aliases, tags, and direct dependencies.
+Consult it and resolved Nx configuration before moving code. This guide explains
+how to use that map when making a design decision.
 
-Libraries are imported through `@trinity/*` path aliases declared in
-[`tsconfig.base.json`](https://github.com/quwisky/trinity-matrix-client/blob/develop/tsconfig.base.json),
-never by relative path across a library boundary. Imports _within_ a library stay relative.
+## The layers
 
-`libs/` itself has nine entries. Six are layer parents holding that layer's libraries:
-`application/` (3), `data-access/` (15), `feature/` (5), `util/` (2), `runtime/` (3) and `components/` (31) — the public
-component tier feature code reaches for. `spartan/` (22) groups the generated Helm components plus
-the `tests` project that holds the specs pinning their behaviour. The remaining two are single
-libraries sitting directly under `libs/`: `platform-native` and `testing`.
+| Layer         | Locations                                   | Use it for                                                                | Do not use it for                           |
+| ------------- | ------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------- |
+| composition   | apps/trinity, android, ios, electron        | route and provider assembly; host-specific entrypoints                    | product state or reusable Matrix access     |
+| application   | libs/application                            | startup, Workspace, search, appearance and cross-capability orchestration | a general home for screen-local logic       |
+| capability    | libs/data-access, libs/feature              | a Matrix domain's state and commands, or the screen that presents one     | an SDK shortcut from a component            |
+| adapter       | selected data-access and platform libraries | Matrix and platform implementation behind a contract                      | exposing raw SDK state to a feature         |
+| kernel        | libs/runtime, libs/util, theme foundation   | policy-free primitive contracts and shared behaviour                      | a dependency on a Matrix product capability |
+| design system | libs/components, libs/spartan               | domain-neutral presentation and generated vendor wrappers                 | account, room, SDK, or product state        |
 
-A library answers to three different strings, and they are not interchangeable. For Room Library:
+The thin application project composes the layers. Dependencies point inward:
+presentation calls capability APIs, capability code uses adapters and kernels,
+and the composition root selects implementations. Module-boundary lint checks
+the tag relationship.
 
-| What            | Value                               | Declared in                            |
-| --------------- | ----------------------------------- | -------------------------------------- |
-| Nx project name | `data-access-room-library`          | `name` in the library's `project.json` |
-| Directory       | `libs/data-access/room-library`     | the filesystem                         |
-| Import alias    | `@trinity/data-access/room-library` | `paths` in `tsconfig.base.json`        |
+## Capability and kernel ownership
 
-Nx takes the project name, so `pnpm nx test data-access-room-library` is the command to run
-that library's specs. Source code takes the alias. In the
-tables below, the `Library` column is the directory and the `Alias` column is what you import.
+Use the narrowest owner that can state the contract.
 
-## Utility libraries
+| Public area                              | Owner and boundary                                                                                                                                                                           |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| @trinity/runtime/projection              | lifecycle kernel for active account, all live accounts, exact account, and exact conversation projections; it does not own Matrix data                                                       |
+| @trinity/runtime/host                    | host operation contracts and supported or unavailable manifests; host selection stays in composition                                                                                         |
+| @trinity/runtime/preferences             | descriptor catalogue and context-keyed state; capability owners define defaults, validation, migration, sensitivity, and scope                                                               |
+| @trinity/data-access/accounts            | account restore, opaque authenticated establishment, active switching, sign-out and installation reset                                                                                       |
+| @trinity/data-access/matrix-client       | Matrix client foundation, session state and SDK-facing adapters                                                                                                                              |
+| @trinity/data-access/room-library        | room and Space summaries, invitations, hierarchy, ordering, filters, and unread aggregates                                                                                                   |
+| @trinity/data-access/timeline            | the Conversations capability; Conversation Runtime owns exact timeline-handle lifetime, while its public API exposes message presentation, drafts, media, threads, pins, and focused proxies |
+| @trinity/data-access/trust               | trust health, recovery and device verification                                                                                                                                               |
+| @trinity/data-access/room-administration | members, bans, power-level policy, aliases, configuration and moderation ports                                                                                                               |
+| @trinity/application/runtime             | ordered startup, recovery and the session-long host stream                                                                                                                                   |
+| @trinity/application/workspace           | semantic navigation, URL and history projection, account readiness, and conversation focus                                                                                                   |
 
-Pure code with no Angular dependency injection. `type:util` may depend only on other `type:util`
-libraries, which in practice means npm packages and nothing else in the workspace.
+Other data-access capabilities follow the same rule: Discovery owns homeserver,
+public-room, room-link, and directory lookup; Notifications owns notification
+policy and delivery state; Media owns staging and transfer; Identity owns
+identity flows. Find their exact public aliases in the generated map.
 
-| Library                 | Alias                       | Tags                                                                   | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ----------------------- | --------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/util/matrix`      | `@trinity/util/matrix`      | `type:util`, `scope:shared`                                            | 26 DI-free modules: the `MessageView` model and its builders, day separators, date formatting, edit history and diffing, timeline-event helpers, media and session models, the Rust crypto store naming, presence, message content, markdown editing, voice, typing, `matrix.to` links, polls, transient-error classification, password UIA, attachment and key-file crypto, authenticated media, room avatars, room creation, room state, the Shiki code highlighter, and the crypto WASM loader |
-| `libs/util/ui`          | `@trinity/util/ui`          | `type:util`, `scope:shared`                                            | The view-layer helpers that are not components: `runWithBusy`, `mediaQuerySignal` with the `MD_QUERY`/`BELOW_MD_QUERY` breakpoint pair, and `resolveInternalReturnTo`. Both stateful helpers take a `DestroyRef` rather than injecting one, which is what keeps this library DI-free                                                                                                                                                                                                              |
-| `libs/theme-foundation` | `@trinity/theme-foundation` | `type:util`, `scope:shared`, `role:kernel`, `capability:design-system` | Internal Theme and Mode catalog plus one aggregate stylesheet. The TypeScript interface is pure and DI-free; Theme values and Helm/Tailwind mappings remain hidden behind the module.                                                                                                                                                                                                                                                                                                             |
-| `libs/testing`          | `@trinity/testing`          | `type:util`, `scope:shared`                                            | Test-only helpers: the zoneless-safe `render()` wrapper and a complete protocol-v1 Electron bridge fixture. See [testing](../contributing/testing.md)                                                                                                                                                                                                                                                                                                                                             |
+## Public APIs
 
-`libs/testing` is the one project in the workspace whose `project.json` declares `"targets": {}`.
-It picks up an inferred `lint` target from the `@nx/eslint` plugin, but it has no `test` target at
-all, so its own correctness is only ever exercised through the specs that import it.
+Every library exposes its supported imports from its source index. Use the alias
+listed in the generated map, such as @trinity/data-access/room-library, rather
+than a path under src/lib. This keeps refactors from coupling consumers to
+private adapters.
 
-## Shared runtime libraries
+Some boundaries are particularly important:
 
-| Library                    | Alias                          | Tags                                                                     | Purpose                                                                                                                                                                                                                                                                                              |
-| -------------------------- | ------------------------------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/runtime/projection`  | `@trinity/runtime/projection`  | `type:data-access`, `scope:shared`, `role:kernel`                        | Projection Runtime: four closed scope variants, generation-safe publication, coalesced reconciliation, attachment/reset/reattachment ownership, a cold owned-projection helper with combined attachment/cleanup failure reporting, finite readiness barriers, and deterministic resource diagnostics |
-| `libs/runtime/host`        | `@trinity/runtime/host`        | `type:platform`, `scope:shared`, `role:kernel`, `capability:host`        | Narrow operation contracts, explicit supported/unavailable manifests, and cold finite product-facing commands for authentication handoff, deep links, Back, file export, notification presentation, location, badges, secure storage, lifecycle, and updates                                         |
-| `libs/runtime/preferences` | `@trinity/runtime/preferences` | `type:platform`, `scope:shared`, `role:kernel`, `capability:preferences` | Policy-free typed preference catalog and context-keyed signal store; capability descriptors declare scope, default, validation, migration, sensitivity, storage/export policy, and editor metadata while hydration and writes return cold typed Observables                                          |
+- Components and features never import matrix-js-sdk. The owning data-access
+  library turns SDK events into application read models and provides commands.
+- Components receive read-only signals and invoke cold commands. They do not
+  receive writable signals, an active client, or another feature's service.
+- A cross-capability operation is a declared port bound in the composition
+  root. For example, Conversation's redaction and pin policy comes from Room
+  Administration without either capability reaching into the other's internals.
+- The Spartan libraries are generated vendor wrappers. Consume their
+  domain-neutral counterpart in libs/components. If a public wrapper is missing, add it
+  through that tier before feature use; do not import the vendor directly or put Matrix
+  behaviour into a vendor wrapper.
+- The web output is the host-neutral artifact. Capacitor and Electron consume
+  it through their host adapters; platform code does not fork the product
+  capability model.
 
-## Application workflow libraries
+## Placement decisions
 
-| Library                       | Alias                             | Tags                                                                               | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ----------------------------- | --------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/application/appearance` | `@trinity/application/appearance` | `type:data-access`, `scope:matrix`, `role:application`, `capability:design-system` | Four Design System descriptors plus the six-axis application model with descriptor-backed commands, portable config entries and failed-axis hydration recovery; its pure resolved-Appearance policy drives a cold document/native effect lifetime owned by Application Runtime, while persistence stays in Preference Runtime                                                                                                                                                                                                                |
-| `libs/application/badge`      | `@trinity/application/badge`      | `type:data-access`, `scope:matrix`, `role:application`, `capability:badge`         | Presentation-free `BadgeCoordinator` observes Room Library's aggregate unread signal for one Application Runtime session and writes only through the host-neutral `BadgeSink`; failed writes remain warning-ready typed outcomes                                                                                                                                                                                                                                                                                                             |
-| `libs/application/search`     | `@trinity/application/search`     | `type:data-access`, `scope:matrix`, `role:application`, `capability:search`        | Global Search sessions combine Room Library's live local index with debounced, cancellable Discovery lookups; typed groups expose loading, safe failure and homeserver truncation, and every row maps to a fully qualified Workspace search intent                                                                                                                                                                                                                                                                                           |
-| `libs/application/workspace`  | `@trinity/application/workspace`  | `type:data-access`, `scope:matrix`, `role:application`, `capability:workspace`     | The application-long immutable Workspace view and cold semantic navigation command; internal Router projection, transition joining/rollback, repair, visit-history policy, Media release and Conversation focus; typed application-surface intents; and the fixed semantic Back registry                                                                                                                                                                                                                                                     |
-| `libs/application/runtime`    | `@trinity/application/runtime`    | `type:feature`, `scope:matrix`, `role:application`, `capability:runtime`           | Ordered six-stage startup including Appearance hydration, pre-Workspace Room Library preparation and named Trust, Identity, Notification and Room Administration projection lifetimes; route-derived Room projection demand; typed recovery/warnings; explicit recover/stop/restart; the presentation-only root; concrete runtime/session and Workspace adapters; native/widget cross-capability bindings; and one readiness-gated session source that retains prepared projections while deferring live navigation and presentation streams |
+Ask these questions in order.
 
-## Platform library
+1. Is the state authoritative in matrix-js-sdk or in a host API? Put its
+   adapter in the owning data-access or platform capability.
+2. Is the result a product read model and a set of commands for one domain?
+   Put it in that domain's data-access library.
+3. Does it coordinate several capabilities or define a semantic application
+   lifetime? Put it in an application library.
+4. Is it reusable without Matrix product knowledge or Angular dependency
+   injection? Put it in a kernel or utility library.
+5. Is it domain-neutral presentation only? Put it in the public component tier.
+6. Is it provider selection, route registration, or platform bootstrapping?
+   Put it in a composition root.
 
-The deployable host projects are composition roots rather than reusable libraries:
+Do not solve a forbidden dependency by importing a private file. Prefer the
+owner's public signal or command, a narrow interface supplied by composition,
+or a new capability API.
 
-| Nx project        | Root           | Tags                                                             | Purpose                                                                                                                                       |
-| ----------------- | -------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `trinity`         | `apps/trinity` | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Build and compose the shared Web/PWA renderer into the flat `www/` artifact                                                                   |
-| `trinity-android` | `android`      | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor Android shell and expose Gradle, launch and installed-WebView verification targets     |
-| `trinity-ios`     | `ios`          | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Sync the shared renderer into the checked-in Capacitor iOS shell and expose Xcode/Capacitor launch and native-toolchain verification targets  |
-| `trinity-desktop` | `electron`     | `type:app`, `scope:matrix`, `role:app`, `capability:composition` | Package the shared renderer in the versioned, hardened Electron shell and expose compile, test, launch, platform-package and real-shell proof |
+## Inspect and validate a boundary
 
-| Library                | Alias                      | Tags                                                               | Purpose                                                                                                                                                                                                                                                                                                            |
-| ---------------------- | -------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `libs/platform-native` | `@trinity/platform-native` | `type:platform`, `scope:shared`, `role:adapter`, `capability:host` | Web, Capacitor, and Electron adapters selected at composition, including device preferences, secure/session storage, geolocation, voice, host media, push registration, theme, external-browser dispatch, the Electron preload bridge, keyboard shortcuts, error handling, build information, and reset primitives |
+Nx project names are not always directory names. Resolve them before editing
+configuration or choosing a target:
 
-The adapter library may branch on host identity internally; product callers do not. It depends on
-the host runtime contract and pure utilities, and holds no Matrix knowledge.
+```bash
+pnpm nx show project application-workspace --json
+pnpm nx show project data-access-timeline --json
+pnpm nx show project projection-runtime --json
+pnpm nx graph --print
+```
 
-## Data-access libraries
+The resolved output gives the root, tags, and declared targets. Add or change
+an edge only after checking it satisfies the type, scope, UI, and external
+import rules. Run the owner's test, typecheck, and lint targets that Nx reports,
+then use the journey that reaches the behaviour. See
+[commands](../contributing/commands.md) and
+[testing](../contributing/testing.md) for the canonical commands.
 
-One library per Matrix domain. Apart from `libs/util/matrix`, which models the SDK's types, these
-are the only places `matrix-js-sdk` is imported — eleven of the fourteen do, with
-`libs/data-access/accounts`, `libs/data-access/gif`, and `libs/data-access/identity` being the
-exceptions. All are tagged
-`scope:matrix` except `data-access-matrix-client`, which is `scope:shared`.
+## What is intentionally not a library boundary
 
-| Library                                | Alias                                      | Tags                                   | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| -------------------------------------- | ------------------------------------------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/data-access/accounts`            | `@trinity/data-access/accounts`            | `type:data-access`, `scope:matrix`     | Account Runtime: read-only lifecycle state plus cold restore, authenticated-establishment, Active Account switch, explicit Account sign-out, and installation-reset commands; typed outcomes expose safe recovery guidance while Matrix and storage cleanup remain adapter-contained                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `libs/data-access/matrix-client`       | `@trinity/data-access/matrix-client`       | `type:data-access`, **`scope:shared`** | The client and session foundation: `MatrixClientService` (a registry of concurrently syncing accounts), `SecretStorageKeyHolder`, the Matrix adapter for Projection Runtime's sync-state tracer, and `projectFromClient`, whose cold `run()` lifetime owns attachment through unsubscribe while lower-level connect/disconnect operations remain adapter-internal; plus lifecycle-free Trust and Identity ports and the dev-only crypto startup probe                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `libs/data-access/auth`                | `@trinity/data-access/auth`                | `type:data-access`, `scope:matrix`     | Password, legacy SSO, OIDC-native authentication and registration produce opaque Account grants for Account Runtime; `authGuard` restores through Account Runtime, and this library owns no sign-out or installation-reset lifecycle API                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `libs/data-access/trust`               | `@trinity/data-access/trust`               | `type:data-access`, `scope:matrix`     | Trust: atomic encryption-health state, cross-signing and 4S setup/recovery/reset, room-key import/export, device management, and QR/SAS verification. Its named cold lifetime is the sole Application Runtime owner of public `runProjection()` sources for health and incoming verification; route-independent hosts only consume state. Commands are cold finite Observables with secret-safe typed failure and recovery metadata; QR bytes are emitted once rather than retained in public state; provider recovery is supplied through an app-composed port                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `libs/data-access/gif`                 | `@trinity/data-access/gif`                 | `type:data-access`, `scope:matrix`     | KLIPY and Giphy search plus the provider settings. Notably imports no other `@trinity` library                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `libs/data-access/homeserver`          | `@trinity/data-access/homeserver`          | `type:data-access`, `scope:matrix`     | `HomeserverInfoService`: what each signed-in account's homeserver is running — software and version (best-effort, from the federation API), spec versions and capabilities. Cached per session, never persisted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `libs/data-access/room-library`        | `@trinity/data-access/room-library`        | `type:data-access`, `scope:matrix`     | Room Library: one selected-Account view over joined Room and Space summaries plus Account-scoped invitations; one internal Account-source registry, exact row/action ownership, active/mixed selection, shared-Room unread merge, shared-Space child union, capability-owned typed selection persistence, favourites, low-priority grouping, ordering, canonical named-row filtering and ranked local search, hierarchy, create/join/leave actions, and aggregate unread. Its named cold lifetime is the sole subscriber to the Workspace-critical public `runProjection()` sources and selected view, crosses Projection Runtime's finite active-Account barrier, and releases them as one session-owned unit. One-shot mutations remain cold finite Observables, including account-scope and ordering persistence, exact shared-row favourite/priority writes, hierarchy changes, unread cleanup, and the bounded exact-Account readiness barrier used before post-create or post-invite navigation |
-| `libs/data-access/media`               | `@trinity/data-access/media`               | `type:data-access`, `scope:matrix`     | `MediaPipeline` for opaque staging, encrypted transfer, typed progress/cancellation/retry and safe presentation references; its internal `MediaService` byte engine and bounded decrypted cache; `AvatarService`; the bounded MSC2545 `ImagePackService` projection; `ImagePackManagementService`; and its short-lived server-confirmed `ImagePackSelectionStore`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `libs/data-access/notifications`       | `@trinity/data-access/notifications`       | `type:data-access`, `scope:matrix`     | SDK-event normalization, delivery policy and typed notification intents/activations; push registration and gateway integration; per-room notification settings, push rules and keyword rules. Its named cold lifetime lets Application Runtime observe every live Account's per-Room rules while routed Room demand is active; notification delivery remains a separate readiness-gated session stream                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `libs/data-access/identity`            | `@trinity/data-access/identity`            | `type:data-access`, `scope:matrix`     | Stable safe user summaries, own-profile changes and arbitrary profile lookup, presence, ignored users, and every signed-in Account's own identity projection. Its named cold lifetime lets Application Runtime retain the presence listener only while routed Workspace demand is active. Commands are cold finite Observables with typed offline, unavailable, not-ready and server-failure meaning; avatar uploads delegate byte transfer to Media, while Identity retains only the resulting `mxc://` reference                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `libs/data-access/room-administration` | `@trinity/data-access/room-administration` | `type:data-access`, `scope:matrix`     | Room Administration: authoritative joined-member and ban summaries, role classification and assignable presets, moderation, aliases, power-level policy, room configuration, and Conversation redaction/pin governance. Its named cold lifetime gives Application Runtime route-demanded permission and member projections that reattach through Projection Runtime. Mutations are cold finite Observables with typed recovery metadata for permission refresh, invalid input, server rejection, and partial updates; Room Library and Conversation consume app-composed narrow policy ports rather than this implementation                                                                                                                                                                                                                                                                                                                                                                          |
-| `libs/data-access/discovery`           | `@trinity/data-access/discovery`           | `type:data-access`, `scope:matrix`     | Remote Discovery: pre-authentication `.well-known` homeserver resolution, bounded user-directory lookup, paginated public-room and Space search, and safe room-link previews and membership actions. Authentication reaches homeserver discovery through an app-composed narrow port rather than a capability-to-capability edge                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `libs/data-access/timeline`            | `@trinity/data-access/timeline`            | `type:data-access`, `scope:matrix`     | `ConversationRuntime` owns immutable Account-and-Room handles, durable compose intent, exact message actions, privacy-aware receipts, typed text/media lifecycles, exact-root thread children, pinned-message projection/commands and an exact child for E2EE-honest loaded/server message search with pagination; the child retains its frozen Account client and fails closed on retirement rather than following Active Account. Conversations physically owns and contributes its privacy, code-size, and code-line presentation preference descriptors; Message Presentation normalizes SDK-authoritative events into immutable models and replaces media security material with opaque references; Room Administration supplies redaction and pin governance through composition-root ports; package-internal projection adapters cannot be imported by features                                                                                                                                |
-| `libs/data-access/widgets`             | `@trinity/data-access/widgets`             | `type:data-access`, `scope:matrix`     | Demand-driven room-widget discovery, safe URL-template expansion, and explicit disclosure metadata for external opening                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-
-Data-access libraries may depend on one another, and several do. The real edges today are
-`identity → media`, `timeline → media`, and `auth → accounts`. Every domain library except
-`data-access-gif` also depends on
-`data-access-matrix-client`.
-
-Identity presentation and Room membership deliberately do not collapse into one model. Identity
-owns a stable `IdentitySummary` whose display name always falls back safely to the MXID, independent
-of whether the two users share a Room. Room Administration owns `MemberSummary`, including power and
-membership plus explicitly named `roomDisplayName` and `roomAvatarMxc` fields from that Room's
-membership event. Those contextual fields may differ from the global profile; their `room*` names
-prevent a caller from accidentally treating them as stable Identity data.
-
-!!! warning "data-access-matrix-client is scope:shared on purpose"
-
-    It is the only data-access library outside `scope:matrix`, and that is what keeps the client
-    and session foundation domain-agnostic. Adding an import of any domain library to it fails lint
-    on the scope axis even though the type axis would allow it. If you find yourself wanting to,
-    the dependency belongs the other way round.
-
-## Feature libraries
-
-Screens and pages. `type:feature` may not depend on another `type:feature`; see
-[crossing a forbidden edge on purpose](index.md#crossing-a-forbidden-edge-on-purpose).
-
-| Library                 | Alias                       | Tags                           | Purpose                                                                                                                                                                                                                                                                                                                   |
-| ----------------------- | --------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/feature/shell`    | `@trinity/feature/shell`    | `type:feature`, `scope:matrix` | The lazy development-only crypto spike page                                                                                                                                                                                                                                                                               |
-| `libs/feature/auth`     | `@trinity/feature/auth`     | `type:feature`, `scope:matrix` | `LoginPage` and `SsoCallbackPage`                                                                                                                                                                                                                                                                                         |
-| `libs/feature/crypto`   | `@trinity/feature/crypto`   | `type:feature`, `scope:matrix` | `EncryptionSetupPage`, `EncryptionUnlockPage`, `DeviceVerificationPage`                                                                                                                                                                                                                                                   |
-| `libs/feature/rooms`    | `@trinity/feature/rooms`    | `type:feature`, `scope:matrix` | The chat application surface: rooms shell, sidebar, server rail, message presentation and toolbar, composer, reactions, polls, media, members and space management; plus the page-scoped lifecycle for member visibility, exact-Conversation temporary surfaces, focus, responsive presentation, reveal and semantic Back |
-| `libs/feature/settings` | `@trinity/feature/settings` | `type:feature`, `scope:matrix` | Exports `settingsRoutes` plus the lazy-loaded `SettingsDialogComponent`; both consume one internal registry of fourteen sections, while shared catalog renderers update capability-owned preference descriptors without owning raw keys or policy                                                                         |
-
-`feature-settings` exports only its two composition roots, not its individual sections. The app
-reaches the dialog root through a dynamic loader token, so nothing outside the library can import
-one section accidentally or pull the settings chunk into the initial bundle.
-
-## UI libraries
-
-Presentational only. `type:ui` may not depend on `type:data-access`, so a component here can never
-reach a service.
-
-| Library                             | Alias                                   | Tags                                   | Purpose                                                                                                                                               |
-| ----------------------------------- | --------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `libs/components/foundations`       | `@trinity/components/foundations`       | `type:ui`, `scope:shared`, `ui:public` | Iconography, the closed `TrnIconName` registry, icon motion, and the single shared class-composition implementation.                                  |
-| `libs/components/controls`          | `@trinity/components/controls`          | `type:ui`, `scope:shared`, `ui:public` | Buttons, fields, native form controls, selection controls, toggle groups, QR scanning, and the emoji picker/index facade.                             |
-| `libs/components/generic-content`   | `@trinity/components/generic-content`   | `type:ui`, `scope:shared`, `ui:public` | Domain-neutral avatars, badges, banners, empty states, progress, spinners and tooltips.                                                               |
-| `libs/components/navigation-layout` | `@trinity/components/navigation-layout` | `type:ui`, `scope:shared`, `ui:public` | Cards, page headers, separators and tabs.                                                                                                             |
-| `libs/components/overlay`           | `@trinity/components/overlay`           | `type:ui`, `scope:shared`, `ui:public` | Dialog, alert, sheet, toast, dropdown and anchored-overlay APIs, including Trinity-owned dialog and programmatic dropdown handles that hide CDK/Helm. |
-| `libs/components/storybook-host`    | —                                       | `type:ui`, `scope:shared`, `ui:public` | Non-consumable Storybook documentation host for the public tier.                                                                                      |
-
-`libs/components/*` is the **public tier**, tagged `ui:public`: five category-owned entrypoints
-with named exports plus the non-consumable Storybook host. Trinity owns every API, so the library
-underneath can be swapped without touching a feature. Product-specific presentation lives in its
-capability instead of becoming another public UI project.
-
-Theme Foundation is an internal kernel module, not a sixth component category. Its pure catalog
-must be reachable by platform preference adapters, application composition and Storybook without
-reversing the UI dependency direction; the stylesheet implementation privately adapts Tailwind
-and Helm without exposing either through TypeScript.
-
-The 22 libraries under `libs/spartan/` are `@spartan-ng/cli`-generated Helm components,
-all tagged `type:ui`, `scope:shared`, `ui:vendor-wrapper`, all with the `hlm` selector prefix
-(`libs/spartan/tests` is the odd one out — no components, just the two specs that pin
-generated-kit behaviour across several libraries at once):
-
-| Directory                    | Alias                         |
-| ---------------------------- | ----------------------------- |
-| `libs/spartan/avatar`        | `@trinity/helm/avatar`        |
-| `libs/spartan/badge`         | `@trinity/helm/badge`         |
-| `libs/spartan/button`        | `@trinity/helm/button`        |
-| `libs/spartan/card`          | `@trinity/helm/card`          |
-| `libs/spartan/checkbox`      | `@trinity/helm/checkbox`      |
-| `libs/spartan/dropdown-menu` | `@trinity/helm/dropdown-menu` |
-| `libs/spartan/input`         | `@trinity/helm/input`         |
-| `libs/spartan/label`         | `@trinity/helm/label`         |
-| `libs/spartan/progress`      | `@trinity/helm/progress`      |
-| `libs/spartan/radio-group`   | `@trinity/helm/radio-group`   |
-| `libs/spartan/select`        | `@trinity/helm/select`        |
-| `libs/spartan/sonner`        | `@trinity/helm/sonner`        |
-| `libs/spartan/spinner`       | `@trinity/helm/spinner`       |
-| `libs/spartan/textarea`      | `@trinity/helm/textarea`      |
-| `libs/spartan/tooltip`       | `@trinity/helm/tooltip`       |
-| `libs/spartan/utils`         | `@trinity/helm/utils`         |
-
-These are the widest case of the three-way naming split described above: the directory is
-`libs/spartan/*`, the alias namespace is `@trinity/helm/*`, and the Nx project name is the bare
-component name. The button library lives at `libs/spartan/button`, is imported as
-`@trinity/helm/button`, and is built with `nx build button`.
-
-Everything under `libs/spartan/` is generated; the hand-written Trinity code that used to sit
-among it — the overlay adapters, the icon and the emoji picker — now lives in `libs/components/`.
-Regenerating or adding Helm components goes through the CLI; see
-[UI and theming](ui-and-theming.md).
-
-## Public entry points
-
-Every library exposes exactly one explicit barrel at `src/index.ts`. The contracted architecture
-rejects secondary aliases. Shiki remains feature-local and relatively imported so its grammars do
-not enter the eager bundle; QR scanning consumes the primary platform adapter entrypoint.
-
-## Libraries are not buildable
-
-No library outside `libs/spartan/` has a `build` target. There is no intermediate compilation step: the application build
-(`@angular/build:application`) compiles library sources directly, resolved through the tsconfig
-path aliases. That is what makes a cross-library change a one-step edit rather than a
-build-and-consume cycle.
-
-The sixteen generated Helm libraries do carry an `@nx/angular:ng-packagr-lite` build target from
-the spartan generator, emitting to `dist/libs/spartan/<name>`. The application does not consume
-those outputs.
-
-Every library except `libs/testing` and the sixteen generated Helm ones has a `test` target, wired
-through `nx:run-commands` running `vitest run` with the project directory as `cwd` — which is why
-arguments to a single test run have to be forwarded after `--`. `lint` and `e2e` targets are not
-declared in any `project.json` at all; they are inferred by the `@nx/eslint` and `@nx/playwright`
-plugins configured in `nx.json`. See [commands](../contributing/commands.md) for how to run them.
+A route, dialog, or page is not permission to create a new state owner. A
+temporary migration adapter is not a public API. An internal Matrix SDK
+type is not an application model. Keep each of those behind the capability
+that owns the lifecycle. Record the boundary rationale in the relevant
+[architecture decision record](../adr/0001-capability-ownership-and-dependency-roles.md);
+[final validation](final-validation.md) is dated delivery evidence, not a
+current contract.

@@ -1,7 +1,13 @@
-# Final architecture validation
+# Historical architecture validation
 
-Issue #326 contracts the capability-centered rewrite after every migration frontier completed.
-This record is source evidence; UI screenshots and GIFs remain pull-request attachments only.
+This page preserves delivery evidence from the dated runs below. Results, environment limits
+and branch identifiers describe those runs only; they do not establish the current checkout's
+status. For a new validation run, use [testing](../contributing/testing.md), the
+[host guides](../platforms/index.md) and the [measurement contracts](migration-baselines.md).
+The [current architecture contract](target-architecture.md) is maintained separately.
+
+Issue #326 contracted the capability-centered rewrite after its migration frontier completed.
+UI screenshots and GIFs remain pull-request attachments only.
 
 ## Static and quality contracts
 

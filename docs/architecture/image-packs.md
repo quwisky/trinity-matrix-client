@@ -1,164 +1,165 @@
-# Image packs
+# Contribute to image-pack presentation
 
-Trinity implements the client side of MSC2545 image packs in
-`@trinity/data-access/media`. A pack is room state owned by its publisher; an account-wide
-installation is only a reference to one room ID and state key. The application never copies a
-pack into local settings and never creates or edits `m.room.image_pack` state.
+Use this guide when changing the sticker/custom-emoji picker or its Settings manager.
+Trinity consumes MSC2545 room image packs and lets an Account install references for use
+across Rooms. It does not author packs, copy their contents into local preferences or modify
+publisher pack state. For the person using these controls, see
+[Stickers & Emoji settings](../users/settings.md#stickers--emoji) and
+[sending more than text](../users/messaging.md#sending-more-than-text).
 
-This page records the precedence, mutation and trust rules that are easy to lose when changing
-the picker or manager. User-facing behavior is covered under
-[Settings](../users/settings.md#stickers--emoji) and [Messaging](../users/messaging.md#sending-more-than-text).
+## Choose the owning API
 
-## The two layers of MSC2545 data
+Image-pack data belongs to `@trinity/data-access/media`; presentation uses the public Trinity
+component tier described in [UI and theming](ui-and-theming.md). Keep SDK access and publisher
+metadata parsing in data access. Use these owners when changing behavior:
 
-| Scope        | Stable event         | Read-only legacy fallback | Meaning                                      |
-| ------------ | -------------------- | ------------------------- | -------------------------------------------- |
-| Room state   | `m.room.image_pack`  | `im.ponies.room_emotes`   | Pack metadata, usages and image declarations |
-| Account data | `m.image_pack.rooms` | `im.ponies.emote_rooms`   | Packs selected for use in every room         |
+| Task                                                                            | Owner                                                                                               | Contract                                                                                                                |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Show packs available in a Conversation                                          | [ImagePackService](../../libs/data-access/media/src/lib/image-pack.service.ts)                      | Read `packsFor(roomId)`; pair `connect(roomId)` with `disconnect(roomId)` for each surface lifetime.                    |
+| List installed references, discover, install, uninstall or change enabled usage | [ImagePackManagementService](../../libs/data-access/media/src/lib/image-pack-management.service.ts) | Read `installed`; pair management `connect()`/`disconnect()`. Subscribe to its cold commands for explicit user actions. |
+| Parse candidate addresses, status and selection documents                       | [Management model](../../libs/data-access/media/src/lib/image-pack-management.model.ts)             | Preserve validation bounds, stable/legacy precedence and removable invalid references.                                  |
+| Share a recently confirmed account-data write between manager and picker        | [ImagePackSelectionStore](../../libs/data-access/media/src/lib/image-pack-selection.store.ts)       | Internal, client-keyed server-readback snapshot; not a product preference store.                                        |
 
-The account event maps a room ID and state key to an object. Trinity writes each new leaf as
-exactly `{}`. The object shape is deliberate extension space, so an install preserves an existing
-object rather than replacing unknown future fields. A later usage change may add Trinity's
-namespaced `eu.qwky.trinity.enabled_usage` array to that leaf. Other clients can ignore it; a
-missing key means all publisher-supported usages, and an empty array disables the installed pack
-inside Trinity without uninstalling it.
+The picker combines Account-installed sources with pack state in the current Room. It watches
+relevant state, account-data and own-membership changes. Leaving a source Room makes its pack
+unusable even if the SDK retains the old state. Deduplicate stable/legacy aliases and repeated
+sources before presentation.
 
-The two legacy fallbacks obey different precedence rules:
+The manager deliberately lists more than the picker: unavailable, missing, malformed and empty
+references remain visible so they can be removed. Do not filter these away because they cannot
+currently render an image.
 
-1. If stable account data exists at all, it suppresses the legacy account event wholesale. A
-   stale legacy reference cannot bring back a pack removed from the stable event.
-2. Within a source room, stable state for one state key suppresses legacy state for that same key,
-   even when the stable event is empty or malformed. Other legacy state keys remain eligible.
+## Preserve scope and explicit discovery
 
-Stable account leaves must be objects. The old boolean `true` representation is accepted only
-while reading `im.ponies.emote_rooms`.
+Scope is per usage (`emoticon` or `sticker`), not one label for an entire pack. An Account-enabled
+sticker source appears as **All rooms**; a Room-published source appears as **This room**.
+Disabling Account-wide sticker usage does not hide a Room's own copy of that source in that Room.
+Trinity derives supported usage from pack metadata and applies it to every parsed image;
+it does not interpret per-image usage overrides. Custom-emoji composition is not implemented:
+the picker currently sends pack images as stickers, even though enabled usage is tracked
+separately for stickers and emoticons.
 
-## Three services, three responsibilities
+The picker's **Manage** action only prefills the Settings source field. **Find packs** is the
+explicit action that may resolve an alias, join its Room and fetch authoritative room state.
+A join is participant-visible Matrix membership. Discovery does not undo that join if the Room
+has no usable pack. Offer available and empty candidates; malformed state is not installable.
+Uninstall removes only the exact Account reference: it does not leave the source Room, delete
+its media or edit its pack state.
 
-`ImagePackService` is the picker projection. Callers ask for `packsFor(roomId)`, connect while the
-surface is alive, and read a signal. The projection combines:
+## Understand the two protocol layers
 
-- account-selected packs, which are available in every room for the active account; and
-- pack state published by the current room, which is available there without installation.
+| Scope        | Preferred event      | Read-only legacy fallback | Meaning                                          |
+| ------------ | -------------------- | ------------------------- | ------------------------------------------------ |
+| Room state   | `m.room.image_pack`  | `im.ponies.room_emotes`   | Publisher metadata, usage and image declarations |
+| Account data | `m.image_pack.rooms` | `im.ponies.emote_rooms`   | References enabled across Rooms                  |
 
-It listens for relevant room-state, account-data and own-membership changes. A left source room is
-not usable even if the SDK retains its state in memory. Stable/legacy aliases and repeated sources
-are deduplicated before the picker sees them. Availability scope is retained per usage: the sticker
-picker labels an account-enabled sticker source **All rooms** and a current-room source **This
-room**. If an account preference disables stickers but the current room publishes the same pack,
-the room-scoped sticker remains available there.
+Account data maps a Room ID and state key to an object. A new reference is exactly `{}`;
+installing an existing one preserves its object and extension fields. Trinity's optional
+`eu.qwky.trinity.enabled_usage` array restricts enabled publisher-supported usages. A missing
+key enables all supported usages; an empty array disables them in Trinity without uninstalling.
 
-`ImagePackManagementService` owns Settings. Its installed signal is intentionally broader than the
-picker projection: it retains unavailable, missing, malformed and empty references so the user can
-remove them. Discovery validates a room ID or alias, resolves an alias, joins when the active
-account is not already a member, then calls the authoritative `roomState` endpoint. It can return
-available and empty candidates; malformed state is not offered for installation.
+Precedence differs between the layers:
 
-The query parameter used by the picker's **Manage** action only prefills the source field. It must
-never start discovery or membership by itself. Choosing **Find packs** is the explicit action that
-may join the room. A join is ordinary participant-visible Matrix membership and is not rolled back
-when discovery finds no usable pack.
+1. Any preferred Account event suppresses the legacy Account event wholesale. A legacy
+   reference cannot revive something removed from the preferred event.
+2. Preferred Room state suppresses legacy state only for the same state key, including when
+   the preferred event is empty or malformed. Other legacy keys remain eligible.
 
-`ImagePackSelectionStore` holds a short-lived direct-readback snapshot keyed by `MatrixClient`.
-The management service sends the account-data request through the SDK's raw HTTP API and then
-performs direct readback of the server-confirmed document. This avoids waiting for a local sync
-echo whose cached event may lag another device. The snapshot overrides that potentially stale SDK
-cache. It is not optimistic state: it is populated only after readback confirms the complete
-expected merge, then cleared by a subsequent stable account-data event or lazily expired after 30
-seconds.
+Preferred Account leaves must be objects. The legacy boolean `true` form is accepted only
+when reading `im.ponies.emote_rooms`. Keep stable writes and compatibility reads separate.
 
-All three are active-client projections. Switching accounts rebuilds them from the new
-`MatrixClient`; installed references and source-room membership therefore never leak between
-accounts.
+## Keep parsing and rendering bounded
 
-## Discovery and validation bounds
+The source validator accepts `!room:server` and `#alias:server`, including ports and bracketed
+IPv6 server names. It rejects missing sigils/separators, whitespace, empty parts and input over
+1,024 characters. Alias resolution and the homeserver still make the authoritative decision.
 
-The room address validator accepts `!room:server` and `#alias:server` forms, including server names
-with explicit ports or bracketed IPv6. It rejects missing sigils or separators, whitespace, empty
-parts and input longer than 1,024 characters. Alias resolution and the homeserver remain the
-authoritative validators.
+| Parser/presentation bound                        | Limit |
+| ------------------------------------------------ | ----: |
+| Source/picker packs retained                     |   100 |
+| Usable images in one pack                        |   500 |
+| Usable images across one picker                  | 1,000 |
+| Newly selectable state key, UTF-8 bytes          |   255 |
+| Retained display name, attribution and shortcode |   256 |
 
-Pack parsing is deliberately bounded before UI rendering:
+New state keys reject control characters and oversized identities rather than truncating them.
+The manager keeps existing malformed references with bounded labels so removal remains possible.
 
-| Bound                                                 | Limit |
-| ----------------------------------------------------- | ----: |
-| Account/source packs retained                         |   100 |
-| Usable images retained from one pack                  |   500 |
-| Usable images retained across one picker              | 1,000 |
-| Newly selectable state key (UTF-8 bytes)              |   255 |
-| Pack display name, attribution and shortcode retained |   256 |
+Only a valid primary `mxc://` image URL can become a rendered picker entry. Names and attribution
+stay text; publisher metadata never becomes HTML. Resolve image bytes through the media
+capability rather than inserting arbitrary HTTP URLs into the DOM. The publisher's full `info`
+object is preserved in the outgoing `m.sticker` event, including nested URL-shaped fields.
+Trinity does not render those nested fields, but recipients choose how to consume them.
 
-Newly discovered state keys also reject control characters and are excluded rather than truncated,
-so their persisted identity cannot change. Existing malformed or oversized references remain in
-the manager with a bounded label so users can remove them.
+## Mutate Account references without overstating consistency
 
-Only a primary image `url` using `mxc://` with the same server-name and media-ID grammar as
-`matrix-js-sdk` can become a rendered picker entry. Names, attribution and image info remain
-text/data; the UI never renders publisher metadata as HTML. Media resolution continues through the
-media data-access path rather than placing arbitrary remote HTTP URLs in the DOM. The publisher's
-complete `info` object is nevertheless preserved and forwarded in the outgoing `m.sticker` event,
-including nested URL-shaped fields; Trinity does not render those nested fields, but recipient
-clients decide how to consume them.
+Matrix account-data writes have no compare-and-swap or revision precondition. The management
+service reduces lost updates through a per-client promise queue and verified merge:
 
-## Account-data mutation is best effort
+1. Directly GET the preferred Account event. The SDK's post-sync account-data helper can
+   answer from a stale local cache, so it is not used for this read.
+2. If absent, directly read legacy data and migrate valid references.
+3. Merge the requested install, uninstall or usage change. Preserve valid unknown top-level
+   and per-reference fields; prune empty Room maps. Write only `m.image_pack.rooms`.
+4. Use a raw account-data PUT, then directly GET the complete document. This avoids SDK
+   comparison assumptions for unusual valid keys and does not wait for a sync echo.
+5. Require the returned JSON document to match the whole expected merge. A visible conflicting
+   update causes another read/merge/write/verify attempt, up to three attempts; exhaustion
+   reports a visible conflict error.
 
-Matrix account-data PUT has no compare-and-swap or revision precondition. Trinity reduces lost
-updates but cannot make them impossible:
+A change that lands between Trinity's GET and PUT can still be overwritten without evidence,
+and another client can write after successful verification. Neither serialization nor readback
+makes this an atomic or conflict-free operation.
 
-1. Mutations are queued per `MatrixClient`, so two operations from this application do not race.
-2. Every attempt performs a direct authenticated GET of the stable account event. The SDK's
-   `getAccountDataFromServer()` helper is not used because it reads the local store after initial
-   sync and can lag another device.
-3. When stable data is absent, one direct GET reads legacy data and valid references are migrated.
-4. The requested reference or namespaced usage preference is merged into the fresh stable
-   document. Valid unknown top-level and per-reference stable fields are preserved, empty room maps
-   are pruned, and only `m.image_pack.rooms` is written.
-5. The SDK's raw account-data PUT is followed by another direct GET. The raw call avoids the SDK's
-   object-comparison assumptions for magic-but-valid state keys; the explicit server verification
-   replaces its sync-echo wait. The complete returned JSON document must match the expected merge,
-   not merely the requested reference. If an observable unrelated change won the write, Trinity
-   repeats the read, merge, write and verification, for at most three attempts.
-6. Repeated failure becomes a visible conflict error rather than a false success.
+A successful readback populates the client-keyed selection snapshot so the picker need not wait
+for the SDK cache to catch up. The snapshot is server-confirmed, not optimistic. A subsequent
+preferred account-data event clears it; otherwise it expires lazily on read after 30 seconds.
+There is no scheduled expiry event that forces an idle view to refresh at exactly that time.
 
-This protects against stale local sync state and preserves unrelated changes that are visible in a
-verification read. It is not an atomic guarantee: a concurrent change that lands between Trinity's
-GET and PUT can be overwritten without leaving evidence, and another client can still write after
-Trinity's successful verification and win. Do not describe the implementation as conflict-free.
+## Account and subscription lifetimes
 
-Uninstall removes only the exact account reference. It never leaves the room, deletes media, or
-edits pack state. Installing likewise writes no room pack state; the only possible room-state
-change in this workflow is the membership event caused by joining.
+Picker and manager read models use active-client projections that rebuild on Account changes.
+The selection store itself is a `WeakMap` of snapshots keyed to client instances, not another
+projection. Management commands capture the client when subscribed, keeping remote writes on
+that Account even if the Active Account changes while a request is pending.
 
-## Trust and privacy boundaries
+These commands wrap Promises: unsubscribe does not cancel an in-flight join or Account write.
+The manager's mutation completion also writes `installedState` from its captured client without
+a generation check. Do not infer that all late results are hidden after an Account switch merely
+because the normal projection reattaches. Preserve explicit surface cleanup and treat stronger
+cancellation/result-isolation guarantees as an implementation change, not an existing contract.
+See [runtime lifetimes](state-and-reactivity.md) for the shared projection rules.
 
-Installation pins a source, not its contents. A room publisher with sufficient power can change or
-delete the pack later. The manager keeps the resulting broken reference visible, but it cannot make
-an untrusted publisher safe. The user documentation therefore tells people to install only from
-sources they trust.
+## Retain trust and privacy feedback
 
-Pack images are ordinary homeserver media rather than encrypted attachments. Relevant homeservers
-can see and serve those bytes even when the `m.sticker` event carrying the MXC reference is encrypted
-inside the room. This is why the encrypted-room sticker flow keeps its warning. Do not call all pack
-media anonymously public: server access policy and deployment vary, while the important invariant is
-that the bytes are outside Matrix event E2EE.
+Installation pins a source, not its contents. A publisher with sufficient power can replace or
+delete the pack later; keeping a broken reference removable does not make that source trusted.
+Preserve the advice to use trusted sources and the disclosure of discovery's possible join.
 
-Pack authoring is out of scope. If it is added later, publishing or editing room state belongs in
-the data-access layer and must enforce the room's state-event power levels.
+Pack images are ordinary homeserver media, outside Matrix event E2EE even when the `m.sticker`
+event is encrypted. Relevant homeservers can see and serve those bytes. Keep the encrypted-Room
+sticker warning. Do not call every pack anonymously public: access policy varies by deployment.
 
-## Test ownership
+Pack authoring is not supported. Adding it would require data-access writes with the Room's
+state-event authorization, rather than a picker-only feature or direct SDK call from a component.
 
-Unit tests in `libs/data-access/media` own parsing, bounds, precedence, legacy migration, exact
-stable writes, namespaced usage preferences, preservation, serialization, complete-document
-server readback and failure behavior. Settings tests own explicit submission, in-flight results,
-usage controls, focus recovery, accessibility feedback and removal disclosure.
+## Verify a picker or manager change
 
-`e2e/support/image-pack-management-journey.mts` is the canonical journey used by
-Chromium, the installed Android WebView, and the built Electron shell. It proves alias resolution
-and joining, multiple state keys, stable-over-legacy deduplication, immediate enable/disable
-behavior, visible account/room scope, sticker sending, uninstall, final empty stable account data,
-and survival of the publisher's source state. The Web/Android wrapper additionally proves
-propagation to a separately installed same-account client. Electron omits that one assertion
-because the application enforces a single-instance lock. The journey does not prove atomic
-conflict freedom.
+Use [contributor validation](../contributing/testing.md) for the complete change-based policy.
+The existing Media tests cover parsing, bounds, precedence, legacy migration, exact writes,
+extension-field preservation, queues, readback and failure handling. Settings tests cover
+explicit submission, in-flight results, usage controls, focus recovery, accessibility feedback
+and uninstall disclosure. Test Account switching separately from ordinary same-Account success.
 
-Focused commands and native prerequisites are kept in [`e2e/README.md`](../../e2e/README.md).
+The [shared management journey](../../e2e/support/image-pack-management-journey.mts) is used by
+Chromium, installed Android WebView and the built Electron shell. Its assertions cover alias
+resolution/joining, multiple keys, precedence, enable/disable feedback, Account/Room scope,
+sticker sending, uninstall, empty preferred Account data and unchanged publisher state.
+The Web/Android wrapper additionally checks a second installed same-Account client; Electron
+omits that assertion because of its single-instance lock. The journey does not prove atomic
+conflict freedom or every late-result race.
+
+Use the [E2E task guide](../../e2e/README.md) to choose the owning journey and the
+[host guides](../platforms/index.md) for prerequisites. For isolated public-control rendering
+and keyboard checks, use [Storybook](../../libs/components/storybook-host/README.md); a catalog
+canvas does not exercise Matrix membership or Account-data consistency.

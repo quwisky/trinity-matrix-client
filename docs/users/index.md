@@ -1,127 +1,88 @@
-# Using Trinity
+# Use Trinity
 
-Trinity is shaped like Discord rather than like a mail client. A vertical rail on the left
-holds navigation scopes and your Matrix Spaces, a sidebar lists the rooms in the selected
-scope, and the rest of the window is one conversation. On a phone the same three surfaces
-become a single pane you move between.
-
-The interface uses a recessed frame, quieter navigation and one raised conversation workspace.
-People stay circular while rooms and spaces use stable squircles, selected items keep their shape,
-and low-frequency room or composer actions move into clearly labelled overflow menus. On desktop,
-the account and Settings panel floats above the bottom of the Spaces and room navigation; on a
-phone it remains in the list layout so it cannot cover rooms or the device safe area. Choose
-**Cosy** or **Compact**
-under Settings → Appearance; density changes shell, settings, timeline and composer spacing without
-shrinking touch targets below the mobile minimum.
-
-This section describes what the application does today. Everything listed here is in the
-shipped code; the things that are not are listed at the bottom of this page.
+Start here to get into Trinity, choose the right account and find the guide for your next task.
+A **Room** is a Matrix conversation you can join; a **Space** groups Rooms and other Spaces.
+The **Workspace** is the navigation and conversation area you use after signing in.
 
 ## Getting in
 
-- [Installing Trinity](install.md) covers each of the four platforms, what a packaged
-  desktop build contains, and the current code-signing state.
-- [Signing in](signing-in.md) covers homeserver discovery and the three sign-in paths a
-  server may offer, the one thing Trinity deliberately does not do — create an account for
-  you — and how to erase everything on the device when Trinity itself will not start.
+1. [Choose a host and install Trinity](install.md). Check the browser, desktop or mobile
+   requirements and follow the available installation route.
+2. [Sign in or create a Matrix account](signing-in.md). Your homeserver determines which
+   sign-in and registration methods are available.
+3. [Set up or restore encrypted access](encryption.md). Save your recovery key and verify
+   new devices before relying on them for encrypted history.
 
-## Talking
+## Choose your next task
 
-Sending a message goes through a composer that understands Markdown, with a live preview
-toggle and a formatting toolbar. It also handles `:shortcode` emoji completion, `@mention`
-completion that produces real Matrix mention pills, file attachments including
-paste-to-attach, voice recording, polls, location sharing, GIF search, and per-conversation
-drafts that survive a restart. MSC2545 image packs can be installed and removed inside
-Trinity, provide a searchable sticker picker, and follow the active Matrix account; inline
-custom emoji received from other clients render through authenticated Matrix media. Four
-slash commands are recognised: `/me`, `/shrug`,
-`/plain` and `/spoiler`.
+| I want to…                                                         | Follow this guide                               |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| Find a public Room, accept an invitation or start a direct message | [Rooms and Spaces](rooms-and-spaces.md)         |
+| Organize Spaces, favourites and unread Rooms                       | [Rooms and Spaces](rooms-and-spaces.md)         |
+| Send text, attachments or reactions; reply, edit or use threads    | [Messaging](messaging.md)                       |
+| Choose which messages notify me and diagnose missing notifications | [Notifications](notifications.md)               |
+| Change my profile, appearance, privacy or keyboard shortcuts       | [Personal settings](settings.md)                |
+| Verify a device, recover encrypted history or export message keys  | [Encryption, trust and recovery](encryption.md) |
 
-A message you have sent can be edited, deleted, pinned, forwarded, reported, quoted as a
-reply, or opened as the root of a thread. Its raw JSON and its full edit history are both
-viewable. Reactions have a six-emoji quick row and a full picker, and the reaction pills
-open a list of who reacted.
+## Find your way around
 
-Read the detail in [Messaging](messaging.md).
+The navigation rail chooses a scope; the adjacent list shows its Rooms; opening a Room displays
+its conversation. Narrow layouts show fewer panes at once, so use Back to return to the list
+or navigation.
 
-## Organising
+- **Recent activity** is the starting view and includes joined Rooms and direct messages,
+  including Rooms inside Spaces.
+- **Home** shows direct messages.
+- **Rooms** shows non-direct-message Rooms outside Spaces.
+- A **Space** shows its own Rooms and hierarchy. Joining a Space does not automatically join
+  all of its Rooms.
 
-Four scopes sit on the rail: **Recent activity** (every joined conversation by recency, and
-the default on launch), **Home** (direct messages), **Rooms** (rooms that belong to no
-space), then one pill per joined Space. The rail is flat: a subspace appears as its own
-top-level pill rather than nesting.
-
-Spaces can be created, nested, curated, browsed and left. Rooms carry name, topic, avatar,
-join rule, history visibility, local addresses and a ban list, each field gated
-independently by your power level in that room. Member moderation covers kick, ban, unban
-and power-level changes.
-
-Read the detail in [Rooms and spaces](rooms-and-spaces.md).
-
-## Keeping messages private
-
-Trinity sets up encryption for an account, unlocks it on a new device from a recovery key,
-or lets you verify a new device against one you are already signed in on using the seven
-emoji of the SAS protocol. Room keys can be exported to and imported from a
-passphrase-encrypted file. Every message row can carry an authenticity shield, and a shield
-probe that fails renders as a caution rather than as "verified".
-
-Read the detail in [Encryption and verification](encryption.md).
-
-## Being told about things
-
-Notifications work at three independent levels: a per-room mode of all, mentions only, or
-muted; nine account-level toggles covering invites, mentions, direct chats, encrypted
-rooms and the rest; and a keyword list. Delivery differs by platform — the desktop shell
-raises notifications from its own main process, the web build uses the browser Notification
-API, and mobile uses push.
-
-Read the detail in [Notifications](notifications.md), and
-[Push notifications](../reference/push-notifications.md) for the gateway side.
-
-## Searching
-
-Two search surfaces exist. A quick switcher, opened with `Ctrl`/`Cmd` + `K`, ranks your
-joined rooms, spaces, direct chats and pending invites locally and appends people from the
-homeserver's user directory. In-room search scans the messages already loaded and decrypted
-in the timeline, and tells you how many it scanned.
-
-Full-history search on the server is offered only for unencrypted rooms. This is a property
-of Matrix, not a gap in Trinity: the homeserver stores ciphertext for an encrypted room and
-cannot search it.
+Use the Room list's filter to narrow that list. The quick switcher opens with `Ctrl`/`Cmd` + `K`
+by default; it can find joined conversations, Spaces, invitations and people. Room discovery
+and message search are different tasks: [Rooms and Spaces](rooms-and-spaces.md) owns finding
+places and people, while [Messaging](messaging.md) explains searching conversation history.
 
 ## Using more than one account
 
-Trinity runs several accounts at once rather than switching between isolated sessions. Once
-you opt more than one account into "mixed" mode, the room list, the space rail, the invite
-list and the quick switcher all show every selected account's content, with each row badged
-by its owner. A room both accounts have joined appears once, and its badge shows the louder
-of the two unread states.
+An **Account** is one signed-in Matrix identity. Trinity can keep several Accounts connected,
+but one is active for the Workspace. Open your account menu near Settings to see the full
+Matrix IDs; display names alone may be identical across different homeservers.
 
-Writes always run as the account you are currently acting as, so opening another account's
-room switches to that account first.
+- Choose **Add account** to sign in to another identity while the existing accounts remain
+  connected. Follow [signing in](signing-in.md).
+- Choose an account row to make that Account active.
+- Choose **Show accounts** to include other signed-in Accounts in the room list, rail and
+  quick switcher. The active Account is always included. On a narrow layout this selection
+  opens in a dialog; select **Done** to return.
+- Clear the other selections to return to the active Account's content alone. The selection
+  is saved on this installation; hiding an Account does not sign it out.
 
-## Settings
+In a mixed view, account badges identify which Account owns an item. A Room joined by several
+selected Accounts appears once, with the highest unread count among them. If the active Account
+has joined that Room, it owns the combined row; otherwise the row identifies another participating
+Account. Invitations remain separate for their receiving Accounts.
 
-Fourteen sections: profile, presence, appearance, devices, account, security, notifications,
-privacy, GIFs, Stickers & emoji, keyboard shortcuts, an experimental flag, the server your
-account is on, and an advanced view of everything Trinity keeps on this device. Appearance carries a
-light/dark/system Mode choice, a Theme picker, time and date formats, and toggles for
-the system lines in the timeline. Thirteen keyboard shortcuts are defined and twelve are
-rebindable; the numbered desktop room jump is fixed.
+Opening another Account's Room switches to that Account before entering its conversation. Check
+the acting identity before sending, inviting or changing Room settings. Mixed-row read and
+notification actions, as well as favourites, can apply to every selected Account represented by
+that row; the
+[Room guide](rooms-and-spaces.md) and [notification guide](notifications.md) explain these actions.
+Account settings apply to the selected identity, while device preferences such as appearance
+have the scope described in [Personal settings](settings.md).
 
-Read the detail in [Settings](settings.md).
+If an Account is shown as **Signed out**, select its **Sign in** action to reconnect it. The
+account menu's **Sign out** action concerns the active Account on this installation; it does not
+deactivate the Matrix account. Before signing out or clearing local data, check your
+[encrypted-access recovery options](encryption.md).
 
-## Not yet supported
+## When an action is unavailable
 
-These are absent from the code, not merely unpolished. Knowing where the edge is saves you
-looking for a button that is not there.
+Room and Space permissions belong to the homeserver and the Account performing the action.
+A hidden or disabled editing or moderation action can mean you lack permission. Check the acting
+Account and the explanation in [Rooms and Spaces](rooms-and-spaces.md) before retrying.
 
-| Not available                       | Note                                                                                                                                                                                 |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Voice and video calls               | No call code exists. The notification settings do expose a "Call invitations" toggle, because that is an account-level Matrix push rule, but Trinity never places or answers a call. |
-| Deactivating an account             | And no management of email addresses or phone numbers on an account.                                                                                                                 |
-| Forgetting a room after leaving     | Leaving works; the follow-up "forget" call is not wired.                                                                                                                             |
-| Approving or denying a knock        | The `knock` join rule can be set, and a knock renders as a system line, but there is no approval surface.                                                                            |
-| Upgrading a room to a newer version | An upgraded room's tombstone is followed to its successor; nothing in Trinity creates one.                                                                                           |
-| Two verifications at once           | A verification request arriving while another is live is ignored.                                                                                                                    |
+Media, camera, microphone and notification behavior also depends on the host and its permissions.
+Follow the symptom guidance in the task guide, then the [web](../platforms/web.md),
+[desktop](../platforms/desktop.md) or [mobile](../platforms/mobile.md) guide for that host.
+Trinity's built-in messaging does not provide voice or video calls; a call-invitation notification
+setting does not add calling controls.

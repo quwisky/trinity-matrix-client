@@ -2,199 +2,78 @@
 
 [![CI](https://github.com/quwisky/trinity-matrix-client/actions/workflows/ci.yml/badge.svg)](https://github.com/quwisky/trinity-matrix-client/actions/workflows/ci.yml)
 
-A multiplatform [Matrix](https://matrix.org) client built with **Angular + spartan-ng**,
-running from a single codebase on **Web (PWA), iOS, Android, and Desktop (Electron)**.
-End-to-end encryption is a first-class, in-MVP feature.
+Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client for Web/PWA,
+Android, iOS, and Electron desktop. One Angular application supplies the shared
+renderer; host capabilities handle platform-specific behavior.
 
-> Status: **early development.** Scaffold, native platforms, the E2EE crypto spike,
-> authentication (password + SSO, incl. native deep-link), a Discord-style room shell,
-> and a working **timeline — read, send, edit, delete, react, reply, markdown,
-> emoji, and GIFs** (KLIPY/GIPHY search, configured in Settings) — are done. **End-to-end encryption** is complete through device trust:
-> crypto bootstrap (cross-signing, key backup, recovery) and **device verification**
-> (emoji-SAS, with an incoming-request prompt). **Encrypted media** (M8 — sending and
-> displaying images/files/video/audio with attachment encryption) and **MVP polish**
-> (M9 — light/dark theme with selectable colour palettes, offline cache + PWA service worker,
-> settings with profile and device management, authenticated avatars) are done. See
-> [Project status](#project-status) below.
+The project is in early development. Start with [installation and availability](docs/users/install.md)
+before looking for a deployment or installer. [Using Trinity](docs/users/index.md)
+explains current account, Room, Space, messaging, settings, and recovery workflows,
+including permissions and host limits.
 
-## Documentation
+## Choose your task
 
-Everything lives under [`docs/`](docs/index.md), grouped by who is reading.
+| Task                                                    | Guide                                            |
+| ------------------------------------------------------- | ------------------------------------------------ |
+| Install, sign in, and use encrypted messaging           | [Using Trinity](docs/users/index.md)             |
+| Set up the workspace and deliver a validated change     | [Developing Trinity](docs/contributing/index.md) |
+| Diagnose CI, prepare a release, or update dependencies  | [Maintaining Trinity](docs/maintaining/index.md) |
+| Give an agent a task, choose a role, or maintain skills | [Working with agents](docs/agents/index.md)      |
 
-| Section                                              | What's in it                                                                       |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [Using Trinity](docs/users/index.md)                 | What the app can do, installing, signing in, encryption, messaging, settings       |
-| [Contributing](docs/contributing/index.md)           | First run, the command reference, testing, CI and releases, conventions            |
-| [Architecture](docs/architecture/index.md)           | Libraries and boundaries, the state pattern, Matrix and encryption, UI and theming |
-| [Platforms](docs/platforms/index.md)                 | Web, the Electron desktop shell, and the Capacitor mobile targets                  |
-| [Stack reference](docs/reference/stack.md)           | Pinned versions and the integration note for each dependency                       |
-| [Troubleshooting](docs/reference/troubleshooting.md) | The gotcha index: symptom, cause, fix                                              |
+The [documentation index](docs/index.md) connects these reader paths to architecture,
+platform, stack, and troubleshooting references.
 
-## Tech stack
+## Run from source
 
-- **Monorepo:** Nx 23 (apps/libs, task graph + caching, enforced module boundaries)
-- **UI:** Angular 22 (standalone components, signals) + **spartan-ng** — Brain
-  (headless `@spartan-ng/brain`) + Helm (styled, copied into `libs/spartan/*`,
-  aliased `@trinity/helm/*`) on **Tailwind CSS v4**
-- **Native:** Capacitor 8 (iOS via SPM, Android) + a hand-rolled Electron desktop
-  shell (`electron/`) for Windows/macOS/Linux
-- **Protocol:** `matrix-js-sdk` 42
-- **E2EE:** `@matrix-org/matrix-sdk-crypto-wasm` (Rust crypto / Vodozemac)
-- **State:** Angular signals (UI state) + RxJS Observables (async service APIs)
-- **Offline/PWA:** persistent IndexedDB sync store + Angular Service Worker
-  (production web) precaching the app shell and crypto WASM
-- **Testing:** Vitest (unit, plus repository-invariant guard specs in `scripts/`) +
-  Playwright e2e (`@nx/playwright` app journeys + standalone crypto/protocol harnesses)
-- **Quality gates:** ESLint (+ module boundaries), Prettier, Stylelint, and Husky
-  hooks (lint-staged + commitlint / Angular commit convention), re-run on every PR
-  (and on pushes to `develop`/`master`) by **GitHub Actions** — alongside the unit tests, the production build, the
-  Electron main-process checks, and the Playwright e2e journeys (the badge above; see
-  [CI and releases](docs/contributing/ci-and-releases.md))
-
-Exact versions and gotchas live in the [stack reference](docs/reference/stack.md).
-
-## Quick start
-
-Requires **Node 24.15+** (what CI runs and the repo is developed on; 25.x is excluded — see the stack reference) and
-**pnpm** (`corepack enable` picks up the pinned version in `package.json`).
+Use Node `^24.15.0` and the pnpm version pinned in `package.json`:
 
 ```bash
+corepack enable
 pnpm install
-pnpm start           # web dev server at http://localhost:4200
+pnpm start
 ```
 
-You'll land on `/login`. Enter a homeserver (e.g. `matrix.org`) to discover its login
-flows, then sign in with a real account. The dev-only E2EE spike lives at `/spike`.
+Open `http://localhost:4200` and follow [signing in](docs/users/signing-in.md).
+For prerequisites, test accounts, and the first change, follow
+[Getting started](docs/contributing/getting-started.md). Android needs its SDK;
+iOS needs macOS and Xcode. The [platform guides](docs/platforms/index.md) own desktop
+and native build, launch, and packaging procedures.
 
-For native and full testing details see the [contributor docs](docs/contributing/index.md).
+Use the [command reference](docs/contributing/commands.md) for focused Nx targets,
+argument forwarding, and host commands. [Testing](docs/contributing/testing.md)
+explains which checks observe a change and why tests, type checking, browser layout,
+and native execution are separate evidence.
 
-## Common commands
+## Understand the codebase
 
-| Command                             | Purpose                                                       |
-| ----------------------------------- | ------------------------------------------------------------- |
-| `pnpm start`                        | Web dev server (hot reload) at `:4200`                        |
-| `pnpm build`                        | Production web build into `www/`                              |
-| `pnpm test`                         | Vitest unit tests (`nx run-many -t test` for all projects)    |
-| `pnpm lint`                         | ESLint + Nx module boundaries                                 |
-| `pnpm stylelint`                    | Stylelint (SCSS and CSS)                                      |
-| `pnpm format`                       | Prettier-format the workspace                                 |
-| `pnpm storybook`                    | Storybook for the whole `libs/components/*` tier              |
-| `pnpm smoke:login`                  | Headless: redirect→login + real matrix.org discovery          |
-| `pnpm spike:chromium`               | Headless E2EE WASM check (Blink → Android WebView / Electron) |
-| `pnpm spike:webkit`                 | Headless E2EE WASM check (WebKit → iOS WKWebView)             |
-| `pnpm e2e:verify`                   | Two-client emoji-SAS device verification (needs Docker)       |
-| `pnpm e2e:browser`                  | Capability-owned Playwright app journeys (needs Docker)       |
-| `pnpm exec cap run ios` / `android` | Build + launch on simulator/emulator                          |
+Trinity uses Angular standalone components and signals, RxJS actions, Spartan on
+Tailwind, Matrix's JavaScript SDK and Rust crypto WASM, Capacitor, and Electron in
+an Nx monorepo. [Stack notes](docs/reference/stack.md) record pinned versions and
+integration constraints.
 
-## Project structure
+- `apps/trinity/` supplies the thin application entrypoint and routes.
+- `libs/` contains capability owners, runtime and host contracts, public UI, and
+  generated vendor wrappers. Cross-library imports use `@trinity/*` aliases.
+- `e2e/` contains the owned browser, component, protocol, and host validation suites.
+- `electron/`, `android/`, and `ios/` wrap the shared production `www/` build.
 
-Nx integrated monorepo: the deployable app lives in `apps/`, reusable code in
-`libs/` (consumed through `@trinity/*` path aliases and guarded by Nx module
-boundaries). The web build still emits to root `www/`, so Capacitor and the
-native projects are unchanged.
+Read [Architecture](docs/architecture/index.md) before changing capability ownership,
+state lifetimes, or dependency boundaries. [UI and theming](docs/architecture/ui-and-theming.md)
+owns the public component and Appearance contracts. [Matrix and encryption](docs/architecture/matrix-and-encryption.md)
+explains SDK, trust, and host-specific persistence behavior.
 
-```
-apps/trinity/
-  src/                thin app entry: main bootstrap + providers, root routes,
-                      theme, environments (the shell UI lives in feature-shell)
-  project.json        build/serve/test targets (Angular esbuild builder)
-  vite.config.ts      Vitest setup (Analog Angular plugin)
-libs/
-  util/
-    matrix/           @trinity/util/matrix — pure DI-free Matrix models/helpers
-                      (MessageView/MediaPayload/MatrixSession, markdown, wasm loader,
-                      attachment crypto)  [type:util]
-  testing/            @trinity/testing — the zoneless render() wrapper every
-                      component spec must use  [type:util]
-  platform-native/    @trinity/platform-native — Capacitor/native capabilities
-                      (session/secure storage, preferences, theme/status-bar, launcher
-                      badge, desktop bridge, error handler)  [type:platform]
-  application/
-    runtime/          @trinity/application/runtime — ordered startup, typed recovery,
-                      root presentation and session ownership  [type:feature]
-    workspace/        @trinity/application/workspace — semantic destinations, surfaces
-                      and Back ordering  [type:data-access]
-    search/           @trinity/application/search — typed Global Search groups over
-                      Room Library and Discovery  [type:data-access]
-  data-access/
-    matrix-client/    @trinity/data-access/matrix-client — MatrixClient lifecycle +
-                      4S key service; the client/session foundation  [type:data-access]
-    */                @trinity/data-access/{accounts,auth,discovery,gif,homeserver,
-                      identity,matrix-client,media,notifications,room-administration,
-                      room-library,timeline,trust,widgets} — capability read models,
-                      actions, and adapters  [type:data-access]
-  feature/
-    shell/            @trinity/feature/shell — lazy dev-only /spike page  [type:feature]
-    auth/             @trinity/feature/auth — login + SSO callback  [type:feature]
-    rooms/            @trinity/feature/rooms — Discord-style shell (server rail =
-                      Spaces, channel list, members) + message timeline (list,
-                      composer + emoji picker, hover toolbar, reactions, replies,
-                      encrypted media) + encryption/offline banners  [type:feature]
-    crypto/           @trinity/feature/crypto — encryption setup + recovery pages
-                      + device-verification (emoji SAS)  [type:feature]
-    settings/         @trinity/feature/settings — Settings page: appearance
-                      (light/dark/system theme), profile (name + avatar), and
-                      device management (sign-out/verify)  [type:feature]
-  components/*        @trinity/components/* — the public component tier feature code
-                      reaches for: Trinity-authored wrappers (overlay adapters, icon,
-                      emoji-picker, select, checkbox, tooltip, …) plus Trinity's own
-                      presentational components (avatar, banner, page header, media
-                      bubble, message toolbar); the API is ours, so the library
-                      underneath can be swapped  [type:ui, ui:public]
-  spartan/*           @trinity/helm/* — styled spartan-ng Helm components over
-                      headless Brain primitives (button, input, card, dropdown-menu, …),
-                      generated via @spartan-ng/cli; consume through components/*
-                      [type:ui, ui:vendor-wrapper]
-e2e/browser/        capability-owned app journeys (`trinity-e2e-browser:e2e`)
-e2e/                  standalone crypto/protocol harnesses (serve www/)
-android/ ios/         Capacitor native projects (webDir: www)
-www/                  web build output
-```
+## Project status and limitations
 
-Boundaries are enforced by `@nx/enforce-module-boundaries` on three independent axes:
-`type:`, `scope:`, and `ui:`, which separates Trinity's own wrapper layer from the vendored
-spartan kit so third-party UI packages can be banned everywhere below it. Dependencies point
-inward —
-`app → feature → {data-access, ui} → {util, platform}` — and one feature may never
-import another. `ui` is presentational only and cannot reach a data-access lib at all.
-A library is named three different ways and they no longer coincide: the directory
-(`libs/data-access/discovery`), the import alias (`@trinity/data-access/discovery`) and the Nx
-project name (`data-access-discovery`). Commands take the project name — `nx test
-data-access-discovery` — while imports take the alias.
+Use the [current user guides](docs/users/index.md) for implemented behavior and the
+[issue tracker](https://github.com/quwisky/trinity-matrix-client/issues) for proposed work.
+A feature's presence does not establish validation on every host or deployment.
+Check the [platform guides](docs/platforms/index.md) and the change's recorded evidence
+for unavailable native, signing, notification, or recovery checks.
 
-New shared libs are added when first needed, under the parent for their layer. Each
-component/page lives in its own directory
-(`name/name.component.ts` + `.html`/`.scss`/`.spec.ts`). See
-[the architecture docs](docs/architecture/index.md) for the rationale and data flow.
-
-## Project status
-
-| Milestone                                        | State                                                                                                                                                                                              |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 — Scaffold + crypto WASM spike                 | ✅ Done — E2EE validated on Blink + WebKit                                                                                                                                                         |
-| 2 — Auth (discovery, password, SSO, logout)      | ✅ Done — flow verified headlessly                                                                                                                                                                 |
-| 3 — Crypto bootstrap (cross-signing, key backup) | ✅ Done — core services + setup/recovery UI and a non-blocking `/rooms` banner                                                                                                                     |
-| 4 — Sync & room list                             | ✅ Done — live rooms, recency ordering, unread badges, encryption lock                                                                                                                             |
-| 5 — Timeline (read)                              | ✅ Done — decrypted messages, markdown, auto-paginating history                                                                                                                                    |
-| 6 — Compose (send)                               | ✅ Done — send/edit/delete, reactions, replies, emoji, local echo + retry                                                                                                                          |
-| 7 — Device verification UI                       | ✅ Done — emoji SAS, self and cross-user (QR deferred)                                                                                                                                             |
-| 8 — Media                                        | ✅ Done — display + send (image/file/video/audio), AES-CTR attachment crypto in-tree, server thumbnails + duration/dimension probing, native Camera picker + Filesystem/Share save (web fallbacks) |
-| 9 — MVP polish                                   | ✅ Done — light/dark/system theme (+ native status bar), offline sync cache + web/PWA service worker, Settings (profile + device management), authenticated avatars                                |
-
-A current capability list, including what is deliberately not supported yet, is in
-[Using Trinity](docs/users/index.md).
-
-## Known limitations (current)
-
-- No credentialed login test against a _public_ homeserver yet (the matrix.org
-  `smoke:login` check is unauthenticated). The credentialed path is covered end-to-end
-  against a disposable local Synapse — the Playwright app journeys run in CI on every PR, and the standalone `e2e:verify` SAS round-trip (verified 2026-06-27) is still
-  run by hand.
-- Native SSO deep link (`eu.qwky.trinity://sso-callback`) is implemented end-to-end —
-  system-browser login, the custom scheme registered on iOS/Android, warm + cold-start
-  (`getLaunchUrl`) handling, and a single-use `state` nonce checked on the callback — but
-  has not yet been exercised on a physical device against a real SSO provider.
-- Session token stored via Preferences, not yet hardware-backed secure storage.
+Trinity's built-in messaging does not provide voice or video calls. Offline caches
+retain local content and the application shell; they do not replace a homeserver or
+network access for first-time sign-in. [Troubleshooting](docs/reference/troubleshooting.md)
+connects known symptoms to their owning contracts.
 
 ## License
 

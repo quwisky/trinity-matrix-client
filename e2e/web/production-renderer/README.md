@@ -1,49 +1,81 @@
 # Production renderer contract
 
-This suite is the semantic, responsive and geometry gate for Trinity's real production renderer.
-It stores no screenshots or pixel baselines in the repository.
+Use this suite for production Web renderer semantics, responsive geometry,
+contrast, and selected accessibility behavior. For target ownership and resource
+sequencing, read [E2E architecture](../../../docs/contributing/e2e-architecture.md);
+for choosing validation, read [Testing](../../../docs/contributing/testing.md).
 
-Run it with:
+Run the registered target:
 
 ```bash
 pnpm nx run trinity-e2e-web:production-renderer
 ```
 
-The command creates a production build and its SHA-256 manifest before Playwright starts. Set
-`TRINITY_E2E_PREBUILT_WWW=1` only to reuse a previously recorded `www/`; that path verifies the
-payload against the manifest before serving it and fails closed if either has drifted.
+The target owns one serialized, disposable-Synapse invocation, a production web
+build, a bundle manifest, browser processes, teardown, and ignored artifacts.
+It requires Docker plus Chromium and WebKit. Do not run another Synapse-backed
+suite alongside it.
 
-The suite blocks the PWA service worker. Chromium otherwise routes the disposable homeserver's
-self-signed TLS discovery through the worker and synthesizes a 504, which tests worker/network
-behavior instead of the renderer contract this suite owns. The same production JavaScript, CSS and assets
-are still served and hash-verified before they are copied into Electron and Android.
+## Understand the built artifact
 
-## Representative cross-cutting matrix
+By default, the runner builds `trinity:build:production`, writes a manifest for
+`www/`, and serves that payload. `TRINITY_E2E_PREBUILT_WWW=1` is only for a
+previously recorded `www/`: the runner verifies it against
+`dist/web-bundle-manifest.json` and fails if either payload or manifest drifts.
+It is not a shortcut for an arbitrary local build.
 
-| Project                | Viewport/device | Appearance                |
-| ---------------------- | --------------- | ------------------------- |
-| wide-dark-cosy         | 1440x900        | dark Trinity, Cosy        |
-| standard-amethyst-cosy | 1280x720        | dark Amethyst, Cosy       |
-| tablet-light-compact   | 1024x768        | light Trinity, Compact    |
-| compact-light-large    | 900x700         | light, Compact, 125% text |
-| pixel-onyx-cosy        | full Pixel 5    | dark Onyx, Cosy           |
-| small-light-large      | full 320x568    | light, Compact, 125% text |
-| webkit-compact-light   | 900x700 WebKit  | light Trinity, Compact    |
-| appearance-desktop     | 1280x720        | all six Theme × Mode      |
-| appearance-mobile      | full Pixel 5    | all six Theme × Mode      |
+The suite blocks the PWA service worker because service-worker behavior has its
+own production-PWA contract. Blocking it keeps the disposable homeserver's
+self-signed discovery traffic from becoming a synthetic worker failure while
+this suite measures the renderer.
 
-Every project checks horizontal overflow, surface bounds, representative rendered contrast, the
-production reduced-motion token contract, seeded unread content, accessible control names, picker
-focus restoration and safe encryption setup. Phone profiles also enforce 44px Back and Send
-targets; desktop and phone profiles verify the appropriate Settings navigation treatment. The
-1024px project reaches the primary action through Tab navigation and verifies its focus indicator
-under forced colours. Mobile profiles prove the floating navigation clears the runtime safe-area
-inset. The WebKit project launches Playwright's actual WebKit engine rather than only adopting its
-user agent. The two Appearance projects derive their cases from the production Theme catalog,
-verify semantic tokens and geometry, and attach one full-page review screenshot per combination.
+## Read the project matrix correctly
 
-Performance JSON is diagnostic evidence stored only in ignored Playwright output. It is not a
-machine-independent timing budget. Production Angular budgets remain the hard bundle-size gate.
+The Playwright configuration has nine projects in two groups:
 
-Visual proof for UI pull requests is captured into ignored temporary/test output, uploaded directly
-to the pull request, and then discarded. It must never be committed to the repository.
+| Group                    | Projects                                                                                                                                                      | What runs there                                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application renderer     | `wide-dark-cosy`, `standard-amethyst-cosy`, `tablet-light-compact`, `compact-light-large`, `pixel-onyx-cosy`, `small-light-large`, and `webkit-compact-light` | [`application-renderer.spec.mts`](application-renderer.spec.mts) seeds a disposable room and checks its representative production surface contracts.                 |
+| Theme and Mode artifacts | `appearance-desktop` and `appearance-mobile`                                                                                                                  | [`appearance-artifact.spec.mts`](appearance-artifact.spec.mts) checks the unauthenticated sign-in surface for each catalogued Theme with fixed light and dark modes. |
+
+`application-renderer.spec.mts` deliberately skips the two `appearance-*`
+projects. Do not describe one assertion as running in every project. The WebKit
+project uses Playwright's WebKit engine; the other named viewports select their
+configured browser and device profiles.
+
+The application group gives representative cross-capability evidence, including
+the login card, room shell, composer, overflow, readable headings, seeded
+messages, appearance projection, accessible labels, emoji-picker focus return,
+Settings, and encryption setup. The narrow profiles also check safe-area
+placement and 44px Back and Send targets; `small-light-large` checks the runtime
+warning layout, `standard-amethyst-cosy` changes Theme, and
+`tablet-light-compact` checks keyboard focus under forced colours. The WebKit
+project proves it is using WebKit.
+
+The appearance group checks each catalogued Theme and fixed Mode at login for
+semantic tokens, card geometry, overflow, and distinct token combinations. It
+writes a review screenshot per combination only to ignored Playwright output.
+Performance JSON is diagnostic evidence in the same output, not a
+machine-independent timing budget. This remains representative renderer
+evidence, not a pixel baseline or a complete cross-product of every interaction.
+
+## Diagnose a failure
+
+Start with the suite summary, JUnit result, blob report, and retained trace under
+`dist/.playwright/trinity-e2e-web/<run-id>/`. Local runs also create an HTML
+report there. The artifact root is ignored; attach useful proof directly to an
+authorized pull request and never commit screenshots, traces, reports, or pixel
+baselines.
+
+A failure may come from the production build, manifest verification, Docker or
+Synapse setup, a selected browser, or the renderer assertion. Preserve the
+first failure and its artifact before retrying. A retry can identify flakiness;
+it does not turn the original failure into a clean pass.
+
+## State the limits
+
+This suite proves a production Web payload in its owned browser and disposable
+Matrix environment. It does not prove PWA service-worker behavior, a launched
+Electron shell, an installed Android or iOS host, deployed push delivery, or
+all product journeys. Use the matching registered target and host guide when
+one of those boundaries changes.

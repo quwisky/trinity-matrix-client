@@ -1,888 +1,488 @@
 # Troubleshooting
 
-An index of failures this codebase actually produces, grouped by where you hit them. Each
-entry states the symptom first, because that is what you have when you arrive here.
+Start with the symptom, then check the named owner and the actual failure output.
+A missing prerequisite, a failed check and an unexecuted check are different outcomes;
+keep that distinction in a bug report or pull request. Reproduce with the same target,
+configuration and dependency state before changing implementation or weakening a guard.
 
-Most of these are not bugs. They are consequences of a real constraint, and the entry
-explains the constraint so the fix stops looking arbitrary.
+For setup and command selection, use [getting started](../contributing/getting-started.md),
+[commands](../contributing/commands.md) and [testing](../contributing/testing.md).
+Do not include tokens, recovery keys or real message content in shared diagnostics.
 
 ## Build and tooling
 
 ### pnpm test fails in the scripts project with ENOENT or a floor assertion
 
-**Symptom.** `nx run-many -t test` fails in `scripts` before any test runs, with
-`ENOENT ... docs/reference/stack.md`, or with `expected 0 to be greater than or equal to 10`.
-
-**Cause.** `scripts/stack-versions.spec.mjs` reads
-[the stack reference](stack.md) at module scope and parses its version table. Moving the
-file, dropping the table, or restyling the version column so it is no longer a bare
-`1.2.3` all break it.
-
-**Fix.** Keep the table, or update the path and the row regex in the spec in the same
-commit. Do not delete the spec: the drift it prevents is real and recurring.
+The stack-version guard reads [stack.md](stack.md) and the Matrix architecture guide.
+A missing document, unparseable table or fewer than **12** installed-package rows fails
+before the guard can compare versions. Preserve backticked package names and numeric
+`major.minor.patch` version cells. Run `pnpm nx test scripts -- stack-versions`.
+If moving the reference, update its reader and links together; do not remove the guard.
 
 ### An edit to the version table does not fail the test locally
 
-**Symptom.** You put a wrong version in the stack table, run `pnpm test`, and it passes.
-Or you bump a dependency and the table is never re-checked.
-
-**Cause.** The `scripts` project's `test` target inherits Nx's `default` inputs, which are
-`{projectRoot}/**/*` plus `sharedGlobals`. `docs/`, `package.json` and `pnpm-lock.yaml`
-are all outside that set, and `node_modules/*/package.json` is read at runtime where Nx
-never sees it. The cache key only moves when a file under `scripts/` changes.
-
-**Fix.** `pnpm nx test scripts --skip-nx-cache`. CI is unaffected — its runners are
-always cold, because the setup action deliberately caches nothing for Nx.
+Check which files and installed package manifests the guard actually reads. It skips
+non-numeric version cells and packages absent from root `node_modules`; Electron has a
+separate installation. `scripts:test` now has `cache: false` and explicit cross-repository
+inputs, so the historical stale-cache diagnosis no longer applies. Run
+`pnpm nx test scripts -- stack-versions` and inspect its exit status and assertions.
 
 ### The Electron compile fails with TS5107 on `moduleResolution`
 
-**Symptom.** `pnpm -C electron run compile` errors with
-`Option 'moduleResolution=node10' is deprecated`.
-
-**Cause.** `electron/tsconfig.json` is back on `"moduleResolution": "Node"`. TypeScript 6
-rejects node10 resolution outright, and the shell is on the same TypeScript as the root
-workspace, so there is no older compiler to fall back on.
-
-**Fix.** The shell needs the Node16 pair — `"module": "Node16"` with
-`"moduleResolution": "Node16"`, which emits byte-identical CommonJS for this package:
-
-```bash
-cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit
-```
-
-This most often arrives through `nx migrate`: `@nx/js`'s codemods glob every
-`tsconfig*.json` in the repo, `electron/tsconfig.json` included. Check that file in the
-diff of any migration.
+Inspect `electron/tsconfig.json`, especially after an Nx migration. The shell needs
+`"module": "Node16"` and `"moduleResolution": "Node16"`; TypeScript 6 rejects the old
+Node10 resolution setting. Run `pnpm electron:typecheck`, which uses the shell's own
+pinned dependencies. Do not suppress the compiler error with an older root compiler.
 
 ### A native build points at a pnpm path that does not exist
 
-**Symptom.** `pnpm android:build` or opening Xcode fails with "No such file or directory"
-naming a path like `node_modules/.pnpm/@capacitor+android@8.4.1_@capacitor+core@8.4.1/…`.
-
-**Cause.** `cap sync` writes absolute plugin paths into `android/capacitor.settings.gradle`
-and `ios/App/CapApp-SPM/Package.swift`, and under pnpm those paths embed the exact resolved
-version and its peer hash. Any Capacitor version bump invalidates them.
-
-**Fix.** Run `pnpm android:sync` and `pnpm ios:sync` after any Capacitor dependency change
-and commit the regenerated files. The dependency bot ignores `android/**` and `ios/**`, so
-its Capacitor group PR will never do this for you.
+Capacitor-generated plugin paths include resolved pnpm versions and can become stale
+after a dependency change or checkout move. Re-run the appropriate `pnpm android:sync`
+or `pnpm ios:sync`, then inspect the generated diff. Native build prerequisites and
+platform-specific verification remain necessary; see [mobile](../platforms/mobile.md).
+A successful sync alone does not prove Xcode or Gradle can build the application.
 
 ### Every browser test fails at launch after a Playwright bump
 
-**Symptom.** Nearly every spec fails with `Executable doesn't exist at
-.../chromium_headless_shell-<n>`. It reads like a catastrophic regression rather than a
-missing download. The 1.61 to 1.62 bump failed 165 of 167 specs this way.
-
-**Cause.** Each Playwright release pins its own browser build.
-
-**Fix.** `pnpm exec playwright install chromium webkit` after every bump, not once per
-clone. CI is immune only because its browser cache is keyed on `pnpm-lock.yaml`, so a moved
-lockfile necessarily misses.
+An `Executable doesn't exist` error usually means the Playwright package and downloaded
+browser revisions differ. Run `pnpm exec playwright install chromium webkit` with the
+checkout's pinned dependencies, then rerun the failed target. A missing browser is a
+prerequisite failure, not evidence about the application's behavior.
 
 ### pnpm build produced a minified, hashed, service-worker build
 
-**Symptom.** Unexpected minification, hashed filenames, an `ngsw` manifest and no source
-maps. Or `pnpm electron:e2e` taking far longer than expected.
-
-**Cause.** `apps/trinity/project.json` sets `defaultConfiguration: "production"`, so a bare
-`nx build trinity` is a production build — and `electron:build`, `electron:e2e`,
-`trinity-android:sync`, `trinity-ios:sync` and everything downstream depend on the
-`trinity:build` Nx target.
-
-**Fix.** Pass `--configuration=development` when you want a dev build. The spike and
-Synapse e2e scripts already do. This is also why production-only regressions are only
-reachable through the desktop path.
+That is the default renderer configuration. Use `pnpm nx run trinity:build:development`
+for development output. Host targets can depend on a separate production build; inspect
+`pnpm nx show project <project> --json` before assuming a forwarded configuration
+changes a dependency. Production behavior is also exercised by Web/PWA targets, not only
+Electron. See [commands](../contributing/commands.md).
 
 ### nx test cannot find the project you named
 
-**Symptom.** `Cannot find project 'core'`, or `Cannot find project 'data-access/discovery'`.
-
-**Cause.** Two different mistakes produce the same message. `@trinity/core` was dissolved
-into per-domain libraries, so no project called `core` exists. And for every library nested
-under `libs/data-access/`, `libs/feature/` and `libs/util/`, the Nx project name, the
-directory and the import alias are three different strings: the project `data-access-discovery`
-lives in `libs/data-access/discovery` and is imported from `@trinity/data-access/discovery`. Only
-the hyphenated form names a task, so a directory or an alias pasted into an `nx` command
-never resolves.
-
-**Fix.** Use the hyphenated project name — `pnpm nx show projects` lists them all. The
-`test` target is `nx:run-commands` running `vitest run` with `cwd` set to the project, so
-Vitest arguments come after `--`:
+List projects with `pnpm nx show projects`. The project name, path and alias differ:
+`data-access-room-library`, `libs/data-access/room-library` and
+`@trinity/data-access/room-library` name the same library in three contexts. The old
+`core` project no longer exists. Vitest filters follow `--`, for example:
 
 ```bash
-pnpm nx test util-matrix -- message-view
-pnpm nx test feature-rooms --configuration=watch
+pnpm nx test data-access-room-library -- account-scope
 ```
 
-See [commands](../contributing/commands.md).
+Inspect resolved targets before copying a command for another project.
 
 ### Moving a library breaks its test suite with every config file correct
 
-**Symptom.** After relocating a library, every spec in it fails before a single test runs,
-with `Failed to resolve import "../../../test-setup.base" from "src/test-setup.ts"`.
-
-**Cause.** `project.json`, `tsconfig.json`, `tsconfig.spec.json` and `vite.config.ts` are
-the files you go looking for, and they are easy to correct. `src/test-setup.ts` also reaches
-the workspace root by relative path, and nothing in the config layer names it by depth, so
-it is invisible from there. The whole file is one line:
-
-```ts
-import '../../../../test-setup.base';
-```
-
-What makes it easy to overlook is that the neighbouring config genuinely is
-depth-independent. `vite.base.config.ts` derives the workspace root by walking up to the
-directory holding `nx.json`, and its docblock says so, so a `vite.config.ts` that moved a
-level deeper keeps working. The setup file it points at does not: a library directly under
-`libs/` needs three `../` segments, one nested a level deeper needs four.
-
-**Fix.** After moving a library, grep it for relative specifiers that climb out of it and
-re-check each one against the new depth:
-
-```bash
-rg "'\.\./\.\./" libs/data-access/discovery
-```
-
-That surfaces both root-relative imports the library template carries: `vite.config.ts`
-reaching `../../../vite.base.config`, and `src/test-setup.ts` reaching
-`../../../../test-setup.base`.
+Check relative imports in `src/test-setup.ts` as well as the project and Vite configs.
+The setup import still depends on directory depth even where the shared config locates
+the workspace root dynamically. Use `rg "test-setup.base|vite.base.config" <library-path>`
+and resolve each path from its importing file. Run that project's tests and typecheck.
 
 ### A library move can silently weaken module boundaries
 
-**Symptom.** None at all. `pnpm lint` stays green.
-
-**Cause.** `@nx/enforce-module-boundaries` reports a violation only for an import it can
-resolve to a project in the Nx graph. If a renamed specifier stops resolving, the rule does
-not fail — it has nothing to say about that import, and silence is exactly what a compliant
-codebase looks like. A passing lint is therefore not evidence that the rule still applies.
-`scripts/lint-invariants.spec.mjs` does not close the gap either: it asserts the rule is
-configured at severity 2, which is a weaker claim than the rule still matching anything.
-
-**Fix.** Prove it with a positive control. Add an import the tags forbid, confirm lint
-fails, then revert:
-
-```bash
-echo "import type { RoomLibraryService } from '@trinity/data-access/room-library';" >> libs/components/foundations/src/index.ts
-pnpm nx lint components-foundations --skip-nx-cache   # must fail
-git checkout -- libs/components/foundations/src/index.ts
-```
-
-`libs/components/foundations` is tagged `type:ui` and `scope:shared`, while `data-access-discovery` is
-`type:data-access` and `scope:matrix`, so both axes are violated. The scope one is what gets
-reported:
-
-```text
-A project tagged with "scope:shared" can only depend on libs tagged with "scope:shared"
-```
-
-An unused-variable error rides along with it; the boundary error is the one that matters.
+A passing boundary lint is not sufficient if renamed aliases no longer resolve to Nx
+projects. Check `tsconfig.base.json`, resolved project tags and the graph after a move.
+For a positive control, use an isolated disposable checkout: temporarily import
+`RoomLibraryService` from `@trinity/data-access/room-library` into the public foundations
+entrypoint and run `pnpm nx lint components-foundations --skip-nx-cache`.
+The diagnostic must name the forbidden boundary, not merely an unused import. Remove
+only that temporary edit and rerun lint. Never restore an entire file over unrelated work.
 
 ### A browser journey type error survives test transpilation
 
-**Symptom.** A type-only mistake in an `.mts` Playwright spec is not reported by a focused
-browser execution.
-
-**Cause.** Playwright transpiles the journey; it is not the TypeScript compiler. The browser
-lifecycle has separate lint and typecheck targets so runtime execution can stay focused.
-
-**Fix.** Run `pnpm nx run trinity-e2e-browser:typecheck` and
-`pnpm nx run trinity-e2e-browser:lint` while iterating. The full local gate runs both through
-the repository-wide target sets.
+Playwright transpiles specs without typechecking them. Run
+`pnpm nx run trinity-e2e-browser:typecheck` and
+`pnpm nx run trinity-e2e-browser:lint` as well as the relevant journey.
+Likewise, a passing Vitest suite does not replace its project typecheck.
 
 ## Tests
 
 ### The canonical browser config refuses to run directly
 
-**Symptom.** Running `playwright test -c e2e/browser/playwright.config.mts` directly fails
-before a journey can reach the app.
-
-**Cause.** The lifecycle config is deliberately a fail-closed joiner. It does not own a fallback
-build, static server, port, lock, or Synapse stack; those belong to the support invocation.
-
-**Fix.** Run `pnpm nx run trinity-e2e-browser:e2e`. Pass a capability-relative spec path
-or `--grep` after `--` for a focused run.
+The config joins a lifecycle-owned invocation; it does not create a fallback build,
+server, lock or disposable Synapse. Run `pnpm nx run trinity-e2e-browser:e2e`
+and pass a capability-relative spec path or `--grep` after `--`. See
+[E2E ownership](../contributing/e2e-architecture.md).
 
 ### A spec passes locally and fails in CI, reported as flaky
 
-**Symptom.** Playwright's summary says "flaky" rather than "failed", which is easy to skim
-past.
-
-**Cause.** `e2e/browser/playwright.config.mts` sets an unconditional `retries: 2` after spreading the
-Nx preset, so local runs retry too. Workers are likewise forced to 2 everywhere, on purpose:
-every spec drives one shared disposable Synapse and the default worker count oversubscribes
-it.
-
-**Fix.** Run with `--retries=0` when you want the honest first-attempt result, and read the
-flaky count in the summary rather than only the pass or fail line.
+The canonical browser config sets two retries and two workers locally as well as in
+CI. A later passing attempt does not erase a first-attempt failure. Reproduce with
+`--retries=0` after the target's `--` separator, retain the first failure artifacts and
+report flaky counts. Follow [testing](../contributing/testing.md) before changing retries.
 
 ### A different test fails each run, and the totals do not add up
 
-**Symptom.** One project's suite fails on a different test every run, and the summary reads
-something like `Tests 42 passed (49)` — seven tests that simply never executed. Sometimes an
-`Unhandled Errors` block appears with `[vitest-pool]: Worker forks emitted error` and
-`emitUnexpectedExit`.
+Missing test totals or `Worker forks emitted error` can indicate a crashed or killed
+worker. They do not prove memory starvation, and varying failures do not exclude a
+regression. Inspect worker stderr, process exit signals, available memory and any OS
+kill evidence. Compare the same focused target and dependency/configuration state in
+isolated checkouts when needed; install dependencies per worktree rather than assuming
+a shared symlink is safe.
 
-**Cause.** The worker fork was killed by the OS, not by a failing assertion. The `Killed`
-line goes to the fork's own stderr and never reaches the log, which is why this does not look
-like an OOM.
+Reduce competing work while diagnosing. Measure a focused run, for example:
 
-What drives peak RSS is **which component the file mounts, not how many tests it has**.
-Measured across `feature-rooms`:
+```bash
+/usr/bin/time -f %M pnpm nx test feature-rooms --skip-nx-cache -- message-composer --maxWorkers=1
+```
 
-| Spec                         | Tests | Peak RSS |
-| ---------------------------- | ----- | -------- |
-| `message-composer.component` | 116   | 973 MB   |
-| `channel-sidebar.component`  | 85    | 931 MB   |
-| `edit-history.component`     | 24    | 960 MB   |
-| `rooms.page.actions`         | 46    | 1246 MB  |
-
-A 24-test file costs as much as a 116-test one: roughly 950 MB is a fixed floor for the module
-graph, jsdom and Angular. Files that mount `RoomsPage` sit ~300 MB above it because of the
-service graph they wire up, and those cross the line first. Per-test retention is real — no
-`afterEach` reclaims it, and `vi.clearAllMocks()`, `ngMocks.reset()` and
-`TestBed.resetTestingModule()` all leave the curve unchanged — but at these file sizes it is
-second-order next to the floor.
-
-**Fix.** Measure, do not guess: `/usr/bin/time -f %M pnpm exec vitest run <file>
---maxWorkers=1` prints peak RSS in KB. Split only files measurably above the floor, at a
-`describe` boundary, and re-measure — a green run on a quiet machine proves nothing. Splitting
-a file already at the floor buys nothing, so test count alone is not a reason to split.
-
-At the floor there is no repo-side fix left: one spec file needs ~1 GB, so the suite needs
-memory more than it needs tuning. Run `--parallel=1 -- --maxWorkers=1`, and do not run `lint`
-alongside it — its type-aware rules are themselves memory-hungry.
-
-**Confirming it is the machine and not your change.** `git diff <base>...HEAD --name-only |
-grep <project>` to show the project is untouched, then repeat the run two or three times: a
-genuine regression fails the same test every time, starvation picks a different one. Do not
-reach for `git worktree` to test the base commit — Nx runs a dependency check that tries to
-purge a symlinked `node_modules` and aborts with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`.
+On systems with GNU `time`, this reports peak resident memory in KiB. Record the actual
+exit status too. Split tests only when measurements and responsibility boundaries justify
+it; historical per-file memory figures are not universal limits.
 
 ### The e2e web server dies with a Go stack trace
 
-**Symptom.** `trinity-e2e-browser:e2e` fails before any test runs, and the build output carries
-`fatal error: all goroutines are asleep - deadlock!` with a Go stack through
-`esbuild/internal/bundler`. A plain `pnpm build` succeeds moments earlier.
-
-**Cause.** Memory pressure, not a build error. The lifecycle owner builds
-`trinity:build:development` before launching Playwright; esbuild's Go runtime can deadlock rather
-than reporting an allocation failure. Below roughly
-2.3 GB available it reproduces reliably; at ~2.9 GB it does not.
-
-**Fix.** Free memory and re-run — stop the Nx daemon (`pnpm nx daemon --stop`) and close
-anything large. There is deliberately no repo-side workaround: capping esbuild's parallelism
-in the config would slow every build to accommodate one constrained machine.
+An esbuild `all goroutines are asleep - deadlock!` failure during the lifecycle's
+renderer build needs the complete build log and process/resource evidence. Memory
+pressure is one possibility, not a diagnosis from the stack trace alone. Reproduce the
+same `trinity:build:development` target with competing tasks stopped, and compare the
+configuration and dependency state. Do not call the journey passing when its build failed.
 
 ### A negative assertion in a projection spec proves nothing
 
-**Symptom.** `expect(rebuildSpy).not.toHaveBeenCalled()` passes green, and the rebuild it
-was supposed to rule out happens one microtask later.
-
-**Cause.** `coalesce()` queues rebuilds with `queueMicrotask`, so nothing has run yet when
-the assertion executes.
-
-**Fix.** Flush the turn first with `await Promise.resolve()`. Without it, every negative
-listener assertion in a projection spec is vacuous. See
-[state and reactivity](../architecture/state-and-reactivity.md).
+A negative assertion can run before a coalesced callback or before the projection was
+attached at all. Start the owned projection lifetime, prove a relevant positive event is
+observed, then exercise the forbidden event and wait for the scheduler/barrier it uses.
+`await Promise.resolve()` flushes the immediate microtask used by `coalesce`; it is not
+universal readiness proof. See [state and reactivity](../architecture/state-and-reactivity.md).
 
 ### NG0950 during a component spec's first change detection
 
-**Symptom.** "Input is required but no value is available yet", or stale reads in an
-otherwise correct test.
-
-**Cause.** The app is zoneless. Angular Testing Library's zoneless `render()` binds only
-through Angular's native `bindings` API and silently ignores the `inputs` and `on` options.
-Switching to `bindings`/`inputBinding` is not a workaround either — a later
-`componentRef.setInput` then triggers NG0317.
-
-**Fix.** `import { render } from '@trinity/testing'`. The wrapper renders with
-`skipDetectChanges`, applies `inputs` via `setInput`, wires `on` handlers, then detects.
+Import `render` from `@trinity/testing`. Its zoneless wrapper renders without initial
+change detection, applies inputs and output handlers, then detects. Bypassing it can leave
+required inputs unset. Do not mix native `bindings` with later `setInput` updates without
+checking Angular's binding contract; see [testing](../contributing/testing.md).
 
 ### Cannot synchronously execute watches while scheduling
 
-**Symptom.** That error in a timing test that stubs `requestAnimationFrame` to fire inline.
-
-**Cause.** `render()` attaches the component to `ApplicationRef`, so a signal write from
-inside a synchronous rAF callback re-enters the zoneless scheduler mid-tick.
-
-**Fix.** Use a detached `TestBed.createComponent(...)` fixture, which only ticks on the
-spec's own `detectChanges()`. The pattern is create, `componentRef.setInput(...)`,
-`detectChanges()` — that first pass resolves the scroll viewchild — then subscribe to
-outputs and drive further inputs. Put the rAF stub in `beforeEach` with
-`vi.unstubAllGlobals()` in `afterEach`.
+A synchronous `requestAnimationFrame` stub can re-enter the zoneless scheduler while an
+attached fixture is ticking. For a test that deliberately drives scheduling, use a detached
+`TestBed.createComponent` fixture, set inputs, then call `detectChanges()` explicitly.
+Restore global stubs in teardown. Do not change production scheduling merely to satisfy
+an unrealistic inline-frame mock.
 
 ### A tooltip spec fails exactly like the bug it was written to catch
 
-**Symptom.** `fireEvent.pointerEnter(el)` produces no tooltip.
-
-**Cause.** jsdom has shipped `PointerEvent` since v27, but with the spec defaults
-(`pointerType: ''`, `isPrimary: false`), and Brain's tooltip opens only for a `pointerType`
-of `mouse` or `pen`. The shim in `test-setup.base.ts` is not a missing-feature polyfill; it
-survives for its **defaults**.
-
-**Fix.** Name `pointerType` explicitly at the call site, and do not delete the shim.
-Separately, pointer _capture_ is still entirely absent in jsdom 30 — stub
-`setPointerCapture`, `hasPointerCapture` and `releasePointerCapture` per-spec for sonner,
-drawer and slider swipe paths.
+Set the pointer type explicitly when dispatching pointer events: tooltip opening
+recognizes mouse or pen, while jsdom event defaults may not. Preserve the shared
+`PointerEvent` defaults shim. Pointer-capture methods also need appropriate per-spec
+stubs for interactions such as drawers and sliders. Use a real browser to prove geometry,
+hover behavior and visible positioning.
 
 ### Two green suites and a shipped defect
 
-**Symptom.** A unit spec mocks a collaborator and passes; nothing works in the app. The
-recorded instance: the toast service spec mocked its sonner dependency and passed while no
-toast ever rendered.
-
-**Cause.** When the defect is "the two sides disagree about which object they share", a
-mocked spec is structurally incapable of seeing it.
-
-**Fix.** Add a spec that mounts the real objects and asserts the observable outcome — for
-toasts, mounting the real toaster and asserting the string reaches
-`document.body.textContent`. Note it needs a settle of `ApplicationRef.tick()`, then
-`await Promise.resolve()`, then `tick()` under zoneless.
+A mock can hide disagreement between a caller and the real shared store or outlet.
+Add integration coverage at that seam: for a toast, mount the real service and toaster,
+wait for rendering, and assert the message appears. Keep unit coverage for isolated logic;
+use browser evidence for layout or platform behavior. See [testing](../contributing/testing.md).
 
 ### pnpm test fails while installing the desktop test dependencies
 
-**Symptom.** `trinity-desktop:install-dependencies` fails before the Electron unit suite starts.
-
-**Cause.** `electron/` deliberately has its own lockfile and standalone pnpm workspace. The explicit
-Nx unit/typecheck/lint targets install that pinned graph before running; a stale or manually edited
-`electron/pnpm-lock.yaml` fails the frozen install rather than silently using root dependencies.
-
-**Fix.** Repair the standalone lock with the pinned pnpm version, then run
-`pnpm electron:test`. Do not add Electron-only packages to the root manifest to bypass the target.
+`electron/` has its own manifest, frozen lockfile and dependency installation. Check
+whether the failure is network access, a build-script policy or a stale lock before
+changing files. Use the pinned pnpm to repair a genuinely inconsistent shell lock, then
+run `pnpm electron:test`. Adding shell-only packages to the root bypasses its ownership.
 
 ### The Electron e2e suite times out with no useful message
 
-**Symptom.** `_electron.launch()` times out. It reads as a Playwright bug.
-
-**Cause.** Electron needs an X server even when running headless.
-
-**Fix.** `xvfb-run -a pnpm electron:e2e` on any headless machine. The separate
-`--no-sandbox` flag in the launcher is Chromium's zygote sandbox, required to run as root
-or in a container; it is **not** the app's `webPreferences.sandbox`, which stays `true` and
-is asserted by the "no Node in the renderer" spec.
+Check the launch log and display availability. Headless Linux still needs an X server;
+use `xvfb-run -a pnpm electron:e2e` where Xvfb is installed. The launcher flag
+`--no-sandbox` is distinct from the renderer's `webPreferences.sandbox`; do not disable
+the application sandbox as a launch workaround. See [desktop](../platforms/desktop.md).
 
 ### SSO logins fail against the disposable Synapse after an earlier harness run
 
-**Symptom.** The token exchange fails with nothing useful in the logs, even though the
-start script just rewrote `homeserver.yaml`.
-
-**Cause.** A bind-mounted config file is not part of a compose service definition, so
-`up -d` leaves an already-running container alone and it keeps serving what it loaded at
-start.
-
-**Fix.** Nothing — the start script already handles it by fingerprinting the mounted
-configs and restarting exactly the stale services. Do not "simplify" that restart away.
-None of the readiness polls would catch its absence.
+A running container may still hold an older bind-mounted configuration. The harness
+fingerprints mounted configs and restarts stale services; inspect that decision and the
+container logs. Preserve the fingerprint/restart contract rather than relying on a
+successful readiness poll, which does not prove the expected authentication config loaded.
+Run fixed-port harnesses sequentially.
 
 ### register_new_matrix_user fails with HMAC incorrect
 
-**Symptom.** `403 M_FORBIDDEN: HMAC incorrect` during harness startup or from a spec's
-`registerUser()`.
-
-**Cause.** Since roughly v1.119, Synapse's `generate` writes a random
-`registration_shared_secret` into `homeserver.yaml`. Appending yours below it leaves the
-first line winning, so the tool signs with one secret and Synapse validates against
-another.
-
-**Fix.** The start script replaces the line in place and only appends when none exists.
-Never restate the secret anywhere else — the account helper imports it from the start
-script precisely because a drifted copy fails as the same opaque 403.
+Compare the single harness-owned registration secret with the generated Synapse config
+without printing it into shared logs. Duplicate `registration_shared_secret` entries can
+make the helper and server use different values. Preserve the start script's replace-in-place
+behavior and the helper's import of its canonical value; do not introduce another copy.
 
 ## Electron and native
 
 ### Desktop packaging dies at codesign with a missing arm64 path
 
-**Symptom.** On an Intel Mac, `pnpm electron:package:mac` builds the `.app` and then fails
-on `release/mac-arm64/Trinity.app: No such file or directory`.
-
-**Cause.** The script hardcodes the arm64 output directory; electron-builder writes x64
-output to `release/mac/`.
-
-**Fix.** Fix the path or re-sign by hand for a local x64 build. CI sidesteps it by invoking
-`electron-builder --mac` directly on an Apple Silicon runner.
+The local macOS package script assumes `release/mac-arm64/Trinity.app`; an x64 build can
+instead produce `release/mac/Trinity.app`. Check the actual artifact and host architecture
+before changing signing paths. This is a known local-script limitation; a successful build
+on another architecture does not validate it. See [desktop](../platforms/desktop.md).
 
 ### codesign command not found in CI
 
-**Symptom.** An Electron step fails on Linux or Windows.
-
-**Cause.** `electron:build` ends with `electron:sign:dev`, which ad-hoc-signs the dev
-binary against a local self-signed identity. It self-skips off macOS now, but it did not
-always, and while it called `codesign` unconditionally it killed `electron:start`,
-`electron:e2e` and every `package:*` on Linux and Windows.
-
-**Fix.** The Nx build target self-skips development signing off macOS. On a macOS runner, either
-install the local `trinity-dev` identity for a development build or use the dedicated signed and
-notarized package path with release credentials; do not treat the ad-hoc signature as distributable.
+The current development-signing target skips signing off macOS. Inspect the resolved
+command if a Linux or Windows job still invokes `codesign`. On macOS, development signing
+and a distributable signed/notarized package are separate paths with different credentials.
+Do not report a development signature as release verification.
 
 ### Secure storage refuses to work on a Linux box
 
-**Symptom.** The desktop shell reports secure storage as unavailable and falls back to
-plaintext, even though Electron says encryption is available.
-
-**Cause.** With no OS password manager, Electron falls back to the `basic_text` backend,
-which "encrypts" with a hardcoded key. That is obfuscation, not encryption: anything
-running as the user recovers the Matrix access token. `secureStorageUsable()` therefore
-also checks `getSelectedStorageBackend()` and refuses `basic_text` and `unknown`.
-
-**Fix.** Install and unlock a keyring, or accept the documented plaintext fallback, which
-at least emits a warning instead of storing a secret under a false promise.
+Inspect the selected OS storage backend. Trinity rejects Electron's `basic_text` and
+`unknown` backends as secure storage even when encryption is nominally available. Install
+and unlock a supported keyring when secure storage is required. The documented plaintext
+fallback emits a warning and does not provide equivalent protection; see
+[desktop storage](../platforms/desktop.md).
 
 ### Desktop notifications never appear on macOS
 
-**Symptom.** Nothing displays, silently.
-
-**Cause.** Electron posts through macOS `UNUserNotification`, which requires a stable code
-signature. An unsigned or ad-hoc-signed build fails with `UNErrorDomain error 1`.
-
-**Fix.** Sign and notarize the build. The shell logs the failure explicitly on the
-notification's `failed` event, and launching with `TRINITY_NOTIFY_TEST=1` posts a test
-notification a few seconds after startup. See
-[push notifications](push-notifications.md) and [desktop](../platforms/desktop.md).
+Inspect the shell's notification failure event and signing status. macOS notification
+presentation depends on the application identity and OS permission; use the signed build
+path for representative validation. `TRINITY_NOTIFY_TEST=1` exercises presentation after
+startup. A displayed test notification does not prove Matrix push delivery. See
+[push notifications](push-notifications.md).
 
 ### Native-only code does not run on desktop, or desktop takes the native path
 
-**Symptom.** Sign-in on Electron gets the web redirect URI and the callback never comes
-back. Or a native-gated feature no-ops where you expected it to work.
-
-**Cause.** There is no Capacitor bridge in the hand-rolled Electron shell, so
-`Capacitor.isNativePlatform()` is `false` and `getPlatform()` is `'web'`.
-
-**Fix.** Detect desktop with the preload marker `globalThis.trinityDesktop.isElectron`.
-Note the two correct-but-opposite usages: the service worker and push are kept off by
-treating desktop as web, while the auth redirect must treat desktop like native.
+Electron has no Capacitor bridge: `isNativePlatform()` is false. Use the host capability
+contract for product operations and keep host selection in its adapter. When maintaining
+that adapter, the preload marker identifies Electron. Auth callbacks, service workers and
+push have distinct host policies; do not derive them from one blanket native/web branch.
+See [platforms](../platforms/index.md).
 
 ### Dynamic client registration is rejected before login starts
 
-**Symptom.** The OIDC provider rejects registration with "redirect_uri must not have an
-authority". This is not the `invalid_client` the recovery path handles.
-
-**Cause.** RFC 8252 section 7.1 requires a private-use scheme redirect to have no
-authority, so it must be `eu.qwky.trinity:/sso-callback` with a single slash.
-`//sso-callback` parses `sso-callback` as the authority with an empty path.
-
-**Fix.** Keep the single-slash form. Legacy SSO still uses `//`, so the Electron, Android
-and iOS deep-link matchers must be **scheme-only** (`eu.qwky.trinity:`) — matching on
-`://` silently drops every OIDC callback. Any change to the registered redirect URI also
-needs the client-id cache-key version bumped, or every cached client id is stranded.
+Check the actual redirect registered by the authentication adapter. OIDC uses
+`eu.qwky.trinity:/sso-callback` with one slash; the legacy SSO form uses two. Native and
+desktop matchers must accept the scheme without requiring `://`. When changing a registered
+redirect, review the cached client-ID key version too. See
+[authentication adapter](../../libs/data-access/auth/src/lib/oidc-client.service.ts).
 
 ### The OIDC token exchange fails with a missing code verifier
 
-**Symptom.** Native and Electron sign-in fails at the exchange; on a cold-start relaunch it
-fails everywhere.
-
-**Cause.** The PKCE code verifier did not survive the redirect. Nothing in matrix-js-sdk
-persists it: 42 dropped `oidc-client-ts`, which used to keep the sign-in state in
-`sessionStorage` under `mx_oidc_<state>`. `OidcStateStore` is the only copy, and the
-callback needs `oidc.clientId`, `oidc.deviceId` and `oidc.codeVerifier` to rebuild the
-`OAuth2` client — missing any one of them dead-ends at "Missing sign-in details".
-
-Off the web the in-memory route was never viable anyway: on native the authorization happens
-in the system browser and on Electron in an external window, so the app's WebView storage is
-a different store, and a process eviction loses it outright.
-
-**Fix.** Check the stash actually reached Preferences before the redirect, and that it has
-not aged out — it is single-use and expires after 10 minutes, and `peek()` bins an expired
-stash rather than serving it. Note the verifier is persisted on **every** platform including
-web (where Preferences means `localStorage`); it used to be skipped there, and re-introducing
-that skip would break web login outright.
+The round-trip state must persist before opening the authorization page. Check that
+`OidcStateStore` saved the client ID, device ID and verifier, without logging their values.
+The stash is single-use and expires after ten minutes; a missing or expired stash requires
+a fresh sign-in. Web persistence matters too: process restarts and external browsers cannot
+rely on an in-memory verifier. See [authentication adapter](../../libs/data-access/auth/src/lib/oidc-client.service.ts).
 
 ## UI and theming
 
 ### Danger text renders as an invisible strip in dark mode
 
-**Symptom.** Alert copy, the encryption warning shield, send-failed retry and the
-kick, ban and leave-room labels are unreadable. Measured at 1.26:1 on the chat canvas.
-
-**Cause.** Helm's `--destructive` is a **fill-only** token, always paired with a near-white
-foreground. In dark mode it is a near-black maroon.
-
-**Fix.** Use `text-danger`, never `text-destructive`. Trinity splits danger into three
-roles: `--trinity-danger` for alert text and icons on a surface,
-`--trinity-danger-solid` for a filled badge, and `--trinity-danger-solid-foreground` for
-the text on that fill. The values were measured against the worst backdrop each role lands
-on; `--trinity-active`, the selected-row surface, was not swept, so re-measure before
-putting danger text there. See [UI and theming](../architecture/ui-and-theming.md).
+Use `--trinity-danger` / `text-danger` for alert text and icons. Helm's `--destructive`
+is a fill token, not a readable foreground on dark surfaces. Filled danger controls use
+`--trinity-danger-solid` with `--trinity-danger-solid-foreground`. Verify contrast on the
+actual backdrop and Theme; see [UI and theming](../architecture/ui-and-theming.md).
 
 ### A style silently does nothing and no tool complains
 
-**Symptom.** A component renders with square corners, or the wrong surface, and the SCSS
-reads correctly.
-
-**Cause.** A `var(--x)` with **no fallback** whose custom property is undefined causes the
-browser to drop the entire declaration. Nothing checks that a consumed `--trinity-*` token
-exists: Stylelint sets `custom-property-pattern: null` and does no cross-file resolution.
-
-**Fix.** Grep every `var(--trinity-…)` used without a fallback across `libs` and `apps` and
-confirm each is defined in `variables.scss`. References that do supply a fallback are safe,
-because they render the fallback.
+Inspect computed styles in the browser. An undefined custom property without a fallback
+invalidates its declaration; a valid fallback can still conceal a misspelled token. Check
+the token's owner and every theme variant. Also inspect cascade layers: unlayered component
+SCSS outranks Tailwind's layered utilities, regardless of utility specificity. See
+[UI and theming](../architecture/ui-and-theming.md).
 
 ### A new Theme looks right in light and shows light surfaces in dark
 
-**Symptom.** Exactly that, with no error anywhere.
-
-**Cause.** Attribute selectors weigh in the same specificity column as classes, so
-`:root[data-theme='x']` is a **tie** with `:root.dark` and, being authored later, wins.
-
-**Fix.** Scope the Theme's light block with `:not(.dark)`, which raises it and makes it
-simply not match in dark mode. The intended ladder is `:root`, then `:root.dark`, then
-`:root[data-theme='x']:not(.dark)` and `:root[data-theme='x'].dark`. Using `:root.dark`
-rather than a bare `.dark` is what makes dark out-rank the light default regardless of
-bundle order.
+Inspect the selectors that match in both modes. A light Theme selector can tie with
+`:root.dark` and win by source order. The intended forms separate
+`:root[data-theme='x']:not(.dark)` and `:root[data-theme='x'].dark`. Follow the theme
+foundation's current contract and verify the rendered light/dark combinations.
 
 ### A toast never appears, with no error and nothing in the DOM
 
-**Symptom.** `toast()` is called and nothing happens.
-
-**Cause.** Since spartan 1.1, Brain ships its own sonner port and no longer depends on
-`ngx-sonner`. The mounted toaster renders from Brain's own store, so calling
-`ngx-sonner`'s `toast()` pushes into a store nothing observes, and it fails silently.
-
-**Fix.** Import `toast` from `@spartan-ng/brain/sonner`. One service does this and carries
-the constraint in its docblock; route new call sites through it.
+Use the public `TrnToastService` from `@trinity/components/overlay` and ensure its real
+outlet is mounted. Calling a third-party toast store directly can write to a store the
+outlet never observes, and violates the product/UI boundary. Validate the service and outlet
+together; see [UI and theming](../architecture/ui-and-theming.md).
 
 ### The desktop build renders unthemed or light-in-dark
 
-**Symptom.** Only the packaged Electron app is affected; the web build is fine.
-
-**Cause.** Angular's critical-CSS inlining rewrites the stylesheet link into a preload with
-an `onload` swap. That handler never fires over the custom `trinity://` scheme the shell
-serves from, so the token stylesheet never activates and every `var(--trinity-*)` falls
-back to nothing.
-
-**Fix.** `optimization.styles.inlineCritical` stays `false` in the production
-configuration. There is a live regression test in the Electron suite that toggles `.dark`
-inside the real renderer and asserts the resolved token value.
+Check the production renderer configuration and loaded stylesheets. Keep
+`optimization.styles.inlineCritical: false`: the deferred stylesheet swap does not work
+reliably over the shell's `trinity://` scheme. Verify resolved theme tokens in the launched
+Electron renderer, not only a web dev server.
 
 ### A timestamp keeps its old format after the user changes the preference
 
-**Symptom.** Already-rendered timestamps never update.
-
-**Cause.** A pure pipe caches on its input, so a timestamp that never changes skips
-`transform()` entirely and never re-reads the preference signal — and has its producer link
-trimmed, leaving the view permanently deaf.
-
-**Fix.** Call the formatting service as a method from the template. That re-registers the
-dependency on every change-detection pass, so an OnPush view refreshes when the preference
-moves even though none of its inputs changed.
+A pure pipe can retain its result while its timestamp input stays unchanged, even when
+a formatting preference changes. Use the owned formatting service from a template method
+so the view tracks the preference signal. Verify an already-rendered timestamp updates;
+recreating the component would miss the stale-view defect.
 
 ### A dialog's content floats over the timeline
 
-**Symptom.** The layout is right, only the background is missing.
-
-**Cause.** The CDK dialog panel is transparent. Every dialog component paints its own
-surface.
-
-**Fix.** Use the `dialog-surface()` mixin from the shared feature-rooms mixins. Related:
-the dialog service's `autoFocus` defaults to CDK's `'first-tabbable'`, which is wrong for
-any dialog whose header carries a Cancel button ahead of the field the user came to type
-in. Name the element instead, `autoFocus: '[data-autofocus]'` — a component-side `focus()`
-cannot fix it, because CDK focuses after attach.
+Use the public overlay surface contract, including `trnOverlaySurface`, through
+`@trinity/components/overlay`. Do not import a feature-room mixin into another feature.
+Check the intended focus target through the dialog API: a Cancel button before the primary
+field may otherwise receive focus. Validate focus and the visible surface in a browser.
 
 ### Unit tests pass and pnpm build fails with NG8022
 
-**Symptom.** Exactly that, after adding a disabled state to a form field.
-
-**Cause.** The workspace uses Signal Forms exclusively. Binding `[disabled]` on a
-`[formField]` node is a compile error the AOT compiler catches and Vitest never sees.
-
-**Fix.** Put it in the schema: `disabled(path, { when: … })`. It must be the `{ when }`
-object form — passing a function or string directly is deprecated, and the type-aware
-`no-deprecated` rule fails the build on it. Related: a bare `<form>` whose only binding is
-a control triggers a native submit and a full page reload; put it under `[formRoot]`.
+Signal Forms owns field constraints. Put disabled state in the schema with
+`disabled(path, { when: … })`; put length constraints there too rather than binding
+`[attr.maxlength]` beside `[formField]`. AOT catches these conflicts while Vitest only
+transpiles the template. Use `[formRoot]` for form handling and run the renderer build
+for changed form bindings.
 
 ### A spec asserting a Helm component's host classes is flaky
 
-**Symptom.** The expected utility classes are sometimes present, sometimes not.
-
-**Cause.** Helm styles its host through an async class manager: an effect plus a
-document-wide MutationObserver, applying the merged class string on a microtask or
-animation-frame schedule.
-
-**Fix.** Assert the pure synchronous `cva` functions (`buttonVariants`, `badgeVariants`)
-and that the component renders without throwing. Never assert the applied host classes.
+Host classes can be applied asynchronously through the class manager. Unit-test pure
+variant functions and component contracts without mistaking a pre-update snapshot for the
+rendered result. When a class or layout is itself the behavior under test, wait for its
+observable application in a real browser. jsdom cannot prove its visual effect.
 
 ## Matrix and encryption
 
 ### A fresh login throws an account mismatch from initRustCrypto
 
-**Symptom.** "the account in the store doesn't match the account in the constructor", or an
-account silently losing its E2EE keys after a cold start.
-
-**Cause.** Two variants. Calling `clearStores()` with no argument deletes the SDK's
-default-prefix store, not this account's, orphaning the real one — and since the account's
-registry record is gone, the startup orphan sweep then deletes it. Separately, scoping the
-crypto-store prefix by user id alone breaks re-login, because the Rust `OlmMachine` binds
-to a `(userId, deviceId)` pair and a fresh login always mints a new device id.
-
-**Fix.** Always pass `{ cryptoDatabasePrefix: account.cryptoPrefix }` taken from the
-account client, never recomputed. The prefix must include the device id, and storage must
-recompute it whenever an account's device id changes, reclaiming the abandoned store.
+Verify the stored Account's exact client and device identity. Rust crypto binds a store
+to both user and device; reusing a user-only prefix across fresh logins is wrong. Cleanup
+must use the Account's actual `cryptoDatabasePrefix`, not recompute a default. Inspect
+lifecycle outcomes before retrying or deleting data; local-only keys can be lost. See
+[Matrix and encryption](../architecture/matrix-and-encryption.md).
 
 ### TypeScript cannot find CryptoApi or decodeRecoveryKey
 
-**Symptom.** Import errors for `CryptoApi`, `CryptoEvent`, `decodeRecoveryKey`,
-`EventShieldColour`, `ServerSideSecretStorage` or `SecretStorageKeyDescriptionAesV1`.
-
-**Cause.** matrix-js-sdk does not re-export the crypto API from the package root, in 41.x or
-42.x. The
-root does export a `SecretStorage` namespace, which is a different thing.
-
-**Fix.** Deep-import from `matrix-js-sdk/lib/crypto-api` and
-`matrix-js-sdk/lib/secret-storage`. These resolve only because the SDK's `package.json` has
-no `exports` field; if upstream adds one, every deep import here breaks at once.
+The installed SDK adapters use `matrix-js-sdk/lib/crypto-api` and
+`matrix-js-sdk/lib/secret-storage` for these APIs. Inspect the installed package declarations
+and export map after an update. Keep imports inside SDK adapters and run their typechecks;
+see [stack integration notes](stack.md#crypto-types-are-deep-imports).
 
 ### Set up encryption is offered on an account that already has recovery
 
-**Symptom.** Taking that offer mints a new 4S key and deletes every key-backup version.
-
-**Cause.** After initial sync, `secretStorage.getDefaultKeyId()` routes through
-`getAccountDataFromServer`, which answers from this client's **local** store. That view is
-stale for as long as a `/sync` echo is missing — up to about 110 seconds when a long-poll
-dies.
-
-**Fix.** Any decision that can destroy something must ask the server directly with an
-authed request on the account-data endpoint, bounded by a timeout, and fail open. The same
-applies to writes: `setAccountData` short-circuits to a no-op when the local store already
-matches and then waits for an echo it never caused, so the deterministic writer is
-`setAccountDataRaw`, wrapped in a retry and with no read gating it.
+A local sync projection can lag server account data. The current setup path checks the
+server's recovery pointer directly and blocks setup when recovery is positively reported.
+**A failed existence read currently permits setup**; this is not a fail-closed guarantee.
+Do not turn that narrow implementation detail into general advice to proceed after a failed
+destructive prerequisite. Inspect Security and the actual server state before repeating
+setup. See [Matrix and encryption](../architecture/matrix-and-encryption.md).
 
 ### First-run encryption setup hangs on a spinner forever
 
-**Symptom.** Against a homeserver that accepts the socket and never answers.
-
-**Cause.** Older clients passed no `localTimeoutMs`; matrix-js-sdk therefore attached no
-timeout signal to ordinary requests. A homeserver that accepted a socket and never answered
-could keep both the request and its UI busy state pending indefinitely.
-
-**Fix.** Account clients now use a 30-second default request deadline. Crypto flows retain
-their local `withTimeout` guards where they need a tighter single-call limit or a larger
-whole-operation budget; the helper also catches a losing promise's later rejection so it
-does not surface as unhandled. `runWithBusy` clears action state from `finalize`, including
-empty completion and cancellation, and the rooms shell presents captured errors directly
-from its page-scoped status service. Do not rely on a component effect that reads only an
-error signal: in the zoneless app, a failed action may change no template-read state that
-would schedule another render pass.
+Check which request or operation remains pending. Account clients have a 30-second
+default request deadline; crypto operations add their own bounded budgets.
+`runWithBusy` clears busy state on termination, including cancellation and empty completion.
+Keep request deadlines and safe error presentation in the owning service; a component
+spinner is not proof that the server request is still running.
 
 ### An unverified message renders exactly like a verified one
 
-**Symptom.** No shield at all after a transient crypto or store error.
-
-**Cause.** Returning `null` from a shield probe means "no shield", which is visually
-identical to a fully authenticated message.
-
-**Fix.** Fail closed. A caught probe error yields a grey caution shield with a generic
-reason, so a transient failure can never visually upgrade a message's authenticity. Keep
-the catch, so a probe failure cannot break the timeline.
+A shield-probe error must not be represented as the absence of a shield. The owned
+presentation path catches probe failures and returns a grey caution shield with a generic
+reason. Preserve that distinction and ensure a failed probe cannot break timeline rendering.
+Do not infer verified authenticity from a failed read.
 
 ### The correct recovery key is accepted and the device stays unverified
 
-**Symptom.** The flow reports success and the device remains at `needs-recovery`
-permanently.
-
-**Cause.** `resetCrossSigning` rotates the private keys locally before it uploads anything.
-A reset abandoned in between leaves the olm machine holding keys nobody published, and
-`bootstrapCrossSigning({})` sees privates already present and does nothing.
-
-**Fix.** Detect it with the narrow condition — all three privates cached locally **and** in
-4S **and** cross-signing not ready — then export and re-import the secrets bundle patched
-with the real seeds from 4S, followed by `crossSignDevice`. Checking only
-"cross-signing is not ready" is far too wide and matches every ordinary unverified device.
-See [Matrix and encryption](../architecture/matrix-and-encryption.md).
+A partially abandoned cross-signing reset can leave unpublished private keys cached
+locally. The repair uses a narrow condition: all three private seeds exist locally and in
+secret storage, but cross-signing is not ready. It restores the authoritative secret bundle
+and signs the device. Do not apply this repair to every unverified device; inspect the
+owned recovery implementation and [encryption guide](../architecture/matrix-and-encryption.md).
 
 ### A recovery reset destroyed the key backup and gave nothing back
 
-**Symptom.** A user who cancels the password prompt, mistypes their password, or is on an
-SSO-only or OIDC-native account loses everything. Measured on Synapse v1.119.0:
-`room_keys/version` goes from 200 to `M_NOT_FOUND`.
-
-**Cause.** `CryptoApi.resetEncryption` deletes every key-backup version and all of secret
-storage **before** the cross-signing upload that needs interactive auth — and the password
-prompt lives inside that upload.
-
-**Fix.** Trinity does not call it. A hand-written copy authenticates first against a
-harmless request, so a refusal costs zero writes. Because it is a copy, diff
-`rust-crypto.js`'s `resetEncryption` on every SDK bump: a step added upstream is not
-inherited. Also, do not wrap the reset in `runWithBusy` — that maps failures to `EMPTY`, and
-this is the one path that must inspect why it failed to distinguish a cancelled prompt from
-an unsupported one.
+Trinity owns its recovery-reset sequence instead of calling the SDK's destructive
+`resetEncryption` directly. Pre-authentication refusal precedes writes; a later upload-stage
+challenge can follow reversible pointer parking/local rotation and require rollback.
+After identity publication, a failure can be partial and cannot be undone. Inspect Security
+before retrying, and preserve error distinctions rather than swallowing them in
+`runWithBusy`. Compare this owned sequence with upstream on SDK updates. See
+[Matrix and encryption](../architecture/matrix-and-encryption.md).
 
 ## Architecture
 
 ### The authenticated renderer freezes immediately after sign-in
 
-**Symptom.** Login reaches `/rooms`, but the page stops responding and its renderer consumes a
-full CPU core. Playwright actions and even `page.evaluate()` time out.
-
-**Cause.** An Angular effect can accidentally track signals read anywhere in its synchronous call
-stack. Notification Account reconciliation may emit a permission warning synchronously; Application
-Runtime reads and writes its warning-state signal while handling that emission. If reconciliation is
-still tracked, that state becomes another dependency of the Account effect, so recording the warning
-immediately schedules the same warning again.
-
-**Fix.** Read the owned trigger (`accountIds`) in the effect, then run reconciliation with
-`untracked`. Keep a regression whose synchronous warning subscriber also reads and writes a signal;
-changing that unrelated signal must not trigger another permission negotiation.
+Inspect effect dependencies and synchronous callbacks. Notification reconciliation can
+emit a warning that updates runtime state; tracking those incidental reads can create a
+self-triggering loop. Read the owned trigger, then reconcile under `untracked`. Keep the
+regression that changes a subscriber's unrelated signal and proves negotiation does not
+restart. A CPU-bound renderer is not diagnosed by increasing Playwright timeouts.
 
 ### The startup spinner never leaves during optional capability discovery
 
-**Symptom.** The application stays on "Restoring your session…" even though Account restoration
-finished. This is especially reproducible in Firefox storage-permission flows, in a production
-Playwright run that blocks service workers, or after an Android WebView document restart where the
-native badge bridge logs a call but never delivers its callback.
-
-**Cause.** Browser and native bridge APIs do not guarantee that
-`navigator.storage.persist()`, Angular's `SwUpdate.checkForUpdate()`, or a Capacitor badge promise
-will settle. Application Runtime treats storage durability, update discovery, and badge support as
-optional session capabilities, but an unbounded promise inside their startup commands turns a
-best-effort capability into a readiness deadlock.
-
-**Fix.** Keep all three host commands cold and finite. Their adapters use bounded RxJS `timeout`
-fallbacks and normalize a pending request to a denied persistence result or a typed warning. The
-native badge adapter also discards a timed-out readiness attempt instead of memoizing its pending
-promise forever. No optional capability may block Workspace restoration. Preserve the
-never-settling-promise regressions when changing these adapters.
+Storage persistence, update discovery and native badge callbacks may never settle.
+Their host commands must stay cold and finite, producing bounded fallback outcomes or typed
+warnings. Check the optional capability's outcome and Application Runtime stage rather than
+waiting indefinitely. Preserve never-settling-promise regressions and the badge adapter's
+release of timed-out attempts. See [application startup](../architecture/index.md#application-startup).
 
 ### A second stored account fails while Rust crypto starts
 
-**Symptom.** Restoring multiple accounts can leave one unavailable with an IndexedDB crypto
-migration error such as `getMigrationState` being read from an uninitialized store.
-
-**Cause.** `matrix-js-sdk` crypto initialization has process-wide setup that is not safe to enter
-concurrently, even though each account uses its own crypto database prefix.
-
-**Fix.** Keep account restoration independent, but serialize only `initRustCrypto()` through the
-Matrix client service's crypto-initialization queue. The queue must continue after either success or
-failure so one rejected account cannot wedge later restorations.
+Inspect per-Account restoration outcomes and the Matrix client's crypto initialization
+queue. `initRustCrypto()` must be serialized despite separate database prefixes, while
+unrelated Account work remains independent. The queue must advance after both success and
+failure so one unavailable Account does not block later restoration.
 
 ### A read model freezes after logout then login
 
-**Symptom.** The room list, unread badges or crypto status stop updating after a logout or
-an account switch, and nothing in the console says why.
-
-**Cause.** A logout swaps in a brand-new `MatrixClient`. A `connected: boolean` guard makes
-the second `connect()` a no-op, leaving listeners attached to the discarded client.
-
-**Fix.** Never hand-roll this. `projectFromClient` keeps `connectedClient: MatrixClient | null`
-and compares by identity, disconnecting first when it differs. Call it from a field
-initializer of a root-provided service, which is an injection context — the account-switch
-re-projection creates an `effect()` and needs one, or you get NG0203 or a silently dead
-switch.
+A new sign-in can create a new Matrix client. A boolean “connected” guard can leave
+listeners on the retired client. Use the owned projection lifecycle and compare client
+identity. `projectFromClient` is dormant until its owner subscribes to `run()`; construction
+alone is not attachment. Verify attach, replacement, publication and release through
+Projection Runtime. See [state and reactivity](../architecture/state-and-reactivity.md).
 
 ### A section stays empty until the user clicks twice
 
-**Symptom.** After clicking a foreign account's space pill, sub-space sections stay
-permanently empty until the pill is clicked again.
-
-**Cause.** The rooms and spaces services re-project onto the new client from an effect,
-which flushes _after_ the switch Observable completes. Anything requested before that flush
-is wiped by it.
-
-**Fix.** Defer the follow-up with `afterNextRender(() => …, { injector })` — past the render
-that follows the switch, not merely past the Observable.
+Check the Account switch outcome and Projection Runtime readiness before Workspace
+repair. The current switch workflow awaits the active-account transition and its projection
+acknowledgements. Do not add `afterNextRender` as a timing workaround for missing readiness;
+find the projection or repair step that did not complete. Preserve Account/Workspace
+ownership and cancellation behavior.
 
 ### An action lands on the wrong account
 
-**Symptom.** A favourite that does not stick, a mark-read that never clears the badge, or
-an avatar fetched through the wrong homeserver.
-
-**Cause.** In the mixed-account view a room row may belong to a signed-in account that is
-not active, so `matrix.instance` is the wrong client.
-
-**Fix.** Take an optional `accountId` and resolve through `clientFor(accountId)` falling
-back to `matrix.instance`. Note a room two accounts are both in renders as **one** row
-whose unread is the loudest of the two, so idempotent actions must reach all of the row's
-`accountIds` or the merged badge can never be cleared.
+A mixed-account Room row can belong to a different Account, or several Accounts.
+Resolve the command's exact Account through its capability API rather than reading the
+current active client at execution time. Aggregate unread cleanup and favourite changes
+must honor the row's full Account membership where their contracts require it. Validate
+both active and non-active Account cases; see [state and reactivity](../architecture/state-and-reactivity.md).
 
 ### A stale rebuild uses the wrong client
 
-**Symptom.** A rebuild coalesced from account A's events runs after the active client is
-already B, and rebuilds from B.
-
-**Cause.** Re-reading `matrix.instance` inside a coalesced `rebuild()` instead of taking the
-bound `client` argument the projection passes in precisely to close that window.
-
-**Fix.** Take the argument. Several existing services still re-read `matrix.instance`,
-benignly, because the re-projection effect was about to rebuild anyway — do not copy them.
+A callback queued for Account A must not re-read the now-active client B. Use the bound
+client/handle supplied by the projection and preserve generation checks that reject retired
+publications. Exercise an Account switch while work is queued; a steady-state test does
+not cover this race.
 
 ### Lint rejects a commit with a module-boundary error
 
-**Symptom.** `@nx/enforce-module-boundaries` fails and the pre-commit hook refuses the
-commit. Two flavours: a feature importing another feature, or a scope violation from
-`data-access-matrix-client`.
-
-**Cause.** There is no allow-list and no per-file suppression anywhere in the repo. The type
-axis and the scope axis are checked independently, so a library can satisfy one and fail the
-other — `data-access-matrix-client` is tagged `scope:shared` on purpose, so the client
-foundation stays domain-agnostic.
-
-**Fix.** For a cross-feature need, either read the relevant `@trinity/data-access/*` signal
-from the feature that owns the surface, or put an inward-facing lazy-loader token in the
-application/kernel boundary that owns presentation (as Application Runtime does), provide it in
-`main.ts` with a cold dynamic-import Observable, and inject it optionally with a graceful fallback.
-See [libraries](../architecture/libraries.md).
+Inspect both type and scope tags, plus public UI/vendor restrictions. A feature cannot
+import another feature; the shared Matrix foundation cannot reach a product-domain library.
+Move the dependency to its owning capability or use the application-owned composition
+contract. Do not add an exemption to make lint pass. See
+[library boundaries](../architecture/libraries.md).
 
 ### The initial bundle grows and a lazy route stops paying off
 
-**Symptom.** The initial budget starts creeping toward its 2 MB warning.
-
-**Cause.** Two variants. A **value** import of a lazy page in `app.routes.ts` merges the
-chunk into the initial bundle — esbuild also does not constant-fold `environment.production`,
-so guarding a route with a ternary does not strip its `import()`. And re-exporting a heavy
-or dev-only module from a barrel that `main.ts` imports eagerly ships it eagerly.
-
-**Fix.** Use `import type` for a type-only reference, and spread a dev-only route out of the
-array entirely. Keep heavy modules out of barrels and reach them through their own path
-alias. Nothing enforces either — only the comments at the sites.
+Inspect actual build chunks and import paths. A value import or eager barrel re-export
+can pull a lazy implementation into startup. Use `import type` where only a type is needed,
+and keep heavy implementations behind their owned lazy boundary. Conditional route syntax
+alone does not prove dead code was eliminated. Rebuild the intended configuration and
+check its output rather than relying on an old bundle-size measurement.
 
 ### A subscriber's success callback silently never runs
 
-**Symptom.** Cleanup or navigation in `.subscribe(() => { … })` does not happen, and no
-error reaches the caller. Or a busy spinner sticks on forever.
-
-**Cause.** `runWithBusy`'s `catchError` writes the message into the `error` signal and
-returns `EMPTY`, so the failure is swallowed by design. In a zoneless surface, relying on a
-component effect to notice an error signal can also miss the presentation when the failure
-does not otherwise schedule rendering.
-
-**Fix.** Subscribe to everything you call, keep cleanup in `finalize`, and do not use the
-helper on a path that must triage its own errors. Request-facing actions should provide the
-safe formatter/reporter hooks, and zoneless shells should present the captured error through
-their status service rather than waiting for a component effect. The helper starts state on
-subscription and clears it on every termination path, including cancellation and teardown.
+`runWithBusy` reports a caught failure and completes with `EMPTY`, so the subscriber's
+next handler does not run. Keep unconditional cleanup in `finalize`; use a path that
+preserves errors when the caller must distinguish cancellation, refusal or partial failure.
+Cold commands need subscriptions owned by the appropriate lifetime. Present safe captured
+errors through the surface's status service, not an incidental effect.
 
 ### The app is wedged and there is no way to clear its data
 
-**Symptom.** Trinity will not start, will not sign in, or renders wrongly, and signing out
-does not help — because sign-out only removes tokens and the account registry. On iOS,
-Android and the desktop shell there is no devtools "clear site data" to fall back on.
+Account sign-out removes its client and stores as well as credentials; it does not reset
+all installation preferences and other local state. If the login screen is reachable,
+**Erase all data on this device** offers an installation reset after typing `ERASE`.
+It removes local-only keys and the Web/PWA offline cache, so arrange recovery and connectivity
+before using it. Server-side history is not deleted.
 
-**Cause.** The app's local state spans four surfaces, and nothing cleared them all: ~20
-`trinity.*` preferences, the account registry and secrets under `matrix.*` / `secure.*`, the
-OIDC and SSO round-trip stashes under `oidc.*` / `sso.*`, two IndexedDB families (the message
-sync store and the Rust crypto store, per account and per device), and the service-worker
-caches on web. A bad `trinity.push.gateway`, a stale feature flag or a crypto store that will
-not initialise therefore survives everything the UI offers.
-
-**Fix.** **Erase all data on this device**, at the bottom of the login page — deliberately
-there rather than in Settings, which is behind `authGuard` and so unreachable in exactly this
-situation. It erases all four surfaces and restarts the app. It is irreversible: encryption
-keys not in a server-side backup go with it, so it asks you to type `ERASE`. Nothing on the
-server is deleted.
-
-If Trinity is open in a second window, one of the databases may still be held open when the
-wipe runs. It finishes anyway rather than stopping half-way: the deletes run concurrently, so
-by the time one reports blocked the rest are already gone, and aborting there would leave the
-very half-erased install that stopping is meant to avoid. Whatever survives is an orphan no
-account points at, which `sweepOrphanedCryptoStores` reclaims on the next cold start, when
-nothing holds a connection. The names are logged to the console.
-
-**See also.** [The factory reset](../architecture/matrix-and-encryption.md#the-factory-reset)
-for the mechanism — which phase orderings are load-bearing and why, why deletion is bounded
-rather than awaited, and the three surfaces it deliberately cannot reach. The user-facing
-version is in [Signing in](../users/signing-in.md#starting-over-when-trinity-will-not-work).
+Close other Trinity windows first. Deletions can be bounded or blocked, and the next-start
+orphan sweep targets Rust crypto databases only where enumeration is available; it is not
+a guarantee that every leftover is removed. Report incomplete cleanup accurately. See
+[the user reset procedure](../users/signing-in.md#starting-over-when-trinity-will-not-work)
+and [the factory-reset contract](../architecture/matrix-and-encryption.md#the-factory-reset).
 
 ## Related pages
 
-- [Commands](../contributing/commands.md) for what each script actually runs
-- [Testing](../contributing/testing.md) for the suites and when to use which
-- [Stack reference](stack.md) for pinned versions and version-specific traps
+- [Commands](../contributing/commands.md) — supported target invocations
+- [Testing](../contributing/testing.md) — validation scope and failure evidence
+- [Stack reference](stack.md) — runtime requirements and dependency integration
+- [Platform guides](../platforms/index.md) — host prerequisites and limitations

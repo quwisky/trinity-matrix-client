@@ -1,6 +1,6 @@
 # Trinity domain language
 
-Trinity lets a person participate in Matrix communication from several saved identities and host applications. This glossary names the concepts that cross product-capability boundaries.
+Trinity lets a person participate in Matrix communication from several saved identities and host applications. This glossary names the concepts that cross product-capability boundaries. For implementation ownership and lifetimes, use the [architecture guides](docs/architecture/index.md); for the reasons behind the boundaries, use the [decision history](docs/architecture/target-architecture.md#decisions).
 
 ## Accounts
 
@@ -13,7 +13,7 @@ The live presence of one Account while Trinity is running, including its connect
 _Avoid_: Client, session
 
 **Active Account**:
-The Account whose content is currently visible and receives foreground interaction. Other Accounts may remain connected without being active.
+The foreground Account used for the focused Conversation. Room Library can also show other Accounts, and an action keeps the Account or Accounts it targets.
 _Avoid_: Current session, selected client
 
 **Authentication Attempt**:
@@ -26,12 +26,16 @@ _Avoid_: Account, session
 A Matrix room identity and its durable protocol state, independent of which Account is viewing it.
 _Avoid_: Chat, channel
 
+**Space**:
+A Matrix Room that organizes Rooms and other Spaces into a navigable hierarchy. Membership in a Space does not itself grant membership in its children.
+_Avoid_: Folder, workspace
+
 **Conversation**:
 The messaging behaviour of one Room as experienced by one Account. A Conversation is identified by the pair of Account and Room.
 _Avoid_: Room, chat session, timeline
 
 **Conversation Runtime**:
-The keyed lifecycle owner for immutable Conversation handles. Workspace focus and blur change visibility, while the runtime bounds warm retention and permanently retires evicted handles.
+The live presence of one Conversation, identified by its Account and Room, while Trinity presents or retains it.
 _Avoid_: Current room service, route state, timeline singleton
 
 **Room Library**:

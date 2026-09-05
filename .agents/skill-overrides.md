@@ -78,7 +78,9 @@ skills. User instructions and accepted authorization govern the task.
 
 ## Nx and validation
 
-- Use `pnpm exec nx` with options verified against the installed CLI. Discover generators and
+- Use `pnpm nx`, the repository wrapper, with options verified against the installed CLI.
+  See the [canonical commands](../docs/contributing/commands.md) and
+  [validation warnings](../docs/maintaining/validation-warnings.md). Discover generators and
   inspect their schema, implementation, file placement and side effects before writing files.
   Prefer a dry run; if unsupported, inspect the writes and stay within the authorized scope.
 - Match the existing integrated workspace: Angular, standalone components, SCSS, Vitest,

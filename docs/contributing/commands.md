@@ -1,353 +1,126 @@
 # Commands
 
-Every command here is run from the repository root with pnpm. If you have not set
-the repo up yet, start with [Getting started](getting-started.md).
+This is the canonical command reference. Run Nx through the workspace package manager:
+`pnpm nx …`. This package script calls `scripts/nx.mjs`, which normalizes the
+command environment before starting the installed Nx CLI. See the
+[validation warning ledger](../maintaining/validation-warnings.md). The repository needs Node `^24.15.0` and pnpm `11.19.0`; see
+[Getting started](getting-started.md) for installation and [Testing](testing.md) for
+which command is meaningful for a change.
 
-## Web and day to day
+## Web, workspace, and formatting
 
-| Command                   | What it does                                                                                  |
-| ------------------------- | --------------------------------------------------------------------------------------------- |
-| `pnpm start`              | `nx serve trinity` — dev server with hot reload on `http://localhost:4200`                    |
-| `pnpm build`              | `nx build trinity` — **production** bundle into root `www/`                                   |
-| `pnpm e2e:web`            | Production Web/PWA host plus Docker-backed renderer contracts against `www/`                  |
-| `pnpm watch`              | Development build, rebuilt on change, no server                                               |
-| `pnpm test`               | `nx run-many -t test` — Vitest once across every project that has tests                       |
-| `pnpm lint`               | `nx run-many -t lint` — ESLint plus Nx module boundaries                                      |
-| `pnpm stylelint`          | Stylelint over `{apps,libs}/**/*.{scss,css}`                                                  |
-| `pnpm format`             | Prettier write, all files                                                                     |
-| `pnpm format:check`       | Prettier verify, all files — what CI runs                                                     |
-| `pnpm architecture:check` | Validate roles, capabilities, entrypoints, frozen exceptions and the generated map            |
-| `pnpm architecture:map`   | Regenerate the committed dependency map after an intentional architecture change              |
-| `pnpm storybook`          | `nx storybook components-storybook-host` — every `libs/components/*` library in one Storybook |
-| `pnpm storybook:build`    | Static Storybook build                                                                        |
+| Command                   | Purpose                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------- |
+| `pnpm start`              | Start the development web server, normally on port 4200                           |
+| `pnpm build`              | Build the production web bundle into root `www/`                                  |
+| `pnpm watch`              | Rebuild the development bundle on change without serving it                       |
+| `pnpm test`               | Run every Nx `test` target once                                                   |
+| `pnpm lint`               | Run every Nx `lint` target                                                        |
+| `pnpm stylelint`          | Check SCSS and CSS; it is separate from `pnpm lint`                               |
+| `pnpm format:check`       | Check Prettier formatting                                                         |
+| `pnpm format`             | Write Prettier formatting                                                         |
+| `pnpm architecture:check` | Validate repository architecture, host, design-system, and E2E registry contracts |
+| `pnpm storybook`          | Start the shared public-component Storybook                                       |
+| `pnpm storybook:build`    | Build that Storybook                                                              |
 
-Two of these surprise people:
+`pnpm test` executes project test targets; the application libraries use Vitest, while
+the desktop shell uses its own Vitest installation and Node-environment configuration. These tests do **not** type-check source or specs. A change that
+needs type safety also needs a relevant `typecheck` target; see
+[Testing](testing.md#tests-type-checking-and-style-are-separate).
 
-- **`pnpm build` is a production build.** The `build` target sets
-  `defaultConfiguration: production`, so a bare `nx build trinity` optimises,
-  hashes filenames, swaps in `environment.prod.ts` and emits the service worker
-  manifest. Every `electron:*`, `android:*` and `ios:*` script calls it, so those
-  paths are production too. Only the end-to-end and spike scripts explicitly pass
-  `--configuration=development`.
-- **`pnpm stylelint` is not part of `pnpm lint`.** They are separate commands and
-  separate CI steps. Running only `pnpm lint` will not catch a violation in a `.scss`
-  or `.css` file — and the glob covers both, so hand-written CSS like
-  Theme Foundation's internal Tailwind adapter is linted too.
+## Inspect and focus Nx work
 
-## Nx patterns
-
-Use `pnpm nx`, which runs the workspace's pinned CLI through `scripts/nx.mjs`. Nx 23 forces
-colour into task children; the wrapper removes an inherited `NO_COLOR` that Nx has already made
-ineffective, preventing Node from printing one environment warning per worker.
-
-The `test` target is defined once in `nx.json` as an `nx:run-commands` target that
-runs `vitest run` with `cwd` set to the project directory. Each project opts in
-with an empty `"test": {}` in its own `project.json`. Because it is run-commands
-rather than a Vitest executor, **Vitest arguments must come after `--`**, where
-they are appended to the end of `vitest run`.
-
-The argument to `nx test` is the **project name**, which is neither the directory nor
-the import alias. All three are different strings for every library under
-`libs/data-access`, `libs/feature` and `libs/util`: the Discovery data-access library is the
-Nx project `data-access-discovery`, it lives at `libs/data-access/discovery`, and it is imported
-as `@trinity/data-access/discovery`. Only the first form works on a command line, and the
-same goes for a `--projects=` filter.
+A project is not always named after its folder. Inspect resolved configuration before
+choosing a target:
 
 ```bash
-pnpm nx test util-matrix                          # one project
-pnpm nx test feature-rooms --configuration=watch  # watch mode
-pnpm nx test feature-rooms -- message-list        # files matching a path substring
-pnpm nx test data-access-room-library -- -t "marks a room read" # one test by name
-pnpm nx test data-access-discovery -- --coverage  # coverage is opt-in, no threshold
-pnpm nx test scripts                              # the repository-invariant guards
-pnpm nx affected -t lint test                     # only what changed versus develop
-pnpm nx show projects                             # the real project names
-pnpm nx graph                                     # dependency graph in a browser
+pnpm nx show project trinity --json
+pnpm nx show project data-access-room-library --json
 ```
 
-!!! warning "There is no Nx project called `core`"
-
-    Older examples in this repository and its history use
-    `pnpm nx test core`. `@trinity/core` was dissolved into per-domain
-    libraries and no project by that name exists, so the command fails with
-    `Cannot find configuration for task core:test`. Use a real project name —
-    `util-matrix`, `data-access-discovery`, `feature-rooms`, and so on. Run
-    `pnpm nx show projects` when in doubt.
-
-`nx affected` diffs against `develop`, which is `defaultBase` in `nx.json`.
-
-Caching: `test`, `lint` and `build` are all cached. To reproduce something
-intermittent, add `--skip-nx-cache`.
-
-| Reset command                       | Clears                                                            |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `pnpm nx reset`                     | Everything, including the daemon and the workspace data directory |
-| `pnpm nx reset --onlyCache`         | Task results only, under `.nx/cache`                              |
-| `pnpm nx reset --onlyWorkspaceData` | The metadata directory `.nx/workspace-data`                       |
-
-Nx keeps its task history in a SQLite database under `.nx/workspace-data`, not in
-`.nx/cache`. That is why `--onlyCache` does not clear a "Nx detected a flaky task"
-warning: one historical failure keeps resurfacing on later green runs until the
-workspace data goes too.
-
-### What `pnpm test` does not cover
-
-`pnpm test` runs 38 projects: the fourteen `data-access-*` libraries, four
-`application-*` libraries, three runtime libraries, `feature-auth`, `feature-crypto`,
-`feature-rooms`, `feature-settings`, `feature-shell`, `platform-native`, `util-matrix`,
-`util-ui`, the five tested `libs/components/*` libraries, `spartan-tests`, the `trinity`
-app itself, `trinity-desktop`, and `scripts` — which holds the build scripts and the repository's guard
-suite, described in [Testing](testing.md#the-guard-suite).
-
-The explicit `trinity-desktop:test` target runs the Electron main-process specs after installing
-the shell's standalone pinned dependencies. To focus that suite explicitly:
+The application-library Vitest targets use `nx:run-commands` and forward arguments.
+Put Vitest arguments after `--`; inspect other projects before assuming the same runner:
 
 ```bash
-pnpm electron:test
+pnpm nx test data-access-room-library
+pnpm nx test data-access-room-library --configuration=watch
+pnpm nx test data-access-room-library -- account-scope.service
+pnpm nx test data-access-room-library -- -t "refuses to hide the active account"
+pnpm nx run-many -t typecheck
+pnpm nx affected -t lint test
+pnpm nx reset
 ```
 
-Also outside `pnpm test`: `trinity-e2e` (Playwright, run separately), `libs/testing`
-(the shared render wrapper has no specs of its own), `components-storybook-host`
-(a Storybook host, no specs), and the generated
-`libs/spartan/*` Helm packages, which are lint and build only — their behaviour is pinned
-from `libs/spartan/tests` instead.
+`affected` compares with the configured or supplied base, so check that base in a
+nonstandard branch workflow. `reset` clears Nx state when results look inconsistent.
+Neither replaces a focused behavior check.
 
 ## Desktop
 
-| Command                            | What it does                                                      |
-| ---------------------------------- | ----------------------------------------------------------------- |
-| `pnpm electron:install`            | Install `electron/` dependencies and download the Electron binary |
-| `pnpm electron:test`               | Electron main/preload unit tests through Nx                       |
-| `pnpm electron:typecheck`          | Type-check shell production and spec sources                      |
-| `pnpm electron:verify`             | Static host, artifact, bridge, security and package contract      |
-| `pnpm electron:build`              | Web build, then copy `www/` into the shell and compile it         |
-| `pnpm electron:build:prebuilt`     | Copy an existing `www/` into the shell and compile it             |
-| `pnpm electron:build:release`      | Web build and shell compile without development signing           |
-| `pnpm electron:start`              | Build, then launch the desktop app                                |
-| `pnpm electron:e2e`                | Playwright specs against the real built binary                    |
-| `pnpm electron:e2e:smoke`          | Docker-independent launched-shell protocol/security proof         |
-| `pnpm electron:package`            | Package for the host OS                                           |
-| `pnpm electron:package:mac`        | macOS, ad-hoc dev-signed                                          |
-| `pnpm electron:package:mac:signed` | macOS, Developer ID signed and notarized — needs credentials      |
-| `pnpm electron:package:linux`      | Linux AppImage and deb                                            |
-| `pnpm electron:package:win`        | Windows NSIS installer                                            |
-| `pnpm electron:package:all`        | All three targets                                                 |
+Electron has separate dependencies under `electron/`.
 
-`electron:build` is the `trinity-desktop:build` target. It depends on `trinity:build` and
-`trinity-desktop:install`, then runs the shell's copy-plus-compile and a macOS-only ad-hoc
-codesign of the development Electron binary. Everything above it in the table
-chains off it, which is why the desktop path is slower than it looks and why a
-desktop run always exercises production output.
+| Command                   | Purpose                                                              |
+| ------------------------- | -------------------------------------------------------------------- |
+| `pnpm electron:install`   | Install shell dependencies and ensure the Electron binary is present |
+| `pnpm electron:start`     | Build and launch the development shell                               |
+| `pnpm electron:test`      | Run desktop unit tests                                               |
+| `pnpm electron:typecheck` | Type-check the desktop shell                                         |
+| `pnpm electron:verify`    | Run the static desktop host contract                                 |
+| `pnpm electron:e2e`       | Run full launched-shell E2E                                          |
+| `pnpm electron:e2e:smoke` | Run the focused launched-shell smoke check                           |
+| `pnpm electron:package`   | Package for the current host                                         |
 
-Platform release-package targets depend on `electron:build:release`, which consumes the same
-production `www/` but deliberately omits the local development-signing step.
+Named package commands (`electron:package:mac`, `:linux`, `:win`, and `:all`) need
+the matching host and signing prerequisites. See [Desktop](../platforms/desktop.md) before
+packaging or signing.
 
-Two constraints on packaging:
+## Native hosts
 
-- **Development signing is not release signing.** `electron:build` self-skips its ad-hoc
-  development signature away from macOS. A distributable macOS build still needs the dedicated
-  signed/notarized target and credentials; CI release packaging must not treat `sign-dev` as proof.
-- **`electron:package:mac` hardcodes an arm64 output path.** On an Intel Mac it
-  builds the app into `release/mac/` and then dies trying to codesign
-  `release/mac-arm64/Trinity.app`.
+| Command                                     | Purpose                                                                       |
+| ------------------------------------------- | ----------------------------------------------------------------------------- |
+| `pnpm android:sync` / `pnpm ios:sync`       | Build web output and synchronize it to Capacitor                              |
+| `pnpm android:open` / `pnpm ios:open`       | Open the generated native project in its host IDE                             |
+| `pnpm android:run` / `pnpm ios:run`         | Build, synchronize, and launch a native host                                  |
+| `pnpm android:build` / `pnpm ios:build`     | Build the Android debug APK or iOS app                                        |
+| `pnpm android:build:release`                | Build the Android release AAB; unsigned unless external signing is configured |
+| `pnpm android:verify` / `pnpm ios:verify`   | Check static host contracts                                                   |
+| `pnpm nx run trinity-android:verify-native` | Run Android native unit validation                                            |
+| `pnpm nx run trinity-ios:verify-native`     | Build unsigned iOS simulator target; requires macOS and Xcode                 |
 
-`pnpm electron:e2e` needs a display. On headless Linux or in a container, wrap it:
+Android needs its SDK; iOS needs macOS and Xcode. Platform prerequisites, artifacts, and
+signing limits are in [Mobile](../platforms/mobile.md).
+
+## End-to-end and protocol checks
+
+Install browser binaries before a browser suite:
 
 ```bash
-xvfb-run -a pnpm electron:e2e
-xvfb-run -a pnpm electron:e2e:smoke
+pnpm exec playwright install chromium webkit
 ```
 
-The suite starts and stops the disposable Synapse stack for authenticated journeys. It skips those
-journeys when Docker is unavailable locally and fails instead under CI, matching the Web suite.
-To focus the image-pack manager journey, append `image-pack-management.electron.spec.mts`.
+| Command                                                                                            | Purpose                                                   |
+| -------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `pnpm e2e`                                                                                         | Run the pull-request-classified E2E aggregate             |
+| `pnpm e2e:all`                                                                                     | Run every locally available required E2E suite            |
+| `pnpm e2e:scheduled`                                                                               | Run the scheduled E2E aggregate                           |
+| `pnpm e2e:browser`                                                                                 | Run canonical browser journeys against disposable Synapse |
+| `pnpm e2e:components`                                                                              | Run registered component, styling, and scrollbar suites   |
+| `pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts`                      | Focus a browser journey by path                           |
+| `pnpm nx run trinity-e2e-browser:e2e -- --grep "message link"`                                     | Focus a browser journey by title                          |
+| `pnpm nx run trinity-e2e-web:production-pwa`                                                       | Run Docker-free production Web/PWA host checks            |
+| `pnpm e2e:web`                                                                                     | Run Web/PWA host and production-renderer checks           |
+| `pnpm e2e:protocol`                                                                                | Run registered protocol/system suites                     |
+| `pnpm e2e:electron`                                                                                | Run registered Electron E2E suites                        |
+| `pnpm smoke:login`                                                                                 | Run redirect-to-login and live discovery smoke            |
+| `pnpm spike:chromium` / `pnpm spike:webkit`                                                        | Run focused crypto renderer spikes                        |
+| `pnpm e2e:verify` / `pnpm e2e:verify:qr`                                                           | Run two-client SAS or QR verification                     |
+| `pnpm e2e:verify:up` / `pnpm e2e:verify:down`                                                      | Manually start or stop the disposable Synapse harness     |
+| `pnpm e2e:media`, `e2e:threads`, `e2e:reply`, `e2e:spaces`, `e2e:rooms`, `e2e:search`, `e2e:emoji` | Run focused Synapse-backed protocol journeys              |
+| `pnpm e2e:android`                                                                                 | Run shared journeys in a managed Android WebView          |
+| `pnpm electron:e2e`                                                                                | Run Electron shell E2E                                    |
 
-## Native platforms
-
-Each of these runs `pnpm build` and then `cap sync` before it does anything else,
-so a web change is always included. Re-run a `*:sync` after any web change if you
-are iterating in Xcode or Android Studio.
-
-| Command                                     | What it does                                         | Needs                                    |
-| ------------------------------------------- | ---------------------------------------------------- | ---------------------------------------- |
-| `pnpm android:sync`                         | Build and sync only                                  | Android SDK                              |
-| `pnpm android:run`                          | Build, sync, launch on a device or emulator          | Android SDK                              |
-| `pnpm android:open`                         | Open the project in Android Studio                   | Android Studio                           |
-| `pnpm android:build`                        | Debug APK into `android/app/build/outputs/apk/debug` | Android SDK                              |
-| `pnpm android:build:prebuilt`               | Sync an existing `www/`, then build the debug APK    | Android SDK                              |
-| `pnpm android:build:release`                | Release AAB                                          | Android SDK, signing keystore            |
-| `pnpm android:verify`                       | Static Nx/artifact/plugin/capability contract        | Node only                                |
-| `pnpm nx run trinity-android:verify-native` | Gradle unit verification after sync                  | JDK 21, Android SDK                      |
-| `pnpm e2e:android`                          | Installed API 36 WebView journeys via Playwright     | JDK 21, API 36 SDK/emulator, Docker, KVM |
-| `pnpm ios:sync`                             | Build and sync only                                  | macOS, Xcode                             |
-| `pnpm ios:run`                              | Build, sync, launch on a simulator                   | macOS, Xcode                             |
-| `pnpm ios:open`                             | Open the project in Xcode                            | macOS, Xcode                             |
-| `pnpm ios:build`                            | `cap build ios --scheme App`                         | macOS, Xcode, signing identity           |
-| `pnpm ios:verify`                           | Static Nx/artifact/plugin/capability contract        | Node only                                |
-| `pnpm nx run trinity-ios:verify-native`     | Unsigned iPhone Simulator build after sync           | macOS, Xcode                             |
-
-The `*:prebuilt` commands exist for cross-platform evidence, not ordinary iteration.
-`pnpm nx run trinity-e2e-web:production-renderer` creates a production `www/`, records
-it, and tests that payload; Electron
-and Android can then copy it without rebuilding. `pnpm bundle:manifest:verify` proves both wrapper
-trees have the exact recorded web file set and bytes; only Android's named `cordova.js` and
-`cordova_plugins.js` bootstrap files are allowed in addition.
-
-The package scripts above are stable aliases for the explicit `trinity-android` and
-`trinity-ios` Nx application targets. Use `pnpm nx show project trinity-android` or
-`trinity-ios` to inspect their complete sync/build/run/verification lifecycle.
-
-## End to end harnesses
-
-The typed suite registry gives every environment one canonical entrypoint while focused historical
-commands remain behavior-compatible Nx aliases during the migration:
-
-| Command               | Selection                                                     |
-| --------------------- | ------------------------------------------------------------- |
-| `pnpm e2e`            | Pull-request-classified suites                                |
-| `pnpm e2e:all`        | Complete local gate; every current suite is required          |
-| `pnpm e2e:scheduled`  | Scheduled-classified suites                                   |
-| `pnpm e2e:browser`    | Canonical Synapse browser journeys                            |
-| `pnpm e2e:web`        | Production Web/PWA host and renderer contracts                |
-| `pnpm e2e:components` | Storybook, styling and cross-browser scrollbar contracts      |
-| `pnpm e2e:protocol`   | Verification, crypto, media and other protocol/system drivers |
-| `pnpm e2e:electron`   | Electron shell smoke and full desktop journeys                |
-| `pnpm e2e:android`    | Installed API 36 WebView journeys                             |
-
-`pnpm e2e:all` is the E2E portion of the local delivery gate while GitHub Actions capacity is
-unavailable. It validates the registry, fails before execution when any required suite is
-unavailable, then runs lifecycle owners in a safe order and stops at the first executed failure.
-Only a suite explicitly classified optional may be reported unavailable while the rest continue;
-every current suite is required. Pull-request, scheduled and environment aggregates are strict:
-any missing prerequisite fails before their first suite. Docker and the Android AVD are mandatory
-on the delivery host. See
-[End-to-end test architecture](e2e-architecture.md) for ownership, CI tiers, caching,
-serialization, aliases and artifacts.
-
-The sections below document the focused suites and their current transitional implementations.
-
-### The app journey suite
-
-```bash
-pnpm nx run trinity-e2e-browser:e2e
-pnpm nx run trinity-e2e-browser:e2e -- --list        # enumerate specs without running them
-pnpm nx run trinity-e2e-browser:e2e -- --retries=0   # honest first-attempt result
-pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
-pnpm nx run trinity-e2e-browser:e2e -- --grep "opens a copied message link"
-```
-
-Chromium only. The support owner produces the **development** build, serves `www/`
-on an OS-selected loopback port, and brings the disposable Synapse stack up once.
-The Playwright config joins its validated session descriptor and owns no server or
-global setup/teardown. Docker is a mandatory preflight requirement; a runner that
-cannot reach it fails before any authenticated spec starts and cannot report green.
-
-The config sets `retries: 2` unconditionally, including locally. A spec that fails
-once and passes on retry is reported as _flaky_, not failed, which is easy to skim
-past — pass `--retries=0` when you want the truth.
-
-The Android suite is a separate serialized Nx target and accepts Playwright arguments:
-
-```bash
-pnpm e2e:android
-TRINITY_ANDROID_SERIAL=emulator-5554 pnpm e2e:android
-pnpm e2e:android -- --shard=1/4
-```
-
-Without an explicit serial it uses only an AVD named `Trinity_API_36`; it never picks the
-first attached device. It builds and installs the production Capacitor app, collects every
-canonical app journey in the actual WebView plus native-only coverage, and leaves failure
-artifacts under
-`dist/.playwright/trinity-e2e-android/<run-id>/android.installed-webview/`. Journeys that require external FCM delivery, a
-not-yet-implemented native file export, or unavailable compositor-panning instrumentation
-are reported as explicit platform skips. Docker is mandatory for authenticated journeys.
-
-Focused single-spec Web/Android commands are documented beside each owned scenario in
-[`e2e/README.md`](../../e2e/README.md); the MSC2545 pair is under
-[image-pack management](../../e2e/README.md#msc2545-image-pack-management).
-
-### Protocol Playwright tests
-
-Ordinary Playwright Test specs under `e2e/protocol/`, each joining the support owner's dynamic
-application endpoint and writing the standard list, blob, JUnit and local HTML reports. Every focused
-target builds the app with
-`--configuration=development` first, which matters: the `/spike` route the crypto
-harnesses drive is compiled out of production builds entirely.
-
-| Command               | What it proves                                                        | Docker  |
-| --------------------- | --------------------------------------------------------------------- | ------- |
-| `pnpm spike:chromium` | E2EE crypto WASM initialises in Blink                                 | no      |
-| `pnpm spike:webkit`   | The same in WebKit, standing in for iOS WKWebView                     | no      |
-| `pnpm smoke:login`    | Unauthenticated redirect to `/login` plus live `matrix.org` discovery | no      |
-| `pnpm e2e:verify`     | Two-device emoji-SAS verification round trip                          | **yes** |
-| `pnpm e2e:media`      | Encrypted attachment upload with a caption, through the composer      | **yes** |
-| `pnpm e2e:threads`    | Thread lifecycle, including lazy thread creation                      | **yes** |
-| `pnpm e2e:reply`      | Reply header and preview rendering                                    | **yes** |
-| `pnpm e2e:spaces`     | Space creation, channel creation, sidebar state                       | **yes** |
-| `pnpm e2e:rooms`      | Room and DM creation, invite lifecycle                                | **yes** |
-| `pnpm e2e:search`     | Quick switcher and in-room message search                             | **yes** |
-| `pnpm e2e:emoji`      | Shortcode autocomplete and the emoji picker in the composer           | **yes** |
-
-`smoke:login` reaches the public internet: it performs real `.well-known`
-discovery against `matrix.org`. It needs no credentials.
-
-Synapse-backed flows default to disposable, attempt-scoped accounts. A mutating focused flow can
-instead use a deliberately selected remote homeserver:
-
-```bash
-TRINITY_E2E_PROTOCOL_MODE=remote \
-TRINITY_HS=https://matrix.example.test \
-TRINITY_USER=protocol-test-user \
-TRINITY_PASS=... \
-pnpm e2e:verify
-```
-
-Remote mode requires an absolute HTTPS homeserver URL without embedded credentials and validates
-all required fields before building or starting a browser. `e2e:rooms` and `e2e:search` additionally
-require `TRINITY_SECONDARY_USER` and `TRINITY_SECONDARY_PASS`. Use dedicated test accounts: these
-flows create rooms, messages, account data and encryption state. Password values are never copied
-into annotations, reports or validation errors, and remote traces are disabled so authenticated
-request tokens cannot land in artifacts. The exhaustive `pnpm e2e:protocol` aggregate is the
-disposable-mode gate; remote mode is intentionally a focused-flow operation.
-
-To hold the Synapse stack up across several manual runs:
-
-```bash
-pnpm e2e:verify:up     # start Synapse, Caddy and Dex
-pnpm e2e:verify:down   # stop and delete their state
-```
-
-!!! danger "Do not start independent E2E invocations concurrently"
-
-    Synapse, Dex and Caddy retain fixed ports 8008, 8448 and 5556 plus one
-    `e2e/support/synapse/data` state directory. An official aggregate safely runs many selected
-    suites sequentially under one support owner. Separate `pnpm e2e:*` processes contend for the
-    same explicit lock and the second is rejected; do not remove the lock or start the manual
-    `e2e:verify:up` stack beside an invocation.
-
-### Desktop specs
-
-```bash
-pnpm electron:e2e            # on a machine with a display
-xvfb-run -a pnpm electron:e2e   # headless Linux or CI
-```
-
-These launch the real packaged-shape binary through Playwright's `_electron`, each
-spec with a fresh user-data directory so the app always boots unauthenticated. They
-are the only browser-driven gate on the **production** build, and the only gate on
-the custom `trinity://app` scheme, the preload bridge and the desktop dark theme.
-
-## Reading a failed unit run
-
-Two failure modes look nothing alike:
-
-| What you see                                           | What happened                                                                                                              |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| A `Killed` line and a missing project summary          | The process was OOM-killed. The tests did not fail, they never reported.                                                   |
-| All summaries present plus an `Unhandled Errors` block | Something escaped a test's lifetime, usually a timer firing after teardown. Exit code is non-zero with every test passing. |
-
-In both cases, judge by the exit code. Grepping the output for "error" matches
-neither, because Nx and esbuild print `✘ [ERROR]` and `Failed tasks`.
-
-More on what each layer of the test suite is for, and the traps inside the specs
-themselves, is in [Testing](testing.md).
+Synapse-backed targets share a fixed-port disposable stack. Run them sequentially, never
+in parallel; the aggregate owns safe sequencing. Missing Docker, a browser, an Android
+emulator, or an Electron display is unavailable validation or a failed preflight, not a
+passing skipped suite. See [E2E architecture](e2e-architecture.md) for ownership and
+[the E2E router](../../e2e/README.md) for task-based entry points.

@@ -8,6 +8,43 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Documentation now has reconciled reader paths and complete first-party ownership, with
+  superseded plans and migration pointers retired after preserving active requirements and
+  decisions. Push integration and production-renderer guidance describe their current owners
+  and validation scope.
+
+- Agent documentation now separates task onboarding from catalog maintenance, explains role
+  models and runtime limits, and provides one compact handoff. Local desktop and UX references
+  follow Trinity contracts, with duplicated architecture and command guidance consolidated.
+
+- Maintainer documentation now connects CI diagnosis, coordinated release preparation, signing,
+  partial-artifact recovery and dependency updates, with a canonical warning guide and explicit
+  distinctions between current automation, historical evidence and pending proposals.
+
+- UI contributor documentation now connects public component composition, appearance and cascade
+  contracts, Storybook verification and image-pack presentation. Deferred redesign requirements
+  have tracked owners so the superseded plan can be removed during final integration.
+
+- Architecture documentation now connects capability owners, runtime lifetimes and Matrix/Trust
+  contracts, with source-backed recovery limits and a separate record of historical decisions
+  and validation evidence.
+
+- Platform documentation now follows Web/PWA, Electron, Android and iOS run/debug/package
+  workflows, with current capability boundaries and explicit validation and signing limits.
+
+- Contributor documentation now provides a checkout-to-review workflow, a canonical command
+  reference, scoped validation guidance and source-checked setup and troubleshooting notes.
+
+- Everyday-use documentation now connects account scope, Rooms and Spaces, messaging,
+  personal settings and notification workflows with implemented permissions and host limits.
+
+- First-use documentation now guides host choice, installation, sign-in and registration,
+  device verification and encrypted-access recovery, with explicit limits and recovery
+  consequences checked against the implementation.
+
+- Documentation now offers task-based entry points for users, contributors, maintainers and
+  agent users, with a content ownership and migration inventory for the ongoing rewrite.
+
 - Agent instructions now load detailed command, capability and convention guidance on demand,
   use compact handoffs and reuse current investigation and validation evidence. Implementation
   uses Terra with high reasoning; required validation and independent review remain intact.
@@ -910,6 +947,12 @@ All notable changes to this project are documented here. The format is based on
   attachment, because those are sent as written.
 
 ### Fixed
+
+- Storybook accessibility checks retain their injected Axe instance when the addon replaces
+  the global during a scan. A regression exercises both owners without disabling accessibility
+  checks. The repository media guard also distinguishes the four managed prototype-skill
+  instruction files from forbidden design and review artifacts. Shell overflow checks reopen
+  the member pane after the intentional transition into drawer layout.
 
 - **Message swipe journeys no longer lose the edit gesture under parallel browser load.** The
   shared synthetic touch driver now advances with Chromium's renderer frames, and fresh-account

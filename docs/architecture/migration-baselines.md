@@ -1,6 +1,8 @@
-# Architecture migration baselines
+# Architecture measurement and security contracts
 
-The completed architecture program preserves observable behavior through a generated structural contract and retained measurement contracts. New migrations must instrument a path before replacing it and must finish by returning every temporary ledger to zero.
+Use this guide when changing a lifecycle, projection, dependency or security boundary. These are living measurement and security contracts, despite the retained migration-era filename. The [architecture contract](target-architecture.md) requires empty exception ledgers; the [historical validation record](final-validation.md) records earlier deliveries.
+
+Instrument the existing path before replacing it, preserve its observable behavior and compare the new path against the recorded budget. Registry membership alone is not a measurement or a passing performance check.
 
 ## Structural snapshot
 
@@ -13,7 +15,7 @@ The committed [generated dependency map](generated/dependency-map.md) is built f
 - the committed generated map differs from the live graph; or
 - an Nx project cycle appears.
 
-The machine-readable contracts live in `architecture/contract.json` and `architecture/quality-baselines.json`. `scripts/final-boundaries.spec.mjs` hard-fails package-level SDK, Router, native-platform, and retired-compatibility escapes that the project graph alone cannot express.
+The machine-readable contracts live in [architecture/contract.json](../../architecture/contract.json) and [architecture/quality-baselines.json](../../architecture/quality-baselines.json). `scripts/final-boundaries.spec.mjs` hard-fails package-level SDK, Router, native-platform, and retired-compatibility escapes that the project graph alone cannot express.
 
 ## Performance contracts
 
@@ -27,7 +29,24 @@ The machine-readable contracts live in `architecture/contract.json` and `archite
 | Retained resources     | Handles, listeners, and retained bytes per Account after blur, retain, and eviction                                   | #301, #304            |
 | Background Account CPU | CPU time per minute per connected inactive Account                                                                    | #299, #301            |
 
-Each owning ticket records the current-path distribution and an approved regression budget before switching production callers. Machine-specific timings are evidence, not universal constants; deterministic counts and leak checks are hard assertions.
+The issue references identify the original instrumentation owners. The current owner and exact
+values live in [quality-baselines.json](../../architecture/quality-baselines.json), alongside a
+scope and description of what is instrumented. Retain a current-path distribution and agreed
+regression budget before switching production callers. Machine-specific timings are evidence,
+not universal constants; deterministic counts and leak checks belong in assertions.
+
+For example, the registry describes a two-handle blurred Conversation allowance per Account,
+11 browser listeners per retained child and 11,200 deterministic modeled bytes per child.
+Those bytes describe a bounded retained payload model, not a heap measurement. Its background
+Account CPU entry currently records reconciliation count and wall time; those measurements do
+not establish whole-process CPU usage. Inspect the owning instrumentation before choosing a
+benchmark or interpreting a result.
+
+The architecture validator checks required registry entries and fields. It does not execute
+these measurements or enforce every numeric budget. Pair it with the owning runtime and
+structural suites, and select host/browser checks using the
+[validation policy](../contributing/testing.md). Record the revision, environment, invocation,
+observed distribution/counts and unavailable coverage with each result.
 
 ## Security invariants
 

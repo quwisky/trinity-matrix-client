@@ -74,3 +74,7 @@ continues through the facade, while Appearance contributes six descriptor-backed
 Portable Appearance documents therefore use only current `appearance.*` paths and current
 descriptor keys. Portable format 2 maps the six former version 1 Theme paths into those current
 entries on import; predecessor storage keys remain read-only migration metadata.
+
+## Current guidance
+
+This decision records its accepted context. See the [current architecture contract](../architecture/target-architecture.md), [capability ownership](../architecture/libraries.md) and [runtime lifetimes](../architecture/state-and-reactivity.md) for the implemented boundaries.

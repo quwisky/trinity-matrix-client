@@ -8,7 +8,7 @@ Issues and specs for this repository live in GitHub Issues at
 - Create: `gh issue create --title "..." --body-file <file>`
 - Read: `gh issue view <number> --comments`
 - List: `gh issue list` with appropriate state and label filters
-- Comment: `gh issue comment <number> --body "..."`
+- Comment: `gh issue comment <number> --body-file <file>`
 - Label: `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
 - Close: `gh issue close <number> --comment "..."`
 
@@ -66,7 +66,8 @@ Re-read a parent immediately before editing it and preserve concurrent changes.
   destination and child acceptance criteria can include execution; preserve that agreement and
   record it in Notes when updating the map. A `wayfinder:task` label alone is insufficient.
 - Query all native child pages, including each child's state, assignees and blockers. The
-  frontier is open, unassigned children whose blockers are all closed; follow native child order.
+  frontier is open, unassigned children whose blockers are all closed and external prerequisites
+  are satisfied; follow native child order.
   A closed blocker remains a valid dependency and does not need its edge removed.
 - For maps using frontier labels, apply `ready-for-agent` only to that executable frontier.
   Labels summarize live dependencies; they do not replace the dependency check.

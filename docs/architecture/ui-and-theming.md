@@ -1,1224 +1,635 @@
 # UI and theming
 
-Trinity's interface is built from four stacked layers, and its appearance from a set of
-orthogonal axes carried on `<html>` — two that colour it, three that size and annotate what
-it renders. This page covers both: what belongs in each layer, how the vendored spartan-ng
-components are generated and where they have deliberately diverged, and how the design
-token system works — including the one token trap that has caused the same bug more than
-once.
+Use this guide when adding or changing a Trinity screen, public component,
+theme, overlay, rendered message style, or vendor wrapper. Follow the path in
+order: choose the public API, compose it with the right semantics, apply
+governed tokens and responsive behaviour, then prove the rendered result.
 
-## The four UI layers
+The [design-system ledger](../../architecture/design-system.json) and
+[generated dependency map](generated/dependency-map.md) are the current
+ownership records. The ledger requires one public entrypoint for each
+ui:public category, rejects broad export barrels and migration exceptions, and
+marks the Storybook host as non-consumable. Run the architecture contract after
+changing a public surface.
 
-| Layer      | Where                                                                   | What it is                                                              |
-| ---------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Brain      | `@spartan-ng/brain` 1.3.0 in `node_modules`, plus `@angular/cdk` 22.1.0 | Headless primitives: behaviour, accessibility, positioning. No styling. |
-| Helm       | `libs/spartan/*`, aliased `@trinity/helm/*`                             | The **styled** layer, copied into the repo by `@spartan-ng/cli`.        |
-| Components | `libs/components/*`, aliased `@trinity/components/*`                    | Trinity's public tier: the wrappers and components features reach for.  |
-| Features   | `libs/feature/*`, aliased `@trinity/feature/*`                          | Screens and the components that make them up.                           |
+## 1. Choose the owner before writing UI
 
-The libraries under `libs/spartan/` are generated Helm primitives and a Trinity-authored
-`tests` project that pins their behaviour inside the vendor tier. All are tagged `type:ui`,
-`scope:shared` and `ui:vendor-wrapper`.
+Trinity has four UI layers.
 
-The public tier is five category-owned projects: foundations, controls, generic content,
-navigation/layout and overlays. It contains only domain-neutral APIs such as `<trn-icon>`,
-`<trn-emoji-picker>`, `<trn-avatar>`, `trnBtn`, page headers, dropdown directives and the root
-toaster. Product-specific presentation is not shared: the media bubble and message toolbar live
-with Conversations under `feature/rooms`, while application-surface loaders live in Application
-Runtime. Public APIs compose or host kit primitives without leaking Helm selectors or types to
-features.
+| Layer             | Location                                         | Owns                                                          |
+| ----------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| Brain             | installed Spartan and Angular CDK packages       | headless behaviour, positioning, and accessibility primitives |
+| Helm              | libs/spartan, imported as @trinity/helm          | generated styled vendor wrappers                              |
+| public components | libs/components, imported as @trinity/components | domain-neutral Trinity APIs                                   |
+| features          | libs/feature                                     | product screens and product-specific presentation             |
 
-### The public design-system contract
+Features use the five public component categories:
 
-`architecture/design-system.json` is the machine-readable ownership ledger for the public
-tier. `scripts/design-system-contract.mjs` compares it with the live Nx graph and TypeScript
-entrypoints, so every `ui:public` project must appear exactly once and every consumable API must
-resolve through `@trinity/components/*`. `pnpm architecture:check` runs that contract alongside
-the wider architecture contract.
+| Entry point                           | Use for                                                                    |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| @trinity/components/foundations       | icons and composable UI utilities                                          |
+| @trinity/components/controls          | buttons, fields, labels, inputs, choices, and rich controls                |
+| @trinity/components/generic-content   | avatars, banners, progress, empty states, and other domain-neutral content |
+| @trinity/components/navigation-layout | page hierarchy, tabs, cards, separators, and navigation surfaces           |
+| @trinity/components/overlay           | dialogs, sheets, menus, anchored layers, alerts, and notifications         |
 
-| Category            | Public responsibility                                              |
-| ------------------- | ------------------------------------------------------------------ |
-| `foundations`       | Iconography and UI utilities that other public components compose. |
-| `controls`          | User-input primitives and field composition.                       |
-| `overlays`          | Generic dialogs, sheets, menus and notifications.                  |
-| `navigation-layout` | Structural surfaces, navigation, tabs and page hierarchy.          |
-| `generic-content`   | Domain-neutral presentation such as avatars, banners and progress. |
+A feature may keep presentation that is product-specific: message toolbars,
+media bubbles, virtualized timelines, Room rows, and their geometry belong with
+Conversations. Application Runtime owns application-surface loading. Do not
+move either into a generic component merely because it appears in more than one
+screen.
 
-The ledger records the Storybook host as `nonConsumable`: it supports the tier but is not
-application API. Every category owns exactly one public entrypoint, migration exceptions are
-forbidden, and the contract rejects broad `export *` barrels. Adding a shallow public project or
-silently expanding an entrypoint therefore fails `pnpm architecture:check`.
+Features never import Helm, Brain, CDK, icon-vendor, emoji-vendor, or
+matrix-js-sdk packages directly. A component needs to cross a domain boundary
+through a public data-access API or an application port, not a private vendor
+or feature import. The lint and architecture contracts enforce this boundary;
+the [public ledgers](../../architecture/design-system.json) and
+[entrypoints](generated/dependency-map.md) show the supported imports.
 
-#### Recipe vocabulary
+### Select an existing recipe
 
-`@trinity/components/foundations` owns the canonical recipe data: `TRN_VARIANTS` / `TrnVariant`
-for semantic treatment and `TRN_SIZES` / `TrnSize` for the ordinal size scale. The constants are
-runtime data and their types are derived string-literal unions, so documentation, stories and
-component inputs cannot describe different vocabularies. A component must expose an
-`Extract`-based subset rather than accepting the whole registry. Unsupported values then fail
-Angular's strict template type-check instead of silently falling through to a vendor default.
+The recipe vocabulary is runtime data in
+[foundations](../../libs/components/foundations/src), so a component publishes
+a strict subset of the Trinity vocabulary instead of accepting arbitrary
+classes or a vendor variant. Structural choices are separate from semantic
+treatment.
 
-Structural choices are separate axes. For `trnBtn`, `variant="primary|secondary|danger"` carries
-semantic intent, `size="xs|sm|md|lg"` selects an ordinal size, `presentation` selects
-`solid|outline|ghost|link`, and `shape="label|icon"` owns geometry. The recipe that maps those
-concepts to Helm classes is private to Controls; neither Helm nor CVA types cross the public
-entrypoint. Helm-shaped button values such as `default`, `destructive`, and `icon-sm` are not
-public inputs; callers use `primary`, `danger`, ordinal sizes, and `shape="icon"`.
+| Public API                                                       | Supported vocabulary                                                                                                   |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| trnBtn                                                           | variant primary, secondary, danger; size xs, sm, md, lg; presentation solid, outline, ghost, link; shape label or icon |
+| trnIconButton                                                    | purpose-built icon control whose product geometry matters; it retains shared interaction states                        |
+| trn-checkbox, trn-switch, trn-radio-group                        | neutral or accent; sm or md; native checked, indeterminate, invalid, disabled, and keyboard states                     |
+| trnToggle, trn-toggle-group                                      | neutral or accent; sm, md, lg; plain or outline; joined or separated arrangement where offered                         |
+| trnInput, trnTextarea                                            | sm, md, lg, with native invalid state                                                                                  |
+| trn-select                                                       | sm or md, with invalid and disabled state on its actual combobox trigger                                               |
+| trn-field and labels                                             | one native control with label, description, and invalid state; label emphasis normal or strong                         |
+| trn-tabs                                                         | neutral or accent; pill or line; orientation and activation stay headless behaviour                                    |
+| trn-page-header                                                  | neutral or accent; page or toolbar layout; one page-level h1                                                           |
+| trnCard and trnSeparator                                         | neutral or muted cards; sm or md; semantic sections and headings remain at the call site                               |
+| trn-icon                                                         | 2xs through 2xl; neutral, accent, muted, or danger                                                                     |
+| trn-avatar                                                       | named 2xs through 2xl sizes; exactSize is a bounded 16–256 px escape hatch                                             |
+| trnBadge, trn-banner, trn-empty-state, trn-progress, trn-spinner | only their exported semantic status and ordinal-size subsets                                                           |
+| trnTooltip                                                       | top, right, bottom, or left positioning                                                                                |
+| overlay surfaces                                                 | exported semantic variant, size, and structural layout only                                                            |
 
-Choice controls use the same bounded vocabulary while keeping native semantics authoritative:
+Do not use Helm-shaped button values such as default, destructive, or icon-sm.
+Callers express product intent with Trinity variants, ordinal sizes, and shape.
+A public component may expose only the subset it can render faithfully; the
+strict template tests are intended to reject retired aliases and unsupported
+values.
 
-| Component          | Public contract                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| `trn-checkbox`     | Variants `neutral`, `accent`; sizes `sm`, `md`; checked, indeterminate, invalid and disabled stay native checkbox states. |
-| `trn-switch`       | Variants `neutral`, `accent`; sizes `sm`, `md`; a native checkbox with `role="switch"` owns activation.                   |
-| `trn-radio-group`  | Variants `neutral`, `accent`; sizes `sm`, `md`; list or segmented layout is a separate structural axis.                   |
-| `trnToggle`        | Variants `neutral`, `accent`; sizes `sm`, `md`, `lg`; presentations `plain`, `outline`; read-only remains focusable.      |
-| `trn-toggle-group` | The toggle recipe plus joined or separated arrangement and horizontal/vertical toolbar behavior.                          |
+For a standard square icon action, use trnBtn with shape icon. Use
+trnIconButton only when its geometry itself carries product meaning, such as a
+reaction chip, server-rail pill, avatar action, or compact toolbar action.
+In either case select explicit icon motion from the public contract. Motion
+must never change the hit target, and reduced-motion mode removes the transform
+while retaining focus and colour feedback.
 
-Checkboxes, switches and radios render native inputs next to recipe-owned visual spans. Invalid,
-disabled, focus and checked state therefore live on the element the browser and assistive
-technology operate, rather than on a role-less vendor wrapper. Toggle groups retain the private
-Brain value holder but own roving tab focus, arrow keys and all visual vocabulary in Controls.
-Consumer classes may arrange a control or group in surrounding layout; spacing, shape, type,
-colour, elevation and interaction states belong to these recipes.
+A feature composes named public exports; it does not import a Helm directive to
+reach the same result. In an existing standalone component, add the imports and
+metadata below, then keep the markup in its external template. This uses the
+public `trnBtn` recipe and closed icon name rather than a vendor class or icon
+identifier.
 
-Fields and rich controls expose only the axes their native or vendor substrate can implement:
+**TypeScript imports and existing `@Component` metadata:**
 
-| Component                      | Public contract                                                                                 |
-| ------------------------------ | ----------------------------------------------------------------------------------------------- |
-| `trn-field`                    | Groups a native control and supporting content; `invalid` marks the field state.                |
-| `trn-field-label` / `trnLabel` | Emphasis `normal`, `strong`; validation remains the independent `invalid` state.                |
-| `trnInput` / `trnTextarea`     | Sizes `sm`, `md`, `lg`; explicit or form-derived invalid state; exact native-element selectors. |
-| `trn-select`                   | Sizes `sm`, `md`; invalid and disabled states; the focusable trigger fills its block host.      |
-| `trn-emoji-picker`             | Sizes `sm`, `md`, `lg`; the vendor glyph measurement is a private adapter.                      |
-| `trn-qr-scanner`               | One tokenized, layered scanner surface whose actions compose `trnBtn`.                          |
+```ts
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrnButton } from '@trinity/components/controls';
 
-Labels keep native `for`/`id` associations, text controls retain native focus and keyboard
-behavior, and descriptions remain attached through `aria-describedby`. The select routes its
-accessible name, invalid state and keyboard interaction to the actual combobox button. Host
-classes may arrange a whole control in its consumer; repeated inner classes and vendor-specific
-values belong to the owning recipe.
+@Component({
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [TrnButton, TrnIconComponent],
+  templateUrl: './send-action.component.html',
+})
+```
 
-Navigation and Layout follows the same separation between semantic treatment and structure:
+**`send-action.component.html`:**
 
-| Component         | Public contract                                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- |
-| `trn-tabs`        | Variants `neutral`, `accent`; presentations `pill`, `line`; orientation and activation stay Brain behavior. |
-| `trn-page-header` | Variants `neutral`, `accent`; layouts `page`, `toolbar`; the native header owns one page-level `h1`.        |
-| `[trnCard]`       | Variants `neutral`, `muted`; sizes `sm`, `md`; the call site retains its section and heading semantics.     |
-| `[trnSeparator]`  | Variants `neutral`, `accent`; horizontal/vertical geometry and decorative/announced meaning stay separate.  |
+```html
+<button type="button" trnBtn variant="primary" size="md">
+  <trn-icon name="send" size="sm" />
+  Send
+</button>
+```
 
-Tab triggers retain Brain's roving focus, arrow-key activation, disabled state, ARIA ownership and
-non-submitting button type. Structural card slots keep their semantic host elements, and separator
-orientation continues to drive both geometry and the accessible role. Tab-panel stack spacing is
-owned internally instead of exposed as an arbitrary class-string input. Public entrypoints export
-only Trinity types. The category's authored inline panel rule is explicitly classified in
-`@layer components`, while recipe classes use the governed Tailwind utility layer rather than
-unlayered CSS.
+## 2. Compose semantics, accessibility, and layout
 
-Foundations and Generic Content apply the same rule to the narrower vocabulary each component
-can actually render:
+Start with native HTML. Checkboxes, switches, and radios keep native inputs;
+their recipe-owned visual spans are not a replacement for browser or assistive
+technology state. Labels preserve their for and id relationship, and native text controls use
+aria-describedby for descriptions. A select routes aria-labelledby and invalid
+state to its real combobox button; it does not forward aria-describedby. A
+component must not encode a visible label in a host aria-label by default; the
+caller knows the label in context.
 
-| Component         | Public contract                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------- |
-| `trn-icon`        | Sizes `2xs`, `xs`, `sm`, `md`, `lg`, `xl`, `2xl`; variants `neutral`, `accent`, `muted`, `danger` |
-| `trn-avatar`      | Named `2xs`–`2xl` sizes; `exactSize` is a bounded 16–256 px escape hatch.                         |
-| `trnBadge`        | Variants `neutral`, `success`, `warning`; sizes `xs`, `sm`, `md`                                  |
-| `trn-banner`      | Variants `neutral`, `accent`                                                                      |
-| `trn-empty-state` | Variants `muted`, `danger`; layouts `panel`, `line`, `hero`                                       |
-| `trn-progress`    | Variants `accent`, `success`, `warning`, `danger`; sizes `xs`, `sm`, `md`                         |
-| `trn-spinner`     | Variants `neutral`, `muted`, `accent`, `danger`; sizes `xs`, `sm`, `md`, `lg`; may inherit ink    |
-| `trnTooltip`      | Positions `top`, `right`, `bottom`, `left`; one semantic surface                                  |
+Use semantic structure around public chrome. The caller owns a card's section
+and heading semantics, a separator's announced or decorative role, and a
+screen's hierarchy. The component owns its recipe spacing, shape, colour,
+elevation, focus, hover, pressed, disabled, and invalid states. Do not add an
+arbitrary class-string input to change an inner public component.
 
-Recipe classes and vendor adapters stay private. Public entrypoints export only Trinity names,
-and semantic statuses resolve through Theme tokens rather than local colours or Helm variants.
-Strict template fixtures reject values outside the bounded subsets, including retired aliases.
+An icon-only control needs an accessible name. Set `aria-label` on the button
+and pair it with a matching trnTooltip; the tooltip describes the control but
+does not supply its accessible name. Do not use a native title, so the surface
+follows Trinity tokens and works consistently. `trn-icon` is decorative by
+default; set its `label` only when the glyph itself supplies the name. Set its
+`size` input rather than a `text-*` class when it must be larger than inherited
+text, because the wrapper
+sets the vendor glyph's measured size. A vertically stacked navigation or
+member label opens sideways so its hoverable overlay cannot cover the preceding
+control.
 
-The login page is the first production proof screen. It composes labels, inputs, buttons,
-cards, icons, overlays and progress only through Trinity entrypoints, including
-`@trinity/components/controls` for the native label/control association. The executable ledger
-pins those imports and selectors; unit and browser tests pin the interaction and accessible
-name. Subsequent feature migrations should add or replace proof screens only when they exercise
-a genuinely new public contract, rather than turning the ledger into a list of every consumer.
+### hostDirectives are public API
 
-The completed consumer-migration slices extend that proof through authentication, Trust,
-application startup, routing surfaces, the host shell, Settings, and every Rooms surface. Those
-consumers use canonical button
-`variant`/`presentation`/`shape`/`size` axes, public fields and labels, named icon and avatar sizes,
-muted cards, `danger` feedback, neutral dialog surfaces, and the neutral toolbar page header.
-Settings, Appearance, Advanced configuration, Rooms navigation, governance and member management,
-widgets, search, timelines, the composer and its suggestion popovers, reaction and content pickers,
-media and voice attachments, polls, location, replies, typing, message actions, threads, and pinned
-messages retain their feature-owned geometry, virtualization, touch targets, and safe-area layout
-while public recipes own control and overlay chrome. Purpose-built reaction chips, toolbar
-controls, server-rail pills, and account or room navigation rows keep their product semantics, but
-compose public foundations and interaction-state recipes rather than vendor contracts.
+An Angular composed directive publishes an input or output only when its
+hostDirectives entry lists it. Every generated Helm entry therefore states
+inputs and outputs explicitly, including empty arrays. Shorthand silently
+publishes neither.
 
-Alert confirmations, prompts, dialog results, lazy configuration loading, and one-shot Settings
-and Rooms actions use cold finite RxJS pipelines, with
-`firstValueFrom` limited to SDK or framework callback boundaries that require a Promise. Every
-component stylesheet in the migrated slices is in `@layer components`, and
-`design-system-consumer-migration.spec.mjs` keeps the roots non-vacuous while rejecting legacy
-values, vendor imports, local appearance overrides, Promise alert calls, and cascade exceptions.
-No Rooms consumer uses a retired alias or remains on a cascade migration ledger. Source guards
-keep the removed aliases, Promise wrappers, and arbitrary inner-appearance inputs from returning.
+When composing an existing directive:
 
-Icon-only actions use one of two public contracts. A standard square action uses `trnBtn` with
-`shape="icon"` and an ordinal size, which supplies the shared shape and automatically opts into
-the common pointer, hover and pressed states. A purpose-built control whose geometry carries
-meaning—a reaction chip, server-rail pill, avatar action or compact toolbar button—uses
-`trnIconButton` instead. It keeps that geometry but receives the same interaction states; the
-owning component must explicitly centre its glyph within that custom box. In both forms the inner
-`<trn-icon>` must
-choose an explicit semantic `motion` (`nudge-left`, `nudge-up`, `nudge-down`, `nudge-up-right`,
-`pop` or `rotate`); motion never moves the hit target, and reduced-motion mode removes the glyph
-transform while retaining colour and focus feedback.
+1. list every supported input and output in the hostDirectives entry;
+2. keep unsupported vendor inputs private;
+3. set aria-describedby as a property binding (`[aria-describedby]`) or a
+   bare attribute (`aria-describedby`), never `[attr.aria-describedby]`, where
+   the field-control directive owns the attribute;
+4. add or update the strict-template and behaviour proof for the public API.
 
-Themeable interactive labels use `trnTooltip` alongside their `aria-label`, not a native `title`: the
-native surface is browser/OS chrome and cannot follow Trinity's theme. A source guard keeps native
-titles off every button and link; vertically stacked navigation and member labels open sideways so a
-hoverable overlay cannot cover the preceding control. The public tooltip wrapper keeps Helm's geometry
-and motion but replaces its inverted colours with the semantic `--trinity-tooltip-surface` /
-`--trinity-tooltip-foreground` pair. Light mode preserves the dark tooltip treatment; dark mode
-resolves the surface through the active Theme's elevated popover tokens, including the arrow.
+The [hostDirectives contract](../../scripts/host-directives.spec.mjs) protects
+this rule. The input and textarea wrappers demonstrate the required
+aria-describedby publication in
+[TrnInput](../../libs/components/controls/src/lib/input/trn-input.ts) and
+[TrnTextarea](../../libs/components/controls/src/lib/textarea/trn-textarea.ts).
 
-`libs/ui` is gone entirely. View helpers live in `@trinity/util/ui` (`type:util`, reachable
-from every layer), while Workspace application-surface presentation owns settings and Trust
-placement. Its Trust loader token is declared by Application Runtime and supplied by `main.ts`;
-settings composition stays app-local. `@trinity/components/overlay` remains a generic,
-swappable dialog/menu/toast wrapper and knows no product routes or feature loaders.
+### Responsive interaction and safe areas
 
-That tier is closed from both sides. The vendor bans stop everything below the UI layer
-naming `@spartan-ng/brain`, `@angular/cdk`, `@ng-icons` or `@ctrl/ngx-emoji-mart`; and a
-`no-restricted-imports` pattern over `libs/feature` and `apps` stops them reaching
-past the tier into `@trinity/helm/*`. Feature code asks for `@trinity/components/*`, full
-stop.
+Use the predicate that answers the actual question. Mobile OS chooses the
+interaction model; a coarse pointer chooses touch target size. A touch-enabled
+desktop is not a mobile OS. Keep responsive placement semantic: a narrow
+presentation can move a surface into a sheet without creating a second route
+or state owner.
 
-`@nx/enforce-module-boundaries` cannot express that second half: its
-`notDependOnLibsWithTags` is **transitive**, and the tier depends on the kit by design, so
-banning `ui:vendor-wrapper` from feature code also fails on every path through
-`@trinity/components/*` — the very path it exists to bless. A direct-import rule is the right
-shape, and it is the same one the `matrix-js-sdk` ban uses.
+Use the shared safe-area helpers with their padding in one declaration. A
+safe-area utility and another padding utility write the same longhand and one
+replaces the other. Keep consumer geometry in its feature stylesheet, and
+leave public recipe internals to their owner. The Rooms
+[shared mixins](../../libs/feature/rooms/src/lib/styles/_mixins.scss) remain
+available for content layout, including the parameterless dialog-surface mixin.
+It does not own dialog width, surface paint, or chrome: consumers compose the
+public overlay-surface recipe for those.
 
-There are no named exceptions. `scripts/lint-invariants.spec.mjs` resolves the effective ESLint
-configuration and scans feature/app sources, so weakening the glob or adding a direct Helm import
-fails independently of ordinary lint.
+Keep trn element selectors kebab-case and directive selectors camelCase; class
+names end in Page or Component. A component remains a directory with TypeScript,
+template, SCSS, and spec files. Preserve data-testid hooks on interactive
+elements. Shared mixins cover layout only; hardcoded colours, a second
+scrollbar-paint contract, or a component-level vendor selector do not belong
+there.
 
-That third tag is what makes the layering above enforceable rather than merely described.
-Every UI library used to carry identical tags, so no boundary rule could say "only the kit may
-import Brain" — they were indistinguishable to Nx. The public tier now carries `ui:public`,
-the kit carries `ui:vendor-wrapper`, and `bannedExternalImports` keeps `@spartan-ng/brain`,
-`@angular/cdk`, `@ng-icons` and `@ctrl/ngx-emoji-mart` out of every tier below the UI one.
+A component stylesheet is unlayered unless it declares a layer. Tailwind
+utilities are in the utilities layer, so an unlayered component declaration
+wins regardless of selector specificity. Put authored public component rules in
+the components layer and do not try to fix a cascade problem with specificity
+or an important escape. The
+[cascade contract](../../scripts/cascade-layer-contract.spec.mjs) records the
+governed order.
 
-Neither UI tag carries a vendor ban, and that is the whole shape: both **are** wrapper layers,
-so banning their vendors would ban them from existing. There was a third tag, `ui:wrapper`,
-which did carry all four — it belonged to `libs/ui`, and it was deleted with that library
-rather than left behind, because a ban keyed on a tag no project carries enforces nothing
-while reading as a closed door. `lint-invariants.spec.mjs` now fails on exactly that.
+## 3. Use the generated vendor layer correctly
 
-The ban reads TypeScript import specifiers and nothing else, so it is worth knowing where it
-cannot see. `apps/trinity` loads one `vendor.css` seam containing two global imports:
-`@angular/cdk/overlay-prebuilt.css`, without which no overlay positions at all, and
-`@ctrl/ngx-emoji-mart/picker.css`. The picker's stylesheet can be pulled into its lazy component
-chunk, but that puts the component 517 bytes over the 8 kB `anyComponentStyle` budget, and
-widening a budget that guards every component is the worse trade. The seam puts both imports in
-`vendor` and `lint-invariants.spec.mjs` pins the exact list, so a third has to be argued for
-rather than appearing in build config nobody reads as part of the boundary.
+Helm libraries under libs/spartan originate from the Spartan CLI. Do not
+hand-author a vendor component. Add a missing primitive through the
+repository-supported CLI path; for an installed wrapper, compare an isolated
+upstream generation before carrying forward each registered Trinity divergence.
 
-Composition is the other half of that containment. `hostDirectives` **is** public API — a
-composed directive's input is bindable on our element only if the entry lists it — so every
-entry in the kit states its `inputs`, even when the answer is `[]`. The shorthand
-(`hostDirectives: [BrnFoo]`) exposes nothing, which is usually right but is a decision nobody
-made, and it hides the opposite case equally well: `HlmInput` composed
-`BrnFieldControlDescribedBy` without listing `aria-describedby`, so setting that attribute on
-an `hlmInput` was silently overwritten with null and could not be set at all. The same is true of `outputs`, which Angular
-validates and merges identically. All 43 entries state both, and
-`scripts/host-directives.spec.mjs` fails on one that does not — which is also what a
-`@spartan-ng/cli` regenerate would produce, so it is registered as a vendored divergence
-below.
+Helm may use Brain and vendor packages because it is the wrapper layer.
+Public components may compose Helm but export only Trinity names and types.
+Features consume public components, never Helm. The global vendor CSS seam is
+a deliberate exception for CDK overlay positioning and the emoji picker; do
+not add another global vendor stylesheet without updating its explicit
+contract.
 
-`type:feature` started with **103** violations across 60 files and is now at **zero**. #151
-closed the 30 dialog and toast imports, #154 the 62 icon ones and #152 the last 11, so every
-tier below the UI layer is enforced the same way: a new vendor import fails `pnpm lint`,
-statically or through a lazy `import()`. Nothing is staged any more — the temporary `warn`
-block that kept the count visible while it shrank is gone, which is what closing this gate
-meant.
+Never assert an implementation component's host class string. Test its
+Trinity public API, DOM semantics, and rendered behaviour instead. Only the
+Spartan tests project is a generated-tier Vitest target; other generated
+libraries are checked through their declared build and lint targets.
 
-The emoji picker is the clearest case of what the vendor layer costs when it is not wrapped.
-`@ctrl/ngx-emoji-mart`'s `picker.css` is 453 lines with **zero** custom properties — every
-colour a literal — and its whole idea of theming is one `darkMode` boolean that toggles an
-`.emoji-mart-dark` class. That cannot express Trinity's Mode × Theme grid, so the picker
-rendered its own purple accent and its own greys under all four combinations.
-`<trn-emoji-picker>` pins that boolean to `false` and paints the chrome from design tokens
-instead, so it re-themes with everything else.
+### Vendored divergences
 
-Two details there are easy to get wrong, and both are pinned by tests. The boolean has to be
-**pinned**, not merely left unbound: the vendor defaults it to
-`matchMedia('(prefers-color-scheme: dark)').matches`, so an absent binding follows the
-desktop rather than switching the class off, and jsdom reports light — so a rendering test
-will happily confirm an invariant that does not hold in a browser. And the **accent is
-passed, not overridden**: the vendor emits it as an inline style on the anchor bar and the
-selected category, which no rule in a stylesheet can outrank without `!important`, so
-`var(--trinity-accent)` goes in through the vendor's own `color` input.
+A divergence from generated Helm must be narrow, explained at the source, and
+registered below. It needs a test that pins the behavioural reason, so
+regeneration cannot erase it silently. Do not use a divergence to add product
+state, a feature import, or a new public vendor-shaped API.
 
-Icons are the clearest illustration of what the wrapper buys. `@ng-icons` types its `name`
-as `IconName | (string & {})` — any string at all — so `name="lucideTrash"` (no `2`) used to
-type-check, build, and render nothing. `<trn-icon>` takes a closed `TrnIconName` union
-instead, so that is a compile error, and the vendor identifiers live in exactly one file.
-Accessibility moved from incidental to systematic in the same step: `NgIcon` force-hides any
-icon lacking a **static** `aria-hidden`, which silently suppressed a bound `aria-label` — a
-label the quick switcher was announcing to nobody. `<trn-icon>` is decorative by default and
-puts a `label` on its own host, where nothing can suppress it.
-
-The grouped public entrypoints hold domain-neutral foundations, controls, generic content,
-navigation/layout and overlays. The boundary rule is that `type:ui` may depend only on ui,
-util and platform libraries — never on data-access, never on the SDK. Conversations owns
-`MediaBubbleComponent` and `MessageToolbarComponent` because they render Matrix product concepts.
-
-That rule is what forces the injection-token pattern. `<trn-avatar>` needs to turn an
-`mxc://` URI into a displayable blob URL, which is a data-access concern, so it injects an
-optional `AVATAR_RESOLVER` token that `main.ts` wires to `AvatarService.resolve`. When the
-token is absent — `ui` in isolation, or a unit test — the component falls back to its `url`
-input. Its typed `shape="person|place"` contract keeps users and DMs circular while rooms and
-spaces use stable squircles; the radius is applied to Helm's host, image, fallback and outline
-through one inherited custom property. Application Runtime uses the same inward-facing shape for
-`ENCRYPTION_DIALOG_COMPONENTS`: the app supplies cold lazy Trust-page Observables without the
-runtime importing `feature-crypto`. See [libraries](libraries.md) for the boundary rules in full.
-
-## The Helm libraries are generated
-
-`libs/spartan/*` is canonical spartan-ng Helm code produced by `@spartan-ng/cli`. Add or
-regenerate a component with the CLI rather than hand-authoring it:
+Generate only a missing supported primitive through the installed CLI; its `ui`
+schema takes a primitive `name`, plus optional `directory` and `tags`. From this
+repository, use the full existing project tag set:
 
 ```bash
-pnpm nx g @spartan-ng/cli:ui <name>
+pnpm nx g @spartan-ng/cli:ui <name> --directory libs/spartan --tags type:ui,scope:shared,ui:vendor-wrapper,role:design-system,capability:design-system
 ```
 
-That is the whole workflow. The kit keeps upstream's own naming — `hlm` selectors, `Hlm*`
-class names, the `@trinity/helm/*` alias — so a regenerate lands consistent with what is
-already there and needs no post-processing step.
+The root [components.json](../../components.json) supplies the `libs/spartan`
+path, `@trinity/helm` import alias, `nova` style, and library generation shape.
+The generator skips an installed primitive alias, so this command does not
+regenerate or update existing wrappers. For an upstream update, create an
+isolated generated comparison, inspect the narrow diff against the installed
+wrapper, then manually preserve each registered divergence and its proof. Do
+not bulk-delete or overwrite the vendor layer. Do not run the generator merely
+to inspect it.
 
-`trn` is reserved for Trinity's own code — `<trn-icon>`, `<trn-emoji-picker>` and the overlay
-adapters — which is what makes the wrapper layer legible at a glance: an `hlm` name is
-upstream's, a `trn` name is ours. Renaming the kit into that namespace was tried and rejected;
-it would have needed a codemod re-applied after every generate, and a half-applied one **lints
-clean** because the generated files are exempt from the selector and class-suffix rules.
+#### Vendored spartan overrides
 
-Configuration lives in the root `components.json`:
+| Source owner                                                                                   | Intentional divergence                                                                                                                                                                                                                                                                   | Proof to read or update                                                                                                                             |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [avatar](../../libs/spartan/avatar/src/lib/hlm-avatar.ts)                                      | `HlmAvatar`, image, and fallback inherit Trinity's semantic shape: a person is a circle and a place is a squircle, rather than every avatar becoming a circle.                                                                                                                           | [Theme Foundation contract](../../scripts/theme-foundation-contract.spec.mjs) and browser shape coverage                                            |
+| [dropdown menu](../../libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts)                 | `HlmDropdownMenuSubTrigger` opens its submenu, restores the CDK focus move, and defaults to logical right placement; menu aim remains attached to root and submenus.                                                                                                                     | [submenu spec](../../libs/spartan/tests/src/lib/dropdown-menu-submenu.spec.ts)                                                                      |
+| [dropdown menu](../../libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts)                 | `HlmDropdownMenuFocusOnHover` moves the active DOM focus on real mouse hover, while ignoring touch-generated hover and disabled items, so the CDK menu keeps one active item.                                                                                                            | [submenu spec](../../libs/spartan/tests/src/lib/dropdown-menu-submenu.spec.ts)                                                                      |
+| [dropdown menu](../../libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts)                 | A destructive menu row uses `text-danger` for readable ink, while destructive remains a fill/tint role.                                                                                                                                                                                  | [submenu spec](../../libs/spartan/tests/src/lib/dropdown-menu-submenu.spec.ts)                                                                      |
+| [badge](../../libs/spartan/badge/src/lib/hlm-badge.ts)                                         | Badge adds success and warning status recipes and uses the invariant `rounded-full` shape.                                                                                                                                                                                               | [Helm component spec](../../libs/spartan/tests/src/lib/helm-components.spec.ts)                                                                     |
+| [select](../../libs/spartan/select/src/lib/hlm-select-content.ts), dropdown, tooltip, progress | Overlay elevation uses `shadow-overlay`; radio/tabs use `shadow-raised`; open/close and indeterminate animation carries a local reduced-motion guard.                                                                                                                                    | [Theme Foundation contract](../../scripts/theme-foundation-contract.spec.mjs) and [reduced-motion guard](../../scripts/kit-reduced-motion.spec.mjs) |
+| [select trigger](../../libs/spartan/select/src/lib/hlm-select-trigger.ts)                      | The source-bannered divergence forwards `aria-labelledby` and explicit invalid state to the real combobox button, supplies its readable foreground, and enforces the shared 44px coarse-pointer target floor. `aria-describedby` is deliberately unavailable through the public wrapper. | [public select spec](../../libs/components/controls/src/lib/select/trn-select.component.spec.ts)                                                    |
+| [tabs entrypoint](../../libs/spartan/tabs/src/index.ts)                                        | `HlmTabsPaginatedList` is intentionally deleted: no public Trinity surface needs its scrolling trigger row or its extra observer, icon, and button dependencies. Reintroduce it only with a public need and a regenerated, reviewed tabs wrapper.                                        | [Helm component spec](../../libs/spartan/tests/src/lib/helm-components.spec.ts)                                                                     |
+| [Sonner wrapper](../../libs/spartan/sonner/src/lib/hlm-toaster.ts)                             | A semantic adapter repairs the vendor list/live-region structure rather than changing the public toaster API.                                                                                                                                                                            | [toast render spec](../../libs/components/overlay/src/lib/toast/trn-toast-render.spec.ts)                                                           |
+| every Helm component                                                                           | Every `hostDirectives` entry declares inputs and outputs explicitly.                                                                                                                                                                                                                     | [hostDirectives guard](../../scripts/host-directives.spec.mjs)                                                                                      |
 
-```json
-{
-  "componentsPath": "libs/spartan",
-  "buildable": false,
-  "generateAs": "library",
-  "style": "nova",
-  "importAlias": "@trinity/helm"
-}
+Read the nearby source and its proof before changing one of these areas. The
+registry is a contract, not a menu of optional styling preferences.
+
+## 4. Style with tokens and the cascade
+
+Theme Foundation owns the aggregate stylesheet, the semantic token catalogue,
+and the private Tailwind and Helm adapters:
+
+- [theme stylesheet](../../libs/theme-foundation/styles/theme.scss)
+- [base variables](../../libs/theme-foundation/styles/internal/variables.scss)
+- [private Tailwind adapter](../../libs/theme-foundation/styles/internal/tailwind-adapter.css)
+- [Theme catalogue](../../libs/theme-foundation/src/lib/theme-catalog.ts)
+
+Feature and component SCSS consumes Trinity semantic tokens. It does not
+author Helm or Tailwind token names, hardcoded colours, vendor classes, raw
+elevation, or a Theme-specific selector. A token must represent a semantic
+role, not a component name.
+
+### Token families
+
+| Family               | Examples and rule                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| surfaces and borders | frame, navigation, workspace, panel, raised, floating, drop overlay, subtle and strong borders                                                    |
+| text                 | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`, `--trinity-link`, and semantic status text                                     |
+| accent               | `--trinity-accent`, `--trinity-accent-hover`, `--trinity-accent-foreground`, tint stops, and link; fill and readable text are separate roles      |
+| status               | `--trinity-success`, `--trinity-warning`, and `--trinity-danger` text/icon roles; `*-solid` fills and `*-solid-foreground` ink; opaque tint ramps |
+| shape and elevation  | radius and spacing roles; `--trinity-shadow-raised`, `--trinity-shadow-floating`, and `--trinity-shadow-overlay`                                  |
+| interaction          | focus, hover, pressed, selected, selected-hover, disabled, and semantic state roles                                                               |
+| layering             | app-level sticky, floating, overlay, panel, and feedback layers; local component stacks remain local literals                                     |
+| syntax               | the eight syntax roles consumed only by rendered markdown                                                                                         |
+
+Visible scrollbar paint is global. A component owns its overflow behaviour but
+does not restate scrollbar colours. The no-scrollbar utility hides an
+intentionally chosen scroller; it must never remove scrolling itself.
+
+All Theme-authored colours use in-gamut absolute `oklch()` coordinates. The
+contrast guard rejects legacy colour notation, runtime colour mixing, and values
+outside sRGB because browser gamut mapping would make a claimed contrast ratio
+host-dependent. Named Themes override only their sparse semantic colour and
+elevation roles; they inherit the remaining roles from the base Theme.
+
+### Danger is not destructive
+
+> [!WARNING]
+> Never use Helm `text-destructive` as a foreground colour. In templates use
+> `text-danger`; in SCSS use `var(--trinity-danger)` for text or icons.
+
+Destructive is a fill and ring contract paired with its destructive foreground.
+Trinity danger is the readable text and icon role on a surface. A filled danger
+badge uses the dedicated danger-solid pair. Never use a translucent destructive
+tint as a contrast guarantee: the surface beneath it changes the resulting
+pixels. The private adapter replaces destructive opacity utilities with
+explicit opaque danger tint stops and its override list must cover every
+emitted button, menu, descendant-icon, hover, and data-variant selector.
+
+After regenerating Helm or changing a destructive recipe, build the web
+artifact and derive both override selector sets from emitted CSS rather than
+copying class names by hand:
+
+```bash
+pnpm nx build trinity
+tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
+tr '}' '\n' < www/styles-*.css | grep 'bg-destructive'
 ```
 
-Generated code intentionally breaks the app's own conventions — `hlm` and `brn` selector
-prefixes, un-suffixed class names such as `HlmButton`, and aliased inputs including
-`class`. Rather than fight the generator on every resync, `eslint.config.mjs` exempts
-`libs/spartan/**/*.ts` from `component-class-suffix`, `component-selector`,
-`directive-selector` and `no-input-rename`.
-
-Only `libs/spartan/tests` has a Vitest target; every other Helm library is build and lint only.
-That is why the specs pinning Helm behaviour live there rather than beside the components they
-cover, and import across the library boundary. That project holds nothing else — it exists so
-those specs stay in the vendor tier now that the hand-authored libraries have left it.
-
-!!! warning "Never assert on a Helm component's host class string"
-
-    Helm styles its host through the asynchronous `classes()` manager in
-    `libs/spartan/utils/src/lib/hlm.ts` — an `effect()` plus a document-wide
-    `MutationObserver` that applies the merged class string on a microtask or
-    animation-frame schedule. Asserting the applied host classes produces flaky specs.
-    Assert the pure, synchronous `cva` functions instead (`buttonVariants`,
-    `badgeVariants`) plus the fact that the component renders without throwing. This is
-    stated as a rule in
-    [`helm-components.spec.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/tests/src/lib/helm-components.spec.ts).
-
-## The overlay library is Trinity code
-
-`@trinity/components/overlay` is **hand-authored**, not generated — it sat under `libs/spartan/`
-for historical reasons until it moved to the public tier with the icon and emoji-picker
-wrappers. It holds the imperative overlay adapters:
-`TrnDialogService`, `TrnAlertService` with `TrnAlertDialogComponent`, `TrnActionSheetService`
-with `TrnActionSheetComponent`, public dropdown directives, `TrnToastService`, and the root
-`TrnToasterComponent` — built on CDK Dialog and Overlay plus brain sonner. A modal'd component
-closes itself with `inject(TrnDialogRef).close(data)`.
-
-`TrnDialogRef` is Trinity's own class, not a re-exported `DialogRef`. That distinction is the
-whole point of the layer: the barrel used to hand out CDK's class — one deliberate, documented
-export — and that single line put `@angular/cdk` in the type signature of 24 feature
-components, so swapping the dialog library would have meant editing every one of them. The
-wrapper is two members wide (`close`, `closed`), which is everything the app used across 51
-call sites, and `vendor-surface.spec.ts` asserts the barrel re-exports **no** CDK value at
-all. Anything genuinely new should arrive as a named method on `TrnDialogService`, where it
-can be given Trinity's semantics, rather than by widening this handle.
-
-```ts
-const ref = this.dialog.open(MyComponent, {
-  inputs: { roomId },
-  placement: 'inline-end',
-  autoFocus: '[data-autofocus]',
-});
-```
-
-`placement: 'inline-end'` pins a full-height logical-end panel. Dialog placement, anchored
-`side`/`align`, focus and lifecycle are behavior choices; they never select a visual treatment.
-Dialog placement uses only `center|inline-end|bottom|fullscreen`; the former `side` option is not
-part of the public service.
-
-Every overlay surface uses `trnOverlaySurface`, whose three bounded axes stay independent:
-
-- `variant="neutral|accent"` selects semantic color and elevation tokens;
-- `size="sm|md|lg|xl|2xl"` selects an ordinal inline-size token; and
-- `layout="dialog|sheet|popover|panel|workspace|fullscreen"` selects structural geometry.
-
-The directive owns background, foreground, border, radius and elevation for both document and
-CDK-portal content. Components own only their interior layout, typography and intentionally
-composed safe-area padding. The `workspace` layout is the bounded 72rem by 48rem application
-surface used by Settings; its viewport insets remain part of the public recipe rather than
-feature-owned dialog paint. Storybook imports CDK's overlay baseline into the same `vendor`
-cascade layer as the application, so a recipe resolves identically in either host.
-
-The imperative wrappers expose the same Trinity vocabulary instead of vendor variants:
-
-- dropdown items are `neutral|danger`;
-- guaranteed checked values use `trnLockedSelection`; dropdown checkboxes expose the same state as
-  `lockedSelection`, preserving disabled semantics without making the included value look excluded;
-- alerts and action-sheet buttons are `neutral|danger`, with cancellation behavior separate
-  from appearance; and
-- toasts are `neutral|success|warning|danger`.
-
-One-shot result APIs are cold, finite Observables: `openAndWait$()`, `confirm$()` and `prompt$()`
-do not open an overlay until subscribed and emit once. No Promise compatibility methods remain.
-
-!!! warning "Two dialog traps"
-
-    **A CDK dialog panel is transparent.** Every dialog component paints its own surface with
-    `trnOverlaySurface`, and one that forgets renders as text floating over the timeline — easy
-    to miss in review because the layout is correct in isolation and only the background is
-    wrong. Trust portals and every Rooms overlay now use the public surface recipe. A source guard
-    rejects feature-local overlay paint and prevents `dialog-surface()` from returning to a
-    migrated consumer.
-
-    **`autoFocus` defaults to CDK's `'first-tabbable'`**, which is wrong for any dialog whose
-    header carries a Cancel or Close button ahead of the field the user came to type in — the
-    button wins. A component-side `focus()` cannot fix it, because CDK focuses *after* attach
-    and overrides the earlier call. Name the element instead: `autoFocus: '[data-autofocus]'`.
-
-!!! warning "Keep sonner behind the public overlay tier"
-
-    `<trn-toaster/>` owns Helm's toaster, which wraps brain's `<brn-sonner-toaster/>` and reads **brain's own**
-    `toastState`. Since spartan 1.1 brain ships its own sonner port and no longer depends on
-    `ngx-sonner`, so calling `ngx-sonner`'s `toast()` pushes into a store the mounted toaster
-    never observes. The toast silently never appears — no error, no console output, nothing in
-    the DOM. `TrnToastService` is the one place that imports the brain toast function, and
-    `TrnToasterComponent` is the one public root viewport.
-
-## `hostDirectives` is public API
-
-A helm component composes a headless Brain directive through `hostDirectives`, and that entry
-decides what a consumer may bind. **A composed directive's input is bindable only if the entry
-lists it in `inputs: [...]`.** Anything not listed is not merely unavailable — if the composed
-directive owns a host binding for it, the binding still runs and _overwrites whatever the
-consumer set_.
-
-That is not hypothetical. `hlmInput`, `hlmTextarea` and `hlmRadioGroup` each compose
-`BrnFieldControlDescribedBy`, which owns `[attr.aria-describedby]`, and none of them published
-the input. Every `aria-describedby` on those controls was computed as `null` and removed from the
-DOM — silently, on three shipped screens, for as long as the components have existed.
-
-**The rules:**
-
-1. **Every `hostDirectives` entry lists `inputs` AND `outputs` explicitly**, even when the
-   answer is `[]`. An empty list is a decision; an omitted one is an accident that publishes or
-   swallows an API nobody chose. Angular validates and merges the two identically, so the same
-   applies to both — `CdkMenu.closed`, for instance, stays internal by decision, because
-   closure is already public on the trigger as `hlmDropdownMenuClosed` and two names for one
-   lifecycle is easy to add and hard to withdraw.
-2. **Set `aria-describedby` as an attribute or a property binding, never `[attr.aria-describedby]`.**
-   Even with the input published, the attribute form is still overwritten: the directive's host
-   binding runs after the template's. Pinned by a test in
-   `libs/spartan/tests/src/lib/helm-components.spec.ts` so a future upstream fix is noticed.
-3. **`hlm-checkbox` and `hlm-radio` are deliberately different.** Each declares its own
-   `aria-describedby` input, forwards it to the inner `brn-*` control and nulls the host
-   attribute, because the host is `display: contents` and is not the focusable element. That
-   asymmetry is pinned by a test — do not "fix" it into describing the wrong node.
-
-`hlm-select-trigger` still applies `brnFieldControlDescribedBy` to its inner `<button>` with
-nothing bound, so `aria-describedby` remains unavailable. Trinity's registered override forwards
-`aria-labelledby` and an explicit invalid state to that same button. The public select therefore
-names and announces validation on the actual combobox while the description gap stays explicitly
-tracked.
-
-## Registered vendored divergences
-
-Local changes to generated Helm code. A regenerate silently drops all of them, so each is
-commented at its site, listed in a banner at the top of its file, and **pinned by a test** —
-a lost override fails the suite rather than shipping. This table is the register; keep it in
-step with the banner in
-[`hlm-dropdown-menu.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/spartan/dropdown-menu/src/lib/hlm-dropdown-menu.ts).
-
-| File and symbol                                                                           | Override                                                                                                                                                                                                                                                                                                  | Pinned by                                                       |
-| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `avatar` · `HlmAvatar`, `HlmAvatarImage` and `HlmAvatarFallback`                          | Consume the public wrapper's inherited semantic shape radius for the host, image, fallback and decorative outline, with Helm's full radius retained as the standalone fallback                                                                                                                            | `theme-foundation-contract.spec.mjs`; browser shape checks      |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                                             | `_handleClick` shadowed so a sub-trigger click opens the submenu instead of toggling it closed under zoneless change detection                                                                                                                                                                            | `dropdown-menu-submenu.spec.ts`                                 |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                                             | The same shadow re-does CDK's focus move, so keyboard Enter and Space land inside the submenu                                                                                                                                                                                                             | `dropdown-menu-submenu.spec.ts`                                 |
-| `dropdown-menu` · `HlmDropdownMenuSubTrigger`                                             | `side` defaults to `'right'`, so a submenu opens beside its parent rather than over it                                                                                                                                                                                                                    | `dropdown-menu-submenu.spec.ts`                                 |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub`                              | `CdkTargetMenuAim` host directive                                                                                                                                                                                                                                                                         | `dropdown-menu-submenu.spec.ts`                                 |
-| `dropdown-menu` · `HlmDropdownMenuItem`                                                   | A destructive item's text and icon use `text-danger`, not upstream's `text-destructive`                                                                                                                                                                                                                   | `dropdown-menu-submenu.spec.ts`                                 |
-| `badge` · `badgeVariants`                                                                 | Adds `success` and `warning` variants that upstream Helm does not ship                                                                                                                                                                                                                                    | `helm-components.spec.ts`                                       |
-| `badge` · `badgeVariants`                                                                 | Uses the invariant `rounded-full` pill role instead of upstream's open-ended `rounded-4xl` default radius                                                                                                                                                                                                 | `helm-components.spec.ts`; `theme-foundation-contract.spec.mjs` |
-| `tabs` · `HlmTabsPaginatedList`                                                           | Generated and then deleted — nothing wraps the scrolling trigger row, and it pulled `@angular/cdk/observers`, `@ng-icons/*` and the button lib in behind it                                                                                                                                               | `helm-components.spec.ts`                                       |
-| `dropdown-menu` · `HlmDropdownMenu` and `HlmDropdownMenuSub`                              | Both `animate-in` / `animate-out` triggers carry `motion-safe:` — upstream ships them bare                                                                                                                                                                                                                | `kit-reduced-motion.spec.mjs`                                   |
-| `tooltip` · `DEFAULT_TOOLTIP_CONTENT_CLASSES`                                             | All three `animate-in` / `animate-out` triggers carry `motion-safe:`, including `data-[state=delayed-open]:`                                                                                                                                                                                              | `kit-reduced-motion.spec.mjs`                                   |
-| `select` · `HlmSelectContent`                                                             | Both `animate-in` / `animate-out` triggers carry `motion-safe:`                                                                                                                                                                                                                                           | `kit-reduced-motion.spec.mjs`                                   |
-| `dropdown-menu` · `HlmDropdownMenu` / `HlmDropdownMenuSub`; `select` · `HlmSelectContent` | Uses `shadow-overlay` rather than Tailwind's default elevation steps                                                                                                                                                                                                                                      | `theme-foundation-contract.spec.mjs`; component browser checks  |
-| `radio-group` · `HlmRadioIndicator`; `tabs` · `HlmTabsTrigger`                            | Uses `shadow-raised` rather than Tailwind's default elevation steps                                                                                                                                                                                                                                       | `theme-foundation-contract.spec.mjs`; component browser checks  |
-| `select` · `HlmSelectTrigger`                                                             | Forwards `aria-labelledby` and explicit invalid state to the inner focusable combobox button instead of leaving them on a role-less wrapper, applies Trinity's coarse-pointer target floor to that button, and pins its foreground to the theme token                                                     | `trn-select.component.spec.ts`; Settings Playwright journeys    |
-| `progress` · `HlmProgressIndicator`                                                       | Its **indeterminate** sweep is guarded for reduced motion in Theme Foundation's private Tailwind adapter — the class is applied through a `[class.…]` binding, so the guard is a rule rather than a variant. The determinate `transition-all` is not covered and still rests on the `global.scss` blanket | `kit-reduced-motion.spec.mjs`                                   |
-| `sonner` · `HlmSonnerSemantics`                                                           | Keeps Brain Sonner's generated `<ol>`/`<li>` structure valid and moves live-region semantics from the list item to the containing notification section                                                                                                                                                    | `trn-toast-render.spec.ts`; component-catalog Playwright        |
-| Every file with `hostDirectives`, kit and public tier alike                               | Every entry states its `inputs` and `outputs` explicitly, even when empty — the generator's shorthand decides the element's public API by omission                                                                                                                                                        | `host-directives.spec.mjs`                                      |
-
-The two `.spec.ts` files live in
-[`libs/spartan/tests/src/lib`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/spartan/tests/src/lib),
-a project that exists so specs pinning vendored behaviour stay in the vendor tier now that the
-hand-authored wrappers have moved to `libs/components/`. `host-directives.spec.mjs` is a
-workspace-wide sweep and lives in `scripts/`.
-
-The `CdkTargetMenuAim` row is a consequence of the row above it. CDK closes an open submenu
-the moment the pointer enters any non-trigger sibling row, unless a `MENU_AIM` is provided —
-and upstream Helm provides none. While submenus opened _over_ their parent that was
-unreachable; opening them beside it means the pointer now travels across those rows, and a
-diagonal move into the submenu closed it before arrival.
-
-One more directive in that file is worth checking against upstream before a resync, even
-though it is not a divergence from a shipped upstream behaviour:
-`HlmDropdownMenuFocusOnHover`, applied as a host directive to every dropdown item type. It
-moves DOM focus on `mouseenter`, because CDK menus only move focus with the keyboard — so a
-closing submenu would drop focus to `<body>`, the menu stack would report no focus, and the
-whole dropdown would collapse.
-
-`hlm-dropdown-menu.ts` has also diverged in **shape**: the generator emits roughly sixteen
-one-directive files where the repo keeps a single module. Reconciling a regenerate is manual
-work regardless of the overrides.
-
-## Tailwind v4 is configured entirely in CSS
-
-There is no `tailwind.config.js`. Everything is in
-[`libs/theme-foundation/styles/internal/tailwind-adapter.css`](../../libs/theme-foundation/styles/internal/tailwind-adapter.css),
-which is **private framework wiring only** and owns no colour values:
-
-```css
-@layer theme, base, vendor, components, utilities, overrides;
-@import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/preflight.css' layer(base);
-@import 'tailwindcss/utilities.css' layer(utilities);
-@import 'tw-animate-css';
-
-@source '../../../../libs';
-@source '../../../../apps';
-
-@custom-variant dark (&:where(.dark, .dark *));
-```
-
-`preflight.css` is the app's base reset. The `@source` globs cover the whole workspace
-because Helm's variant class strings live in `.ts` files, not templates.
-
-The adapter closes Tailwind's default design namespaces before publishing Trinity's contract:
-
-- `--color-*` is reset, then only semantic Helm/Trinity colours are exposed. Backdrops use the
-  dedicated `bg-overlay-scrim` role; stock colour-scale utilities such as a numbered red or black are
-  absent from compiled CSS.
-- `--shadow-*`, `--inset-shadow-*` and `--drop-shadow-*` are reset. Fixed elevation consumes only
-  `shadow-raised`, `shadow-floating` or `shadow-overlay`; local focus rings remain explicit
-  semantic arbitrary values rather than elevations.
-- `--radius-*` is reset to the closed `xs`, `sm`, `md`, `lg`, `xl` and `full` invariant scale.
-  Component shape roles may still reference those values through `--trinity-shape-*`.
-
-Tailwind's numeric spacing and default typography namespaces remain temporarily available as a
-private foundation compatibility surface, along with `text-13`. They are not Theme-authorable or
-public component API. The repository guard rejects reintroduced stock colours, default elevation
-steps and open-ended radius steps; the compiled browser contract proves the removed variables are
-absent while the governed roles and temporary compatibility namespaces still resolve.
-
-The six layers are a responsibility contract, not a ranking chosen at each call site:
-
-| Layer        | Owns                                                                |
-| ------------ | ------------------------------------------------------------------- |
-| `theme`      | Semantic token values, Tailwind Theme variables and named keyframes |
-| `base`       | Preflight plus native focus defaults                                |
-| `vendor`     | Static third-party CSS                                              |
-| `components` | Authored shell, content and component defaults                      |
-| `utilities`  | Tailwind, its directive plugins, and Trinity's utility classes      |
-| `overrides`  | Narrow accessibility and design-system invariants only              |
-
-Tailwind expands its imports ahead of ordinary authored rules. The application document therefore
-embeds the order statement before Angular's injected stylesheet link, then loads Theme Foundation's
-single aggregate, [`vendor.css`](../../apps/trinity/src/vendor.css), `global.scss`, and
-`rendered-markdown.scss`. CDK and the emoji picker enter through an explicit `vendor` seam instead
-of anonymous build entries. Storybook's preview head embeds the same guarded statement before
-composing Theme Foundation and its app defaults, because its bundler also hoists imported CSS.
-
-`tw-animate-css` is not a static vendor sheet: it is a Tailwind directive plugin containing
-`@theme` and `@utility`, which Tailwind requires at top level. Its generated tokens and classes
-therefore join Tailwind's `theme` and `utilities` output rather than being wrapped in `vendor`.
-
-Authored global rules are classified by what they do. The generic focus treatment is `base`;
-routed-shell and rendered-content defaults are `components`; safe-area and visually hidden
-helpers are `utilities`; shared disabled opacity, icon-button, reduced-motion and coarse-pointer
-invariants are the small `overrides` allowlist. There is no project-wide Tailwind `important`
-mode. The only important declarations are the four reduced-motion properties required to
-override runtime-injected and inline author animation styles that cannot enter a named layer,
-and the repository contract rejects any fifth one.
-
-Angular injects component `styleUrl` and inline `styles` blocks as runtime style tags, so every
-authored source wraps its rules in `@layer components`. The complete source inventory is frozen in
-[`scripts/styling-idiom.spec.mjs`](../../scripts/styling-idiom.spec.mjs), and the zero-exception
-cascade contract rejects any unlayered component or inline ruleset. Shared SCSS partials have their
-own inventory entries, and the contract proves that every consumer emits them through the
-component layer. The temporary unlayered-rule migration ledger is gone.
-
-### Runtime vendor styles are an explicit exception class
-
-Some libraries must calculate or mount styling after the application stylesheet has loaded. They
-cannot be put in a named author layer without forking the library, and they are not ordinary
-component-style exceptions. The complete allowlist lives in
-[`architecture/runtime-vendor-styles.json`](../../architecture/runtime-vendor-styles.json):
-
-| Runtime owner          | Unavoidable mechanism                                                          | Trinity seam                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| CodeMirror `style-mod` | mounts base and selected theme modules in the editor's document root           | `config-editor-theme.ts` supplies one `EditorView.theme()` extension built entirely from semantic tokens |
-| Angular CDK Overlay    | creates global overlay and visually-hidden loaders and writes overlay geometry | `@trinity/components/overlay`; the static baseline also enters `vendor.css` through `layer(vendor)`      |
-| `@ng-icons/core`       | injects `NgIcon`'s component rules and writes size/colour custom properties    | `<trn-icon>` plus the audited generated Helm wrappers                                                    |
-| Brain Sonner           | injects its global toaster rules and writes stack/swipe custom properties      | `<trn-toaster>` and `TrnToastService`                                                                    |
-
-The architecture check pins the four ids, the installed package versions, the upstream injection
-markers, each owned seam, and every permitted production import prefix. A package upgrade or a
-direct import outside those seams therefore fails for review. Adding an authored stylesheet to
-this catalog is not a migration path: ordinary app and component CSS remains governed by the
-zero-exception named-layer contract.
-
-CodeMirror used to be the misleading edge case. Its generated DOM was reached with
-`ViewEncapsulation.None` and a global `.trn-config-editor .cm-*` stylesheet. The editor now receives
-the same token-based paint through `EditorView.theme()`, which CodeMirror orders after its own base
-modules. No Trinity selector has to outrank that runtime sheet, and no global `!important` bridge
-is involved.
-
-Three old reversals are deliberate now. Public input and textarea controls are excluded from
-the base focus selector so their Helm ring remains the only indicator. The semantic disabled
-opacity invariant beats arbitrary state utilities; a public locked-selection marker is its one
-bounded exception because the checked value is guaranteed rather than unavailable. Utility display
-classes beat routed-shell component defaults.
-Safe-area helpers and padding utilities must never share a longhand; the source guard requires
-one composed declaration such as `.panel-header` instead of depending on which utility happens
-to be emitted last. A compiled Playwright probe measures both directions of the contract:
-utilities beat component defaults, while allowlisted invariants beat utilities.
-
-The `@theme inline` block maps each Helm token to a Tailwind colour utility **by reference**
-(`--color-card: var(--card)`), which is what makes switching the Mode or Theme re-theme
-every utility at runtime rather than at build time. Only entries inside a `@theme` block
-generate a utility, which is why the two non-colour tokens live there rather than in
-`variables.scss`: `--text-13` (0.8125rem — the compact body size used across templates as
-`text-13`, between Tailwind's `text-xs` and `text-sm`) and `--animate-indeterminate`.
-
-Theme Foundation's supported stylesheet interface is the single aggregate
-`libs/theme-foundation/styles/theme.scss`. The application and Storybook both load that aggregate
-directly before authored application defaults; their document/preview heads establish the shared
-order before the aggregate is parsed. Private token and Tailwind adapter files are implementation
-details; compatibility stylesheet entrypoints outside Theme Foundation do not exist.
-
-ESLint and Prettier point their Tailwind integration at Theme Foundation's private adapter, with
-`classnames-order` off (`prettier-plugin-tailwindcss` owns ordering) and `no-custom-classname` off
-(the app mixes BEM class names with utilities). The remaining ESLint rules are warnings.
-
-!!! warning "inlineCritical must stay false in production"
-
-    The production configuration pins `optimization.styles.inlineCritical: false`. Angular's
-    critical-CSS inlining rewrites the stylesheet link into a preload with an `onload` swap,
-    and that handler never fires under the custom `trinity://` protocol the Electron shell
-    serves from. The token stylesheet never activates, every `var(--trinity-*)` falls back to
-    nothing, and the desktop build renders unthemed. This is how the desktop dark theme broke
-    once already.
-
-## Design tokens
-
-Every token value in the app is defined once inside Theme Foundation, in
-[`libs/theme-foundation/styles/internal/variables.scss`](../../libs/theme-foundation/styles/internal/variables.scss).
-Product styles consume the stable `--trinity-*` semantic vocabulary. Helm and Tailwind names
-are private adapters inside the module; feature code never authors a Theme in vendor terms.
-
-The module has two supported interfaces: the aggregate stylesheet above and the read-only
-`THEME_CATALOG` exported from `@trinity/theme-foundation`. The catalog owns Theme and Mode ids,
-labels, defaults, carrier metadata and the six fixed preview combinations. It contains CSS token
-references for previewing but no resolved colour or shadow values.
-
-A **Theme** is a named visual token set (`trinity`, `amethyst` or `onyx`); **Mode** is the
-`system`, `light` or `dark` selection; **Appearance** is their composition with text size,
-density and Conversations' code preferences. Theme identity and selector metadata are read from
-`THEME_CATALOG` directly; no compatibility Theme API remains.
-
-Theme authors may override only the catalog's governed semantic colour and elevation roles.
-Fonts, assets, arbitrary selectors and component mappings are outside that contract. The default
-`:root` Theme defines every governed role, `:root.dark` supplies the complete Mode delta, and each
-named Theme adds one sparse light block and one sparse dark block. Named Themes never inherit from
-one another.
-
-### Orthogonal axes, all carried on `<html>`
-
-| Axis              | Carrier                                                   | Default                                          |
-| ----------------- | --------------------------------------------------------- | ------------------------------------------------ |
-| Mode              | the `.dark` **class** — presence means dark               | light, the bare `:root` block                    |
-| Theme             | the `data-theme` **attribute**                            | `trinity`, which sets no attribute at all        |
-| Text size         | an inline `font-size` **percentage**                      | 100%, written as no inline style at all          |
-| Code size         | the `--trinity-code-scale` **custom property** (a factor) | `1`, declared in `variables.scss` and unset here |
-| Code line numbers | the `data-code-lines` **attribute**                       | `auto`, which sets no attribute at all           |
-| Density           | the `data-density` **attribute**                          | `cosy`, which sets no attribute at all           |
-
-The canonical preference policy is split by capability: Design System owns Mode, Theme, text size,
-and density in `@trinity/application/appearance`; Conversations owns code size and code-line
-presentation in `@trinity/data-access/timeline`. Each installation-scoped descriptor has its own
-closed validator, default, versioned `trinity.appearance.*` key, portable export policy, and editor
-metadata. The six cells compose into one read-only Appearance value plus per-axis state without
-moving persistence out of Preferences Store. Theme validation is derived from `THEME_CATALOG`, so
-a removed Theme safely defaults only that axis and contributes to the aggregate's one recoverable
-partial-hydration warning. Recovery writes defaults only for failed descriptors, then hydrates the
-aggregate again; a healthy axis is never reset as collateral.
-
-Resolved Appearance policy is platform-neutral. `resolveAppearance()` combines the six committed
-axes with a system light/dark value, and `AppearanceEffects.run()` is the cold lifetime that owns
-system-Mode observation and imperative projection. The browser document adapter alone owns every
-root carrier in the table above. Native chrome receives only `{ mode }`, so Theme, sizing,
-density, and code presentation never cross that boundary. A system colour-scheme change updates
-resolved Appearance and native chrome only while committed Mode is `system`; an explicit light or
-dark Mode keeps both inert. Application Runtime owns one effect subscription for its whole session,
-after hydrating Appearance in the preference stage and before Workspace routing. Preference Store
-publishes only successful writes, so rejected persistence never changes resolved or rendered
-Appearance.
-
-Settings consumes those six axes through one screen-scoped controller. Labels, descriptions and
-options come from descriptor editor metadata; controls invoke descriptor-backed commands. All six
-remain disabled until hydration settles, so a write cannot race
-a current or predecessor-key read. A pending or failed command continues to render the committed value,
-and failure adds an inline Retry beside that control. The screen displays one warning for partial
-hydration and can restore only the affected defaults. The routed screen never starts another
-hydration or effect lifetime; Application Runtime has already settled both before the route opens.
-
-Application Runtime also composes the concrete integration ports. Capacitor status-bar projection
-receives only resolved Mode, and widgets receive a read-only resolved Appearance projection. The
-Advanced configuration registry exposes six `appearance.*` paths whose defaults, validation,
-choices, current persistence keys, and commands come from the descriptors. Former storage keys
-remain read-only descriptor migration metadata and never appear in a portable export.
-Portable format 2 also imports the six former version 1 Theme paths through a one-way mapping to
-the current `appearance.*` entries; new exports contain only the current names.
-Source guards keep those predecessor keys in migration metadata, keep old portable paths inside
-the version-one importer, and give the Appearance document adapter sole ownership of root
-carriers. First paint remains the existing CSS-only splash; no inline bootstrap script is added.
-The axes remain orthogonal: any Theme works in either Mode, and code size multiplies text size
-rather than replacing it.
-
-Density is the odd one in what it drives: rather than styling anything itself, it re-cuts
-the `--trinity-space-*` scale, so any stylesheet already reading those tokens follows
-without knowing the preference exists. `:root[data-density='compact']` is (0,2,0) — the
-same tie with `:root.dark` the Theme section below describes. The two do not overlap
-today (mode re-cuts colour, density re-cuts spacing); a colour added to the density block,
-or a spacing token to a mode block, would be decided by source order alone.
-
-**Every axis writes nothing at its default.** An untouched app leaves no footprint on
-`<html>` at all, so the stylesheet is the single definition of what "Default" means and
-whatever the browser or a user stylesheet says still wins. Adding an axis means following
-that rule too — the document adapter removes the class, attribute or property rather than writing an
-explicit default value.
-
-The last two exist because a rendered message body cannot carry a preference itself: its HTML
-is memoized per message and shared by every viewer (`sanitizedHtmlCache` in `message-view.ts`),
-so anything per-user has to reach it through CSS. What the markup may carry is
-content-derived only — a block records its own line count in `rows`, and the stylesheet
-decides what to do about it.
-
-### Seeing the tokens: Storybook
-
-`pnpm storybook` serves one Storybook covering the whole `libs/components/*` tier
-(`libs/components/storybook-host` is config only — the stories live beside the components they
-document). The toolbar carries Theme, light/dark Mode and density. Its Theme and Mode choices come
-directly from the read-only `THEME_CATALOG`; the preview loads the same aggregate stylesheet as the
-application and derives all six fixed Theme/Mode combinations from the catalog rather than
-maintaining a parallel matrix.
-
-That is what it is for. A Theme is meant to be a data change — a block of token overrides plus
-a registry entry — and before this the only way to know that held was to launch the app and
-navigate to every surface. **If a component looks wrong under a new Theme, the token layer is
-incomplete; that is a bug in the tokens, not in the Theme.**
-
-Stories are written per _state_ (default, hover, disabled, loading, empty, long content), not one
-per component: the default is the state least likely to be broken. They are not a substitute for
-a unit test — they are a substitute for launching the app and clicking to the one screen where a
-control appears.
-
-The **Components / Content recipe matrix / Complete catalog** story is the executable inventory
-for Foundations and Generic Content. It renders the complete icon vocabulary and motion set; every
-supported icon, avatar, badge, progress and spinner size/variant; avatar shapes, presence, account badges and
-bounded exact geometry; both banner treatments; every empty-state layout; determinate and
-indeterminate progress; inherited spinner ink; disabled actions; and every tooltip position. The
-ordinary component stories remain the focused explanation of each state.
-
-The **Components / Control recipe matrix / Complete catalog** story applies the same contract to
-Controls. It inventories every supported button variant, size, presentation and shape; checkbox,
-switch, radio, toggle and toggle-group treatment; field, input, textarea and select state; all
-emoji-picker sizes in separate canvases that preserve the vendor's unique named search landmark;
-and the QR scanner's deterministic error path. Long labels and descriptions, invalid, read-only,
-disabled, loading, selected and indeterminate states live in the complete canvas so theme or
-density changes cannot hide a missing recipe.
-
-The **Components / Navigation and layout recipe matrix / Complete catalog** and
-**Components / Overlay recipes / Complete catalog** stories close the public tier. Navigation
-inventories every tabs, card, page-header and separator axis plus long, disabled and manually
-activated tab states. Overlay inventories every surface treatment, size and layout; document and
-portal rendering; every anchored side/alignment pair; clipped controls; dialogs, dropdowns,
-prompts, action sheets and all toast variants. Browser checks drive open, selected, invalid and
-danger states rather than treating their presence in a template as evidence.
-
-`trinity-e2e-components:storybook` runs the complete catalog and every emoji-picker size canvas in
-every Theme/Mode combination. Axe must report no violations and no incomplete findings;
-browser-composited checks enforce 4.5:1 for active text and 3:1 for essential graphics, while
-`contrast-matrix.spec.mjs` independently checks the corresponding semantic token pairs. Disabled
-controls keep native semantics, an accessible name and an internal 2:1 composited readability
-floor. Their reduced contrast remains the agreed WCAG exemption, and state is never communicated
-by colour alone.
-
-### Accessibility contract inventory — 2026-09-02
-
-| Evidence                                                                                                                  | Result                                                       | Disposition                                                         |
-| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| Static Theme identity, namespace, syntax and sRGB-gamut contracts                                                         | Zero unresolved violations                                   | Required local gate                                                 |
-| Text, essential-graphic and focus contrast across every Theme/Mode pair, including the sparse synthetic Theme             | Zero unresolved violations                                   | Required local gate                                                 |
-| Storybook catalog Axe scans                                                                                               | Zero violations and zero undispositioned incomplete findings | Required local gate                                                 |
-| Manual Foundations, Controls, Navigation, Overlay and shipped feature-state review across all six Theme/Mode combinations | Zero undispositioned findings                                | Recorded on the owning pull requests; proof media stays outside Git |
-
-The one Axe limitation is dispositioned rather than ignored: it cannot resolve the dropdown
-trigger's cross-popup `aria-controls` relationship, so the browser test first proves the trigger
-points at the exact live menu ID and only then omits that trigger from the scan. CDK portal/focus
-sentinels are handled by scanning the live portal and separately asserting backdrop, initial
-focus, containment and restoration. Toasts remain in the ordinary zero-exclusion scan.
-
-Automation cannot decide whether the complete set still reads as one coherent visual language.
-Before merging a Foundations or Generic Content treatment change, review the complete catalog in
-all six Theme/Mode combinations and compact density, checking that:
-
-- every glyph remains recognisable and every ordinal/exact-size progression is visually ordered;
-- long banners wrap without clipping actions, and empty-state layouts keep their hierarchy;
-- status fills, presence dots and disabled treatments remain distinguishable without appearing
-  active;
-- keyboard focus opens the tooltip and the visible label agrees with the announced purpose.
-
-This review is recorded in the pull request. Any optional screenshots are short-lived review
-artifacts and stay outside Git.
-
-Before merging a Controls treatment change, also review its complete catalog in all six Theme/Mode
-combinations and compact density, checking that:
-
-- variant, presentation and ordinal-size progressions remain visually distinct and ordered;
-- checked, indeterminate, invalid, read-only, loading and disabled states never rely on colour alone;
-- keyboard focus, toggle-group roving focus and select open/close behavior remain predictable;
-- long labels, descriptions and options wrap without clipping or horizontal page overflow;
-- coarse-pointer targets remain comfortably operable without making compact density look sparse.
-
-Before merging Navigation, Overlay or shipped feature-state treatment changes, review both
-complete catalogs in all six Theme/Mode combinations. Check that inactive navigation remains
-readable, layer elevation and backdrops remain distinct, long labels do not create page overflow,
-portal surfaces escape clipping, destructive choices remain unmistakable, and every close path
-restores focus to its trigger. Feature-owned states stay in their feature story; the shared catalog
-may demonstrate them but must not absorb their semantic paint.
-
-### Two token families
-
-**Trinity tokens** (`--trinity-*`) are the app's own vocabulary, consumed directly by
-hand-authored component SCSS.
-
-| Group               | Tokens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Surface primitives  | Theme values: `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`, `--trinity-hover`, `--trinity-active`, `--trinity-divider`, `--trinity-surface`. Existing consumers keep working while feature phases migrate.                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Semantic surfaces   | Component-facing aliases: `--trinity-surface-frame`, `-navigation`, `-navigation-header`, `-workspace`, `-panel`, `-raised`, `-floating`, and the translucent `-drop-overlay`; `--trinity-border-subtle` / `-strong`. These point inward to the Theme primitives, never the other way round.                                                                                                                                                                                                                                                                                                                                                         |
-| Interaction states  | Paired `--trinity-state-{hover,pressed,selected,selected-hover,attention}-{surface,foreground}` roles, plus the paired `--trinity-status-neutral-*` recipe, `--trinity-focus-ring` / `-on-attention` / `-halo` / `-width` / `-offset`, and `--trinity-disabled-opacity`. A state is a pair so Theme tuning cannot change its fill without its ink.                                                                                                                                                                                                                                                                                                   |
-| Text                | `--trinity-text`, `--trinity-text-muted`, `--trinity-text-bright`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Accent              | `--trinity-accent`, `--trinity-accent-hover`, `--trinity-accent-foreground`, `--trinity-accent-tint-{20,30}` and `--trinity-link`. Link is the readable text stop; accent is the fill stop, so text never relies on a fill colour meeting AA.                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Status              | Readable text/icon roles `--trinity-{success,warning,danger}`; paired fill roles `--trinity-{success,warning,danger}-solid` / `-solid-foreground`; and authored `--trinity-success-tint-20`, `--trinity-warning-tint-10` and `--trinity-danger-tint-{10,20,30}` stops. The `--trinity-status-*-surface` compatibility vocabulary aliases the corresponding solid pair.                                                                                                                                                                                                                                                                               |
-| Radii               | Measurement scale: `--trinity-radius` (8px), `-sm` (4px), `-md` (6px), `-xl` (12px), `-pill` (9999px). Component roles: `--trinity-shape-control-radius`, `-container-radius`, `-overlay-radius`. Identity roles: `--trinity-shape-person-radius` (circle) and `--trinity-shape-place-radius` (squircle).                                                                                                                                                                                                                                                                                                                                            |
-| Syntax              | eight `--trinity-syntax-*` roles plus `-plain`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| Typography          | Measurement scale: `--trinity-text-xs` / `-sm` / `-base` / `-md` / `-lg`, each with matching leading. Semantic `--trinity-type-{caption,metadata,body,message,control,title}-{size,line-height,weight}` roles keep the three decisions together; metadata also exposes tabular-number treatment. The message role is 1rem with 1.5 leading, while smaller conversation chrome stays on the compact roles. Sizes remain in `rem`, so Appearance → Text size scales them.                                                                                                                                                                              |
-| Spacing and density | `--trinity-space-1`…`-7` — a 4px rhythm (2, 4, 8, 12, 16, 24, 32). Shared components consume `--trinity-density-item-gap`, `-row-gap`, `-row-padding-*` and `-control-size`; the room shell adds `-shell-gap`, `-shell-padding-inline` and `-channel-padding-block`, while the conversation adds `-message-column-gap` and `-composer-{padding-inline,field-gap,field-inset,action-size}`. Compact re-cuts these while `--trinity-interaction-target-min-size` enforces the global 44px coarse-pointer floor. Member rows and role headers deliberately do not use vertical density roles: their fixed 44px/34px boxes are inputs to virtualization. |
-| Scrollbars          | `--trinity-scrollbar-size`, `-radius`, `-thumb` and `-track` apply the former room-container treatment to every visible vertical and horizontal scrollbar. The thumb aliases the active Theme's `--trinity-rail`; Blink/WebKit use the fixed 8px rounded geometry, while Firefox shares the rail colour with its platform-defined `thin` geometry.                                                                                                                                                                                                                                                                                                   |
-| Elevation           | `--trinity-shadow-raised` / `-floating` / `-overlay`. Overridden per mode because the dark neutral ramp needs stronger alpha than the light canvas.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Backdrops           | `--trinity-overlay-scrim` is the Theme-governed application backdrop used by overlay panels; `--trinity-camera-scrim` is the separate scanner cutout treatment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Protocol media      | `--trinity-qr-surface` is the Theme-invariant light quiet zone around QR modules; `--trinity-media-matte` is the invariant neutral letterbox behind video. Neither is a general card/background role.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Z-index layers      | `--trinity-z-sticky` (5) → `-floating` (10) → `-overlay` (20) → `-panel` (40), plus `-feedback` (10000) for the transient unavailable-action reason that must remain visible above a CDK dialog. **App-level only** — a component stacking its own children is local and stays a literal. The CDK overlay container sits at 1000.                                                                                                                                                                                                                                                                                                                    |
-| Motion              | `--trinity-duration-press` for the down response and `-fast` / `-base` / `-slow` for transitions, plus `--trinity-duration-pulse` / `-flash` for motion that is not one (an ambient loop, a one-shot cue). `--trinity-ease-standard` / `-decelerate` / `-accelerate`. All collapsed to 0.01ms under `prefers-reduced-motion` at the bottom of `variables.scss` — which is why a literal duration is a bug, not a style. An `infinite` animation needs `global.scss`'s `animation-iteration-count` too: collapsing its duration alone makes it repeat per frame rather than stop.                                                                     |
-
-Settings is the worked feature-level composition of these roles. Web and Electron mount its bounded
-workspace in a CDK dialog; the installed mobile apps and direct deep links mount the same section
-registry in the routed shell. The directory remains scrollable with a hidden gutter while the
-detail pane is the one painted scroll owner. Paint containment on both shells prevents a long
-detail from enlarging the document's root scroll extent.
-
-Visible scrollbars are styled once in `apps/trinity/src/global.scss`; components own only
-their overflow behavior and must not restate scrollbar paint. The `.no-scrollbar` utility is
-the narrow exception for a scrollable surface whose bar would duplicate nearby chrome, such as
-the Settings directory and select panels. It hides only the marked scroller, not nested overflow
-surfaces, and must never be used to remove scrolling itself.
-`SettingsSectionHeadingComponent` and `SettingsToggleRowDirective` keep sentence-case type and
-density consistent without weakening native heading, label or switch semantics. The Appearance
-preview is intentionally feature-local and token-only: it demonstrates the same surface, identity,
-type and density roles without importing the room feature or duplicating theme values.
-
-**Helm and shadcn tokens** (`--background`, `--card`, `--primary`, `--muted-foreground`,
-`--border`, and the rest) are consumed by the generated Helm components through Tailwind
-colour utilities.
-
-Where a Helm token always equals a Trinity token it is defined **as a reference**, so a
-Theme only has to set the value once:
+Mirror each emitted hover guard. A touchscreen must not regain a sticky hover
+tint because an override omitted the source media query.
+
+### Tailwind, layers, and class restrictions
+
+Tailwind configuration is CSS-only in Theme Foundation's private adapter; there
+is no tailwind.config file. Its order is theme, base, vendor, components,
+utilities, then overrides.
+
+| Layer      | Responsibility                                                    |
+| ---------- | ----------------------------------------------------------------- |
+| theme      | semantic values, generated utility variables, and named keyframes |
+| base       | Preflight and native focus defaults                               |
+| vendor     | the two registered static third-party stylesheets                 |
+| components | authored component, shell, and rendered-content defaults          |
+| utilities  | Tailwind, directive plugins, and Trinity utility classes          |
+| overrides  | narrow accessibility and design-system invariants only            |
+
+Theme Foundation resets stock colour, shadow, inset-shadow, drop-shadow, and
+radius namespaces. Components use semantic colours, the closed elevation roles
+raised, floating, and overlay, and the closed radius scale. Numbered stock
+colours, default elevation steps, open-ended radii, arbitrary colour classes,
+and arbitrary inner-appearance class inputs are not a public styling API.
+Numeric spacing, default typography, and text-13 are temporary private
+compatibility wiring, not Theme-authorable vocabulary.
+
+The adapter's source globs include application and library TypeScript because
+generated Helm recipes contain utility strings. Static CDK overlay and emoji
+picker styles enter only through the named vendor seam. tw-animate-css is a
+Tailwind directive plugin, so its output belongs to theme and utilities rather
+than vendor.
+
+Every authored component or inline stylesheet wraps its rules in the components
+layer. There is no global important mode. The only approved important
+declarations are the reduced-motion properties needed to override runtime
+injected and inline animations; adding another is a contract change. The
+[styling idiom guard](../../scripts/styling-idiom.spec.mjs) and cascade contract
+reject an unlayered exception.
+
+### Runtime vendor styles are an explicit exception
+
+A library that injects styles at runtime cannot be converted to an ordinary
+component stylesheet. The complete allowlist is
+[runtime-vendor-styles.json](../../architecture/runtime-vendor-styles.json):
+
+| Runtime owner        | Trinity seam                                    |
+| -------------------- | ----------------------------------------------- |
+| CodeMirror style-mod | token-only EditorView theme extension           |
+| Angular CDK Overlay  | public overlay tier plus static vendor baseline |
+| ng-icons             | trn-icon and audited generated Helm wrappers    |
+| Brain Sonner         | trn-toaster and TrnToastService                 |
+
+The architecture check pins those owners, package versions, injection markers,
+and permitted import prefixes. An authored stylesheet does not qualify for this
+list. Do not use a global selector or important declaration to beat a runtime
+style; use the owner's supported token or extension seam.
+
+### Runtime and production stylesheet constraints
+
+Production style inlineCritical remains false. Electron serves production
+assets through its custom protocol, where the deferred inline-critical
+stylesheet handler does not activate. Changing it leaves token variables
+inactive in the desktop renderer.
+
+## 5. Change Appearance or add a Theme
+
+Appearance has six independent axes carried by html: Mode, Theme, text size,
+density, code size, and code-line presentation. The last controls the rendered
+code-block line-number gutter: off, auto for blocks over five lines, or always.
+The current resolved value is read-only and each axis has independent hydration
+and persistence state. Mode and Theme select colour; the remaining axes size or
+annotate presentation.
+A partial hydration failure retains healthy axes, reports one recoverable
+warning, and recovery writes defaults only for failed descriptors.
+
+The document adapter carries the resolved value to html. Native chrome receives
+Mode only. A system colour-scheme change changes resolved Mode only while the
+committed choice is system. Its six carriers are `.dark`, `data-theme`, inline
+`font-size`, `data-density`, `--trinity-code-scale`, and `data-code-lines`.
+The default named Theme and fixed default sizing axes leave their optional
+carriers absent, but default Mode is system: if the system resolves dark, the
+adapter still applies the dark class. Rejected persistence never changes the
+rendered value. Legacy preference keys are read-only migration metadata; exports
+contain only current appearance entries. See the [document adapter](../../libs/application/appearance/src/lib/appearance-document.adapter.ts)
+for the carriers it owns.
+
+### Adding a Theme
+
+1. Add sparse light and dark blocks in Theme Foundation variables, based on an
+   existing named theme.
+2. Scope light as root with the theme data attribute and not dark; scope dark
+   as root with both the attribute and dark class.
+3. Override only semantic colour and elevation roles listed by Theme catalogue
+   authoring metadata. Do not name Helm or Tailwind tokens, component selectors,
+   fonts, assets, or arbitrary CSS.
+4. Register the identity, label, and data attribute in THEME_CATALOG. The
+   default Trinity theme has no data-theme attribute.
+5. Measure every changed and inherited role across every Mode and Theme.
 
 ```scss
---card: var(--trinity-sidebar);
---primary: var(--trinity-accent);
---ring: var(--trinity-focus-ring-halo);
---input: var(--border);
-```
-
-The opaque focus role deliberately resolves to the measured link colour rather than coupling its
-contract to an accent fill. Attention surfaces override it with
-`--trinity-focus-ring-on-attention`, whose value is paired to that fill.
-Helm controls draw a 50%-alpha halo, so `--trinity-focus-ring-halo` supplies black in light mode and
-white in dark mode; the browser suite measures the composited halo rather than trusting its source
-colour. Every focus recipe is checked against its semantic surface across all Themes and Modes.
-
-Mode-invariant bindings are declared once in the base `:root` block. Three Themes ship:
-`trinity` (indigo), `amethyst` (violet) and `onyx` (achromatic; dark is AMOLED true black).
-
-`onyx` is worth reading as the worked example of the contract: it authors one achromatic neutral
-family for surfaces, text, interactions and controls, while the link, accent, conventional status
-hues and syntax colours remain inherited from the `:root` / `:root.dark` defaults.
-`contrast-matrix.spec.mjs` picks the Theme up automatically and proves those inherited values still
-clear their contrast floors against the new grounds. A Theme that needed a component edited would
-be telling you the token layer is incomplete.
-
-### sRGB OKLCH Theme colours
-
-Every colour authored directly by Trinity, Amethyst and Onyx uses absolute `oklch()` coordinates
-that resolve inside the sRGB gamut. This is deliberate: browsers still differ in how they map
-out-of-gamut OKLCH, and a contrast claim is only portable when no browser has to clip or remap the
-source colour. `contrast-matrix.spec.mjs` rejects legacy colour notation, runtime `color-mix()`,
-invalid coordinates, and any OKLCH value outside sRGB in the Theme blocks.
-
-The families are coordinated by role rather than converted mechanically from the previous hex
-values:
-
-| Family              | Light Mode                                                                                              | Dark Mode                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Cool neutral 265deg | Near-white surfaces descend to distinct hover, selected and pressed stops.                              | The same hue ascends from frame through workspace, hover, selected and pressed stops.           |
-| Indigo 275deg       | A mid-lightness accent fill, darker hover and link stops, two pale tints, and near-white on-accent ink. | Lifted fills, links and two dark tints use dark indigo ink, retaining identity and AA contrast. |
-| Success 148deg      | Dark green text/icons are separate from a brighter solid fill, black ink and pale tint.                 | Light green text/icons are separate from a mid-green solid fill, dark ink and tint.             |
-| Warning 75deg       | Brown-amber text/icons are separate from an amber solid fill, black ink and pale tint.                  | Light amber text/icons are separate from the stronger amber solid pair and dark tint.           |
-| Danger 25deg        | Dark red text/icons, a stronger solid pair, and three explicit pale tint stops.                         | Light red text/icons, a stronger solid pair, and three explicit dark tint stops.                |
-
-Hover, pressed, selected, selected-hover, focus, solid status, accent and status tint roles all
-resolve to governed Theme values. Amethyst replaces the indigo and cool-neutral families with a
-sparse 300deg violet accent and violet-neutral surface, text, interaction, and control family. It
-inherits the base syntax and conventional success, warning, and danger families. Onyx replaces
-only the neutral family with zero-chroma values, including a true-black dark rail and canvas, and
-inherits the same accent, status and syntax meanings. The full contrast matrix re-measures every
-inherited role on every Theme surface.
-
-### The danger versus destructive rule
-
-This is the trap that has bitten repeatedly. Read it before writing any alert copy.
-
-!!! danger "Never use Helm's --destructive as a foreground colour"
-
-    In a template the alert-text utility is **`text-danger`**, never `text-destructive`. In
-    SCSS the alert text and icon token is **`--trinity-danger`**, never `--destructive`.
-
-    shadcn treats `--destructive` as a **fill-only** token, always paired with
-    `--destructive-foreground` drawn on top of it. Trinity therefore maps it to the danger
-    solid pair. It may happen to be readable as standalone text in one Mode, but that is not
-    its contract and a later Theme may choose a different solid pair.
-
-Trinity splits danger into three roles instead:
-
-| Token                               | Role                                        | Light OKLCH      | Dark OKLCH      |
-| ----------------------------------- | ------------------------------------------- | ---------------- | --------------- |
-| `--trinity-danger`                  | Alert **text and icons** drawn on a surface | `0.47 0.18 25`   | `0.76 0.11 25`  |
-| `--trinity-danger-solid`            | A **filled** badge                          | `0.55 0.20 25`   | `0.66 0.18 25`  |
-| `--trinity-danger-solid-foreground` | The text on that fill                       | `0.99 0.004 265` | `0.17 0.025 25` |
-
-Theme Foundation's private Tailwind adapter maps
-`--color-danger: var(--trinity-danger)`, which is what makes the `text-danger` utility exist.
-
-The executable matrix measures danger text on chat, sidebar, rail, hover and active surfaces in
-every Theme and Mode. The solid foreground pair is independently measured at 4.5:1, while the
-solid fill itself is measured as a non-text graphic against the surfaces where it appears.
-
-!!! warning "A translucent tint has no fixed contrast"
-
-    Helm emits translucent `bg-destructive/10..30` utilities. A translucent tint has no fixed
-    contrast because the surface below participates in the pixel. The private adapter therefore
-    replaces those utilities with three opaque `--trinity-danger-tint-*` stops.
-
-    Those stops used to be runtime sRGB mixes over `--card`. Trinity now authors each light and
-    dark stop directly in sRGB-safe OKLCH, so changing the solid red or card cannot silently
-    change a destructive control's contrast.
-
-`--destructive` stays the solid border and ring source. The tint ramp is independent by design.
-
-#### The invariant override layer, and how to regenerate its selector list
-
-Helm paints destructive controls as `bg-destructive/10..30` with `text-destructive` on top:
-one token serving as both the tint and the ink drawn on it. That is unfixable by retoning
-`--destructive`, because the tint _is_ the text colour diluted — every red that clears 4.5:1
-against its own 20% tint is above 90% lightness, which is a pale pink that no longer reads as
-danger.
-
-So Theme Foundation's private Tailwind adapter decouples the roles in the narrow
-`overrides` layer. Tailwind emits the originals into `utilities`; the declared order makes the
-semantic invariant win without a specificity war or an unlayered escape.
-
-!!! warning "The selector list must cover every emitted variant"
-
-    An unmatched variant does not degrade gracefully — it produces a *half-styled* control whose
-    label and icon consume different semantic roles. The dropdown menu colours its child icon
-    through a **separate** rule targeting the `ng-icon` descendant, so fixing the item alone
-    leaves the glyph behind.
-
-    After running the spartan CLI, re-derive **both** lists mechanically from the built CSS
-    rather than by reading Helm's class strings — there are two, one for the text and one for
-    the opaque tint, and each must cover every emitted variant:
-
-    ```bash
-    pnpm nx build trinity
-    tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
-    tr '}' '\n' < www/styles-*.css | grep 'bg-destructive'
-    ```
-
-    The tint list has one extra thing to match: Helm gates most of its hover variants behind
-    `@media (hover: hover)` so a touchscreen paints no hover tint, and an ungated override
-    would reinstate one on the sticky `:hover` that follows a tap. Mirror the gating each
-    rule actually has — the button's own `hover:bg-destructive/20` is emitted *ungated*,
-    while `[a]:hover:` and the `data-[variant=destructive]` pair are not.
-
-### Syntax-highlighting tokens are measured, not picked
-
-Eight roles colour fenced code blocks, consumed from exactly one place —
-`rendered-markdown.scss`, on the `tok-*` classes the highlighter emits. The role names must
-stay in step with `TOKEN_ROLES` in
-[`code-highlight.ts`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/feature/rooms/src/lib/message-presentation/code-highlight.ts).
-
-The backdrop is `--trinity-rail`, not the chat canvas — that is the `pre` background — and
-every value clears 4.5:1 against it in all shipped Themes and Modes. The light set keeps One
-Light's hues at darker accessible stops; the dark set keeps the One Dark relationships. Both are
-authored as sRGB-safe OKLCH. `-plain` and `-punctuation` are `var()` references to
-`--trinity-text` and `--trinity-text-muted`, so they follow the mode automatically.
-
-A new Theme inherits all eight, and the contrast matrix measures them automatically against that
-Theme's rail. A failing inherited pair must be retuned before the Theme ships.
-
-Highlighting itself is Shiki with thirty-one statically imported grammars — the chunk they
-land in measures 3.5 MB raw and 513 kB gzipped, against 1.6 MB / 315 kB for the thirteen it
-started with. Grammar payload dominates that chunk and compresses worse than application
-code, so a language is not free: `cpp` alone is 521 KB raw, larger than the original thirteen
-combined, which is why it is deliberately absent. Measure before adding one —
-`gzip -c www/chunk-*.js | wc -c` on a production build, before and after, taking the largest
-chunk each time.
-
-The module is private to the Conversations feature and imported relatively for side effect at
-the top of `rooms.page.ts`, so the grammars land in the lazy rooms chunk. It registers the
-highlighter used by Message Presentation before the first timeline projection. Do not export it
-from a public barrel: that would make it possible for an eager consumer to pull every grammar into
-the initial bundle.
-
-## Adding a Theme
-
-Two steps.
-
-**1. Add two CSS blocks in Theme Foundation's internal `variables.scss`**, copying the
-`amethyst` pair:
-
-```scss
-:root[data-theme='<id>']:not(.dark) {
-  // overrides for light
+:root[data-theme='example']:not(.dark) {
+  /* sparse semantic light overrides */
 }
 
-:root[data-theme='<id>'].dark {
-  // overrides for dark
+:root[data-theme='example'].dark {
+  /* sparse semantic dark overrides */
 }
 ```
 
-Override only what differs; anything omitted falls through to `:root` or `:root.dark`. Every
-declaration must be one of the semantic color or elevation roles listed by
-`THEME_CATALOG.authoring`. A Theme must not name Helm/Tailwind tokens, component selectors,
-fonts, assets, or arbitrary CSS. Those are private implementation details, and the Theme
-Foundation contract tests reject them inside named-Theme blocks.
+The not-dark selector is mandatory. A light attribute selector otherwise ties
+the dark base selector and can win later in the stylesheet, leaking light
+values into dark Mode. Theme authors do not set primary or
+primary-foreground directly: the private adapter maps those vendor roles from
+Trinity semantics.
 
-The private adapter maps Helm/Tailwind roles outward from the Trinity semantic roles, so those
-consumers re-theme automatically. For example, a light accent must pair its
-`--trinity-accent` override with a measured `--trinity-accent-foreground`; Amethyst dark uses
-dark on-accent text because white on its light violet accent would fail WCAG AA. Theme authors
-never override `--primary` or `--primary-foreground` directly.
+The [token resolution guard](../../scripts/token-resolve.spec.mjs) rejects a
+consumed Trinity token without a definition. The
+[contrast matrix](../../scripts/contrast-matrix.spec.mjs) measures text roles
+against every permitted surface, each syntax role against the rail, and the
+solid pairs independently. A resolved token is not necessarily readable; both
+checks are required.
 
-**2. Register the Theme** in `THEME_CATALOG` so its identity, label and absent-default carrier
-are shared by Appearance and preview consumers:
+### Syntax highlighting and rendered Markdown
 
-```ts
-const themes = Object.freeze([Object.freeze({ id: 'trinity', label: 'Trinity', dataTheme: null }), Object.freeze({ id: 'amethyst', label: 'Amethyst', dataTheme: 'amethyst' })]);
-```
+Shiki syntax colours are the eight measured syntax roles and are consumed only
+by [rendered markdown](../../apps/trinity/src/rendered-markdown.scss). The
+fenced-code backdrop is the rail, not the chat canvas. Plain and punctuation
+roles reference primary and muted text so they follow Mode automatically.
 
-The Appearance document adapter writes or removes the `data-theme` attribute; the default Theme
-applies no attribute at all.
+Shiki grammars live in the lazy Conversations feature and must stay private.
+Measure the largest production chunk before and after adding a grammar; a new
+grammar can dominate compressed payload. Do not export highlighting from a
+public barrel, which would make the grammar bundle reachable from eager code.
 
-!!! danger "Scope the light block with :not(.dark)"
+Rendered message HTML has no Angular encapsulation attribute. Its shared child
+rules therefore live in the global rendered-markdown stylesheet, scoped to the
+message HTML container. Keep container whitespace and wrapping in the owning
+row or dialog stylesheet. The generated fenced-language caption stays
+bottom-right so it does not collide with the message hover toolbar.
 
-    Attribute selectors weigh in the same specificity column as classes, so
-    `:root[data-theme='x']` is (0,2,0) — a **tie** with `:root.dark`. Being authored later it
-    wins, and the Theme's light values leak into dark Mode.
+The Matrix sanitizer is shared by incoming render and outgoing send. Its
+[current allowlist](../../libs/util/matrix/src/lib/message-view.ts) permits the
+Matrix tags plus data-mx-color, data-mx-bg-color, data-mx-emoticon, and
+data-mx-spoiler attributes; it narrows classes to language-name, mx-spoiler,
+and mx-emoticon, omits target,
+and strips remote image sources. Only mxc, blob, and data image sources are
+local. Do not add presentation behaviour in a sanitizer hook: attributes
+written after sanitization bypass the allowlist.
 
-    Scoping the light block `:not(.dark)` raises it to (0,3,0) *and* makes it simply not
-    match in dark. The intended ladder is:
+Rendering also applies viewer-specific mention-pill normalisation after
+sanitization, so cached rendered HTML is keyed by both the raw body and whether
+the event addresses that viewer. Keep CSS rules content-oriented, but do not
+assume every viewer receives identical normalized HTML.
 
-    - `:root` at (0,1,0)
-    - `:root.dark` at (0,2,0)
-    - `:root[data-theme='x']:not(.dark)` and `:root[data-theme='x'].dark`, both at (0,3,0)
+The [outgoing Markdown adapter](../../libs/util/matrix/src/lib/message-content.ts)
+has three deliberate rewrites: task-list inputs become ballot-box glyphs;
+non-mxc images become visible links; and generated nested anchors are unwrapped.
+Preserve these rewrites when changing Markdown rendering, because each avoids
+content loss or unsafe markup on the wire.
 
-    Writing `:root.dark` rather than a bare `.dark` is also deliberate: it is what makes dark
-    outrank the light default regardless of stylesheet bundle order. A bare `.dark` losing to
-    `:root` is how the Electron build once shipped a broken dark theme.
+### Preserve feature geometry and interaction contracts
 
-### Verifying a token change
+A shared public component does not own the Rooms shell. Before changing a pane,
+timeline, composer, or touch interaction, start at the feature source and keep
+these current contracts intact:
 
-!!! note "Two specs check that a consumed token resolves"
+- [rooms page styles](../../libs/feature/rooms/src/lib/rooms/rooms.page.scss)
+  make the shell contain its panes; the timeline and each navigation surface
+  own their own scrolling instead of growing document scroll. At wide widths a
+  side panel remains in the row; at narrow widths it becomes a fixed drawer.
+- [member-list virtualization](../../libs/feature/rooms/src/lib/member-list/member-list.component.ts)
+  uses 34px headers and 44px member rows, matched by its stylesheet across pointer
+  types and densities. Change measurements and spacer calculations together. The
+  floating identity dock must leave the last Room and Space reachable, including
+  keyboard-driven scrolling; [shell layout](../../e2e/browser/journeys/workspace/shell-layout.spec.mts)
+  and [sidebar touch](../../e2e/browser/journeys/room-library/sidebar-touch.spec.mts)
+  cover these geometry contracts.
+- [pane handle](../../libs/feature/rooms/src/lib/rooms/pane-handle.component.ts)
+  writes one CSS custom property during a drag, then commits once. Its keyboard
+  separator supports arrows and Home/End. Do not replace this with signal
+  updates per pointer frame: timeline row measurement and virtual-window
+  prefix sums would re-run while the user drags.
+- [drawer swipe](../../libs/feature/rooms/src/lib/rooms/drawer-swipe.directive.ts)
+  reserves the native edge, abandons a horizontal gesture that becomes vertical
+  scrolling, and writes only its transform property during the gesture. It is a
+  drawer affordance, not a replacement for native history navigation.
+- [shared message-list styles](../../libs/feature/rooms/src/lib/message-list/_message-list-shared.scss)
+  give the timeline its scroll owner, keep code-block horizontal scrolling
+  inside the block, and tie compact spacing and controls to density tokens while
+  preserving the shared 44px coarse-pointer target floor. The
+  [virtual list](../../libs/feature/rooms/src/lib/message-list/virtual-message-list/virtual-message-list.component.ts)
+  intentionally renders a window and spacer geometry; preserve its scroll
+  compensation and document the find, screen-reader, and cross-row-selection
+  trade-off when changing it.
+- In both timeline modes, an already bottom-pinned timeline stays exactly
+  bottom-pinned when a composer or viewport change grows the conversation. A
+  deliberate reading offset must keep its exact scroll position instead. The
+  browser journey proves both cases on a
+  long virtualized room in
+  [timeline virtualization](../../e2e/browser/journeys/conversations/timeline-virtualization.spec.mts).
+- [message composer](../../libs/feature/rooms/src/lib/message-composer/message-composer.component.ts)
+  owns its single-row-growing input, staged-media lifecycle, and one-at-a-time
+  send. It must not rewrite the buffer, accept a suggestion, or send Enter while
+  an IME composition is active. The visible Send action remains available at
+  every width because Enter can mean a newline or IME confirmation. Its
+  [stylesheet](../../libs/feature/rooms/src/lib/message-composer/message-composer.component.scss)
+  owns the feature-specific resting geometry, density-driven action sizing,
+  semantic shapes, and motion tokens. The ordinary input and recording replacement
+  keep equal resting heights, as covered by
+  [composer formatting](../../e2e/browser/journeys/conversations/composer-formatting.spec.mts).
+- The [composer insert menu](../../libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.ts)
+  uses an action sheet on iOS and Android, including installed and browser
+  mobile hosts, and an anchored menu for desktop interaction. A changed room,
+  thread, or capability invalidates the sheet's action snapshot. On dismissal
+  it restores a viable trigger; an action that opens another surface transfers
+  focus to that surface instead.
 
-    A `var(--x)` with **no fallback** whose custom property is undefined makes the browser drop
-    the whole declaration — the page still renders, just wrong, with nothing logged. Stylelint
-    cannot see it: the `custom-property-pattern` in `.stylelintrc.json` constrains how a token is
-    *named*, and nothing there resolves one across files.
+- [message-row styles](../../libs/feature/rooms/src/lib/message-row/message-row.component.scss)
+  keep the toolbar from being clipped at conversation boundaries and preserve
+  clearance on hybrid touch desktops without changing virtual-row height when
+  actions appear. The authenticity shield reserves a column for message content
+  only; receipts remain in flow, span the full message width, and follow writing
+  direction. Preserve the [message-shield geometry checks](../../e2e/browser/journeys/trust/message-shield.spec.mts)
+  when changing that layout.
 
-    `scripts/token-resolve.spec.mjs` does. It collects every `var(--trinity-…)` in `libs` and
-    `apps` — stylesheets, templates and TypeScript — and fails on any token nothing defines. It
-    was written from a shipped bug: the mobile account picker asked for `var(--trinity-radius-lg)`,
-    which no Theme defines, so the declaration was invalid and the dialog rendered with square
-    corners. The base 8px token is `--trinity-radius`; the private Tailwind adapter *does* define
-    a Tailwind `--radius-lg`, but that is a different namespace and would not have helped.
+These are feature contracts, not generic recipes. Use the linked sources and
+their focused tests when a public component change can affect them.
 
-    `scripts/contrast-matrix.spec.mjs` checks the other half — that a token which resolves is
-    also readable. It measures every text role against every surface it can land on, per Theme
-    × Mode, including the nine `--trinity-syntax-*` colours against `--trinity-rail`. A Theme
-    that retunes a ground now passes or fails instead of needing to be re-measured by hand.
+## 6. Use overlays as lifecycle-bound presentation
 
-    Both are one-directional on purpose: they fail on a token that is used and never defined, and
-    say nothing about one that is defined and unused, because a Theme block legitimately
-    defines the whole vocabulary whether or not today's components reach for all of it.
+The overlay entrypoint owns generic presentation, focus, placement, stack
+management, and lifecycle. A dialog's placement is center, inline-end, bottom,
+or fullscreen; side and alignment are anchored-overlay behaviour, not a dialog
+visual treatment. `trnOverlaySurface` keeps treatment (`neutral|accent`),
+ordinal size (`sm` through `2xl`), and structural layout (`dialog`, `sheet`,
+`popover`, `panel`, `workspace`, or `fullscreen`) independent. It paints the
+background, border, radius, and elevation for both document and CDK portal
+content. Components own their interior layout and semantic content, not a
+second backdrop, global z-index, or portal strategy.
 
-## Rendered markdown is styled globally
+An anchored overlay renders in the CDK container so it escapes clipping,
+follows its anchor through scrolling and resizing, flips at the viewport edge,
+and closes on an outside press without racing its anchor's click. It labels
+nothing itself; the consumer supplies the semantic trigger and content.
 
-Message bodies are injected with `[innerHTML]`, so their children carry no Angular
-emulated-encapsulation attributes and a component stylesheet cannot reach them.
-[`apps/trinity/src/rendered-markdown.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/apps/trinity/src/rendered-markdown.scss)
-styles them globally, scoped to the `.msg__text--html` container class.
+Keep the root toaster mounted once in ApplicationRootComponent. A toast shown
+while CDK makes the app root aria-hidden is mirrored through the body-level live
+announcer; outside a modal, the toast library announces once. Do not bypass the
+public toaster or create a second notification surface.
 
-This replaced the codebase's only `::ng-deep`, and it keeps the rules out of the component's
-style budget — production budgets are `anyComponentStyle` warn at 6 kB, error at 8 kB.
+A product service opens a dialog and resolves a typed selection or value; its
+caller performs the Matrix action. Keep a re-entrancy guard so a repeated
+shortcut does not stack another dialog. Dialog result APIs are cold, finite
+Observables: presentation starts on subscription and emits one result. Application
+capabilities request a typed, cold Workspace application surface; the app
+adapter alone chooses a lazy dialog or canonical route. A failed lazy load
+leaves the current route intact, navigation invalidates pending presentation,
+identical opens coalesce, and unrelated active surfaces do not stack.
 
-The stylesheet is shared by `message-row` and the edit-history dialog, so past revisions
-render identically. Only the child rules are shared: the container's own whitespace and
-wrapping rules stay in each component's stylesheet, because the dialog renders in an overlay
-that `message-row`'s scoped styles cannot reach.
+## 7. Verify the right thing
 
-One placement detail with a reason: a fenced block's language caption is generated from the
-`language` attribute and positioned **bottom**-right, not top-right. The message hover
-toolbar floats across the row's upper trailing boundary, so a top-right caption can land
-underneath it on a continuation row. Using generated content also keeps the caption out of
-the element's text, so it cannot be selected, copied, or picked up by the edit-history diff.
+Choose a test by the claim.
 
-## The HTML allowlist
+| Claim                                                        | Required evidence                                         |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| public input, recipe subset, or hostDirective                | strict template and component behaviour tests             |
+| token definition or contrast                                 | token resolution and contrast matrix guards               |
+| cascade, safe area, vendor import, or generated override     | relevant source guard plus a rendered browser proof       |
+| keyboard, focus, overlay, or screen-reader state             | component test and browser or Storybook interaction proof |
+| responsive layout, touch target, colour, or portal placement | Playwright with a real device profile or browser viewport |
+| Capacitor, native chrome, or hardware Back                   | installed host evidence                                   |
+| new public component or visible state                        | Storybook story covering the contract and variants        |
 
-One DOMPurify configuration in
-[`message-view.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/message-view.ts)
-serves both directions — incoming render and outgoing send.
+Storybook loads the same aggregate stylesheet and Theme catalogue as the app.
+Use its complete category catalogues to inspect every Theme and Mode, compact
+density, long labels and descriptions, invalid, read-only, loading, disabled,
+focus, pointer, keyboard, and reduced-motion states. Axe must report neither
+violations nor incomplete findings for the catalogued story surface. The one
+established exception is a dropdown trigger's cross-popup `aria-controls`:
+prove its live target in a browser before excluding that trigger from the scan.
+Scan a CDK portal live and prove backdrop, initial focus, containment, and
+restoration separately. Add an interaction test for an executable public
+contract; stories do not replace browser evidence for CSS layout or host
+behaviour. For Matrix sticker and emoji-pack behaviour, see
+[image packs](image-packs.md).
 
-- `MATRIX_ALLOWED_TAGS` is the Matrix specification list.
-- `MATRIX_ALLOWED_ATTR` adds `data-mx-color`, `data-mx-bg-color` and `data-mx-spoiler`.
-  `target` is intentionally omitted, which avoids reverse-tabnabbing without needing a
-  post-sanitize `rel` hook.
-- `class` is allowed globally by the attribute list, so it is narrowed by
-  `ALLOWED_CLASS = /^(?:language-[\w-]+|mx-spoiler)$/`. Without that narrowing a sender could
-  borrow app classes to spoof UI chrome.
-- On render, a non-local `<img src>` is stripped — `LOCAL_IMG_SCHEME` permits `mxc:`, `blob:`
-  and `data:` only. A remote source would be fetched on render, leaking the viewer's IP and
-  acting as a read receipt. The CSP's `img-src` deliberately omits `https:` for the same
-  reason: the app never binds a remote `<img>`, since avatars and media are fetched over
-  `connect-src` and bound as blobs.
+For a UI change, run the declared project checks and the relevant source guards
+first. The resolved Storybook targets are on components-storybook-host, while
+the Theme Foundation target has test, lint, and typecheck; inspect them with
+pnpm nx show project before choosing a command. The repository targets divide
+proof as follows:
 
-Only security belongs in the sanitizer hook. Attributes set inside `afterSanitizeAttributes`
-are not re-filtered against the allowlist, so anything added there rides out onto the wire
-too.
+| Target                                        | What it proves                                                                   | Limit                                                                                    |
+| --------------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| pnpm nx run trinity-e2e-components:storybook  | static catalogues, Theme/Mode combinations, contrast, focus, and portal behavior | browser rendering only; no Matrix server                                                 |
+| pnpm nx run trinity-e2e-components:styling    | compiled cascade, namespace closure, and destructive hover behavior              | does not prove a full conversation or host                                               |
+| pnpm nx run trinity-e2e-components:scrollbars | real scrollbar and code-block rendering                                          | needs the disposable Synapse harness and must not overlap another Synapse-backed journey |
 
-### Three deliberate outgoing rewrites
+Then follow the full [validation policy](../contributing/testing.md#choose-validation-by-the-change):
+a template change needs a build, jsdom does not prove layout, and a native claim
+needs native evidence. Record only checks actually run and the unavailable host
+limits.
 
-[`message-content.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/message-content.ts)
-overrides three `marked` renderers, each for a stated reason:
+## Quick contributor checklist
 
-| Rewrite                                                    | Why                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GFM task-list checkboxes become ballot-box glyphs          | `<input>` is in neither the Matrix nor Angular allowlist, so the checkbox was silently deleted on the wire and the done or not-done state was lost entirely. A glyph carries it through every client, screen reader and plain-text fallback.                                                                                                                                         |
-| A markdown image with a non-`mxc:` source becomes a link   | Matrix requires an `mxc:` source, so anything else sanitizes down to a src-less empty box with the URL nowhere visible. `data:` is the deceptive case — DOMPurify's built-in `DATA_URI_TAGS` exception lets it through `<img>` regardless of the URI regexp, so it _looked_ carried while being just as unrenderable on arrival, after putting the whole base64 payload on the wire. |
-| An anchor containing a generated image anchor is unwrapped | Nested `<a>` is unrepresentable in HTML. The parser's adoption-agency step split it, and the user's actual link target was lost.                                                                                                                                                                                                                                                     |
-
-## Component conventions
-
-- Element selectors are kebab-case with the `trn` prefix (`trn-avatar`, `trn-message-row`);
-  directive selectors are camelCase with the same prefix.
-- Component class names must end in `Page` or `Component`.
-- Each component lives in its own directory as `name/name.component.ts` plus `.html`, `.scss`
-  and `.spec.ts`.
-- Shared SCSS mixins live in
-  [`libs/feature/rooms/src/lib/styles/_mixins.scss`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/feature/rooms/src/lib/styles/_mixins.scss):
-  `ellipsis`, `category-label`, `profile-card`, `dialog-surface($width)`, `column($bg)`,
-  `interactive-row`, `scrollable`.
-- Component SCSS references design tokens. Never hardcode a colour, or it will not re-theme
-  with the Mode or Theme.
-- Component SCSS declares overflow but leaves visible scrollbar paint to the global token
-  contract. Use `.no-scrollbar` only for an intentional hidden-bar exception.
-
-More on the workspace-wide rules is in [conventions](../contributing/conventions.md).
-
-## Overlay presentation
-
-Nearly every dialog in `@trinity/feature/rooms` follows the same shape: a thin `*Service` owns
-presentation and resolves a value, and the caller performs the action. In the rooms shell that
-caller is one of the page-scoped coordinators beside `rooms.page.ts` rather than the page
-itself — `RoomActionsService` drives `UserPickerService`, `ShellShortcutsService` drives
-`QuickSwitcherService`, `MessageActionsService` drives `MessageSearchService` and
-`PinnedPanelService`, and `MemberActionsService` drives `MemberInfoService` and
-`UserCardService`. `EditHistoryDialogService` is the exception and always was: it is driven
-from the message list and the thread view. `UserPickerService`
-resolves an MXID and never invites anyone itself; `QuickSwitcherService` resolves a
-selection; `MessageSearchService`, `PinnedPanelService` and `EditHistoryDialogService` each
-resolve an event id to jump to; `MemberInfoService` and `UserCardService` resolve a user id
-if "Message" was chosen.
-
-Several carry an explicit re-entrancy guard, so a repeated trigger — pressing Ctrl+K while
-the quick switcher is already open — is a no-op rather than stacking a second dialog.
-
-Capability callers issue a typed, cold
-`WorkspaceApplicationSurfaceService.open()` command; the app-level Workspace adapter owns lazy
-loading and maps semantic return destinations to routes only at that boundary. Web and Electron
-present Settings as a lazy dialog while installed Capacitor hosts use `/settings`; Trust unlock
-and verification use dialogs on wide/nested placements and their canonical routes otherwise.
-Both loaders are cold Observables. A failed load leaves the current route intact and reports an
-error; navigation invalidates pending presentation, identical opens coalesce, and a second
-unrelated surface cannot stack over an active one. Security and Devices can force nested Trust
-flows to remain modal in a narrow web drill-in.
-
-Toasts render through a single `<trn-toaster/>` mounted in `ApplicationRootComponent`. While CDK marks the app
-root `aria-hidden` for a modal, `TrnToastService` mirrors new messages through CDK's body-level
-`LiveAnnouncer`; outside a modal Sonner owns the announcement, avoiding duplicate speech.
+1. Select a public component or the owner of a genuinely new domain-neutral
+   API; do not import Helm in a feature.
+2. Use a bounded Trinity recipe and native semantics. Keep test hooks.
+3. Put feature geometry in the feature and recipe chrome in the component.
+4. Consume semantic Trinity tokens and check cascade and safe-area longhands.
+5. For a theme, change semantic roles only and run resolution plus contrast.
+6. For a generated Helm change, register and test every divergence.
+7. For an overlay, preserve one owner, cold typed outcomes, focus, stack, and
+   route-lifetime behaviour.
+8. Add Storybook and the narrowest meaningful browser or host proof.

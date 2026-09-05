@@ -48,3 +48,7 @@ hierarchy and the selected view, then waits for Projection Runtime's active-Acco
 Workspace restoration. The lifetime survives Active Account reattachment without a runtime
 restart and releases all five connections on blocked startup, stop, destruction, or restart.
 Conversation children remain demand-owned and outside this preparation boundary.
+
+## Current guidance
+
+This decision records its accepted context. See the [current architecture contract](../architecture/target-architecture.md), [capability ownership](../architecture/libraries.md) and [runtime lifetimes](../architecture/state-and-reactivity.md) for the implemented boundaries.

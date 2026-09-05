@@ -1,62 +1,54 @@
 # Contributing
 
-Trinity is one Angular codebase that ships to four places: the web PWA, iOS,
-Android, and a hand-rolled Electron desktop shell. There is no per-platform fork.
-The web build emits to a root `www/` directory, and Capacitor and Electron wrap
-that same directory unchanged, so almost every change you make lands everywhere at
-once.
+This guide takes a contribution from a fresh checkout to review preparation. Trinity is an
+Nx integrated monorepo: the web PWA, Android, iOS, and Electron shell share the Angular
+application and libraries. The production web build creates root `www/`; native and
+desktop hosts consume that output.
 
-The workspace is an Nx **integrated** monorepo. Libraries are not separate npm
-packages linked by pnpm; they are folders resolved through `@trinity/*` TypeScript
-path aliases in `tsconfig.base.json`, with `@nx/enforce-module-boundaries` deciding
-which library may import which.
+## Follow a task from checkout to review
 
-## Where things live
+1. [Set up the checkout](getting-started.md): install the pinned package manager and start the web app.
+2. [Find the code you need](#find-your-change), then read the relevant architecture boundary.
+3. Make one scoped change that follows [Conventions](conventions.md).
+4. [Choose validation](testing.md#choose-validation-by-the-change) that can demonstrate the behavior.
+5. Use [Commands](commands.md), then prepare the change for review using the branch and commit rules.
 
-| Path           | What it is                                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------------------------- |
-| `apps/trinity` | The deployable Angular app. Thin: routing, bootstrap, global styles.                                          |
-| `libs/*`       | Every reusable library, imported as `@trinity/` plus its path under `libs/`.                                  |
-| `libs/spartan` | Generated spartan-ng Helm components, the one alias exception: `@trinity/helm/*`, owned by `@spartan-ng/cli`. |
-| `electron/`    | The desktop shell. Its own `package.json`, own lockfile, own TypeScript version, installed separately.        |
-| `e2e/`         | Lifecycle-owned Playwright specs and the disposable Synapse Docker stack they run against.                    |
-| `scripts/`     | Node build scripts plus the invariant specs that guard configuration a green test run cannot see.             |
-| `android/`     | The checked-in Capacitor Android project.                                                                     |
-| `ios/`         | The checked-in Capacitor iOS project, using Swift Package Manager.                                            |
-| `www/`         | Generated. The web build output that the native and desktop wrappers consume. Not tracked in git.             |
+## Find your change
 
-`libs/` is not a flat list of libraries. It holds seven entries, four of which are
-parent directories with one folder per library inside — `data-access/`, `feature/`,
-`util/`, `components/` and `spartan/` — while `platform-native` and `testing` are libraries
-themselves. The alias follows the path in either case, so `libs/data-access/discovery` is
-`@trinity/data-access/discovery` and `libs/components/foundations` is `@trinity/components/foundations`.
+| Area                             | Start here                                  | What it owns                                   |
+| -------------------------------- | ------------------------------------------- | ---------------------------------------------- |
+| Application bootstrap and routes | `apps/trinity/`                             | Application composition, routes, global styles |
+| Product capability               | `libs/feature/` and `libs/data-access/`     | Screens and Matrix-backed state                |
+| Reusable UI                      | `libs/components/`                          | Public, domain-neutral Trinity components      |
+| Platform capabilities            | `libs/runtime/` and `libs/platform-native/` | Host contracts and Capacitor implementations   |
+| Desktop host                     | `electron/`                                 | The Electron shell and its dependencies        |
+| Browser and host journeys        | `e2e/`                                      | Playwright suites and disposable resources     |
 
-## The shape of the work
+Use an import alias or folder to find its project, then inspect it before guessing a target:
 
-Branch off `develop`. It is the repository's default base, and it is what
-`nx affected` diffs against, so a branch cut from anywhere else produces a
-misleading affected set.
+```bash
+pnpm nx show project data-access-room-library --json
+pnpm nx show project trinity --json
+```
 
-Commits go through two Husky hooks: `pre-commit` runs lint-staged over the staged
-files, and `commit-msg` runs commitlint against the Conventional Commits
-specification. A module-boundary violation fails the commit rather than the
-pull request.
+[Architecture](../architecture/index.md) explains dependency direction and state boundaries.
+[The stack](../reference/stack.md) records pinned versions and compatibility constraints.
+A directory name is not always an Nx project name: nested libraries use names such as
+`data-access-room-library`.
 
-Opening a pull request runs five parallel CI jobs: quality, unit tests, the
-production build, the desktop shell, and the Playwright journeys. Each one mirrors
-commands you can run locally, so nothing in CI is a black box.
+## Use the right guide
 
-## Where to go next
+| Task                                               | Guide                                                |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| Install and run the web app                        | [Getting started](getting-started.md)                |
+| Look up an exact command or focus a target         | [Commands](commands.md)                              |
+| Decide what check proves a change                  | [Testing](testing.md)                                |
+| Understand shared E2E resources and coverage       | [End-to-end test architecture](e2e-architecture.md)  |
+| Follow code, commit, and publication conventions   | [Conventions](conventions.md)                        |
+| Work on web, desktop, Android, or iOS delivery     | [Platforms](../platforms/index.md)                   |
+| Understand CI or release preparation               | [CI and releases](../maintaining/ci-and-releases.md) |
+| Give an agent a task or maintain its skill catalog | [Working with agents](../agents/index.md)            |
+| Find a known local failure                         | [Troubleshooting](../reference/troubleshooting.md)   |
 
-| If you want to                                | Read                                                |
-| --------------------------------------------- | --------------------------------------------------- |
-| Get the repo running for the first time       | [Getting started](getting-started.md)               |
-| Look up a command                             | [Commands](commands.md)                             |
-| Understand what proves a change correct       | [Testing](testing.md)                               |
-| Classify a validation warning                 | [Validation warning ledger](validation-warnings.md) |
-| Understand the system-test ownership model    | [End-to-end test architecture](e2e-architecture.md) |
-| Know the code style and commit rules          | [Conventions](conventions.md)                       |
-| Understand the CI jobs and how a release cuts | [CI and releases](ci-and-releases.md)               |
-| Understand how the code is organised          | [Architecture](../architecture/index.md)            |
-| Check a pinned version or a known gotcha      | [The stack](../reference/stack.md)                  |
-| Fix something that is broken on your machine  | [Troubleshooting](../reference/troubleshooting.md)  |
+The [documentation map](../documentation-map.md) records current topic ownership and the rewrite dispositions.
+It is for maintaining the documentation set, not the normal starting point for a contribution.

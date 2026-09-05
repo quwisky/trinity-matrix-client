@@ -1,262 +1,183 @@
 # Mobile
 
-iOS and Android are first-class Nx applications and Capacitor 8 wrappers around the same
-`www/` directory the web build produces. The native projects live in the repository at
-`android/` and `ios/`, are checked in, and are edited by the Capacitor CLI rather than by hand.
+Android and iOS are Capacitor 8 hosts around the shared production renderer. They contain
+no platform-specific Angular product fork: the root `trinity:build` creates `www/`, then
+Capacitor copies that exact renderer and refreshes native plugin wiring.
 
-`android/project.json` registers `trinity-android`; `ios/project.json` registers
-`trinity-ios`. Both are thin `role:app` composition projects with one dependency on the
-shared `trinity` renderer. They contain no product behavior or per-platform Angular fork.
+Use this guide for prerequisites, synchronization, launch and debugging, artifacts, and
+native capability limits. [Commands](../contributing/commands.md#native-hosts) is the
+canonical command reference; [maintainer guidance](../maintaining/index.md) owns release
+signing and publication.
 
-## Capacitor configuration
+## Prepare the host
 
-The whole of
-[capacitor.config.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/capacitor.config.ts)
-is four settings:
+| Host    | Required for build                               | Required to launch             | Project and renderer floors                                                               |
+| ------- | ------------------------------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------- |
+| Android | Android SDK, a usable `ANDROID_HOME`, and JDK 21 | An emulator or device          | minSdk 24; compile/target SDK 36                                                          |
+| iOS     | macOS and Xcode                                  | A selected simulator or device | Xcode deployment target 16.4; generated SPM package floor iOS 16; renderer Safari/iOS 17+ |
 
-```ts
-{
-  appId: 'eu.qwky.trinity',
-  appName: 'Trinity',
-  webDir: 'www',
-  plugins: { Keyboard: { resize: 'native' } },
-}
-```
+These are three distinct iOS constraints: the Xcode project deploys from 16.4, generated
+Capacitor Swift Package Manager metadata names iOS 16, and Trinity's renderer support floor
+is Safari/iOS 17+. The project floors describe build eligibility; they do not lower the
+renderer floor. See [the stack](../reference/stack.md) and
+[installation requirements](../users/install.md) for the supported-browser policy.
 
-`webDir: 'www'` is the same directory the Angular build writes to, which is why the web
-build's flat output layout matters here as well as on desktop. See
-[Web](web.md#where-the-build-output-goes).
+Android E2E additionally needs Docker, Chrome, an API 36 Google APIs x86_64 emulator image,
+and Linux KVM access where applicable. An iOS build or simulator launch cannot run on Linux.
 
-The keyboard setting is pinned for intent rather than to change behaviour — `native` is the
-default. Trinity is a chat application with a composer pinned to the bottom of the
-viewport. Resizing the whole WebView when the soft keyboard appears is what makes `100dvh`
-shrink, so the composer rides up above the keyboard instead of being covered by it. iOS
-honours `resize`; Android already resizes the WebView.
+## Build, synchronize, and launch
 
-## The sync flow
-
-Every mobile script rebuilds the web app and re-syncs before doing anything else:
-
-| Command                      | What it does                                                     |
-| ---------------------------- | ---------------------------------------------------------------- |
-| `pnpm android:sync`          | `trinity-android:sync`: build `trinity`, then `cap sync android` |
-| `pnpm ios:sync`              | `trinity-ios:sync`: build `trinity`, then `cap sync ios`         |
-| `pnpm android:run`           | Build, then `cap run android` on an emulator or device           |
-| `pnpm ios:run`               | Build, then `cap run ios`                                        |
-| `pnpm android:open`          | Open the project in Android Studio, no rebuild                   |
-| `pnpm ios:open`              | Open the project in Xcode, no rebuild                            |
-| `pnpm android:build`         | Sync, then `./gradlew assembleDebug`                             |
-| `pnpm android:build:release` | Sync, then `./gradlew bundleRelease`, needs a keystore           |
-| `pnpm ios:build`             | Sync, then `cap build ios --scheme App`                          |
-| `pnpm android:verify`        | Docker-free Nx, shared-artifact, plugin and capability contract  |
-| `pnpm ios:verify`            | Docker-free Nx, shared-artifact, plugin and capability contract  |
-
-`pnpm build` has no configuration flag, and the Angular target defaults to `production`, so
-these are always production builds of the web layer even during development.
-
-A web change is not visible in a native project until a sync has run. The `*:open` scripts
-deliberately skip the rebuild, so opening Xcode after editing a component shows you the
-previous build until you run `pnpm ios:sync`.
-
-Android builds need an Android SDK that Gradle can find. iOS builds need macOS with Xcode.
-Toolchain-backed verification is discoverable as
-`pnpm nx run trinity-android:verify-native` and
-`pnpm nx run trinity-ios:verify-native`. The latter cannot run on Linux; it performs
-an unsigned iPhone Simulator build on a macOS/Xcode host.
-
-## Android end-to-end testing
-
-`pnpm e2e:android` builds and installs the debug APK on a dedicated API 36 x86_64
-emulator, then attaches Playwright to Trinity's real Capacitor WebView. Pass an explicit
-`TRINITY_ANDROID_SERIAL`, or create an AVD named `Trinity_API_36`. The runner rejects
-physical devices, other API levels, and other ABIs rather than modifying an arbitrary
-connected target.
-
-All canonical web journeys are collected against the installed package WebView, with
-platform adapters for native capabilities and an independently packaged second test
-device. External FCM delivery, the browser-only encrypted-key download, and the one
-compositor-panning assertion are explicit platform skips rather than simulated passes.
-Android-only journeys additionally cover hardware Back and persisted-session restoration
-after a native force-stop/relaunch. The focused `@native-appearance` journey activates Mode
-through the radio's semantic label and changes Theme, density and text size through native touch
-in the installed WebView. It reads the native `StatusBar` plugin back after each Mode change and
-checks the routed page's safe-area and coarse-pointer geometry. It retains successful WebView and
-full-device screenshots under the ignored Playwright output for direct pull-request upload; proof
-media is never committed. Run it with:
+Every normal mobile build or run target depends on `sync`, and `sync` first depends on
+the shared production `trinity:build`. Use these task recipes:
 
 ```bash
-pnpm nx run trinity-e2e-android:e2e -- --grep @native-appearance
+pnpm android:sync
+pnpm android:run
+pnpm android:open
+pnpm android:build
+
+pnpm ios:sync
+pnpm ios:run
+pnpm ios:open
+pnpm ios:build
 ```
 
-The Android target rebuilds and hashes `www/`, runs `cap sync`, verifies the copied payload against
-that manifest, packages the renderer and only then installs the APK. The prebuilt path verifies the
-existing manifest both before and after the copy. `pnpm android:verify` and `pnpm ios:verify`
-statically pin that shared-artifact graph and the native status-bar wiring on Linux. Record
-`trinity-ios:verify-native` as **unavailable** on Linux rather than passed: only a macOS host with
-Xcode can execute the unsigned Simulator build.
+`*:open` only opens Android Studio or Xcode; it does not rebuild or synchronize. After a
+web change, run `pnpm android:sync` or `pnpm ios:sync` before relying on the native IDE
+project. `android:build` creates the debug APK at
+`android/app/build/outputs/apk/debug/`. `android:build:release` runs Gradle's release bundle
+target, but this repository declares no release `signingConfig`; without externally supplied
+signing configuration it produces an unsigned AAB, not a distributable Android release.
+`ios:build` delegates to `cap build ios --scheme App`: it archives the app and exports an
+IPA into `ios/App/output/`. The installed Capacitor CLI defaults to Release, automatic
+signing and App Store Connect export, then removes its temporary archive after successful
+export. Configure the appropriate team, provisioning and signing access on macOS before
+using this distribution workflow. It is separate from unsigned simulator compilation through
+`trinity-ios:verify-native`; the Nx target's declared `ios/App/build` output does not match
+the CLI's actual IPA export directory.
 
-See
-[`e2e/README.md`](../../e2e/README.md#android-webview-journeys) for ownership, TLS,
-diagnostics, and cleanup details.
+`cap sync` updates checked-in native plugin paths. After changing a Capacitor dependency,
+synchronize both projects and review the regenerated files:
 
-Local runs require JDK 21, Docker, Android platform tools and emulator, Chrome, and the API
-36 Google APIs x86_64 system image. Linux hosts must grant the current user read/write access
-to `/dev/kvm`. Treat an explicitly supplied emulator as disposable: the runner clears
-Trinity's package data and device logcat, replaces the debug APK, and force-stops the app;
-only the previous `tcp:8448` reverse mapping is restored.
+```bash
+pnpm android:sync
+pnpm ios:sync
+```
 
-When the runner starts `Trinity_API_36` itself, the supported headless configuration is a cold
-boot with `-no-snapshot -gpu software -feature -Vulkan` in addition to the no-window, no-audio,
-and no-boot-animation flags. The software GLES path avoids the long-run SwiftShader/Vulkan
-buffer failures seen under the canonical sequential inventory; disabling snapshot load/save
-also prevents a stale renderer state from crossing runs. An explicitly supplied emulator is
-accepted for focused diagnosis, but its renderer flags are outside the runner's control.
+Generated Android Gradle and iOS Swift Package Manager paths include pnpm's resolved
+dependency location. A dependency update without a re-sync can fail with a missing
+generated plugin path. Do not hand-edit generated plugin wiring.
 
-## Plugins
+## Debug and verify the real host
 
-| Plugin                                         | What it is used for                                                                       |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `@capacitor/core`                              | `isNativePlatform()` and `getPlatform()` branches                                         |
-| `@capacitor/preferences`                       | Every persisted setting, composer drafts, the session, OIDC and SSO state                 |
-| `@capacitor/app`                               | Deep links through `appUrlOpen` and `getLaunchUrl`, plus the Android hardware back button |
-| `@capacitor/browser`                           | System browser for SSO and OIDC, and for external links                                   |
-| `@capacitor/camera`                            | Media picker for attachments                                                              |
-| `@capacitor/filesystem` and `@capacitor/share` | Save or share a downloaded attachment                                                     |
-| `@capacitor/push-notifications`                | FCM and APNs token registration                                                           |
-| `@capacitor/local-notifications`               | Present typed live-sync notification intents and return typed tap destinations            |
-| `@capacitor/status-bar`                        | Theme-matched status bar                                                                  |
-| `@capawesome/capacitor-badge`                  | App-icon unread badge                                                                     |
-| `@aparajita/capacitor-secure-storage`          | Keychain on iOS, Keystore on Android                                                      |
+Static contracts are available without the native toolchain:
 
-`@capacitor/keyboard` and `@capacitor/haptics` are installed and synced into both native
-projects but have no TypeScript import anywhere in the workspace. Keyboard is configured
-natively through `capacitor.config.ts` and needs no runtime call; haptics is currently
-unused.
+```bash
+pnpm android:verify
+pnpm ios:verify
+```
 
-## Host capability negotiation
+They check the shared renderer artifact graph, configured plugins, deep-link contracts,
+and native capability wiring. They do not install, launch, or permission-test an app.
 
-Both hosts explicitly negotiate authentication handoff, deep links, file export, location,
-secure storage and lifecycle support. Notification presentation and badges remain conditional
-on their plugins' runtime support. Android additionally advertises hardware Back and
-background/minimize; iOS does not emulate those Android operations because native WebKit history
-gestures are coordinated by `NativeNavigation` instead. Update checks are explicitly unavailable
-on both hosts until a native update channel exists. Commands remain cold RxJS Observables, and
-unsupported operations return typed outcomes rather than rejected promises.
+Toolchain checks are distinct:
 
-## Android project
+```bash
+pnpm nx run trinity-android:verify-native
+pnpm nx run trinity-ios:verify-native
+```
 
-| Setting                                 | Value             |
-| --------------------------------------- | ----------------- |
-| `namespace` and `applicationId`         | `eu.qwky.trinity` |
-| `minSdkVersion`                         | 24                |
-| `compileSdkVersion`, `targetSdkVersion` | 36                |
-| Launch mode                             | `singleTask`      |
+Android native verification synchronizes and runs Gradle unit validation. iOS native
+verification synchronizes and builds the unsigned Simulator target, so it requires macOS
+and Xcode. On Linux, `pnpm ios:verify` can pass while
+`trinity-ios:verify-native` is unavailable; report that difference accurately.
 
-[AndroidManifest.xml](https://github.com/quwisky/trinity-matrix-client/blob/develop/android/app/src/main/AndroidManifest.xml)
-carries five things worth knowing about.
+For Android debugging, run `pnpm android:open`, select the intended emulator or device in
+Android Studio, and use its Run and Logcat windows for native errors. With a debug WebView
+listed by Chrome, attach through `chrome://inspect` for renderer Console and Sources. For iOS,
+run `pnpm ios:open`, select the simulator or device in Xcode, launch the App scheme, and use
+Xcode's debug console. These are host diagnosis steps, not evidence that a release artifact
+was signed or distributed.
 
-**A scheme-only deep-link intent filter.** The `VIEW` filter declares
-`android:scheme="eu.qwky.trinity"` with no `android:host`. Two callback shapes have to
-match: legacy SSO redirects to `eu.qwky.trinity://sso-callback`, while OIDC uses the RFC
-8252 section 7.1 private-use form `eu.qwky.trinity:/sso-callback`, which has no authority
-for a host to match against. The Application Runtime adapter checks the path and parameters before
-acting on anything that arrives, and owns the host subscription until shutdown.
+For actual installed-WebView evidence, use the serialized Android lifecycle:
 
-**An FCM default notification channel.** The `default_notification_channel_id` meta-data
-names `messages`, a channel created at runtime by `PushService`. Android O and later drop
-notifications that name no channel.
+```bash
+pnpm e2e:android
+```
 
-**`POST_NOTIFICATIONS`.** Android 13 and later require it at runtime, and the push plugin's
-own manifest does not declare it, so without this entry the OS denies notifications without
-ever prompting.
+It builds production output, synchronizes it, verifies the copied renderer, installs a
+debug APK on a validated dedicated API 36 x86_64 emulator, and runs shared journeys plus
+Android-only behavior. It clears test-app data, changes the APK and logcat, and may change
+ADB reverse mappings. Use `TRINITY_ANDROID_SERIAL` only for a disposable dedicated
+emulator; the runner does not use a physical or arbitrary attached device. Its Android
+documentation covers [ownership, TLS, diagnostics, and cleanup](../../e2e/README.md#android-webview-journeys).
 
-**A FileProvider**, plus `CAMERA`, `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` for
-attachment capture and saving. QR verification uses the WebView's live camera API against
-the same declared camera permission, so the scanner stays shared with web and desktop. The
-iOS camera usage description names both attachment capture and verification QR scanning.
+Browser emulation is useful for web layout but does not prove Capacitor APIs, Android
+hardware Back, native permissions, WebView TLS, or process restoration. External FCM delivery,
+encrypted-key export, and compositor panning remain explicit Android E2E skips; no browser
+shim is substituted as false native proof. No equivalent installed-iOS-WebView Playwright
+runner exists.
 
-**`android:allowBackup="false"`** — a deliberate departure from the Capacitor generator
-default. The Rust crypto store lives in the WebView data directory and is initialised with
-no store passphrase, so it is not encrypted at rest: the device's Olm identity and every
-inbound megolm session sit in `app_webview/`. Android Auto Backup would sweep that into
-Google Drive, where a restore onto an attacker-controlled device decrypts the user's whole
-cached history without ever needing the access token the app keeps in the Keystore.
-`cap sync` regenerates the manifest, so check this attribute survived after any Capacitor
-bump. If backup is wanted later, keep it opt-in through `dataExtractionRules` and
-`fullBackupContent` that exclude `app_webview/` and the Preferences file.
+## Native configuration and capability behavior
 
-There is no `google-services.json` in the repository. The Gradle scaffold applies the
-Google Services plugin only when that file is present and otherwise logs that push
-notifications will not work. Supplying it is part of setting up push, covered in
-[Push notifications](../reference/push-notifications.md).
+`capacitor.config.ts` declares `eu.qwky.trinity`, renderer directory `www/`, and
+native keyboard resizing. The latter keeps the composer above the software keyboard; Android
+already resizes its WebView and iOS honors the configured behavior.
 
-## iOS project
+| Capability           | Implemented native behavior and limit                                                                                                                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deep links           | `@capacitor/app` receives warm `appUrlOpen` and cold `getLaunchUrl`; both callback forms use `eu.qwky.trinity:`.                                                                                                                                                                                                                            |
+| Secure storage       | Tokens and cross-signing secrets use Keychain/Keystore through the [secure-storage adapter](../../libs/platform-native/src/lib/secure-storage.service.ts), with cloud syncing disabled. If the native plugin is unavailable, it falls back to unencrypted Preferences and reports that anomaly. Regular preferences are not secret storage. |
+| Notifications        | Local notifications present live synced events when permission and plugin support allow it; remote push requires platform configuration and registration.                                                                                                                                                                                   |
+| Badge and status bar | Badges use negotiated support and typed host outcomes. The separate Appearance chrome adapter probes native platform/StatusBar plugin availability, applies resolved Mode when available and otherwise completes without a change.                                                                                                          |
+| Attachments          | Native picker/camera, Filesystem, and Share provide capture and save/share behavior; browser file/download fallbacks are different.                                                                                                                                                                                                         |
+| Navigation           | Android hardware Back resolves the topmost dialog/active Workspace Back owner, including registered panels, before browser history or minimization. iOS native history gestures yield while a dialog or registered panel can intercept.                                                                                                     |
+| Updates              | No native update channel exists, so update capability is unavailable.                                                                                                                                                                                                                                                                       |
+| Service worker       | Not registered in native hosts: the renderer and crypto assets are already local files.                                                                                                                                                                                                                                                     |
 
-The iOS project consumes its Capacitor dependencies through Swift Package Manager, defined
-in
-[ios/App/CapApp-SPM/Package.swift](https://github.com/quwisky/trinity-matrix-client/blob/develop/ios/App/CapApp-SPM/Package.swift).
-The platform floor is `.iOS(.v16)` and `capacitor-swift-pm` is pinned with `exact:`.
+Host operations remain cold, finite commands with explicit unsupported or failed outcomes.
+Do not simulate a missing native capability in a browser and call it host proof.
 
-`Info.plist` declares `CFBundleURLSchemes: [eu.qwky.trinity]` for the auth callback, and
-six usage strings that iOS requires before the corresponding prompt can be shown:
-`NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,
-`NSPhotoLibraryAddUsageDescription`, `NSMicrophoneUsageDescription` (voice messages) and
-`NSLocationWhenInUseUsageDescription` plus
-`NSLocationAlwaysAndWhenInUseUsageDescription` (the native geolocation plugin requires both,
-although Trinity only asks while the app is in use). A missing string is not a denied permission
-the app can catch — iOS terminates the process the moment the API is touched, so any new
-capability needs its key added here before the affordance ships.
+## Android project contracts
 
-Neither native project has its `public/` web assets tracked in git — those are produced by
-`cap sync`.
+Android uses application ID `eu.qwky.trinity`, `singleTask` launch mode, and a
+scheme-only `eu.qwky.trinity` deep-link filter. It accepts both legacy
+`eu.qwky.trinity://sso-callback` and authority-less OIDC
+`eu.qwky.trinity:/sso-callback`; application code validates path and parameters before
+acting.
 
-`MainViewController.swift` also owns Trinity's one local Capacitor plugin,
-`NativeNavigation`. WebKit exposes its native Back and Forward edge gestures behind one
-switch and bypasses Capacitor's Android-style `backButton` event, so the Angular shell mirrors
-whether a dialog or registered feature panel can currently consume Back. The controller starts
-with gestures disabled (the safe state if bridge registration or synchronization fails) and
-enables them only after Angular reports an empty interception stack. The drawer's opening
-affordance is the 24px band immediately inside a 32px native-history strip, leaving the extreme
-right edge to native history.
+The manifest declares camera and media access for attachments and QR verification,
+`POST_NOTIFICATIONS` for Android 13 and later, and a `messages` notification channel.
+Without the runtime permission or channel, the OS does not deliver the notification as the
+application expects.
 
-## Generated native paths go stale
+Android backup is explicitly disabled. The WebView crypto store holds device identity and
+inbound Megolm sessions, so copying it through Android Auto Backup would compromise cached
+encrypted history on restore. After a Capacitor update and sync, verify that
+`android:allowBackup="false"` remains in the manifest.
 
-!!! danger "Re-sync after any Capacitor dependency change"
+The repository intentionally has no `google-services.json`. Gradle enables Google
+Services only when that project-specific file is supplied; without it, FCM push delivery
+does not work. See [Push notifications](../reference/push-notifications.md) for the
+configuration boundary.
 
-    `cap sync` writes **absolute plugin paths** into
-    `android/capacitor.settings.gradle` and `ios/App/CapApp-SPM/Package.swift`. Under pnpm
-    those paths point into the content-addressed store and embed both the resolved version
-    and its peer hash, like
-    `node_modules/.pnpm/@capacitor+android@8.4.1_@capacitor+core@8.4.1/…`.
+## iOS project contracts
 
-    Bump any Capacitor package and every one of those paths stops existing. The build fails
-    with "No such file or directory" against a directory that looks entirely plausible.
+The iOS project uses Swift Package Manager; its generated package declares iOS 16, while
+the Xcode deployment target is 16.4 and the renderer requires Safari/iOS 17+. `Info.plist` registers
+the `eu.qwky.trinity` auth callback and usage descriptions for camera, photo library,
+microphone, and location. iOS terminates an application that calls a protected API without
+its usage string, so add the matching plist key before shipping a new native permission.
 
-    The fix is `pnpm android:sync` and `pnpm ios:sync`, then commit the regenerated files.
+`MainViewController` owns the local `NativeNavigation` plugin. It coordinates native
+Back/Forward gestures with Angular's dialog and panel interception state, beginning in the
+safe disabled state until the bridge reports that nothing needs to intercept history.
 
-The explicit Nx `sync` targets are the supported repair path; a contributor who runs a native
-tool directly before re-syncing can still hit stale generated plugin paths.
+## Package and release boundaries
 
-Renovate's `ignorePaths` covers `android/**` and `ios/**`, so its Capacitor grouped update
-will never regenerate these files. A dependency bump and the re-sync it requires are two
-separate acts, and only the first one is automated.
-
-## What behaves differently on mobile
-
-| Capability           | Mobile behaviour                                                                                                                                                                                                                                |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Notifications        | Live synced events use `@capacitor/local-notifications`; permission and plugin availability are explicit, and taps return the exact Account, Room and event destination. Remote push still covers delivery when the app is suspended or absent. |
-| Push registration    | Gated on `getPlatform()` being exactly `'ios'` or `'android'`, and on the plugin being available                                                                                                                                                |
-| Secret storage       | Keychain and Keystore through `@aparajita/capacitor-secure-storage`, with syncing switched off so a per-device Matrix session cannot leak across a user's devices                                                                               |
-| App-icon badge       | `@capawesome/capacitor-badge`. iOS prompts once for badge authorization on first use; Android grants without a prompt                                                                                                                           |
-| Status bar           | The Appearance native-chrome adapter matches the status-bar style to resolved Mode                                                                                                                                                              |
-| Deep links           | `appUrlOpen` for a warm open, `getLaunchUrl` for a cold start                                                                                                                                                                                   |
-| Android back button  | The app owns the whole chain: an open overlay always consumes the press (dismissed unless it set `disableClose`), else step back through history, else minimize                                                                                 |
-| iOS history swipe    | Native Back/Forward stays enabled while no dialog or registered panel can intercept; both edges yield while one is active, and the drawer opens from an inset band                                                                              |
-| Composer insert      | The `+` opens the shared bottom sheet on the iOS/Android interaction model, including mobile web/PWAs. Desktop web and Electron retain an anchored menu                                                                                         |
-| Media capture        | `MediaPickerService` opens the Capacitor gallery picker on native; elsewhere the composer falls back to a hidden file input                                                                                                                     |
-| Saving an attachment | Bytes are written to the cache and handed to the OS share sheet, rather than triggering a browser download                                                                                                                                      |
-| Service worker       | Not registered. The shell and the crypto module are already local files                                                                                                                                                                         |
-
-Everything else — the timeline, rooms and spaces, encryption, search — is the same code
-running in a WebView.
+Android release packaging is `pnpm android:build:release`; configure release signing outside
+the checked-in Gradle target before treating its AAB as distributable. iOS distributable
+packaging needs a macOS signing identity. These commands create artifacts; they do not authorize
+version changes, tags, stores, or publication. Follow
+[CI and releases](../maintaining/ci-and-releases.md) for the release process and record
+unavailable native OS, SDK, device, or credentials with the command result.

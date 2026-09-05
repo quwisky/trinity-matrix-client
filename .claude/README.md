@@ -1,14 +1,15 @@
-# `.claude/` — Claude Code's corner
+# Claude-specific configuration
 
-The skills and rules catalog lives in [`../.agents/README.md`](../.agents/README.md), and the
-skills and rules themselves in `.agents/`. `skills/` and `rules/` here are **symlinks** to those
-directories, so Claude Code finds them where it expects while any other agent can read them too.
-Edit the files under `.agents/`; the links hold no content.
+Start with [Working with agents](../docs/agents/index.md). Shared instructions live
+in [AGENTS.md](../AGENTS.md); the root [CLAUDE.md](../CLAUDE.md) is a regular forwarding
+file, not a symlink.
 
-What is genuinely Claude-specific, and stays here:
+- [CLAUDE.md](CLAUDE.md) contains the source-change Angular/TypeScript style guide.
+- [settings.json](settings.json) declares the Nx plugin and its marketplace.
+- `skills/` and `rules/` are directory symlinks to `.agents/skills` and `.agents/rules`.
+  Edit the canonical files under `.agents/`, following the [catalog ownership rules](../.agents/README.md).
 
-- [`CLAUDE.md`](CLAUDE.md) — the Angular/TypeScript style guide, loaded on every session.
-- `settings.json` — enabled plugins and marketplaces.
-- `RESUME.md` — session scratch notes.
-
-Project-wide instructions are in [`../AGENTS.md`](../AGENTS.md).
+Which instructions or plugins a client loads depends on its runtime and configuration.
+Check the available tools; these paths alone do not prove discovery or plugin execution.
+There is no tracked session scratch document. Use the [compact handoff](../.agents/roles.md#handoffs)
+when transferring verified work.

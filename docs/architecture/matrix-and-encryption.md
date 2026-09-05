@@ -1,21 +1,29 @@
 # Matrix and encryption
 
-This is the engineering view of the layer between `matrix-js-sdk` and the rest of the
-app: how clients are created and torn down, where session state is persisted, how the
-Rust crypto stack is bootstrapped, and how the two authentication families work. The
-user-facing view of encryption — what a recovery key is, what the shields mean — lives
-in [encryption](../users/encryption.md).
+Use this guide when changing client startup, persisted credentials, authentication, Trust or
+media encryption. It describes the implementation on `refactor/refine-architecture`.
+For product terminology, read the [glossary](../../CONTEXT.md). For cross-capability startup,
+Account switching, Workspace and projection ownership, use
+[state and runtime lifetimes](state-and-reactivity.md). For the person using Trinity, see
+[encryption and recovery](../users/encryption.md).
 
-Everything described here sits in three libraries:
-[`libs/data-access/accounts`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/accounts)
-(saved Account restoration and outcomes),
-[`libs/data-access/matrix-client`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/data-access/matrix-client)
-(client lifecycle, registry, 4S key holder, token refresher) and
-[`libs/data-access/trust`](https://github.com/quwisky/trinity-matrix-client/tree/refactor/refine-architecture/libs/data-access/trust)
-(verification, recovery and encryption-health flows), with the DI-free primitives in
-[`libs/util/matrix`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/util/matrix)
-and the storage backends in
-[`libs/platform-native`](https://github.com/quwisky/trinity-matrix-client/tree/develop/libs/platform-native).
+## Find the implementation owner
+
+| Change                                                                     | Owner and source                                                                                                                                                    |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Restore, establish, switch or sign out an Account; reset an installation   | [Accounts](../../libs/data-access/accounts/src/index.ts), through `AccountRuntimeService`                                                                           |
+| Create an SDK client, bind its stores and crypto callbacks, refresh tokens | [Matrix Runtime adapter](../../libs/data-access/matrix-client/src/index.ts)                                                                                         |
+| Discover a homeserver before login                                         | [Discovery](../../libs/data-access/discovery/src/lib/homeserver-discovery.service.ts), injected through Authentication's discovery port                             |
+| Password/SSO/OIDC authentication and opaque grants                         | [Authentication](../../libs/data-access/auth/src/index.ts)                                                                                                          |
+| Verification, recovery, cross-signing and encryption health                | [Trust](../../libs/data-access/trust/src/index.ts)                                                                                                                  |
+| Persist Accounts and select secure storage                                 | [Session storage](../../libs/platform-native/src/lib/session-storage.service.ts) and [secure storage](../../libs/platform-native/src/lib/secure-storage.service.ts) |
+| Normalize timeline events and present messages                             | [Conversations](../../libs/data-access/timeline/src/index.ts)                                                                                                       |
+| Transfer attachment bytes for an exact Account and Room                    | [Media Pipeline](../../libs/data-access/media/src/index.ts)                                                                                                         |
+| Pure WASM loading, attachment/key-file crypto and protocol helpers         | [Matrix utilities](../../libs/util/matrix/src/index.ts)                                                                                                             |
+
+Application Runtime composes these owners. Features consume their public views and commands;
+they do not import raw SDK clients or coordinate another capability's connection lifecycle.
+See [library boundaries](libraries.md) and the [architecture contract](target-architecture.md).
 
 ## SDK version and the deep-import rule
 
@@ -24,1156 +32,549 @@ and the storage backends in
 | `matrix-js-sdk`                      | 42.1.0  |
 | `@matrix-org/matrix-sdk-crypto-wasm` | 18.4.0  |
 
-Bare installed versions, not the `package.json` ranges, so that
-[`scripts/stack-versions.spec.mjs`](https://github.com/quwisky/trinity-matrix-client/blob/develop/scripts/stack-versions.spec.mjs)
-checks this table too. It previously wrote them as `` `^41.9.0` (41.9.0 resolves) ``, which
-the guard's complete-semver filter skipped — so this page drifted silently while
-[the stack reference](../reference/stack.md) stayed honest.
+These installed versions are checked by [the version guard](../../scripts/stack-versions.spec.mjs).
+The SDK's crypto dependency range must remain compatible with the installed WASM package.
+Use the [stack reference](../reference/stack.md) for Trinity's Node and toolchain requirements.
 
-The two packages are **coupled**: matrix-js-sdk 42.1.0 depends on
-`@matrix-org/matrix-sdk-crypto-wasm@^18.4.0`, so they move together or not at all.
-
-The SDK requires Node 22 or newer (`engines.node: >=22.0.0`).
-
-Crypto types are **not** re-exported from the package root — still true in 42.x. `CryptoApi`,
-`CryptoEvent`, `decodeRecoveryKey`, `deriveRecoveryKeyFromPassphrase` and
-`EventShieldColour` come from `matrix-js-sdk/lib/crypto-api`; `ServerSideSecretStorage`
-and `SecretStorageKeyDescriptionAesV1` come from `matrix-js-sdk/lib/secret-storage`.
+Inside an approved Matrix adapter, crypto types and helpers come from the SDK's deep modules:
 
 ```ts
 import { CryptoEvent, decodeRecoveryKey, type CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
 import type { ServerSideSecretStorage } from 'matrix-js-sdk/lib/secret-storage';
 ```
 
-Those deep paths resolve only because the SDK's `package.json` has no `exports` field.
-The root does export a `SecretStorage` _namespace_, which is a different thing and is
-not what the code uses. If upstream ever adds an `exports` map, every deep import in the
-repo breaks at once.
+The installed SDK has no `exports` map. Its root `SecretStorage` namespace does not replace
+these imports. Recheck deep paths if an SDK upgrade introduces an export map. Consumer tiers
+remain SDK-free: [ESLint](../../eslint.config.mjs) restricts both static and dynamic SDK imports,
+and structural guards enforce containment. Nx project boundaries alone do not cover every
+third-party import. Keep protocol modeling in its approved utility boundary and expose the
+owning capability's public contract instead of widening an import exemption.
 
-!!! warning "Components never import matrix-js-sdk"
+## Create and release an Account client
 
-    All SDK access is wrapped in the `@trinity/data-access/*` services. It is what keeps
-    the SDK swappable and the UI testable. See [libraries](libraries.md).
+[MatrixClientService](../../libs/data-access/matrix-client/src/lib/matrix-client.service.ts)
+keeps a registry keyed by Matrix user ID. Each live Account has its own SDK client, sync store,
+crypto prefix, sync projection, logout listener and ephemeral secret-storage key holder.
+Live Accounts sync concurrently; `instance` resolves the Active Account's client. A saved
+Account may have no live client after soft logout or a failed restore.
 
-    Enforced in `eslint.config.mjs` by a `@typescript-eslint/no-restricted-imports` rule
-    plus a companion `no-restricted-syntax` rule for the dynamic `import()` form the first
-    one cannot see — split across two `files` arrays so the consumer tiers can also carry the
-    kit ban: `libs/feature/**` and `apps/**` in one, `libs/spartan/**`, `libs/components/**`,
-    `libs/platform-native/**`, `libs/testing/**` and `libs/util/ui/**` in the other. Read
-    those arrays rather than trusting this list. `libs/spartan` is included even though it is
-    generated: leaving it out made this rule the one thing the two UI configs disagreed on,
-    which `scripts/lint-invariants.spec.mjs` correctly failed.
-    **Not** by Nx module boundaries — this page used to say so, and it was wrong:
-    `@nx/enforce-module-boundaries` polices `@trinity/*` edges between projects and has
-    nothing to say about a third-party package, which is how three spec files had already
-    drifted past the rule. `libs/util/matrix` is the sanctioned exception, because it
-    models the SDK's own types.
+The startup sequence is significant:
 
-    If a layer below needs an SDK symbol, re-export it from the lib that owns the domain
-    — as `data-access/discovery` does for `JoinRule` and `util/matrix` does for `HTTPError` —
-    rather than widening the rule.
+1. Await any tracked wipe for the same Account and release an existing client being replaced.
+2. Create the Account's sync store, key holder and SDK client, including its captured token
+   refresher and ordinary Matrix request deadline (`localTimeoutMs: 30_000`). Sync requests
+   use their own polling policy.
+3. Attempt sync-store startup, preload the crypto WASM and enter serialized `initRustCrypto()`.
+   Store startup is best effort; crypto initialization is required.
+4. Attach the sync projection and server-logout listener, then call
+   `startClient({ initialSyncLimit: 20, threadSupport: true })`.
+5. Publish the client registry and host network origins, then acknowledge projection readiness.
 
-## MatrixClientService is a registry, not a wrapper
+A failed startup releases attached listeners, stops the client, clears the holder and closes
+its store. Same-user starts share an uninterruptible underlying attempt. If all consumers
+leave, rollback follows **after that attempt settles**; unsubscribe does not immediately
+abort Rust initialization. Accounts owns the higher-level restore/establish outcome and
+placement commit. Authentication grants are opaque and are consumed by
+`AccountRuntimeService`, not by a retired session-establishment facade.
 
-[`MatrixClientService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/matrix-client.service.ts)
-holds a `Map<userId, AccountClient>`. Every signed-in account has its own live
-`MatrixClient` and all of them sync concurrently; exactly one is marked **active**, and
-`instance` returns the active account's client. That is the design decision that let
-multi-account land without touching the roughly 110 call sites that read
-`this.matrix.instance`: they stay scoped to whichever account is in view, for free.
+The [state guide](state-and-reactivity.md) describes restore priority and bounded per-Account
+outcomes, explicit active/inactive establishment, identical-attempt joining, conflict outcomes,
+Workspace URL preparation and the cancellable-preparation/post-commit boundary of switching.
+Do not infer those cancellation semantics for every lifecycle command: accepted sign-out and
+installation-reset lifetimes continue after the initiating subscription ends.
 
-Each `AccountClient` carries the per-account state that teardown needs later:
+## Project SDK state and authorize Room writes
 
-| Field            | Why it is retained                                                                 |
-| ---------------- | ---------------------------------------------------------------------------------- |
-| `client`         | The live `MatrixClient`.                                                           |
-| `cryptoPrefix`   | So a logout wipe deletes **this** account's crypto store, not the SDK default one. |
-| `syncStore`      | The `IndexedDBStore`, so its connection can be closed.                             |
-| `syncState`      | A per-account signal; `MatrixClientService.syncState` reads the active one.        |
-| `syncProjection` | The Projection Runtime lease that owns sync attachment, reset, and readiness.      |
-| `onLoggedOut`    | The exact server-logout listener reference, so it can be detached.                 |
-| `holder`         | This account's `SecretStorageKeyHolder`, cleared on teardown.                      |
+[projectFromClient](../../libs/data-access/matrix-client/src/lib/project-from-client.ts) binds
+SDK invalidations to Projection Runtime generations. Attachment is keyed to the **client
+instance**. A boolean `connected` flag cannot distinguish a replacement client after re-login.
+Create this helper in a field initializer or constructor with an injection context. Rebuilds
+are coalesced; tests must flush the scheduled turn before asserting that a rebuild did not occur.
+Subscription ownership, acknowledgement and reset behavior are detailed in the
+[state guide](state-and-reactivity.md).
 
-### The lifecycle, in order
+Conversation adapters normalize `MatrixEvent` and Room state before presentation. The
+normalizer handles malformed federated content and throwing getters, gathers bounded sender,
+reply, reaction, receipt and shield context, and emits frozen discriminated records. Unsupported
+input produces an explicit fallback rather than stopping the projection. Message Presentation
+owns sanitized formatted bodies, supported system-event summaries, HTTP(S)-only link-preview
+candidates and redacted, undecryptable and unsupported fallbacks. Both main and thread timelines
+use it; consumers import `MessageView` from `@trinity/data-access/timeline`. Metrics contain
+counts and durations, never message bodies or identifiers. Shiki grammars remain relative
+imports beside the lazy Rooms feature so they do not enter the eager bundle.
 
-`start(session)` is the only place a client is born, and the order is fixed:
+Room Administration projects membership and power-level policy through
+`RoomActionPermissionsService`. Moderation requires the actor to strictly outrank the target;
+role assignment also caps the assigned power at the actor's own level, including the SDK's
+room-v12 creator power semantics. Detached Accounts have no authority.
 
-1. Await any pending background store wipe for this user id.
-2. Build the per-account sync store, `IndexedDBStore({ dbName: 'trinity-sync:${userId}' })`
-   — or `null` when `globalThis.indexedDB` is undefined, so unit tests fall back to the
-   SDK's in-memory store.
-3. `createClient({ baseUrl, accessToken, userId, deviceId, refreshToken?, tokenRefreshFunction?, store?, cryptoCallbacks })`.
-4. `store.startup().catch(() => undefined)` — a corrupt or blocked IndexedDB must never
-   block login; the cache load is best-effort.
-5. `preloadCryptoWasm()`.
-6. `initRustCrypto({ cryptoDatabasePrefix: session.cryptoPrefix })`.
-7. Activate the exact-Account sync-state projection and attach `HttpApiEvent.SessionLoggedOut`.
-8. `startClient({ initialSyncLimit: 20, threadSupport: true })`.
-9. Only now register in the map, publish `accountIds`, publish CORS origins to Electron,
-   and clear any soft-logout flag.
-10. Wait for the exact-Account Projection Runtime barrier before reporting the Account ready.
-
-A failure anywhere rolls the whole thing back — listeners off, `stopClient()`,
-`holder.clear()`, store closed — and rethrows, so `isInitialized` never reports a client
-that is half-built. Re-adding an account that is already in the map removes the old entry
-first, so a re-auth never orphans a running client or opens a second connection to the
-same IndexedDB.
-
-`AccountRuntimeService.restoreSavedAccounts()` is what `authGuard` calls on a cold start. The
-command is cold and finite: it sweeps orphaned stores, reads one secret-free Account snapshot,
-subscribes to the Active Account first, and restores the rest concurrently. Every Account has a
-deadline and exactly one terminal outcome (`ready`, `reauthentication-required`, `timed-out`, or a
-typed local-state/network/crypto failure). The final result distinguishes no saved Accounts, an
-unavailable Active Account, and an Active Account restored with degraded inactive Accounts.
-
-The read-only runtime signal publishes progress and settled results, including total duration,
-Active Account terminal time, and terminal Account counts. Cancellation tears down work that has
-not committed through Matrix Runtime's existing rollback path; already committed Accounts remain
-represented in the cancelled state. Adapter defects use the Observable error channel and a
-distinct failed runtime phase. The former detached `MatrixClientService.restoreAll()` facade was
-removed when its production caller count reached zero.
-
-Successful authentication enters the same runtime through
-`establishAuthenticatedAccount(grant, intent)`. Password, SSO, OIDC, and registration adapters
-seal the authenticated `MatrixSession` in an `AuthenticatedAccountGrant`; the grant has no
-enumerable or serializable credential fields, and only the Account Runtime implementation can
-recover its payload. The intent separately names whether the Account record is new or upserted,
-whether it becomes Active, and whether other live Accounts are kept or replaced.
-
-The production adapter preserves the existing persisted-session format and crypto-store prefix.
-It writes the Account without changing the Active pointer, starts Matrix Runtime in the
-background, verifies that the Account is live, then commits the persisted and live Active
-placement only after startup succeeds. A missing live client at that commit boundary is an
-adapter defect, not an expected lifecycle outcome. If the persisted Active-pointer commit fails,
-the adapter stops and removes the newly started client without wiping its persisted stores and,
-when necessary, restores the prior persisted Active pointer. A failed command therefore leaves no
-background runtime syncing outside Account Runtime state and no pointer to an unplaced runtime.
-Inactive placement requires an existing Active Account and never moves either pointer. Identical
-grants and intents join one in-flight command; a different establishment or a concurrent restore
-returns `transition-in-progress`. Storage, network, reauthentication, and crypto failures are
-typed outcomes with safe Account metadata, while invalid grants and adapter invariants stay on the
-Observable error channel. A newly registered Account whose startup fails can retry the identical
-grant without attempting the atomic new-record write twice.
-
-Active Account changes use `AccountRuntimeService.switchActiveAccount(accountId)`. Workspace
-reserves the requested Account-and-destination coordinate while retaining its prior immutable
-view. Once Account Runtime accepts the attempt, Workspace resolves the requested Room or Space
-against the exact target Account and writes its canonical URL as preparation. A rejected URL
-cancels before Account commit; a successful preparation releases the outgoing Conversation and
-Media projections. Account Runtime then prepares the already-live target, persists the Active
-pointer, publishes the target client, and asks Projection Runtime to reattach every
-`active-account` projection. The command reports ready only after those new generations
-acknowledge; its metrics contain total duration, projection duration, and projection count.
-Workspace atomically publishes the new view and focused Conversation. A failed Account or route
-transition is a typed Workspace outcome; a pre-commit failure restores the prior URL and
-projection. RxJS teardown cannot cancel an already-started Router promise, so Workspace
-immediately supersedes it with an owned replacement navigation and keeps the attempt reserved
-until URL repair settles.
-
-Switch preparation is cancellable. Once the persisted/live commit begins, its shared cleanup and
-projection barrier and the owning Workspace coordination run to completion even if the initiating
-page is destroyed or another inbound route arrives. Account Runtime reports that exact handoff
-through the switch coordination callback only after adapter preparation succeeds; Workspace uses
-it to retain completion ownership without accidentally making adapter preparation uninterruptible.
-Identical target and destination switches join
-the same Observable; a different target or destination is rejected before it mutates the
-Workspace. User destinations push browser history. Deep-link restoration, legacy URL
-canonicalization, and unavailable-Room or unavailable-Space repair replace it.
-Restoration or establishment conflicts likewise return a typed `transition-in-progress` outcome
-and are never silently queued. Expected missing live targets and persisted-pointer failures are
-typed failures; adapter invariant defects remain on the Observable error channel.
-
-Workspace also owns the semantic Back policy independently of URL history. Application surfaces
-(`settings` and the three trust flows), Room surfaces (members, threads, a thread, pins, search,
-and member detail), and a compact Conversation carry typed identities. Back offers them in that
-fixed order: application surface, Room surface, compact Conversation, browser history, then host
-root. Newest registration matters only between adapters at the same layer. Popovers, action sheets,
-alerts, and other ephemeral overlays remain UI-local and are offered first.
-
-Application capabilities call `WorkspaceApplicationSurfaceService.open()` with a cold, finite
-Observable and a semantic return destination; they never name Router paths, Capacitor flags, or a
-dialog vendor. The app-composed presenter is the only adapter that maps those requests to lazy
-Settings/encryption presentation or canonical deep-link routes. `WorkspaceRoutedSurfaceAdapter`
-attaches direct `/settings/*` and `/encryption/*` entry to the same Back registry, including a
-deterministic `/rooms` fallback when a cold native deep link has no browser history. Responsive
-placement changes presentation only: they do not add a second semantic surface or history entry.
-
-Authentication and registration issue opaque grants directly to `AccountRuntimeService`; the
-temporary session-establishment facade has no callers and no public export. Ancillary notification,
-provider-session, cache, and draft cleanup enter through an app-composed Account lifecycle port,
-so the Accounts capability does not depend on another capability to establish or remove an Account.
-The source-shape guard in `scripts/account-runtime-facade.spec.mjs` keeps that retired facade at zero
-callers.
-
-### Projecting SDK events into signals
-
-Every active-client service that bridges SDK events into signals goes through
-[`projectFromClient`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/matrix-client/src/lib/project-from-client.ts),
-which registers a stable projection id in Projection Runtime, keys the connection to the
-**client instance** rather than a boolean, and binds its SDK invalidations to a coalesced runtime
-generation. Coordinated Account switches reattach these entries synchronously and wait for their
-acknowledgements; the `activeUserId()` effect remains only as a fallback for legacy changes outside
-that workflow.
-
-!!! warning "Never gate a projection on a boolean"
-
-    A logout followed by a login swaps in a brand-new `MatrixClient`. A boolean
-    `connected` flag leaves the listeners attached to the discarded client, which keeps
-    emitting into a dead read model — the UI simply freezes with stale data. The guard is
-    `connectedClient === client`.
-
-    A consequence for tests: because rebuilds are coalesced into a microtask, an assertion
-    that something did *not* rebuild passes trivially unless the turn is flushed first
-    (`await Promise.resolve()`).
-
-`projectFromClient` must be called from a field initializer or constructor. It injects Projection
-Runtime and creates its account-change effect, so both need an injection context owned by the
-service's injector.
-
-### Normalizing events for Message Presentation
-
-Conversation timelines never hand `MatrixEvent`, `Room`, or `MatrixClient` objects to feature
-code. `normalizeTimelineEvent` is the Matrix-facing adapter: it reads federated input defensively,
-resolves the bounded sender, reply, reaction, receipt, shield, and room context needed by the row,
-and emits a frozen discriminated record. Throwing getters and malformed text become an explicit
-unsupported record instead of aborting the room projection. Media, polls, stickers, and locations
-cross that same normalizer; media is then exchanged for an opaque Media Pipeline reference.
-
-Message Presentation accepts only those normalized records. It owns text/emote/notice rendering,
-supported membership and room-state summaries, immutable authenticity-shield data, rich message
-models, formatted-body
-sanitization, the HTTP(S)-only link-preview candidate policy, and safe redacted, undecryptable, and
-unsupported fallbacks. The main timeline and thread timeline both call the same production
-entrypoint, and feature code imports `MessageView` from `@trinity/data-access/timeline` rather than
-the shared Matrix utility. Batch presentation reports only event counts and durations; identifiers
-and message bodies never enter its metrics.
-
-Shiki stays synchronous for first paint but its grammars now live beside the lazily loaded rooms
-feature and are imported relatively by `rooms.page.ts`. This removes the temporary
-`@trinity/util/matrix/code-highlight` secondary entrypoint without moving the grammar payload into
-the eager bundle.
-
-### Room-action authorization
-
-Permission-sensitive room UI reads `RoomActionPermissionsService` from
-`@trinity/data-access/room-administration`. The service evaluates the active SDK room state, the actor's
-membership and power, the room's invite/kick/ban/state thresholds, and the target member's
-power. Member moderation requires the actor to strictly outrank the target; assigning a role
-also caps the new power at the actor's own level. That strict comparison deliberately covers
-room-v12 creators, whose SDK power is infinite.
-
-The service projects `m.room.power_levels` and `m.room.member` state events through
-`projectFromClient`, so computed button availability changes when a remote client changes a
-threshold, role, or membership. It also follows the active client across account switches and
-returns no authority as soon as the session is detached.
-
-Unavailable actions use `trnActionAllowed` rather than native `disabled`. Native disabled
-controls cannot receive focus or pointer events, which would make their explanation
-unreachable. The shared directive publishes `aria-disabled` and `aria-description`, preserves
-normal focus and menu arrow-key navigation, and blocks click, Enter, and Space activation.
-The tooltip uses the same reason for mouse, pen, and keyboard users. Tooltips intentionally
-do not open on touch, so a blocked tap shows the reason in a short-lived, non-interactive
-status surface near the thumb zone.
-
-Room and space settings derive every state-backed field from the same live projection:
-name, topic, avatar, join rule, history visibility, and canonical aliases. A dialog that is
-already open disables those fields and its Save action after a remote role change without
-discarding the user's draft. Alias lists remain mounted and readable; the localpart draft is
-preserved while Add, Make main, and Remove become focusable-but-unavailable. Settings and
-alias services repeat the field-specific check at subscription time; avatar uploads check
-once before upload and again before publishing the state event.
-
-The UI guard is only feedback, never the authorization boundary. Every corresponding cold
-data-access mutation re-reads the permission after any picker or confirmation and immediately
-before the SDK write. Homeserver errors remain authoritative and continue through the normal
-Matrix request error handling for races and incomplete local state.
+The live projection updates open Room and Space settings when a remote role change removes
+permission, while preserving drafts and readable alias lists. UI feedback uses focusable
+`trnActionAllowed` controls, keyboard-accessible explanations and a touch status surface.
+Every cold mutation rechecks permission at subscription time after pickers/confirmations and
+before the SDK write; avatar publication checks both before upload and before publishing state.
+The homeserver remains authoritative for races. UI details belong in the
+[UI guide](ui-and-theming.md), not in a second authorization implementation.
 
 ## Session persistence
 
-[`SessionStorageService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/session-storage.service.ts)
-splits every account in two.
+[SessionStorageService](../../libs/platform-native/src/lib/session-storage.service.ts) splits
+saved Account state across two backends:
 
-| What               | Where                           | Key                            |
-| ------------------ | ------------------------------- | ------------------------------ |
-| Access token       | `SecureStorageService`          | `matrix.accessToken:<userId>`  |
-| OIDC refresh token | `SecureStorageService`          | `matrix.refreshToken:<userId>` |
-| Everything else    | Capacitor Preferences, one blob | `matrix.accounts`              |
+| Value                                                 | Backend                | Key                            |
+| ----------------------------------------------------- | ---------------------- | ------------------------------ |
+| Access token                                          | `SecureStorageService` | `matrix.accessToken:<userId>`  |
+| OIDC refresh token                                    | `SecureStorageService` | `matrix.refreshToken:<userId>` |
+| Non-secret Account records and Active Account pointer | Capacitor Preferences  | `matrix.accounts`              |
 
-The Preferences blob is `{ activeUserId, accounts: AccountRecord[] }`, where
-`AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>` — so `baseUrl`,
-`userId`, `deviceId`, `accessTokenExpiresAt`, the non-secret `oidc` binding, and
-`cryptoPrefix`. `load()` returns `null` when a record exists but has no token. That is
-what makes a soft-logged-out account invisible to a restore while keeping its record, and
-therefore its crypto store, alive for re-auth.
+The registry contains `{ activeUserId, accounts }`. Each record omits access and refresh tokens
+but retains homeserver, user/device identity, expiry, OIDC binding and crypto prefix. `load()`
+returns `null` if its record has no access token; the record can still preserve crypto ownership
+for reauthentication.
 
-Every mutation (`save`, `remove`, `clear`, `setActive`, `updateTokens`,
-`invalidateToken`) runs through a promise queue, so each read-modify-write of the shared
-blob sees the previous one's committed result. The OIDC token refresher calls
-`updateTokens` on its own schedule — near expiry, or on a 401 — fully concurrently with a
-user-driven logout. Without the lock, a refresh landing after a logout resurrects the
-signed-out account. Reads deliberately stay off the queue: one `Preferences.get` plus a
-parse is already a consistent snapshot.
+Mutations run through a promise queue so concurrent read/modify/write operations see the previous
+commit. In particular, token refresh must not resurrect a removed Account. Reads use a single
+registry snapshot and stay outside the mutation queue. Token updates refuse empty refresh-token
+replacements as well as absent ones.
 
 ### Secure storage backend selection
 
-[`SecureStorageService.select()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/secure-storage.service.ts)
-picks once and memoizes:
+A successful backend selection is memoized; a rejected selection clears the memo so the next
+call can retry:
 
-| Platform        | Backend                                                                                           | `isSecure` |
-| --------------- | ------------------------------------------------------------------------------------------------- | ---------- |
-| Electron        | `trinityDesktop.secureStore` over IPC to the main process `safeStorage`                           | `true`     |
-| iOS and Android | `@aparajita/capacitor-secure-storage` — Keychain or Android Keystore, `sync: false` on every call | `true`     |
-| Web and PWA     | Capacitor Preferences under a `secure.` prefix                                                    | `false`    |
+| Host          | Preferred backend                                                            | Security report    |
+| ------------- | ---------------------------------------------------------------------------- | ------------------ |
+| Electron      | Main-process `safeStorage` through `trinityDesktop.capabilities.secureStore` | Secure when usable |
+| iOS / Android | Keychain / Keystore through `@aparajita/capacitor-secure-storage`            | Secure when usable |
+| Web / PWA     | Capacitor Preferences under `secure.`                                        | `isSecure: false`  |
 
-`sync: false` on native keeps a per-device Matrix session out of iCloud Keychain. On web
-`isSecure` is `false` because no XSS-proof browser store exists; the real web defences are
-the CSP and the DOMPurify sanitization. Falling back to the web backend **on desktop or
-native** means the OS keyring failed, so the code emits a `console.warn` naming the
-anomaly rather than degrading silently.
+Native calls use `sync: false` so a device's Matrix credentials do not sync through iCloud
+Keychain. When no usable desktop backend or native plugin is available, selection falls back
+to the web store and emits a warning. This fallback does not provide OS-backed secrecy.
+A rejected Electron availability probe instead propagates and clears the selection memo for
+retry; it does not select plaintext storage. Failures of an already selected backend's get,
+set or remove operations likewise propagate without changing the backend. Browser CSP and
+sanitization reduce exposure but do not make script-readable storage safe from code executing
+in that origin.
 
-!!! warning "Electron refuses the Linux basic_text backend"
-
-    [`secureStorageUsable()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/src/secure-store.ts)
-    returns `false` on Linux when `safeStorage.getSelectedStorageBackend()` is
-    `basic_text` or `unknown`. Electron selects `basic_text` when it finds no OS password
-    manager, and that backend "encrypts" with a hardcoded key — obfuscation, not
-    encryption. `isEncryptionAvailable()` does not distinguish it, so accepting it would
-    store the access token and the cross-signing keys under a false promise while the app
-    reported secure storage as available. Refusing pushes the renderer onto its documented
-    plaintext fallback, which at least surfaces the anomaly.
-
-    On disk the ciphertext is a JSON `key -> base64` map in a single `0600` file under
-    `userData`.
+[Electron's secure store](../../electron/src/secure-store.ts) rejects Linux `basic_text` and
+`unknown` backends even if `isEncryptionAvailable()` is true. Accepted ciphertext is a JSON
+key-to-base64 map in a `0600` file under `userData`. See the
+[desktop guide](../platforms/desktop.md) for the bridge and host boundary.
 
 ## The crypto store prefix
 
-The Rust `OlmMachine` binds to a `(userId, deviceId)` pair. It refuses to open a store
-that belongs to a different pair, with:
-
-```text
-the account in the store doesn't match the account in the constructor
-```
-
-A fresh login always mints a **new device id**. So a crypto store scoped by user id alone
-means the second sign-in reopens the first device's store and dies on that error.
-Trinity's prefix is therefore scoped by both:
+Rust crypto binds a store to `(userId, deviceId)`. New-device login must not reopen a previous
+device's store. `SessionStorageService.upsert` derives the device-scoped prefix:
 
 ```text
 trinity-crypto:${userId}:${deviceId}
 ```
 
-`SessionStorageService.upsert` is the one place that scheme is derived, and it branches on
-whether the device changed:
+A new Account or changed device receives a fresh prefix and best-effort reclamation of the
+abandoned crypto store. Same-device reauthentication reuses the existing prefix, including an
+absent legacy prefix that means the SDK default. The reauthentication flow carries the saved
+device ID so keys need not be discarded merely because the access token expired.
 
-- **Brand-new account, or an existing one whose `deviceId` changed** — mint a fresh
-  device-scoped prefix, and fire-and-forget `reclaimCryptoStore(existing.cryptoPrefix)` to
-  delete the abandoned store. No sign-out happened, so nothing else would clean it up.
-- **Same-device re-login** (soft-logout re-auth, token rotation) — reuse the exact
-  existing record's prefix, _including_ a migrated legacy account's **absent** prefix,
-  which means the SDK default store. Upgrading users are never asked to re-verify.
-
-This is also why re-authenticating a soft-logged-out account keeps its keys.
-`/login?reauth=<userId>` loads the stored `AccountRecord` (which needs no token), skips
-the homeserver step, and passes the stored `deviceId` into the login call as `device_id`.
-`upsert` sees no device change, reuses the prefix, and the account comes back with its
-Olm store, cross-signing trust and message keys intact.
-
-The IndexedDB names the SDK derives from a prefix live in exactly one file,
-[`rust-crypto-store.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/rust-crypto-store.ts):
-`${base}::matrix-sdk-crypto` and `${base}::matrix-sdk-crypto-meta`, where `base` falls
-back to the SDK's own `matrix-js-sdk` default. Three call sites depend on that convention
-— the logout wipe, the device-change reclaim, and the cold-start sweep — so it is defined
-once rather than restated.
+[rust-crypto-store.ts](../../libs/util/matrix/src/lib/rust-crypto-store.ts) is the single source
+for `${base}::matrix-sdk-crypto` and `${base}::matrix-sdk-crypto-meta`; an absent prefix uses the
+SDK's `matrix-js-sdk` base. Teardown must use the captured Account prefix, not recompute it or
+call `clearStores()` without the corresponding `cryptoDatabasePrefix` option.
 
 ## Logout, wipe, and the orphan sweep
 
-`removeInternal(userId, wipe)` detaches both listeners, stops the client, clears the 4S
-key holder, drops the map entry, repoints `activeUserId` if needed, and then either closes
-the sync store (a switch-away) or wipes it (a logout).
+Client removal detaches listeners, stops sync, clears the key holder, removes the live registry
+entry and repairs the Active Account pointer. A retained-store stop closes the sync store;
+logout requests store deletion. A tracked background wipe prevents a same-Account start from
+racing deletion of reused store names. SDK crypto-store deletion can remain blocked while
+another connection exists; there is no universal completion time.
 
-!!! danger "Always pass the account's own prefix to clearStores"
-
-    ```ts
-    account.client.clearStores({ cryptoDatabasePrefix: account.cryptoPrefix });
-    ```
-
-    The no-argument form deletes the SDK *default*-prefix store, leaving this account's
-    real store orphaned on disk while its registry record disappears. The startup orphan
-    sweep spares only stores owned by registered accounts, so it then deletes the orphan —
-    and the next fresh login fails with the account/device mismatch. Take the prefix from
-    the `AccountClient`; never recompute it.
-
-The crypto delete can block for around 25 seconds, because the WASM store's connection is
-only released on garbage collection. So the wipe is tracked in a `Map<userId, Promise<void>>`
-and run in the background; re-adding the same account awaits it first, since the sync and
-crypto database names repeat across a same-account re-login. The entry self-prunes once it
-settles, unless a newer wipe has replaced it.
-
-`sweepOrphanedCryptoStores()` runs at cold start, fire-and-forget, before any account is
-loaded. It enumerates `indexedDB.databases()`, builds a keep-set from every registered
-account's store names, and deletes any remaining database whose name ends in a Rust crypto
-suffix. Cold start is the right moment specifically because a fresh page load holds no
-connection to a prior session's stores, so `deleteDatabase` will not block. It is a no-op
-where `indexedDB.databases()` is unavailable.
+During restoration, Accounts awaits the preliminary orphan-sweep enumeration before reading
+saved Accounts. The sweep feature-detects `indexedDB.databases()`, keeps crypto and sync stores
+owned by **all registered Accounts**, and requests deletion of recognized unowned crypto and
+sync stores. Individual deletion requests are detached. Missing enumeration, another tab,
+blocked storage or a failed request can leave residue; the next startup is another best-effort
+attempt, not a cleanup guarantee.
 
 ### Soft logout versus hard logout
 
-`handleServerLogout` fires from `HttpApiEvent.SessionLoggedOut` and reads
-`err.data.soft_logout`.
+`HttpApiEvent.SessionLoggedOut` routes the server's `soft_logout` flag to the adapter:
 
-|                 | Soft logout                                                           | Hard logout                |
-| --------------- | --------------------------------------------------------------------- | -------------------------- |
-| Server state    | Token revoked, device kept                                            | Device deleted server-side |
-| Stores          | Preserved                                                             | Wiped                      |
-| Registry record | Preserved                                                             | Removed                    |
-| UI              | Added to the `softLoggedOut` signal so the switcher can offer re-auth | Account gone               |
+| Behavior     | Soft logout                                      | Hard logout     |
+| ------------ | ------------------------------------------------ | --------------- |
+| Local stores | Preserved for reauthentication                   | Wipe requested  |
+| Saved record | Preserved, token invalidated                     | Removed         |
+| Presentation | Reauthentication offered through `softLoggedOut` | Account removed |
 
-Either way the other accounts keep running and the active pointer moves to a survivor.
-Afterwards the persisted active pointer is reconciled with the in-memory one, because
-`removeInternal` repoints by `Map` order while `storage.remove` repoints by array order —
-without that step a restart could restore a different account than the UI was showing.
+Other Accounts keep running. The persisted Active Account pointer is reconciled with the live
+one after removal, so registry array order and live-map insertion order cannot select different
+survivors after restart.
 
-!!! warning "Do not decide the last account from the live client map"
-
-    `AccountRuntimeService.signOutAccount(accountId)` requires an explicit target and its adapter
-    computes the last Account from `storage.list()`, never from
-    `matrix.accountIds()`. The two legitimately diverge: a soft-logged-out account, or one
-    whose background warm-up failed, is absent from the map but deliberately keeps its
-    registry record. Judging by the map takes the full-clear branch, `storage.clear()`
-    erases every record, and the next cold-start sweep then deletes those accounts' crypto
-    stores — destroying their E2EE keys.
-
-The sign-out command also unregisters the push pusher first, while the token is still valid, and
-best-effort revokes OIDC tokens at the provider (RFC 7009 POST to `revocation_endpoint`
-for both the refresh token and the access token) before the CSAPI `client.logout(true)`. Its finite,
-cold Observable reports the surviving Account IDs and Active Account. Recoverable residue is a
-typed `partial-cleanup` outcome containing only a storage scope and recovery action; raw database
-names, Account IDs from internal scans, tokens, and exception messages never cross the boundary.
+`signOutAccount(accountId)` requires an explicit target. Its adapter determines the last saved
+Account from `storage.list()`, never from the live client count: soft-logged-out or failed-restore
+Accounts may still own recovery-critical stores. It unregisters notifications while the token
+is usable, attempts provider token revocation and Matrix logout, then performs local cleanup.
+Expected residue becomes a typed `partial-cleanup` result with a storage scope and recovery
+action. Raw scanned database names, secrets and exception messages stay inside the adapter.
+The three-second courtesy budget used by installation reset does **not** cover ordinary
+single-Account sign-out.
 
 ## The factory reset
 
-Account sign-out clears one account. **Erase all data on this device** clears the _install_ — the
-escape hatch on the login page for a wedged state that signing out cannot fix, orchestrated by
-`AccountRuntimeService.resetInstallation()` through its Matrix Account adapter and
-[`LocalDataWipeService`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/local-data-wipe.service.ts).
+**Erase all data on this device** invokes `AccountRuntimeService.resetInstallation()` and
+[LocalDataWipeService](../../libs/platform-native/src/lib/local-data-wipe.service.ts). It targets
+the installation, including local-only keys and offline caches; it does not promise sign-out
+on every device. Preserve the recovery-key/other-device and connectivity prerequisites in the
+[user flow](../users/encryption.md).
 
-It is a cold RxJS command whose sequential phases make **the phase order the design**, and three
-adjacencies are load-bearing:
+The ordering is part of the storage contract:
 
-| Order                                                               | Why it cannot move                                                                                                                                                                                                                              |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Read the registry **before** deleting anything                      | It is the only map from an account to its IndexedDB names and its secure-storage keys, and Electron's secret store cannot be enumerated at all. OIDC tokens are read here too — revoking after the secrets are gone would have nothing to send. |
-| `signOutAll()` **before** `matrix.stop()`                           | It iterates the live-client registry, and teardown empties it. Calling it afterwards signs nothing out while looking identical from the outside.                                                                                                |
-| `SessionStorageService.clearAll()` **before** `Preferences.clear()` | Its per-account key removals are the only thing that reaches Electron's main-process store, and `Preferences.clear()` deletes the registry naming those keys.                                                                                   |
+1. Read the registry and tokens before deletion. They identify per-Account stores and
+   Electron secret keys that cannot be enumerated through the renderer bridge.
+2. Attempt live-client sign-out and provider revocation before stopping the client registry.
+   Each courtesy operation has a three-second wait budget; failure is reported and cleanup
+   proceeds.
+3. Stop clients, then attempt IndexedDB deletion using both registry-derived names and
+   enumeration where available. Individual delete helpers report blocked/failed outcomes
+   with a five-second backstop. They avoid the SDK `clearStores()` promise that can stay
+   pending on `onblocked`.
+4. Remove Account secrets by registry key before clearing the registry and Preferences.
+   Clear the whole app Preferences group, not a manually maintained list of prefixes, and
+   attempt secure-store and raw local/session-storage cleanup.
+5. Remove service-worker registrations and caches. The next PWA load can require the network.
 
-IndexedDB is deleted before the key/value stores for the same reason as the first row: on a
-browser without `indexedDB.databases()` (Firefox) the registry is the only source of those
-names, so clearing it first would leave nothing able to say what survived.
+Deletes run concurrently. A blocked request does not stop other deletions or roll back what
+has already gone. It can remain queued and succeed after its holder closes. Recognized orphaned
+stores may be reclaimed by a later sweep, subject to the limits above.
 
-!!! warning "Never use `clearStores()` on this path"
-
-    matrix-js-sdk's `clearStores()` answers `deleteDatabase`'s `onblocked` by logging and
-    nothing else — the promise never settles and the caller hangs. That is the long stall the
-    comment in `removeInternal` refers to.
-    [`deleteDatabase`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/indexed-db-wipe.ts)
-    here is bounded: `blocked` is a reported outcome, with a timer as the backstop for the
-    case where no event arrives at all. Note `blocked` is not terminal for the request — the
-    delete stays queued and can still succeed once the holder closes.
-
-**Preferences is cleared as a group, never from a key list.** The app's keys are not uniformly
-namespaced — `trinity.*`, `matrix.*`, `oidc.*`, `sso.*`, `secure.*` on web, plus unbounded
-`oidc.clientId.v2:<issuer>` and `trinity.spaces.order.*.<userId>` prefixes — so any enumeration
-would be wrong the day it was written. `clear()` is scoped to the app's own `CapacitorStorage`
-group on every backend, so a preference added later is covered without anyone remembering.
-
-**A blocked delete does not abort the reset.** Deletes run concurrently, so by the time one
-reports blocked the rest are already gone; stopping there would produce exactly the
-half-erased install an abort is meant to prevent, with a registry pointing at stores that no
-longer exist. Finishing leaves a coherent signed-out app, and the residue is an orphan that
-the [orphan sweep](#logout-wipe-and-the-orphan-sweep) reclaims on the next cold start — which
-is why that sweep was widened to cover sync stores as well as crypto stores.
-
-**Expected cleanup failures are values**, not thrown errors. The command completes with typed,
-secret-safe scope and recovery guidance so the login page always reaches the restart. Programming
-defects remain on the Observable error channel.
-
-The server sign-out is a courtesy behind a 3-second budget, not a precondition — an
-unreachable homeserver is one of the reasons to reach for this. Consequently the copy never
-claims to sign you out "everywhere".
+Expected cleanup failures become secret-safe scope/recovery values; programming defects use the
+error channel. This does **not** guarantee the login page reaches restart within a deadline:
+registry reads, database enumeration, secure-store/Preferences and cache/service-worker promises
+have no single overall timeout. Unsubscription also does not cancel the accepted reset lifetime.
 
 ### What it cannot reach
 
-| Surface                                                 | Why                                                                                                                                                        |
-| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Media saved through the native share/save path          | Written to the app's cache directory by `FileSaveService`; the user put it there deliberately                                                              |
-| Electron's Chromium-level storage (cookies, HTTP cache) | Owned by the main process; the renderer cannot reach `session.clearStorageData()` and no IPC exposes it                                                    |
-| Secrets orphaned on Electron by an earlier bug          | The bridge exposes per-key deletion only, so anything the registry can no longer name is unreachable. A bulk-clear IPC was deferred as new preload surface |
+| Surface                                             | Limit                                            |
+| --------------------------------------------------- | ------------------------------------------------ |
+| Files saved/shared through native file operations   | Outside the storage reset's deletion set         |
+| Electron Chromium cookies and HTTP cache            | Main-process storage; no renderer bulk-clear IPC |
+| Electron secrets orphaned without a registry record | The bridge deletes known keys only               |
 
 ## Loading the crypto WASM
 
-This is the single most important platform gotcha in the app.
+The SDK's default relative WASM lookup does not produce an Angular build asset. Both the build
+copy and explicit preload are required:
 
-matrix-js-sdk's default loader resolves `./pkg/matrix_sdk_crypto_wasm_bg.wasm` relative to
-its own bundled JS. Angular's esbuild does not emit that file as an asset, so the request
-404s and crypto never initializes. The fix needs **both** halves:
-
-1. The build target copies the file out of `node_modules` into the app's assets:
-
-   ```json
-   {
-     "glob": "matrix_sdk_crypto_wasm_bg.wasm",
-     "input": "node_modules/@matrix-org/matrix-sdk-crypto-wasm/pkg",
-     "output": "assets/crypto"
-   }
-   ```
-
-2. [`preloadCryptoWasm()`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/crypto-wasm-loader.ts)
-   calls `initAsync` with an explicit URL against that path:
-
-   ```ts
-   const url = new URL('assets/crypto/matrix_sdk_crypto_wasm_bg.wasm', document.baseURI);
-   return from(initAsync(url));
-   ```
-
-`document.baseURI` rather than `window.location.origin` is what makes this work over
-Electron's `trinity://app/` scheme.
-
-The memoization is two-layered and both layers matter. `initAsync` memoizes its module
-promise inside the WASM package, so the call matrix-js-sdk makes later inside
-`initRustCrypto()` reuses this instance instead of fetching again. On the Trinity side,
-`shareReplay(1)` over a module-level observable means repeated `preloadCryptoWasm()` calls
-— one per account start, plus the spike harness — run `initAsync` exactly once.
-
-The ordering constraint is simple and absolute: **`preloadCryptoWasm()` must complete
-before `initRustCrypto()`**. Step 5 before step 6 in the lifecycle above.
-
-Two supporting details. The app's CSP (a `<meta http-equiv>` in `index.html`) includes
-`script-src 'self' 'wasm-unsafe-eval'`, which exists precisely for this WASM module. And
-the service worker's `assets` prefetch group includes a `*.wasm` glob, so the crypto module
-is available offline on the production web build.
-
-## Secret storage and the key holder
-
-[`SecretStorageKeyHolder`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/matrix-client/src/lib/secret-storage-key-holder.ts)
-is a plain class, deliberately not `@Injectable`. One is constructed per `AccountClient`
-inside `start()` and wired straight into that client's crypto callbacks:
-
-```ts
-cryptoCallbacks: {
-  getSecretStorageKey: holder.getSecretStorageKey,
-  cacheSecretStorageKey: holder.cacheSecretStorageKey,
+```json
+{
+  "glob": "matrix_sdk_crypto_wasm_bg.wasm",
+  "input": "node_modules/@matrix-org/matrix-sdk-crypto-wasm/pkg",
+  "output": "assets/crypto"
 }
 ```
 
-Both callbacks are arrow **fields**, so `this` stays bound when they are handed to
-`createClient`. One holder per account is what stops a background account's key operation
-from reading or overwriting another account's key. The unlocked key is effectively the
-account's recovery key, so it lives in memory only and is never written to disk.
+[preloadCryptoWasm](../../libs/util/matrix/src/lib/crypto-wasm-loader.ts) resolves
+`assets/crypto/matrix_sdk_crypto_wasm_bg.wasm` against `document.baseURI`, which also works under
+Electron's `trinity://app/` origin. Its module-level replayed Observable and the WASM package's
+own memoized initialization share one module. **Preload must finish before `initRustCrypto()`.**
+The CSP permits WASM compilation through `wasm-unsafe-eval`; the production service-worker
+asset group includes WASM for offline use. The [Web/PWA](../platforms/web.md) and
+[Electron](../platforms/desktop.md) checks exercise the emitted renderer and asset path.
 
-The holder keeps exactly one `[keyId, privateKey]` pair at a time — whichever key the user
-just generated or unlocked — which is why matching on `this.keyId in keys` inside
-`getSecretStorageKey` is sufficient and the SDK's suggested `getDefaultKeyId()` lookup is
-unnecessary.
+## Secret storage and the key holder
 
-!!! warning "Zeroing needs an identity check"
+[SecretStorageKeyHolder](../../libs/data-access/matrix-client/src/lib/secret-storage-key-holder.ts)
+is one plain object per Account client. Bound callback fields are supplied to
+`createClient({ cryptoCallbacks })`; a background Account cannot borrow the Active Account's
+key. It retains one `[keyId, privateKey]` pair in memory and clears it on teardown.
 
-    `set()` zeroes the outgoing buffer before replacing it, but guarded:
+When replacing a key, zero the outgoing buffer only if it is a **different buffer**. The SDK
+may cache the same buffer immediately after Trinity sets it; unconditional zeroing would wipe
+the incoming key. The unlocked key is not persisted by this holder.
 
-    ```ts
-    if (this.privateKey && this.privateKey !== privateKey) {
-      this.privateKey.fill(0);
-    }
-    ```
-
-    `set()` can run more than once during a single bootstrap — `cacheSecretStorageKey`
-    firing right after a manual `set` with the *same* buffer. Zeroing unconditionally
-    would wipe the incoming key, and every subsequent 4S read would fail.
-
-Trust reaches the already-started crypto machine through `TrustCryptoPort` in
-`data-access-matrix-client`. That port exposes an active crypto snapshot and Projection Runtime
-attachment, but no Account connection, switching, startup or shutdown operations. The development
-crypto startup probe remains in the Matrix adapter for the same reason.
+Trust uses `TrustCryptoPort` to capture an already-started crypto snapshot and attach projections.
+That port does not expose Account startup, switching or shutdown. Long-running recovery captures
+its exact client and holder before awaiting work, so an Account switch cannot retarget secrets.
 
 ## TrustStatus
 
-```ts
-type TrustStatus = 'unknown' | 'ready' | 'needs-setup' | 'needs-recovery';
-```
+`TrustHealth` atomically publishes status, backup activity and this-device verification.
+Its status is `unknown`, `ready`, `needs-setup` or `needs-recovery`. Cross-signing and secret
+storage readiness both produce `ready`; otherwise an existing default key produces
+`needs-recovery`, and its absence produces `needs-setup`.
 
-`computeStatus()` runs four crypto reads in parallel — `isCrossSigningReady()`,
-`isSecretStorageReady()`, `getActiveSessionBackupVersion()`,
-`secretStorage.getDefaultKeyId()` — plus `getDeviceVerificationStatus(userId, deviceId)`,
-then resolves: both ready gives `ready`; otherwise a `defaultKeyId` exists gives
-`needs-recovery`; otherwise `needs-setup`.
-
-Two properties are load-bearing. A monotonic `statusGeneration` token means a slow run
-cannot overwrite a newer one. Event-driven reconciliation is best-effort: a transient
-crypto error keeps the last known signals rather than flapping the whole UI. An explicit
-`refresh()` is a cold command and surfaces the same read failure as a sanitized
-`TrustOperationError` with operation `refresh-health`, so its caller gets typed recovery
-meaning without raw SDK or homeserver details.
-
-It is driven by a coalesced `projectFromClient` bound to `CryptoEvent.KeysChanged`,
-`UserTrustStatusChanged`, `KeyBackupStatus` and `DevicesUpdated`. All four arrive together
-during initial sync and after a key query, and each previously ran a full status recompute
-— several async crypto reads — on its own.
-
-`TrustStatus` is one projection of the atomic `TrustHealth` view the encryption banner reads.
-`TrustHealth` publishes status, key-backup activity and this-device verification together, so an
-Account switch cannot expose values assembled across generations. That banner lives in
-`@trinity/feature/rooms`, not `@trinity/feature/crypto`, because the module boundary
-forbids a feature-to-feature dependency; it reads the signal from
-`@trinity/data-access/trust` directly.
+[Trust health](../../libs/data-access/trust/src/lib/trust-health.service.ts) reconciles crypto
+readiness, backup and device verification from coalesced SDK invalidations. A generation token
+prevents an older asynchronous read from overwriting a new Account/view. Transient event-driven
+failures retain the last coherent state. Explicit `refresh()` instead reports a sanitized
+`TrustOperationError` for `refresh-health`. The Rooms encryption banner reads this public view;
+it does not import the crypto feature.
 
 ## Setup and recovery
 
-Three flows, all in
-[`TrustService`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/trust.service.ts).
+[TrustService](../../libs/data-access/trust/src/lib/trust.service.ts) exposes cold commands for
+setup, unlock, reset and key transfer. These wrap Promise-backed crypto operations: ending the
+subscription does not abort the underlying crypto/network work. There is no blanket deadline
+for setup, recovery, import or export.
 
 ### First device
 
-`setUp(promptPassword)` runs: `assertNoRecoveryOnAccount()` →
-`createRecoveryKeyFromPassphrase()` → `bootstrapCrossSigning({ authUploadDeviceSigningKeys })`
-→ `bootstrapSecretStorage({ setupNewKeyBackup: true, createSecretStorageKey })` →
-recompute status → emit the encoded key.
+`setUp(promptPassword)` checks server recovery state, generates a random recovery key,
+bootstraps cross-signing with password UIA, creates secret storage and key backup, refreshes
+health, then emits the encoded recovery key. It does not derive that key from a password.
+The UI displays it behind an explicit saved-key acknowledgement. Passphrase recovery exists
+for Accounts provisioned elsewhere; Trinity has no separate passphrase-recovery screen.
 
-`createRecoveryKeyFromPassphrase()` is called with **no argument**, so the key is random
-rather than passphrase-derived. That is why accounts onboarded in Trinity recover through
-`recoverWithKey`; `recoverWithPassphrase` exists for accounts provisioned elsewhere and
-has no UI of its own. The encoded key is displayed once, behind an explicit "I have saved
-my recovery key" gate, and lives only in a component signal.
-
-!!! danger "Setup asks the server, not the local store"
-
-    `assertNoRecoveryOnAccount` issues a raw
-    `client.http.authedRequest(GET, /user/{id}/account_data/m.secret_storage.default_key)`
-    instead of reading `secretStorage.getDefaultKeyId()`.
-
-    After initial sync, `getDefaultKeyId` routes through `getAccountDataFromServer`, which
-    answers from **this client's local store**. That view stays stale for as long as a
-    `/sync` echo is missing — up to the roughly 110 seconds it takes the sync loop to
-    notice a dead long-poll (`pollTimeout` 30s plus `BUFFER_PERIOD_MS` 80s). A rolled-back
-    recovery reset opens exactly that window.
-
-    Without the guard, one click of "Set up encryption" on an already-set-up account mints
-    a fresh 4S key — orphaning the valid one the user holds — and `resetKeyBackup` deletes
-    every key-backup version on the account.
-
-    The check **fails open on purpose**: only a pointer the server positively reports
-    blocks setup. An unreachable server, a 5xx, or `M_NOT_FOUND` all let it proceed. It is
-    also bounded by a local 10-second `withTimeout` helper, which is intentionally tighter
-    than the account client's 30-second `localTimeoutMs`. The SDK fetch layer attaches that
-    client deadline to ordinary Matrix requests, while destructive crypto sequences keep
-    their own whole-operation budgets.
+The setup guard uses a raw account-data GET for `m.secret_storage.default_key`. The SDK's
+post-sync getter can answer from its local store while a prior write's sync echo is missing.
+A positively observed server pointer blocks setup. **Read failure currently permits setup**,
+including a ten-second guard timeout; it does not establish that recovery is absent. Preserve
+this limitation when describing the guard or interpreting a `needs-setup` view.
 
 ### Later device
 
-`recover()` captures the account's holder and client up front, so a mid-recovery account
-switch cannot retarget the cached key. It reads `getDefaultKeyId()` and `getKey(keyId)`,
-resolves the private key (decoded from the recovery key, or PBKDF2-derived from a
-passphrase via `deriveRecoveryKeyFromPassphrase`), verifies it with
-`secretStorage.checkKey` — zeroing the buffer and throwing on failure — caches it in the
-holder, then calls `bootstrapCrossSigning({})` to import cross-signing out of 4S.
+Recovery captures the client and holder, reads the default secret-storage key description,
+decodes the recovery key or derives it from a passphrase, and verifies the private key using
+`checkKey`. A rejected key buffer is zeroed. A valid key enters the holder and
+`bootstrapCrossSigning({})` imports the cross-signing secrets. Enabling an existing backup is
+best effort after trust recovery; bulk `restoreKeyBackup()` is not called. Historical messages
+can decrypt lazily from backup.
 
-Key backup is enabled afterwards, only if one exists, inside a try/catch: the device is
-already trusted by that point and a missing or stale backup key must not fail the
-recovery.
-
-The bulk `restoreKeyBackup()` is deliberately never called. History decrypts lazily from
-the backup once it is enabled, and the bulk download can take hours.
-
-!!! warning "bootstrapCrossSigning does nothing if privates are already present"
-
-    `resetCrossSigning` rotates the cross-signing private keys **locally** before it
-    uploads anything. A reset abandoned between those two points leaves the device holding
-    keys nobody published, and that state is self-sustaining: `bootstrapCrossSigning({})`
-    sees privates already in the Olm machine and logs "doing nothing", so unlocking 4S
-    later never replaces them and the device stays untrusted forever. The user types the
-    correct recovery key, the flow reports success, and the status stays `needs-recovery`.
-
-    [`cross-signing-repair.ts`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/cross-signing-repair.ts)
-    detects it narrowly — all three privates cached locally **and** present in secret
-    storage **and** `!isCrossSigningReady()`. The `!isCrossSigningReady()` test alone is
-    far too wide; it matches every ordinary unverified device. The repair reads the three
-    seeds from 4S, round-trips `exportSecretsBundle()` → patch the three key fields →
-    `importSecretsBundle()` (the only public way to overwrite them), then
-    `crossSignDevice(deviceId)`. The bundle shape is probed at runtime and rejected loudly
-    if unrecognised, because the WASM crate's serde representation is typed `unknown` and a
-    silent no-op would leave the user broken while reporting success.
+An abandoned reset can leave local cross-signing private keys that were never published.
+[cross-signing-repair.ts](../../libs/data-access/trust/src/lib/cross-signing-repair.ts) repairs
+only the combination of all three local privates, all three corresponding secrets in storage,
+and failed cross-signing readiness. It validates the exported bundle shape, replaces the
+three key fields, imports it and signs the current device. Readiness failure alone is too broad
+a predicate: it also describes an ordinary unverified device.
 
 ### Recovery reset
 
-The last resort, for someone who has lost their recovery key and has no other verified
-device.
-[`runRecoveryReset`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/recovery-reset.ts)
-is a hand-written replacement for `CryptoApi.resetEncryption`.
+[runRecoveryReset](../../libs/data-access/trust/src/lib/recovery-reset.ts) owns an ordered
+alternative to the SDK's `resetEncryption`, whose destructive preparation precedes the upload
+that may require authentication. This path is for loss of recovery access and changes the
+Account's identity and backup:
 
-!!! danger "Why CryptoApi.resetEncryption is not used"
+1. Probe password UIA with `deleteMultipleDevices([])`. A cancellation, unsupported flow or
+   exhausted attempts **at this probe** exits before pointer or key writes. A server may skip
+   the challenge, or a non-refusal probe failure may be swallowed; neither proves that the
+   later upload will be authorized.
+2. Capture the previous default key ID and park its pointer with `setDefaultKeyId(null)`.
+   This prevents local key rotation from trying to export into an old key the person cannot
+   unlock. An unconfirmed park attempts repair before returning failure.
+3. Rotate and upload cross-signing keys, replaying an accepted password when available.
+   Upload can still prompt after parking and local rotation. Failure attempts best-effort
+   rollback; it does not guarantee that no writes occurred.
+4. After identity publication, delete the dehydrated device, generate a new recovery key and
+   call `bootstrapSecretStorage({ setupNewKeyBackup: true })`. This replaces secret storage
+   and deletes old key-backup versions. Failures after publication are partial-reset failures.
+5. Best-effort remove the stale key description and refresh health. Return the new encoded key
+   only on successful completion.
 
-    `resetEncryption` deletes every key-backup version and all of secret storage **before**
-    the cross-signing upload that needs user-interactive auth — and the password prompt
-    lives inside that upload. So a cancelled prompt, a mistyped password, an SSO-only
-    account, or an OIDC-native homeserver all destroyed the backup on the way to failing,
-    and gave nothing back.
-
-    Measured against Synapse v1.119.0: `room_keys/version` went from 200 to `M_NOT_FOUND`
-    while the UI was reporting that the identity provider had to do it instead.
-
-Trinity's version runs the same steps in an order that authenticates first:
-
-1. **Pre-authenticate.** Complete a real password UIA round-trip against
-   `client.deleteMultipleDevices([])` — a request whose own effect is nothing, but which
-   the server gates with the same challenge as the key upload. A refusal (cancelled,
-   SSO-only, out of attempts) ends the reset here with **zero writes**.
-2. **Park the 4S pointer** with `storage.setDefaultKeyId(null)`, bounded by `withTimeout`.
-   This is needed because `resetCrossSigning` exports the freshly rotated privates into the
-   _current_ 4S key whenever `hasKey()` — and this user cannot open that key, so leaving
-   the pointer in place makes the rotation die on a falsey key callback and never reach the
-   upload at all. Parking is the reversible version of what `resetEncryption` achieves by
-   deleting secret storage outright.
-3. **Rotate and upload:** `bootstrapCrossSigning({ setupNewCrossSigning: true, authUploadDeviceSigningKeys })`,
-   replaying the password the server already accepted so the user is asked once. The replay
-   is given `replayedAttempts: 1`, so a rejected replay does not cost a human attempt.
-4. **The destructive tail:** `deleteDehydratedDevice`, then
-   `bootstrapSecretStorage({ setupNewKeyBackup: true })`. `setupNewKeyBackup` is
-   **required** here — unlike in the `resetEncryption` shape, where it would create a
-   second backup — because `resetKeyBackup` → `setupKeyBackup` opens with
-   `deleteAllKeyBackupVersions()`. That one call _is_ the destructive tail.
-5. Best-effort clear the stale `m.secret_storage.key.<id>` description.
-
-One step is deliberately moved rather than copied: `resetEncryption` deletes the dehydrated
-device first thing, which here would destroy something before the user has authenticated,
-so it heads the destructive tail instead.
-
-Because Trinity owns a copy, **a step added to `resetEncryption` upstream will not be
-inherited.** Diff the SDK's `resetEncryption` on every version bump. Ordering unit tests in
-`trust.service.spec.ts` assert the sequences `['park','upload','destroy']` and
-`['park','upload','dehydrated','destroy']`; they are the guard, not a substitute for
-looking.
+Trinity owns this sequence, so inspect upstream `resetEncryption` on each SDK upgrade. The
+ordering tests in [Trust's suite](../../libs/data-access/trust/src/lib/trust.service.spec.ts)
+protect park/upload/destructive-tail ordering, including dehydrated-device deletion.
 
 #### Rollback and timeout budgets
 
-`abandonReset` runs two independent, idempotent repairs. `restoreDefaultKeyId` puts the 4S
-pointer back **on the server** — leaving it parked would make every other device read "no
-recovery set up" and offer a fresh key, orphaning the user's valid one. Then
-`crypto.userHasCrossSigningKeys(userId, true)` forces a `/keys/query` to re-seat the
-account's real identity locally, since the Olm machine rotated its privates before the
-upload was authorised.
+Rollback first attempts an unconditional raw server PUT of the previous default-key pointer,
+then optional local-pointer alignment and a forced key query to restore the published identity
+view. It uses captured Account context. Both major repairs are best effort, followed by health
+refresh; a failure is not proof of restored server state.
 
-| Constant                      | Value      | What it bounds                                    |
-| ----------------------------- | ---------- | ------------------------------------------------- |
-| `ACCOUNT_DATA_TIMEOUT_MS`     | 10 000 ms  | A single account-data round-trip                  |
-| `RESTORE_ATTEMPTS`            | 3          | Rollback attempts, backing off 2s then 4s         |
-| `RESTORE_TIMEOUT_MS`          | 20 000 ms  | Each rollback attempt                             |
-| `DESTRUCTIVE_TAIL_TIMEOUT_MS` | 150 000 ms | `bootstrapSecretStorage` and the backup deletions |
+Do not replace the raw PUT with `storage.setDefaultKeyId()` or gate it on a local read. The
+SDK can suppress a write matching its stale local value and then wait for a sync echo. The
+server may still hold the parked pointer. The raw write resolves on its HTTP response and
+precedes local alignment.
 
-The tail budget is deliberately above the roughly 110 seconds a dead `/sync` long-poll
-takes to be noticed; a shorter budget would abort a tail the sync loop was about to
-unblock. A tail timeout cannot undo anything it already did, so the user is shown a
-"may have completed only partly, check Settings" message rather than "timed out".
+| Constant                      | Value      | Actual scope                                                |
+| ----------------------------- | ---------- | ----------------------------------------------------------- |
+| `ACCOUNT_DATA_TIMEOUT_MS`     | 10,000 ms  | Selected account-data waits and repair helpers              |
+| `RESTORE_ATTEMPTS`            | 3          | Raw rollback write retry limit, with 2s then 4s backoff     |
+| `RESTORE_TIMEOUT_MS`          | 20,000 ms  | The **entire retried raw rollback write**, not each attempt |
+| `DESTRUCTIVE_TAIL_TIMEOUT_MS` | 150,000 ms | The `bootstrapSecretStorage` wait                           |
 
-!!! warning "The rollback writer must not be storage.setDefaultKeyId"
-
-    `restoreDefaultKeyId` uses `client.setAccountDataRaw(...)` — a bare authed PUT that
-    always sends and resolves on the HTTP response — wrapped in `retryNetworkOperation`,
-    with **no read gating the write**. Two independent reasons:
-
-    - `setAccountData` short-circuits to a no-op when the local store already deep-equals
-      the value, and its promise resolves only from its own `ClientEvent.AccountData`
-      listener. On the exact failure this repair exists for — the park's PUT landed, its
-      `/sync` echo did not — it therefore sends nothing and waits forever for an echo it
-      never caused.
-    - Reading it back to confirm consults the *local* store, which still holds the
-      pre-park value, so it "confirms" a server state that is wrong and skips the only
-      write that would fix it.
+`withTimeout` races a Promise against a timer. **It does not abort the request or SDK operation.**
+A timed-out destructive tail can still perform work. The initial pointer read, cross-signing
+upload/UIA, other tail steps and final health reconciliation are outside that 150-second wait.
+Do not describe it as an overall reset deadline or assume timeout rolled anything back.
 
 ### Reset in the UI
 
-The reset lives on `EncryptionUnlockPage` behind a confirmation that states the three
-consequences — the server backup is deleted forever, other devices lose verified status
-but stay signed in, a new key must be saved — and demands the literal word `RESET`.
+`EncryptionUnlockPage` requires confirmation with `RESET` and explains that old server backup
+is deleted, other devices lose verified status while remaining signed in, and a new key must
+be saved. The failure handler distinguishes cancellation, provider-managed recovery,
+`review-security-settings` for possible partial reset, and other sanitized operational errors.
+It cannot use a busy helper that consumes the error when the recovery meaning must be handled.
 
-`resetRecovery()` deliberately does **not** use the shared `runWithBusy` helper. That
-helper maps a failure to `EMPTY`, so no error handler ever runs, and this is the one path
-that must inspect the secret-safe `TrustOperationError` recovery meaning:
+Provider recovery resolves only an advertised cross-signing reset action through
+`TRUST_PROVIDER_RECOVERY`, composed in
+[Application Runtime providers](../../libs/application/runtime/src/lib/composition/application-capability.providers.ts).
+The URL remains a visible link as well as an attempted browser handoff because an asynchronous
+failure can outlive the browser's user-activation window. The link is cleared with its error.
 
-| Trust failure meaning                  | Response                                                                                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `kind: 'cancelled'`                    | Say nothing                                                                                                                                      |
-| `recovery: 'open-provider'`            | Resolve the provider account-management link through the Trust recovery port and open only an advertised cross-signing reset action (MSC2965)    |
-| `recovery: 'review-security-settings'` | Explain that the reset may be partial and direct the user to Settings → Security before another attempt                                          |
-| Any other typed operational failure    | Show only its sanitized message and recovery action; raw UIA, homeserver, SDK, key, account, and device details remain inside the Trust boundary |
-
-The provider URL is rendered as a **link** as well as passed to `Browser.open`: by the time
-the failure is triaged, several awaits and a network round-trip have passed since the
-click, so the browser no longer counts it as user-initiated and blocks the popup. The URL
-is held in a `linkedSignal` on `error`, so it can never outlive the message it belongs to.
-
-Both `encryption/setup` and `encryption/unlock` carry `canDeactivate` leave-guards.
-Unsubscribing does not abort either operation — both are promises behind `defer` — so a
-back-button dismissal would let setup go on to provision 4S and a key backup whose only
-recovery key was emitted to a dead subscriber. After that, Settings reports the account as
-secured and nothing ever prompts a fix.
+Setup/unlock leave guards warn about in-flight work and unsaved recovery keys. They permit
+**Leave anyway**. They do not guarantee preservation of a generated key whose subscriber has
+left, and leaving does not cancel Promise-backed provisioning.
 
 ## Shared password UIA
 
-`runPasswordUia(makeRequest, promptPassword, userId, opts?)` in
-[`password-uia.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/password-uia.ts)
-probes unauthenticated first (many servers complete without UIA), then on a 401 carrying
-`flows` and `session` prompts and retries with an `m.login.password` auth dict, up to three
-attempts. Three distinct error types exist because callers act on them differently:
-
-| Error                      | Meaning                                                                                                          |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `UiaCancelledError`        | The user cancelled                                                                                               |
-| `UiaUnsupportedError`      | The server offers no completable password stage — SSO-only, OIDC-native, or a multi-stage flow past the password |
-| `UiaAttemptsExceededError` | Out of attempts                                                                                                  |
-
-`isUiaRefusal(err)` groups them, so an irreversible action can tell "the user did not get
-in" from "the request itself failed". It is shared by encryption setup, the recovery reset,
-device sign-out, and change-password.
+[runPasswordUia](../../libs/util/matrix/src/lib/password-uia.ts) probes the request without auth,
+then handles a password-capable UIA challenge with up to three attempts. Callers distinguish
+`UiaCancelledError`, `UiaUnsupportedError` and `UiaAttemptsExceededError`; `isUiaRefusal`
+groups these separately from request failures. Setup, recovery reset, device sign-out and
+password changes share this helper. A server completing the probe without a challenge is a
+valid result, not proof that a different subsequent endpoint will also accept the operation.
 
 ## Verification and shields
 
-[`TrustVerificationService`](https://github.com/quwisky/trinity-matrix-client/blob/refactor/refine-architecture/libs/data-access/trust/src/lib/trust-verification.service.ts)
-wraps the SDK's `VerificationRequest` and `Verifier` behind a single `active` signal.
-Self-verification offers Matrix QR show/scan when the other session advertises the matching
-method, with `m.sas.v1` emoji as fallback. Cross-user verification
-(`requestVerificationDM`, launched from the member-info panel) remains SAS-only. Only one
-verification runs at a time.
+[TrustVerificationService](../../libs/data-access/trust/src/lib/trust-verification.service.ts)
+projects one active verification. Self-verification offers advertised Matrix QR show/scan
+methods with emoji SAS fallback. Cross-user DM verification remains SAS-only. Only one request
+runs at a time. Application Runtime owns Trust's `runProjection()` lifetime;
+`VerificationHostComponent` presents incoming/cross-user dialogs but does not own a generic
+`connect()` call. Outgoing self-verification belongs to `/encryption/verify`. Lazy dialog
+components enter through `ENCRYPTION_DIALOG_COMPONENTS`, keeping feature imports contained.
 
-QR payloads remain raw bytes end to end. `generateQRCode()` is called only after the user
-chooses to show a code; the command emits one defensive copy and Trust never retains it in
-`VerificationView`. The verification page converts that emission to a transient local data URL,
-which is cleared whenever the QR presentation closes or the request advances. The
-public `QrScannerComponent` decodes live-camera frames through the injectable platform QR
-service, so another flow can reuse the camera and tests can substitute the decoder. A scan
-does not mean success: the showing device must confirm the `ShowReciprocateQr` prompt, and
-the UI reports completion only when the request reaches `Done`.
+QR payloads are raw bytes. Generation happens only on explicit display, emits a defensive copy
+and is not retained in `VerificationView`. The page clears its transient data URL when QR
+presentation ends or the request advances. Camera decoding uses the public scanner's platform
+service. Scanning is not completion: the displaying side confirms reciprocation, and only
+request `Done` reports success. Local `sasConfirmed` prevents repeat prompts while waiting for
+the other side; a rejected confirmation clears it.
 
-The `sasConfirmed` flag on the view model is **local**, because the SDK's phase stays
-`Started` after your MAC goes out. Without it the UI would keep asking the user to confirm
-instead of waiting for the other side; a rejected `confirm()` flips it back so nobody is
-stuck waiting on a MAC that never sent.
-
-Every public Trust action is a cold, finite RxJS Observable. Expected failures cross the boundary
-as `TrustOperationError`: an operation, a stable failure kind, recovery guidance and a partial-update
-flag. Raw SDK errors, homeserver responses, identifiers and key material are not retained. Provider-
-hosted recovery metadata enters through `TRUST_PROVIDER_RECOVERY`, composed in `main.ts`; Trust
-validates the advertised cross-signing-reset action and returns only the resolved link, so Trust
-screens no longer depend on Account authentication lifecycle services.
-
-Presentation is split. `VerificationHostComponent` in `@trinity/application/runtime` renders
-nothing and owns `connect()`, presenting a modal for any verification the route does not
-own — `active.incoming || !active.isSelfVerification`. An outgoing _self_-verification
-belongs to `/encryption/verify`. The modal component is resolved through the
-`ENCRYPTION_DIALOG_COMPONENTS` token so Application Runtime never imports
-`@trinity/feature/crypto`.
-
-[`shields.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/data-access/timeline/src/lib/shields.ts)
-is the single mapping from `getEncryptionInfoForEvent` to a `MessageShield`, shared by
-`TimelineService` and `ThreadsService` so the main timeline and the thread panel agree.
-
-!!! warning "A failed shield probe must not return null"
-
-    `null` means *no shield*, which renders identically to a fully authenticated message.
-    `resolveShieldsInto` fails **closed**: a caught probe error yields a grey caution
-    shield with the generic reason. A transient crypto or store error must never visually
-    upgrade an unverified message. The catch is still there so a probe failure cannot break
-    the timeline.
+Expected Trust failures expose operation, stable kind, recovery and partial-update meaning,
+without raw SDK responses or secrets. [Shield mapping](../../libs/data-access/timeline/src/lib/shields.ts)
+is shared by main and thread timelines. A failed encryption-info probe yields a gray caution
+shield, not `null`: absence of a shield must not visually upgrade an unknown message to an
+authenticated one.
 
 ## Attachment and key-file crypto
 
-Both live in `@trinity/util/matrix`, in-tree rather than as dependencies.
+[Attachment crypto](../../libs/util/matrix/src/lib/attachment-crypto.ts) implements the Matrix
+AES-CTR-256 format with WebCrypto. Only the high eight counter bytes are randomized; the low
+64-bit counter starts at zero. Decryption hashes ciphertext and rejects a mismatch before
+importing the key and producing plaintext.
 
-[`attachment-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/attachment-crypto.ts)
-is a faithful port of Matrix.org's `matrix-encrypt-attachment` (Apache-2.0). It is inlined
-because that package has had no release since 2022 and the scheme is frozen by spec — there
-is nothing to track, and a security-sensitive primitive stays auditable in-tree with no
-Node `crypto` shim leaking into the browser bundle. AES-CTR-256 over WebCrypto.
+Media Pipeline owns opaque staging, exact Account-and-Room transfer, validation, progress,
+cancellation, retry identity and presentation references. It captures the client for probes,
+uploads, downloads and cache namespaces; an Active Account switch cannot retarget bytes or
+credentials. Encrypted uploads omit the filename and use `application/octet-stream`. Generated
+thumbnails have independent encryption material because a server cannot resize the ciphertext.
+Message Presentation exposes bounded `PresentedMediaReference` metadata, not MXC credentials,
+encrypted descriptors, keys, IVs or hashes. Media consumers acquire bytes through the pipeline;
+its pin-aware object-URL cache is bounded to 64 entries and URLs are released on Room teardown.
+Gallery acquisition and export use host-media adapters; Conversations does not branch on host
+identity. See [host capabilities](../platforms/index.md).
 
-Two details worth knowing. The 16-byte counter block randomises only the **high** 8 bytes,
-so the low 64-bit counter starts at zero and cannot overflow into the nonce for any
-realistic file size. And decryption hashes the ciphertext and rejects on mismatch **before**
-importing the key, so tampered bytes never yield plaintext.
-
-`MediaPipeline` is the public attachment boundary. It owns opaque staging, exact
-Account-and-Room transfer, validation, progress, cancellation, retry identity and safe
-presentation references. Its opaque records retain the exact Account client for uploads,
-homeserver capability probes, downloads and cache namespaces, so an Active Account switch cannot
-retarget bytes or credentials. The byte engine behind it (`MediaService`) uploads encrypted blobs
-with `includeFilename: false` and
-`type: 'application/octet-stream'`, so the plaintext filename and MIME type do not leak. It
-encrypts the client-generated thumbnail under its own independent key, IV and hash — that
-thumbnail is the only one an encrypted room can show, since the server cannot scale an
-encrypted original.
-
-Message Presentation never exposes MXC URLs, encrypted-file descriptors, AES keys, IVs or hashes.
-It replaces the normalized media payload with a `PresentedMediaReference` containing only bounded
-render metadata. Media and voice components hand that reference back to Media Pipeline for
-thumbnail, full-resolution and download bytes; decrypted object URLs remain in the existing
-64-entry pin-aware cache and are revoked on Room teardown. Gallery acquisition and file export
-live in the `platform-native` host-media adapters, so Conversations does not branch on Capacitor or
-browser identity. The broader operation-based Host Capabilities consolidation remains owned by
-#312.
-
-[`key-file-crypto.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/key-file-crypto.ts)
-implements the interoperable Matrix megolm export, the same `.txt` Element reads and
-writes:
+[Key-file crypto](../../libs/util/matrix/src/lib/key-file-crypto.ts) implements the interoperable
+Megolm session export:
 
 ```text
-version(1) ‖ salt(16) ‖ iv(16) ‖ iterations(4, big-endian) ‖ ciphertext ‖ hmac(32)
+version(1) | salt(16) | iv(16) | iterations(4, big-endian) | ciphertext | hmac(32)
 ```
 
-base64 between `-----BEGIN MEGOLM SESSION DATA-----` and its trailer. PBKDF2-SHA512
-produces 64 bytes, split into a 32-byte AES-CTR key and a 32-byte HMAC-SHA256 key; the HMAC
-covers everything before it, so a wrong passphrase fails verification rather than
-decrypting garbage.
-
-!!! warning "The imported iteration count is attacker-controlled"
-
-    `DEFAULT_KEY_FILE_ITERATIONS` is 500 000, and `MAX_KEY_FILE_ITERATIONS` is 5 000 000.
-    The cap is a denial-of-service guard, not tidiness: the iteration count is a uint32
-    that must be read **before** the HMAC can be verified, because the HMAC key is derived
-    from it. Uncapped, a crafted file can request roughly 4.3 billion rounds and pin the
-    main thread for minutes.
-
-    Related build constraint in the same file: buffers are typed `Uint8Array<ArrayBuffer>`
-    and `.slice()`d, never `subarray()`d, before reaching `crypto.subtle`. The Angular
-    build's TypeScript lib rejects the `ArrayBufferLike` a subarray view carries where an
-    ArrayBuffer-backed `BufferSource` is required.
+The base64 payload is wrapped in `BEGIN/END MEGOLM SESSION DATA` markers. PBKDF2-SHA512
+produces separate AES-CTR and HMAC-SHA256 keys. Authentication precedes decryption/import.
+The iteration count is read before authentication so it must be bounded: the default is
+500,000 and the maximum 5,000,000. WebCrypto buffers use `Uint8Array<ArrayBuffer>` and copies
+compatible with the TypeScript `BufferSource` contract. Trust import captures the crypto
+context before awaiting file decryption; Account changes cannot redirect imported keys.
 
 ## Authentication
 
 ### Homeserver discovery
 
-`AuthService.discoverHomeserver(input)` accepts `@user:server.org`, `user:server.org` or a
-bare `server.org` — everything after the first colon is taken as the domain. It calls
-`AutoDiscovery.findClientConfig(domain)`, throws on `FAIL_PROMPT` or `FAIL_ERROR`, and
-otherwise falls back to `https://<domain>` when discovery is silent, with any trailing
-slash stripped.
-
-On Electron it calls the desktop bridge's `cors.allowOrigin()` for **both** the typed
-domain and the resolved `base_url`. Discovery reaches a server before any account exists to
-declare it, and the resolved homeserver may be a different origin than the typed domain
-while login POSTs to it. Probes of servers the user never signs into are dropped on the next
-account change, when `publishCorsOrigins()` replaces the whole set. See
-[desktop](../platforms/desktop.md).
+`HomeserverDiscoveryService.discover()` accepts a bare server or Matrix user ID, invokes SDK
+`.well-known` discovery, rejects explicit discovery failures and falls back to `https://<domain>`
+when no base URL is supplied. It strips the trailing slash. The host network-policy adapter
+allows both the entered and resolved origin for pre-login Electron requests; registered
+Account origins replace temporary probes on Account changes.
 
 ### Capability discovery runs in parallel
 
-```ts
-forkJoin({
-  flows: this.auth.getSupportedFlows(baseUrl).pipe(catchError(() => of<string[]>([]))),
-  oidc: this.auth.getDelegatedAuthConfig(baseUrl),
-});
-```
+The sign-in flow probes legacy login methods and delegated authentication metadata in parallel.
+A failed legacy flow request becomes an empty list; unavailable OIDC metadata becomes `null`.
+This permits OIDC-native servers without legacy `/login` support and legacy servers without
+OIDC metadata. Neither fallback establishes that another authentication method is available.
 
-Both degradations are deliberate. A failing `loginFlows()` collapses to `[]` rather than
-aborting, because an OIDC-native homeserver may not serve the legacy `/login` flows at all
-and must not be hidden by their absence. `getDelegatedAuthConfig` maps a thrown
-`getAuthMetadata()` to `null`, because that call throws on every non-OIDC homeserver — so a
-legacy server is never slowed or broken by the extra round-trip.
-
-`applyFlows` then **suppresses** password and SSO whenever OIDC metadata exists. A
-homeserver mid-migration may still advertise `m.login.sso` for compatibility, but an
-OIDC-native server owns credentials at the provider. Registration is offered when the
-provider's `prompt_values_supported` includes `create` (MSC2965).
-
-### The redirect URI rule
-
-This differs between the two flows, and the difference is not cosmetic.
+### Redirect URI shapes
 
 | Flow       | Native and Electron                                | Web                                        |
 | ---------- | -------------------------------------------------- | ------------------------------------------ |
 | Legacy SSO | `eu.qwky.trinity://sso-callback?sso_state=<nonce>` | `${origin}/sso-callback?sso_state=<nonce>` |
 | OIDC       | `eu.qwky.trinity:/sso-callback`                    | `${origin}/sso-callback`                   |
 
-!!! danger "OIDC private-use redirects take a single slash"
-
-    RFC 8252 §7.1 requires a private-use scheme redirect to have **no authority**, hence
-    `eu.qwky.trinity:/sso-callback`. The `//sso-callback` form parses `sso-callback` as the
-    authority with an empty path, which providers that enforce the rule reject at **dynamic
-    client registration** with "redirect_uri must not have an authority" — before login can
-    even start. That is not the `invalid_client` error the recovery path handles.
-
-    The OIDC redirect also carries no extra query parameters, because it must byte-match the
-    registered value; the CSRF state rides OAuth's own `state`.
-
-    Because legacy SSO still uses the `//` form, the deep-link matchers must be
-    **scheme-only**. `electron/src/deep-link.ts` matches `eu.qwky.trinity:`; matching on
-    `://` would silently drop every OIDC callback.
-
-Electron takes the native shape for both flows because its own origin is `trinity://app`,
-an internal non-OS scheme that cannot be launched. Note that `Capacitor.isNativePlatform()`
-is `false` in the hand-rolled Electron shell — desktop is detected through the
-`trinityDesktop` preload marker instead.
+OIDC's private-use redirect has a single slash and no authority or extra query parameters.
+It must match registration; OAuth carries its own state. Deep-link matching accepts the scheme
+so both forms work. Electron uses the native redirect because its internal `trinity://app`
+origin cannot be launched externally; its preload marker identifies desktop even though
+Capacitor reports it as non-native.
 
 ### Dynamic client registration
 
-`OidcClientService.resolveClientId` caches the DCR client id in Preferences under
-`oidc.clientId.v2:<issuer>`. Registered metadata is the snake_case wire shape the spec
-defines — `{ client_name: 'Trinity', client_uri: 'https://trinity.qwky.eu', application_type:
-'web' | 'native', redirect_uris: [one] }` — passed to `OAuth2.registerClient`.
+`OidcClientService.resolveClientId()` caches the registered client ID under
+`oidc.clientId.v2:<issuer>`. Registration supplies the application type, client metadata and
+exact redirect URI. A change to authorization-relevant registration metadata requires a
+cache-version review; reusing a registration with a different redirect can strand login.
 
-!!! warning "Bump the cache-key version on any metadata change"
-
-    A registration pins the `redirect_uris` it was created with. Changing the redirect URI
-    strands every id cached under the old shape, and the provider then fails with a
-    *redirect mismatch*, so login wedges until app storage is wiped. The `v2` in the key
-    prefix exists for exactly this; bump it whenever registered metadata changes.
-
-    The matrix-js-sdk 42 migration deliberately did **not** bump it. The v42 registration
-    body drops only `id_token_signed_response_alg` and `contacts`, and every field a
-    provider pins a later authorization against is byte-identical — so a bump would have
-    forced needless re-registration against providers that rate-limit DCR.
-
-!!! danger "The `invalid_client` self-heal does not work"
-
-    The callback page still calls `forgetOidcClientId(issuer)` when the failure message
-    matches `/invalid_client/i`, but **no error the SDK can produce carries that text**.
-    `OAuth2.fetch` throws `new HTTPError(OAuth2Error.CodeExchangeFailed, status, headers)`
-    without reading the response body, so the provider's `error` code never reaches the
-    regex. This was equally dead in 41.x, where the same path collapsed to
-    `new Error(OidcError.CodeExchangeFailed)` — the identical string.
-
-    Its spec fabricates `new Error('invalid_client: unknown client')`, an error shape
-    production cannot emit, so the test pins the mock and can never catch the divergence.
-    A working predicate would key off `err instanceof HTTPError && err.httpStatus === 401`.
-    Note the reachable window is narrow: a provider that has already pruned the
-    registration rejects at the *authorization* endpoint and never redirects back, so this
-    only fires if the registration is pruned between the redirect and the token POST.
+The callback's `invalid_client` message predicate is a known limitation: the installed SDK's
+generic token-exchange error omits the provider response code, so that path cannot reliably
+clear stale registrations. A test constructing a literal `invalid_client` message does not
+prove this production recovery works. Keep this limitation separate from redirect-registration
+errors, which can occur before the callback is reached.
 
 ### PKCE state has to survive a context change
 
-**Trinity is the sole custodian of this state.** Until matrix-js-sdk 42 the SDK kept it for
-us: `generateOidcAuthorizationUrl` had `oidc-client-ts` mint the OAuth `state` and persist
-the sign-in state — which contains the PKCE `code_verifier` — in `sessionStorage` under
-`mx_oidc_<state>`, and Trinity harvested that entry and re-seeded it on callback. v42 dropped
-`oidc-client-ts` and persists **nothing**, so the harvest and re-seed are gone; `OidcStateStore`
-is now the only copy.
+Trinity owns durable OAuth state through `OidcStateStore`; the installed SDK does not persist it.
+The store keeps state, client/device IDs, PKCE verifier and the homeserver, redirect, issuer and
+mode needed to rebuild the same OAuth context. Native authorization runs in the system browser;
+Electron uses an external browser. App relaunch must recover the same verifier, not generate one.
 
-`OAuth2` mints the `deviceId` and `codeVerifier`, Trinity mints the `state`, and
-`buildAuthorizationRequest` hands all of them back. `OidcStateStore` stashes them in Capacitor
-Preferences (`oidc.state`, `oidc.clientId`, `oidc.deviceId`, `oidc.codeVerifier`, plus the
-baseUrl/redirectUri/issuer/mode needed to rebuild the client), and the callback reconstructs an
-`OAuth2` around the same context to exchange the code.
-
-That durability is what makes the off-web flows work at all: on native the authorization
-happens in the **system browser**, and on Electron in an **external window**, so the app
-WebView's storage is a different store, and a cold-start relaunch loses anything in-memory.
-
-The verifier is now written on **every** platform, web included — where Preferences means
-`localStorage`. Web previously relied on the SDK's own `sessionStorage` copy; with that copy
-gone, skipping the write would simply break web login. The exposure is accepted because the
-store is single-use (`peek` → verify `state` → `clear`) and time-boxed to 10 minutes, and
-because script that can read `localStorage` can read `sessionStorage` in the same document
-anyway. `clear()` also purges the legacy `oidc.ssKey` / `oidc.ssBlob` keys, so an abandoned
-pre-upgrade stash cannot leave a plaintext verifier behind.
+The verifier is stored through Preferences on every host, including script-readable web
+storage. Entries are single-use and freshness-checked for ten minutes, with a one-minute
+backward-clock allowance. Expired entries are deleted when checked; this is not a scheduled
+erasure guarantee for abandoned storage. Clearing also removes legacy verifier-stash keys.
 
 ### The callback page
 
-`SsoCallbackPage` handles both flows: `code` or `error` means OIDC, `loginToken` means
-legacy SSO. Several details defend it:
+`SsoCallbackPage` distinguishes OIDC `code`/`error` from legacy `loginToken`, observes query
+changes for a reused native route and latches an exchange at most once. It strips returned
+credentials/state from the visible URL immediately. OIDC identity is resolved with `whoami()`;
+missing device identity fails grant completion.
 
-- It subscribes to `queryParamMap` rather than reading the snapshot once, because the native
-  deep link reuses the same component instance. A `claimed` latch makes the exchange run at
-  most once.
-- The single-use token or code and the state are stripped from the URL via
-  `location.replaceState('/sso-callback')` immediately, so they cannot leak through the
-  address bar, history, or a `Referer` header.
-- OIDC token responses carry no user or device id, so identity is resolved with `whoami()`,
-  and the exchange throws if the provider returned no device.
+Both state stores **peek, compare state, then consume**. A forged mismatching callback must
+not consume a legitimate pending login. Mismatch against a live stash stays silent; no-pending
+state has an error path. Freshness checks reject excessive future timestamps as well as expired
+ones, with the clock allowance above.
 
-!!! warning "Peek the stash, verify, then clear"
-
-    The `eu.qwky.trinity://` scheme is shared — any installed app can fire it. Both
-    `SsoStateStore` and `OidcStateStore` therefore peek **without** clearing, compare the
-    returned `state`, and only clear on a match. Consuming first would let a forged callback
-    silently kill a legitimate in-flight login, after which the genuine callback finds
-    nothing stashed. A mismatch against a live stash stays silent; an error is surfaced only
-    when nothing is pending.
-
-    Both stashes are TTL-boxed at 10 minutes, and `OidcStateStore.peek()` **deletes** a
-    stash it finds past its TTL — on native and Electron that blob holds the PKCE verifier
-    in app-private plaintext, and enforcing the TTL only at read time left an abandoned
-    login's secret on disk until some later `save()` happened to overwrite it.
-
-    That freshness check is **two-sided** in both stores
-    (`age >= -CLOCK_SKEW_MS && age <= TTL_MS`). `age <= TTL_MS` alone reads a *future*
-    timestamp as fresh, so a stash written before the device clock was corrected backwards
-    would never expire — and the TTL is precisely what bounds the window in which a leaked
-    nonce still buys an attacker a forged callback. The lower bound carries a **one-minute
-    skew allowance** rather than being zero-tolerance: the clock can legitimately step
-    backwards *during* the round-trip (NITZ/NTP after airplane mode, a laptop resuming from
-    sleep, `w32time`), and rejecting on that fails a genuine login with a message that reads
-    like an attack. A minute survives ordinary clock discipline and still bins a stash
-    stamped hours ahead.
+OIDC reauthentication also retains `expectedUserId`. Authentication rejects and best-effort
+revokes a grant for a different user before Account persistence. Ordinary login permits the
+chosen Account. The legacy SSO reauthentication path currently lacks the equivalent expected-user
+check; do not describe the OIDC protection as covering both flows.
 
 ### Token refresh
 
-`TrinityOidcTokenRefresher` **composes** the SDK's `TokenRefresher` — matrix-js-sdk 42
-replaced the subclassable `OidcTokenRefresher` with a class taking `(auth: OAuth2, onRefresh)`,
-so what used to be a `persistTokens` override is now the `onRefresh` callback, writing rotated
-tokens through `SessionStorageService.updateTokens`.
+[TrinityOidcTokenRefresher](../../libs/data-access/matrix-client/src/lib/oidc-token-refresher.ts)
+composes the SDK `TokenRefresher`. Metadata discovery goes through the Account's homeserver,
+is lazy and shares one pending Promise; rejection clears the memo so a later attempt can retry.
+The refresher captures the Account identity and storage service rather than looking up whatever
+Account is active, including during crypto startup before registration.
 
-Composition retired two hazards the old shape carried: a positional
-`ConstructorParameters<typeof OidcTokenRefresher>[4]` index used to reach `IdTokenClaims`
-without depending on `oidc-client-ts`, and an `expiry` field the base passed at runtime but
-omitted from the declared parameter type, read back through a cast — a rename there would have
-persisted `undefined` forever without failing anything. `AccessTokens.expiry` is declared, so
-that cannot recur.
+The SDK callback persists rotated tokens and declared expiry through the storage queue. When
+a provider omits or returns an empty refresh token, Trinity carries the incoming token forward
+for the live client; storage likewise rejects empty replacements. Otherwise a later expiry
+could invalidate an Account that still had a usable refresh token.
 
-The auth metadata needed to build the `OAuth2` is discovered **lazily** through the account's
-own homeserver (v42 dropped the issuer well-known probe along with the `/auth_issuer`
-fallback), because the client is constructed synchronously while discovery is a network call.
-The _promise_ is memoized, so concurrent 401s cost one discovery, and the memo is cleared on
-rejection so a transient failure cannot wedge refresh for the life of the session.
+If code exchange mints tokens but identity resolution fails, `completeGrant` starts best-effort
+provider revocation and propagates the original failure immediately. Revocation is detached
+because the provider request has no overall timeout and must not hold the callback error screen
+indefinitely. The same detached cleanup applies to an OIDC reauthentication identity mismatch.
 
-It closes over only the user id and the storage service, never the client registry or the
-active account, because a refresh can fire on the first authenticated request during crypto
-bootstrap, before `startClient`, when no client is registered yet. One instance per account
-keeps a rotated token from landing under another account's key.
+## Validate a change
 
-**Refresh-token rotation is a `SHOULD`, not a `MUST`** (RFC 6749 §6, and the Matrix
-refresh-token grant), so a spec-legal provider may answer a refresh with a new access token
-and no `refresh_token`. The SDK surfaces that as `AccessTokens.refreshToken === undefined`,
-and `FetchHttpApi` assigns `opts.refreshToken = refreshToken` **unconditionally** — so
-passing it through verbatim strips the live client of the token it still needs, and the next
-expiry logs the account out (after which `handleServerLogout` → `invalidateToken` deletes the
-still-valid token from disk, so even a restart cannot recover). `TrinityOidcTokenRefresher`
-therefore carries the incoming token forward when the provider returned none.
-`SessionStorageService.updateTokens` needs no equivalent guard — it already skips an
-`undefined` refresh token rather than overwriting the stored one.
-
-`OidcClientService.completeGrant` **revokes what it minted** when the exchange succeeds but
-the grant cannot be turned into a session (`whoami` fails, or returns no `device_id`). By then
-the code is spent and the callback page has cleared the stash, so the attempt is
-unrecoverable — and under MSC3861 the OAuth session _is_ the Matrix device, so dropping it
-silently leaves a ghost device only removable from the provider's account-management page,
-plus one live refresh token per retry.
-
-That revocation is **detached, not awaited**. It targets the _provider_ — a different host
-from the homeserver that just failed — through the SDK's fetch helper, which sets no
-`AbortSignal` and no timeout. Awaiting it would hold `SsoCallbackPage` on its spinner, whose
-only exit lives in the error branch, for a full TCP connect timeout or indefinitely against a
-black-holed host. The **original** failure propagates immediately; the cleanup finishes on
-its own.
-
-**Re-auth binds the grant to the account it claims to reconnect.** `/login?reauth=<userId>`
-puts that account's device id in the requested scope and sends no `prompt=login`, so a
-provider already holding a browser session authorizes with no user interaction — on a
-homeserver where the user has two accounts, the grant can come back as the _other_ one, and
-nothing in the token response says whose it is (identity comes from `whoami`). Persisting it
-would file that account under this one's device id, at which point `upsert` sees
-`deviceChanged` and reclaims its live crypto store, forcing re-verification of an account the
-user never touched. `OidcStateSave.expectedUserId` therefore travels in the stash, and
-`AuthService.rejectMismatchedGrant` refuses the grant — revoking what it minted — before
-anything is persisted. Null for an ordinary login, where any account the user picks is
-correct.
-
-!!! note "The legacy SSO path has the same shape, and no such check"
-
-    `completeSsoLogin` also accepts a `deviceId` for re-auth and also derives identity from
-    the login response alone. That predates this work (it is unchanged from `develop`) and is
-    tracked separately; only the OIDC half is guarded here.
+Use the [testing guide](../contributing/testing.md) to select the owning project's unit and
+type checks plus repository source contracts. Account/Workspace lifecycle tests, Trust reset
+ordering and rollback tests, hostile-message and media/key-file tests cover different contracts;
+a passing version table or architecture map does not replace them. The disposable Synapse
+verification/QR suites and host renderer checks provide integration evidence where available.
+Record actual host/provider coverage, skipped destructive operations and unavailable checks.

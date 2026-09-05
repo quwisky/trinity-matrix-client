@@ -1,394 +1,180 @@
 # Desktop
 
-The desktop app is the Angular web build wrapped in a hand-rolled Electron shell. There is
-no Capacitor desktop bridge and no Electron framework wrapper: the shell is sixteen small
-TypeScript modules under
-[electron/src](https://github.com/quwisky/trinity-matrix-client/tree/develop/electron/src),
-each owning one concern, wired together by a thin `main.ts`.
+Trinity Desktop wraps the same production Angular renderer used by the web app in a
+hand-written Electron shell. The renderer is copied from root `www/` into
+`electron/www/`; Electron does not use Capacitor, so
+`Capacitor.isNativePlatform()` is false in the shell.
 
-Because the shell loads the plain web build, the renderer takes the _web_ branch of every
-Capacitor check. `Capacitor.isNativePlatform()` is `false` here. What the desktop adds is
-delivered through a preload bridge instead, described below.
+Use this guide to prepare, run, diagnose, verify, and package the desktop host. The
+[command reference](../contributing/commands.md#desktop) remains the canonical list, and
+[maintainer guidance](../maintaining/index.md) owns release authorization and publication.
 
-## A separate package and a first-class Nx application
+## Prepare the shell
 
-`electron/` is its own pnpm workspace for dependency installation and a first-class Nx application
-named `trinity-desktop` for lifecycle ownership.
-
-- Its own `package.json`, `pnpm-lock.yaml` and `node_modules`.
-- Its own `pnpm-workspace.yaml` with `packages: []`, which exists purely to stop
-  `pnpm -C electron install` from walking up to the repository-root workspace. Without it
-  the root workspace swallows the directory and the `electron` types that `tsc` needs are
-  never installed.
-- Its own TypeScript install, but not its own TypeScript version — both manifests pin the
-  same exact 6.0.3, and Renovate moves them together in one branch.
-- Zero production dependencies, which is why `node_modules` is absent from the packaged
-  bundle.
-
-`electron/project.json` classifies the shell as a `role:app` composition root over the shared
-`trinity` renderer. It owns install, compile, typecheck, test, build, launch, static verification,
-serialized E2E and host/platform package targets. `electron/package.json` keeps
-`nx.includedScripts` empty so its package scripts do not create a second ambiguous target set.
-The normal Nx module-boundary rule applies to its authored TypeScript. `pnpm test` now includes the
-main-process specs and drives the standalone dependency install first.
-
-!!! warning "Repository-wide TypeScript codemods hit this file"
-
-    `nx migrate` runs `@nx/js` codemods that glob every `tsconfig*.json`, including
-    `electron/tsconfig.json`. Both manifests now share one TypeScript, so a rewrite no
-    longer lands on a compiler that cannot read it — but the file still has to keep the
-    Node16 `module`/`moduleResolution` pair, because TypeScript 6 rejects the older node10
-    resolution outright with TS5107. Check it in the diff of any migration and re-verify
-    with `pnpm -C electron run compile`.
-
-## Building and running
+The root checkout needs the supported Node and pnpm versions. Electron also has its own
+`electron/package.json` and lockfile, so install its dependencies and binary before the
+first desktop build:
 
 ```bash
-pnpm electron:install   # download the Electron binary
-pnpm electron:verify    # static Nx/artifact/bridge/security/package contract
-pnpm electron:start     # build the web app, compile the shell, launch it
-pnpm electron:build:release # shared renderer + shell compile, without development signing
+pnpm electron:install
 ```
 
-Every root command delegates to `trinity-desktop`. `electron:start` depends on its `build` target,
-which owns four steps:
+This target runs the shell's frozen-lockfile installation and downloads the Electron
+binary. Re-running it is safe; the binary check skips a matching existing download. On
+headless Linux, install a virtual display for launched-shell work:
 
-```text
-trinity:build                  # Angular production build -> www/
-trinity-desktop:install        # pinned shell install + ensure:binary
-pnpm -C electron run build     # copy-www.mjs then tsc -p tsconfig.json
-pnpm -C electron run sign:dev  # ad-hoc codesign, macOS only
+```bash
+xvfb-run -a pnpm electron:start
 ```
 
-Targets needing the binary depend on `install`; unit, typecheck and lint depend only on the
-standalone dependency install. Re-running `install` is cheap: `ensure-electron.mjs` self-skips when `dist/version` already
-matches the installed package version and the executable named by `path.txt` exists. The
-standalone command is only useful to pre-warm the download before a first build.
+A desktop package or signed macOS artifact additionally needs the matching host OS and
+credentials. Those requirements are covered under [Package an artifact](#package-an-artifact).
 
-### Why the binary download is explicit
+## Build, run, and debug
 
-Electron dropped its `postinstall` script in version 42. The package now fetches its binary
-lazily, the first time `require('electron')` resolves a path. That is too late here:
-`sign:dev` codesigns `node_modules/electron/dist/Electron.app` before anything requires the
-package, so on macOS the first launch after a clone would fail on a missing app.
+Run the normal development shell with:
 
-[electron/scripts/ensure-electron.mjs](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/scripts/ensure-electron.mjs)
-therefore drives the package's own installer directly. The download is roughly 119 MB
-zipped and extracts to around 313 MB. CI caches `~/.cache/electron` keyed on
-`electron/pnpm-lock.yaml`.
-
-## The privileged app scheme
-
-The renderer is served from `trinity://app`, not from `file://`. `registerPrivilegedScheme()`
-runs at module scope in `main.ts`, before `app.whenReady()` — Electron requires privileged
-scheme registration to happen before the app is ready, so this call sits outside the
-single-instance branch.
-
-| Privilege         | What it buys                                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `standard: true`  | A stable origin, so `<base href="/">` and absolute asset paths resolve and the `'self'` CSP has something to bind to  |
-| `secure: true`    | A secure context, required by WebCrypto SubtleCrypto and IndexedDB, both of which Matrix crypto and storage depend on |
-| `supportFetchAPI` | `fetch()` works against the scheme                                                                                    |
-| `stream: true`    | Responses are streamable, so the crypto module can be instantiated with `WebAssembly.compileStreaming`                |
-| `codeCache: true` | Chromium caches compiled script for the origin                                                                        |
-
-`registerAppProtocol()` then maps `trinity://app/<path>` onto `www/<path>` and handles four
-cases explicitly, in
-[electron/src/scheme.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/src/scheme.ts):
-
-- A real file is served with a `Content-Type` from a twenty-entry extension map. The
-  `.wasm` entry mapping to `application/wasm` is the one the whole crypto path depends on;
-  stream instantiation rejects any other type.
-- An extensionless path with no file behind it serves `index.html`, so a reload on
-  `/rooms` boots the application instead of 404ing.
-- A resolved path that escapes `WWW_ROOT` returns 403.
-- Malformed percent-encoding, which makes `decodeURIComponent` throw, returns 400 rather
-  than crashing the handler.
-
-## Renderer security posture
-
-`createWindow()` in
-[electron/src/window.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/src/window.ts)
-sets:
-
-```ts
-contextIsolation: true,
-nodeIntegration: false,
-sandbox: true,
-webSecurity: true,
-nodeIntegrationInWorker: false,
-nodeIntegrationInSubFrames: false,
-backgroundThrottling: false,
+```bash
+pnpm electron:start
 ```
 
-The first six are the standard hardened set: the renderer never reaches Node, and the
-preload is the only bridge. The desktop e2e suite asserts this from inside the real
-renderer by checking that `require` and `process` are both `undefined`.
+The resolved `trinity-desktop:start` target builds the production Angular renderer,
+ensures the shell binary is present, copies `www/` into `electron/www/`, compiles the
+main and preload TypeScript, applies the local `trinity-dev` signature on macOS,
+then launches Electron. It does not use a live `pnpm start` dev-server renderer.
 
-`backgroundThrottling: false` is the odd one out and it is not a security setting. Chromium
-throttles timers, `requestAnimationFrame` and network activity in hidden or occluded pages,
-which would stall the `matrix-js-sdk` `/sync` long-poll. Combined with close-to-tray below,
-disabling it is what makes background notifications work at all.
+On macOS, the normal build/start path requires a code-signing identity named `trinity-dev`
+in the local keychain; it fails before launch if that identity is missing. A local launch
+without that development-signing step uses the existing release-build path and starts the
+compiled shell directly:
 
-Two more policies are applied on top:
-
-- `hardenContents()` denies every `window.open`, routing `http(s)` URLs to
-  `shell.openExternal` instead; prevents `will-navigate` away from the app origin; and
-  prevents `will-attach-webview`. It is applied to the main window and, via
-  `app.on('web-contents-created')`, to any contents created later.
-- `installPermissionPolicy()` allows media, geolocation, and sanitized clipboard writes only
-  from Trinity's main app frame. Media covers the microphone for voice messages and the camera
-  for QR verification; clipboard writes power explicit Copy actions without granting clipboard
-  reads. Electron approves permission requests that reach a ready app by default, so remote
-  frames, reads, and every other powerful permission remain explicitly denied.
-
-Packaged macOS builds also declare `NSCameraUsageDescription` in `electron-builder.yml`
-and the camera entitlement in `build/entitlements.mac.plist`; the runtime permission
-handler cannot produce a valid macOS camera prompt without that packaging metadata.
-
-The window hides to the tray on close rather than being destroyed, keeping the renderer and
-`/sync` alive. An explicit quit — the tray item, the application menu, or OS shutdown —
-sets a flag first so the close proceeds. `window-all-closed` deliberately does not quit.
-
-## The preload bridge
-
-[electron/src/preload.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/src/preload.ts)
-runs sandboxed and context-isolated, and exposes exactly one object,
-`window.trinityDesktop`. It never exposes `ipcRenderer` or Node. This is the complete
-surface:
-
-| Member                                                   | Direction        | Channel                                             | Purpose                                                                            |
-| -------------------------------------------------------- | ---------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `isElectron`                                             | value            | —                                                   | The desktop-detection marker                                                       |
-| `platform`                                               | value            | —                                                   | Host `process.platform`                                                            |
-| `negotiate(operations)`                                  | invoke           | `trinity:host:v1:negotiate`                         | Return explicit protocol-v1 support for every requested host operation             |
-| `capabilities.deepLinks.subscribe(cb)`                   | main to renderer | `deep-link`                                         | OS deep links, with replay of anything buffered before subscription                |
-| `capabilities.notificationPresentation.present(payload)` | invoke           | `trinity:host:v1:notification-presentation:present` | Resolve only after the OS reports shown, failed, unavailable, or a bounded timeout |
-| `capabilities.notificationPresentation.subscribeClicks`  | main to renderer | `notification-click`                                | Deliver a validated `{accountId, roomId, eventId}` destination                     |
-| `capabilities.badge.set(n)`                              | invoke           | `trinity:host:v1:badge:set`                         | Write the aggregate unread count and return a typed, secret-safe outcome           |
-| `capabilities.networkCors.setAllowedOrigins(o)`          | send             | `trinity:cors:set-allowed-origins`                  | Replace the CORS allowlist                                                         |
-| `capabilities.networkCors.allowOrigin(o)`                | send             | `trinity:cors:allow-origin`                         | Additively allow one origin                                                        |
-| `capabilities.secureStore.isAvailable()`                 | invoke           | `trinity:secure-store:available`                    | Whether the OS keychain is usable                                                  |
-| `capabilities.secureStore.get/set/delete`                | invoke           | `trinity:secure-store:*`                            | Read, write and remove a secret                                                    |
-| `capabilities.location.approximate()`                    | invoke           | `trinity:geolocation:approximate`                   | City-level location from the public IP, opt-in only                                |
-
-Both sides validate. The preload rejects payloads of the wrong shape, and every main-process
-handler independently re-validates and checks `event.sender === getMainWindow().webContents`
-before acting, so a compromised or unexpected `WebContents` cannot drive the privileged
-side. The preload also grants each product operation only after an accepted protocol-v1
-negotiation reports that exact operation as supported. Partial renegotiation replaces the grant
-set, and a rejected negotiation revokes it. Notification presentation returns only typed,
-secret-safe outcomes; `failed` events and synchronous host errors therefore become Application
-Runtime warnings instead of false success.
-
-The typed mirror of this interface, and the authoritative documentation of each member, is
-[libs/platform-native/src/lib/trinity-desktop-bridge.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/platform-native/src/lib/trinity-desktop-bridge.ts).
-Prefer it over the preload's own comments, one of which was spliced in half when the CORS
-bridge was inserted between the two paragraphs of the `secureStore` docblock.
-
-`resolveApproxLocation` exists because Chromium's `navigator.geolocation` is backed by
-Google's network location provider, which prebuilt Electron cannot authenticate without an
-embedded API key. On a desktop with no GPS it simply never resolves. The main process makes
-a keyless HTTPS lookup instead, time-boxed to eight seconds, resolving `null` on any
-failure so the renderer falls back to manual entry.
-
-## Cross-origin requests to homeservers
-
-The renderer's origin is `trinity://app`, so every request `matrix-js-sdk` makes to a
-homeserver is cross-origin. The Matrix specification requires client-server and
-`.well-known` responses to carry `Access-Control-Allow-Origin: *`, but a good number of
-reverse-proxy deployments strip it, and Chromium then blocks the response. Sync, relations,
-account data and cross-signing all break intermittently.
-
-[electron/src/cors.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/src/cors.ts)
-installs an `onHeadersReceived` interceptor on the default session, scoped to
-`https://*/*` and `http://*/*` — never the app scheme itself. For a matching response it
-strips the five CORS headers it manages and then sets exactly one
-`Access-Control-Allow-Origin`, holding the exact app origin and never `*`. Stripping first
-matters: Chromium rejects a response carrying two
-`Access-Control-Allow-Origin` values. On an `OPTIONS` preflight it also sets the allowed
-methods, `Access-Control-Allow-Headers: Authorization, Content-Type` — the `*` wildcard
-never covers `Authorization` — and a one-day max-age.
-
-`access-control-allow-credentials` is in the managed set, stripped and never re-set, so a
-third-party origin cannot opt itself into credentialed cross-origin reads. `matrix-js-sdk`
-authenticates with a bearer header, not cookies, so nothing needs it.
-
-The shim is scoped by an allowlist that the renderer publishes:
-
-- `MatrixClientService.publishCorsOrigins()` sends the `baseUrl` of every signed-in account
-  whenever the account set changes.
-- `AuthService.allowCorsOrigin()` additively allows the single origin that `.well-known`
-  discovery or login is probing, before any account exists to declare it.
-
-**Origins that were never declared pass through untouched.** That is a safe default rather
-than a lax one, because a specification-compliant server needs no help. It also means a
-future sanitizer bypass in the renderer cannot borrow the shim as a read-anywhere
-primitive against arbitrary HTTPS origins.
-
-!!! warning "The file's own header comment is out of date"
-
-    The long docblock at the top of `cors.ts` still describes a known limitation — that
-    the shim rewrites headers for every remote origin and that narrowing it would need the
-    renderer to publish its origin set over IPC, "tracked as follow-up". That work shipped.
-    The code below it opens with `if (!isAllowed(details.url)) { callback({}); return; }`.
-    Trust the code.
-
-## Deep links and the OS scheme
-
-Two custom schemes are in play and they do different jobs.
-
-| Scheme             | Registered with      | Used for                                                    |
-| ------------------ | -------------------- | ----------------------------------------------------------- |
-| `trinity://app`    | the Electron session | Serving `www/`. Never registered with the OS                |
-| `eu.qwky.trinity:` | the operating system | Routing the SSO and OIDC browser redirect back into the app |
-
-Matching on the inbound URL is **scheme-only**:
-
-```ts
-export const DEEP_LINK_PREFIX = `${DEEP_LINK_SCHEME}:`;
+```bash
+pnpm electron:install
+pnpm nx run trinity-desktop:build-release
+pnpm -C electron run start
 ```
 
-Legacy SSO redirects to `eu.qwky.trinity://sso-callback`, while OIDC uses the RFC 8252
-section 7.1 authority-less form `eu.qwky.trinity:/sso-callback`. Matching on `://` would
-silently drop every OIDC callback.
+This alternative avoids the automatic `sign:dev` dependency. It does not create a signed,
+notarized installer or prove macOS notification delivery. Use the separately credentialed
+package path for distribution; do not disable OS protections to bypass a signing failure.
 
-Three operating-system sources funnel into one `deliverDeepLink()`: the macOS `open-url`
-event, which is registered early because a cold protocol launch can fire it at or before
-`ready`; the Windows and Linux cold-start `argv`; and the `second-instance` `argv` when a
-protocol activation re-launches an already-running app. URLs buffer in a pending queue and
-flush on `whenReady` and on `did-finish-load`, and the preload buffers again on the
-renderer side, so a link that arrives before Angular subscribes is replayed rather than
-lost.
+For a compile-only check, use `pnpm electron:compile`. For the shell's Node-side checks,
+use `pnpm electron:test` and `pnpm electron:typecheck`. The static host contract is:
 
-An unpackaged development run registers `process.execPath` plus the resolved entry path,
-which is what Electron requires for the OS to re-launch it correctly.
-
-## Secret storage
-
-The main process backs `SecureStorageService`'s strongest backend using Electron's
-`safeStorage`. Values are stored as a JSON map of key to base64 ciphertext in a single
-mode-0600 file under `app.getPath('userData')`.
-
-The availability check does more than call `isEncryptionAvailable()`:
-
-```ts
-const backend = safeStorage.getSelectedStorageBackend?.();
-return backend !== 'basic_text' && backend !== 'unknown';
+```bash
+pnpm electron:verify
 ```
 
-On Linux, when Electron can find no OS password manager, it falls back to a `basic_text`
-backend that "encrypts" with a hardcoded key. That is obfuscation, not encryption — anything
-running as the user recovers the Matrix access token and the cross-signing keys — and
-`isEncryptionAvailable()` still reports `true`. Refusing it makes the renderer take its
-documented plaintext fallback and log the anomaly, rather than storing a secret under a
-false promise.
+This checks configuration, artifacts, bridge, and security contracts. It does not prove
+that the actual packaged shell launched. The Docker-free launched-shell smoke is
+`pnpm electron:e2e:smoke`; the full `pnpm electron:e2e` uses the disposable Synapse
+lifecycle for authenticated flows. Both need the Electron binary, and headless Linux needs
+Xvfb. See [Testing](../contributing/testing.md) for what browser and host checks prove.
 
-[electron/src/secure-store.ts](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/src/secure-store.ts)
-takes `safeStorage` and the store path as parameters and imports `electron` only as a type,
-so it has no runtime dependency on Electron and is unit-testable in plain Node.
+For renderer debugging, start the shell and choose **View → Toggle Developer Tools**.
+Use its Console for renderer errors and Sources for the copied web bundle; use the terminal
+that launched Electron for main-process and protocol-registration output. When debugging an
+authentication callback, test an unpackaged run with the custom `eu.qwky.trinity:` URL.
+Do not start a second shell against the same profile: the main process holds a single-instance
+lock and forwards the next activation to the existing window.
 
-## Packaging with electron-builder
+## How the desktop host works
 
-Configuration is
-[electron/electron-builder.yml](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/electron-builder.yml).
-App id `eu.qwky.trinity`, product name Trinity, `asar: true`, output to `electron/release/`.
+### Renderer, scheme, and process boundary
 
-| Platform | Targets       | Notes                                                                                                                                     |
-| -------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| macOS    | dmg, zip      | `public.app-category.social-networking`, `hardenedRuntime: true`                                                                          |
-| Linux    | AppImage, deb | Category Network. The `homepage` field in `package.json` is required, not decoration: fpm fails the whole deb build without a package URL |
-| Windows  | nsis          | `oneClick: false`, `perMachine: false`, installation directory changeable                                                                 |
+Electron serves the copied renderer from `trinity://app`, not `file://`. The scheme is
+registered before Electron becomes ready, is a secure standard origin, supports fetch and
+streaming, and serves WebAssembly as `application/wasm`. That enables WebCrypto,
+IndexedDB, route reload fallback to `index.html`, and crypto WASM streaming. Paths outside
+`electron/www/` are rejected.
 
-What goes into the bundle is `dist/**/*`, `www/**/*` and `package.json`, minus `**/*.map` —
-source maps for the privileged main and preload processes must not ship.
+The main window uses context isolation, sandboxing, web security, and disabled Node
+integration for frames and workers. The renderer cannot use Node or `ipcRenderer`.
+`window.open`, navigation away from the app origin, and webviews are denied; external
+HTTP(S) links go to the operating-system browser. The permission policy permits Trinity's
+main frame to request camera/microphone, geolocation, and sanitized clipboard writes, and
+denies other powerful permission requests.
 
-Three PNGs stay **outside** the asar via `extraResources`: `trinityTray.png`,
-`trinityTrayTemplate.png` and `unreadOverlay.png`. `nativeImage` needs real files on disk
-resolvable through `process.resourcesPath`, and `icons.ts` probes four candidate locations
-so the same code finds them in development and when packaged.
+The window hides to the tray on close so Matrix sync and notifications can continue.
+Explicit Quit, the application menu, and OS shutdown set the quit state and allow the
+window to close. `backgroundThrottling: false` keeps the hidden renderer's Matrix sync
+from being throttled; it is not a relaxation of the renderer security boundary.
 
-The `protocols:` block registers `eu.qwky.trinity` at OS level: `CFBundleURLTypes` on
-macOS, a `MimeType` entry in the `.desktop` file on Linux. Windows registration happens at
-runtime through `app.setAsDefaultProtocolClient` instead.
+### The preload bridge and capability fallbacks
 
-### Fuses
+The sandboxed preload exposes one typed object, `window.trinityDesktop`. It identifies
+Electron and negotiates specific host operations; it never exposes Node or raw IPC. Both
+the preload and main process validate payloads, and the main process accepts calls only
+from the current Trinity window.
 
-[electron/afterPack.cjs](https://github.com/quwisky/trinity-matrix-client/blob/develop/electron/afterPack.cjs)
-runs before signing and flips three V1 fuses off on the packaged binary: `RunAsNode`,
-`EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments`.
+| Capability              | Desktop implementation and limit                                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Deep links              | Buffered OS callbacks are replayed to the renderer after it subscribes.                                              |
+| Notifications and badge | OS presentation, click destinations, and aggregate unread badges return typed outcomes rather than assuming success. |
+| Secret storage          | Electron `safeStorage` is used only when it is real OS encryption.                                                   |
+| Homeserver CORS         | The main process repairs missing CORS headers only for renderer-declared homeserver origins.                         |
+| Approximate location    | An opt-in, time-bounded IP lookup returns no location on failure; manual entry remains available.                    |
+| Updates                 | No update channel is implemented; update capability is unavailable.                                                  |
 
-Without them, a local unprivileged process can re-launch the _signed_ Trinity binary as
-Node — `ELECTRON_RUN_AS_NODE=1`, `NODE_OPTIONS=--require evil.js`, or `--inspect` — and run
-arbitrary code inside the trusted main process, the one holding keychain access to the
-secret store. The hook passes `resetAdHocDarwinSignature` on macOS because mutating fuses
-invalidates the signature, and it throws rather than shipping an unhardened binary if it
-cannot find the executable.
+The typed bridge at
+[`libs/platform-native/src/lib/trinity-desktop-bridge.ts`](../../libs/platform-native/src/lib/trinity-desktop-bridge.ts)
+is the current operation contract. Add a host capability through that contract, not a
+new renderer-to-main escape hatch.
 
-`OnlyLoadAppFromAsar`, `EnableEmbeddedAsarIntegrityValidation` and `EnableCookieEncryption`
-are not flipped.
+### Deep links, storage, and Matrix connectivity
 
-### Signing and notarization
+`trinity://app` is internal to Electron. The operating-system callback scheme is
+`eu.qwky.trinity:`, used for SSO and OIDC. The app accepts both
+`eu.qwky.trinity://sso-callback` and the authority-less OIDC form
+`eu.qwky.trinity:/sso-callback`; matching must be scheme-based. macOS `open-url`,
+Windows/Linux command-line activation, and second-instance activation all feed one
+buffered delivery path, so a callback that arrives before Angular starts is replayed.
 
-macOS signing is fully wired and inert without credentials. `mac.identity` is deliberately
-not pinned, so electron-builder auto-discovers a "Developer ID Application" certificate
-from the login keychain, or from `CSC_LINK` plus `CSC_KEY_PASSWORD`. The hardened-runtime
-entitlements grant `allow-jit`, `allow-unsigned-executable-memory` and
-`disable-library-validation` — V8 and the crypto WASM need executable memory, and a signed
-hardened-runtime build crashes on launch without them — plus `network.client`.
+Secrets use Electron `safeStorage` in a mode-0600 file below the user-data directory.
+On Linux, Electron's `basic_text` backend is rejected because it is only obfuscation;
+the application takes its documented non-secure fallback and reports the limitation rather
+than claiming the Matrix token or cross-signing keys are protected.
 
-`build/notarize.cjs` runs as the `afterSign` hook and logs a line and returns when no
-credentials are present. It supports an App Store Connect API key
-(`APPLE_API_KEY` as a path to a `.p8`, plus `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`) or an
-Apple ID (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`). It requires
-`@electron/notarize` lazily so non-macOS builds never load it.
+The renderer is cross-origin to every Matrix homeserver. The CORS adapter alters responses
+only for declared signed-in or discovery/login origins, sets the exact `trinity://app`
+origin, and leaves undeclared origins untouched. It never enables credentialed CORS.
+This permits Matrix bearer-token requests when a homeserver proxy stripped required CORS
+headers without turning the shell into a read-anywhere bridge.
 
-macOS only delivers the app's OS notifications when the app is signed and notarized, so a
-build meant for real use must go through `pnpm electron:package:mac:signed`.
+## Package an artifact
 
-Windows code signing is a TODO in the configuration, and auto-update is not wired at all —
-the `publish:` block is commented out.
+All package commands start from the copied production renderer and compiled shell. Outputs
+are written below `electron/release/`.
 
-!!! danger "Two packaging traps"
+| Command                            | Host artifact and prerequisite                                                         |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| `pnpm electron:package`            | Package for the current host                                                           |
+| `pnpm electron:package:linux`      | AppImage and deb on a Linux-capable packaging host                                     |
+| `pnpm electron:package:win`        | NSIS installer on a Windows-capable packaging host                                     |
+| `pnpm electron:package:mac`        | Local unsigned/ad-hoc macOS package                                                    |
+| `pnpm electron:package:mac:signed` | Developer ID signed and notarized macOS dmg/zip; credentials required                  |
+| `pnpm electron:package:all`        | Request all configured platform targets; only use where host/toolchain support permits |
 
-    **Release packaging must bypass the development signature.** The normal first-class build
-    ends with `electron:sign:dev`, which ad-hoc-signs the local Electron binary against a
-    self-signed `trinity-dev` identity. Release packaging depends on
-    `trinity-desktop:build-release` instead: it builds the shared renderer and compiles the shell
-    without touching a development identity, then lets the platform-specific `electron-builder`
-    command and release credentials control signing.
+Electron Builder packages compiled `dist/`, copied `www/`, and the shell manifest into
+an ASAR. Source maps do not ship. Tray and unread-overlay images remain real external
+resources because native image APIs require files on disk. The packaged binary has fuses
+that disable RunAsNode, Node options injection, and Node inspect arguments before signing.
 
-    **`pnpm electron:package:mac` hardcodes an arm64 output path.** Its trailing ad-hoc
-    re-sign points at `release/mac-arm64/Trinity.app`, but electron-builder writes x64
-    output to `release/mac/`. On an Intel Mac the build succeeds and then dies on
-    `codesign: No such file or directory`. Fix the path or re-sign by hand.
-
-The release workflow builds macOS on `macos-latest`, which is Apple Silicon, and
-electron-builder defaults to the host architecture — so released macOS artifacts are arm64
-only, by choice. See [CI and releases](../contributing/ci-and-releases.md).
+Release packaging deliberately uses `trinity-desktop:build-release`, which avoids the
+local `trinity-dev` signature. macOS signing requires a Developer ID identity from the
+login keychain or `CSC_LINK`/ `CSC_KEY_PASSWORD`; notarization additionally needs either
+App Store Connect API-key credentials or Apple-ID credentials. The signed macOS path is
+needed for real OS notification delivery. The local `electron:package:mac` helper has an
+arm64 output-path assumption and can fail after packaging on Intel macOS; use the signed
+release path or correct the local re-sign path for that host. Windows signing is not
+configured, and automatic updates are not implemented. Follow
+[CI and releases](../maintaining/ci-and-releases.md) for the authorized signing, tagging,
+and publication process; do not treat a locally packaged file as a release.
 
 ## How the desktop contract is tested
 
-[e2e/electron/playwright.full.config.mts](https://github.com/quwisky/trinity-matrix-client/blob/develop/e2e/electron/playwright.full.config.mts)
-launches the real built application through Playwright's `_electron` helper, one worker, no
-parallelism. The `trinity-e2e-electron` lifecycle target joins the support-owned disposable
-Synapse invocation for authenticated journeys. It is the only
-gate in the repository that exercises the custom scheme, WASM stream instantiation, the sandbox
-posture and `safeStorage`, and it runs the image-pack manager journey against the built shell.
-
-```bash
-pnpm electron:e2e:smoke   # Docker-independent shell/protocol/security journey
-pnpm electron:e2e
-```
-
-The smoke command uses a derived descriptor-only config and requests no Synapse resource, so its
-nine shell/protocol/security checks stay Docker-independent. The full command requests the shared
-Synapse resource for authenticated journeys.
-
-Each launch gets a fresh temporary `--user-data-dir`, so the app always starts
-unauthenticated. The launcher also passes `--no-sandbox`, which disables Chromium's
-zygote process sandbox so the binary can run as root or inside a container. That is a
-different thing from the application's `webPreferences.sandbox`, which stays `true` — and
-the suite proves it, by asserting `require` and `process` are undefined in the renderer.
-
-More on the wider test suite in [Testing](../contributing/testing.md).
+`pnpm electron:verify` is static evidence. `pnpm electron:e2e:smoke` launches the
+shell without Docker; `pnpm electron:e2e` launches it with Synapse-backed authenticated
+journeys. Neither proves a signed/notarized macOS delivery unless that exact artifact runs on
+the intended host. Record the OS, command, exit status, and unavailable credentials or
+display environment with review evidence.

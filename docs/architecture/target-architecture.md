@@ -1,152 +1,160 @@
-# Target architecture
+# Architecture contract and decisions
 
-Trinity uses capability-centered ownership. The existing `type:*`, `scope:*`, and `ui:*` rules remain enforced alongside `role:*` and `capability:*` metadata; the architecture contract is in its `contracted` phase and permits no migration exceptions.
+Use this guide when changing a public boundary or deciding where a cross-capability
+workflow belongs. It describes the current architecture of `refactor/refine-architecture`.
+The filename is retained for existing links; this is a living contract, not a future plan.
+Start with [capability ownership](libraries.md) for the owning library and
+[state and runtime lifetimes](state-and-reactivity.md) for execution details.
 
 ## Dependency direction
 
-```text
-Host applications → Application workflows → Product capabilities → Shared kernel
-       │                    │                       │                    ↑
-       └────────────────────┴───────────────────────┴→ Adapters ─────────┘
-```
+Runtime projects carry `role:*` and `capability:*` metadata in addition to the existing
+`type:*`, `scope:*` and `ui:*` tags. These constraints apply together. A permitted role
+edge does not exempt an import from a type, scope, vendor or public-entrypoint restriction.
 
-The design system is a domain-neutral presentation dependency available to applications and capabilities. A capability may depend on projects carrying the same `capability:*` tag while it is being consolidated, but a cross-capability workflow belongs in `role:application`. The exact live graph, role matrix, and frozen exceptions are in the [generated dependency map](generated/dependency-map.md).
+The [generated dependency map](generated/dependency-map.md) gives the exact permitted
+role matrix, current edges, entrypoints and classifications. Read it when assessing an
+edge; a simplified layering sketch cannot express all adapter dependencies.
 
 ## Roles
 
-| Role                 | Responsibility                                                                    |
-| -------------------- | --------------------------------------------------------------------------------- |
-| `role:app`           | Select adapters and compose one deployable host application.                      |
-| `role:application`   | Coordinate workflows spanning multiple product capabilities.                      |
-| `role:capability`    | Own product policy, state projections, commands, and its presentation adapters.   |
-| `role:kernel`        | Provide a small reusable runtime primitive without product policy.                |
-| `role:adapter`       | Contain Matrix SDK, browser, Capacitor, Electron, storage, and transport details. |
-| `role:design-system` | Provide reusable domain-neutral UI through Trinity-owned APIs.                    |
+| Role                 | Ownership                                                                |
+| -------------------- | ------------------------------------------------------------------------ |
+| `role:app`           | Compose a deployable host and select its adapters.                       |
+| `role:application`   | Coordinate a workflow across product capabilities.                       |
+| `role:capability`    | Own product policy, projected state, commands and presentation adapters. |
+| `role:kernel`        | Provide a reusable runtime primitive without product policy.             |
+| `role:adapter`       | Contain SDK, browser, native, desktop, storage or transport details.     |
+| `role:design-system` | Expose domain-neutral UI through Trinity-owned APIs.                     |
 
-Tooling and black-box test projects are outside this runtime dependency model. Web, Android, iOS and Electron are classified `role:app` composition roots; no host classification exception remains.
+Web, Android, iOS and Electron are application composition roots. Tooling and black-box
+test projects are classified separately from runtime dependencies. Cross-capability
+coordination belongs in an application workflow; a feature must not import another feature.
+Shared projects cannot reach into product-scoped projects merely because a helper is useful.
 
 ## Product capabilities
 
-- **Accounts** owns saved Accounts and Account Runtime lifecycle. Authentication Attempts end by
-  issuing an opaque authenticated grant; Account Runtime consumes the grant with an explicit
-  active/inactive placement intent and never exposes credentials back to the caller.
-- **Room Library** owns the current user's relationship to the Room and Space graph. Its selected
-  view is the only cross-Account read boundary: one internal source registry feeds Room, Space, and
-  invitation projectors, while single-Account reads reuse the active projections.
-- **Conversations** owns keyed timelines, composer intent, messages, threads, pins, and read position.
-- **Room Administration** owns governance within a Room.
-- **Trust** owns verification, cross-signing, secret storage, recovery, key transfer, and encryption health.
-- **Identity** owns user summaries, profiles, avatars, presence, and lookup.
-- **Notifications** owns SDK-free delivery policy and immutable notification intents. Matrix
-  adapters normalize events and user-rule results before policy sees them; host presenters own
-  permission and delivery. Activation round-trips an exact Account, Room, and event destination
-  into Workspace, which performs its normal validation, Account transition, repair, Conversation
-  focus, and canonical URL projection.
-- **Discovery** owns remote homeserver, public-Room, and user-directory discovery.
+The [library guide](libraries.md) maps each capability to its public entrypoint and source.
+These ownership rules are the contract to preserve when moving code:
 
-Workspace, Settings, Global Search, Badge coordination, and Application Runtime are application workflows. `BadgeCoordinator` reads Room Library's aggregate unread state without taking ownership of it and writes only through a host-neutral `BadgeSink`; Conversation continues to own read position. Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store, Host Capabilities, pure utilities, and the design system form the deliberately small shared kernel and supporting seams.
+- **Accounts** owns saved Accounts and Account Runtime lifecycle. Authentication produces an
+  opaque grant; Accounts consumes it with explicit active/inactive placement intent.
+- **Room Library** owns relationships to Rooms and Spaces, invitations, hierarchy, ordering
+  and aggregate unread. Its selected view is the cross-Account read boundary. One internal
+  source registry supplies Room, Space and invitation projections; single-Account views reuse
+  active projections. Shared-row writes follow the target policy in ADR 0009.
+- **Conversations** owns exact Account-and-Room timelines, composer intent, messages, threads,
+  pins and read position. **Room Administration** owns governance within a Room.
+- **Trust** owns verification, cross-signing, secret storage, recovery, key transfer and
+  encryption health. **Identity** owns user summaries, profiles, avatars and presence.
+- **Discovery** owns remote homeserver, public-Room and user-directory discovery.
+- **Notifications** owns delivery policy and immutable notification intents. Matrix adapters
+  normalize events and user rules; host presenters own permission and delivery. Activation
+  carries an exact Account, Room and event into Workspace's normal transition path.
 
-Application Runtime is the sole startup and session owner. Its ordered attempt negotiates the
-host, hydrates preferences, restores Accounts, prepares Room Library's active-Account projections
-and selected view, attaches the named Trust, Identity, Notification, and Room Administration
-projection lifetimes, establishes optional session capabilities, restores Workspace and crosses one
-final readiness stage. The Room Library and named projection sources remain owned throughout the
-session; Identity, Notification, and Room Administration attach only while a routed Room surface
-needs them. All deep-link, Back, notification-delivery, update, badge, and surface streams stay
-gated until final readiness. Required Room Library failures block with typed executable recovery;
-optional projection failures are retained and presented as non-blocking warnings.
-Session-owned capability services expose one cold `runProjection()` lifetime rather than public
-generic `connect()`/`disconnect()` pairs. Subscribing attaches and acknowledges the projection;
-unsubscribing removes its listeners, pending reconciliation, warnings, and read model. Exact
-Conversation children and settings projections keep their symmetric local lifetimes because their
-demand has an independent owner.
-The
-application root keeps that warning region visible and keyboard-scrollable, caps it at one quarter
-of the visual viewport, and gives the remaining height to the routed surface. Its one lifetime
-subscription owns every session-long source and can be stopped and restarted without retained
-listeners.
-
-Workspace is the live cross-capability coordinator for navigation. It exposes one immutable
-Account, sidebar-scope, optional-Conversation, and pane view. Its URL is a canonical projection and
-an inbound restoration source: deep links win over persisted selection, user intent pushes
-history, canonicalization and repair replace history, and responsive placement changes neither the
-destination nor history. A cold RxJS transition validates and projects the URL before an Active
-Account commit can begin, publishes the view only after Account readiness, and retains ownership
-through post-commit completion if its initiating subscriber disappears.
-
-The Room shell owns one page-scoped surface lifecycle. Members are remembered independently for
-the shell lifetime, while member detail, Threads, a thread, pinned messages, and in-Room search are
-exact-Conversation temporary surfaces that replace the roster without erasing that choice. Every
-shell starts closed; entering drawer layout clears remembered members, while widening an explicitly
-opened drawer preserves it as a static column. Message reveal, focus handoff, Escape, backdrop and
-swipe intent, and Workspace Back enter the same semantic boundary. Consumers read its state while
-the page only renders and forwards intent; `RoomShellStore` holds no surface state.
-
-The Room-surface compatibility caller count is zero. The lifecycle constructs its own surface
-records from explicit intents and exposes only read-only presentation signals; even test fixtures
-cannot seed panel state, return origins, or jump counters directly.
-
-```text
-Page events / action coordinators ── semantic intent ──→ RoomSurfaceLifecycle
-Workspace event target / Back ────────────────────────→         │
-                                                   private state + focus
-                                                              │
-Page template ←── read-only surface, member visibility, and jump signals ──┘
-```
+Workspace, Settings, Global Search, Badge coordination and Application Runtime coordinate
+capabilities. Badge coordination reads Room Library unread totals and writes through a
+host-neutral sink; it does not take over Conversation read position. The shared kernel and
+adapter seams provide Matrix Runtime, Projection Runtime, Media Pipeline, Preferences Store,
+Host Capabilities and pure utilities. The design system stays domain-neutral.
 
 ## State and commands
 
-The Matrix SDK remains authoritative for protocol state. Adapters normalize SDK input before capabilities consume it. Capabilities project state to private writable signals and expose only read-only signals and computed views.
+The Matrix SDK is authoritative for protocol state. Adapters normalize its events before
+capabilities publish immutable views through private writable signals and public read-only
+signals. Commands are cold, finite RxJS Observables. Expected operational failures carry
+safe typed recovery meaning; defects use the error channel. A finite command's subscription
+contract must say whether work is cancellable or continues after unsubscribe: a Promise
+wrapped in `defer` does not become cancellable automatically.
 
-Commands are cold, finite RxJS Observables. Expected operational failures are typed outcomes with recovery meaning and safe metadata; defects and broken adapters use the Observable error channel. A command never hides a detached subscription. Application Runtime is the explicit owner of session-long streams.
+Preserve these lifetime boundaries; their sequences and cancellation rules live in the
+[state guide](state-and-reactivity.md):
 
-Host Capabilities applies this rule to authentication handoff, deep links, Back, file export,
-notification presentation, location, badges, secure storage, lifecycle, and updates. Product code
-depends on narrow operation services from `@trinity/runtime/host`; the application root selects a
-Web, Capacitor, or Electron adapter. Support is negotiated explicitly. Electron protocol v1 uses
-validated senders and capability-scoped IPC, and returns only secret-safe diagnostic codes.
+- Application Runtime owns ordered startup, readiness, recovery, stop/restart and the single
+  session subscription. Deep links, Back, notifications, updates, badges and surface streams
+  stay gated until final readiness. Required Room Library failures block; optional capability
+  failures remain visible warnings with typed recovery. The warning region stays keyboard
+  scrollable and occupies at most a quarter of the visual viewport.
+- A session-owned capability exposes a cold `runProjection()` lifetime. Subscription owns
+  attachment and acknowledgement; teardown releases listeners, pending work, warnings and
+  the view. Routed Room demand controls Identity, Notifications and Room Administration;
+  exact Conversation and local settings lifetimes retain their own owners.
+- Workspace owns one semantic destination and projects it to the URL. Deep links take
+  precedence over saved selection; user navigation pushes history, repair replaces it, and
+  responsive placement changes neither. URL preparation precedes Account commit. Publication
+  waits for Account readiness; accepted post-commit completion retains its owner even if the
+  initiating subscriber disappears.
+- The page-scoped Room surface lifecycle owns panels, return intent and focus. Members starts
+  closed and is remembered for the shell lifetime. Temporary exact-Conversation surfaces
+  replace the roster without erasing that choice. Entering drawer layout clears remembered
+  members; widening an explicitly opened drawer preserves it. Events, Back and dismissal
+  enter semantic commands; consumers cannot seed private surface records or jump counters.
 
-Preferences Store applies the same rule to capability-owned configuration. Capabilities contribute
-typed descriptors with explicit installation, Account, Conversation, or server-authoritative
-scope plus defaults, validation, versioned migration, sensitivity, storage/export policy, and
-editor metadata. `@trinity/runtime/preferences` owns only the catalog and context-keyed signal
-runtime; Settings renders it without importing raw keys or product policy. Device and future
-Matrix adapters enforce the declared policy, and recovery diagnostics never contain preference
-values.
+Host operations use narrow services from `@trinity/runtime/host`, explicit support negotiation
+and host-selected adapters. Electron IPC is versioned, sender-validated and capability-scoped.
+See the [host guides](../platforms/index.md) for implementations and validation limits.
 
-Appearance applies that ownership rule across capabilities rather than creating one persistence
-record. Design System owns Mode, Theme, text size, and density; Conversations owns code size and
-code-line presentation. `@trinity/application/appearance` composes their six read-only preference
-cells into one value plus per-axis state, delegates hydration to Preferences Store, and turns any
-partial result into one warning-ready outcome while each failed axis keeps only its own default.
-It resolves committed values with the current system Mode through a platform-neutral function.
-One cold effect lifetime owns the system-Mode observation, document-root carrier adapter, and a
-Mode-only native-chrome projection; unsuccessful persistence never publishes a candidate into
-that lifetime.
+Capabilities own preference descriptors: scope, default, validation, migration, sensitivity,
+storage/export policy and editor metadata. Preferences Store owns the typed catalog and
+context-keyed runtime; Settings renders descriptors without owning raw keys or product policy.
+Diagnostics omit values. Design System owns Mode, Theme, text size and density; Conversations
+owns code size and code-line presentation. Appearance combines these six cells, keeps per-axis
+fallbacks on partial hydration, and owns one effect lifetime for system Mode, document carriers
+and Mode-only native chrome. Failed persistence must not publish a candidate value. The
+[UI guide](ui-and-theming.md) owns the design and contribution details.
 
 ## Public interfaces
 
-Cross-project imports use one explicit `@trinity/*` entrypoint per library. Secondary and wildcard entrypoints are rejected. Raw SDK clients, writable signals, Router objects, platform flags, and generic connect/disconnect methods do not belong in capability interfaces.
+Use each library's explicit primary `@trinity/*` entrypoint. Wildcard and secondary
+entrypoints are rejected by the architecture contract. Product-facing capability interfaces
+must not expose raw SDK clients, writable signals, Router instances, platform flags or generic
+connection controls. Matrix-specific adapters use their contained SDK seams; that does not
+make those seams acceptable for presentation consumers.
+
+Third-party UI is contained behind the public component tier and its vendor wrappers. Product
+features consume `@trinity/components/*`, not `@trinity/helm/*` or UI vendor packages directly.
 
 ## Contracted enforcement
 
-Future architecture changes still follow expand-migrate-contract slices:
+The [architecture contract](../../architecture/contract.json) is `contracted`: every
+classification, secondary-entrypoint, multi-capability, dependency-exception and source-baseline
+ledger must be empty. ADR 0007 records the completed expand/migrate/contract method; it is not
+permission to add a facade or exception under the current contract. Future boundary changes
+must account for current callers, behavior parity, removal ownership and the final tightened
+boundary without silently weakening these guards.
 
-1. Add the target interface and adapter beside the current path.
-2. Freeze the current callers and dependency exceptions.
-3. Move complete user journeys while keeping both paths behaviorally equivalent.
-4. Remove the old path when its counters reach zero.
-5. Tighten the static boundary so the exception cannot return.
+After an intentional graph change, regenerate and check the map:
 
-Run `pnpm architecture:check` to validate the live Nx graph, role and capability direction, explicit entrypoints, empty migration ledgers, cycles, quality-baseline registry, and committed map. Repository structural tests additionally enforce SDK, Router, platform-vendor, design-system, and host containment. Run `pnpm architecture:map` after an intentional architecture change, then review the generated diff rather than editing it directly.
+```bash
+pnpm architecture:map
+pnpm architecture:check
+```
+
+Review the generated diff. The check validates graph classification, allowed direction,
+explicit entrypoints, empty ledgers, cycles, baseline registry structure and exact generated
+map content. Its script also runs design-system and host contracts. Repository structural
+suites enforce source-level SDK, Router, platform and retired-interface containment. Neither
+a map check nor registry membership proves runtime parity or performance. Use the
+[measurement contracts](migration-baselines.md) and [testing guide](../contributing/testing.md)
+to select the corresponding checks.
 
 ## Decisions
 
-- [Capability ownership and dependency roles](../adr/0001-capability-ownership-and-dependency-roles.md)
-- [Matrix SDK authoritative state](../adr/0002-matrix-sdk-authoritative-state.md)
-- [Account and Conversation Runtime seams](../adr/0003-account-and-conversation-runtime-seams.md)
-- [Workspace authority and URL projection](../adr/0004-workspace-authority-and-url-projection.md)
-- [Operation-based host capabilities](../adr/0005-operation-based-host-capabilities.md)
-- [Signals for state and RxJS for commands](../adr/0006-signals-for-state-and-rxjs-for-commands.md)
-- [Incremental facade migration](../adr/0007-incremental-facade-migration.md)
-- [Capability-owned typed preferences](../adr/0008-capability-owned-typed-preferences.md)
+The ADRs preserve the reasoning and status accepted at the time. Current implementation
+belongs in these architecture guides; a historical migration description does not override
+the current contracted boundary.
+
+| Decision                                                         | Subject                                   |
+| ---------------------------------------------------------------- | ----------------------------------------- |
+| [0001](../adr/0001-capability-ownership-and-dependency-roles.md) | Capability ownership and dependency roles |
+| [0002](../adr/0002-matrix-sdk-authoritative-state.md)            | Matrix SDK authoritative state            |
+| [0003](../adr/0003-account-and-conversation-runtime-seams.md)    | Account and Conversation Runtime seams    |
+| [0004](../adr/0004-workspace-authority-and-url-projection.md)    | Workspace authority and URL projection    |
+| [0005](../adr/0005-operation-based-host-capabilities.md)         | Operation-based host capabilities         |
+| [0006](../adr/0006-signals-for-state-and-rxjs-for-commands.md)   | Signals for state and RxJS for commands   |
+| [0007](../adr/0007-incremental-facade-migration.md)              | Incremental facade migration              |
+| [0008](../adr/0008-capability-owned-typed-preferences.md)        | Capability-owned typed preferences        |
+| [0009](../adr/0009-selected-room-library-view.md)                | Selected Room Library Account scope       |
+
+[Historical validation](final-validation.md) preserves dated delivery evidence; it is not a
+current run report.
