@@ -71,8 +71,10 @@ Account settings apply to the selected identity, while device preferences such a
 have the scope described in [Personal settings](settings.md).
 
 If an Account is shown as **Signed out**, select its **Sign in** action to reconnect it. The
-account menu's **Sign out** action concerns the active Account on this installation; it does not
-deactivate the Matrix account. Before signing out or clearing local data, check your
+account menu's **Remove account** action concerns the selected Account on this installation; its
+confirmation explains push/provider cleanup and local credentials, drafts, cache, and encryption
+keys. It does not deactivate the Matrix account or delete server data. Before removing an Account
+or clearing local data, check your
 [encrypted-access recovery options](encryption.md).
 
 ## When an action is unavailable

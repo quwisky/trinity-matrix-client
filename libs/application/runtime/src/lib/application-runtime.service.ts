@@ -46,6 +46,9 @@ import {
   type ApplicationStopOutcome,
 } from './application-runtime.models';
 
+/** Allows Account Runtime's ten-second destructive observation to report first. */
+export const APPLICATION_RECOVERY_OBSERVATION_BUDGET_MS = 11_000;
+
 export class ApplicationRuntimeAlreadyRunningError extends Error {
   constructor() {
     super('Application Runtime already has an active owner.');
@@ -144,7 +147,7 @@ export class ApplicationRuntimeService {
       }
       const owner = this.activeStop;
       return defer(() => this.adapter.recover(state.failure.recovery)).pipe(
-        timeout(10_000),
+        timeout(APPLICATION_RECOVERY_OBSERVATION_BUDGET_MS),
         catchError(() =>
           of({ kind: 'unavailable', reason: 'recovery-failed' } as const),
         ),

@@ -1,360 +1,281 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import {
-  LocalDataWipeService,
-  SessionStorageService,
-  type AccountRecord,
-} from '@trinity/platform-native';
-import type { MatrixSession } from '@trinity/util/matrix';
+import { SessionStorageService } from '@trinity/platform-native';
 import {
   Observable,
   catchError,
   concatMap,
-  defaultIfEmpty,
   defer,
-  forkJoin,
   from,
   map,
   of,
   reduce,
   switchMap,
-  take,
   tap,
-  timeout,
 } from 'rxjs';
+import {
+  AccountCleanupAttempt,
+  runDetachedCleanupAttempt,
+} from './account-cleanup-attempt';
+import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
+import { accountSignOutSettlement } from './account-sign-out-outcome';
+import {
+  AccountSignOutRetryWorkflow,
+  type SignOutRetryContext,
+} from './account-sign-out-retry.workflow';
 import type {
   AccountCleanupIssue,
+  AccountCleanupRecovery,
+  AccountCleanupScope,
   AccountSignOutOutcome,
   InstallationResetOutcome,
 } from './account-runtime.models';
+import { InstallationResetWorkflow } from './installation-reset.workflow';
 
-const SIGN_OUT_BUDGET_MS = 3_000;
-
-/** Matrix-backed cleanup workflows kept separate from restore and establishment. */
+/** Matrix-backed Account-removal workflow kept separate from restore and establishment. */
 @Injectable({ providedIn: 'root' })
 export class AccountLifecycleAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
-  private readonly wipe = inject(LocalDataWipeService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
+  private readonly installationReset = inject(InstallationResetWorkflow);
+  private readonly signOutRetry = inject(AccountSignOutRetryWorkflow);
 
   signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
-    return defer(() =>
-      this.storage.list().pipe(
-        catchError(() =>
-          of({ kind: 'registry-failed' as const, accounts: [] }),
-        ),
-        map((accounts) =>
-          Array.isArray(accounts)
-            ? { kind: 'available' as const, accounts }
-            : accounts,
-        ),
-        switchMap((registry) => {
-          if (registry.kind === 'registry-failed') {
-            return of({
-              kind: 'failed' as const,
-              accountId,
-              failure: 'local-state-unavailable' as const,
-              recovery: 'retry-sign-out' as const,
-            });
-          }
-          if (
-            !registry.accounts.some((account) => account.userId === accountId)
-          ) {
-            return of({
-              kind: 'failed' as const,
-              accountId,
-              failure: 'account-unavailable' as const,
-              recovery: 'retry-sign-out' as const,
-            });
-          }
-          return this.runSignOut(accountId, registry.accounts);
-        }),
-      ),
-    );
-  }
-
-  resetInstallation(): Observable<InstallationResetOutcome> {
     return defer(() => {
-      const issues: AccountCleanupIssue[] = [];
-      return this.storage.list().pipe(
-        catchError(() => {
-          this.addIssue(issues, 'account-registry', 'retry-installation-reset');
-          return of([]);
+      let terminalOverride: AccountSignOutOutcome | null = null;
+      let remainingAccountIds: readonly string[] = [];
+      let retryContext: SignOutRetryContext | null = null;
+      return runDetachedCleanupAttempt<AccountSignOutOutcome>(
+        (issues, pending) => ({
+          kind: 'uncertain-cleanup',
+          accountId,
+          issues,
+          pending,
         }),
-        switchMap((records) => this.readSessions(records, issues)),
-        switchMap(({ records, sessions }) =>
-          this.courtesySignOut(sessions, issues).pipe(map(() => records)),
-        ),
-        concatMap((records) =>
-          this.capture(
-            this.matrix.stop(),
+        (attempt) =>
+          attempt
+            .step(
+              this.storage.list().pipe(
+                map((accounts) => ({ kind: 'available' as const, accounts })),
+                catchError(() => of({ kind: 'unavailable' as const })),
+              ),
+              {
+                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
+                scope: 'account-registry',
+                recovery: 'retry-sign-out',
+                waitAfterBudget: true,
+              },
+            )
+            .pipe(
+              switchMap((registry) => {
+                if (registry.kind === 'unavailable') {
+                  terminalOverride = {
+                    kind: 'failed',
+                    accountId,
+                    failure: 'local-state-unavailable',
+                    recovery: 'retry-sign-out',
+                  };
+                  return of(void 0);
+                }
+                if (
+                  !registry.accounts.some((entry) => entry.userId === accountId)
+                ) {
+                  terminalOverride = {
+                    kind: 'failed',
+                    accountId,
+                    failure: 'account-unavailable',
+                    recovery: 'retry-sign-out',
+                  };
+                  return of(void 0);
+                }
+                remainingAccountIds = registry.accounts
+                  .map((entry) => entry.userId)
+                  .filter((id) => id !== accountId);
+                retryContext = {
+                  accountId,
+                  remainingAccountIds,
+                  client: this.matrix.clientFor(accountId),
+                  providerExpected: Boolean(
+                    registry.accounts.find(
+                      (entry) => entry.userId === accountId,
+                    )?.oidc,
+                  ),
+                  session: null,
+                };
+                return this.runSignOut(attempt, retryContext);
+              }),
+            ),
+        (attempt) => {
+          if (terminalOverride) return terminalOverride;
+          const issues = attempt.settledIssues();
+          const outcome = accountSignOutSettlement(
+            this.matrix.activeUserId(),
+            { accountId, remainingAccountIds },
             issues,
-            'matrix-session',
-            'restart-application',
-          ).pipe(map(() => records)),
-        ),
-        concatMap((records) =>
-          defer(() => from(this.wipe.wipeIndexedDb(records))).pipe(
-            tap((report) => {
-              if (
-                report.blocked.length > 0 ||
-                report.failed.length > 0 ||
-                !report.enumerated
-              ) {
-                this.addIssue(issues, 'indexed-db', 'restart-application');
-              }
-            }),
-            catchError(() => {
-              this.addIssue(issues, 'indexed-db', 'restart-application');
-              return of(undefined);
-            }),
-          ),
-        ),
-        concatMap(() =>
-          this.capture(
-            this.storage.clearAll(),
-            issues,
-            'secure-storage',
-            'retry-installation-reset',
-          ),
-        ),
-        concatMap(() =>
-          defer(() => from(this.wipe.wipeKeyValueStores())).pipe(
-            tap((report) => {
-              if (!report.secureStorage) {
-                this.addIssue(
-                  issues,
-                  'secure-storage',
-                  'retry-installation-reset',
-                );
-              }
-              if (!report.preferences || !report.webStorage) {
-                this.addIssue(
-                  issues,
-                  'preferences',
-                  'retry-installation-reset',
-                );
-              }
-            }),
-            catchError(() => {
-              this.addIssue(
-                issues,
-                'secure-storage',
-                'retry-installation-reset',
-              );
-              this.addIssue(issues, 'preferences', 'retry-installation-reset');
-              return of(undefined);
-            }),
-          ),
-        ),
-        concatMap(() =>
-          defer(() => from(this.wipe.wipeServiceWorker())).pipe(
-            tap((report) => {
-              if (!report.cacheStorage || !report.registrations) {
-                this.addIssue(issues, 'service-worker', 'restart-application');
-              }
-            }),
-            catchError(() => {
-              this.addIssue(issues, 'service-worker', 'restart-application');
-              return of(undefined);
-            }),
-          ),
-        ),
-        map(() =>
-          issues.length === 0
-            ? ({ kind: 'ready' } as const)
-            : ({ kind: 'partial-cleanup', issues } as const),
-        ),
+          );
+          if (issues.length === 0) {
+            this.signOutRetry.clear(accountId);
+            return outcome;
+          }
+          if (retryContext) this.signOutRetry.retain(retryContext);
+          return outcome;
+        },
+        () => ({
+          kind: 'failed',
+          accountId,
+          failure: 'local-state-unavailable',
+          recovery: 'retry-sign-out',
+        }),
       );
     });
   }
 
-  private readSessions(
-    records: readonly AccountRecord[],
-    issues: AccountCleanupIssue[],
-  ): Observable<{
-    records: readonly AccountRecord[];
-    sessions: readonly (MatrixSession | null)[];
-  }> {
-    if (records.length === 0) return of({ records, sessions: [] });
-    return forkJoin(
-      records.map((record) =>
-        this.storage.load(record.userId).pipe(
-          catchError(() => {
-            this.addIssue(issues, 'secure-storage', 'retry-installation-reset');
-            return of(null);
-          }),
-        ),
-      ),
-    ).pipe(map((sessions) => ({ records, sessions })));
+  /** Retry only residue retained by a settled removal attempt. */
+  retrySignOutCleanup(
+    accountId: string,
+    issues: readonly AccountCleanupIssue[],
+  ): Observable<AccountSignOutOutcome> {
+    return this.signOutRetry.retry(accountId, issues);
   }
 
-  private courtesySignOut(
-    sessions: readonly (MatrixSession | null)[],
-    issues: AccountCleanupIssue[],
-  ): Observable<unknown> {
-    const attempts = [
-      this.captureWithinBudget(
-        this.matrix.signOutAll(),
-        issues,
-        'matrix-session',
-        'restart-application',
-      ),
-      ...sessions
-        .filter(
-          (
-            session,
-          ): session is MatrixSession & {
-            readonly oidc: NonNullable<MatrixSession['oidc']>;
-          } => Boolean(session?.oidc),
-        )
-        .map((session) =>
-          this.captureWithinBudget(
-            this.lifecycle.revokeProviderSession(session),
-            issues,
-            'provider-session',
-            'retry-installation-reset',
-          ),
-        ),
-    ];
-    return forkJoin(attempts);
+  resetInstallation(): Observable<InstallationResetOutcome> {
+    return this.installationReset.reset();
   }
 
-  private captureWithinBudget(
-    source: Observable<unknown>,
-    issues: AccountCleanupIssue[],
-    scope: AccountCleanupIssue['scope'],
-    recovery: AccountCleanupIssue['recovery'],
-  ): Observable<void> {
-    return this.capture(
-      source.pipe(timeout({ first: SIGN_OUT_BUDGET_MS })),
-      issues,
-      scope,
-      recovery,
-    );
+  retryInstallationCleanup(
+    issues: readonly AccountCleanupIssue[],
+  ): Observable<InstallationResetOutcome> {
+    return this.installationReset.retry(issues);
   }
 
   private runSignOut(
-    accountId: string,
-    accounts: readonly { readonly userId: string }[],
-  ): Observable<AccountSignOutOutcome> {
-    const issues: AccountCleanupIssue[] = [];
-    const remainingAccountIds = accounts
-      .map((account) => account.userId)
-      .filter((id) => id !== accountId);
-    const client = this.matrix.clientFor(accountId);
-    const serverLogout$ = client
-      ? defer(() => from(client.logout(true)))
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+    context: SignOutRetryContext,
+  ): Observable<unknown> {
+    const { accountId, remainingAccountIds } = context;
+    const serverLogout$ = context.client
+      ? defer(() => from(context.client!.logout(true)))
       : of(void 0);
-
-    return this.storage.load(accountId).pipe(
-      catchError(() => {
-        this.addIssue(issues, 'secure-storage', 'retry-sign-out');
-        return of(null);
-      }),
-      switchMap((session) =>
-        from([
-          this.capture(
-            remainingAccountIds.length === 0
-              ? this.lifecycle.unregisterNotifications()
-              : this.lifecycle.unregisterNotifications(accountId),
-            issues,
-            'notifications',
-            'retry-sign-out',
-          ),
-          ...(session?.oidc
-            ? [
-                this.capture(
-                  this.lifecycle.revokeProviderSession(session),
-                  issues,
-                  'provider-session',
-                  'retry-sign-out',
-                ),
-              ]
-            : []),
-          this.capture(
-            serverLogout$,
-            issues,
-            'matrix-session',
-            'retry-sign-out',
-          ),
-        ]).pipe(concatMap((step) => step)),
-      ),
-      reduce(() => undefined, undefined),
-      concatMap(() =>
-        remainingAccountIds.length === 0
-          ? this.clearLastAccount(accountId, issues)
-          : this.removeOneAccount(accountId, remainingAccountIds, issues),
-      ),
-      map(() => {
-        const liveActive = this.matrix.activeUserId();
-        const activeAccountId =
-          liveActive && remainingAccountIds.includes(liveActive)
-            ? liveActive
-            : (remainingAccountIds[0] ?? null);
-        return issues.length === 0
-          ? {
-              kind: 'ready' as const,
-              accountId,
-              activeAccountId,
-              remainingAccountIds,
+    return attempt
+      .step(
+        this.storage.load(accountId).pipe(
+          catchError(() => {
+            attempt.addIssue('secure-storage', 'retry-sign-out');
+            if (context.providerExpected) {
+              attempt.addIssue('provider-session', 'restart-application');
             }
-          : {
-              kind: 'partial-cleanup' as const,
-              accountId,
-              activeAccountId,
-              remainingAccountIds,
-              issues,
-            };
-      }),
-    );
+            return of(null);
+          }),
+        ),
+        {
+          budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+          scope: 'secure-storage',
+          recovery: 'retry-sign-out',
+          fallback: null,
+          onTimeout: () => {
+            if (context.providerExpected) {
+              attempt.addIssue('provider-session', 'retry-sign-out');
+            }
+          },
+          onSettled: (session) => {
+            context.session = session;
+            if (!context.providerExpected) {
+              attempt.resolveIssue('provider-session');
+            } else if (!session?.oidc) {
+              attempt.addIssue('provider-session', 'restart-application');
+            }
+          },
+        },
+      )
+      .pipe(
+        switchMap((session) =>
+          from([
+            this.capture(
+              attempt,
+              remainingAccountIds.length === 0
+                ? this.lifecycle.unregisterNotifications()
+                : this.lifecycle.unregisterNotifications(accountId),
+              'notifications',
+              'retry-sign-out',
+              ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+            ),
+            ...(session?.oidc
+              ? [
+                  this.capture(
+                    attempt,
+                    this.lifecycle.revokeProviderSession(session),
+                    'provider-session',
+                    'retry-sign-out',
+                    ACCOUNT_CLEANUP_STEP_BUDGET_MS.providerLogout,
+                  ),
+                ]
+              : []),
+            this.capture(
+              attempt,
+              serverLogout$,
+              'matrix-session',
+              'retry-sign-out',
+              ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
+            ),
+          ]).pipe(concatMap((operation) => operation)),
+        ),
+        reduce(() => undefined, undefined),
+        concatMap(() =>
+          remainingAccountIds.length === 0
+            ? this.clearLastAccount(attempt, accountId)
+            : this.removeOneAccount(attempt, accountId, remainingAccountIds),
+        ),
+      );
   }
 
   private clearLastAccount(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     accountId: string,
-    issues: AccountCleanupIssue[],
   ): Observable<void> {
     return this.capture(
+      attempt,
       this.matrix.remove(accountId),
-      issues,
       'crypto-and-cache',
       'restart-application',
+      ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
     ).pipe(
-      tap(() => {
-        this.lifecycle.releaseSharedCaches();
-        this.lifecycle.clearDrafts();
-      }),
+      tap(() => this.clearSharedAccountState(attempt)),
       concatMap(() =>
         this.capture(
+          attempt,
           this.storage.clear(),
-          issues,
           'account-registry',
           'retry-sign-out',
+          ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+          () => attempt.resolveIssue('secure-storage'),
         ),
       ),
     );
   }
 
   private removeOneAccount(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
     accountId: string,
     remainingAccountIds: readonly string[],
-    issues: AccountCleanupIssue[],
   ): Observable<void> {
     return this.capture(
+      attempt,
       this.matrix.remove(accountId),
-      issues,
       'crypto-and-cache',
       'restart-application',
+      ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
     ).pipe(
-      tap(() => this.lifecycle.clearDrafts()),
+      tap(() => this.clearDrafts(attempt)),
       concatMap(() =>
         this.capture(
+          attempt,
           this.storage.remove(accountId),
-          issues,
           'account-registry',
           'retry-sign-out',
+          ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+          () => attempt.resolveIssue('secure-storage'),
         ),
       ),
       concatMap(() => {
@@ -372,40 +293,54 @@ export class AccountLifecycleAdapter {
         }
         return active
           ? this.capture(
+              attempt,
               this.storage.setActive(active),
-              issues,
               'account-registry',
               'retry-sign-out',
+              ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
             )
           : of(void 0);
       }),
     );
   }
 
-  private capture(
-    source: Observable<unknown>,
-    issues: AccountCleanupIssue[],
-    scope: AccountCleanupIssue['scope'],
-    recovery: AccountCleanupIssue['recovery'],
-  ): Observable<void> {
-    return source.pipe(
-      take(1),
-      map(() => void 0),
-      defaultIfEmpty(void 0),
-      catchError(() => {
-        this.addIssue(issues, scope, recovery);
-        return of(void 0);
-      }),
-    );
+  private clearSharedAccountState(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+  ): void {
+    try {
+      this.lifecycle.releaseSharedCaches();
+    } catch {
+      attempt.addIssue('crypto-and-cache', 'restart-application');
+    }
+    this.clearDrafts(attempt);
   }
 
-  private addIssue(
-    issues: AccountCleanupIssue[],
-    scope: AccountCleanupIssue['scope'],
-    recovery: AccountCleanupIssue['recovery'],
+  private clearDrafts(
+    attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
   ): void {
-    if (!issues.some((issue) => issue.scope === scope)) {
-      issues.push({ scope, recovery });
+    try {
+      this.lifecycle.clearDrafts();
+    } catch {
+      attempt.addIssue('drafts', 'retry-sign-out');
     }
+  }
+
+  private capture<TOutcome>(
+    attempt: AccountCleanupAttempt<TOutcome>,
+    source: Observable<unknown>,
+    scope: AccountCleanupScope,
+    recovery: AccountCleanupRecovery,
+    budgetMs: number,
+    onSettled?: () => void,
+  ): Observable<void> {
+    return attempt
+      .step(source, {
+        budgetMs,
+        scope,
+        recovery,
+        fallback: undefined,
+        onSettled,
+      })
+      .pipe(map(() => void 0));
   }
 }

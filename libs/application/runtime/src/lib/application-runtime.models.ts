@@ -1,3 +1,8 @@
+import type {
+  AccountCleanupIssue,
+  AccountCleanupPending,
+} from '@trinity/data-access/accounts';
+
 export const APPLICATION_STARTUP_STAGES = [
   'host-negotiation',
   'preference-hydration',
@@ -141,6 +146,19 @@ export type ApplicationRecoveryOutcome =
       readonly kind: 'unavailable';
       readonly reason:
         'not-blocked' | 'recovery-failed' | 'transition-in-progress';
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'cleanup-in-progress';
+      readonly cleanup: {
+        readonly issues: readonly AccountCleanupIssue[];
+        readonly pending: readonly AccountCleanupPending[];
+      };
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'partial-cleanup';
+      readonly cleanup: { readonly issues: readonly AccountCleanupIssue[] };
     };
 
 export type ApplicationRecoveryAdapterOutcome =
@@ -148,6 +166,19 @@ export type ApplicationRecoveryAdapterOutcome =
   | {
       readonly kind: 'unavailable';
       readonly reason: 'recovery-failed' | 'transition-in-progress';
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'cleanup-in-progress';
+      readonly cleanup: {
+        readonly issues: readonly AccountCleanupIssue[];
+        readonly pending: readonly AccountCleanupPending[];
+      };
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'partial-cleanup';
+      readonly cleanup: { readonly issues: readonly AccountCleanupIssue[] };
     };
 
 export type ApplicationStopOutcome =

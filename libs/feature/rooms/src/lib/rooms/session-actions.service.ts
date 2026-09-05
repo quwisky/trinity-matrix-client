@@ -5,11 +5,16 @@ import {
   WorkspaceApplicationSurfaceService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
-import { AccountRuntimeService } from '@trinity/data-access/accounts';
+import {
+  ACCOUNT_REMOVAL_CONSEQUENCES,
+  AccountRuntimeService,
+} from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { ShellStatusService } from './shell-status.service';
 import { filter, switchMap } from 'rxjs';
+
+export { ACCOUNT_REMOVAL_CONSEQUENCES } from '@trinity/data-access/accounts';
 
 /**
  * Session-level actions reachable from the account menu: switching account, adding one,
@@ -69,9 +74,9 @@ export class SessionActionsService {
   logout(userId: string): void {
     this.alert
       .confirm$({
-        header: 'Sign out',
-        message: 'Sign out of this account on this device?',
-        confirmText: 'Sign out',
+        header: 'Remove account',
+        message: ACCOUNT_REMOVAL_CONSEQUENCES,
+        confirmText: 'Remove account',
         variant: 'danger',
       })
       .pipe(
@@ -80,13 +85,30 @@ export class SessionActionsService {
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe((outcome) => {
+        if (outcome.kind === 'partial-cleanup') {
+          const restartRequired = outcome.issues.some(
+            ({ recovery }) => recovery === 'restart-application',
+          );
+          this.status.showError(
+            restartRequired
+              ? 'Account removal finished with some cleanup incomplete. Restart Trinity before trying again.'
+              : 'Account removal finished with some cleanup incomplete. Retry it to run only safe remaining work.',
+          );
+        }
         if (
           (outcome.kind === 'ready' || outcome.kind === 'partial-cleanup') &&
           outcome.remainingAccountIds.length === 0
         ) {
           void this.router.navigateByUrl('/login', { replaceUrl: true });
-        } else if (outcome.kind !== 'ready') {
-          this.status.showError('Unable to fully sign out right now.');
+        } else if (outcome.kind === 'uncertain-cleanup') {
+          this.status.showError(
+            'Account removal is still running. Closing this message does not cancel it.',
+          );
+        } else if (
+          outcome.kind !== 'ready' &&
+          outcome.kind !== 'partial-cleanup'
+        ) {
+          this.status.showError('Unable to remove this Account right now.');
         }
       });
   }

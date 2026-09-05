@@ -727,6 +727,45 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(resetInstallation).toHaveBeenCalledOnce();
   });
 
+  it('does not turn partial or uncertain destructive cleanup into recovery success', async () => {
+    signOutAccount.mockReturnValueOnce(
+      of({
+        kind: 'partial-cleanup',
+        accountId: '@active:example.org',
+        activeAccountId: null,
+        remainingAccountIds: [],
+        issues: [{ scope: 'matrix-session', recovery: 'retry-sign-out' }],
+      }),
+    );
+    await expect(
+      firstValueFrom(adapter.recover('reauthenticate')),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'partial-cleanup',
+      cleanup: {
+        issues: [{ scope: 'matrix-session', recovery: 'retry-sign-out' }],
+      },
+    });
+
+    resetInstallation.mockReturnValueOnce(
+      of({
+        kind: 'uncertain-cleanup',
+        issues: [],
+        pending: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+      }),
+    );
+    await expect(
+      firstValueFrom(adapter.recover('reset-installation')),
+    ).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'cleanup-in-progress',
+      cleanup: {
+        issues: [],
+        pending: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+      },
+    });
+  });
+
   it('retries only the outstanding entries from a partial preference reset', async () => {
     resetPreferences.mockReturnValueOnce(
       of({

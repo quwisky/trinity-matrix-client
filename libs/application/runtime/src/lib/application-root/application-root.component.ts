@@ -7,20 +7,10 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
-import {
-  TrnAlertService,
-  TrnToasterComponent,
-  TrnToastService,
-} from '@trinity/components/overlay';
+import { TrnToasterComponent } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
-import {
-  RESET_CONFIG_CONFIRMATION_WORD,
-  RESET_CONFIG_CONSEQUENCES,
-  RESET_CONFIG_MISTYPED_MESSAGE,
-  classifyResetConfigIntent,
-} from '@trinity/platform-native';
-import { EMPTY, map, switchMap, take } from 'rxjs';
+import { take } from 'rxjs';
 import {
   CapabilityHealthService,
   type ApplicationCapabilityHealth,
@@ -32,6 +22,7 @@ import type {
 } from '../application-runtime.models';
 import { preferenceFallbackMessage } from '../composition/preference-startup.policy';
 import { VerificationHostComponent } from '../verification-host/verification-host.component';
+import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
 
 @Component({
   selector: 'trn-root',
@@ -49,8 +40,7 @@ import { VerificationHostComponent } from '../verification-host/verification-hos
 export class ApplicationRootComponent {
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly alert = inject(TrnAlertService);
-  private readonly toast = inject(TrnToastService);
+  private readonly recovery = inject(ApplicationRecoveryPresenter);
 
   readonly health = inject(CapabilityHealthService);
   readonly state = this.runtime.state;
@@ -91,32 +81,11 @@ export class ApplicationRootComponent {
 
   recover(): void {
     const recovery = this.blocked()?.failure.recovery;
-    const recovery$ =
-      recovery === 'reset-preferences'
-        ? this.alert
-            .prompt$({
-              header: 'Reset settings to defaults',
-              message: `${RESET_CONFIG_CONSEQUENCES}\n\nType ${RESET_CONFIG_CONFIRMATION_WORD} to confirm.`,
-              placeholder: RESET_CONFIG_CONFIRMATION_WORD,
-              inputLabel: `Type ${RESET_CONFIG_CONFIRMATION_WORD} to confirm`,
-              confirmText: 'Reset settings',
-              cancelText: 'Cancel',
-              variant: 'danger',
-            })
-            .pipe(
-              map(classifyResetConfigIntent),
-              switchMap((intent) => {
-                if (intent === 'mistyped') {
-                  this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, {
-                    duration: 4000,
-                  });
-                }
-                return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
-              }),
-            )
-        : this.runtime.recover();
-
-    recovery$.pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe();
+    if (!recovery) return;
+    this.recovery
+      .confirmAndRecover(recovery)
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => this.recovery.present(outcome));
   }
 }
 

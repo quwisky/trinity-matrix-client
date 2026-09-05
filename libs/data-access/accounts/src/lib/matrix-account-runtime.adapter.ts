@@ -33,6 +33,7 @@ import {
 } from './authenticated-account-grant';
 import type {
   AccountEstablishmentIntent,
+  AccountCleanupIssue,
   AccountRestoreRole,
   AccountSignOutOutcome,
   InstallationResetOutcome,
@@ -240,8 +241,21 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
     return this.lifecycleAdapter.signOutAccount(accountId);
   }
 
+  retrySignOutCleanup(
+    accountId: string,
+    issues: readonly AccountCleanupIssue[],
+  ): Observable<AccountSignOutOutcome> {
+    return this.lifecycleAdapter.retrySignOutCleanup(accountId, issues);
+  }
+
   resetInstallation(): Observable<InstallationResetOutcome> {
     return this.lifecycleAdapter.resetInstallation();
+  }
+
+  retryInstallationCleanup(
+    issues: readonly AccountCleanupIssue[],
+  ): Observable<InstallationResetOutcome> {
+    return this.lifecycleAdapter.retryInstallationCleanup(issues);
   }
 
   private storageFailure(

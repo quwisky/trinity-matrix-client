@@ -79,7 +79,8 @@ The next page explains what those actions prove and what they cannot recover:
 ## Starting over when Trinity will not work
 
 **Erase all data on this device** removes Trinity's local accounts, encryption keys, settings,
-drafts and cached messages, then restarts the app. It requires typing `ERASE`.
+drafts and cached messages, unregisters service workers, and clears offline PWA caches. It requires
+typing `RESET TRINITY`; the shorter `RESET` belongs to the narrower lost-recovery-key flow.
 
 Be online before using this action. It also removes the Web/PWA offline cache; an offline web
 app may not open again until connectivity returns.
@@ -89,6 +90,12 @@ your Matrix account, rooms or messages from the homeserver. It can, however, mak
 permanently unreadable when their keys existed only on this device and no other device or server
 backup can provide them. Signed-in devices can also remain listed on the homeserver when the
 client cannot complete a network sign-out.
+
+After confirmation, leaving the page does not cancel or undo cleanup. If Trinity says cleanup is
+still running, wait and use the action again to observe the same attempt; it will not erase twice.
+If cleanup finishes with residue, follow the displayed restart guidance and use the action again
+only to retry remaining safe local work. Trinity does not repeat homeserver or identity-provider
+effects just because an earlier observation timed out.
 
 This is different from resetting a lost recovery key: that action concerns the encrypted backup
 for an account and uses a separate `RESET` confirmation. Read [lost recovery key](encryption.md#lost-recovery-key)

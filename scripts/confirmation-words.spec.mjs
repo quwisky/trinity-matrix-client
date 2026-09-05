@@ -13,9 +13,8 @@ import { describe, expect, it } from 'vitest';
  * user straight through the larger one, which is precisely what typing a word is meant to
  * prevent.
  *
- * It lives here because the modules are in sibling `type:feature` libraries, and the Nx
- * boundary rules forbid one feature from importing another — correctly, since this is the
- * only thing they have in common. Read as text rather than imported for the same reason.
+ * It lives here because the words belong to separate capability owners. Read as text so
+ * the guard checks their declarations without introducing runtime coupling.
  */
 
 const workspaceRoot = join(import.meta.dirname, '..');
@@ -29,7 +28,7 @@ const GATES = [
   },
   {
     what: 'clear all data',
-    file: 'libs/feature/auth/src/lib/login/clear-all-data.ts',
+    file: 'libs/data-access/accounts/src/lib/account-cleanup-confirmation.ts',
     constant: 'CLEAR_DATA_CONFIRMATION_WORD',
   },
   {
@@ -52,7 +51,7 @@ describe('type-to-confirm words', () => {
   it.each(GATES)('$what defines its word as a string literal', (gate) => {
     // If this fails the constant was refactored (computed, imported, template literal) and
     // the uniqueness check below silently stopped checking anything.
-    expect(readWord(gate)).toMatch(/^[A-Z]+$/);
+    expect(readWord(gate)).toMatch(/^[A-Z]+(?: [A-Z]+)*$/);
   });
 
   it('never reuses a word between two irreversible actions', () => {

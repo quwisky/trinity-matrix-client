@@ -474,31 +474,49 @@ export class LoginPage {
   private beginInstallationReset(): void {
     this.error.set(null);
     this.erasing.set(true);
-    // Deliberately NOT `takeUntilDestroyed`: after cleanup begins, a page transition must
-    // not abandon the restart while storage is already being erased.
-    this.accounts.resetInstallation().subscribe((outcome) => {
-      if (outcome.kind === 'transition-in-progress') {
-        this.erasing.set(false);
-        this.error.set(
-          'Another account change is still in progress. Try again.',
-        );
-        return;
-      }
-      if (outcome.kind === 'partial-cleanup') {
-        // Not surfaced to the user: the wipe finished, and what is left is an orphaned
-        // scope that the typed recovery guidance handles on the next cold start.
-        console.warn(
-          CLEAR_DATA_RESIDUE_WARNING,
-          outcome.issues.map((issue) => ({
-            scope: issue.scope,
-            recovery: issue.recovery,
-          })),
-        );
-      }
-      // `erasing` stays true: the app is about to be replaced, and releasing the button now
-      // would let a second press race the navigation.
-      this.restart.restart();
-    });
+    // Account Runtime owns the accepted attempt. This observer may detach with the page;
+    // cleanup continues and a reopened surface joins or observes the same attempt.
+    this.accounts
+      .resetInstallation()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => {
+        if (outcome.kind === 'transition-in-progress') {
+          this.erasing.set(false);
+          this.error.set(
+            'Another account change is still in progress. Try again.',
+          );
+          return;
+        }
+        if (outcome.kind === 'partial-cleanup') {
+          console.warn(
+            CLEAR_DATA_RESIDUE_WARNING,
+            outcome.issues.map((issue) => ({
+              scope: issue.scope,
+              recovery: issue.recovery,
+            })),
+          );
+          this.erasing.set(false);
+          const restartRequired = outcome.issues.some(
+            ({ recovery }) => recovery === 'restart-application',
+          );
+          this.error.set(
+            restartRequired
+              ? 'Some cleanup could not be completed. Restart Trinity before trying again.'
+              : 'Some cleanup could not be completed. Try again to retry only the remaining safe work.',
+          );
+          return;
+        }
+        if (outcome.kind === 'uncertain-cleanup') {
+          this.erasing.set(false);
+          this.error.set(
+            'Cleanup is still running. Closing this page does not cancel it; try again to check the same attempt.',
+          );
+          return;
+        }
+        // `erasing` stays true: the app is about to be replaced, and releasing the button now
+        // would let a second press race the navigation.
+        this.restart.restart();
+      });
   }
 
   /** Wrap a one-shot action with shared busy/error handling. */
