@@ -22,6 +22,7 @@ describe('Identity production boundary', () => {
 
     for (const module of [
       'identity.service',
+      'identity-lifetime',
       'account-identities.service',
       'identity-presence.service',
       'ignored-users.service',
@@ -136,5 +137,26 @@ describe('Identity production boundary', () => {
     expect(callers).not.toContain('MatrixClientService');
     expect(callers).not.toMatch(/from ['"]matrix-js-sdk/);
     expect(callers).toContain("from '@trinity/data-access/identity'");
+  });
+
+  it('keeps demand-sensitive presence inside the named Identity lifetime', () => {
+    const lifetime = source(
+      'libs/data-access/identity/src/lib/identity-lifetime.ts',
+    );
+    const presence = source(
+      'libs/data-access/identity/src/lib/identity-presence.service.ts',
+    );
+    const session = source(
+      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    );
+    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
+
+    expect(lifetime).toContain('class IdentityLifetime');
+    expect(lifetime).toContain('this.presence.connect()');
+    expect(session).toContain('inject(IdentityLifetime)');
+    expect(page).not.toContain('this.presence.connect()');
+    expect(presence).toMatch(
+      /const state = this\.states\.get\([^)]+\);\s*if \(!state\)/u,
+    );
   });
 });

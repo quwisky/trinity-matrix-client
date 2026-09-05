@@ -22,6 +22,7 @@ describe('Trust production boundary', () => {
 
     for (const module of [
       'trust.service',
+      'trust-lifetime',
       'trust-verification.service',
       'trust-devices.service',
       'trust-operation-error',
@@ -124,5 +125,23 @@ describe('Trust production boundary', () => {
     expect(composition).toContain('provide: TRUST_PROVIDER_RECOVERY');
     expect(composition).toContain('inject(AuthService)');
     expect(feature).not.toContain("from '@trinity/data-access/auth'");
+  });
+
+  it('keeps session projections inside the named Trust lifetime', () => {
+    const lifetime = source('libs/data-access/trust/src/lib/trust-lifetime.ts');
+    const session = source(
+      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    );
+    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
+    const host = source(
+      'libs/application/runtime/src/lib/verification-host/verification-host.component.ts',
+    );
+
+    expect(lifetime).toContain('class TrustLifetime');
+    expect(lifetime).toContain('this.health.connect()');
+    expect(lifetime).toContain('this.verification.connect()');
+    expect(session).toContain('inject(TrustLifetime)');
+    expect(page).not.toContain('this.crypto.connect()');
+    expect(host).not.toContain('this.verification.connect()');
   });
 });

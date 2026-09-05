@@ -21,10 +21,15 @@ import {
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import {
+  IdentityLifetime,
+  IdentityOperationError,
+} from '@trinity/data-access/identity';
+import {
   RoomLibraryLifetime,
   type RoomLibraryLifetimeEvent,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
+import { TrustLifetime, TrustOperationError } from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -33,7 +38,7 @@ import {
   HostUpdatesService,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, Observable, Subject, of } from 'rxjs';
+import { EMPTY, Observable, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
@@ -73,6 +78,8 @@ function setup(
   roomLibrarySession: Observable<RoomLibraryLifetimeEvent> = of({
     kind: 'prepared',
   }),
+  trustSession: Observable<void> = of(void 0),
+  identitySession: Observable<void> = of(void 0),
 ): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
@@ -119,6 +126,8 @@ function setup(
       MockProvider(RoomLibraryLifetime, {
         run: () => roomLibrarySession,
       }),
+      MockProvider(TrustLifetime, { run: () => trustSession }),
+      MockProvider(IdentityLifetime, { run: () => identitySession }),
       MockProvider(HostDeepLinksService, {
         received: deepLinks,
         closeAuthentication,
@@ -250,6 +259,101 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.notificationEvents.observed).toBe(false);
     expect(test.backIntents.observed).toBe(false);
     expect(test.lifecycleEvents.observed).toBe(false);
+  });
+
+  it('retains Trust and Identity lifetimes across readiness until teardown', () => {
+    const trust = new Subject<void>();
+    const identity = new Subject<void>();
+    const readiness = new Subject<void>();
+    const test = setup(undefined, of({ kind: 'prepared' }), trust, identity);
+    const events: unknown[] = [];
+    const lifetime = test.adapter
+      .run(readiness)
+      .subscribe((event) => events.push(event));
+
+    expect(trust.observed).toBe(true);
+    expect(identity.observed).toBe(true);
+    expect(events).toEqual([]);
+
+    trust.next();
+    expect(events).toEqual([]);
+    identity.next();
+    expect(events).toEqual([{ kind: 'prepared' }]);
+
+    readiness.next();
+    expect(trust.observed).toBe(true);
+    expect(identity.observed).toBe(true);
+
+    lifetime.unsubscribe();
+    expect(trust.observed).toBe(false);
+    expect(identity.observed).toBe(false);
+  });
+
+  it('reports optional Trust and Identity failures after readiness', () => {
+    const trustFailure = new TrustOperationError(
+      'refresh-health',
+      'server-failure',
+      'retry',
+      'Trust is temporarily unavailable.',
+    );
+    const identityFailure = new IdentityOperationError(
+      'set-presence',
+      'offline',
+      'retry',
+      'Identity is temporarily unavailable.',
+    );
+    const readiness = new Subject<void>();
+    const test = setup(
+      undefined,
+      of({ kind: 'prepared' }),
+      throwError(() => trustFailure),
+      throwError(() => identityFailure),
+    );
+    const events: unknown[] = [];
+    const lifetime = test.adapter
+      .run(readiness)
+      .subscribe((event) => events.push(event));
+
+    expect(events).toEqual([{ kind: 'prepared' }]);
+
+    readiness.next();
+
+    expect(events).toEqual([
+      { kind: 'prepared' },
+      {
+        kind: 'warning',
+        warning: {
+          stage: 'session',
+          scope: 'trust',
+          diagnostic: { code: 'trust-projection-unavailable' },
+          recovery: 'retry-startup',
+        },
+      },
+      {
+        kind: 'warning',
+        warning: {
+          stage: 'session',
+          scope: 'identity',
+          diagnostic: { code: 'identity-presence-unavailable' },
+          recovery: 'retry-startup',
+        },
+      },
+    ]);
+    lifetime.unsubscribe();
+  });
+
+  it('keeps broken lifetime adapters on the Observable error channel', () => {
+    const failure = new Error('broken Trust lifetime adapter');
+    const error = vi.fn();
+    const test = setup(
+      undefined,
+      of({ kind: 'prepared' }),
+      throwError(() => failure),
+    );
+
+    test.adapter.run(of(void 0)).subscribe({ error });
+
+    expect(error).toHaveBeenCalledWith(failure);
   });
 
   it('forwards valid SSO and OIDC callbacks and ignores unrelated links', async () => {

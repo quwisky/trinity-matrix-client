@@ -39,11 +39,9 @@ import {
 } from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
-import { TrustService } from '@trinity/data-access/trust';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackService } from '@trinity/data-access/media';
 import { RoomNotificationsService } from '@trinity/data-access/notifications';
-import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
   RoomActionPermissionsService,
   RoomMembersService,
@@ -272,8 +270,6 @@ export class RoomsPage implements OnInit, OnDestroy {
   private readonly imagePackService = inject(ImagePackService);
   readonly flags = inject(FeatureFlagsService);
   private readonly matrix = inject(MatrixClientService);
-  private readonly crypto = inject(TrustService);
-  private readonly presence = inject(IdentityPresenceService);
   private readonly roomPermissions = inject(RoomActionPermissionsService);
   private readonly roomMembers = inject(RoomMembersService);
   private readonly roomNotifications = inject(RoomNotificationsService);
@@ -444,10 +440,8 @@ export class RoomsPage implements OnInit, OnDestroy {
       : null;
   }
 
-  /** Temporary route wiring for session lifetimes not yet moved into Application Runtime. */
+  /** Temporary route wiring for the remaining session lifetimes. */
   ngOnInit(): void {
-    this.crypto.connect();
-    this.presence.connect(); // live online-status for member avatars
     this.roomNotifications.connect(); // live per-room push rules from every account
     this.roomPermissions.connect(); // live power/membership gates for room actions
     this.roomMembers.connect(); // authoritative Room Administration member summaries
@@ -465,9 +459,9 @@ export class RoomsPage implements OnInit, OnDestroy {
   /**
    * Only the open room's panes are torn down here.
    *
-   * The remaining five `ngOnInit` connections are root-scoped compatibility lifetimes until
-   * Trust, Identity, and Notification preparation moves into Application Runtime. Room Library
-   * is already Runtime-owned and is not started or stopped by this route.
+   * The remaining three `ngOnInit` connections are root-scoped compatibility lifetimes until
+   * Notification and Room Administration preparation moves into Application Runtime. Room
+   * Library, Trust, and Identity are Runtime-owned and are not started or stopped by this route.
    */
   ngOnDestroy(): void {
     this.backRegistration();

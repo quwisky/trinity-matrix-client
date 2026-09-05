@@ -22,9 +22,14 @@ import {
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import {
+  IdentityLifetime,
+  IdentityOperationError,
+} from '@trinity/data-access/identity';
+import {
   RoomLibraryLifetime,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
+import { TrustLifetime, TrustOperationError } from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -37,6 +42,7 @@ import {
   EMPTY,
   Observable,
   catchError,
+  combineLatest,
   concat,
   concatMap,
   defer,
@@ -49,6 +55,7 @@ import {
   switchMap,
   take,
   tap,
+  throwError,
 } from 'rxjs';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
@@ -79,27 +86,74 @@ export class TrinityApplicationSessionAdapter {
   );
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly roomLibrary = inject(RoomLibraryLifetime);
+  private readonly trust = inject(TrustLifetime);
+  private readonly identity = inject(IdentityLifetime);
 
   run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
-    return this.roomLibrary.run().pipe(
-      switchMap((event) =>
-        event.kind === 'blocked'
+    return combineLatest({
+      roomLibrary: this.roomLibrary.run(),
+      trustWarning: this.optionalLifetime(
+        this.trust.run(),
+        'trust',
+        'trust-projection-unavailable',
+        (error) => error instanceof TrustOperationError,
+      ),
+      identityWarning: this.optionalLifetime(
+        this.identity.run(),
+        'identity',
+        'identity-presence-unavailable',
+        (error) => error instanceof IdentityOperationError,
+      ),
+    }).pipe(
+      switchMap(({ roomLibrary, trustWarning, identityWarning }) =>
+        roomLibrary.kind === 'blocked'
           ? of({
               kind: 'blocked',
               recovery: 'retry-startup',
-              diagnostic: event.diagnostic,
+              diagnostic: roomLibrary.diagnostic,
             } as const)
           : concat(
               of({ kind: 'prepared' } as const),
               readiness.pipe(
                 take(1),
-                switchMap(() => this.runLive()),
-                map((warning): ApplicationSessionEvent => ({
-                  kind: 'warning',
-                  warning,
-                })),
+                switchMap(() =>
+                  concat(
+                    from([trustWarning, identityWarning]).pipe(
+                      filter(
+                        (warning): warning is ApplicationRuntimeWarning =>
+                          warning !== null,
+                      ),
+                      map((warning): ApplicationSessionEvent => ({
+                        kind: 'warning',
+                        warning,
+                      })),
+                    ),
+                    this.runLive().pipe(
+                      map((warning): ApplicationSessionEvent => ({
+                        kind: 'warning',
+                        warning,
+                      })),
+                    ),
+                  ),
+                ),
               ),
             ),
+      ),
+    );
+  }
+
+  private optionalLifetime(
+    lifetime: Observable<void>,
+    scope: 'trust' | 'identity',
+    code: string,
+    isOperational: (error: unknown) => boolean,
+  ): Observable<ApplicationRuntimeWarning | null> {
+    return lifetime.pipe(
+      map(() => null),
+      catchError((error: unknown) =>
+        isOperational(error)
+          ? of(warning(scope, code))
+          : throwError(() => error),
       ),
     );
   }

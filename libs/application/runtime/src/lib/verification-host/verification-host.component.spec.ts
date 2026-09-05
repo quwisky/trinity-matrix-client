@@ -5,10 +5,6 @@ import {
   TrustVerificationService,
   type VerificationView,
 } from '@trinity/data-access/trust';
-import {
-  MatrixClientService,
-  type SyncState,
-} from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { Observable, of, Subject } from 'rxjs';
@@ -35,14 +31,12 @@ function incoming(): VerificationView {
 async function setup(
   verify: () => Observable<unknown> = () => of(class StubVerify {}),
 ) {
-  const syncState = signal<SyncState | null>(null);
   const active = signal<VerificationView | null>(null);
   const closed = new Subject<void>();
   const close = vi.fn();
   const open = vi.fn().mockReturnValue({ closed, close });
   const { fixture } = await render(VerificationHostComponent, {
     providers: [
-      MockProvider(MatrixClientService, { syncState }),
       MockProvider(TrustVerificationService, { active }),
       MockProvider(TrnDialogService, { open }),
       {
@@ -56,7 +50,6 @@ async function setup(
   });
   return {
     fixture,
-    syncState,
     active,
     open,
     close,
@@ -65,14 +58,10 @@ async function setup(
 }
 
 describe('VerificationHostComponent', () => {
-  it('connects only once a Matrix session is live', async () => {
-    const { fixture, syncState, connect } = await setup();
+  it('does not start the session-owned verification projection', async () => {
+    const { connect } = await setup();
+
     expect(connect).not.toHaveBeenCalled();
-
-    syncState.set('PREPARED' as SyncState);
-    fixture.detectChanges();
-
-    expect(connect).toHaveBeenCalled();
   });
 
   it('presents incoming and cross-user verification outside routed flows', async () => {

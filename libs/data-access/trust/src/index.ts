@@ -1,4 +1,5 @@
 export * from './lib/trust.service';
+export * from './lib/trust-lifetime';
 export * from './lib/trust-verification.service';
 export * from './lib/trust-devices.service';
 export * from './lib/trust-operation-error';
