@@ -48,6 +48,17 @@ _Avoid_: Room Library, moderation service
 
 ## Application
 
+**Startup preparation**:
+The bounded Application Runtime work that negotiates the Host contract, restores Accounts,
+prepares the required Room Library, repairs Workspace to a safe destination, and acknowledges
+final readiness before live application work opens.
+_Avoid_: Session startup, loading screen
+
+**Capability health**:
+The current availability of one capability operation in an opaque Account or Conversation
+context, independent from whether its preparation completed or its lifetime remains owned.
+_Avoid_: Global health, error log
+
 **Workspace**:
 The semantic presentation state that says which Account, Space, Room, panes, and application surfaces a person is using.
 _Avoid_: Router state, layout state, shell

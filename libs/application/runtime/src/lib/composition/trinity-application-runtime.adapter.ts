@@ -14,6 +14,7 @@ import type {
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
 } from '../application-runtime.models';
+import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
 import {
   AppearanceEffects,
   AppearancePreferences,
@@ -44,7 +45,9 @@ import {
 } from '@trinity/runtime/host';
 import {
   Observable,
+  TimeoutError,
   catchError,
+  defaultIfEmpty,
   defer,
   filter,
   forkJoin,
@@ -52,8 +55,11 @@ import {
   ignoreElements,
   map,
   of,
+  switchMap,
   take,
+  timeout,
 } from 'rxjs';
+import { AccountStartupHealthService } from './account-startup-health.service';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 
 const ready = (
@@ -99,10 +105,12 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly pushGateway = inject(PushGatewayService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly storagePersistence = inject(StoragePersistenceService);
+  private readonly accountHealth = inject(AccountStartupHealthService);
   private manifest: HostCapabilityManifest | null = null;
   private accountRecoveryId: string | null = null;
   private workspaceNavigationStarted = false;
   private workspaceUrl: string | null = null;
+  private workspaceNavigationGeneration = 0;
 
   negotiateHost(): Observable<ApplicationStartupStageOutcome> {
     return this.host.manifest().pipe(
@@ -180,6 +188,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   restoreAccounts(): Observable<ApplicationStartupStageOutcome> {
     return this.accounts.restoreSavedAccounts().pipe(
       map((result) => {
+        this.accountHealth.report(result.accounts);
         this.accountRecoveryId =
           result.kind === 'active-account-unavailable'
             ? result.activeAccountId
@@ -189,13 +198,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           case 'restored':
             return ready();
           case 'restored-with-inactive-failures':
-            return ready([
-              warning(
-                'account-restoration',
-                'accounts',
-                'inactive-account-restore-failed',
-              ),
-            ]);
+            return ready();
           case 'active-account-unavailable':
             return {
               kind: 'blocked',
@@ -235,71 +238,111 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         badgeSupport.reason !== 'not-implemented'
           ? [warning('session-capabilities', 'badge', 'badge-unavailable')]
           : [];
+      const ordering = APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'];
+      const persistence =
+        APPLICATION_STARTUP_PRODUCER_POLICIES['browser-storage-persistence'];
       return forkJoin({
-        ordering: this.spaceOrder.hydrateKnownAccounts().pipe(map(() => null)),
-        persistence: this.storagePersistence
-          .requestPersistence()
-          .pipe(map(() => null)),
+        ordering: defer(() => this.spaceOrder.hydrateKnownAccounts()).pipe(
+          timeout({ first: ordering.budgetMs }),
+          map(() => [] as readonly ApplicationRuntimeWarning[]),
+          defaultIfEmpty([
+            warning(
+              'session-capabilities',
+              'workspace',
+              'room-order-hydration-failed',
+            ),
+          ]),
+          catchError((error: unknown) =>
+            of([
+              warning(
+                'session-capabilities',
+                'workspace',
+                error instanceof TimeoutError
+                  ? ordering.timeoutCode
+                  : 'room-order-hydration-failed',
+              ),
+            ]),
+          ),
+        ),
+        persistence: defer(() =>
+          this.storagePersistence.requestPersistence(),
+        ).pipe(
+          timeout({ first: persistence.budgetMs }),
+          map((persisted) =>
+            persisted
+              ? ([] as readonly ApplicationRuntimeWarning[])
+              : [
+                  warning(
+                    'session-capabilities',
+                    'storage',
+                    'storage-persistence-denied',
+                  ),
+                ],
+          ),
+          defaultIfEmpty([
+            warning(
+              'session-capabilities',
+              'storage',
+              'storage-persistence-unavailable',
+            ),
+          ]),
+          catchError((error: unknown) =>
+            of([
+              warning(
+                'session-capabilities',
+                'storage',
+                error instanceof TimeoutError
+                  ? persistence.timeoutCode
+                  : 'storage-persistence-unavailable',
+              ),
+            ]),
+          ),
+        ),
       }).pipe(
-        map(() => ready(badgeWarning)),
-        catchError(() =>
-          of({
-            kind: 'blocked',
-            recovery: 'retry-startup',
-            diagnostic: { code: 'session-capability-establishment-failed' },
-          } as const),
+        map(({ ordering, persistence }) =>
+          ready([...badgeWarning, ...ordering, ...persistence]),
         ),
       );
     });
   }
 
   restoreWorkspace(): Observable<ApplicationStartupStageOutcome> {
-    return new Observable((subscriber) => {
-      const settled = this.router.events
-        .pipe(
-          filter(
-            (event) =>
-              event instanceof NavigationEnd ||
-              event instanceof NavigationError ||
-              event instanceof NavigationSkipped,
-          ),
-          take(1),
-          map((event) =>
-            event instanceof NavigationEnd || event instanceof NavigationSkipped
-              ? ready()
-              : ({
-                  kind: 'blocked',
-                  recovery: 'retry-startup',
-                  diagnostic: { code: 'workspace-navigation-failed' },
-                } as const),
-          ),
-        )
-        .subscribe(subscriber);
-      this.workspaceUrl = this.location.path(true) || this.workspaceUrl || '/';
-      let navigation: { unsubscribe(): void } | null = null;
+    return defer(() => {
+      this.workspaceUrl ??= this.location.path(true) || '/';
+      const generation = ++this.workspaceNavigationGeneration;
+      let navigation: Observable<boolean>;
       if (!this.workspaceNavigationStarted) {
         this.workspaceNavigationStarted = true;
-        this.router.initialNavigation();
+        navigation = this.boundInitialNavigation(
+          this.initialWorkspaceNavigation(),
+        );
       } else {
-        navigation = from(
-          this.router.navigateByUrl(this.workspaceUrl, { replaceUrl: true }),
-        )
-          .pipe(catchError(() => of(false)))
-          .subscribe((navigated) => {
-            if (!navigated && !subscriber.closed) {
-              subscriber.next({
-                kind: 'blocked',
-                recovery: 'retry-startup',
-                diagnostic: { code: 'workspace-navigation-failed' },
-              });
-              subscriber.complete();
-            }
-          });
+        navigation = this.navigateWorkspace(this.workspaceUrl, generation);
       }
-      return () => {
-        settled.unsubscribe();
-        navigation?.unsubscribe();
-      };
+      return navigation.pipe(
+        take(1),
+        switchMap((navigated) =>
+          navigated
+            ? of(ready())
+            : this.navigateWorkspace('/', generation).pipe(
+                map((fallback) =>
+                  fallback
+                    ? ready([
+                        warning(
+                          'workspace-restoration',
+                          'workspace',
+                          'workspace-safe-root-fallback',
+                        ),
+                      ])
+                    : ({
+                        kind: 'blocked',
+                        recovery: 'retry-startup',
+                        diagnostic: { code: 'workspace-navigation-failed' },
+                      } as const),
+                ),
+              ),
+        ),
+      );
     });
   }
 
@@ -370,5 +413,63 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
 
   runPreferenceLifetime(): Observable<ApplicationRuntimeWarning> {
     return this.appearanceEffects.run().pipe(ignoreElements());
+  }
+
+  private initialWorkspaceNavigation(): Observable<boolean> {
+    return new Observable<boolean>((subscriber) => {
+      const events = this.router.events
+        .pipe(
+          filter(
+            (event) =>
+              event instanceof NavigationEnd ||
+              event instanceof NavigationError ||
+              event instanceof NavigationSkipped,
+          ),
+          take(1),
+          map(
+            (event) =>
+              event instanceof NavigationEnd ||
+              event instanceof NavigationSkipped,
+          ),
+        )
+        .subscribe(subscriber);
+      try {
+        this.router.initialNavigation();
+      } catch {
+        subscriber.next(false);
+        subscriber.complete();
+      }
+      return () => events.unsubscribe();
+    });
+  }
+
+  private navigateWorkspace(
+    url: string,
+    generation: number,
+  ): Observable<boolean> {
+    return defer(() =>
+      from(this.router.navigateByUrl(url, { replaceUrl: true })),
+    ).pipe(
+      timeout({
+        first: APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+        with: () => of(false),
+      }),
+      map(
+        (navigated) =>
+          generation === this.workspaceNavigationGeneration && navigated,
+      ),
+      catchError(() => of(false)),
+    );
+  }
+
+  private boundInitialNavigation(
+    navigation: Observable<boolean>,
+  ): Observable<boolean> {
+    return navigation.pipe(
+      timeout({
+        first: APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+        with: () => of(false),
+      }),
+    );
   }
 }

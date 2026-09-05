@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Application startup now applies one bounded required-producer policy from Host negotiation
+  through final readiness. Room Library preparation cannot wait indefinitely, optional session
+  work settles independently, failed saved navigation falls back to a safe root, and the overall
+  watchdog rejects obsolete late results without timing healthy retained ownership. Inactive
+  Accounts recover in independent opaque scopes without rerunning healthy Accounts, while denied
+  browser persistence continues with an explicit local-data eviction-risk warning.
+
 - Application Runtime now tracks scoped Identity presence health separately from preparation
   and subscription ownership. Unavailable presence is unknown, and its visible retry preserves
   the Conversation. Independent Account scopes can recover without blocking one another.

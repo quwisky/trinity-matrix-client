@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import {
+  EMPTY,
   Observable,
   ReplaySubject,
   Subject,
@@ -24,8 +25,13 @@ import {
 import { CapabilityHealthService } from './capability-health.service';
 import { APPLICATION_RUNTIME_ADAPTER } from './application-runtime.adapter';
 import {
+  APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
+  requiredStartupPolicyForStage,
+} from './application-startup.policy';
+import {
   APPLICATION_STARTUP_STAGES,
   type ApplicationRecoveryOutcome,
+  type ApplicationSessionEvent,
   type ApplicationRuntimeState,
   type ApplicationRuntimeWarning,
   type ApplicationStartOutcome,
@@ -187,8 +193,28 @@ export class ApplicationRuntimeService {
       this.health.reset();
       return defer(() =>
         this.runStage(attempt, 0, [], onPreferencesHydrated),
-      ).pipe(catchError(() => of(this.unknownFailure(attempt))));
+      ).pipe(
+        timeout({
+          first: APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
+          with: () => of(this.watchdogFailure(attempt)),
+        }),
+        catchError(() => of(this.unknownFailure(attempt))),
+      );
     });
+  }
+
+  private watchdogFailure(attempt: number): ApplicationStartOutcome {
+    const current = this.runtimeState();
+    const stage =
+      current.phase === 'starting' ? current.stage : 'session-capabilities';
+    const warnings = 'warnings' in current ? current.warnings : [];
+    const failure = {
+      stage,
+      recovery: 'retry-startup',
+      diagnostic: { code: 'application-startup-watchdog-expired' },
+    } as const;
+    this.runtimeState.set({ phase: 'blocked', attempt, failure, warnings });
+    return { kind: 'blocked', attempt, failure, warnings };
   }
 
   private unknownFailure(attempt: number): ApplicationStartOutcome {
@@ -227,7 +253,7 @@ export class ApplicationRuntimeService {
         onPreferencesHydrated,
       );
     }
-    return this.stageCommand(stage).pipe(
+    return this.boundRequiredStage(stage, this.stageCommand(stage)).pipe(
       take(1),
       throwIfEmpty(
         () =>
@@ -254,7 +280,10 @@ export class ApplicationRuntimeService {
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
     const readiness = new ReplaySubject<void>(1);
-    return this.adapter.runSession(readiness).pipe(
+    return this.boundSessionPreparation(
+      stage,
+      this.adapter.runSession(readiness),
+    ).pipe(
       connect((events) =>
         events.pipe(
           take(1),
@@ -299,15 +328,31 @@ export class ApplicationRuntimeService {
                 if (outcome.kind === 'blocked') return of(outcome);
                 return merge(
                   events.pipe(
-                    tap((sessionEvent) => {
-                      if (sessionEvent.kind !== 'warning') {
-                        throw new Error(
-                          'Application Runtime session prepared more than once.',
+                    switchMap((sessionEvent) => {
+                      if (sessionEvent.kind === 'warning') {
+                        this.recordSessionWarning(sessionEvent.warning);
+                        return EMPTY;
+                      }
+                      if (sessionEvent.kind === 'blocked') {
+                        const current = this.runtimeState();
+                        const currentWarnings =
+                          'warnings' in current ? current.warnings : warnings;
+                        return this.advanceStage(
+                          attempt,
+                          index,
+                          stage,
+                          currentWarnings,
+                          sessionEvent,
+                          onPreferencesHydrated,
                         );
                       }
-                      this.recordSessionWarning(sessionEvent.warning);
+                      return throwError(
+                        () =>
+                          new Error(
+                            'Application Runtime session prepared more than once.',
+                          ),
+                      );
                     }),
-                    ignoreElements(),
                   ),
                   defer(() => {
                     readiness.next();
@@ -379,6 +424,44 @@ export class ApplicationRuntimeService {
       readiness: () => this.adapter.awaitReadiness(),
     };
     return defer(commands[stage]);
+  }
+
+  private boundRequiredStage(
+    stage: ApplicationStartupStage,
+    command: Observable<ApplicationStartupStageOutcome>,
+  ): Observable<ApplicationStartupStageOutcome> {
+    const policy = requiredStartupPolicyForStage(stage);
+    if (!policy || stage === 'session-capabilities') return command;
+    return command.pipe(
+      timeout({
+        first: policy.budgetMs,
+        with: () =>
+          of({
+            kind: 'blocked',
+            recovery: 'retry-startup',
+            diagnostic: { code: policy.timeoutCode },
+          } as const),
+      }),
+    );
+  }
+
+  private boundSessionPreparation(
+    stage: ApplicationStartupStage,
+    session: Observable<ApplicationSessionEvent>,
+  ): Observable<ApplicationSessionEvent> {
+    const policy = requiredStartupPolicyForStage(stage);
+    if (!policy) return session;
+    return session.pipe(
+      timeout({
+        first: policy.budgetMs,
+        with: () =>
+          of({
+            kind: 'blocked',
+            recovery: 'retry-startup',
+            diagnostic: { code: policy.timeoutCode },
+          } as const),
+      }),
+    );
   }
 
   private recordSessionWarning(warning: ApplicationRuntimeWarning): void {

@@ -8,6 +8,7 @@ import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import type { ApplicationRuntimeState } from '../application-runtime.models';
 import { ApplicationRuntimeService } from '../application-runtime.service';
+import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
 
 describe('ApplicationRootComponent', () => {
@@ -22,7 +23,14 @@ describe('ApplicationRootComponent', () => {
         MockProvider(TrnDialogService),
       ],
     });
-    return { ...rendered, state, recover };
+    return {
+      ...rendered,
+      state,
+      recover,
+      health: rendered.fixture.debugElement.injector.get(
+        CapabilityHealthService,
+      ),
+    };
   }
 
   it('presents runtime progress while startup is active', async () => {
@@ -102,6 +110,11 @@ describe('ApplicationRootComponent', () => {
           scope: 'room-administration',
           diagnostic: { code: 'room-administration-projection-unavailable' },
         },
+        {
+          stage: 'session-capabilities',
+          scope: 'storage',
+          diagnostic: { code: 'storage-persistence-denied' },
+        },
       ],
     });
 
@@ -119,9 +132,45 @@ describe('ApplicationRootComponent', () => {
     expect(warnings.textContent).toContain(
       'Room permissions and member lists may be unavailable.',
     );
+    expect(warnings.textContent).toContain(
+      'Browser storage may be evicted; Trinity will keep using best-effort local storage.',
+    );
     expect(warnings.getAttribute('aria-label')).toBe(
       'Application runtime warnings',
     );
     expect(warnings.tabIndex).toBe(0);
+  });
+
+  it('presents an opaque independently recoverable background Account scope', async () => {
+    const { fixture, health, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+    });
+    const retry = vi.fn(() => of({ kind: 'success' as const }));
+    health.report(
+      {
+        capability: 'accounts',
+        operation: 'restore',
+        context: Symbol('@private:example.org'),
+        generation: 1,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'account-restore-transient-network',
+      },
+      retry,
+    );
+    fixture.detectChanges();
+
+    const status = getByTestId('app-capability-health');
+    expect(status.textContent).toContain(
+      'A background account is unavailable.',
+    );
+    expect(status.textContent).not.toContain('@private:example.org');
+    getByTestId('app-capability-retry').click();
+    fixture.detectChanges();
+    expect(retry).toHaveBeenCalledOnce();
   });
 });

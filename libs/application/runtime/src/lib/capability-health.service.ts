@@ -1,7 +1,3 @@
-import type {
-  IdentityPresenceHealth,
-  IdentityPresenceIncident,
-} from '@trinity/data-access/identity';
 import { Injectable, computed, signal } from '@angular/core';
 import type { Observable } from 'rxjs';
 import {
@@ -19,11 +15,13 @@ import {
 } from 'rxjs';
 import type {
   CapabilityContext,
+  CapabilityHealthFact,
+  CapabilityIncident,
   CapabilityRecovery,
   CapabilityRecoveryOutcome,
 } from '@trinity/runtime/projection';
 
-export interface ApplicationCapabilityHealth extends IdentityPresenceHealth {
+export interface ApplicationCapabilityHealth extends CapabilityHealthFact {
   readonly reference: string;
   readonly occurrence: number;
   readonly severity: 'none' | 'limited' | 'blocking';
@@ -64,9 +62,7 @@ export class CapabilityHealthService {
   private readonly recoveringReferences = signal<ReadonlySet<string>>(
     new Set(),
   );
-  private readonly incidentState = signal<readonly IdentityPresenceIncident[]>(
-    [],
-  );
+  private readonly incidentState = signal<readonly CapabilityIncident[]>([]);
   private readonly stopped = new Subject<void>();
   private nextReference = 0;
   private epoch = 0;
@@ -77,7 +73,7 @@ export class CapabilityHealthService {
   );
   readonly incidents = this.incidentState.asReadonly();
 
-  report(fact: IdentityPresenceHealth, recovery: CapabilityRecovery): void {
+  report(fact: CapabilityHealthFact, recovery: CapabilityRecovery): void {
     const operations =
       this.registrations.get(fact.context) ?? new Map<string, Registration>();
     const key = `${fact.capability}:${fact.operation}`;
@@ -135,7 +131,7 @@ export class CapabilityHealthService {
     this.publish();
   }
 
-  incident(incident: IdentityPresenceIncident): void {
+  incident(incident: CapabilityIncident): void {
     this.incidentState.update((entries) => [
       ...entries.slice(-19),
       {

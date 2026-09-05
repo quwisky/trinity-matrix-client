@@ -1,6 +1,14 @@
 import { TestBed } from '@angular/core/testing';
-import { Observable, Subject, firstValueFrom, of } from 'rxjs';
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { NEVER, Observable, Subject, firstValueFrom, of } from 'rxjs';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import {
   APPLICATION_RUNTIME_ADAPTER,
   type ApplicationRuntimeAdapter,
@@ -12,6 +20,10 @@ import type {
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
 import { ApplicationRuntimeService } from './application-runtime.service';
+import {
+  APPLICATION_STARTUP_PRODUCER_POLICIES,
+  APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
+} from './application-startup.policy';
 
 const ready = (): ApplicationStartupStageOutcome => ({ kind: 'ready' });
 
@@ -84,6 +96,92 @@ describe('ApplicationRuntimeService', () => {
       ],
     });
     runtime = TestBed.inject(ApplicationRuntimeService);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('times out a required stage and rejects its obsolete late result', async () => {
+    vi.useFakeTimers();
+    const lateHost = new Subject<ApplicationStartupStageOutcome>();
+    vi.mocked(adapter.negotiateHost).mockReturnValueOnce(lateHost);
+    const lifetime = runtime.run().subscribe();
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['host-contract'].budgetMs,
+    );
+
+    const blocked = runtime.state();
+    expect(blocked).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'host-negotiation',
+        diagnostic: { code: 'host-negotiation-timeout' },
+      },
+    });
+    lateHost.next({ kind: 'ready' });
+    lateHost.complete();
+    expect(runtime.state()).toBe(blocked);
+    expect(adapter.hydratePreferences).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('uses the overall watchdog for an unbounded compatible stage', async () => {
+    vi.useFakeTimers();
+    vi.mocked(adapter.hydratePreferences).mockReturnValueOnce(NEVER);
+    const lifetime = runtime.run().subscribe();
+
+    await vi.advanceTimersByTimeAsync(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS);
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'preference-hydration',
+        diagnostic: { code: 'application-startup-watchdog-expired' },
+      },
+    });
+    expect(adapter.restoreAccounts).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('does not apply preparation deadlines to the retained healthy session', async () => {
+    vi.useFakeTimers();
+    const lifetime = runtime.run().subscribe();
+    expect(runtime.state().phase).toBe('ready');
+    expect(session.observed).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_WATCHDOG_BUDGET_MS * 2,
+    );
+
+    expect(runtime.state().phase).toBe('ready');
+    expect(session.observed).toBe(true);
+    lifetime.unsubscribe();
+  });
+
+  it('classifies a readiness deadline without retaining the prepared session', async () => {
+    vi.useFakeTimers();
+    vi.mocked(adapter.awaitReadiness).mockReturnValueOnce(NEVER);
+    const lifetime = runtime.run().subscribe();
+    expect(runtime.state()).toMatchObject({
+      phase: 'starting',
+      stage: 'readiness',
+    });
+    expect(session.observed).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.readiness.budgetMs,
+    );
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'readiness',
+        diagnostic: { code: 'application-readiness-timeout' },
+      },
+    });
+    expect(session.observed).toBe(false);
+    expect(sessionStopped).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
   });
 
   it('classifies an unknown late adapter fault and recovers through the same runtime owner', async () => {
@@ -287,6 +385,43 @@ describe('ApplicationRuntimeService', () => {
       warnings: [expect.objectContaining({ scope: 'badge' })],
     });
     expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('turns a post-readiness required foundation failure into its typed blocker', async () => {
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+    expect(runtime.state().phase).toBe('ready');
+
+    session.next({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'room-library-projection-preparation-failed' },
+    });
+    session.complete();
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'session-capabilities',
+        diagnostic: { code: 'room-library-projection-preparation-failed' },
+      },
+    });
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual([
+      'ready',
+      'blocked',
+    ]);
+    expect(sessionStopped).toHaveBeenCalledOnce();
+    expect(lifetime.closed).toBe(false);
+    session = new Subject<ApplicationSessionEvent>();
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 });
+    expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 

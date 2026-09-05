@@ -81,6 +81,47 @@ projections. It publishes prepared only after its room, Space, invitation,
 hierarchy, and selected projections are ready. If it blocks, Workspace does not
 restore a destination against an unprepared library.
 
+## Required startup policy
+
+Application Runtime has one producer-policy ledger for Host contract negotiation, Account
+registry restoration, required Room Library preparation, optional Room ordering and browser
+storage persistence, Workspace restoration, and final Angular readiness. Each preparation
+operation has a documented first-result budget and an automatic retry limit of zero. The
+overall watchdog is the sum of the longest required path, the optional initializer allowance,
+and the temporary preference-migration allowance. A timeout stops observation; it does not
+claim to cancel an underlying Promise. Attempt and Workspace-navigation generations reject
+obsolete completions.
+
+| Producer                    | Required | First-result budget | Automatic retries |
+| --------------------------- | -------- | ------------------- | ----------------- |
+| Host contract               | Yes      | 10 seconds          | 0                 |
+| Account registry            | Yes      | 150 seconds         | 0                 |
+| Room Library                | Yes      | 15 seconds          | 0                 |
+| Room ordering               | No       | 5 seconds           | 0                 |
+| Browser storage persistence | No       | 2 seconds           | 0                 |
+| Workspace                   | Yes      | 15 seconds          | 0                 |
+| Final readiness             | Yes      | 30 seconds          | 0                 |
+
+The complete startup watchdog is 255 seconds: 220 seconds for the required path, 30 seconds
+for the preference stage that its own migration will refine, and 5 seconds for the longest
+optional initializer. Account Runtime also keeps its existing 30-second per-Account deadline
+and concurrency of four inside the Account-registry budget. Workspace gives the saved destination
+and safe root up to 7 seconds each inside its 15-second stage budget.
+
+The stage order is strict. A Host contract or required Active Account failure blocks before
+Room Library work. Room Library must prepare before Workspace restores. An empty Account scope
+is valid dormant preparation. Failed saved navigation tries `/` with replace-history semantics;
+only failure of both the requested destination and safe root blocks Workspace. Optional Room
+ordering settles to its default, and denied or unavailable browser persistence keeps best-effort
+storage while warning that local data is at greater eviction risk.
+
+Only Room Library gates the session preparation event. Trust, Identity, Notifications, and Room
+Administration lifetimes are subscribed and retained independently, but an unsettled optional
+lifetime cannot hold startup open. First-result deadlines never apply to a healthy retained
+lifetime. A required Room Library failure after readiness closes the session owner and exposes
+its typed startup recovery; retry recreates that ownership without restarting the healthy
+preference lifetime.
+
 ## Capability health and targeted recovery
 
 Application Runtime retains one session subscription. Identity emits typed health facts within
@@ -89,7 +130,7 @@ current availability. No Account or Room demand is expected dormancy. Projection
 `observe` is a read-only stream of current reconciliation generations, including failure and
 release; it adds no subscription owner and does not export raw adapter errors.
 
-Identity presence is the first migrated producer. Its Account contexts are opaque symbols held
+Identity presence is the first migrated session producer. Its Account contexts are opaque symbols held
 inside Identity, and its generation changes when demand or retry replaces ownership. Account
 switches invalidate recovery immediately, before effects flush. A reconciliation failure leaves
 ownership retained, while a completed or released projection reports missing ownership. Explicit
@@ -113,9 +154,16 @@ online/offline badge and sort after known presence. The existing root surface di
 consequence and a scoped retry while preserving the Conversation and unrelated lifetimes.
 Unknown Application Runtime adapter faults become safe blockers with executable startup retry.
 
+Saved-Account restoration is the first startup producer using the same health contract. A failed
+inactive Account becomes one opaque limited scope while the Active Account, unrelated Accounts,
+Workspace, and open Conversations remain usable. Its retry calls Account Runtime for that exact
+inactive Account, joins duplicates for the same Account, and can run concurrently with another
+inactive-Account retry. A required Active Account or registry failure remains a startup blocker.
+
 ### Diagnostic privacy
 
-Health facts copy only typed fields. Identity's concrete Account IDs stay inside its producer;
+Health facts copy only typed fields. Identity's and startup composition's concrete Account IDs
+stay inside their producers;
 no Account ID, personal label, token, preference value, exception or server response enters the
 health ledger. On-screen Account identity is a separate future presentation concern.
 `CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
@@ -131,6 +179,8 @@ also prevents Identity from returning to permanent warning publication. Existing
 coverage remains in the Application Runtime adapter and root tests. The removal owner is
 [Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
 Later producer slices shrink this ledger; final System Status presentation removes it.
+Required startup producers already have a compatibility count of zero: their blockers or scoped
+health outcomes come from the producer policy rather than a second warning orchestrator.
 
 ## Account lifecycle
 
@@ -147,6 +197,12 @@ Each account reports ready, reauthentication-required, timed-out, or a typed
 failure. The overall result distinguishes no saved accounts, unavailable local
 state, an unavailable active account, and an active account restored while
 inactive accounts failed.
+
+A failed inactive Account can be retried through one exact cold command. Repeated recovery for
+that Account joins the same attempt; different inactive Accounts may recover concurrently. The
+retry uses the same per-Account deadline and updates the settled restoration result without
+rerunning the healthy Active Account or other siblings. Account establishment, switching,
+sign-out, installation reset, and a full restore reject while an exact restore is in flight.
 
 Cancellation releases work that has not committed through the Matrix runtime
 rollback path while keeping already committed accounts represented in the

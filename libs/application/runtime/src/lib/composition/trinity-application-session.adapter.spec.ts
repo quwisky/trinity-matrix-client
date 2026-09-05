@@ -277,6 +277,39 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.lifecycleEvents.observed).toBe(false);
   });
 
+  it('classifies a required Room Library failure after readiness and releases the session', () => {
+    const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
+    const readiness = new Subject<void>();
+    const test = setup(undefined, roomLibrary);
+    const events: unknown[] = [];
+    const completed = vi.fn();
+    const lifetime = test.adapter.run(readiness).subscribe({
+      next: (event) => events.push(event),
+      complete: completed,
+    });
+    roomLibrary.next({ kind: 'prepared' });
+    readiness.next();
+    expect(test.deepLinks.observed).toBe(true);
+
+    roomLibrary.next({
+      kind: 'blocked',
+      diagnostic: { code: 'room-library-projection-preparation-failed' },
+    });
+
+    expect(events).toEqual([
+      { kind: 'prepared' },
+      {
+        kind: 'blocked',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'room-library-projection-preparation-failed' },
+      },
+    ]);
+    expect(completed).toHaveBeenCalledOnce();
+    expect(lifetime.closed).toBe(true);
+    expect(roomLibrary.observed).toBe(false);
+    expect(test.deepLinks.observed).toBe(false);
+  });
+
   it('releases optional projection lifetimes when preparation blocks', () => {
     const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
     const trust = new Subject<void>();
@@ -339,15 +372,6 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(identity.observed).toBe(true);
     expect(notifications.observed).toBe(true);
     expect(roomAdministration.observed).toBe(true);
-    expect(events).toEqual([]);
-
-    trust.next();
-    expect(events).toEqual([]);
-    identity.next({ kind: 'prepared' });
-    expect(events).toEqual([]);
-    notifications.next();
-    expect(events).toEqual([]);
-    roomAdministration.next();
     expect(events).toEqual([{ kind: 'prepared' }]);
 
     readiness.next();
@@ -361,6 +385,31 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(identity.observed).toBe(false);
     expect(notifications.observed).toBe(false);
     expect(roomAdministration.observed).toBe(false);
+  });
+
+  it('does not let an unsettled optional lifetime hold required preparation open', () => {
+    const readiness = new Subject<void>();
+    const optional = new Subject<void>();
+    const test = setup(
+      undefined,
+      of({ kind: 'prepared' }),
+      optional,
+      of({ kind: 'prepared' }),
+      of(void 0),
+      of(void 0),
+    );
+    const events: unknown[] = [];
+    const lifetime = test.adapter
+      .run(readiness)
+      .subscribe((event) => events.push(event));
+
+    expect(events).toEqual([{ kind: 'prepared' }]);
+    expect(optional.observed).toBe(true);
+
+    readiness.next();
+    expect(optional.observed).toBe(true);
+    lifetime.unsubscribe();
+    expect(optional.observed).toBe(false);
   });
 
   it('reports optional Notification and Room Administration preparation failures', () => {

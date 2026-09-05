@@ -41,10 +41,20 @@ export class ApplicationRootComponent {
 
   readonly health = inject(CapabilityHealthService);
   readonly state = this.runtime.state;
-  readonly presenceProblems = computed(() =>
+  readonly capabilityProblems = computed(() =>
     this.health.problems().map((problem) => ({
       problem,
       recovering: this.health.recoveryInProgress(problem),
+      message: capabilityProblemMessage(problem),
+      retryLabel: capabilityRetryLabel(problem),
+      statusTestId:
+        problem.capability === 'identity'
+          ? 'app-presence-health'
+          : 'app-capability-health',
+      retryTestId:
+        problem.capability === 'identity'
+          ? 'app-presence-retry'
+          : 'app-capability-retry',
     })),
   );
   readonly booting = computed(() => {
@@ -65,7 +75,7 @@ export class ApplicationRootComponent {
       : ([] as readonly string[]);
   });
 
-  retryPresence(problem: ApplicationCapabilityHealth): void {
+  retryCapability(problem: ApplicationCapabilityHealth): void {
     this.health
       .recover(problem)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -78,6 +88,21 @@ export class ApplicationRootComponent {
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe();
   }
+}
+
+function capabilityProblemMessage(
+  problem: ApplicationCapabilityHealth,
+): string {
+  if (problem.capability === 'accounts') {
+    return 'A background account is unavailable. Other accounts and open conversations remain usable.';
+  }
+  return 'User presence is unavailable. Online status is unknown; you can keep messaging.';
+}
+
+function capabilityRetryLabel(problem: ApplicationCapabilityHealth): string {
+  return problem.capability === 'accounts'
+    ? 'Retry background account'
+    : 'Retry presence';
 }
 
 function recoveryAction(recovery: ApplicationStartupRecovery): {
@@ -133,5 +158,7 @@ function warningMessage(warning: ApplicationRuntimeWarning): string {
       return 'User presence may be unavailable.';
     case 'room-administration':
       return 'Room permissions and member lists may be unavailable.';
+    case 'storage':
+      return 'Browser storage may be evicted; Trinity will keep using best-effort local storage.';
   }
 }

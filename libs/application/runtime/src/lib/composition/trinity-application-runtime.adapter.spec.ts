@@ -2,13 +2,13 @@ import { Location } from '@angular/common';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
-  NavigationEnd,
   NavigationError,
   Router,
   type Event as RouterEvent,
 } from '@angular/router';
 import { SwUpdate } from '@angular/service-worker';
 import { NavigationFocusService } from '../navigation-focus.service';
+import { CapabilityHealthService } from '../capability-health.service';
 import {
   AppearanceEffects,
   AppearancePreferences,
@@ -67,9 +67,26 @@ import {
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, Observable, Subject, firstValueFrom, of } from 'rxjs';
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  EMPTY,
+  NEVER,
+  Observable,
+  Subject,
+  firstValueFrom,
+  of,
+  toArray,
+} from 'rxjs';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
+import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 
@@ -78,6 +95,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let initialNavigation: ReturnType<typeof vi.fn>;
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let restoreAccounts: Mock<() => Observable<AccountRestoreResult>>;
+  let retryInactiveAccount: Mock<AccountRuntimeService['retryInactiveAccount']>;
   let hostManifest: Subject<HostCapabilityManifest>;
   let appearanceHydrate: Mock<() => Observable<AppearanceHydrationOutcome>>;
   let badgeSession: Subject<HostOperationOutcome>;
@@ -104,7 +122,12 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let resetPreferences: Mock<AppConfigService['resetToDefaults']>;
   let activeAccountId: ReturnType<typeof signal<string | null>>;
   let updateCheck: Mock<HostUpdatesService['check']>;
+  let hydrateOrder: Mock<SpaceRoomOrderService['hydrateKnownAccounts']>;
+  let requestPersistence: Mock<StoragePersistenceService['requestPersistence']>;
+  let health: CapabilityHealthService;
   let adapter: TrinityApplicationRuntimeAdapter;
+
+  afterEach(() => vi.useRealTimers());
 
   beforeEach(() => {
     events = new Subject<RouterEvent>();
@@ -122,6 +145,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         },
       }),
     );
+    retryInactiveAccount = vi.fn(() => of({ kind: 'unavailable' as const }));
     hostManifest = new Subject<HostCapabilityManifest>();
     appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
       () => of({ kind: 'ready', hydrated: 6 }),
@@ -162,6 +186,12 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     updateCheck = vi.fn<HostUpdatesService['check']>(() =>
       of({ kind: 'completed' as const }),
     );
+    hydrateOrder = vi.fn<SpaceRoomOrderService['hydrateKnownAccounts']>(() =>
+      of(void 0),
+    );
+    requestPersistence = vi.fn<StoragePersistenceService['requestPersistence']>(
+      () => of(true),
+    );
     const promiseInit = () => ({ init: vi.fn().mockResolvedValue(undefined) });
     TestBed.configureTestingModule({
       providers: [
@@ -180,6 +210,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(HostCapabilitiesService, { manifest: () => hostManifest }),
         MockProvider(AccountRuntimeService, {
           restoreSavedAccounts: restoreAccounts,
+          retryInactiveAccount,
           activeAccountId,
           signOutAccount,
           resetInstallation,
@@ -237,7 +268,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(AppConfigService, { resetToDefaults: resetPreferences }),
         MockProvider(PushGatewayService, promiseInit()),
         MockProvider(SpaceRoomOrderService, {
-          hydrateKnownAccounts: () => of(void 0),
+          hydrateKnownAccounts: hydrateOrder,
           run: () => orderSession,
         }),
         MockProvider(RoomLibraryLifetime, {
@@ -248,11 +279,12 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(NotificationLifetime, { run: () => of(void 0) }),
         MockProvider(RoomAdministrationLifetime, { run: () => of(void 0) }),
         MockProvider(StoragePersistenceService, {
-          requestPersistence: vi.fn(() => of(true)),
+          requestPersistence,
         }),
       ],
     });
     adapter = TestBed.inject(TrinityApplicationRuntimeAdapter);
+    health = TestBed.inject(CapabilityHealthService);
   });
 
   it('keeps preference hydration cold', async () => {
@@ -345,6 +377,78 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
   });
 
+  it('accepts unsupported optional host operations', async () => {
+    const operations = Object.fromEntries(
+      HOST_OPERATIONS.map((operation) => [
+        operation,
+        { kind: 'unavailable', reason: 'not-supported' },
+      ]),
+    ) as HostCapabilityManifest['operations'];
+    const negotiation = firstValueFrom(adapter.negotiateHost());
+    hostManifest.next({ protocolVersion: 1, operations });
+    hostManifest.complete();
+    await expect(negotiation).resolves.toEqual({ kind: 'ready' });
+  });
+
+  it('blocks when the required host contract cannot be established', async () => {
+    const negotiation = firstValueFrom(adapter.negotiateHost());
+    hostManifest.error(new Error('bridge unavailable'));
+
+    await expect(negotiation).resolves.toEqual({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'host-negotiation-failed' },
+    });
+  });
+
+  it('settles ordering and persistence independently as optional warnings', async () => {
+    hydrateOrder.mockImplementationOnce(() => {
+      throw new Error('ordering unavailable');
+    });
+    requestPersistence.mockReturnValueOnce(of(false));
+
+    await expect(
+      firstValueFrom(adapter.establishSessionCapabilities()),
+    ).resolves.toEqual({
+      kind: 'ready',
+      warnings: [
+        expect.objectContaining({
+          scope: 'workspace',
+          diagnostic: { code: 'room-order-hydration-failed' },
+        }),
+        expect.objectContaining({
+          scope: 'storage',
+          diagnostic: { code: 'storage-persistence-denied' },
+        }),
+      ],
+    });
+    expect(hydrateOrder).toHaveBeenCalledOnce();
+    expect(requestPersistence).toHaveBeenCalledOnce();
+  });
+
+  it('bounds unresponsive optional startup siblings with exact identities', async () => {
+    vi.useFakeTimers();
+    hydrateOrder.mockReturnValueOnce(NEVER);
+    requestPersistence.mockReturnValueOnce(NEVER);
+    const outcome = firstValueFrom(adapter.establishSessionCapabilities());
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'].budgetMs,
+    );
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'ready',
+      warnings: [
+        expect.objectContaining({
+          diagnostic: { code: 'room-order-hydration-timeout' },
+        }),
+        expect.objectContaining({
+          diagnostic: { code: 'storage-persistence-timeout' },
+        }),
+      ],
+    });
+  });
+
   it('keeps the initial update check out of pre-readiness capabilities', async () => {
     updateCheck.mockReturnValueOnce(
       of({
@@ -366,7 +470,21 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       of({
         kind: 'restored-with-inactive-failures',
         activeAccountId: '@active:example.org',
-        accounts: [],
+        accounts: [
+          {
+            kind: 'ready',
+            accountId: '@active:example.org',
+            role: 'active',
+            durationMs: 1,
+          },
+          {
+            kind: 'failed',
+            failure: 'transient-network',
+            accountId: '@private:example.org',
+            role: 'inactive',
+            durationMs: 1,
+          },
+        ],
         metrics: {
           durationMs: 1,
           activeTerminalMs: 1,
@@ -377,13 +495,29 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
       kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          scope: 'accounts',
-          diagnostic: { code: 'inactive-account-restore-failed' },
-        }),
-      ],
     });
+    const problem = health.problems()[0]!;
+    expect(problem).toMatchObject({
+      capability: 'accounts',
+      operation: 'restore',
+      code: 'account-restore-transient-network',
+    });
+    expect(
+      JSON.stringify(health.diagnostics('startup', 1, '0.1.0', 'web')),
+    ).not.toContain('@private:example.org');
+
+    retryInactiveAccount.mockReturnValueOnce(
+      of({
+        kind: 'ready',
+        accountId: '@private:example.org',
+        role: 'inactive',
+        durationMs: 2,
+      }),
+    );
+    await expect(
+      firstValueFrom(health.recover(problem).pipe(toArray())),
+    ).resolves.toEqual([{ kind: 'pending' }, { kind: 'success' }]);
+    expect(retryInactiveAccount).toHaveBeenCalledWith('@private:example.org');
 
     restoreAccounts.mockReturnValueOnce(
       of({
@@ -411,25 +545,30 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(signOutAccount).toHaveBeenCalledWith('@secret:example.org');
   });
 
-  it('subscribes before initial navigation and retries Workspace restoration explicitly', async () => {
+  it('falls back to a safe root before blocking Workspace restoration', async () => {
     initialNavigation.mockImplementationOnce(() => {
       events.next(new NavigationError(1, '/rooms', new Error('offline')));
     });
     await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
-      kind: 'blocked',
-      recovery: 'retry-startup',
-      diagnostic: { code: 'workspace-navigation-failed' },
+      kind: 'ready',
+      warnings: [
+        expect.objectContaining({
+          scope: 'workspace',
+          diagnostic: { code: 'workspace-safe-root-fallback' },
+        }),
+      ],
+    });
+    expect(navigateByUrl).toHaveBeenNthCalledWith(1, '/', {
+      replaceUrl: true,
     });
 
-    navigateByUrl.mockImplementationOnce(() => {
-      events.next(new NavigationEnd(2, '/rooms', '/rooms'));
-      return Promise.resolve(true);
-    });
     await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
       kind: 'ready',
     });
 
-    navigateByUrl.mockRejectedValueOnce(new Error('router rejected'));
+    navigateByUrl
+      .mockRejectedValueOnce(new Error('router rejected'))
+      .mockResolvedValueOnce(false);
     await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
       kind: 'blocked',
       recovery: 'retry-startup',
@@ -437,8 +576,35 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
 
     expect(initialNavigation).toHaveBeenCalledOnce();
-    expect(navigateByUrl).toHaveBeenCalledTimes(2);
-    expect(navigateByUrl).toHaveBeenCalledWith('/rooms', { replaceUrl: true });
+    expect(navigateByUrl).toHaveBeenCalledTimes(4);
+    expect(navigateByUrl).toHaveBeenNthCalledWith(2, '/rooms', {
+      replaceUrl: true,
+    });
+    expect(navigateByUrl).toHaveBeenNthCalledWith(3, '/rooms', {
+      replaceUrl: true,
+    });
+    expect(navigateByUrl).toHaveBeenNthCalledWith(4, '/', {
+      replaceUrl: true,
+    });
+  });
+
+  it('bounds an unresponsive saved destination before trying the safe root', async () => {
+    vi.useFakeTimers();
+    const restoration = firstValueFrom(adapter.restoreWorkspace());
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+    );
+
+    await expect(restoration).resolves.toEqual({
+      kind: 'ready',
+      warnings: [
+        expect.objectContaining({
+          diagnostic: { code: 'workspace-safe-root-fallback' },
+        }),
+      ],
+    });
+    expect(navigateByUrl).toHaveBeenCalledWith('/', { replaceUrl: true });
   });
 
   it('executes typed recovery commands before startup is retried', async () => {
