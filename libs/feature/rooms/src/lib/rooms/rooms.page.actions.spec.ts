@@ -721,7 +721,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     // Into the slot, not a dialog: this member belongs to the OPEN room. `direct` says
     // whether the room is a DM — the panel must not name an owner in a 1:1 chat, where
     // both people sit at power level 100. Permissions remain live inside the panel.
-    expect(shell.store.rightPanel()).toEqual({
+    expect(shell.surfaces.renderedSurface()).toEqual({
       kind: 'member',
       member: bob,
       direct: false,
@@ -755,7 +755,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     shell.members.onSelectMember(bob);
     await Promise.resolve();
 
-    expect(shell.store.rightPanel()).toMatchObject({
+    expect(shell.surfaces.renderedSurface()).toMatchObject({
       kind: 'member',
       direct: true,
     });
@@ -766,7 +766,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     setRouteRoom(null);
     // Whatever the slot happens to be seeded with at this width — the roster, here — must
     // be left exactly as it is. Reference identity, so any write to it fails this.
-    const before = shell.store.rightPanel();
+    const before = shell.surfaces.renderedSurface();
 
     shell.members.onSelectMember({
       userId: '@bob:hs',
@@ -778,7 +778,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     });
 
     expect(memberInfoOpen).not.toHaveBeenCalled();
-    expect(shell.store.rightPanel()).toBe(before);
+    expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
   it('replaces the roster with the member panel on the narrow layout', async () => {
@@ -804,7 +804,9 @@ describe('RoomsPage room / DM / invite actions', () => {
       });
 
       expect(shell.store.membersOpen()).toBe(false);
-      expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+      expect(shell.surfaces.renderedSurface()).toMatchObject({
+        kind: 'member',
+      });
       expect(memberInfoOpen).not.toHaveBeenCalled();
     } finally {
       restore();
@@ -830,7 +832,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     });
 
     expect(shell.store.membersOpen()).toBe(false);
-    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
     expect(memberInfoOpen).not.toHaveBeenCalled();
   });
 
@@ -850,11 +852,11 @@ describe('RoomsPage room / DM / invite actions', () => {
       powerLevel: 0,
       isCreator: false,
     });
-    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
 
     shell.members.onMemberPanelDismissed();
 
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('does not carry a member panel into the next room', async () => {
@@ -873,12 +875,12 @@ describe('RoomsPage room / DM / invite actions', () => {
       powerLevel: 0,
       isCreator: false,
     });
-    expect(shell.store.rightPanel()).toMatchObject({ kind: 'member' });
+    expect(shell.surfaces.renderedSurface()).toMatchObject({ kind: 'member' });
 
     setRouteRoom('!other:hs');
     await settleWorkspace();
 
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('stays a DIALOG for a member who is not the open room\u2019s (the space path)', async () => {
@@ -888,7 +890,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     // room's timeline. The discriminator is the id, not "is a room open at all".
     const shell = build();
     setRouteRoom('!r:hs');
-    const before = shell.store.rightPanel();
+    const before = shell.surfaces.renderedSurface();
     memberInfoOpen.mockReturnValue(of(null));
 
     await shell.members.openMemberInfo(
@@ -905,7 +907,7 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(memberInfoOpen).toHaveBeenCalled();
     // And the open room's slot is left exactly as it was.
-    expect(shell.store.rightPanel()).toBe(before);
+    expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
   it('opens no conversation when the member panel is dismissed', async () => {
@@ -923,7 +925,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     shell.page.closeRightPanel();
 
-    expect(shell.store.rightPanel()).toBeNull();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
     expect(createDirectMessage).not.toHaveBeenCalled();
   });
 

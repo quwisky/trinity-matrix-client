@@ -15,6 +15,7 @@ import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
 import { MessageActionsService } from './message-actions.service';
 import { RoomShellStore } from './room-shell-store';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
@@ -33,7 +34,12 @@ import { WorkspaceNavigationService } from '@trinity/application/workspace';
  */
 @Component({
   template: '',
-  providers: [RoomShellStore, ShellStatusService, MessageActionsService],
+  providers: [
+    RoomShellStore,
+    RoomSurfaceLifecycle,
+    ShellStatusService,
+    MessageActionsService,
+  ],
 })
 class HostComponent {
   // Read off the component, not TestBed.inject: a component `providers:` entry lives in
@@ -107,12 +113,14 @@ describe('MessageActionsService', () => {
   function build(): {
     actions: MessageActionsService;
     store: RoomShellStore;
+    surfaces: RoomSurfaceLifecycle;
     openRoom: (roomId: string) => void;
     destroy: () => void;
   } {
     // Workspace, not the route or shell store, owns the complete semantic destination.
     // One signal per build prevents a room opened in one test leaking into the next.
     const activeRoomId = signal<string | null>(null);
+    const pane = signal<'list' | 'conversation'>('list');
     TestBed.configureTestingModule({
       providers: [
         ...MOCKS,
@@ -122,9 +130,12 @@ describe('MessageActionsService', () => {
             activeAccountId: signal<string | null>('@me:hs').asReadonly(),
             activeSpaceId: signal<string | null>(null).asReadonly(),
             activeRoomId: activeRoomId.asReadonly(),
+            eventTarget: signal<{ readonly eventId: string } | null>(
+              null,
+            ).asReadonly(),
             recentView: signal(true).asReadonly(),
             roomsView: signal(false).asReadonly(),
-            pane: signal<'list' | 'conversation'>('list').asReadonly(),
+            pane: pane.asReadonly(),
             placement: signal<'list' | 'conversation' | 'split'>(
               'split',
             ).asReadonly(),
@@ -139,7 +150,11 @@ describe('MessageActionsService', () => {
       // From the HOST's injector: the store is in `HostComponent.providers`, page-scoped
       // exactly as it is in production, so the module injector does not have it.
       store: fixture.debugElement.injector.get(RoomShellStore),
-      openRoom: (roomId: string) => activeRoomId.set(roomId),
+      surfaces: fixture.debugElement.injector.get(RoomSurfaceLifecycle),
+      openRoom: (roomId: string) => {
+        activeRoomId.set(roomId);
+        pane.set('conversation');
+      },
       destroy: () => fixture.destroy(),
     };
   }
@@ -285,25 +300,25 @@ describe('MessageActionsService', () => {
       // showing, and the panel takes its room from the same open room the timeline renders.
       // So the room is not an argument to assert any more; what is assertable is that the
       // slot holds this thread, and (below) that nothing opens without a room at all.
-      const { actions, store, openRoom } = build();
+      const { actions, openRoom, surfaces } = build();
       openRoom('!r:hs');
 
       actions.onOpenThread('$root');
 
-      expect(store.rightPanel()).toEqual({
+      expect(surfaces.surface()).toEqual({
         kind: 'thread',
         rootEventId: '$root',
       });
     });
 
     it('does nothing when no room is open', () => {
-      const { actions, store } = build();
-      const before = store.rightPanel();
+      const { actions, surfaces } = build();
+      const before = surfaces.state();
 
       actions.onOpenThread('$root');
 
       // Reference identity, so this fails for ANY write to the slot, not just a thread.
-      expect(store.rightPanel()).toBe(before);
+      expect(surfaces.state()).toBe(before);
     });
 
     it('paginates older history', () => {

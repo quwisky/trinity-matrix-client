@@ -49,6 +49,7 @@ import { BehaviorSubject, Subject, of, switchMap } from 'rxjs';
 import { vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { RoomShellStore } from './room-shell-store';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -163,6 +164,7 @@ export const SHARED_MOCKS: Provider[] = [
   // Page-scoped in the component; TestBed.inject(RoomsPage) does not apply component
   // providers, so it is supplied here as the real class.
   RoomShellStore,
+  RoomSurfaceLifecycle,
   ShellStatusService,
   RoomShellViewModel,
   RoomShellNavigationService,
@@ -381,6 +383,7 @@ export function shellFrom() {
   return {
     page: TestBed.inject(RoomsPage),
     store: TestBed.inject(RoomShellStore),
+    surfaces: TestBed.inject(RoomSurfaceLifecycle),
     vm: TestBed.inject(RoomShellViewModel),
     status: TestBed.inject(ShellStatusService),
     nav: TestBed.inject(RoomShellNavigationService),

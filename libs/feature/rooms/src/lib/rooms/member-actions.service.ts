@@ -8,6 +8,7 @@ import { UserCardService } from '../user-card/user-card.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 
 /**
  * Everything that starts from a person: the member list, a member's info panel, the
@@ -22,6 +23,7 @@ import { ShellStatusService } from './shell-status.service';
 @Injectable()
 export class MemberActionsService {
   private readonly store = inject(RoomShellStore);
+  private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
@@ -53,6 +55,7 @@ export class MemberActionsService {
     const direct = this.rooms.directRoomIds().has(roomId);
 
     if (roomId === this.store.activeRoomId()) {
+      this.roomSurfaces.transition({ kind: 'dismiss' });
       this.store.rightPanel.set({ kind: 'member', member, direct });
       return;
     }

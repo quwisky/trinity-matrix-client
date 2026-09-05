@@ -575,7 +575,7 @@ conclusions rather than the puzzle:
 | `RoomsService.profileRevision` (was `revision`)       | **Removed** → `AccountIdentitiesService`, which projects display-name/avatar events through the narrow Identity Matrix port per signed-in account. The counter was bumped only by the ACTIVE client while two consumers read _other_ accounts' clients, so a mixed-in account's badge stayed stale until the active account happened to sync — papered over by also reading the unread aggregator. |
 | `RoomsService.memberRevision`                         | **Removed** → `membersFor(roomId)`, a signal per watched room written only when a member event names it. It was never a throttle: what makes a re-read cheap is `membersOf`'s fingerprint memo returning the identical array, which `Object.is` stops. Being unfiltered, it woke every member list in the app on any room's member event.                                                          |
 | `heightVersion` (`virtual-message-list.component.ts`) | **Kept**, and not a Matrix problem: it invalidates a `Map` a `ResizeObserver` writes. The alternative allocates per measurement. Never previously listed.                                                                                                                                                                                                                                          |
-| `RoomShellStore.jumpRequest`                          | **Kept**, and not a Matrix problem either: it re-fires an effect for a jump to a target that has not changed, which is a command and not state. Never previously listed.                                                                                                                                                                                                                           |
+| `RoomSurfaceLifecycle.jumpRevision`                   | **Kept**, and not a Matrix problem either: it re-fires an effect for a jump to a target that has not changed. The page-scoped lifecycle resets it with the exact Conversation and increments it only after the active surface closes and the timeline layout renders.                                                                                                                              |
 
 Two general lessons, both learned the hard way here:
 
@@ -592,7 +592,7 @@ still leaves the end-to-end test green. Pin a projection where the accident cann
 in the data-access spec, not the component's.
 
 What is left is two counters, neither over Matrix state: `heightVersion` above, and
-`RoomShellStore.jumpRequest`, which re-fires an effect for a jump to a target that has not
+`RoomSurfaceLifecycle.jumpRevision`, which re-fires an effect for a jump to a target that has not
 changed. Before adding another, check
 whether the value can be projected by the service that owns the
 events — the answer has been "yes, project it" five times running. Which projection shape
@@ -608,9 +608,9 @@ the listener on a stopped client.
 ## Page-scoped coordinators
 
 The rooms shell used to be the other recorded strain — a single 2,000-line page holding every
-room and space workflow. It is now about 310 lines, and the workflows live in thirteen classes
-beside it in `libs/feature/rooms/src/lib/rooms/`. The shape is worth copying, because the cut is
-not the obvious one.
+room and space workflow. Its workflows now live in page-scoped classes beside it in
+`libs/feature/rooms/src/lib/rooms/`. The shape is worth copying, because the cut is not the obvious
+one.
 
 The obvious cut is by domain: a service for spaces, one for rooms, one for messages. That does
 not work here, and the reason generalises. Every domain workflow ends by changing which room is
@@ -618,16 +618,18 @@ open, and most of them report failure through the same channel — so domain-fir
 reach back into the page, or into each other, on day one. Cutting horizontally instead removes
 the collision before it can happen:
 
-| Layer                     | What it holds                                          | Depends on      |
-| ------------------------- | ------------------------------------------------------ | --------------- |
-| `RoomShellStore`          | The shell's own signals: selection, panes, jump target | nothing         |
-| `ShellStatusService`      | One busy/error pair, and the toasts it drives          | nothing         |
-| `RoomShellViewModel`      | Every `computed()` the shell derives                   | the store       |
-| Ten workflow coordinators | Prompts, confirmations, writes, terminal navigation    | the three above |
+| Layer                     | What it holds                                                  | Depends on                     |
+| ------------------------- | -------------------------------------------------------------- | ------------------------------ |
+| `RoomShellStore`          | Sidebar filter and temporary member-family compatibility state | Workspace                      |
+| `RoomSurfaceLifecycle`    | Exact-Conversation message surfaces, reveal, and Back          | Workspace and the legacy store |
+| `ShellStatusService`      | One busy/error pair, and the toasts it drives                  | nothing                        |
+| `RoomShellViewModel`      | Every `computed()` the shell derives                           | the store                      |
+| Ten workflow coordinators | Prompts, confirmations, writes, terminal navigation            | the layers above               |
 
-The store and the view model are pure — no writes, no subscriptions, no side effects. That
-purity is what lets the coordinators and the view model both depend on the store without a
-cycle: derived state reads the selection, workflows write it, and neither sees the other.
+The view model stays pure. The Room-surface lifecycle owns the one semantic state machine and Back
+registration; coordinators submit transitions while the page only renders its read-only state.
+The remaining direct `RoomShellStore.rightPanel` writers are a frozen member-family compatibility
+allowlist removed by the next migration slice.
 
 !!! warning "Never `providedIn: 'root'` for one of these"
 

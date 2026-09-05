@@ -1,11 +1,4 @@
-import {
-  DestroyRef,
-  Injectable,
-  Injector,
-  afterNextRender,
-  inject,
-  signal,
-} from '@angular/core';
+import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnDialogService } from '@trinity/components/overlay';
@@ -37,6 +30,7 @@ import { RoomShellStore } from './room-shell-store';
 import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
 import { ShellStatusService } from './shell-status.service';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import {
   sendMediaBatch,
   type BatchItem,
@@ -55,6 +49,7 @@ import {
 @Injectable()
 export class MessageActionsService {
   private readonly store = inject(RoomShellStore);
+  private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly routing = inject(AccountRoutingService);
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
@@ -67,7 +62,6 @@ export class MessageActionsService {
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
-  private readonly injector = inject(Injector);
 
   /**
    * Which file of how many is uploading, and how far along, or null when idle.
@@ -165,16 +159,18 @@ export class MessageActionsService {
    * slot makes "only one at a time" structural — there is one value.
    */
   onOpenThread(rootEventId: string): void {
-    if (this.store.activeRoomId()) {
-      this.store.rightPanel.set({ kind: 'thread', rootEventId });
-    }
+    this.roomSurfaces.transition({
+      kind: 'open',
+      surface: { kind: 'thread', rootEventId },
+    });
   }
 
   /** Open the threads-list panel for the active room (header "Threads" button). */
   openThreadsList(): void {
-    if (this.store.activeRoomId()) {
-      this.store.rightPanel.set({ kind: 'threads' });
-    }
+    this.roomSurfaces.transition({
+      kind: 'open',
+      surface: { kind: 'threads' },
+    });
   }
 
   /**
@@ -191,7 +187,7 @@ export class MessageActionsService {
   /**
    * A row picked in the pinned panel or in search: jump the timeline to it.
    *
-   * Bumping `jumpRequest` guarantees the list's jump effect re-fires even when the same
+   * Bumping the lifecycle's jump revision guarantees the list effect re-fires when the same
    * message is picked twice — the target alone would not change, so nothing would happen.
    *
    * The slot CLOSES on a pick, which is what the dialog it replaced did. Leaving it open was
@@ -207,14 +203,7 @@ export class MessageActionsService {
    * this for free: `openAndWait` resolved a microtask AFTER the overlay was torn down.
    */
   onPanelJump(eventId: string): void {
-    this.store.rightPanel.set(null);
-    afterNextRender(
-      () => {
-        this.store.messageSearchTarget.set(eventId);
-        this.store.jumpRequest.update((n) => n + 1);
-      },
-      { injector: this.injector },
-    );
+    this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
   }
 
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */
@@ -245,7 +234,10 @@ export class MessageActionsService {
 
   /** Show the pinned-messages panel in the slot; rows arrive back via {@link onPanelJump}. */
   openPinnedPanel(): void {
-    this.store.rightPanel.set({ kind: 'pinned' });
+    this.roomSurfaces.transition({
+      kind: 'open',
+      surface: { kind: 'pinned' },
+    });
   }
 
   loadOlder(): void {
@@ -440,16 +432,17 @@ export class MessageActionsService {
    * Show in-room message search in the slot; hits arrive back via {@link onPanelJump}.
    */
   openMessageSearch(): void {
-    if (this.store.activeRoomId()) {
-      this.store.rightPanel.set({ kind: 'search' });
-    }
+    this.roomSurfaces.transition({
+      kind: 'open',
+      surface: { kind: 'search' },
+    });
   }
 
   /**
    * Ask for a date, then scroll the timeline to the first message on it.
    *
-   * The jump reuses the same `messageSearchTarget` + `jumpRequest` pair as in-room search,
-   * so there is one definition of "scroll the list to this event". What is different is
+   * The jump reuses the lifecycle's target and revision pair as in-room search, so there is
+   * one definition of "scroll the list to this event". What is different is
    * everything before that: `TimelineService.jumpToDate` has to page history in until the
    * event is actually loaded, because the list scrolls by DOM lookup and an id it has
    * never rendered is a silent no-op.
@@ -472,8 +465,10 @@ export class MessageActionsService {
       .subscribe({
         next: (result) => {
           if (result.kind === 'found') {
-            this.store.messageSearchTarget.set(result.eventId);
-            this.store.jumpRequest.update((n) => n + 1);
+            this.roomSurfaces.transition({
+              kind: 'reveal-message',
+              eventId: result.eventId,
+            });
             return;
           }
           void this.status.showError(JUMP_FAILURE_MESSAGE[result.kind]);
