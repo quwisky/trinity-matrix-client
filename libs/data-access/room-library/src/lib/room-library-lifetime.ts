@@ -2,12 +2,14 @@ import { Injectable, inject } from '@angular/core';
 import {
   NEVER,
   Observable,
+  TimeoutError,
   catchError,
   combineLatest,
   concat,
   map,
   of,
   switchMap,
+  timeout,
 } from 'rxjs';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { InvitesService } from './invites.service';
@@ -21,9 +23,14 @@ export type RoomLibraryLifetimeEvent =
   | {
       readonly kind: 'blocked';
       readonly diagnostic: {
-        readonly code: 'room-library-projection-preparation-failed';
+        readonly code:
+          | 'room-library-projection-preparation-failed'
+          | 'room-library-projection-preparation-timeout';
       };
     };
+
+/** Deadline for the required first acknowledgement, never the retained lifetime. */
+export const ROOM_LIBRARY_PREPARATION_BUDGET_MS = 15_000;
 
 /** The Room Library projections required before Workspace restores a destination. */
 @Injectable({ providedIn: 'root' })
@@ -45,12 +52,16 @@ export class RoomLibraryLifetime {
       this.selected.runProjection(),
     ]).pipe(
       switchMap(() => this.projections.waitFor({ kind: 'active-account' })),
+      timeout({ first: ROOM_LIBRARY_PREPARATION_BUDGET_MS }),
       map(() => ({ kind: 'prepared' }) as const),
-      catchError(() =>
+      catchError((error: unknown) =>
         of({
           kind: 'blocked',
           diagnostic: {
-            code: 'room-library-projection-preparation-failed',
+            code:
+              error instanceof TimeoutError
+                ? 'room-library-projection-preparation-timeout'
+                : 'room-library-projection-preparation-failed',
           },
         } as const),
       ),

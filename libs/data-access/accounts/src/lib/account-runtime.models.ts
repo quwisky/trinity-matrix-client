@@ -73,10 +73,7 @@ export type AccountRestoreResult =
     })
   | (AccountRestoreResultBase & {
       readonly kind: 'transition-in-progress';
-      readonly operation: Exclude<
-        AccountRuntimeOperation,
-        'restoring-accounts'
-      >;
+      readonly operation: AccountRuntimeOperation;
     });
 
 export type AccountEstablishmentPlacement = 'active' | 'inactive';
@@ -91,6 +88,15 @@ export type AccountEstablishmentIntent =
       readonly placement: 'inactive';
       readonly liveAccounts: 'keep';
       readonly accountRecord: 'upsert' | 'new';
+    };
+
+/** One exact inactive-Account retry; unavailable means it is no longer retryable. */
+export type InactiveAccountRestoreRetryOutcome =
+  | AccountRestoreOutcome
+  | { readonly kind: 'unavailable' }
+  | {
+      readonly kind: 'transition-in-progress';
+      readonly operation: AccountRuntimeOperation;
     };
 
 export type AccountEstablishmentFailure =

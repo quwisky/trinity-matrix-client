@@ -101,7 +101,6 @@ export class TrinityApplicationSessionAdapter {
       const subscriptions = new Subscription();
       const queuedWarnings: ApplicationRuntimeWarning[] = [];
       let roomLibrary: RoomLibraryLifetimeEvent | null = null;
-      let pendingOptionalLifetimes = 4;
       let sessionPrepared = false;
       let readinessOpen = false;
 
@@ -128,9 +127,7 @@ export class TrinityApplicationSessionAdapter {
         );
       };
       const prepareSession = (): void => {
-        if (sessionPrepared || !roomLibrary || pendingOptionalLifetimes > 0) {
-          return;
-        }
+        if (sessionPrepared || !roomLibrary) return;
         sessionPrepared = true;
         if (roomLibrary.kind === 'blocked') {
           subscriber.next({
@@ -152,15 +149,9 @@ export class TrinityApplicationSessionAdapter {
       const observeOptional = (
         lifetime: Observable<ApplicationRuntimeWarning | null>,
       ): void => {
-        let initial = true;
         subscriptions.add(
           lifetime.subscribe({
             next: (runtimeWarning) => {
-              if (initial) {
-                initial = false;
-                pendingOptionalLifetimes -= 1;
-                prepareSession();
-              }
               if (runtimeWarning) publishWarning(runtimeWarning);
             },
             error: fail,
@@ -171,7 +162,17 @@ export class TrinityApplicationSessionAdapter {
       subscriptions.add(
         this.roomLibrary.run().subscribe({
           next: (event) => {
-            if (roomLibrary) return;
+            if (roomLibrary) {
+              if (event.kind === 'blocked') {
+                subscriber.next({
+                  kind: 'blocked',
+                  recovery: 'retry-startup',
+                  diagnostic: event.diagnostic,
+                });
+                subscriber.complete();
+              }
+              return;
+            }
             roomLibrary = event;
             prepareSession();
           },

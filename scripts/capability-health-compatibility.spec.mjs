@@ -36,4 +36,18 @@ describe('capability health expand-migrate-contract ledger', () => {
     expect(session).not.toContain('IdentityOperationError');
     expect(session.match(/this\.identity\.run\(/gu)).toHaveLength(1);
   });
+
+  it('keeps required startup producers out of warning compatibility', () => {
+    const policy = read(
+      'libs/application/runtime/src/lib/application-startup.policy.ts',
+    );
+    const runtimeAdapter = read(
+      'libs/application/runtime/src/lib/composition/trinity-application-runtime.adapter.ts',
+    );
+
+    expect(policy).toContain(
+      'export const REQUIRED_STARTUP_PRODUCER_COMPATIBILITY = [] as const',
+    );
+    expect(runtimeAdapter).not.toContain('inactive-account-restore-failed');
+  });
 });

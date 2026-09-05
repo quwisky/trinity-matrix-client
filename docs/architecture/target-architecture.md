@@ -72,9 +72,13 @@ Preserve these lifetime boundaries; their sequences and cancellation rules live 
 
 - Application Runtime owns ordered startup, readiness, recovery, stop/restart and the single
   session subscription. Deep links, Back, notifications, updates, badges and surface streams
-  stay gated until final readiness. Required Room Library failures block; optional capability
-  failures remain visible warnings with typed recovery. The warning region stays keyboard
-  scrollable and occupies at most a quarter of the visual viewport.
+  stay gated until final readiness. Its one producer-policy ledger gives every required
+  preparation a first-result budget and no automatic retry, with an overall watchdog for the
+  complete staged path. Required Host, Active Account, Room Library, safe Workspace destination,
+  and readiness failures block; optional operations settle independently, dependent operations
+  record an explicit skipped settlement, and recovery resumes at the narrowest stage that can
+  recreate required ownership. The warning region
+  stays keyboard scrollable and occupies at most a quarter of the visual viewport.
 - A session-owned capability exposes a cold `runProjection()` lifetime. Subscription owns
   attachment and acknowledgement; teardown releases listeners, pending work, warnings and
   the view. Routed Room demand controls Identity, Notifications and Room Administration;

@@ -66,6 +66,12 @@ An installed web app still depends on its original site. It is useful for launch
 its own window and retaining the application shell, but it does not make a homeserver,
 internet access, or first-time sign-in available offline.
 
+If Trinity says browser storage may be evicted, startup can continue and the app uses normal
+best-effort browser storage. Free device space and allow persistent site storage if the browser
+offers that control. Eviction can remove local Accounts, cached messages, drafts, and encryption
+state; server-held data remains on the homeserver, while encrypted history may need recovery or
+verification again. The warning is not a reason to erase or reset the installation.
+
 ## If installation or startup does not work
 
 | What you see                                    | What to do                                                                                                                                                                 |

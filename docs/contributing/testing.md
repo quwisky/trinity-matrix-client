@@ -198,3 +198,22 @@ Desktop Chromium and the full Pixel 5 browser profile prove unknown status, fail
 restored presence and an unchanged Conversation URL. It introduces no production test hook.
 Screenshots are Playwright attachments under ignored invocation output, never tracked media.
 Browser mobile emulation does not establish native Android or iOS runtime validation.
+
+## Required startup-policy validation
+
+For Application Runtime startup-policy changes, run the Application Runtime, Accounts, Room
+Library, Projection Runtime, and Host Runtime test, typecheck, and lint targets. Deterministic
+tests must distinguish unsupported optional Host operations from a failed Host contract; Active
+from inactive Account restoration; empty Room Library dormancy from preparation failure and
+timeout; safe-root Workspace repair from an unrecoverable route; persistence denial from a
+required blocker; readiness timeout from retained session ownership; and an overall watchdog
+from an operation deadline. Assert exact producer settlements, dependency-skipped stages, and
+that scoped recovery does not repeat healthy upstream stages. Advance fake time using exported
+budgets rather than copying values.
+
+Timeout tests must prove late results cannot advance an obsolete attempt. They must not imply
+that wrapping a Promise cancelled its underlying work, and must advance beyond a preparation
+deadline after readiness to prove that a healthy retained lifetime remains owned. Source guards
+verify the one producer ledger and zero required-producer compatibility path. Browser proof is
+needed for visible eviction-risk and scoped-recovery consequences; keep that proof in ignored
+Playwright output and attach it to the pull request.

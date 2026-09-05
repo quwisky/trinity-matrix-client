@@ -131,6 +131,13 @@ group. Offline app startup does not imply that unsynced messages, media or serve
 are available; Matrix state has its own local storage and recovery behavior. Browser storage
 can also be evicted. See [user installation and offline limits](../users/install.md).
 
+At startup Trinity requests persistent browser storage when the API is available. Denial or an
+unsupported API is not a reset condition and does not block the app: Trinity continues with the
+browser's best-effort storage and reports that local Account data, cached messages, drafts, and
+encryption state have a greater eviction risk. Free device space or grant persistence through
+browser or site settings where supported. The homeserver remains authoritative for server data,
+but evicted local encryption material may still require recovery or device verification.
+
 The session-owned [Application Runtime adapter](../../libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts)
 checks for updates initially and when the host returns to the foreground. `VERSION_READY`
 produces a Reload action; activation is followed by a page reload. An unrecoverable worker

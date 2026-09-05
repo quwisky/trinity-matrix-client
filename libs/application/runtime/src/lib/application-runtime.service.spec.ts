@@ -1,6 +1,14 @@
 import { TestBed } from '@angular/core/testing';
-import { Observable, Subject, firstValueFrom, of } from 'rxjs';
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { NEVER, Observable, Subject, firstValueFrom, of } from 'rxjs';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from 'vitest';
 import {
   APPLICATION_RUNTIME_ADAPTER,
   type ApplicationRuntimeAdapter,
@@ -12,6 +20,10 @@ import type {
   ApplicationStartupStageOutcome,
 } from './application-runtime.models';
 import { ApplicationRuntimeService } from './application-runtime.service';
+import {
+  APPLICATION_STARTUP_PRODUCER_POLICIES,
+  APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
+} from './application-startup.policy';
 
 const ready = (): ApplicationStartupStageOutcome => ({ kind: 'ready' });
 
@@ -84,6 +96,92 @@ describe('ApplicationRuntimeService', () => {
       ],
     });
     runtime = TestBed.inject(ApplicationRuntimeService);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('times out a required stage and rejects its obsolete late result', async () => {
+    vi.useFakeTimers();
+    const lateHost = new Subject<ApplicationStartupStageOutcome>();
+    vi.mocked(adapter.negotiateHost).mockReturnValueOnce(lateHost);
+    const lifetime = runtime.run().subscribe();
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['host-contract'].budgetMs,
+    );
+
+    const blocked = runtime.state();
+    expect(blocked).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'host-negotiation',
+        diagnostic: { code: 'host-negotiation-timeout' },
+      },
+    });
+    lateHost.next({ kind: 'ready' });
+    lateHost.complete();
+    expect(runtime.state()).toBe(blocked);
+    expect(adapter.hydratePreferences).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('uses the overall watchdog for an unbounded compatible stage', async () => {
+    vi.useFakeTimers();
+    vi.mocked(adapter.hydratePreferences).mockReturnValueOnce(NEVER);
+    const lifetime = runtime.run().subscribe();
+
+    await vi.advanceTimersByTimeAsync(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS);
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'preference-hydration',
+        diagnostic: { code: 'application-startup-watchdog-expired' },
+      },
+    });
+    expect(adapter.restoreAccounts).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('does not apply preparation deadlines to the retained healthy session', async () => {
+    vi.useFakeTimers();
+    const lifetime = runtime.run().subscribe();
+    expect(runtime.state().phase).toBe('ready');
+    expect(session.observed).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_WATCHDOG_BUDGET_MS * 2,
+    );
+
+    expect(runtime.state().phase).toBe('ready');
+    expect(session.observed).toBe(true);
+    lifetime.unsubscribe();
+  });
+
+  it('classifies a readiness deadline without retaining the prepared session', async () => {
+    vi.useFakeTimers();
+    vi.mocked(adapter.awaitReadiness).mockReturnValueOnce(NEVER);
+    const lifetime = runtime.run().subscribe();
+    expect(runtime.state()).toMatchObject({
+      phase: 'starting',
+      stage: 'readiness',
+    });
+    expect(session.observed).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.readiness.budgetMs,
+    );
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'readiness',
+        diagnostic: { code: 'application-readiness-timeout' },
+      },
+    });
+    expect(session.observed).toBe(false);
+    expect(sessionStopped).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
   });
 
   it('classifies an unknown late adapter fault and recovers through the same runtime owner', async () => {
@@ -176,13 +274,44 @@ describe('ApplicationRuntimeService', () => {
       'preference-hydration',
       'preference-lifetime',
       'account-restoration',
-      'session-preparation',
       'session-capabilities',
+      'session-preparation',
       'workspace-restoration',
       'readiness',
       'session-ready',
     ]);
-    expect(outcomes).toEqual([{ kind: 'ready', attempt: 1, warnings: [] }]);
+    expect(outcomes).toEqual([
+      {
+        kind: 'ready',
+        attempt: 1,
+        warnings: [],
+        settlements: [
+          expect.objectContaining({
+            producer: 'host-contract',
+            status: 'ready',
+          }),
+          expect.objectContaining({
+            producer: 'preference-hydration',
+            status: 'ready',
+          }),
+          expect.objectContaining({
+            producer: 'account-registry',
+            status: 'ready',
+          }),
+          expect.objectContaining({
+            producer: 'room-library',
+            status: 'ready',
+          }),
+          expect.objectContaining({ producer: 'room-order', status: 'ready' }),
+          expect.objectContaining({
+            producer: 'browser-storage-persistence',
+            status: 'ready',
+          }),
+          expect.objectContaining({ producer: 'workspace', status: 'ready' }),
+          expect.objectContaining({ producer: 'readiness', status: 'ready' }),
+        ],
+      },
+    ]);
     expect(adapter.runSession).toHaveBeenCalledOnce();
     expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
@@ -262,7 +391,9 @@ describe('ApplicationRuntimeService', () => {
     await vi.waitFor(() =>
       expect(outcomes.at(-1)).toMatchObject({ kind: 'ready', attempt: 2 }),
     );
-    expect(adapter.negotiateHost).toHaveBeenCalledTimes(2);
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    expect(adapter.hydratePreferences).toHaveBeenCalledOnce();
+    expect(adapter.restoreAccounts).toHaveBeenCalledTimes(2);
     expect(adapter.runSession).toHaveBeenCalledOnce();
     expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
@@ -290,6 +421,49 @@ describe('ApplicationRuntimeService', () => {
     lifetime.unsubscribe();
   });
 
+  it('turns a post-readiness required foundation failure into its typed blocker', async () => {
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+    expect(runtime.state().phase).toBe('ready');
+
+    session.next({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'room-library-projection-preparation-failed' },
+    });
+    session.complete();
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        stage: 'session-capabilities',
+        diagnostic: { code: 'room-library-projection-preparation-failed' },
+      },
+    });
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual([
+      'ready',
+      'blocked',
+    ]);
+    expect(sessionStopped).toHaveBeenCalledOnce();
+    expect(lifetime.closed).toBe(false);
+    session = new Subject<ApplicationSessionEvent>();
+    await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
+      kind: 'accepted',
+    });
+    expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 });
+    expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.runPreferenceLifetime).toHaveBeenCalledOnce();
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    expect(adapter.hydratePreferences).toHaveBeenCalledOnce();
+    expect(adapter.restoreAccounts).toHaveBeenCalledOnce();
+    expect(adapter.establishSessionCapabilities).toHaveBeenCalledTimes(2);
+    expect(adapter.restoreWorkspace).toHaveBeenCalledTimes(2);
+    expect(adapter.awaitReadiness).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
   it('blocks failed session preparation before Workspace and retries cleanly', async () => {
     sessionPreparation = {
       kind: 'blocked',
@@ -310,9 +484,39 @@ describe('ApplicationRuntimeService', () => {
         diagnostic: { code: 'room-library-projection-preparation-failed' },
       },
     });
-    expect(adapter.establishSessionCapabilities).not.toHaveBeenCalled();
+    expect(adapter.establishSessionCapabilities).toHaveBeenCalledOnce();
     expect(adapter.restoreWorkspace).not.toHaveBeenCalled();
     expect(sessionStopped).toHaveBeenCalledOnce();
+    expect(runtime.state()).toMatchObject({
+      settlements: [
+        expect.objectContaining({ producer: 'host-contract', status: 'ready' }),
+        expect.objectContaining({
+          producer: 'preference-hydration',
+          status: 'ready',
+        }),
+        expect.objectContaining({
+          producer: 'account-registry',
+          status: 'ready',
+        }),
+        expect.objectContaining({
+          producer: 'room-library',
+          status: 'blocked',
+        }),
+        expect.objectContaining({ producer: 'room-order', status: 'ready' }),
+        expect.objectContaining({
+          producer: 'browser-storage-persistence',
+          status: 'ready',
+        }),
+        expect.objectContaining({
+          producer: 'workspace',
+          status: 'dependency-skipped',
+        }),
+        expect.objectContaining({
+          producer: 'readiness',
+          status: 'dependency-skipped',
+        }),
+      ],
+    });
 
     sessionPreparation = { kind: 'prepared' };
     await expect(firstValueFrom(runtime.recover())).resolves.toEqual({
@@ -323,7 +527,11 @@ describe('ApplicationRuntimeService', () => {
     );
 
     expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.establishSessionCapabilities).toHaveBeenCalledTimes(2);
     expect(adapter.restoreWorkspace).toHaveBeenCalledOnce();
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    expect(adapter.hydratePreferences).toHaveBeenCalledOnce();
+    expect(adapter.restoreAccounts).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 

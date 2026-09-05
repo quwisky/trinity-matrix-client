@@ -1,22 +1,19 @@
 <div class="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-  @for (state of presenceProblems(); track state.problem.reference) {
+  @for (state of capabilityProblems(); track state.problem.reference) {
     <aside
       class="border-b border-border bg-muted px-4 py-3 text-sm"
       role="status"
-      data-testid="app-presence-health"
+      [attr.data-testid]="state.statusTestId"
     >
-      <p>
-        User presence is unavailable. Online status is unknown; you can keep
-        messaging.
-      </p>
+      <p>{{ state.message }}</p>
       <button
         trnBtn
         type="button"
-        data-testid="app-presence-retry"
+        [attr.data-testid]="state.retryTestId"
         [disabled]="state.recovering"
-        (click)="retryPresence(state.problem)"
+        (click)="retryCapability(state.problem)"
       >
-        {{ state.recovering ? 'Retrying presence…' : 'Retry presence' }}
+        {{ state.recovering ? 'Retrying…' : state.retryLabel }}
       </button>
     </aside>
   }

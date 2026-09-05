@@ -1,7 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Observable,
-  TimeoutError,
   catchError,
   defer,
   finalize,
@@ -15,18 +14,23 @@ import {
   tap,
   throwError,
   throwIfEmpty,
-  timeout,
   toArray,
 } from 'rxjs';
 import {
   ACCOUNT_RESTORE_POLICY,
   ACCOUNT_RUNTIME_ADAPTER,
   type AdapterAccountEstablishmentOutcome,
-  type AdapterAccountRestoreOutcome,
   type SavedAccountsSnapshot,
 } from './account-runtime.adapter';
 import { AccountSwitchWorkflow } from './account-switch.workflow';
 import { AccountLifecycleWorkflow } from './account-lifecycle.workflow';
+import { InactiveAccountRestoreWorkflow } from './inactive-account-restore.workflow';
+import {
+  accountRestoreResultFor,
+  accountRestoreTransitionResult,
+  emptyAccountRestoreResult,
+} from './account-restore-results';
+import { restoreAccountWithinPolicy } from './account-restore-attempt';
 import {
   AuthenticatedAccountGrant,
   authenticatedAccountGrantPayload,
@@ -35,7 +39,6 @@ import {
 import type {
   AccountEstablishmentIntent,
   AccountEstablishmentOutcome,
-  AccountRestoreMetrics,
   AccountRestoreOutcome,
   AccountRestoreRole,
   AccountRestoreResult,
@@ -45,6 +48,7 @@ import type {
   AccountSwitchCoordination,
   AccountSwitchOutcome,
   InstallationResetOutcome,
+  InactiveAccountRestoreRetryOutcome,
 } from './account-runtime.models';
 
 interface InFlightAccountEstablishment {
@@ -59,6 +63,7 @@ export class AccountRuntimeService {
   private readonly policy = inject(ACCOUNT_RESTORE_POLICY);
   private readonly switchWorkflow = inject(AccountSwitchWorkflow);
   private readonly lifecycleWorkflow = inject(AccountLifecycleWorkflow);
+  private readonly inactiveRestore = inject(InactiveAccountRestoreWorkflow);
   private readonly runtimeState = signal<AccountRuntimeState>({
     phase: 'idle',
   });
@@ -71,22 +76,12 @@ export class AccountRuntimeService {
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
     return defer(() => {
       const startedAt = performance.now();
-      if (this.establishment) {
-        return of(this.transitionRestoreResult(performance.now() - startedAt));
-      }
-      if (this.switchWorkflow.inProgress) {
+      const operation = this.currentOperation();
+      if (operation) {
         return of(
-          this.transitionRestoreResult(
+          accountRestoreTransitionResult(
             performance.now() - startedAt,
-            'switching-account',
-          ),
-        );
-      }
-      if (this.lifecycleWorkflow.operation) {
-        return of(
-          this.transitionRestoreResult(
-            performance.now() - startedAt,
-            this.lifecycleWorkflow.operation,
+            operation,
           ),
         );
       }
@@ -108,7 +103,7 @@ export class AccountRuntimeService {
         switchMap((snapshot) => {
           if (snapshot.kind === 'corrupt-local-state') {
             return of(
-              this.emptyResult(
+              emptyAccountRestoreResult(
                 'local-state-unavailable',
                 performance.now() - startedAt,
               ),
@@ -141,19 +136,45 @@ export class AccountRuntimeService {
     });
   }
 
+  retryInactiveAccount(
+    accountId: string,
+  ): Observable<InactiveAccountRestoreRetryOutcome> {
+    return defer(() => {
+      const conflict = this.blockingInactiveRestoreOperation();
+      if (conflict) {
+        return of({
+          kind: 'transition-in-progress' as const,
+          operation: conflict,
+        });
+      }
+      const state = this.runtimeState();
+      if (state.phase !== 'settled') {
+        return of({ kind: 'unavailable' } as const);
+      }
+      const result = state.result;
+      if (
+        result.kind !== 'restored-with-inactive-failures' &&
+        result.kind !== 'restored'
+      ) {
+        return of({ kind: 'unavailable' } as const);
+      }
+      const previous = result.accounts.find(
+        (account) => account.accountId === accountId,
+      );
+      return this.inactiveRestore.run(previous, (outcome) =>
+        this.publishInactiveRetry(outcome),
+      );
+    });
+  }
+
   establishAuthenticatedAccount(
     grant: AuthenticatedAccountGrant,
     intent: AccountEstablishmentIntent,
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() => {
       const session = authenticatedAccountGrantPayload(grant);
-      if (this.runtimeState().phase === 'restoring') {
-        return of(this.transitionOutcome(session.userId, intent));
-      }
-      if (this.switchWorkflow.inProgress) {
-        return of(this.transitionOutcome(session.userId, intent));
-      }
-      if (this.lifecycleWorkflow.operation) {
+      const operation = this.currentOperation();
+      if (operation && operation !== 'establishing-account') {
         return of(this.transitionOutcome(session.userId, intent));
       }
       const inFlight = this.establishment;
@@ -162,6 +183,9 @@ export class AccountRuntimeService {
           this.sameIntent(inFlight.intent, intent)
           ? inFlight.outcome
           : of(this.transitionOutcome(session.userId, intent));
+      }
+      if (operation) {
+        return of(this.transitionOutcome(session.userId, intent));
       }
 
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
@@ -248,21 +272,59 @@ export class AccountRuntimeService {
     AccountRuntimeOperation,
     'switching-account'
   > | null {
-    const phase = this.runtimeState().phase;
-    if (phase === 'restoring') return 'restoring-accounts';
-    if (phase === 'establishing') return 'establishing-account';
-    return this.lifecycleWorkflow.operation;
+    const operation = this.currentOperation();
+    return operation === 'switching-account' ? null : operation;
   }
 
   private blockingLifecycleOperation(): Exclude<
     AccountRuntimeOperation,
     'signing-out-account' | 'resetting-installation'
   > | null {
+    const operation = this.currentOperation();
+    return operation === 'signing-out-account' ||
+      operation === 'resetting-installation'
+      ? null
+      : operation;
+  }
+
+  private blockingInactiveRestoreOperation(): AccountRuntimeOperation | null {
+    return this.currentOperation(false);
+  }
+
+  private currentOperation(
+    includeInactiveRestore = true,
+  ): AccountRuntimeOperation | null {
+    if (includeInactiveRestore && this.inactiveRestore.inProgress)
+      return 'restoring-accounts';
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
-    if (phase === 'establishing') return 'establishing-account';
+    if (phase === 'establishing' || this.establishment)
+      return 'establishing-account';
     if (this.switchWorkflow.inProgress) return 'switching-account';
-    return null;
+    return this.lifecycleWorkflow.operation;
+  }
+
+  private publishInactiveRetry(outcome: AccountRestoreOutcome): void {
+    const state = this.runtimeState();
+    if (state.phase !== 'settled') return;
+    const result = state.result;
+    if (
+      result.kind !== 'restored-with-inactive-failures' &&
+      result.kind !== 'restored'
+    ) {
+      return;
+    }
+    const accounts = result.accounts.map((account) =>
+      account.accountId === outcome.accountId ? outcome : account,
+    );
+    this.runtimeState.set({
+      phase: 'settled',
+      result: accountRestoreResultFor(
+        result.activeAccountId,
+        accounts,
+        result.metrics.durationMs + outcome.durationMs,
+      ),
+    });
   }
 
   private restoreSnapshot(
@@ -271,7 +333,9 @@ export class AccountRuntimeService {
     outcomes: Map<string, AccountRestoreOutcome>,
   ): Observable<AccountRestoreResult> {
     if (snapshot.accountIds.length === 0) {
-      return of(this.emptyResult('no-accounts', performance.now() - startedAt));
+      return of(
+        emptyAccountRestoreResult('no-accounts', performance.now() - startedAt),
+      );
     }
     if (
       !snapshot.activeAccountId ||
@@ -279,7 +343,7 @@ export class AccountRuntimeService {
       new Set(snapshot.accountIds).size !== snapshot.accountIds.length
     ) {
       return of(
-        this.emptyResult(
+        emptyAccountRestoreResult(
           'local-state-unavailable',
           performance.now() - startedAt,
         ),
@@ -317,7 +381,7 @@ export class AccountRuntimeService {
         const orderedOutcomes = orderedAccountIds.map((accountId) =>
           outcomes.get(accountId)!,
         );
-        return this.resultFor(
+        return accountRestoreResultFor(
           activeAccountId,
           orderedOutcomes,
           performance.now() - startedAt,
@@ -330,44 +394,12 @@ export class AccountRuntimeService {
     accountId: string,
     role: AccountRestoreRole,
   ): Observable<AccountRestoreOutcome> {
-    const startedAt = performance.now();
-    return this.adapter.restoreAccount(accountId, role).pipe(
-      take(1),
-      throwIfEmpty(
-        () => new Error('Account Runtime adapter emitted no outcome.'),
-      ),
-      map((outcome) =>
-        this.toPublicOutcome(
-          accountId,
-          role,
-          performance.now() - startedAt,
-          outcome,
-        ),
-      ),
-      timeout({ first: this.policy.timeoutMs }),
-      catchError((error: unknown) =>
-        error instanceof TimeoutError
-          ? of({
-              kind: 'timed-out' as const,
-              accountId,
-              role,
-              durationMs: performance.now() - startedAt,
-            })
-          : throwError(() => error),
-      ),
+    return restoreAccountWithinPolicy(
+      this.adapter,
+      this.policy,
+      accountId,
+      role,
     );
-  }
-
-  private toPublicOutcome(
-    accountId: string,
-    role: AccountRestoreRole,
-    durationMs: number,
-    outcome: AdapterAccountRestoreOutcome,
-  ): AccountRestoreOutcome {
-    if (outcome.kind === 'failed') {
-      return { ...outcome, accountId, role, durationMs };
-    }
-    return { kind: outcome.kind, accountId, role, durationMs };
   }
 
   private toEstablishmentOutcome(
@@ -405,86 +437,6 @@ export class AccountRuntimeService {
       left.liveAccounts === right.liveAccounts &&
       left.accountRecord === right.accountRecord
     );
-  }
-
-  private resultFor(
-    activeAccountId: string,
-    accounts: readonly AccountRestoreOutcome[],
-    durationMs: number,
-  ): AccountRestoreResult {
-    const metrics = this.metrics(accounts, durationMs);
-    const active = accounts.find((account) => account.role === 'active')!;
-    if (active.kind !== 'ready') {
-      return {
-        kind: 'active-account-unavailable',
-        activeAccountId,
-        accounts,
-        metrics,
-      };
-    }
-    if (
-      accounts.some(
-        (account) => account.role === 'inactive' && account.kind !== 'ready',
-      )
-    ) {
-      return {
-        kind: 'restored-with-inactive-failures',
-        activeAccountId,
-        accounts,
-        metrics,
-      };
-    }
-    return { kind: 'restored', activeAccountId, accounts, metrics };
-  }
-
-  private metrics(
-    accounts: readonly AccountRestoreOutcome[],
-    durationMs: number,
-  ): AccountRestoreMetrics {
-    return {
-      durationMs,
-      activeTerminalMs:
-        accounts.find((account) => account.role === 'active')?.durationMs ??
-        null,
-      terminalAccounts: accounts.length,
-      totalAccounts: accounts.length,
-    };
-  }
-
-  private emptyResult(
-    kind: 'no-accounts' | 'local-state-unavailable',
-    durationMs: number,
-  ): AccountRestoreResult {
-    return {
-      kind,
-      accounts: [],
-      metrics: {
-        durationMs,
-        activeTerminalMs: null,
-        terminalAccounts: 0,
-        totalAccounts: 0,
-      },
-    };
-  }
-
-  private transitionRestoreResult(
-    durationMs: number,
-    operation: Exclude<
-      AccountRuntimeOperation,
-      'restoring-accounts'
-    > = 'establishing-account',
-  ): AccountRestoreResult {
-    return {
-      kind: 'transition-in-progress',
-      operation,
-      accounts: [],
-      metrics: {
-        durationMs,
-        activeTerminalMs: null,
-        terminalAccounts: 0,
-        totalAccounts: 0,
-      },
-    };
   }
 
   private publishProgress(
