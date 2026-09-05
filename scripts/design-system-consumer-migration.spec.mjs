@@ -319,9 +319,10 @@ describe('migrated application design-system consumers', () => {
     ).toEqual([
       '2xl',
       '2xl',
+      '2xl',
       ...Array(6).fill('lg'),
       ...Array(15).fill('md'),
-      ...Array(6).fill('sm'),
+      ...Array(5).fill('sm'),
       'xl',
     ]);
     expect(
@@ -329,7 +330,8 @@ describe('migrated application design-system consumers', () => {
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      ...Array(17).fill('dialog'),
+      ...Array(16).fill('dialog'),
+      'dynamic',
       'dynamic',
       'dynamic',
       ...Array(4).fill('fullscreen'),

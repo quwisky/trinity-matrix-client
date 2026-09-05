@@ -1,7 +1,8 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { HistoryVisibility, JoinRule } from 'matrix-js-sdk';
+import { HistoryVisibility, JoinRule, KnownMembership } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
@@ -25,6 +26,16 @@ function setup(
   const setRoomTopic = vi.fn().mockResolvedValue({});
   const uploadContent = vi.fn().mockResolvedValue({ content_uri: 'mxc://a/b' });
   const sendStateEvent = vi.fn().mockResolvedValue({});
+  const stateListeners = new Set<
+    (event?: { getRoomId(): string | null }, state?: { roomId: string }) => void
+  >();
+  const syncListeners = new Set<
+    (event?: { getRoomId(): string | null }, state?: { roomId: string }) => void
+  >();
+  const accountIds = signal<readonly string[]>(
+    opts.signedOut ? [] : ['@me:hs'],
+  );
+  const activeUserId = signal<string | null>(opts.signedOut ? null : '@me:hs');
   const stateFor = (type: string) => {
     if (type === 'm.room.join_rules' && opts.joinRule !== undefined) {
       return {
@@ -54,6 +65,8 @@ function setup(
     ? null
     : {
         getVersion: () => opts.version ?? '10',
+        getMyMembership: () => KnownMembership.Join,
+        hasEncryptionStateEvent: () => true,
         // The service reads room state via the live timeline (liveRoomState()),
         // which is what the SDK's deprecated `currentState` aliased.
         getLiveTimeline: () => ({
@@ -71,6 +84,30 @@ function setup(
     sendStateEvent,
     getRoom: () => room,
     getUserId: () => '@me:hs',
+    on: vi.fn(
+      (
+        event: string,
+        listener: (
+          event?: { getRoomId(): string | null },
+          state?: { roomId: string },
+        ) => void,
+      ) => {
+        if (event === 'RoomState.events') stateListeners.add(listener);
+        if (event === 'sync') syncListeners.add(listener);
+      },
+    ),
+    off: vi.fn(
+      (
+        event: string,
+        listener: (
+          event?: { getRoomId(): string | null },
+          state?: { roomId: string },
+        ) => void,
+      ) => {
+        if (event === 'RoomState.events') stateListeners.delete(listener);
+        if (event === 'sync') syncListeners.delete(listener);
+      },
+    ),
   };
   const permissionFor = (type: string) => ({
     available:
@@ -80,15 +117,29 @@ function setup(
         ? 'Not allowed.'
         : null,
   });
+  const clientFor = vi.fn((accountId: string) =>
+    accountIds().includes(accountId) ? (instance as never) : null,
+  );
   TestBed.configureTestingModule({
     providers: [
       RoomSettingsService,
       MockProvider(MatrixClientService, {
         isInitialized: !opts.signedOut,
         instance: instance as never,
+        accountIds: accountIds.asReadonly(),
+        activeUserId: activeUserId.asReadonly(),
+        clientFor,
       }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => ({
+          name: permissionFor('m.room.name'),
+          topic: permissionFor('m.room.topic'),
+          avatar: permissionFor('m.room.avatar'),
+          joinRule: permissionFor('m.room.join_rules'),
+          history: permissionFor('m.room.history_visibility'),
+          aliases: permissionFor('m.room.canonical_alias'),
+        }),
+        settingsFor: () => ({
           name: permissionFor('m.room.name'),
           topic: permissionFor('m.room.topic'),
           avatar: permissionFor('m.room.avatar'),
@@ -108,6 +159,21 @@ function setup(
     setRoomTopic,
     uploadContent,
     sendStateEvent,
+    accountIds,
+    activeUserId,
+    clientFor,
+    setIdentity: (name: string, topic: string) => {
+      opts.name = name;
+      opts.topic = topic;
+    },
+    emitState: () => {
+      for (const listener of stateListeners) {
+        // Live RoomState events can omit the room id on the MatrixEvent while the
+        // accompanying RoomState still names it.
+        listener({ getRoomId: () => null }, { roomId: '!r:hs' });
+      }
+      for (const listener of syncListeners) listener();
+    },
   };
 }
 
@@ -451,6 +517,52 @@ describe('RoomSettingsService', () => {
       avatar: false,
       joinRule: false,
       history: false,
+    });
+  });
+
+  it('keeps exact Account ownership after the active Account changes', async () => {
+    const { svc, activeUserId, accountIds, clientFor, setRoomName } = setup();
+    activeUserId.set('@other:hs');
+    accountIds.set(['@me:hs', '@other:hs']);
+
+    await firstValueFrom(
+      svc.setName({ accountId: '@me:hs', roomId: '!r:hs' }, 'Exact target'),
+    );
+
+    expect(clientFor).toHaveBeenCalledWith('@me:hs');
+    expect(setRoomName).toHaveBeenCalledWith('!r:hs', 'Exact target');
+  });
+
+  it('observes exact Room state and never retargets when Account activity changes', () => {
+    const { svc, activeUserId, setIdentity, emitState } = setup({
+      name: 'Before',
+      topic: 'Original',
+    });
+    const snapshots: string[] = [];
+    const subscription = svc
+      .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+      .subscribe((snapshot) => snapshots.push(snapshot.identity.name));
+
+    expect(snapshots.at(-1)).toBe('Before');
+    activeUserId.set('@other:hs');
+    setIdentity('After', 'Remote');
+    emitState();
+
+    expect(snapshots.at(-1)).toBe('After');
+    subscription.unsubscribe();
+  });
+
+  it('classifies a signed-out exact target without inventing readable state', () => {
+    const { svc, accountIds } = setup({ name: 'Private', topic: 'Secret' });
+    accountIds.set([]);
+
+    expect(
+      svc.snapshot({ accountId: '@me:hs', roomId: '!r:hs' }),
+    ).toMatchObject({
+      availability: 'account-unavailable',
+      unavailableReason: expect.stringContaining('Account'),
+      identity: { name: '', topic: '', avatarMxc: null },
+      encrypted: null,
     });
   });
 });

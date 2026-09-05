@@ -91,7 +91,7 @@ test.describe('Room settings widgets on a phone', () => {
     ).toBeVisible({ timeout: 30_000 });
     expect(widgetFixture.requestCount()).toBe(0);
 
-    const scrollRegion = page.locator('.room-settings__tabs');
+    const scrollRegion = page.locator('.room-settings__section-scroll');
     await expect
       .poll(() =>
         scrollRegion.evaluate(

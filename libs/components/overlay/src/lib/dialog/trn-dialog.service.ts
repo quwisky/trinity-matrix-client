@@ -5,6 +5,8 @@ import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import { defer, map, merge, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from './trn-dialog-ref';
 
+const DIALOG_HISTORY_KEY = '__trinityGuardedDialog';
+
 /** Structural position for a component dialog. Appearance belongs to its surface. */
 export type TrnDialogPlacement =
   'center' | 'inline-end' | 'bottom' | 'fullscreen';
@@ -12,7 +14,7 @@ export type TrnDialogPlacement =
 /** Trinity's focus target vocabulary, independent of CDK's configuration type. */
 export type TrnDialogAutoFocus = string | false;
 
-export interface DialogOptions {
+export interface DialogOptions<C = object> {
   /** Set on the opened component as @Inputs after creation (Ionic componentProps). */
   inputs?: Record<string, unknown>;
   /**
@@ -39,6 +41,14 @@ export interface DialogOptions {
    * (`'[data-autofocus]'`), `'first-heading'`, `'dialog'` or `false`.
    */
   autoFocus?: TrnDialogAutoFocus;
+  /**
+   * Synchronous gate for user dismissal (backdrop, Escape, or host Back). Returning false
+   * keeps the dialog open; the callback may start a confirmation and close later with an
+   * explicit result. Component-owned closes with a result bypass this gate. A guarded dialog
+   * also owns one same-URL browser-history entry, so browser Back reaches this gate before it
+   * can navigate the page underneath the overlay.
+   */
+  dismissGuard?: (component: C | null) => boolean;
   /**
    * Present beside this element instead of centred — a popover rather than a modal.
    *
@@ -118,6 +128,7 @@ export class TrnDialogService {
     TrnDialogRef<unknown>,
     DialogRef<unknown, unknown>
   >();
+  private navigationBarrierId = 0;
 
   /**
    * Reactive view of the shared CDK overlay stack.
@@ -136,7 +147,7 @@ export class TrnDialogService {
 
   open<R = unknown, C = object>(
     component: Type<C>,
-    opts: DialogOptions = {},
+    opts: DialogOptions<C> = {},
   ): TrnDialogRef<R> {
     // No `panelClass`. The option and its `trn-dialog-panel` default were both dead: no
     // call site ever passed one, and the class name occurred exactly once in the whole
@@ -154,6 +165,11 @@ export class TrnDialogService {
         ? ['cdk-overlay-transparent-backdrop']
         : ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
+      closeOnNavigation: !opts.dismissGuard,
+      closePredicate: (result, _config, instance) =>
+        result !== undefined ||
+        !opts.dismissGuard ||
+        opts.dismissGuard(instance as C | null),
       ariaLabel: opts.ariaLabel,
       // Spelled out rather than left off: CDK merges the config over its defaults with
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
@@ -221,12 +237,62 @@ export class TrnDialogService {
         ref.componentRef.setInput(key, value);
       }
     }
+    const releaseNavigationBarrier = opts.dismissGuard
+      ? this.installNavigationBarrier(ref)
+      : null;
+    if (releaseNavigationBarrier) {
+      ref.closed.pipe(take(1)).subscribe(() => releaseNavigationBarrier());
+    }
     const trinityRef = new TrnDialogRef<R>(ref);
     this.refs.set(
       trinityRef as TrnDialogRef<unknown>,
       ref as DialogRef<unknown, unknown>,
     );
     return trinityRef;
+  }
+
+  /** Make browser Back dismiss a guarded overlay before Router navigation can start. */
+  private installNavigationBarrier<R, C>(
+    ref: DialogRef<R, C>,
+  ): (() => void) | null {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.history?.pushState !== 'function'
+    ) {
+      return null;
+    }
+    const marker = String(++this.navigationBarrierId);
+    const url = window.location.href;
+    let listening = true;
+    const hasMarker = (): boolean =>
+      window.history.state?.[DIALOG_HISTORY_KEY] === marker;
+    const pushMarker = (): void => {
+      const current = window.history.state;
+      const state =
+        current && typeof current === 'object'
+          ? (current as Record<string, unknown>)
+          : {};
+      window.history.pushState(
+        { ...state, [DIALOG_HISTORY_KEY]: marker },
+        '',
+        url,
+      );
+    };
+    const onPopState = (): void => {
+      if (!listening) return;
+      // A newer guarded dialog can pop back onto this dialog's still-owned entry.
+      // That removes only the newer barrier; this dialog has not been backed out of.
+      if (hasMarker()) return;
+      ref.close();
+      if (this.dialog.openDialogs.includes(ref) && !hasMarker()) pushMarker();
+    };
+    pushMarker();
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      listening = false;
+      window.removeEventListener('popstate', onPopState);
+      if (hasMarker()) window.history.back();
+    };
   }
 
   /** Whether a ref returned by this wrapper is currently the top shared overlay. */
@@ -237,7 +303,7 @@ export class TrnDialogService {
   /** Open and resolve the component's close value (null if dismissed without one). */
   openAndWait$<R = unknown, C = object>(
     component: Type<C>,
-    opts: DialogOptions = {},
+    opts: DialogOptions<C> = {},
   ): Observable<R | null> {
     return defer(() =>
       this.open<R, C>(component, opts).closed.pipe(

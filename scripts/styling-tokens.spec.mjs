@@ -31,6 +31,9 @@ const LOCAL_STACKING = [
   // the rows it scrolls above and nothing else — the panel it sits in is placed by the
   // shell, and giving this an app-level layer would claim a relationship it does not have.
   'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
+  // The Room-settings save bar is sticky only within its section scroller. Its local value
+  // keeps the bar above the fields it scrolls over; the dialog service owns app-level placement.
+  'libs/feature/rooms/src/lib/room-settings/room-settings.component.scss',
   // The close control and image are children of the same full-screen lightbox. This value only
   // keeps the control above that image; the overlay service owns the lightbox's app-level layer.
   'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',

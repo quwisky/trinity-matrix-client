@@ -51,16 +51,12 @@ test.describe('Room settings', () => {
       timeout: 10_000,
     });
 
-    // Both fields live behind the Access tab now. The two assertions around the switch are
-    // deliberate and belong in a browser: the panels are eager, so an inactive one is in the
-    // DOM carrying the `hidden` ATTRIBUTE while its `panelClass` sets `display: flex`. What
-    // keeps it hidden is Tailwind v4's preflight
-    // (`[hidden]:where(:not([hidden='until-found'])) { display: none !important }`) — a bare
-    // UA rule would tie with a single class and lose on source order. jsdom cannot tell the
-    // two apart, so this is the only place the arrangement is actually checked.
-    await expect(page.getByTestId('room-settings-panel-access')).toBeHidden();
+    // Each section owns its form and action row; inactive sections do not compete for focus.
+    await expect(page.getByTestId('room-settings-panel-access')).toHaveCount(0);
     await openSettingsTab(page, 'room-settings', 'access');
-    await expect(page.getByTestId('room-settings-panel-general')).toBeHidden();
+    await expect(page.getByTestId('room-settings-panel-general')).toHaveCount(
+      0,
+    );
 
     // Open the room up: anyone can join, and history is world-readable.
     // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose

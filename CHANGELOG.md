@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room settings is now an Account-bound responsive hub.** Web and desktop keep a centred
+  directory-and-section dialog, while a real phone uses a full-screen master-detail flow with
+  reachable scrolling and Back behavior. General opens first with the opening Account and Room
+  clearly identified; General and Access keep independent drafts, save successful fields
+  separately, and retry only failures. Browser, device and in-hub navigation protect dirty work,
+  live permission changes disable only affected writes, and Account switching or sign-out cannot
+  retarget pending Room updates. Existing Access, Widgets and Bans workflows remain reachable.
+
 - System Status now presents startup blockers and live capability limits from one application-owned
   English catalogue, grouped by user-facing capability and Account with scoped recovery, recurrence-aware
   dismissal, explicit recovery outcomes, and privacy-safe copyable support details. Startup stays calm for

@@ -18,6 +18,7 @@ async function build(
     noun: string;
     testid: string;
     shape: 'person' | 'place';
+    accountId: string | null;
   }> = {},
   over: { setAvatar?: Mock } = {},
 ) {
@@ -58,6 +59,25 @@ describe('AvatarFieldComponent', () => {
       expect.any(String),
       expect.objectContaining({ variant: 'success' }),
     );
+  });
+
+  it('pins an upload to the opening Account and reports inline completion', async () => {
+    const { cmp, container, fixture, setAvatar } = await build({
+      accountId: '@opening:hs',
+    });
+    const file = new File(['x'], 'photo.png', { type: 'image/png' });
+
+    cmp.onAvatarPicked(pickEvent(file));
+    fixture.detectChanges();
+
+    expect(setAvatar).toHaveBeenCalledWith(
+      { accountId: '@opening:hs', roomId: '!r:hs' },
+      file,
+    );
+    expect(
+      container.querySelector('[data-testid="avatar-field-feedback"]')
+        ?.textContent,
+    ).toContain('Room photo updated');
   });
 
   it('rejects a non-image file without uploading', async () => {

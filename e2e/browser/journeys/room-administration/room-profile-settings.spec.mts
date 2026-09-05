@@ -46,10 +46,85 @@ test.describe('Room settings', () => {
 
     // Open the room settings dialog and rename the room.
     await page.getByTestId('open-room-settings').click();
-    await expect(page.getByTestId('room-settings')).toBeVisible({
+    const settings = page.getByTestId('room-settings');
+    await expect(settings).toBeVisible({
       timeout: 10_000,
     });
-    await page.getByTestId('room-settings-name').fill(newName);
+    await expect(page.getByTestId('room-settings-directory')).toBeVisible();
+    await expect(page.getByTestId('room-settings-account')).toContainText(user);
+    await expect(
+      page.getByTestId('room-settings-section-heading'),
+    ).toBeFocused();
+    const settingsBox = await settings.boundingBox();
+    expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
+    expect(settingsBox?.width ?? Infinity).toBeLessThan(
+      page.viewportSize()?.width ?? Infinity,
+    );
+    const openingViewport = page.viewportSize();
+    if (!openingViewport) throw new Error('Room settings needs a viewport');
+    await page.setViewportSize({ width: 700, height: 800 });
+    await expect(page.getByTestId('room-settings-directory')).toBeHidden();
+    await expect(page.getByTestId('room-settings-mobile-back')).toBeVisible();
+    await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();
+    await page.setViewportSize(openingViewport);
+    await expect(page.getByTestId('room-settings-directory')).toBeVisible();
+    await expect(page.getByTestId('room-settings-mobile-back')).toBeHidden();
+
+    const openingRootSize = await page.evaluate(
+      () => document.documentElement.style.fontSize,
+    );
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '125%';
+    });
+    await expect(page.getByTestId('room-settings-cancel')).toBeVisible();
+    await expect(page.getByTestId('room-settings-save')).toBeVisible();
+    await page.evaluate((size) => {
+      document.documentElement.style.fontSize = size;
+    }, openingRootSize);
+
+    const name = page.getByTestId('room-settings-name');
+    await name.focus();
+    await name.press('ControlOrMeta+A');
+    await name.pressSequentially(newName);
+    await page.goBack();
+    const discard = page.getByRole('dialog', {
+      name: 'Discard Room settings changes?',
+    });
+    await expect(discard).toBeVisible();
+    await discard.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(name).toHaveValue(newName);
+
+    await page.getByTestId('room-settings-tab-access').click();
+    await expect(discard).toBeVisible();
+    await discard.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(name).toHaveValue(newName);
+    await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();
+    const openingAppearance = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      theme: document.documentElement.getAttribute('data-theme'),
+    }));
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.removeAttribute('data-theme');
+    });
+    await test.info().attach('room-settings-desktop-general-light', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'amethyst');
+    });
+    await test.info().attach('room-settings-desktop-general-dark-amethyst', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(({ dark, theme }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      if (theme === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+    }, openingAppearance);
     await page.getByTestId('room-settings-save').click();
 
     // The rename is an m.room.name state event, and matrix-js-sdk has no local echo for

@@ -222,19 +222,23 @@ export async function openMessageActionSheet(
 }
 
 /**
- * Switch a settings dialog to one of its tabs, and wait until that panel is the visible one.
- *
- * `prefix` is `room-settings` or `space-settings`. Both dialogs render every panel eagerly —
- * one `<form>` spans all of them — so an inactive panel is in the DOM and merely `hidden`.
- * That is exactly why this waits on VISIBILITY rather than on the element existing: a locator
- * that only asserts presence would pass before the tab was ever pressed.
+ * Switch a settings surface to one section and wait for its visible panel. Room settings uses
+ * mobile master-detail navigation, so reveal its directory before choosing another section.
+ * Space settings retains its tabbed surface.
  */
 export async function openSettingsTab(
   page: Page,
   prefix: 'room-settings' | 'space-settings',
   tab: 'general' | 'access' | 'widgets' | 'bans',
 ): Promise<void> {
-  await page.getByTestId(`${prefix}-tab-${tab}`).click();
+  const tabButton = page.getByTestId(`${prefix}-tab-${tab}`);
+  if (
+    prefix === 'room-settings' &&
+    !(await tabButton.isVisible().catch(() => false))
+  ) {
+    await page.getByTestId('room-settings-mobile-back').click();
+  }
+  await tabButton.click();
   await expect(page.getByTestId(`${prefix}-panel-${tab}`)).toBeVisible({
     timeout: 10_000,
   });

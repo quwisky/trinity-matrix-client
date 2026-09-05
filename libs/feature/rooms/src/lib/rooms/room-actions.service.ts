@@ -1,7 +1,3 @@
-import {
-  RoomAliasesService,
-  RoomSettingsService,
-} from '@trinity/data-access/room-administration';
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
@@ -19,6 +15,7 @@ import {
 } from '@trinity/components/overlay';
 import { matrixRequestErrorHandling } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
+import { isMobileOs } from '@trinity/platform-native';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import {
   RoomDirectoryComponent,
@@ -51,8 +48,6 @@ export class RoomActionsService {
   private readonly roomReadiness = inject(RoomReadinessService);
   private readonly spaces = inject(SpacesService);
   private readonly publicRooms = inject(PublicRoomsService);
-  private readonly roomSettings = inject(RoomSettingsService);
-  private readonly aliases = inject(RoomAliasesService);
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly userPicker = inject(UserPickerService);
   private readonly alert = inject(TrnAlertService);
@@ -324,20 +319,13 @@ export class RoomActionsService {
       );
   }
 
-  /** Header "Room settings": edit the active room's name and topic in a dialog. */
+  /** Header "Room settings": open one immutable Account-and-Room settings lifetime. */
   onOpenRoomSettings(): void {
     const room = this.vm.activeRoom();
-    if (!room) {
+    const accountId = this.store.activeAccountId();
+    if (!room || !accountId) {
       return;
     }
-    const editable = this.roomSettings.editableFields(room.id);
-    const access = this.roomSettings.currentAccess(room.id);
-    // Seeded from raw state, NOT from RoomSummary: its `name` is `room.name || roomId`,
-    // and the SDK's `room.name` invents a display name out of the member list for a
-    // nameless room. Pre-filling the Name field with "Alice, Bob" (or a raw !id) shows a
-    // value nobody typed, and invites the user to "correct" a fabrication into a real
-    // m.room.name. Same reasoning as the space dialog, which is why currentIdentity exists.
-    const identity = this.roomSettings.currentIdentity(room.id);
     // "Members of this space can join" needs the spaces the room actually sits in — read
     // from the space children, never from the room's own m.space.parent, which
     // removeRoomFromSpace leaves behind on purpose.
@@ -345,27 +333,18 @@ export class RoomActionsService {
       id,
       name: this.vm.railSpaces().find((s) => s.id === id)?.name ?? id,
     }));
-    // The dialog writes on save; the name/topic/access update live via the rooms
-    // sync listeners, so nothing to do with the resolved result here.
     this.dialog
       .openAndWait$(RoomSettingsComponent, {
         ariaLabel: 'Room settings',
+        placement: isMobileOs() ? 'fullscreen' : 'center',
+        autoFocus: '[data-autofocus]',
+        dismissGuard: (component) =>
+          component?.requestExternalDismiss() ?? true,
         inputs: {
+          accountId,
           roomId: room.id,
-          name: identity.name,
-          topic: identity.topic,
-          avatarMxc: identity.avatarMxc,
-          joinRule: access.joinRule,
-          historyVisibility: access.historyVisibility,
-          canEditName: editable.name,
-          canEditTopic: editable.topic,
-          canEditAvatar: editable.avatar,
-          canEditJoinRule: editable.joinRule,
-          canEditHistory: editable.history,
-          allowedSpaceIds: access.allowedSpaceIds,
+          roomDisplayName: room.name,
           parentSpaces,
-          supportsRestricted: this.roomSettings.supportsRestricted(room.id),
-          canManageAliases: this.aliases.canManageAliases(room.id),
         },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
