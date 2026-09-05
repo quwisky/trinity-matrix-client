@@ -235,6 +235,18 @@ Promise ownership after timeout or subscriber cancellation. Room-order tests use
 scopes and prove that removal retires a failure. Long-lived Appearance-effect tests have no fake
 deadline: fault, exact restart, runtime stop and restart are ownership assertions.
 
+Destructive Account recovery changes must cover both confirmation surfaces and the Account-owned
+lifetime. Use exported budgets with deterministic clocks to prove stalled registry/session reads,
+provider and Matrix operations, IndexedDB enumeration/deletion, secure storage, Preferences, raw
+web storage, caches, and service-worker registration cannot hang invisibly or falsely settle.
+Assert that detached UI does not cancel ownership and identical requests join. Conflicts remain
+unavailable while late work is live. A reopened reset cannot dispatch the erase twice. Exercise
+settled partial residue and local-only retry separately from `uncertain-cleanup`, including blocked
+IndexedDB that later succeeds. Application Runtime must preserve the complete value-free ledger of
+scopes and recoveries;
+tests and source guards must reject Account identities, database names, values, tokens, raw errors,
+false rollback language, false cancellation, and legacy-warning compatibility.
+
 ## Required startup-policy validation
 
 For Application Runtime startup-policy changes, run the Application Runtime, Accounts, Room

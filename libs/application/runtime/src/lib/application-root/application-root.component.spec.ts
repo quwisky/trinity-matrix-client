@@ -8,9 +8,12 @@ import {
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import type { ApplicationRuntimeState } from '../application-runtime.models';
+import type {
+  ApplicationRecoveryOutcome,
+  ApplicationRuntimeState,
+} from '../application-runtime.models';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
@@ -18,8 +21,11 @@ import { ApplicationRootComponent } from './application-root.component';
 describe('ApplicationRootComponent', () => {
   async function setup(initial: ApplicationRuntimeState) {
     const state = signal(initial);
-    const recover = vi.fn(() => of({ kind: 'accepted' as const }));
+    const recover = vi.fn<() => Observable<ApplicationRecoveryOutcome>>(() =>
+      of({ kind: 'accepted' }),
+    );
     const prompt = vi.fn(() => of<string | null>(null));
+    const confirm = vi.fn(() => of(true));
     const showToast = vi.fn();
     const rendered = await render(ApplicationRootComponent, {
       providers: [
@@ -27,7 +33,7 @@ describe('ApplicationRootComponent', () => {
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
         MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnDialogService),
-        MockProvider(TrnAlertService, { prompt$: prompt }),
+        MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
         MockProvider(TrnToastService, { show: showToast }),
       ],
     });
@@ -36,6 +42,7 @@ describe('ApplicationRootComponent', () => {
       state,
       recover,
       prompt,
+      confirm,
       showToast,
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
@@ -56,7 +63,7 @@ describe('ApplicationRootComponent', () => {
   });
 
   it('presents typed recovery and delegates retry without owning startup', async () => {
-    const { fixture, getByTestId, recover } = await setup({
+    const { fixture, getByTestId, recover, confirm } = await setup({
       phase: 'blocked',
       attempt: 1,
       failure: {
@@ -75,6 +82,115 @@ describe('ApplicationRootComponent', () => {
     fixture.detectChanges();
 
     expect(recover).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        header: 'Remove account and sign in again',
+        confirmText: 'Remove account',
+        variant: 'danger',
+      }),
+    );
+  });
+
+  it('does not remove an Account when compatibility recovery is cancelled', async () => {
+    const { fixture, getByTestId, recover, confirm } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'reauthenticate',
+        diagnostic: { code: 'active-account-unavailable' },
+      },
+      warnings: [],
+      settlements: [],
+    });
+    confirm.mockReturnValueOnce(of(false));
+
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+
+    expect(recover).not.toHaveBeenCalled();
+  });
+
+  it('requires RESET TRINITY before compatibility recovery resets the installation', async () => {
+    const { fixture, getByTestId, recover, prompt, showToast } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'reset-installation',
+        diagnostic: { code: 'account-local-state-unavailable' },
+      },
+      warnings: [],
+      settlements: [],
+    });
+
+    prompt.mockReturnValueOnce(of('RESET'));
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+    expect(recover).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('RESET TRINITY'),
+      expect.anything(),
+    );
+
+    prompt.mockReturnValueOnce(of(' reset trinity '));
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+    expect(recover).toHaveBeenCalledOnce();
+    expect(prompt).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        placeholder: 'RESET TRINITY',
+        variant: 'danger',
+      }),
+    );
+  });
+
+  it('presents uncertain and partial cleanup without claiming recovery succeeded', async () => {
+    const { fixture, getByTestId, recover, prompt, showToast } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'reset-installation',
+        diagnostic: { code: 'account-local-state-unavailable' },
+      },
+      warnings: [],
+      settlements: [],
+    });
+    prompt.mockReturnValue(of('RESET TRINITY'));
+    recover.mockReturnValueOnce(
+      of({
+        kind: 'unavailable',
+        reason: 'cleanup-in-progress',
+        cleanup: {
+          issues: [],
+          pending: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+        },
+      }),
+    );
+
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+    expect(showToast).toHaveBeenLastCalledWith(
+      expect.stringContaining('still running'),
+      expect.anything(),
+    );
+
+    recover.mockReturnValueOnce(
+      of({
+        kind: 'unavailable',
+        reason: 'partial-cleanup',
+        cleanup: {
+          issues: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+        },
+      }),
+    );
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+    expect(showToast).toHaveBeenLastCalledWith(
+      expect.stringContaining('Restart Trinity'),
+      expect.anything(),
+    );
   });
 
   it('requires DEFAULTS before preference recovery can reset settings', async () => {

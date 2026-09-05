@@ -224,8 +224,11 @@ Accounts may still own recovery-critical stores. It unregisters notifications wh
 is usable, attempts provider token revocation and Matrix logout, then performs local cleanup.
 Expected residue becomes a typed `partial-cleanup` result with a storage scope and recovery
 action. Raw scanned database names, secrets and exception messages stay inside the adapter.
-The three-second courtesy budget used by installation reset does **not** cover ordinary
-single-Account sign-out.
+Registry/session reads, notification removal, provider and Matrix logout, Matrix removal, and
+registry writes each have an explicit three-second observation budget. A timeout reports
+`uncertain-cleanup`; it does not unsubscribe the underlying operation, release the lifecycle
+conflict, or mean the Account survived. The eventual settlement replaces uncertainty with ready,
+partial, or failed state even when the initiating UI has gone away.
 
 ## The factory reset
 
@@ -240,25 +243,31 @@ The ordering is part of the storage contract:
 1. Read the registry and tokens before deletion. They identify per-Account stores and
    Electron secret keys that cannot be enumerated through the renderer bridge.
 2. Attempt live-client sign-out and provider revocation before stopping the client registry.
-   Each courtesy operation has a three-second wait budget; failure is reported and cleanup
-   proceeds.
+   Each network operation and Matrix stop has its own three-second observation budget; timeout
+   advances later cleanup while the owned operation remains live.
 3. Stop clients, then attempt IndexedDB deletion using both registry-derived names and
-   enumeration where available. Individual delete helpers report blocked/failed outcomes
-   with a five-second backstop. They avoid the SDK `clearStores()` promise that can stay
-   pending on `onblocked`.
+   enumeration where available. Individual deletion observation has a five-second backstop and
+   the phase has a six-second budget. A blocked request remains queued; its separate settlement
+   can later reconcile the attempt to success or residue. The helper avoids the SDK
+   `clearStores()` promise that can stay pending on `onblocked`.
 4. Remove Account secrets by registry key before clearing the registry and Preferences.
    Clear the whole app Preferences group, not a manually maintained list of prefixes, and
-   attempt secure-store and raw local/session-storage cleanup.
-5. Remove service-worker registrations and caches. The next PWA load can require the network.
+   give the registry write, orphan secure-store sweep, Preferences clear, and raw
+   local/session-storage clear separate three-second budgets.
+5. Remove cache storage and service-worker registrations under separate three-second budgets.
+   The next PWA load can require the network.
 
 Deletes run concurrently. A blocked request does not stop other deletions or roll back what
 has already gone. It can remain queued and succeed after its holder closes. Recognized orphaned
 stores may be reclaimed by a later sweep, subject to the limits above.
 
-Expected cleanup failures become secret-safe scope/recovery values; programming defects use the
-error channel. This does **not** guarantee the login page reaches restart within a deadline:
-registry reads, database enumeration, secure-store/Preferences and cache/service-worker promises
-have no single overall timeout. Unsubscription also does not cancel the accepted reset lifetime.
+Expected cleanup failures and unexpected adapter faults become secret-safe typed outcomes. Caller
+observation is bounded at ten seconds separately from the step budgets and underlying lifetime.
+`uncertain-cleanup` is therefore a visible, unresolved state rather than a false cancellation or
+failure. The accepted attempt continues, keeps conflicting destructive commands unavailable, and
+publishes late settlement through Account Runtime's lifecycle signal. A reopened reset observes
+that attempt; after settled residue it retries only safe local scopes, never courtesy provider or
+server effects. A completed reset is replayed until restart rather than dispatched twice.
 
 ### What it cannot reach
 

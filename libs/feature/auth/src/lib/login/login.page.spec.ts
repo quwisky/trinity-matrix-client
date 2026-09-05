@@ -475,7 +475,7 @@ describe('LoginPage', () => {
     it('erases and restarts once the word is typed', async () => {
       const { cmp, reset, restart } = await renderLogin(
         {} as unknown as Partial<AuthService>,
-        { typed: 'ERASE' },
+        { typed: 'RESET TRINITY' },
       );
 
       await cmp.clearAllData();
@@ -530,7 +530,7 @@ describe('LoginPage', () => {
 
       expect(reset.resetInstallation).not.toHaveBeenCalled();
       expect(restart.restart).not.toHaveBeenCalled();
-      expect(cmp.error()).toMatch(/Type ERASE exactly/);
+      expect(cmp.error()).toMatch(/Type RESET TRINITY exactly/);
     });
 
     it('erases nothing and stays quiet when cancelled', async () => {
@@ -545,9 +545,7 @@ describe('LoginPage', () => {
       expect(cmp.error()).toBeNull(); // they changed their mind; nagging would be rude
     });
 
-    it('restarts even when something could not be deleted', async () => {
-      // Residue is not a reason to strand the user on a page whose data is already gone.
-      // The wipe finished; what is left is an orphan the next cold start sweeps.
+    it('retains partial residue for a safe retry instead of claiming success', async () => {
       const warn = vi
         .spyOn(console, 'warn')
         .mockImplementation(() => undefined);
@@ -555,7 +553,7 @@ describe('LoginPage', () => {
         const { cmp, restart } = await renderLogin(
           {} as unknown as Partial<AuthService>,
           {
-            typed: 'ERASE',
+            typed: 'RESET TRINITY',
             report: {
               blocked: ['matrix-js-sdk:trinity-sync:@a:hs'],
               failed: ['other-db'],
@@ -565,7 +563,9 @@ describe('LoginPage', () => {
 
         await cmp.clearAllData();
 
-        expect(restart.restart).toHaveBeenCalled();
+        expect(restart.restart).not.toHaveBeenCalled();
+        expect(cmp.erasing()).toBe(false);
+        expect(cmp.error()).toMatch(/Restart Trinity/i);
         expect(warn).toHaveBeenCalledWith(expect.any(String), [
           { scope: 'indexed-db', recovery: 'restart-application' },
         ]);
@@ -578,7 +578,7 @@ describe('LoginPage', () => {
     it('does not restart when another Account transition blocks the reset', async () => {
       const { cmp, reset, restart } = await renderLogin(
         {} as unknown as Partial<AuthService>,
-        { typed: 'ERASE' },
+        { typed: 'RESET TRINITY' },
       );
       vi.mocked(reset.resetInstallation).mockReturnValue(
         of({
@@ -592,6 +592,25 @@ describe('LoginPage', () => {
       expect(restart.restart).not.toHaveBeenCalled();
       expect(cmp.erasing()).toBe(false);
       expect(cmp.error()).toMatch(/in progress/i);
+    });
+
+    it('does not call an observation timeout cancellation or restart', async () => {
+      const { cmp, reset, restart } = await renderLogin(
+        {} as unknown as Partial<AuthService>,
+        { typed: 'RESET TRINITY' },
+      );
+      vi.mocked(reset.resetInstallation).mockReturnValue(
+        of({
+          kind: 'uncertain-cleanup',
+          issues: [],
+          pending: [{ scope: 'indexed-db', recovery: 'restart-application' }],
+        }),
+      );
+
+      await cmp.clearAllData();
+
+      expect(restart.restart).not.toHaveBeenCalled();
+      expect(cmp.error()).toMatch(/does not cancel/i);
     });
 
     it('stays clickable while the page is busy discovering a dead homeserver', async () => {

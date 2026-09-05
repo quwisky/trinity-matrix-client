@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 import { MatrixAccountRuntimeAdapter } from './matrix-account-runtime.adapter';
 import type { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type {
+  AccountCleanupIssue,
   AccountEstablishmentFailure,
   AccountEstablishmentIntent,
   AccountRestoreFailure,
@@ -55,7 +56,14 @@ export interface AccountRuntimeAdapter {
     accountId: string,
   ): Observable<AdapterAccountSwitchOutcome>;
   signOutAccount(accountId: string): Observable<AccountSignOutOutcome>;
+  retrySignOutCleanup(
+    accountId: string,
+    issues: readonly AccountCleanupIssue[],
+  ): Observable<AccountSignOutOutcome>;
   resetInstallation(): Observable<InstallationResetOutcome>;
+  retryInstallationCleanup(
+    issues: readonly AccountCleanupIssue[],
+  ): Observable<InstallationResetOutcome>;
 }
 
 export interface AccountRestorePolicy {

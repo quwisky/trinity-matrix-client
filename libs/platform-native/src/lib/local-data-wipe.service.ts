@@ -4,7 +4,7 @@ import {
   rustCryptoStoreDbNames,
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
-import { deleteDatabase, listDatabaseNames } from './indexed-db-wipe';
+import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
 import { SecureStorageService } from './secure-storage.service';
 import type { AccountRecord } from './session-storage.service';
 
@@ -27,6 +27,11 @@ export interface KeyValueWipeReport {
 export interface ServiceWorkerWipeReport {
   readonly cacheStorage: boolean;
   readonly registrations: boolean;
+}
+
+export interface IndexedDbWipeAttempt {
+  readonly observation: Promise<WipeReport>;
+  readonly settlement: Promise<WipeReport>;
 }
 
 /**
@@ -57,9 +62,34 @@ export class LocalDataWipeService {
    * after the rest are already gone; stopping there would strand the user half-erased.
    */
   async wipeIndexedDb(records: readonly AccountRecord[]): Promise<WipeReport> {
+    return this.beginIndexedDbWipe(records).observation;
+  }
+
+  /** Start deletion and retain queued requests after their bounded observation. */
+  beginIndexedDbWipe(records: readonly AccountRecord[]): IndexedDbWipeAttempt {
+    const started = this.startIndexedDbWipe(records);
+    return {
+      observation: started.then(async ({ attempts, enumerated }) =>
+        this.wipeReport(
+          attempts,
+          await Promise.all(attempts.map(({ attempt }) => attempt.observation)),
+          enumerated,
+        ),
+      ),
+      settlement: started.then(async ({ attempts, enumerated }) =>
+        this.wipeReport(
+          attempts,
+          await Promise.all(attempts.map(({ attempt }) => attempt.settlement)),
+          enumerated,
+        ),
+      ),
+    };
+  }
+
+  private async startIndexedDbWipe(records: readonly AccountRecord[]) {
     const idb = globalThis.indexedDB;
     if (typeof idb === 'undefined') {
-      return { blocked: [], failed: [], enumerated: false };
+      return { attempts: [], enumerated: false };
     }
 
     const names = new Set<string>();
@@ -87,19 +117,29 @@ export class LocalDataWipeService {
     // Deletes run concurrently and none of them aborts the others. A caller that treats
     // `blocked` as a reason to stop would therefore be stopping AFTER the rest are already
     // gone — see Account Runtime's reset workflow, which deliberately finishes instead.
-    const blocked: string[] = [];
-    const failed: string[] = [];
-    await Promise.all(
-      [...names].map(async (name) => {
-        const outcome = await deleteDatabase(idb, name);
-        if (outcome === 'blocked') {
-          blocked.push(name);
-        } else if (outcome === 'failed') {
-          failed.push(name);
-        }
-      }),
-    );
-    return { blocked, failed, enumerated: enumerated !== null };
+    return {
+      attempts: [...names].map((name) => ({
+        name,
+        attempt: beginDatabaseDeletion(idb, name),
+      })),
+      enumerated: enumerated !== null,
+    };
+  }
+
+  private wipeReport(
+    attempts: readonly { readonly name: string }[],
+    outcomes: readonly ('deleted' | 'blocked' | 'failed')[],
+    enumerated: boolean,
+  ): WipeReport {
+    return {
+      blocked: outcomes.flatMap((outcome, index) =>
+        outcome === 'blocked' ? [attempts[index].name] : [],
+      ),
+      failed: outcomes.flatMap((outcome, index) =>
+        outcome === 'failed' ? [attempts[index].name] : [],
+      ),
+      enumerated,
+    };
   }
 
   /**
@@ -117,24 +157,40 @@ export class LocalDataWipeService {
     // NOT the primary mechanism: the caller removes each account's keys by name first,
     // which is what covers Electron and web. This only reclaims secrets orphaned by an
     // earlier bug, whose account is no longer listed and whose key nothing can name.
-    const secureStorage = await attemptAsync(() => this.secure.clearAll());
+    const secureStorage = await this.wipeSecureStorage();
     // Guarded like every other step here. A rejection escaping this method would reject
     // the whole reset, and the caller's subscriber has no error path to catch it — the
     // page would sit on a disabled button with its data already deleted.
-    const preferences = await attemptAsync(() => Preferences.clear());
+    const preferences = await this.wipePreferences();
 
     // Every platform, not just web. `sessionStorage` in particular is written on NATIVE by
     // the OIDC callback re-seed, so skipping it there would leave a PKCE `code_verifier`
     // behind — the one secret in this whole surface. On native the WebView's own storage
     // otherwise holds nothing of ours (Preferences is native), so clearing it costs
     // nothing; on web it catches anything living outside the `CapacitorStorage` namespace.
-    const localStorage = attempt(() => globalThis.localStorage?.clear());
-    const sessionStorage = attempt(() => globalThis.sessionStorage?.clear());
+    const webStorage = await this.wipeWebStorage();
     return {
       secureStorage,
       preferences,
-      webStorage: localStorage && sessionStorage,
+      webStorage,
     };
+  }
+
+  /** Sweep secrets the Account registry can no longer name. */
+  wipeSecureStorage(): Promise<boolean> {
+    return attemptAsync(() => this.secure.clearAll());
+  }
+
+  /** Clear the app-scoped Preferences group. */
+  wipePreferences(): Promise<boolean> {
+    return attemptAsync(() => Preferences.clear());
+  }
+
+  /** Clear raw local and session storage on every host. */
+  async wipeWebStorage(): Promise<boolean> {
+    const localStorage = attempt(() => globalThis.localStorage?.clear());
+    const sessionStorage = attempt(() => globalThis.sessionStorage?.clear());
+    return localStorage && sessionStorage;
   }
 
   /**
@@ -148,22 +204,34 @@ export class LocalDataWipeService {
    * A no-op off web — the worker is only registered in a production browser build.
    */
   async wipeServiceWorker(): Promise<ServiceWorkerWipeReport> {
-    let cacheStorage = true;
+    const [cacheStorage, registrations] = await Promise.all([
+      this.wipeCacheStorage(),
+      this.wipeServiceWorkerRegistrations(),
+    ]);
+    return { cacheStorage, registrations };
+  }
+
+  /** Delete every Cache Storage entry owned by this origin. */
+  async wipeCacheStorage(): Promise<boolean> {
     if (typeof caches !== 'undefined') {
-      cacheStorage = await attemptAsync(async () => {
+      return attemptAsync(async () => {
         const keys = await caches.keys();
         await Promise.all(keys.map((key) => caches.delete(key)));
       });
     }
-    let registrations = true;
+    return true;
+  }
+
+  /** Unregister every service worker owned by this origin. */
+  async wipeServiceWorkerRegistrations(): Promise<boolean> {
     const serviceWorker = globalThis.navigator?.serviceWorker;
     if (serviceWorker) {
-      registrations = await attemptAsync(async () => {
+      return attemptAsync(async () => {
         const registrations = await serviceWorker.getRegistrations();
         await Promise.all(registrations.map((r) => r.unregister()));
       });
     }
-    return { cacheStorage, registrations };
+    return true;
   }
 }
 

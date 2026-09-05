@@ -15,18 +15,26 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
+  ACCOUNT_REMOVAL_CONSEQUENCES,
+  CLEAR_DATA_CONFIRMATION_WORD,
+  CLEAR_DATA_MISTYPED_MESSAGE,
+  classifyClearDataIntent,
+  clearDataMessage,
+} from '@trinity/data-access/accounts';
+import {
   RESET_CONFIG_CONFIRMATION_WORD,
   RESET_CONFIG_CONSEQUENCES,
   RESET_CONFIG_MISTYPED_MESSAGE,
   classifyResetConfigIntent,
 } from '@trinity/platform-native';
-import { EMPTY, map, switchMap, take } from 'rxjs';
+import { EMPTY, filter, map, switchMap, take, type Observable } from 'rxjs';
 import {
   CapabilityHealthService,
   type ApplicationCapabilityHealth,
 } from '../capability-health.service';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import type {
+  ApplicationRecoveryOutcome,
   ApplicationRuntimeWarning,
   ApplicationStartupRecovery,
 } from '../application-runtime.models';
@@ -91,32 +99,96 @@ export class ApplicationRootComponent {
 
   recover(): void {
     const recovery = this.blocked()?.failure.recovery;
-    const recovery$ =
-      recovery === 'reset-preferences'
-        ? this.alert
-            .prompt$({
-              header: 'Reset settings to defaults',
-              message: `${RESET_CONFIG_CONSEQUENCES}\n\nType ${RESET_CONFIG_CONFIRMATION_WORD} to confirm.`,
-              placeholder: RESET_CONFIG_CONFIRMATION_WORD,
-              inputLabel: `Type ${RESET_CONFIG_CONFIRMATION_WORD} to confirm`,
-              confirmText: 'Reset settings',
-              cancelText: 'Cancel',
-              variant: 'danger',
-            })
-            .pipe(
-              map(classifyResetConfigIntent),
-              switchMap((intent) => {
-                if (intent === 'mistyped') {
-                  this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, {
-                    duration: 4000,
-                  });
-                }
-                return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
-              }),
-            )
-        : this.runtime.recover();
+    if (!recovery) return;
+    this.confirmedRecovery(recovery)
+      .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => this.presentRecoveryOutcome(outcome));
+  }
 
-    recovery$.pipe(take(1), takeUntilDestroyed(this.destroyRef)).subscribe();
+  private confirmedRecovery(
+    recovery: ApplicationStartupRecovery,
+  ): Observable<ApplicationRecoveryOutcome> {
+    if (recovery === 'reauthenticate') {
+      return this.alert
+        .confirm$({
+          header: 'Remove account and sign in again',
+          message: ACCOUNT_REMOVAL_CONSEQUENCES,
+          confirmText: 'Remove account',
+          cancelText: 'Cancel',
+          variant: 'danger',
+        })
+        .pipe(
+          filter(Boolean),
+          switchMap(() => this.runtime.recover()),
+        );
+    }
+    if (recovery === 'reset-installation') {
+      return this.alert
+        .prompt$({
+          header: 'Erase all Trinity data',
+          message: clearDataMessage(null),
+          placeholder: CLEAR_DATA_CONFIRMATION_WORD,
+          inputLabel: `Type ${CLEAR_DATA_CONFIRMATION_WORD} to confirm`,
+          confirmText: 'Erase everything',
+          cancelText: 'Cancel',
+          variant: 'danger',
+        })
+        .pipe(
+          map(classifyClearDataIntent),
+          switchMap((intent) => {
+            if (intent === 'mistyped') {
+              this.toast.show(CLEAR_DATA_MISTYPED_MESSAGE, { duration: 4000 });
+            }
+            return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
+          }),
+        );
+    }
+    if (recovery === 'reset-preferences') {
+      return this.alert
+        .prompt$({
+          header: 'Reset settings to defaults',
+          message: `${RESET_CONFIG_CONSEQUENCES}\n\nType ${RESET_CONFIG_CONFIRMATION_WORD} to confirm.`,
+          placeholder: RESET_CONFIG_CONFIRMATION_WORD,
+          inputLabel: `Type ${RESET_CONFIG_CONFIRMATION_WORD} to confirm`,
+          confirmText: 'Reset settings',
+          cancelText: 'Cancel',
+          variant: 'danger',
+        })
+        .pipe(
+          map(classifyResetConfigIntent),
+          switchMap((intent) => {
+            if (intent === 'mistyped') {
+              this.toast.show(RESET_CONFIG_MISTYPED_MESSAGE, {
+                duration: 4000,
+              });
+            }
+            return intent === 'confirmed' ? this.runtime.recover() : EMPTY;
+          }),
+        );
+    }
+    return this.runtime.recover();
+  }
+
+  private presentRecoveryOutcome(recovery: ApplicationRecoveryOutcome): void {
+    if (recovery.kind !== 'unavailable') return;
+    if (recovery.reason === 'cleanup-in-progress') {
+      this.toast.show(
+        'Cleanup is still running. Leaving this screen does not cancel it; use recovery again to observe the same attempt.',
+        { duration: 6000 },
+      );
+      return;
+    }
+    if (recovery.reason === 'partial-cleanup') {
+      const restartRequired = recovery.cleanup.issues.some(
+        ({ recovery }) => recovery === 'restart-application',
+      );
+      this.toast.show(
+        restartRequired
+          ? 'Cleanup finished with some residue. Restart Trinity before trying recovery again.'
+          : 'Cleanup finished with residue. Use recovery again to retry only the remaining safe work.',
+        { duration: 6000 },
+      );
+    }
   }
 }
 

@@ -14,11 +14,11 @@ const alertWith = (typed: string | null) =>
   ({ prompt$: vi.fn(() => of(typed)) }) as unknown as TrnAlertService;
 
 describe('clear-all-data copy', () => {
-  it('asks for ERASE', () => {
+  it('asks for RESET TRINITY', () => {
     // That it must DIFFER from the encryption-reset flow's word is a cross-library
     // invariant — feature libs may not import each other — so it is asserted in
     // scripts/confirmation-words.spec.mjs, which can read both modules.
-    expect(CLEAR_DATA_CONFIRMATION_WORD).toBe('ERASE');
+    expect(CLEAR_DATA_CONFIRMATION_WORD).toBe('RESET TRINITY');
   });
 
   it('leads with the permanent loss and ends with what survives', () => {
@@ -29,6 +29,10 @@ describe('clear-all-data copy', () => {
     // The service worker is unregistered, so the next load comes from the network — and
     // the person most likely to erase is the one whose app is broken, possibly offline.
     expect(CLEAR_DATA_CONSEQUENCES).toMatch(/online to use it again/i);
+    expect(CLEAR_DATA_CONSEQUENCES).toMatch(/push registrations/i);
+    expect(CLEAR_DATA_CONSEQUENCES).toMatch(/identity provider/i);
+    expect(CLEAR_DATA_CONSEQUENCES).toMatch(/service workers/i);
+    expect(CLEAR_DATA_CONSEQUENCES).toMatch(/offline PWA caches/i);
     // Someone doing this while panicking needs to know their conversations are not deleted.
     expect(paragraphs[3]).toMatch(/Nothing on the server is deleted/i);
   });
@@ -74,15 +78,17 @@ describe('clear-all-data copy', () => {
   });
 
   it('always asks for the word', () => {
-    expect(clearDataMessage([])).toMatch(/Type ERASE to confirm/);
-    expect(clearDataMessage(['@a:hs'])).toMatch(/Type ERASE to confirm/);
+    expect(clearDataMessage([])).toMatch(/Type RESET TRINITY to confirm/);
+    expect(clearDataMessage(['@a:hs'])).toMatch(
+      /Type RESET TRINITY to confirm/,
+    );
   });
 });
 
 describe('confirmClearDataIntent', () => {
   it('accepts the word regardless of case or surrounding space', async () => {
     await expect(
-      firstValueFrom(confirmClearDataIntent(alertWith('  erase '), [])),
+      firstValueFrom(confirmClearDataIntent(alertWith('  reset trinity '), [])),
     ).resolves.toBe('confirmed');
   });
 
@@ -105,7 +111,7 @@ describe('confirmClearDataIntent', () => {
   });
 
   it('asks destructively, with the accounts named in the body', async () => {
-    const alert = alertWith('ERASE');
+    const alert = alertWith('RESET TRINITY');
 
     await firstValueFrom(confirmClearDataIntent(alert, ['@a:hs']));
 

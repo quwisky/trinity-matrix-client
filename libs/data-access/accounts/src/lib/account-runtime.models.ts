@@ -170,6 +170,12 @@ export interface AccountCleanupIssue {
   readonly recovery: AccountCleanupRecovery;
 }
 
+/** A cleanup scope whose underlying operation may still settle after observation ended. */
+export interface AccountCleanupPending {
+  readonly scope: AccountCleanupScope;
+  readonly recovery: AccountCleanupRecovery;
+}
+
 interface AccountSignOutResultBase {
   readonly accountId: string;
   readonly activeAccountId: string | null;
@@ -182,6 +188,12 @@ export type AccountSignOutOutcome =
       readonly kind: 'partial-cleanup';
       readonly issues: readonly AccountCleanupIssue[];
     })
+  | {
+      readonly kind: 'uncertain-cleanup';
+      readonly accountId: string;
+      readonly issues: readonly AccountCleanupIssue[];
+      readonly pending: readonly AccountCleanupPending[];
+    }
   | {
       readonly kind: 'failed';
       readonly accountId: string;
@@ -201,8 +213,28 @@ export type InstallationResetOutcome =
       readonly issues: readonly AccountCleanupIssue[];
     }
   | {
+      readonly kind: 'uncertain-cleanup';
+      readonly issues: readonly AccountCleanupIssue[];
+      readonly pending: readonly AccountCleanupPending[];
+    }
+  | {
       readonly kind: 'transition-in-progress';
       readonly operation: AccountRuntimeOperation;
+    };
+
+export type AccountLifecycleState =
+  | { readonly phase: 'idle' }
+  | {
+      readonly phase: 'running';
+      readonly attempt: number;
+      readonly operation: AccountLifecycleOperation;
+      readonly outcome: AccountSignOutOutcome | InstallationResetOutcome;
+    }
+  | {
+      readonly phase: 'settled';
+      readonly attempt: number;
+      readonly operation: AccountLifecycleOperation;
+      readonly outcome: AccountSignOutOutcome | InstallationResetOutcome;
     };
 
 export type AccountRuntimeState =

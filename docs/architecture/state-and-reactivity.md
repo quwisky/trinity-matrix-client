@@ -302,9 +302,27 @@ a second new-record write. It is the only owner that turns the opaque grant into
 persisted account state and a live Matrix runtime. See the
 [Matrix account adapter](../../libs/data-access/accounts/src/lib/matrix-account-runtime.adapter.ts).
 
-Sign-out and installation reset are similarly serialized account lifecycle
-commands; partial-cleanup outcomes name a safe cleanup scope and recovery
-without leaking values.
+Sign-out and installation reset are serialized, retained Account lifecycle commands. Their UI
+owners confirm the exact destructive operation immediately before the first subscription.
+Account Runtime then owns that accepted attempt independently of any dialog, page, or recovery
+observer: closing a surface detaches observation but neither cancels nor rolls back cleanup.
+An identical request joins the live attempt; a different lifecycle command receives
+`transition-in-progress` until every underlying step has actually settled.
+
+Every finite cleanup step has an explicit observation budget. An elapsed budget advances the
+sequence without unsubscribing a Promise-backed or otherwise non-cancellable operation. The
+attempt publishes `uncertain-cleanup` with value-free pending scopes, retains conflict ownership,
+and reconciles a late settlement. `ready` means every owned step settled successfully;
+`partial-cleanup` names every settled safe scope and its recovery; expected pre-dispatch failures
+remain typed failures. Raw errors, tokens, Account identities, database names, and stored values do
+not enter cleanup diagnostics.
+
+The lifecycle signal retains running and settled outcomes when a UI observer leaves. A repeated
+confirmed Account removal retries only its retained settled scopes. A reopened reset joins the
+live attempt, replays a completed reset instead of erasing twice, or retries only settled local
+residue. Provider and server effects are not repeated merely because observation timed out.
+Application Runtime forwards pending and partial cleanup detail as typed recovery metadata and
+does not translate either state into readiness or a legacy warning.
 
 ```mermaid
 sequenceDiagram

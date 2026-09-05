@@ -331,12 +331,26 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           if (!accountId) return of({ kind: 'ready' } as const);
           return this.accounts.signOutAccount(accountId).pipe(
             map((outcome): ApplicationRecoveryAdapterOutcome => {
-              if (
-                outcome.kind === 'ready' ||
-                outcome.kind === 'partial-cleanup'
-              ) {
+              if (outcome.kind === 'ready') {
                 this.accountRecoveryId = null;
                 return { kind: 'ready' };
+              }
+              if (outcome.kind === 'uncertain-cleanup') {
+                return {
+                  kind: 'unavailable',
+                  reason: 'cleanup-in-progress',
+                  cleanup: {
+                    issues: outcome.issues,
+                    pending: outcome.pending,
+                  },
+                };
+              }
+              if (outcome.kind === 'partial-cleanup') {
+                return {
+                  kind: 'unavailable',
+                  reason: 'partial-cleanup',
+                  cleanup: { issues: outcome.issues },
+                };
               }
               return {
                 kind: 'unavailable',
@@ -353,6 +367,23 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           map((outcome): ApplicationRecoveryAdapterOutcome => {
             if (outcome.kind === 'transition-in-progress') {
               return { kind: 'unavailable', reason: 'transition-in-progress' };
+            }
+            if (outcome.kind === 'uncertain-cleanup') {
+              return {
+                kind: 'unavailable',
+                reason: 'cleanup-in-progress',
+                cleanup: {
+                  issues: outcome.issues,
+                  pending: outcome.pending,
+                },
+              };
+            }
+            if (outcome.kind === 'partial-cleanup') {
+              return {
+                kind: 'unavailable',
+                reason: 'partial-cleanup',
+                cleanup: { issues: outcome.issues },
+              };
             }
             this.accountRecoveryId = null;
             return { kind: 'ready' };

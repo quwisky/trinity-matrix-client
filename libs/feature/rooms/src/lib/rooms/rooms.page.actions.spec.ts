@@ -45,6 +45,7 @@ import { UserCardService } from '../user-card/user-card.service';
 import { MemberInfoService } from '../member-info/member-info.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { RoomLinkPreviewComponent } from '../room-link-preview/room-link-preview.component';
+import { ACCOUNT_REMOVAL_CONSEQUENCES } from './session-actions.service';
 
 // The open room lives in the URL, and the harness's route is module state that outlives a
 // single TestBed — so a room one test opens is still in the URL when the next one builds.
@@ -277,6 +278,12 @@ describe('RoomsPage space actions', () => {
     shell.session.logout('@me:hs');
 
     expect(alertConfirm).toHaveBeenCalled();
+    expect(alertConfirm).toHaveBeenCalledWith({
+      header: 'Remove account',
+      message: ACCOUNT_REMOVAL_CONSEQUENCES,
+      confirmText: 'Remove account',
+      variant: 'danger',
+    });
     expect(accounts.signOutAccount).toHaveBeenCalledWith('@me:hs');
     // The harness has a single account, so signing it out returns to /login.
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login', {

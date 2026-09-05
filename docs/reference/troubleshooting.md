@@ -477,13 +477,16 @@ errors through the surface's status service, not an incidental effect.
 
 Account sign-out removes its client and stores as well as credentials; it does not reset
 all installation preferences and other local state. If the login screen is reachable,
-**Erase all data on this device** offers an installation reset after typing `ERASE`.
+**Erase all data on this device** offers an installation reset after typing `RESET TRINITY`.
 It removes local-only keys and the Web/PWA offline cache, so arrange recovery and connectivity
 before using it. Server-side history is not deleted.
 
-Close other Trinity windows first. Deletions can be bounded or blocked, and the next-start
-orphan sweep targets Rust crypto databases only where enumeration is available; it is not
-a guarantee that every leftover is removed. Report incomplete cleanup accurately. See
+Close other Trinity windows first. A timeout is only a bounded observation: it does not cancel a
+queued deletion, release the destructive-operation conflict, or prove data survived. If the UI
+reports running cleanup, reopen recovery to observe the same owned attempt. If it reports residue,
+restart when directed and retry only the remaining safe local work. The next-start orphan sweep
+targets Rust crypto databases only where enumeration is available; it is not a guarantee that
+every leftover is removed. Report incomplete cleanup accurately. See
 [the user reset procedure](../users/signing-in.md#starting-over-when-trinity-will-not-work)
 and [the factory-reset contract](../architecture/matrix-and-encryption.md#the-factory-reset).
 

@@ -16,6 +16,13 @@ export type IdbDeleteOutcome =
 /** Default bound for one delete. Deletes run in parallel, so this bounds the whole phase. */
 export const IDB_DELETE_TIMEOUT_MS = 5_000;
 
+export interface IdbDeleteAttempt {
+  /** Bounded first observation; `blocked` does not claim the request was cancelled. */
+  readonly observation: Promise<IdbDeleteOutcome>;
+  /** Actual request settlement; may resolve after `observation` or remain pending. */
+  readonly settlement: Promise<Exclude<IdbDeleteOutcome, 'blocked'>>;
+}
+
 /**
  * Delete one database, resolving within `timeoutMs` no matter what.
  *
@@ -33,41 +40,49 @@ export function deleteDatabase(
   name: string,
   timeoutMs: number = IDB_DELETE_TIMEOUT_MS,
 ): Promise<IdbDeleteOutcome> {
-  return new Promise<IdbDeleteOutcome>((resolve) => {
-    let settled = false;
-    const settle = (outcome: IdbDeleteOutcome): void => {
-      // `onblocked` is not terminal, so a blocked request can still fire `onsuccess` once
-      // the holder closes — settle() genuinely runs twice. The guard has no observable
-      // effect today (resolving a promise twice is a no-op, and clearTimeout is
-      // idempotent), so it is deliberately NOT covered by a test; it exists so that adding
-      // anything with a side effect here — a counter, a log, a push into the caller's
-      // report — does not silently double-count.
-      if (settled) {
-        return;
-      }
-      settled = true;
+  return beginDatabaseDeletion(idb, name, timeoutMs).observation;
+}
+
+/** Begin one deletion while keeping its real settlement distinct from bounded observation. */
+export function beginDatabaseDeletion(
+  idb: IDBFactory,
+  name: string,
+  timeoutMs: number = IDB_DELETE_TIMEOUT_MS,
+): IdbDeleteAttempt {
+  let observe!: (outcome: IdbDeleteOutcome) => void;
+  let settle!: (outcome: 'deleted' | 'failed') => void;
+  let observed = false;
+  let settled = false;
+  const observation = new Promise<IdbDeleteOutcome>((resolve) => {
+    observe = (outcome) => {
+      if (observed) return;
+      observed = true;
       clearTimeout(timer);
       resolve(outcome);
     };
-    // Armed before the request so a synchronous throw below cannot leave it dangling.
-    const timer = setTimeout(() => settle('blocked'), timeoutMs);
-
-    let request: IDBOpenDBRequest;
-    try {
-      request = idb.deleteDatabase(name);
-    } catch {
-      settle('failed');
-      return;
-    }
-    request.onsuccess = () => settle('deleted');
-    request.onerror = () => settle('failed');
-    // Resolve immediately rather than waiting out the timer. Note `blocked` is NOT terminal
-    // for the request itself: per spec the delete stays queued and still fires `onsuccess`
-    // once the other connection closes, which for a close-pending store is milliseconds
-    // away. So `blocked` means "not deleted YET, and possibly deleted a moment later" —
-    // a caller must not read it as "this database survived".
-    request.onblocked = () => settle('blocked');
   });
+  const settlement = new Promise<'deleted' | 'failed'>((resolve) => {
+    settle = (outcome) => {
+      if (settled) return;
+      settled = true;
+      observe(outcome);
+      resolve(outcome);
+    };
+  });
+  // Armed before the request so a synchronous throw below cannot leave observation dangling.
+  const timer = setTimeout(() => observe('blocked'), timeoutMs);
+  let request: IDBOpenDBRequest;
+  try {
+    request = idb.deleteDatabase(name);
+  } catch {
+    settle('failed');
+    return { observation, settlement };
+  }
+  request.onsuccess = () => settle('deleted');
+  request.onerror = () => settle('failed');
+  // `blocked` is only an observation: the queued request remains owned until success/error.
+  request.onblocked = () => observe('blocked');
+  return { observation, settlement };
 }
 
 /**

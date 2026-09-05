@@ -70,6 +70,8 @@ export class AccountRuntimeService {
   private establishment: InFlightAccountEstablishment | null = null;
 
   readonly state = this.runtimeState.asReadonly();
+  /** Value-free destructive cleanup progress retained independently of UI observers. */
+  readonly lifecycle = this.lifecycleWorkflow.state;
   readonly activeAccountId = this.adapter.activeAccountId;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
 

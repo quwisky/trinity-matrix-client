@@ -99,6 +99,14 @@ describe('capability health expand-migrate-contract ledger', () => {
     expect(session).toContain('this.roomAdministration.recover(');
   });
 
+  it('keeps destructive cleanup outcomes out of warning compatibility', () => {
+    const runtimeAdapter = read(legacyFiles[3]);
+
+    expect(runtimeAdapter).toContain("outcome.kind === 'uncertain-cleanup'");
+    expect(runtimeAdapter).toContain("outcome.kind === 'partial-cleanup'");
+    expect(runtimeAdapter).not.toContain('destructive-cleanup-warning');
+  });
+
   it('keeps required startup producers out of warning compatibility', () => {
     const policy = read(
       'libs/application/runtime/src/lib/application-startup.policy.ts',

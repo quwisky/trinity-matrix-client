@@ -1,7 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
-import { NEVER, Observable, Subject, firstValueFrom, of, tap } from 'rxjs';
+import {
+  NEVER,
+  Observable,
+  Subject,
+  firstValueFrom,
+  of,
+  tap,
+  throwError,
+} from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ACCOUNT_RESTORE_POLICY,
@@ -16,6 +24,8 @@ import { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type {
   AccountEstablishmentIntent,
   AccountRestoreRole,
+  AccountSignOutOutcome,
+  InstallationResetOutcome,
 } from './account-runtime.models';
 import { AccountRuntimeService } from './account-runtime.service';
 
@@ -67,7 +77,16 @@ function testAdapter(
       remainingAccountIds: ['@survivor:hs'],
     }),
   );
+  const retrySignOutCleanup = vi.fn((accountId: string) =>
+    of({
+      kind: 'ready' as const,
+      accountId,
+      activeAccountId: '@survivor:hs',
+      remainingAccountIds: ['@survivor:hs'],
+    }),
+  );
   const resetInstallation = vi.fn(() => of({ kind: 'ready' as const }));
+  const retryInstallationCleanup = vi.fn(() => of({ kind: 'ready' as const }));
   return {
     activeAccountId,
     readSavedAccounts,
@@ -84,7 +103,9 @@ function testAdapter(
       prepareActiveAccount,
       commitActiveAccount,
       signOutAccount,
+      retrySignOutCleanup,
       resetInstallation,
+      retryInstallationCleanup,
     },
   };
 }
@@ -176,6 +197,200 @@ describe('AccountRuntimeService', () => {
     });
     pending.complete();
     await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+  });
+
+  it('keeps a destructive attempt owned after its UI observer detaches', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs'],
+    });
+    const pending = new Subject<AccountSignOutOutcome>();
+    vi.mocked(test.adapter.signOutAccount).mockReturnValue(pending);
+    const runtime = setup(test);
+
+    const observer = runtime.signOutAccount('@outgoing:hs').subscribe();
+    observer.unsubscribe();
+
+    await expect(firstValueFrom(runtime.resetInstallation())).resolves.toEqual({
+      kind: 'transition-in-progress',
+      operation: 'signing-out-account',
+    });
+    expect(test.adapter.signOutAccount).toHaveBeenCalledOnce();
+
+    pending.next({
+      kind: 'ready',
+      accountId: '@outgoing:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    pending.complete();
+    expect(runtime.lifecycle()).toMatchObject({
+      phase: 'settled',
+      operation: 'signing-out-account',
+    });
+  });
+
+  it('replays current uncertainty when a UI reopens the owned attempt', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs'],
+    });
+    const pending = new Subject<AccountSignOutOutcome>();
+    vi.mocked(test.adapter.signOutAccount).mockReturnValue(pending);
+    const runtime = setup(test);
+    const first = firstValueFrom(runtime.signOutAccount('@outgoing:hs'));
+    const uncertain = {
+      kind: 'uncertain-cleanup' as const,
+      accountId: '@outgoing:hs',
+      issues: [],
+      pending: [
+        {
+          scope: 'matrix-session' as const,
+          recovery: 'retry-sign-out' as const,
+        },
+      ],
+    };
+
+    pending.next(uncertain);
+    await expect(first).resolves.toEqual(uncertain);
+    await expect(
+      firstValueFrom(runtime.signOutAccount('@outgoing:hs')),
+    ).resolves.toEqual(uncertain);
+    expect(test.adapter.signOutAccount).toHaveBeenCalledOnce();
+
+    pending.next({
+      kind: 'ready',
+      accountId: '@outgoing:hs',
+      activeAccountId: null,
+      remainingAccountIds: [],
+    });
+    pending.complete();
+  });
+
+  it('types an unexpected lifecycle adapter fault and releases its conflict', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs'],
+    });
+    vi.mocked(test.adapter.signOutAccount).mockReturnValue(
+      throwError(() => new Error('adapter defect')),
+    );
+    const runtime = setup(test);
+
+    await expect(
+      firstValueFrom(runtime.signOutAccount('@outgoing:hs')),
+    ).resolves.toEqual({
+      kind: 'failed',
+      accountId: '@outgoing:hs',
+      failure: 'local-state-unavailable',
+      recovery: 'retry-sign-out',
+    });
+    await expect(firstValueFrom(runtime.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+  });
+
+  it('types a synchronous adapter fault and releases its conflict', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs'],
+    });
+    vi.mocked(test.adapter.signOutAccount).mockImplementation(() => {
+      throw new Error('adapter construction defect');
+    });
+    const runtime = setup(test);
+
+    await expect(
+      firstValueFrom(runtime.signOutAccount('@outgoing:hs')),
+    ).resolves.toEqual({
+      kind: 'failed',
+      accountId: '@outgoing:hs',
+      failure: 'local-state-unavailable',
+      recovery: 'retry-sign-out',
+    });
+    await expect(firstValueFrom(runtime.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+  });
+
+  it('retries only settled installation residue after an owned partial attempt', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    vi.mocked(test.adapter.resetInstallation).mockReturnValueOnce(
+      of({
+        kind: 'partial-cleanup',
+        issues: [
+          {
+            scope: 'preferences',
+            recovery: 'retry-installation-reset',
+          },
+        ],
+      }),
+    );
+    const runtime = setup(test);
+
+    await firstValueFrom(runtime.resetInstallation());
+    await firstValueFrom(runtime.resetInstallation());
+
+    expect(test.adapter.resetInstallation).toHaveBeenCalledOnce();
+    expect(test.adapter.retryInstallationCleanup).toHaveBeenCalledWith([
+      { scope: 'preferences', recovery: 'retry-installation-reset' },
+    ]);
+  });
+
+  it('retries only settled residue when Account removal is requested again', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@outgoing:hs',
+      accountIds: ['@outgoing:hs', '@survivor:hs'],
+    });
+    vi.mocked(test.adapter.signOutAccount).mockReturnValueOnce(
+      of({
+        kind: 'partial-cleanup',
+        accountId: '@outgoing:hs',
+        activeAccountId: '@survivor:hs',
+        remainingAccountIds: ['@survivor:hs'],
+        issues: [{ scope: 'notifications', recovery: 'retry-sign-out' }],
+      }),
+    );
+    const runtime = setup(test);
+
+    await firstValueFrom(runtime.signOutAccount('@outgoing:hs'));
+    await firstValueFrom(runtime.signOutAccount('@outgoing:hs'));
+
+    expect(test.adapter.signOutAccount).toHaveBeenCalledOnce();
+    expect(test.adapter.retrySignOutCleanup).toHaveBeenCalledWith(
+      '@outgoing:hs',
+      [{ scope: 'notifications', recovery: 'retry-sign-out' }],
+    );
+  });
+
+  it('replays a settled reset instead of dispatching the destructive work again', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    const pending = new Subject<InstallationResetOutcome>();
+    vi.mocked(test.adapter.resetInstallation).mockReturnValue(pending);
+    const runtime = setup(test);
+    const detached = runtime.resetInstallation().subscribe();
+    detached.unsubscribe();
+
+    pending.next({ kind: 'ready' });
+    pending.complete();
+
+    await expect(firstValueFrom(runtime.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(test.adapter.resetInstallation).toHaveBeenCalledOnce();
   });
 
   it('starts the Active Account first while restoring saved Accounts concurrently', async () => {

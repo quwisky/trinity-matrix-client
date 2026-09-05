@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { deleteDatabase, listDatabaseNames } from './indexed-db-wipe';
+import {
+  beginDatabaseDeletion,
+  deleteDatabase,
+  listDatabaseNames,
+} from './indexed-db-wipe';
 
 /**
  * A fake `IDBFactory` whose requests fire whichever handler the test chooses — jsdom ships no
@@ -42,6 +46,23 @@ describe('deleteDatabase', () => {
     const idb = fakeFactory((r) => r['onblocked']?.());
 
     await expect(deleteDatabase(idb, 'db')).resolves.toBe('blocked');
+  });
+
+  it('keeps a blocked request owned and reconciles its later success', async () => {
+    let request!: Record<string, (() => void) | null>;
+    const idb = fakeFactory((current) => {
+      request = current;
+      current['onblocked']?.();
+    });
+
+    const attempt = beginDatabaseDeletion(idb, 'db');
+    await expect(attempt.observation).resolves.toBe('blocked');
+    let settled = false;
+    void attempt.settlement.then(() => (settled = true));
+    expect(settled).toBe(false);
+
+    request['onsuccess']?.();
+    await expect(attempt.settlement).resolves.toBe('deleted');
   });
 
   it('resolves blocked at the bound when the request never settles at all', async () => {

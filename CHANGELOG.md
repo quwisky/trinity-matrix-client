@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Account removal and installation reset now require complete operation-specific confirmation,
+  own destructive cleanup after UI detachment, bound every finite cleanup step without cancelling
+  underlying work, and distinguish pending uncertainty from settled residue and success. Reopened
+  recovery joins or replays the owned attempt, retries only safe local residue, reconciles late
+  IndexedDB deletion, and carries value-free scope/recovery detail through Application Runtime
+  instead of legacy warnings or false readiness.
+
 - Room Administration now reports separate exact Account-and-Room health for permissions,
   members and bans. Retained membership failures preserve and label last-known roster or ban data,
   initial and released states no longer look like authoritative empty Rooms, state-backed changes
