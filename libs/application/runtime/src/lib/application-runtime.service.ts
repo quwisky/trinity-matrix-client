@@ -19,15 +19,11 @@ import {
   take,
   takeUntil,
   tap,
-  throwIfEmpty,
   throwError,
 } from 'rxjs';
 import { CapabilityHealthService } from './capability-health.service';
 import { APPLICATION_RUNTIME_ADAPTER } from './application-runtime.adapter';
-import {
-  APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
-  requiredStartupPolicyForStage,
-} from './application-startup.policy';
+import { APPLICATION_STARTUP_WATCHDOG_BUDGET_MS } from './application-startup.policy';
 import {
   recoveryStartIndex,
   settlementsBefore,
@@ -37,7 +33,7 @@ import {
 } from './application-startup-settlements';
 import { ApplicationSessionStartupWorkflow } from './application-session-startup.workflow';
 import { startupFailureOutcome } from './application-startup-failure';
-import { applicationStartupStageCommand } from './application-startup-stage-command';
+import { ApplicationStartupStageWorkflow } from './application-startup-stage.workflow';
 import {
   APPLICATION_STARTUP_STAGES,
   type ApplicationRecoveryOutcome,
@@ -61,6 +57,7 @@ export class ApplicationRuntimeService {
   private readonly adapter = inject(APPLICATION_RUNTIME_ADAPTER);
   private readonly health = inject(CapabilityHealthService);
   private readonly sessionStartup = inject(ApplicationSessionStartupWorkflow);
+  private readonly stageWorkflow = inject(ApplicationStartupStageWorkflow);
   private readonly runtimeState = signal<ApplicationRuntimeState>({
     phase: 'stopped',
   });
@@ -312,27 +309,21 @@ export class ApplicationRuntimeService {
         onPreferencesHydrated,
       );
     }
-    return this.boundRequiredStage(
-      stage,
-      applicationStartupStageCommand(this.adapter, stage),
-    ).pipe(
-      take(1),
-      throwIfEmpty(
-        () =>
-          new Error(`Application Runtime stage '${stage}' emitted nothing.`),
-      ),
-      switchMap((outcome) =>
-        this.advanceStage(
-          attempt,
-          index,
-          stage,
-          warnings,
-          settlements,
-          outcome,
-          onPreferencesHydrated,
+    return this.stageWorkflow
+      .run(stage)
+      .pipe(
+        switchMap((outcome) =>
+          this.advanceStage(
+            attempt,
+            index,
+            stage,
+            warnings,
+            settlements,
+            outcome,
+            onPreferencesHydrated,
+          ),
         ),
-      ),
-    );
+      );
   }
 
   private runSessionStage(
@@ -466,25 +457,6 @@ export class ApplicationRuntimeService {
       nextWarnings,
       nextSettlements,
       onPreferencesHydrated,
-    );
-  }
-
-  private boundRequiredStage(
-    stage: ApplicationStartupStage,
-    command: Observable<ApplicationStartupStageOutcome>,
-  ): Observable<ApplicationStartupStageOutcome> {
-    const policy = requiredStartupPolicyForStage(stage);
-    if (!policy || stage === 'session-capabilities') return command;
-    return command.pipe(
-      timeout({
-        first: policy.budgetMs,
-        with: () =>
-          of({
-            kind: 'blocked',
-            recovery: 'retry-startup',
-            diagnostic: { code: policy.timeoutCode },
-          } as const),
-      }),
     );
   }
 
