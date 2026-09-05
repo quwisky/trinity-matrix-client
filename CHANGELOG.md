@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Platform documentation now follows Web/PWA, Electron, Android and iOS run/debug/package
+  workflows, with current capability boundaries and explicit validation and signing limits.
+
 - Contributor documentation now provides a checkout-to-review workflow, a canonical command
   reference, scoped validation guidance and source-checked setup and troubleshooting notes.
 

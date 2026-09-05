@@ -76,16 +76,16 @@ packaging or signing.
 
 ## Native hosts
 
-| Command                                     | Purpose                                                       |
-| ------------------------------------------- | ------------------------------------------------------------- |
-| `pnpm android:sync` / `pnpm ios:sync`       | Build web output and synchronize it to Capacitor              |
-| `pnpm android:open` / `pnpm ios:open`       | Open the generated native project in its host IDE             |
-| `pnpm android:run` / `pnpm ios:run`         | Build, synchronize, and launch a native host                  |
-| `pnpm android:build` / `pnpm ios:build`     | Build the Android debug APK or iOS app                        |
-| `pnpm android:build:release`                | Build the Android release bundle; requires signing material   |
-| `pnpm android:verify` / `pnpm ios:verify`   | Check static host contracts                                   |
-| `pnpm nx run trinity-android:verify-native` | Run Android native unit validation                            |
-| `pnpm nx run trinity-ios:verify-native`     | Build unsigned iOS simulator target; requires macOS and Xcode |
+| Command                                     | Purpose                                                                       |
+| ------------------------------------------- | ----------------------------------------------------------------------------- |
+| `pnpm android:sync` / `pnpm ios:sync`       | Build web output and synchronize it to Capacitor                              |
+| `pnpm android:open` / `pnpm ios:open`       | Open the generated native project in its host IDE                             |
+| `pnpm android:run` / `pnpm ios:run`         | Build, synchronize, and launch a native host                                  |
+| `pnpm android:build` / `pnpm ios:build`     | Build the Android debug APK or iOS app                                        |
+| `pnpm android:build:release`                | Build the Android release AAB; unsigned unless external signing is configured |
+| `pnpm android:verify` / `pnpm ios:verify`   | Check static host contracts                                                   |
+| `pnpm nx run trinity-android:verify-native` | Run Android native unit validation                                            |
+| `pnpm nx run trinity-ios:verify-native`     | Build unsigned iOS simulator target; requires macOS and Xcode                 |
 
 Android needs its SDK; iOS needs macOS and Xcode. Platform prerequisites, artifacts, and
 signing limits are in [Mobile](../platforms/mobile.md).
