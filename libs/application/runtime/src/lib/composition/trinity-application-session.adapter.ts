@@ -34,7 +34,7 @@ import {
   RoomAdministrationLifetime,
   RoomAdministrationLifetimeError,
 } from '@trinity/data-access/room-administration';
-import { TrustLifetime, TrustOperationError } from '@trinity/data-access/trust';
+import { TrustLifetime } from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
   HostBackService,
@@ -182,11 +182,15 @@ export class TrinityApplicationSessionAdapter {
         }),
       );
       observeOptional(
-        this.optionalLifetime(
-          this.trust.run(),
-          'trust',
-          'trust-projection-unavailable',
-          (error) => error instanceof TrustOperationError,
+        this.trust.run().pipe(
+          tap((event) => {
+            if (event.kind === 'health')
+              this.health.report(event.fact, () =>
+                this.trust.recover(event.fact.context, event.fact.generation),
+              );
+          }),
+          filter((event) => event.kind === 'prepared'),
+          map(() => null),
         ),
       );
       observeOptional(

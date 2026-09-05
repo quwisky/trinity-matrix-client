@@ -173,6 +173,11 @@ export class TrustVerificationService {
     );
   }
 
+  /** Retry a retained failed verification-request projection in its current lease. */
+  retryProjection(): void {
+    this.projection.schedule();
+  }
+
   /** Send a verification request to our other devices (emoji SAS). */
   startSelfVerification(): Observable<void> {
     return defer(() =>

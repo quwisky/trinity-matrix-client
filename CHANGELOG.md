@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Trust now distinguishes coherent current encryption health from explicitly stale or unavailable
+  state, so failed crypto reads cannot imply verification, unlock readiness or disabled backup.
+  Application Runtime reports opaque active-Account Trust health with bounded scoped recovery,
+  retries retained failed projections in place, and recreates released ownership without
+  restarting Workspace, Conversations or unrelated session capabilities.
+
 - Preference startup now settles all twelve current producers independently into declared safe
   defaults and reports exact recoverable health instead of permanent warnings. Concrete
   initializers preserve invalid/unavailable-storage fallback evidence, typed presentation explains

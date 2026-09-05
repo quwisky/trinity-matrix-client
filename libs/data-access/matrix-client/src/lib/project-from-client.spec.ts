@@ -2,7 +2,7 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ClientEvent, RoomEvent } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { projectFromClient } from './project-from-client';
@@ -172,6 +172,25 @@ describe('projectFromClient', () => {
     expect(client.count(ClientEvent.Sync)).toBe(1);
     expect(client.count(RoomEvent.Name)).toBe(1);
     expect(projection.isConnected()).toBe(true);
+  });
+
+  it('waits for an asynchronous rebuild and reports its failure to projection observers', async () => {
+    const rebuild = new Subject<void>();
+    const { projection } = harness({ rebuild: () => rebuild });
+    const states: string[] = [];
+    const runtime = TestBed.inject(ProjectionRuntime);
+
+    const observation = runtime
+      .observe('test.projection', { kind: 'active-account' })
+      .subscribe((state) => states.push(state.condition));
+    projection.connect();
+
+    expect(states.at(-1)).toBe('reconciling');
+    rebuild.error(new Error('read failed'));
+    expect(states.at(-1)).toBe('failed');
+
+    observation.unsubscribe();
+    projection.disconnect();
   });
 
   it('does nothing while the client is not initialized', () => {

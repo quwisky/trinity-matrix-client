@@ -186,7 +186,8 @@ prove a spec or template type-correct.
 ## Scoped capability-health validation
 
 For changes to capability health, run the affected Nx test, typecheck and lint targets, including
-Application Runtime, Identity and Projection Runtime. Their behavioral tests cover simultaneous
+Application Runtime, the affected capability, Matrix Client when its projection adapter changes,
+and Projection Runtime. Their behavioral tests cover simultaneous
 Account isolation, expected dormancy, retained reconciliation failure/success, released ownership,
 retry generations, same-scope recovery serialization, independent-scope recovery, stop/restart
 rejection, diagnostic serialization and finite preparation/recovery observation. `scripts:test`
@@ -198,6 +199,14 @@ Desktop Chromium and the full Pixel 5 browser profile prove unknown status, fail
 restored presence and an unchanged Conversation URL. It introduces no production test hook.
 Screenshots are Playwright attachments under ignored invocation output, never tracked media.
 Browser mobile emulation does not establish native Android or iOS runtime validation.
+
+Trust-health changes additionally prove that asynchronous initial and event-driven reads settle
+through Projection Runtime, last-known data is explicitly stale, and compatibility signals never
+turn unavailable verification or backup state into `false`. Exercise retained invalidation and
+released ownership recovery separately, plus Account-switch generation rejection. The
+`trust/security-settings.spec.mts` journey injects a failing Trust read through Angular's
+development-only debug API and uses the visible scoped retry; proof remains an ignored Playwright
+attachment.
 
 Preference-health changes additionally cover the exact twelve-producer policy ledger, independent
 settlement, declared defaults, explicit missing-baseline blockers, and one exact recovery that does

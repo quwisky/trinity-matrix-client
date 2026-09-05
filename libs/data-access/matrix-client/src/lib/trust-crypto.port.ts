@@ -2,6 +2,7 @@ import { Injectable, inject, type Signal } from '@angular/core';
 import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
 import type { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
 import type { Observable } from 'rxjs';
+import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
 import { MatrixClientService } from './matrix-client.service';
 import { projectFromClient } from './project-from-client';
 import type { SecretStorageKeyHolder } from './secret-storage-key-holder';
@@ -63,7 +64,10 @@ export interface ActiveTrustCrypto {
 /** A Trust projection with Matrix Runtime supplied and raw SDK clients kept behind the adapter. */
 export interface TrustCryptoProjectionConfig {
   readonly id: string;
-  readonly rebuild?: (client: TrustMatrixClient) => void;
+  readonly rebuild?: (
+    client: TrustMatrixClient,
+    context: ProjectionReconcileContext,
+  ) => void | Observable<void>;
   readonly events?: readonly EmittedEvents[];
   readonly bind?: (client: TrustMatrixClient) => void;
   readonly unbind?: (client: TrustMatrixClient) => void;
@@ -122,8 +126,8 @@ export class TrustCryptoPort {
       ...(config.events ? { events: config.events } : {}),
       ...(config.rebuild
         ? {
-            rebuild: (client: MatrixClient) =>
-              config.rebuild?.(client as TrustMatrixClient),
+            rebuild: (client: MatrixClient, context) =>
+              config.rebuild?.(client as TrustMatrixClient, context),
           }
         : {}),
       ...(config.bind

@@ -134,6 +134,23 @@ describe('Trust production boundary', () => {
     );
 
     expect(lifetime).toContain('class TrustLifetime');
+    expect(lifetime).toContain("capability: 'trust'");
+    expect(lifetime).toContain("'not-applicable'");
+    expect(lifetime).toContain('this.health.retryProjection()');
+    expect(lifetime).toContain('this.verification.retryProjection()');
     expect(session).toContain('inject(TrustLifetime)');
+    expect(session).toContain('this.health.report(event.fact');
+  });
+
+  it('separates current Trust state from explicitly stale last-known data', () => {
+    const health = source(
+      'libs/data-access/trust/src/lib/trust-health.service.ts',
+    );
+
+    expect(health).toContain("readonly availability: 'coherent'");
+    expect(health).toContain("readonly availability: 'stale'");
+    expect(health).toContain("readonly availability: 'unavailable'");
+    expect(health).toContain('readonly current: null');
+    expect(health).toContain('readonly stale: TrustHealthSnapshot');
   });
 });

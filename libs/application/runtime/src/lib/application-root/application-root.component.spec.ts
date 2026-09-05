@@ -220,6 +220,43 @@ describe('ApplicationRootComponent', () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
+  it('explains unavailable Trust without weakening encryption and offers scoped recovery', async () => {
+    const { fixture, health, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+      settlements: [],
+    });
+    const retry = vi.fn(() => of({ kind: 'success' as const }));
+    health.report(
+      {
+        capability: 'trust',
+        operation: 'projection',
+        context: Symbol('@private:example.org'),
+        generation: 4,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'retained',
+        condition: 'degraded',
+        code: 'trust-reconciliation-failed',
+      },
+      retry,
+    );
+    fixture.detectChanges();
+
+    const status = getByTestId('app-trust-health');
+    expect(status.textContent).toContain(
+      'Verification and recovery state are unknown',
+    );
+    expect(status.textContent).toContain(
+      'encrypted conversations remain usable',
+    );
+    expect(status.textContent).not.toContain('@private:example.org');
+    getByTestId('app-trust-retry').click();
+    fixture.detectChanges();
+    expect(retry).toHaveBeenCalledOnce();
+  });
+
   it('explains the declared fallback consequence for the exact preference producer', async () => {
     const { fixture, health, getByTestId } = await setup({
       phase: 'ready',

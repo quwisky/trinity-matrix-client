@@ -157,19 +157,21 @@ the healthy preference lifetime is never duplicated.
 
 ## Capability health and targeted recovery
 
-Application Runtime retains one session subscription. Identity emits typed health facts within
-that lifetime; a preparation acknowledgement is separate from retained projection ownership and
-current availability. No Account or Room demand is expected dormancy. Projection Runtime's
+Application Runtime retains one session subscription. Trust and Identity emit typed health facts
+within that lifetime; a preparation acknowledgement is separate from retained projection
+ownership and current availability. No Account or Room demand is expected dormancy. Projection Runtime's
 `observe` is a read-only stream of current reconciliation generations, including failure and
 release; it adds no subscription owner and does not export raw adapter errors.
 
-Identity presence is the first migrated session producer. Its Account contexts are opaque symbols held
-inside Identity, and its generation changes when demand or retry replaces ownership. Account
-switches invalidate recovery immediately, before effects flush. A reconciliation failure leaves
-ownership retained, while a completed or released projection reports missing ownership. Explicit
-retry tears down the affected projection and reacquires it; an empty readiness barrier cannot
-claim to restore a released subscription. Preparation and recovery observation have ten-second
-bounds; the healthy session lifetime has no completion deadline.
+Identity presence and Trust are migrated session producers. Their Account contexts are opaque
+symbols held inside their capability owners, and their generations change when demand or retry
+replaces ownership. Account switches invalidate recovery immediately, before effects flush. A
+reconciliation failure leaves ownership retained, while a completed or released projection
+reports missing ownership. Identity retry reacquires its projection. Trust retries a retained
+failed health or verification projection in place and recreates both leases only after ownership
+was released; a standalone Trust refresh or empty readiness barrier cannot claim to restore a
+released subscription. Preparation and recovery observation have ten-second bounds; healthy
+session lifetimes have no completion deadline.
 
 Application Runtime keys health by capability, operation and context. Duplicate reports update
 one entry. Authoritative success clears only that entry; waiting cannot hide an unresolved
@@ -187,6 +189,12 @@ online/offline badge and sort after known presence. The existing root surface di
 consequence and a scoped retry while preserving the Conversation and unrelated lifetimes.
 Unknown Application Runtime adapter faults become safe blockers with executable startup retry.
 
+Trust similarly separates a coherent current snapshot from explicitly stale last-known data.
+Status, verification and backup compatibility signals become unknown rather than converting an
+unavailable read to a negative security assertion. Security settings hide setup, unlock and verify
+actions that require current state, while the root surface explains that existing encrypted
+Conversations remain usable and offers exact-scope recovery.
+
 Saved-Account restoration is the first startup producer using the same health contract. A failed
 inactive Account becomes one opaque limited scope while the Active Account, unrelated Accounts,
 Workspace, and open Conversations remain usable. Its retry calls Account Runtime for that exact
@@ -195,8 +203,8 @@ inactive-Account retry. A required Active Account or registry failure remains a 
 
 ### Diagnostic privacy
 
-Health facts copy only typed fields. Identity's and startup composition's concrete Account IDs
-stay inside their producers;
+Health facts copy only typed fields. Trust's, Identity's and startup composition's concrete Account
+IDs stay inside their producers;
 no Account ID, personal label, token, preference value, exception or server response enters the
 health ledger. On-screen Account identity is a separate future presentation concern.
 `CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
@@ -208,7 +216,7 @@ session history and are regenerated after the application lifetime resets.
 
 Unmigrated producers retain their existing warning, blocker and recovery behavior. The exact five
 legacy warning files are frozen by `scripts/capability-health-compatibility.spec.mjs`; the guard
-also prevents Identity, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
+also prevents Trust, Identity, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
 coverage remains in the Application Runtime adapter and root tests. The removal owner is
 [Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
 Later producer slices shrink this ledger; final System Status presentation removes it.
@@ -400,8 +408,9 @@ typed recovery outcome rather than replacing it with an uncommitted candidate.
 
 Trust is a session-owned capability, not a route-local effect. Its lifetime
 uses active-account projections for trust health and verification state and
-refreshes health during preparation. The detailed recovery, verification, and
-cryptographic rules belong in
+observes their asynchronous preparation as current availability. It repairs a retained failed
+projection in place and reacquires released ownership under the same session lifetime. The
+detailed recovery, verification, and cryptographic rules belong in
 [Matrix and encryption](matrix-and-encryption.md); Workspace and a crypto
 screen consume Trust's public state and commands.
 

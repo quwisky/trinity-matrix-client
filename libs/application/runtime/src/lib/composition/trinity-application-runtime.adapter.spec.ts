@@ -44,7 +44,10 @@ import {
   type RoomLibraryLifetimeEvent,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
-import { TrustLifetime } from '@trinity/data-access/trust';
+import {
+  TrustLifetime,
+  type TrustLifetimeEvent,
+} from '@trinity/data-access/trust';
 import {
   ComposerSettingsService,
   AppConfigService,
@@ -109,7 +112,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let surfaceSession: Subject<void>;
   let orderSession: Subject<RoomOrderRuntimeEvent>;
   let roomLibrarySession: Subject<RoomLibraryLifetimeEvent>;
-  let trustSession: Subject<void>;
+  let trustSession: Subject<TrustLifetimeEvent>;
   let identitySession: Subject<IdentityLifetimeEvent>;
   let deepLinks: Subject<{ readonly url: string }>;
   let backIntents: Subject<{ readonly canGoBack: boolean }>;
@@ -165,7 +168,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     surfaceSession = new Subject<void>();
     orderSession = new Subject<RoomOrderRuntimeEvent>();
     roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
-    trustSession = new Subject<void>();
+    trustSession = new Subject<TrustLifetimeEvent>();
     identitySession = new Subject<IdentityLifetimeEvent>();
     deepLinks = new Subject<{ readonly url: string }>();
     backIntents = new Subject<{ readonly canGoBack: boolean }>();
@@ -760,7 +763,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       unrecoverable.observed,
     ]).toEqual(Array(10).fill(false));
     roomLibrarySession.next({ kind: 'prepared' });
-    trustSession.next();
+    trustSession.next({ kind: 'prepared' });
     identitySession.next({ kind: 'prepared' });
     expect(events).toEqual([{ kind: 'prepared' }]);
     readiness.next();
@@ -820,7 +823,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     const secondReadiness = new Subject<void>();
     const second = adapter.runSession(secondReadiness).subscribe();
     roomLibrarySession.next({ kind: 'prepared' });
-    trustSession.next();
+    trustSession.next({ kind: 'prepared' });
     identitySession.next({ kind: 'prepared' });
     secondReadiness.next();
     TestBed.tick();

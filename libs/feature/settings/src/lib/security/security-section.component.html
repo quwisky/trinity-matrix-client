@@ -63,7 +63,17 @@
         </button>
       }
       @default {
-        <p class="text-13 text-muted-foreground">Checking encryption status…</p>
+        <p
+          class="text-13 text-muted-foreground"
+          data-testid="security-encryption-unavailable"
+        >
+          @if (health().availability === 'stale') {
+            Current encryption status is unavailable. The last known status may
+            be outdated.
+          } @else {
+            Current encryption status is unavailable.
+          }
+        </p>
       }
     }
   </section>
@@ -78,7 +88,7 @@
       >
         This session is verified.
       </p>
-    } @else {
+    } @else if (sessionVerified() === false) {
       <p class="text-13 text-muted-foreground">
         This session isn’t verified yet.
       </p>
@@ -92,6 +102,13 @@
       >
         Verify with another device
       </button>
+    } @else {
+      <p
+        class="text-13 text-muted-foreground"
+        data-testid="security-session-unavailable"
+      >
+        Current session verification is unavailable.
+      </p>
     }
   </section>
 
@@ -101,8 +118,10 @@
     <p class="text-13 text-muted-foreground">
       @if (keyBackupActive()) {
         Your message keys are backed up to the server.
-      } @else {
+      } @else if (keyBackupActive() === false) {
         Key backup is off — set up recovery to back up your message keys.
+      } @else {
+        Current key-backup status is unavailable.
       }
     </p>
   </section>

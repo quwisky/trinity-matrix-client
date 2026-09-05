@@ -36,6 +36,14 @@ describe('capability health expand-migrate-contract ledger', () => {
     expect(session.match(/this\.identity\.run\(/gu)).toHaveLength(1);
   });
 
+  it('does not route migrated Trust health back through permanent warnings', () => {
+    const session = read(legacyFiles[4]);
+    expect(session).not.toContain('trust-projection-unavailable');
+    expect(session).not.toContain('TrustOperationError');
+    expect(session.match(/this\.trust\.run\(/gu)).toHaveLength(1);
+    expect(session).toContain('this.trust.recover(');
+  });
+
   it('keeps migrated preference and room-order failures out of warnings', () => {
     const runtimeAdapter = read(
       'libs/application/runtime/src/lib/composition/trinity-application-runtime.adapter.ts',

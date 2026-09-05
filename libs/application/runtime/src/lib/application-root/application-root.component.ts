@@ -63,11 +63,15 @@ export class ApplicationRootComponent {
       statusTestId:
         problem.capability === 'identity'
           ? 'app-presence-health'
-          : 'app-capability-health',
+          : problem.capability === 'trust'
+            ? 'app-trust-health'
+            : 'app-capability-health',
       retryTestId:
         problem.capability === 'identity'
           ? 'app-presence-retry'
-          : 'app-capability-retry',
+          : problem.capability === 'trust'
+            ? 'app-trust-retry'
+            : 'app-capability-retry',
     })),
   );
   readonly booting = computed(() => {
@@ -145,6 +149,8 @@ function capabilityProblemMessage(
       );
     case 'room-library':
       return 'Saved room ordering is unavailable for one Account. The default order remains usable.';
+    case 'trust':
+      return 'Current encryption trust status is unavailable. Verification and recovery state are unknown; encrypted conversations remain usable.';
     default:
       return 'One optional capability is unavailable. The rest of Trinity remains usable.';
   }
@@ -160,6 +166,8 @@ function capabilityRetryLabel(problem: ApplicationCapabilityHealth): string {
       return 'Retry preference';
     case 'room-library':
       return 'Retry room ordering';
+    case 'trust':
+      return 'Retry Trust status';
     default:
       return 'Retry capability';
   }
