@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- UI contributor documentation now connects public component composition, appearance and cascade
+  contracts, Storybook verification and image-pack presentation. Deferred redesign requirements
+  have tracked owners so the superseded plan can be removed during final integration.
+
 - Architecture documentation now connects capability owners, runtime lifetimes and Matrix/Trust
   contracts, with source-backed recovery limits and a separate record of historical decisions
   and validation evidence.

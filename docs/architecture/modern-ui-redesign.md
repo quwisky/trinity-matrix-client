@@ -1,5 +1,21 @@
 # Modern UI redesign plan
 
+> [!NOTE]
+> Superseded planning record, retained only until final documentation integration
+> [#542](https://github.com/quwisky/trinity-matrix-client/issues/542) removes it. Use
+> [UI and theming](ui-and-theming.md) for current contributor guidance and executable
+> contracts. Phase descriptions and test counts below are historical, not a current status report.
+
+The remaining requirements have durable owners:
+
+- [Truthful initial/Room-switch loading](https://github.com/quwisky/trinity-matrix-client/issues/545)
+- [Accessible Settings directory search](https://github.com/quwisky/trinity-matrix-client/issues/546)
+- [Visual-direction decision and optional experiment disposition](https://github.com/quwisky/trinity-matrix-client/issues/547)
+
+The last item preserves a decision to verify or resolve; it does not approve a new font,
+Spacious density or navigation redesign. These product follow-ups are outside the documentation
+map and do not block removal of this file once current contracts are preserved.
+
 Status: implemented through Phase 7. The Tailwind, Theme and Appearance migration is complete;
 the explicitly deferred product items below remain separate work.
 
