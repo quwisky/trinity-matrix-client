@@ -31,6 +31,7 @@ import {
   HostBackService,
   HostDeepLinksService,
   HostLifecycleService,
+  type HostCapabilitySupport,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import {
@@ -53,6 +54,8 @@ import {
   take,
   tap,
   throwError,
+  throwIfEmpty,
+  timer,
   timeout,
 } from 'rxjs';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
@@ -274,34 +277,28 @@ export class TrinityApplicationSessionAdapter {
   }
 
   private runDeepLinks(): Observable<void> {
-    return this.hostDeepLinks.support().pipe(
-      take(1),
-      timeout(10_000),
-      switchMap((support) =>
-        support.kind === 'supported'
-          ? this.hostDeepLinks.received.pipe(
-              tap({
-                error: () =>
-                  this.reportHostIncident(
-                    'deep-links',
-                    'deep-link-listener-failed',
-                  ),
-                complete: () =>
-                  this.reportHostIncident(
-                    'deep-links',
-                    'deep-link-listener-ownership-released',
-                  ),
-              }),
-              retry({ delay: 1_000 }),
-              repeat({ delay: 1_000 }),
-              concatMap(({ url }) => this.handleDeepLink(url)),
-            )
-          : NEVER,
-      ),
-      catchError(() => {
-        this.reportHostIncident('deep-links', 'deep-link-support-check-failed');
-        return NEVER;
-      }),
+    return this.runSupportedHostStream(
+      'deep-links',
+      'deep-link-support-check-failed',
+      () => this.hostDeepLinks.support(),
+      () =>
+        this.hostDeepLinks.received.pipe(
+          tap({
+            error: () =>
+              this.reportHostIncident(
+                'deep-links',
+                'deep-link-listener-failed',
+              ),
+            complete: () =>
+              this.reportHostIncident(
+                'deep-links',
+                'deep-link-listener-ownership-released',
+              ),
+          }),
+          retry({ delay: 1_000 }),
+          repeat({ delay: 1_000 }),
+          concatMap(({ url }) => this.handleDeepLink(url)),
+        ),
     );
   }
 
@@ -348,65 +345,92 @@ export class TrinityApplicationSessionAdapter {
   }
 
   private runBackIntents(): Observable<void> {
-    return this.hostBack.support().pipe(
-      take(1),
-      timeout(10_000),
-      switchMap((support) =>
-        support.kind === 'supported'
-          ? this.hostBack.intents.pipe(
-              tap({
-                error: () =>
-                  this.reportHostIncident('back', 'host-back-listener-failed'),
-                complete: () =>
-                  this.reportHostIncident(
-                    'back',
-                    'host-back-listener-ownership-released',
-                  ),
-              }),
-              retry({ delay: 1_000 }),
-              repeat({ delay: 1_000 }),
-              concatMap(({ canGoBack }) =>
-                defer(() => {
-                  if (
-                    this.dialog.hasOpen() &&
-                    !this.workspaceBack.activeOwnsTopmostOverlay()
-                  ) {
-                    this.dialog.closeTopmost();
-                    return of(void 0);
-                  }
-                  if (this.workspaceBack.hasActive()) {
-                    return this.workspaceBack.back().pipe(
-                      take(1),
-                      map(() => void 0),
-                      catchError(() =>
-                        this.hostIncident('back', 'workspace-back-failed'),
-                      ),
-                    );
-                  }
-                  if (this.dialog.hasOpen()) {
-                    this.dialog.closeTopmost();
-                    return of(void 0);
-                  }
-                  if (canGoBack) {
-                    this.location.back();
-                    return of(void 0);
-                  }
-                  return this.hostBack.background().pipe(
-                    take(1),
-                    switchMap((outcome) =>
-                      hostOutcomeFailed(outcome)
-                        ? this.hostIncident('back', 'host-background-failed')
-                        : of(void 0),
-                    ),
-                  );
-                }),
+    return this.runSupportedHostStream(
+      'back',
+      'host-back-support-check-failed',
+      () => this.hostBack.support(),
+      () =>
+        this.hostBack.intents.pipe(
+          tap({
+            error: () =>
+              this.reportHostIncident('back', 'host-back-listener-failed'),
+            complete: () =>
+              this.reportHostIncident(
+                'back',
+                'host-back-listener-ownership-released',
               ),
-            )
-          : NEVER,
-      ),
-      catchError(() => {
-        this.reportHostIncident('back', 'host-back-support-check-failed');
-        return NEVER;
+          }),
+          retry({ delay: 1_000 }),
+          repeat({ delay: 1_000 }),
+          concatMap(({ canGoBack }) =>
+            defer(() => {
+              if (
+                this.dialog.hasOpen() &&
+                !this.workspaceBack.activeOwnsTopmostOverlay()
+              ) {
+                this.dialog.closeTopmost();
+                return of(void 0);
+              }
+              if (this.workspaceBack.hasActive()) {
+                return this.workspaceBack.back().pipe(
+                  take(1),
+                  map(() => void 0),
+                  catchError(() =>
+                    this.hostIncident('back', 'workspace-back-failed'),
+                  ),
+                );
+              }
+              if (this.dialog.hasOpen()) {
+                this.dialog.closeTopmost();
+                return of(void 0);
+              }
+              if (canGoBack) {
+                this.location.back();
+                return of(void 0);
+              }
+              return this.hostBack.background().pipe(
+                take(1),
+                switchMap((outcome) =>
+                  hostOutcomeFailed(outcome)
+                    ? this.hostIncident('back', 'host-background-failed')
+                    : of(void 0),
+                ),
+              );
+            }),
+          ),
+        ),
+    );
+  }
+
+  private runSupportedHostStream(
+    operation: 'deep-links' | 'back',
+    failureCode: string,
+    support: () => Observable<HostCapabilitySupport>,
+    stream: () => Observable<void>,
+  ): Observable<void> {
+    let incidentReported = false;
+    return defer(support).pipe(
+      take(1),
+      throwIfEmpty(() => new Error('Host support returned no outcome.')),
+      timeout(10_000),
+      switchMap((outcome) => {
+        if (outcome.kind === 'supported') {
+          incidentReported = false;
+          return stream();
+        }
+        return outcome.reason === 'not-supported' ||
+          outcome.reason === 'not-implemented'
+          ? NEVER
+          : throwError(() => new Error('Host support negotiation failed.'));
+      }),
+      retry({
+        delay: () => {
+          if (!incidentReported) {
+            incidentReported = true;
+            this.reportHostIncident(operation, failureCode);
+          }
+          return timer(1_000);
+        },
       }),
     );
   }

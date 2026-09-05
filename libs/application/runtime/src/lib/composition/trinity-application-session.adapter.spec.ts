@@ -758,6 +758,54 @@ describe('TrinityApplicationSessionAdapter', () => {
     vi.useRealTimers();
   });
 
+  it('retries failed and empty host support probes before attaching streams', async () => {
+    vi.useFakeTimers();
+    const test = setup();
+    const deepLinkSupport = vi
+      .fn()
+      .mockReturnValueOnce(
+        throwError(() => new Error('private deep-link failure')),
+      )
+      .mockReturnValue(of({ kind: 'supported' as const }));
+    const backSupport = vi
+      .fn()
+      .mockReturnValueOnce(EMPTY)
+      .mockReturnValue(of({ kind: 'supported' as const }));
+    ngMocks.stubMember(
+      TestBed.inject(HostDeepLinksService),
+      'support',
+      deepLinkSupport,
+    );
+    ngMocks.stubMember(TestBed.inject(HostBackService), 'support', backSupport);
+
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    expect(deepLinkSupport).toHaveBeenCalledOnce();
+    expect(backSupport).toHaveBeenCalledOnce();
+    expect(test.deepLinks.observed).toBe(false);
+    expect(test.backIntents.observed).toBe(false);
+    expect(test.health.incidents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: 'deep-links',
+          code: 'deep-link-support-check-failed',
+        }),
+        expect.objectContaining({
+          operation: 'back',
+          code: 'host-back-support-check-failed',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(test.health.incidents())).not.toContain('private');
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(deepLinkSupport).toHaveBeenCalledTimes(2);
+    expect(backSupport).toHaveBeenCalledTimes(2);
+    expect(test.deepLinks.observed).toBe(true);
+    expect(test.backIntents.observed).toBe(true);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
   it('submits typed notification activation to semantic Workspace navigation', async () => {
     const test = setup();
     const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
