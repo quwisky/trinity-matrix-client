@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Repository agent roles now use Astra for planning and independent review, and Terra for
+  implementation, with explicit handoffs and Trinity-specific scope and validation rules.
+
 - Repository skills now focus on Trinity client work: removed 18 overlapping or unsuitable
   skills, added CLI-managed Ponytail simplicity guidance for a total of 26 product and engineering
   skills, and repaired design-reference routing. Ponytail follows Trinity's architecture and

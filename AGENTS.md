@@ -30,6 +30,9 @@ For agent-instruction edits use `writing-for-agents`; for planning use `grill-me
 Skill tool, read the named `SKILL.md` and follow it with available tools.
 For planning, review, simplification (`ponytail`), research, prototypes, product design or Nx skills, also read
 [Trinity skill overrides](.agents/skill-overrides.md); keep CLI-managed skill files unchanged.
+For planning, implementation and review, follow [role routing](.agents/roles.md).
+Delegate bounded work to the configured role when useful work can proceed alongside it;
+the coordinating agent owns user decisions, integration and publication.
 
 ### Working agreement
 
