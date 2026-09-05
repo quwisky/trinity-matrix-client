@@ -206,7 +206,7 @@ export class AccountCleanupAttempt<TOutcome> {
 }
 
 /** Start an owned attempt on subscription; unsubscription detaches only that observer. */
-export function ownedCleanupAttempt<TOutcome>(
+export function runDetachedCleanupAttempt<TOutcome>(
   uncertain: UncertainOutcome<TOutcome>,
   run: (attempt: AccountCleanupAttempt<TOutcome>) => Observable<unknown>,
   terminal: (attempt: AccountCleanupAttempt<TOutcome>) => TOutcome,

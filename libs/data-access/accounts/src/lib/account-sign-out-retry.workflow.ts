@@ -5,10 +5,11 @@ import type { MatrixSession } from '@trinity/util/matrix';
 import { Observable, concatMap, defer, from, of, reduce } from 'rxjs';
 import {
   AccountCleanupAttempt,
-  ownedCleanupAttempt,
+  runDetachedCleanupAttempt,
 } from './account-cleanup-attempt';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
+import { accountSignOutSettlement } from './account-sign-out-outcome';
 import type {
   AccountCleanupIssue,
   AccountCleanupScope,
@@ -53,7 +54,7 @@ export class AccountSignOutRetryWorkflow {
           recovery: 'retry-sign-out' as const,
         });
       }
-      return ownedCleanupAttempt<AccountSignOutOutcome>(
+      return runDetachedCleanupAttempt<AccountSignOutOutcome>(
         (settled, pending) => ({
           kind: 'uncertain-cleanup',
           accountId,
@@ -183,21 +184,16 @@ export class AccountSignOutRetryWorkflow {
     context: SignOutRetryContext,
   ): AccountSignOutOutcome {
     const issues = attempt.settledIssues();
-    const liveActive = this.matrix.activeUserId();
-    const activeAccountId =
-      liveActive && context.remainingAccountIds.includes(liveActive)
-        ? liveActive
-        : (context.remainingAccountIds[0] ?? null);
-    const base = {
-      accountId: context.accountId,
-      activeAccountId,
-      remainingAccountIds: context.remainingAccountIds,
-    };
+    const outcome = accountSignOutSettlement(
+      this.matrix.activeUserId(),
+      context,
+      issues,
+    );
     if (issues.length === 0) {
       this.clear(context.accountId);
-      return { kind: 'ready', ...base };
+      return outcome;
     }
     this.retain(context);
-    return { kind: 'partial-cleanup', ...base, issues };
+    return outcome;
   }
 }

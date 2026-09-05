@@ -242,9 +242,9 @@ The ordering is part of the storage contract:
 
 1. Read the registry and tokens before deletion. They identify per-Account stores and
    Electron secret keys that cannot be enumerated through the renderer bridge.
-2. Attempt live-client sign-out and provider revocation before stopping the client registry.
-   Each network operation and Matrix stop has its own three-second observation budget; timeout
-   advances later cleanup while the owned operation remains live.
+2. Attempt push-registration removal, live-client sign-out and provider revocation before stopping
+   the client registry. Each network operation and Matrix stop has its own three-second observation
+   budget; timeout advances later cleanup while the owned operation remains live.
 3. Stop clients, then attempt IndexedDB deletion using both registry-derived names and
    enumeration where available. Individual deletion observation has a five-second backstop and
    the phase has a six-second budget. A blocked request remains queued; its separate settlement

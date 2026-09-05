@@ -8,7 +8,9 @@ import {
   AccountAlreadyStoredError,
   LocalDataWipeService,
   SessionStorageService,
+  type AccountRecord,
 } from '@trinity/platform-native';
+import type { MatrixSession } from '@trinity/util/matrix';
 import {
   ACCOUNT_LIFECYCLE_PORT,
   type AccountLifecyclePort,
@@ -16,6 +18,7 @@ import {
 import { AuthenticatedAccountGrant } from './authenticated-account-grant';
 import type {
   AccountEstablishmentIntent,
+  AccountSignOutOutcome,
   InstallationResetOutcome,
 } from './account-runtime.models';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
@@ -89,6 +92,31 @@ function setup(activeAccountId: string | null = '@old:hs') {
     lifecycle,
     active,
   };
+}
+
+type AdapterTest = ReturnType<typeof setup>;
+
+function prepareSuccessfulReset(
+  test: AdapterTest,
+  records: AccountRecord[] = [],
+): void {
+  vi.mocked(test.storage.list).mockReturnValue(of(records));
+  vi.mocked(test.storage.load).mockReturnValue(of(null));
+  vi.mocked(test.lifecycle.unregisterNotifications).mockReturnValue(of(void 0));
+  vi.mocked(test.matrix.signOutAll).mockReturnValue(of(void 0));
+  vi.mocked(test.matrix.stop).mockReturnValue(of(void 0));
+  vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 describe('MatrixAccountRuntimeAdapter', () => {
@@ -251,6 +279,61 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
   });
 
+  it('continues Account registry cleanup while Matrix removal remains owned', async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, matrix, storage } = setup('@outgoing:hs');
+      const removal = new Subject<void>();
+      vi.mocked(matrix.clientFor).mockReturnValue({
+        logout: vi.fn(() => Promise.resolve()),
+      } as never);
+      vi.mocked(storage.list).mockReturnValue(
+        of([
+          { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+          { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
+        ]),
+      );
+      vi.mocked(storage.load).mockReturnValue(of(null));
+      vi.mocked(matrix.remove).mockReturnValue(removal);
+      vi.mocked(storage.remove).mockReturnValue(of(void 0));
+      vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+      const outcomes = [] as AccountSignOutOutcome[];
+
+      adapter
+        .signOutAccount('@outgoing:hs')
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
+      );
+
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'uncertain-cleanup',
+        accountId: '@outgoing:hs',
+        issues: [],
+        pending: [
+          {
+            scope: 'crypto-and-cache',
+            recovery: 'restart-application',
+          },
+        ],
+      });
+      expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
+      expect(removal.observed).toBe(true);
+
+      removal.next();
+      removal.complete();
+      await vi.runAllTimersAsync();
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'ready',
+        accountId: '@outgoing:hs',
+        activeAccountId: '@survivor:hs',
+        remainingAccountIds: ['@survivor:hs'],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('retries only settled safe Account-removal residue', async () => {
     const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
     const client = { logout: vi.fn(() => Promise.resolve()) };
@@ -290,9 +373,15 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('resets only the approved installation storage scopes in order', async () => {
-    const { adapter, matrix, storage, wipe } = setup();
+    const { adapter, matrix, storage, wipe, lifecycle } = setup();
     const order: string[] = [];
     vi.mocked(storage.list).mockReturnValue(of([]));
+    vi.mocked(lifecycle.unregisterNotifications).mockReturnValue(
+      defer(() => {
+        order.push('notifications');
+        return of(void 0);
+      }),
+    );
     vi.mocked(matrix.signOutAll).mockReturnValue(
       defer(() => {
         order.push('sign-out');
@@ -342,6 +431,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       kind: 'ready',
     });
     expect(order).toEqual([
+      'notifications',
       'sign-out',
       'stop',
       'indexed-db',
@@ -430,6 +520,168 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
   });
 
+  it('reports a stalled registry read while retaining the prerequisite before cleanup', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = setup();
+      prepareSuccessfulReset(test);
+      const registry = new Subject<AccountRecord[]>();
+      vi.mocked(test.storage.list).mockReturnValue(registry);
+      const outcomes: InstallationResetOutcome[] = [];
+
+      test.adapter
+        .resetInstallation()
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
+      );
+
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'uncertain-cleanup',
+        issues: [],
+        pending: [
+          {
+            scope: 'account-registry',
+            recovery: 'retry-installation-reset',
+          },
+        ],
+      });
+      expect(test.matrix.signOutAll).not.toHaveBeenCalled();
+
+      registry.next([]);
+      registry.complete();
+      await vi.runAllTimersAsync();
+      expect(outcomes.at(-1)).toEqual({ kind: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('advances installation cleanup after a session-read budget without cancelling the read', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = setup();
+      const record: AccountRecord = {
+        userId: '@saved:hs',
+        baseUrl: 'https://hs',
+        deviceId: 'DEVICE',
+      };
+      prepareSuccessfulReset(test, [record]);
+      const sessionRead = new Subject<MatrixSession | null>();
+      vi.mocked(test.storage.load).mockReturnValue(sessionRead);
+      const outcomes: InstallationResetOutcome[] = [];
+
+      test.adapter
+        .resetInstallation()
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+      );
+
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'uncertain-cleanup',
+        issues: [],
+        pending: [
+          {
+            scope: 'secure-storage',
+            recovery: 'retry-installation-reset',
+          },
+        ],
+      });
+      expect(test.matrix.stop).toHaveBeenCalledOnce();
+      expect(test.wipe.wipeSecureStorage).toHaveBeenCalledOnce();
+      expect(sessionRead.observed).toBe(true);
+
+      sessionRead.next(null);
+      sessionRead.complete();
+      await vi.runAllTimersAsync();
+      expect(outcomes.at(-1)).toEqual({ kind: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    {
+      name: 'notification removal',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+      scope: 'notifications' as const,
+      arrange: (test: AdapterTest, stalled: Subject<void>) =>
+        vi
+          .mocked(test.lifecycle.unregisterNotifications)
+          .mockReturnValue(stalled),
+      laterRan: (test: AdapterTest) =>
+        expect(test.matrix.stop).toHaveBeenCalledOnce(),
+    },
+    {
+      name: 'Matrix server logout',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
+      scope: 'matrix-session' as const,
+      arrange: (test: AdapterTest, stalled: Subject<void>) =>
+        vi.mocked(test.matrix.signOutAll).mockReturnValue(stalled),
+      laterRan: (test: AdapterTest) =>
+        expect(test.matrix.stop).toHaveBeenCalledOnce(),
+    },
+    {
+      name: 'Matrix stop',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
+      scope: 'matrix-session' as const,
+      arrange: (test: AdapterTest, stalled: Subject<void>) =>
+        vi.mocked(test.matrix.stop).mockReturnValue(stalled),
+      laterRan: (test: AdapterTest) =>
+        expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce(),
+    },
+    {
+      name: 'Account registry write',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+      scope: 'account-registry' as const,
+      arrange: (test: AdapterTest, stalled: Subject<void>) =>
+        vi.mocked(test.storage.clearAll).mockReturnValue(stalled as never),
+      laterRan: (test: AdapterTest) =>
+        expect(test.wipe.wipeSecureStorage).toHaveBeenCalledOnce(),
+    },
+  ])(
+    'advances later cleanup while stalled $name remains owned',
+    async ({ budget, scope, arrange, laterRan }) => {
+      vi.useFakeTimers();
+      try {
+        const test = setup();
+        prepareSuccessfulReset(test);
+        const stalled = new Subject<void>();
+        arrange(test, stalled);
+        const outcomes: InstallationResetOutcome[] = [];
+
+        test.adapter
+          .resetInstallation()
+          .subscribe((outcome) => outcomes.push(outcome));
+        await vi.advanceTimersByTimeAsync(budget);
+
+        expect(outcomes.at(-1)).toEqual({
+          kind: 'uncertain-cleanup',
+          issues: [],
+          pending: [
+            {
+              scope,
+              recovery:
+                scope === 'account-registry'
+                  ? 'retry-installation-reset'
+                  : 'restart-application',
+            },
+          ],
+        });
+        laterRan(test);
+        expect(stalled.observed).toBe(true);
+
+        stalled.next();
+        stalled.complete();
+        await vi.runAllTimersAsync();
+        expect(outcomes.at(-1)).toEqual({ kind: 'ready' });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('continues later local scopes after the secure-store budget elapses', async () => {
     vi.useFakeTimers();
     try {
@@ -468,6 +720,76 @@ describe('MatrixAccountRuntimeAdapter', () => {
       vi.useRealTimers();
     }
   });
+
+  it.each([
+    {
+      name: 'Preferences',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
+      arrange: (test: AdapterTest, promise: Promise<boolean>) =>
+        vi.mocked(test.wipe.wipePreferences).mockReturnValue(promise),
+      laterRan: (test: AdapterTest) =>
+        expect(test.wipe.wipeWebStorage).toHaveBeenCalledOnce(),
+      scope: 'preferences' as const,
+    },
+    {
+      name: 'raw web storage',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
+      arrange: (test: AdapterTest, promise: Promise<boolean>) =>
+        vi.mocked(test.wipe.wipeWebStorage).mockReturnValue(promise),
+      laterRan: (test: AdapterTest) =>
+        expect(test.wipe.wipeCacheStorage).toHaveBeenCalledOnce(),
+      scope: 'preferences' as const,
+    },
+    {
+      name: 'cache storage',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.cacheStorageWipe,
+      arrange: (test: AdapterTest, promise: Promise<boolean>) =>
+        vi.mocked(test.wipe.wipeCacheStorage).mockReturnValue(promise),
+      laterRan: (test: AdapterTest) =>
+        expect(test.wipe.wipeServiceWorkerRegistrations).toHaveBeenCalledOnce(),
+      scope: 'service-worker' as const,
+    },
+    {
+      name: 'service-worker registration',
+      budget: ACCOUNT_CLEANUP_STEP_BUDGET_MS.serviceWorkerRegistrationWipe,
+      arrange: (test: AdapterTest, promise: Promise<boolean>) =>
+        vi
+          .mocked(test.wipe.wipeServiceWorkerRegistrations)
+          .mockReturnValue(promise),
+      laterRan: () => undefined,
+      scope: 'service-worker' as const,
+    },
+  ])(
+    'bounds a stalled $name wipe and retains its Promise to settlement',
+    async ({ budget, arrange, laterRan, scope }) => {
+      vi.useFakeTimers();
+      try {
+        const test = setup();
+        prepareSuccessfulReset(test);
+        const stalled = deferred<boolean>();
+        arrange(test, stalled.promise);
+        const outcomes: InstallationResetOutcome[] = [];
+
+        test.adapter
+          .resetInstallation()
+          .subscribe((outcome) => outcomes.push(outcome));
+        await vi.advanceTimersByTimeAsync(budget);
+
+        expect(outcomes.at(-1)).toEqual({
+          kind: 'uncertain-cleanup',
+          issues: [],
+          pending: [{ scope, recovery: 'retry-installation-reset' }],
+        });
+        laterRan(test);
+
+        stalled.resolve(true);
+        await vi.runAllTimersAsync();
+        expect(outcomes.at(-1)).toEqual({ kind: 'ready' });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 
   it('classifies a provider-revocation timeout as provider residue', async () => {
     vi.useFakeTimers();

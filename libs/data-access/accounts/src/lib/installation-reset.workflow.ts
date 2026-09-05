@@ -19,7 +19,7 @@ import {
 } from 'rxjs';
 import {
   AccountCleanupAttempt,
-  ownedCleanupAttempt,
+  runDetachedCleanupAttempt,
 } from './account-cleanup-attempt';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
@@ -40,7 +40,7 @@ export class InstallationResetWorkflow {
 
   reset(): Observable<InstallationResetOutcome> {
     return defer(() =>
-      ownedCleanupAttempt<InstallationResetOutcome>(
+      runDetachedCleanupAttempt<InstallationResetOutcome>(
         (issues, pending) => ({
           kind: 'uncertain-cleanup',
           issues,
@@ -119,7 +119,7 @@ export class InstallationResetWorkflow {
     issues: readonly AccountCleanupIssue[],
   ): Observable<InstallationResetOutcome> {
     return defer(() =>
-      ownedCleanupAttempt<InstallationResetOutcome>(
+      runDetachedCleanupAttempt<InstallationResetOutcome>(
         (settled, pending) => ({
           kind: 'uncertain-cleanup',
           issues: settled,
@@ -216,6 +216,13 @@ export class InstallationResetWorkflow {
     sessions: readonly (MatrixSession | null)[],
   ): Observable<unknown> {
     const operations = [
+      this.capture(
+        attempt,
+        this.lifecycle.unregisterNotifications(),
+        'notifications',
+        'restart-application',
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+      ),
       this.capture(
         attempt,
         this.matrix.signOutAll(),

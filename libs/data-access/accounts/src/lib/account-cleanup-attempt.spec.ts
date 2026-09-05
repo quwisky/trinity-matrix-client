@@ -1,6 +1,6 @@
 import { Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ownedCleanupAttempt } from './account-cleanup-attempt';
+import { runDetachedCleanupAttempt } from './account-cleanup-attempt';
 
 type Outcome =
   | { readonly kind: 'ready' }
@@ -14,14 +14,14 @@ type Outcome =
       readonly pending: readonly unknown[];
     };
 
-describe('ownedCleanupAttempt', () => {
+describe('runDetachedCleanupAttempt', () => {
   afterEach(() => vi.useRealTimers());
 
   it('bounds observation without cancelling the owned operation', async () => {
     vi.useFakeTimers();
     const source = new Subject<void>();
     const outcomes: Outcome[] = [];
-    ownedCleanupAttempt<Outcome>(
+    runDetachedCleanupAttempt<Outcome>(
       (issues, pending) => ({ kind: 'uncertain', issues, pending }),
       (attempt) =>
         attempt.step(source, {
@@ -55,7 +55,7 @@ describe('ownedCleanupAttempt', () => {
 
   it('settles failures as value-free residue and continues siblings', () => {
     const outcomes: Outcome[] = [];
-    ownedCleanupAttempt<Outcome>(
+    runDetachedCleanupAttempt<Outcome>(
       (issues, pending) => ({ kind: 'uncertain', issues, pending }),
       (attempt) =>
         attempt.step(of(void 0), {
@@ -88,7 +88,7 @@ describe('ownedCleanupAttempt', () => {
   it('converts an unexpected workflow fault to a typed terminal outcome', () => {
     const outcomes: Outcome[] = [];
 
-    ownedCleanupAttempt<Outcome>(
+    runDetachedCleanupAttempt<Outcome>(
       (issues, pending) => ({ kind: 'uncertain', issues, pending }),
       () => throwError(() => new Error('adapter defect')),
       () => ({ kind: 'ready' }),

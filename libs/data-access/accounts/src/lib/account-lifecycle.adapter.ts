@@ -15,10 +15,11 @@ import {
 } from 'rxjs';
 import {
   AccountCleanupAttempt,
-  ownedCleanupAttempt,
+  runDetachedCleanupAttempt,
 } from './account-cleanup-attempt';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
+import { accountSignOutSettlement } from './account-sign-out-outcome';
 import {
   AccountSignOutRetryWorkflow,
   type SignOutRetryContext,
@@ -46,7 +47,7 @@ export class AccountLifecycleAdapter {
       let terminalOverride: AccountSignOutOutcome | null = null;
       let remainingAccountIds: readonly string[] = [];
       let retryContext: SignOutRetryContext | null = null;
-      return ownedCleanupAttempt<AccountSignOutOutcome>(
+      return runDetachedCleanupAttempt<AccountSignOutOutcome>(
         (issues, pending) => ({
           kind: 'uncertain-cleanup',
           accountId,
@@ -109,18 +110,17 @@ export class AccountLifecycleAdapter {
         (attempt) => {
           if (terminalOverride) return terminalOverride;
           const issues = attempt.settledIssues();
-          const liveActive = this.matrix.activeUserId();
-          const activeAccountId =
-            liveActive && remainingAccountIds.includes(liveActive)
-              ? liveActive
-              : (remainingAccountIds[0] ?? null);
-          const base = { accountId, activeAccountId, remainingAccountIds };
+          const outcome = accountSignOutSettlement(
+            this.matrix.activeUserId(),
+            { accountId, remainingAccountIds },
+            issues,
+          );
           if (issues.length === 0) {
             this.signOutRetry.clear(accountId);
-            return { kind: 'ready', ...base };
+            return outcome;
           }
           if (retryContext) this.signOutRetry.retain(retryContext);
-          return { kind: 'partial-cleanup', ...base, issues };
+          return outcome;
         },
         () => ({
           kind: 'failed',
