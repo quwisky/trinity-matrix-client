@@ -21,20 +21,22 @@ person using the app is covered in [Encryption and verification](users/encryptio
 it is put together is in
 [Matrix and encryption](architecture/matrix-and-encryption.md).
 
-!!! warning "Early development"
+> [!WARNING]
+> **Early development.** Trinity is at version 0.1.0 and there are no published releases yet.
+> Every platform today means building from source. See [Installing Trinity](users/install.md).
 
-    Trinity is at version 0.1.0 and there are no published releases yet. Every platform
-    today means building from source. See [Installing Trinity](users/install.md).
+## Choose your task
 
-## Where to go next
+| If you want to…    | Start here                                  | Then follow                                                                            |
+| ------------------ | ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Use Trinity        | [Using Trinity](users/index.md)             | Install, sign in, messaging, encryption and settings guides for the app you are using. |
+| Develop Trinity    | [Developing Trinity](contributing/index.md) | Workspace setup, commands, validation and coding conventions.                          |
+| Maintain Trinity   | [Maintaining Trinity](maintaining/index.md) | CI, releases, platform delivery, dependency upkeep and validation diagnostics.         |
+| Work with an agent | [Working with agents](agents/index.md)      | Repository skills, role handoffs and the project Codex configuration.                  |
 
-| Section                               | What is in it                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------------ |
-| [Using Trinity](users/index.md)       | What the app can do today, how to install it, sign in, and set it up           |
-| [Contributing](contributing/index.md) | Workspace setup, the command surface, how a change is tested and shipped       |
-| [Architecture](architecture/index.md) | The library graph, the signal state model, the Matrix layer, the design system |
-| [Platforms](platforms/index.md)       | What is specific to web, desktop and mobile, and why                           |
-| [Stack reference](reference/stack.md) | Pinned versions and the integration notes that go with them                    |
+The [architecture](architecture/index.md), [platform](platforms/index.md),
+[stack](reference/stack.md) and [troubleshooting](reference/troubleshooting.md) references
+support each journey when its task reaches those areas.
 
 Source lives at
 [github.com/quwisky/trinity-matrix-client](https://github.com/quwisky/trinity-matrix-client).

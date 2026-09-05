@@ -57,6 +57,8 @@ commands you can run locally, so nothing in CI is a black box.
 | Understand the system-test ownership model    | [End-to-end test architecture](e2e-architecture.md) |
 | Know the code style and commit rules          | [Conventions](conventions.md)                       |
 | Understand the CI jobs and how a release cuts | [CI and releases](ci-and-releases.md)               |
+| Work with a coding agent on this repository   | [Working with agents](../agents/index.md)           |
+| Maintain CI, releases or platform delivery    | [Maintaining Trinity](../maintaining/index.md)      |
 | Understand how the code is organised          | [Architecture](../architecture/index.md)            |
 | Check a pinned version or a known gotcha      | [The stack](../reference/stack.md)                  |
 | Fix something that is broken on your machine  | [Troubleshooting](../reference/troubleshooting.md)  |

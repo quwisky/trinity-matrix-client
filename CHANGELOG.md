@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Documentation now offers task-based entry points for users, contributors, maintainers and
+  agent users, with a content ownership and migration inventory for the ongoing rewrite.
+
 - Agent instructions now load detailed command, capability and convention guidance on demand,
   use compact handoffs and reuse current investigation and validation evidence. Implementation
   uses Terra with high reasoning; required validation and independent review remain intact.

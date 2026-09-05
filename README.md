@@ -19,12 +19,14 @@ End-to-end encryption is a first-class, in-MVP feature.
 
 ## Documentation
 
-Everything lives under [`docs/`](docs/index.md), grouped by who is reading.
+Start with the [documentation guide](docs/index.md), organized around what you want to do.
 
 | Section                                              | What's in it                                                                       |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | [Using Trinity](docs/users/index.md)                 | What the app can do, installing, signing in, encryption, messaging, settings       |
-| [Contributing](docs/contributing/index.md)           | First run, the command reference, testing, CI and releases, conventions            |
+| [Developing Trinity](docs/contributing/index.md)     | First run, commands, testing, conventions and the change workflow                  |
+| [Maintaining Trinity](docs/maintaining/index.md)     | CI, releases, platform delivery, validation warnings and dependency upkeep         |
+| [Working with agents](docs/agents/index.md)          | Repository skills, role handoffs and Codex agent configuration                     |
 | [Architecture](docs/architecture/index.md)           | Libraries and boundaries, the state pattern, Matrix and encryption, UI and theming |
 | [Platforms](docs/platforms/index.md)                 | Web, the Electron desktop shell, and the Capacitor mobile targets                  |
 | [Stack reference](docs/reference/stack.md)           | Pinned versions and the integration note for each dependency                       |
