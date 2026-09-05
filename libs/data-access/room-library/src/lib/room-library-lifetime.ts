@@ -3,12 +3,11 @@ import {
   NEVER,
   Observable,
   catchError,
+  combineLatest,
   concat,
-  finalize,
   map,
   of,
   switchMap,
-  tap,
 } from 'rxjs';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { InvitesService } from './invites.service';
@@ -38,8 +37,13 @@ export class RoomLibraryLifetime {
 
   /** Prepare once, emit one typed result, and retain ownership until unsubscribe. */
   run(): Observable<RoomLibraryLifetimeEvent> {
-    return of(void 0).pipe(
-      tap(() => this.connect()),
+    return combineLatest([
+      this.rooms.runProjection(),
+      this.spaces.runProjection(),
+      this.invitations.runProjection(),
+      this.hierarchy.runProjection(),
+      this.selected.runProjection(),
+    ]).pipe(
       switchMap(() => this.projections.waitFor({ kind: 'active-account' })),
       map(() => ({ kind: 'prepared' }) as const),
       catchError(() =>
@@ -53,23 +57,6 @@ export class RoomLibraryLifetime {
       switchMap((event) =>
         event.kind === 'prepared' ? concat(of(event), NEVER) : of(event),
       ),
-      finalize(() => this.disconnect()),
     );
-  }
-
-  private connect(): void {
-    this.rooms.connect();
-    this.spaces.connect();
-    this.invitations.connect();
-    this.hierarchy.connect();
-    this.selected.connect();
-  }
-
-  private disconnect(): void {
-    this.selected.disconnect();
-    this.hierarchy.disconnect();
-    this.invitations.disconnect();
-    this.spaces.disconnect();
-    this.rooms.disconnect();
   }
 }

@@ -167,7 +167,7 @@ describe('TrustVerificationService', () => {
     });
     const { svc } = setup({ inProgress: req });
 
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(svc.active()?.stage).toBe('ready');
     expect(svc.active()?.incoming).toBe(false);
@@ -175,7 +175,7 @@ describe('TrustVerificationService', () => {
 
   it('surfaces an incoming verification request', () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
 
     client.emit(
       CryptoEvent.VerificationRequestReceived,
@@ -191,7 +191,7 @@ describe('TrustVerificationService', () => {
 
   it('ignores a new incoming request while one is active', () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
 
     client.emit(
       CryptoEvent.VerificationRequestReceived,
@@ -207,7 +207,7 @@ describe('TrustVerificationService', () => {
 
   it('starts a cross-user verification over a DM and adopts it', async () => {
     const { svc, crypto } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Requested,
       initiatedByMe: true,
@@ -240,14 +240,15 @@ describe('TrustVerificationService', () => {
     await firstValueFrom(svc.startSelfVerification());
     expect(svc.active()).not.toBeNull();
 
-    svc.disconnect();
+    const lifetime = svc.runProjection().subscribe();
+    lifetime.unsubscribe();
 
     expect(svc.active()).toBeNull();
   });
 
   it('drives the SAS flow: start → waiting → emoji shown', async () => {
     const { svc, crypto } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       initiatedByMe: true,
@@ -273,7 +274,7 @@ describe('TrustVerificationService', () => {
 
   it('offers QR directions only for self-verification methods the other device supports', () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     client.emit(
       CryptoEvent.VerificationRequestReceived,
       fakeRequest({
@@ -303,7 +304,7 @@ describe('TrustVerificationService', () => {
 
   it('does not expose QR bytes until the user explicitly asks to show them', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.scan.v1'],
@@ -322,7 +323,7 @@ describe('TrustVerificationService', () => {
 
   it('drops the sensitive QR payload once a verification method starts', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.scan.v1'],
@@ -340,7 +341,7 @@ describe('TrustVerificationService', () => {
 
   it('does not retain a QR payload generated after the request has started', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.scan.v1'],
@@ -368,7 +369,7 @@ describe('TrustVerificationService', () => {
 
   it('drops the sensitive QR payload when the request is cancelled', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.scan.v1'],
@@ -385,7 +386,7 @@ describe('TrustVerificationService', () => {
 
   it('keeps SAS available when QR generation has no usable payload', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.scan.v1'],
@@ -401,7 +402,7 @@ describe('TrustVerificationService', () => {
 
   it('passes scanned bytes to the SDK unchanged and drives its verifier', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.show.v1'],
@@ -420,7 +421,7 @@ describe('TrustVerificationService', () => {
 
   it('cancels a late QR verifier instead of attaching it to a replacement request', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const oldRequest = fakeRequest({
       phase: VerificationPhase.Ready,
       supportedMethods: ['m.qr_code.show.v1'],
@@ -456,7 +457,7 @@ describe('TrustVerificationService', () => {
 
   it('asks before reciprocating a scan and confirms through the SDK callback', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -473,7 +474,7 @@ describe('TrustVerificationService', () => {
 
   it('confirms the SAS via the verifier callbacks', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -495,7 +496,7 @@ describe('TrustVerificationService', () => {
   // once the MAC is queued, which on a slow link is exactly the gap we are covering.
   it('starts waiting as soon as the answer is given, not when it lands', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -518,7 +519,7 @@ describe('TrustVerificationService', () => {
 
   it('goes back to asking when the SAS is shown again', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -537,7 +538,7 @@ describe('TrustVerificationService', () => {
   // that has not been answered yet — and hide the answer buttons with it.
   it('starts the next verification asking, not waiting', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -560,7 +561,7 @@ describe('TrustVerificationService', () => {
 
   it('drops back to asking when confirming the SAS fails', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -580,7 +581,7 @@ describe('TrustVerificationService', () => {
 
   it('cancels with an Error and cancels the request', async () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ phase: VerificationPhase.Started });
     const verifier = fakeVerifier();
     req.attachVerifier(verifier);
@@ -594,7 +595,7 @@ describe('TrustVerificationService', () => {
 
   it('maps a mismatched-SAS cancellation to a friendly reason', () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest({ cancellationCode: 'm.mismatched_sas' });
     client.emit(CryptoEvent.VerificationRequestReceived, req);
 
@@ -606,7 +607,7 @@ describe('TrustVerificationService', () => {
 
   it('reflects the done stage and dismiss() clears it', () => {
     const { svc, client } = setup();
-    svc.connect();
+    svc.runProjection().subscribe();
     const req = fakeRequest();
     client.emit(CryptoEvent.VerificationRequestReceived, req);
 
@@ -629,7 +630,7 @@ describe('TrustVerificationService', () => {
     // arriving on the OLD client must be ignored and one on the new client adopted.
     const { svc, client, matrix } = setup();
     activeUserId.set('@a:hs');
-    svc.connect();
+    svc.runProjection().subscribe();
     TestBed.inject(ApplicationRef).tick(); // effect's first run: still A
 
     const clientB = {

@@ -7,7 +7,16 @@ import {
   type IPushRule,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, throwError } from 'rxjs';
+import {
+  NEVER,
+  Observable,
+  concat,
+  defer,
+  finalize,
+  from,
+  of,
+  throwError,
+} from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
@@ -82,15 +91,22 @@ export class RoomNotificationsService {
     });
   }
 
-  /** Start projecting remote push-rule changes into the zoneless room list. Idempotent. */
-  connect(): void {
+  /** Cold rule projection retained by the named Notification session lifetime. */
+  runProjection(): Observable<void> {
+    return defer(() => {
+      this.connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(() => this.disconnect()));
+  }
+
+  private connect(): void {
     this.connected = true;
     this.activeProjection.connect();
     this.rebindClients();
     this.bumpRevision();
   }
 
-  disconnect(): void {
+  private disconnect(): void {
     this.connected = false;
     for (const client of this.boundClients) {
       client.off(ClientEvent.AccountData, this.onAccountData);

@@ -92,8 +92,8 @@ function setup(rooms: ReturnType<typeof fakeRoom>[]) {
   ngMocks.stubMember(matrix, 'isInitialized', true);
   ngMocks.stubMember(matrix, 'instance', asClient(client));
   const svc = TestBed.inject(InvitesService);
-  svc.connect();
-  return { svc, client, matrix };
+  const lifetime = svc.runProjection().subscribe();
+  return { svc, client, matrix, lifetime };
 }
 
 function handlerFor(client: { on: Mock }, event: string) {
@@ -237,13 +237,13 @@ describe('InvitesService', () => {
     expect(svc.pendingInvites()).toEqual([]);
   });
 
-  it('detaches listeners and clears the model on disconnect', () => {
-    const { svc, client } = setup([
+  it('detaches listeners and clears the model on teardown', () => {
+    const { svc, client, lifetime } = setup([
       fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs'),
     ]);
     expect(svc.pendingInvites().length).toBe(1);
 
-    svc.disconnect();
+    lifetime.unsubscribe();
 
     expect(client.off).toHaveBeenCalled();
     expect(svc.pendingInvites()).toEqual([]);
@@ -266,7 +266,7 @@ describe('InvitesService', () => {
       off: vi.fn(),
     };
     ngMocks.stubMember(matrix, 'instance', asClient(clientB));
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(svc.pendingInvites().map((i) => i.roomId)).toEqual(['!b:hs']);
     expect(clientA.off).toHaveBeenCalled();

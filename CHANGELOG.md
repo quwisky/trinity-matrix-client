@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Session projection startup no longer belongs to routes or presentation hosts.** Room Library,
+  Trust, Identity, Notification, and Room Administration services now expose cold owned
+  `runProjection()` sources instead of public generic connect/disconnect pairs. Application Runtime
+  is their sole lifetime subscriber; stopping it releases listeners, queued reconciliation,
+  warning collection, and projected state, while restart creates a fresh generation. Exact
+  Conversation and settings projections keep their independent local lifetimes.
+
 - **Notification and Room Administration projections now belong to Application Runtime.** Named
   cold lifetimes retain per-Room notification rules, permissions, and member summaries while a
   routed Room surface needs them. They follow active-Account projection transitions, release on

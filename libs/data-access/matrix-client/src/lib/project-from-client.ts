@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
-import { defer, of } from 'rxjs';
+import { NEVER, Observable, concat, defer, finalize, of } from 'rxjs';
 import {
   ProjectionRuntime,
   type ProjectionLease,
@@ -10,6 +10,8 @@ import { reprojectOnAccountSwitch } from './reproject-on-switch';
 
 /** What a projecting service exposes; its own `connect`/`disconnect` delegate to this. */
 export interface ClientProjection {
+  /** Cold owned lifetime: attach on subscribe and release on unsubscribe. */
+  run(): Observable<void>;
   /** Attach listeners and do the first read. Idempotent per client. */
   connect(): void;
   /** Detach listeners, drop any queued rebuild, and reset the read model. */
@@ -122,6 +124,16 @@ export function projectFromClient(
   const onEvent = (): void => invalidate();
 
   const projection: ClientProjection = {
+    run(): Observable<void> {
+      return defer(() => {
+        projection.connect();
+        if (!projection.isConnected()) {
+          throw new Error(`Matrix projection "${id}" could not attach.`);
+        }
+        return concat(of(void 0), NEVER);
+      }).pipe(finalize(() => projection.disconnect()));
+    },
+
     connect(): void {
       if (!matrix.isInitialized) {
         return;

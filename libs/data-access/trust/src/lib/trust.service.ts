@@ -75,14 +75,9 @@ export class TrustService {
   readonly keyBackupActive = this.healthRuntime.keyBackupActive;
   readonly thisDeviceVerified = this.healthRuntime.thisDeviceVerified;
 
-  /** Subscribe to crypto events and compute the initial status; pair with disconnect. */
-  connect(): void {
-    this.healthRuntime.connect();
-  }
-
-  /** Detach crypto listeners from the current client and reset status signals. */
-  disconnect(): void {
-    this.healthRuntime.disconnect();
+  /** Cold Trust-health projection retained by the named session lifetime. */
+  runProjection(): Observable<void> {
+    return this.healthRuntime.runProjection();
   }
 
   /** Re-evaluate the status signals against the current crypto state. */

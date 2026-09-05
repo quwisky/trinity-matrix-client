@@ -87,6 +87,37 @@ function harness(
 }
 
 describe('projectFromClient', () => {
+  it('exposes a cold owned lifetime that releases on unsubscribe', () => {
+    const { projection, client, rebuild, reset } = harness();
+    const source = projection.run();
+
+    expect(rebuild).not.toHaveBeenCalled();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+
+    const lifetime = source.subscribe();
+
+    expect(rebuild).toHaveBeenCalledOnce();
+    expect(client.count(ClientEvent.Sync)).toBe(1);
+    expect(lifetime.closed).toBe(false);
+
+    lifetime.unsubscribe();
+
+    expect(reset).toHaveBeenCalledOnce();
+    expect(client.count(ClientEvent.Sync)).toBe(0);
+  });
+
+  it('fails an owned lifetime when the Matrix client is unavailable', () => {
+    const { projection, reset } = harness({}, { initialized: false });
+    const error = vi.fn();
+
+    projection.run().subscribe({ error });
+
+    expect(error).toHaveBeenCalledWith(
+      new Error('Matrix projection "test.projection" could not attach.'),
+    );
+    expect(reset).not.toHaveBeenCalled();
+  });
+
   it('binds its events and rebuilds synchronously on connect', () => {
     const { projection, client, rebuild } = harness();
 

@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { IdentityMatrixPort } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, concat, defer, finalize, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IdentityLifetime } from './identity-lifetime';
 import { IdentityPresenceService } from './identity-presence.service';
@@ -12,6 +12,11 @@ describe('IdentityLifetime', () => {
   const activeAccountId = signal<string | null>('@a:example.org');
   const connect = vi.fn();
   const disconnect = vi.fn();
+  const runProjection = () =>
+    defer(() => {
+      connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(disconnect));
 
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
@@ -22,7 +27,7 @@ describe('IdentityLifetime', () => {
         MockProvider(IdentityMatrixPort, {
           activeAccountId: activeAccountId.asReadonly(),
         }),
-        MockProvider(IdentityPresenceService, { connect, disconnect }),
+        MockProvider(IdentityPresenceService, { runProjection }),
         MockProvider(ProjectionRuntime, {
           waitFor: () => of(readiness()),
         }),

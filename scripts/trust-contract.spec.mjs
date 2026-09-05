@@ -132,14 +132,8 @@ describe('Trust production boundary', () => {
     const session = source(
       'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
     );
-    const page = source('libs/feature/rooms/src/lib/rooms/rooms.page.ts');
-    const host = source(
-      'libs/application/runtime/src/lib/verification-host/verification-host.component.ts',
-    );
 
     expect(lifetime).toContain('class TrustLifetime');
     expect(session).toContain('inject(TrustLifetime)');
-    expect(page).not.toContain('this.crypto.connect()');
-    expect(host).not.toContain('this.verification.connect()');
   });
 });

@@ -4,7 +4,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, concat, defer, finalize, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   NotificationLifetime,
@@ -17,6 +17,11 @@ describe('NotificationLifetime', () => {
   const demand = signal(true);
   const connect = vi.fn();
   const disconnect = vi.fn();
+  const runProjection = () =>
+    defer(() => {
+      connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(disconnect));
 
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
@@ -28,7 +33,7 @@ describe('NotificationLifetime', () => {
         MockProvider(MatrixClientService, {
           activeUserId: activeAccountId.asReadonly(),
         }),
-        MockProvider(RoomNotificationsService, { connect, disconnect }),
+        MockProvider(RoomNotificationsService, { runProjection }),
         MockProvider(ProjectionRuntime, {
           waitFor: () => of(readiness()),
         }),

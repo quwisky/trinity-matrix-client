@@ -305,14 +305,14 @@ private readonly projection = projectFromClient({
 | `reset()`                        | none     | Clear the read model on disconnect or scoped reattachment                                            |
 | `reprojectOnSwitch`              | `true`   | Fallback for legacy Account changes outside the coordinated switch; do not use it as a readiness API |
 
-The adapter registers every connected service as an `active-account` Projection Runtime entry,
-so its event bursts, lifecycle, generation safety, and switch acknowledgements use the same
-kernel as new architecture slices. The returned
-`ClientProjection` exposes `connect()`, `disconnect()`, `isConnected()`, `client()` and
-`schedule()`. `connect()` no-ops when the client service is not initialised, no-ops again if
-already wired to the same client, and otherwise disconnects from the previous client first.
-`disconnect()` releases the runtime lease, which detaches, calls `unbind`, cancels queued work,
-nulls the connected client, and then calls `reset()`.
+The adapter registers every attached service as an `active-account` Projection Runtime entry, so
+its event bursts, lifecycle, generation safety, and switch acknowledgements use the same kernel as
+new architecture slices. The internal `ClientProjection` exposes a cold `run()` lifetime alongside
+the lower-level `connect()`, `disconnect()`, `isConnected()`, `client()`, and `schedule()` adapter
+operations. Subscribing to `run()` attaches and emits once; it then remains open until unsubscribe
+releases the runtime lease. Attachment fails through the Observable error channel when no Matrix
+client is available. Release detaches, calls `unbind`, cancels queued work, nulls the connected
+client, and then calls `reset()`.
 
 Application Runtime owns one cold `RoomLibraryLifetime` after Account restoration. The lifetime
 connects joined Rooms, Spaces, invitations, Space hierarchy and the selected-Account view, then
@@ -339,17 +339,18 @@ capabilities release on blocked startup, stop, destruction, or restart. Expected
 failures become secret-safe optional runtime warnings; an unexpected adapter defect remains on the
 Observable error channel. Presentation hosts read their signals and never call `connect()`.
 
-A projecting service typically just delegates:
+A session-owned capability service exposes only the owned lifetime:
 
 ```ts
-connect(): void {
-  this.projection.connect();
-}
-
-disconnect(): void {
-  this.projection.disconnect();
+runProjection(): Observable<void> {
+  return this.projection.run();
 }
 ```
+
+Generic `connect()` and `disconnect()` methods stay below that public capability boundary.
+Application Runtime is the only subscriber to the session lifetime. Exact Conversation children
+and settings projections still expose symmetric local attachment where a Conversation handle or
+settings surface is the real demand owner.
 
 !!! warning "Call it from a field initializer or a constructor"
 

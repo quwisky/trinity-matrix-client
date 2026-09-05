@@ -113,8 +113,8 @@ function sameNames(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Read model over the synced `MatrixClient`: exposes joined rooms as plain view models
- * (components never touch `matrix-js-sdk` directly). Signals are
- * recomputed as the client syncs; `connect()` wires the listeners.
+ * (components never touch `matrix-js-sdk` directly). Signals are recomputed as the
+ * client syncs; Application Runtime retains the projection lifetime.
  *
  * Spaces (the server rail) are a separate read model — see {@link SpacesService}.
  * Space rooms are excluded from {@link rooms} so they never appear as channels.
@@ -348,17 +348,9 @@ export class RoomLibraryService {
     },
   });
 
-  /**
-   * Attach sync listeners and do the first read. Idempotent per client (e.g. the
-   * shell's `ngOnInit`); re-running after a re-login rewires onto the new client.
-   */
-  connect(): void {
-    this.projection.connect();
-  }
-
-  /** Detach listeners from the current client and reset the read model. */
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Cold active-Account projection retained by the Room Library session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   /**

@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { NEVER, concat, defer, finalize, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrustLifetime } from './trust-lifetime';
 import { TrustOperationError } from './trust-operation-error';
@@ -17,6 +17,11 @@ describe('TrustLifetime', () => {
   const verificationConnect = vi.fn();
   const verificationDisconnect = vi.fn();
   const refresh = vi.fn(() => of(void 0));
+  const projection = (connect: () => void, disconnect: () => void) => () =>
+    defer(() => {
+      connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(disconnect));
 
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
@@ -28,13 +33,14 @@ describe('TrustLifetime', () => {
           activeAccountId: activeAccountId.asReadonly(),
         }),
         MockProvider(TrustService, {
-          connect: healthConnect,
-          disconnect: healthDisconnect,
+          runProjection: projection(healthConnect, healthDisconnect),
           refresh,
         }),
         MockProvider(TrustVerificationService, {
-          connect: verificationConnect,
-          disconnect: verificationDisconnect,
+          runProjection: projection(
+            verificationConnect,
+            verificationDisconnect,
+          ),
         }),
         MockProvider(ProjectionRuntime, {
           waitFor: () => of(readiness()),

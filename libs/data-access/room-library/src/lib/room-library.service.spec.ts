@@ -161,7 +161,7 @@ describe('RoomLibraryService', () => {
       on: () => {},
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     return svc;
   }
 
@@ -195,7 +195,7 @@ describe('RoomLibraryService', () => {
       on: () => {},
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
 
     const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
     expect(byId.get('!dm:hs')?.directUserId).toBe('@bob:hs');
@@ -232,7 +232,7 @@ describe('RoomLibraryService', () => {
       on: () => {},
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
 
     const byId = new Map(svc.rooms().map((r) => [r.id, r] as const));
     expect(byId.get('!dm:hs')?.avatarMxc).toBe('mxc://hs/bob');
@@ -270,7 +270,7 @@ describe('RoomLibraryService', () => {
       },
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     expect(svc.rooms()[0].avatarMxc).toBeNull();
 
     // A member event for someone we have no DM with must NOT rebuild the whole list.
@@ -336,7 +336,7 @@ describe('RoomLibraryService', () => {
       const { svc, matrix } = provideRooms(client);
       ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
       ngMocks.stubMember(matrix, 'clientFor', (() => client) as never);
-      svc.connect();
+      svc.runProjection().subscribe();
       return { svc, client, setRoomAccountData };
     }
 
@@ -429,7 +429,7 @@ describe('RoomLibraryService', () => {
         on: () => {},
       };
       const { svc } = provideRooms(client);
-      svc.connect();
+      svc.runProjection().subscribe();
 
       await firstValueFrom(svc.markRead('!r:hs'));
 
@@ -477,7 +477,7 @@ describe('RoomLibraryService', () => {
         'clientFor',
         ((id: string) => clients[id]) as never,
       );
-      svc.connect();
+      svc.runProjection().subscribe();
 
       await firstValueFrom(svc.clearMarkedUnread('!r:hs'));
 
@@ -532,7 +532,7 @@ describe('RoomLibraryService', () => {
       };
       const { svc, matrix } = provideRooms(client);
       ngMocks.stubMember(matrix, 'clientFor', (() => null) as never);
-      svc.connect();
+      svc.runProjection().subscribe();
 
       await expect(
         firstValueFrom(svc.setMarkedUnread('!r:hs', true, '@nobody:hs')),
@@ -619,7 +619,7 @@ describe('RoomLibraryService', () => {
         on: () => {},
       };
       const { svc } = provideRooms(client);
-      svc.connect();
+      svc.runProjection().subscribe();
 
       await firstValueFrom(svc.markRead('!r:hs'));
 
@@ -644,7 +644,7 @@ describe('RoomLibraryService', () => {
         },
       };
       const { svc } = provideRooms(client);
-      svc.connect();
+      svc.runProjection().subscribe();
       expect(svc.rooms()[0].markedUnread).toBe(false);
 
       room.getAccountData = (type: string) =>
@@ -811,7 +811,7 @@ describe('RoomLibraryService', () => {
     };
     const { svc, matrix, activeUserId } = provideRooms(clientA);
     activeUserId.set('@a:hs');
-    svc.connect(); // wired to account A
+    svc.runProjection().subscribe(); // wired to account A
     TestBed.inject(ApplicationRef).tick(); // effect's first run: still A → no-op
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
     clientA.off.mockClear();
@@ -931,12 +931,12 @@ describe('RoomLibraryService', () => {
     const clientB = makeClient([fakeRoom({ roomId: '!b:hs', name: 'B' })]);
     const { svc, matrix } = provideRooms(clientA);
 
-    svc.connect();
+    svc.runProjection().subscribe();
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs']);
 
     // Simulate logout→login: MatrixClientService swaps in a fresh client.
     ngMocks.stubMember(matrix, 'instance', asClient(clientB));
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(svc.rooms().map((r) => r.id)).toEqual(['!b:hs']); // not frozen on A
     expect(clientA.off).toHaveBeenCalled(); // old listeners detached
@@ -958,7 +958,7 @@ describe('RoomLibraryService', () => {
       off: vi.fn(),
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     expect(svc.totalUnread()).toBe(2);
 
     unread.count = 9; // e.g. a new message arrives
@@ -981,7 +981,7 @@ describe('RoomLibraryService', () => {
       off: vi.fn(),
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     expect(svc.totalUnread()).toBe(0);
 
     // The count only settles once the ciphertext decrypts, which fires Decrypted
@@ -1003,7 +1003,7 @@ describe('RoomLibraryService', () => {
       off: vi.fn(),
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     expect(svc.totalUnread()).toBe(2);
 
     currentRooms = [
@@ -1026,9 +1026,9 @@ describe('RoomLibraryService', () => {
     };
     const { svc } = provideRooms(client);
 
-    svc.connect();
+    svc.runProjection().subscribe();
     const wiredCalls = client.on.mock.calls.length;
-    svc.connect();
+    svc.runProjection().subscribe();
 
     expect(client.on.mock.calls.length).toBe(wiredCalls); // no double-wiring
   });
@@ -1273,7 +1273,7 @@ describe('RoomLibraryService directRoomIds', () => {
       off: vi.fn(),
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     return svc;
   }
 
@@ -1318,7 +1318,7 @@ describe('RoomLibraryService setFavourite', () => {
       off: vi.fn(),
     };
     const { svc } = provideRooms(client);
-    svc.connect();
+    svc.runProjection().subscribe();
     return {
       svc,
       setRoomTag,
@@ -1579,7 +1579,7 @@ describe('RoomLibraryService typing, per room', () => {
     // has to name them — a bare provideRooms leaves accountIds empty and the local user
     // announces themselves.
     ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
-    svc.connect();
+    const lifetime = svc.runProjection().subscribe();
 
     /**
      * Flip a member's typing flag and fire the event the SDK would.
@@ -1602,7 +1602,7 @@ describe('RoomLibraryService typing, per room', () => {
       );
     };
 
-    return { svc, matrix, handlers, fire, members };
+    return { svc, matrix, handlers, fire, members, lifetime };
   }
 
   it('projects a room typing set, excluding the local user', async () => {
@@ -1696,14 +1696,14 @@ describe('RoomLibraryService typing, per room', () => {
     expect(svc.typingByRoom()).not.toBe(first);
   });
 
-  it('detaches the listener and clears the map on disconnect', async () => {
-    const { svc, handlers, fire } = setupTyping();
+  it('detaches the listener and clears the map on teardown', async () => {
+    const { svc, handlers, fire, lifetime } = setupTyping();
 
     fire('!a:hs', '@alice:hs', true);
     await Promise.resolve();
     expect(svc.typingByRoom()['!a:hs']).toEqual(['Alice']);
 
-    svc.disconnect();
+    lifetime.unsubscribe();
     await Promise.resolve();
 
     // Both halves matter. A stale line naming the OUTGOING account's typists is the

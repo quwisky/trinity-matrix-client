@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, combineLatest, map } from 'rxjs';
 import { TrustCryptoPort } from '@trinity/data-access/matrix-client';
 import { ActiveAccountProjectionLifetime } from '@trinity/runtime/projection';
 import { TrustService } from './trust.service';
@@ -17,19 +17,12 @@ export class TrustLifetime {
   run(): Observable<void> {
     return this.lifetime.run({
       activeAccountId: this.crypto.activeAccountId,
-      connect: () => this.connect(),
-      disconnect: () => this.disconnect(),
+      runProjection: () =>
+        combineLatest([
+          this.health.runProjection(),
+          this.verification.runProjection(),
+        ]).pipe(map(() => void 0)),
       prepare: () => this.health.refresh(),
     });
-  }
-
-  private connect(): void {
-    this.health.connect();
-    this.verification.connect();
-  }
-
-  private disconnect(): void {
-    this.verification.disconnect();
-    this.health.disconnect();
   }
 }

@@ -102,17 +102,9 @@ export class IdentityPresenceService {
     },
   });
 
-  /**
-   * Track presence changes for users this session displays; pair with {@link disconnect}.
-   * Idempotent per client; re-running after a re-login rewires onto the new one.
-   */
-  connect(): void {
-    this.projection.connect();
-  }
-
-  /** Detach the presence listener from the current client. */
-  disconnect(): void {
-    this.projection.disconnect();
+  /** Cold presence projection retained by the named session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run();
   }
 
   /**

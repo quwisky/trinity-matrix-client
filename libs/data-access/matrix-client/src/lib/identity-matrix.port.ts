@@ -5,6 +5,7 @@ import {
   type EmittedEvents,
   type MatrixClient,
 } from 'matrix-js-sdk';
+import type { Observable } from 'rxjs';
 import { MatrixClientService } from './matrix-client.service';
 import { projectFromClient } from './project-from-client';
 
@@ -59,8 +60,7 @@ export interface IdentityProjectionConfig {
 }
 
 export interface IdentityProjection {
-  connect(): void;
-  disconnect(): void;
+  run(): Observable<void>;
   isConnected(): boolean;
   client(): IdentityMatrixClient | null;
   schedule(): void;
@@ -121,8 +121,7 @@ export class IdentityMatrixPort {
         : { reprojectOnSwitch: config.reprojectOnSwitch }),
     });
     return {
-      connect: () => projection.connect(),
-      disconnect: () => projection.disconnect(),
+      run: () => projection.run(),
       isConnected: () => projection.isConnected(),
       client: () => projection.client() as IdentityMatrixClient | null,
       schedule: () => projection.schedule(),

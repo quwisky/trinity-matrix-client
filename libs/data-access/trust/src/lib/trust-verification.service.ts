@@ -9,7 +9,7 @@ import {
   type VerificationRequest,
   type Verifier,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { Observable, defer, from, of } from 'rxjs';
+import { Observable, defer, finalize, from, of } from 'rxjs';
 import {
   TrustCryptoPort,
   type TrustCryptoApi,
@@ -161,22 +161,16 @@ export class TrustVerificationService {
     },
   });
 
-  /** Subscribe to incoming verification requests; pair with {@link disconnect}. */
-  connect(): void {
-    this.projection.connect();
-  }
-
-  /** Detach listeners and clear any active verification. */
-  disconnect(): void {
-    this.projection.disconnect();
-    // Cleared again, unconditionally, and NOT only via the projection's `reset`. That
-    // reset runs only when listeners were actually attached, but a verification can be
-    // active without this service ever having connected: startSelfVerification and
-    // startUserVerification call adopt() directly. Without this, disconnecting after one
-    // of those leaves `active` populated and the host keeps presenting a dead request.
-    // Idempotent, so the connected path clearing twice is harmless.
-    this.clearRequest();
-    this._active.set(null);
+  /** Cold incoming-verification projection retained by the named session lifetime. */
+  runProjection(): Observable<void> {
+    return this.projection.run().pipe(
+      finalize(() => {
+        // A locally-started verification can exist before the projection attaches, so the
+        // projection reset is not sufficient on its own.
+        this.clearRequest();
+        this._active.set(null);
+      }),
+    );
   }
 
   /** Send a verification request to our other devices (emoji SAS). */

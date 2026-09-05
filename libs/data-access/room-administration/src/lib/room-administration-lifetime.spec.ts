@@ -4,7 +4,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { NEVER, concat, defer, finalize, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import {
@@ -20,6 +20,11 @@ describe('RoomAdministrationLifetime', () => {
   const permissionsDisconnect = vi.fn();
   const membersConnect = vi.fn();
   const membersDisconnect = vi.fn();
+  const projection = (connect: () => void, disconnect: () => void) => () =>
+    defer(() => {
+      connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(disconnect));
 
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
@@ -32,12 +37,10 @@ describe('RoomAdministrationLifetime', () => {
           activeUserId: activeAccountId.asReadonly(),
         }),
         MockProvider(RoomActionPermissionsService, {
-          connect: permissionsConnect,
-          disconnect: permissionsDisconnect,
+          runProjection: projection(permissionsConnect, permissionsDisconnect),
         }),
         MockProvider(RoomMembersService, {
-          connect: membersConnect,
-          disconnect: membersDisconnect,
+          runProjection: projection(membersConnect, membersDisconnect),
         }),
         MockProvider(ProjectionRuntime, {
           waitFor: () => of(readiness()),

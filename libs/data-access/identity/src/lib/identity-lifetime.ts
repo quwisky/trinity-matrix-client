@@ -16,8 +16,7 @@ export class IdentityLifetime {
     return this.lifetime.run({
       activeAccountId: this.matrix.activeAccountId,
       demanded,
-      connect: () => this.presence.connect(),
-      disconnect: () => this.presence.disconnect(),
+      runProjection: () => this.presence.runProjection(),
     });
   }
 }

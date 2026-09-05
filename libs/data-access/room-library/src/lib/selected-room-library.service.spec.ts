@@ -174,7 +174,8 @@ function setup(
   });
 
   const service = TestBed.inject(SelectedRoomLibraryService);
-  if (options.connect !== false) service.connect();
+  const lifetime =
+    options.connect !== false ? service.runProjection().subscribe() : null;
   return {
     service,
     selected: selected as WritableSignal<ReadonlySet<string>>,
@@ -183,6 +184,7 @@ function setup(
     clients,
     setSelected,
     toggle,
+    lifetime,
   };
 }
 
@@ -216,11 +218,11 @@ describe('SelectedRoomLibraryService', () => {
     expect(a.listenerCount()).toBe(0);
     expect(b.listenerCount()).toBe(0);
 
-    harness.service.connect();
+    const lifetime = harness.service.runProjection().subscribe();
     expect(a.listenerCount()).toBe(9);
     expect(b.listenerCount()).toBe(9);
 
-    harness.service.disconnect();
+    lifetime.unsubscribe();
     expect(a.listenerCount()).toBe(0);
     expect(b.listenerCount()).toBe(0);
     expect(harness.service.view()).toMatchObject({
@@ -230,7 +232,7 @@ describe('SelectedRoomLibraryService', () => {
       invitations: [],
     });
 
-    harness.service.connect();
+    harness.service.runProjection().subscribe();
     expect(a.listenerCount()).toBe(9);
     expect(b.listenerCount()).toBe(9);
     expect(a.attachmentCount()).toBe(18);

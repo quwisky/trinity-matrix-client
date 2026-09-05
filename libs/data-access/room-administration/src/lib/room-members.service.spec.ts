@@ -76,8 +76,8 @@ function setup(initialClient: ReturnType<typeof client>) {
     initialClient as unknown as MatrixClient,
   );
   const service = TestBed.inject(RoomMembersService);
-  service.connect();
-  return { service, matrix, activeUserId };
+  const lifetime = service.runProjection().subscribe();
+  return { service, matrix, activeUserId, lifetime };
 }
 
 function fireMemberChange(
@@ -190,13 +190,13 @@ describe('RoomMembersService', () => {
     expect(bans()).toEqual([]);
   });
 
-  it('clears outgoing Account values and detaches listeners on disconnect', async () => {
+  it('clears outgoing Account values and detaches listeners on teardown', async () => {
     const matrixClient = client([room('!room:hs', [member('@ada:hs', 'Ada')])]);
-    const { service } = setup(matrixClient);
+    const { service, lifetime } = setup(matrixClient);
     const roster = service.membersFor('!room:hs');
     expect(roster()).toHaveLength(1);
 
-    service.disconnect();
+    lifetime.unsubscribe();
     TestBed.inject(ApplicationRef).tick();
     await Promise.resolve();
 

@@ -27,8 +27,7 @@ export class NotificationLifetime {
       .run({
         activeAccountId: this.matrix.activeUserId,
         demanded,
-        connect: () => this.roomNotifications.connect(),
-        disconnect: () => this.roomNotifications.disconnect(),
+        runProjection: () => this.roomNotifications.runProjection(),
       })
       .pipe(
         catchError((error: unknown) =>

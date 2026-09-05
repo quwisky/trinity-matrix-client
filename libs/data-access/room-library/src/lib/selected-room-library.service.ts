@@ -8,7 +8,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { defer, type Observable } from 'rxjs';
+import { NEVER, concat, defer, finalize, of, type Observable } from 'rxjs';
 import {
   MatrixClientService,
   coalesce,
@@ -102,8 +102,15 @@ export class SelectedRoomLibraryService {
     this.destroyRef.onDestroy(() => this.disconnect());
   }
 
-  /** Attach selected Account sources for one Application Runtime session. */
-  connect(): void {
+  /** Cold selected-Account projection retained by the Room Library session lifetime. */
+  runProjection(): Observable<void> {
+    return defer(() => {
+      this.connect();
+      return concat(of(void 0), NEVER);
+    }).pipe(finalize(() => this.disconnect()));
+  }
+
+  private connect(): void {
     if (this.watcher) return;
     this.watcher = effect(() => this.publishSelection(), {
       injector: this.injector,
@@ -111,8 +118,7 @@ export class SelectedRoomLibraryService {
     this.publishSelection();
   }
 
-  /** Release selected Account sources and clear their published rows. */
-  disconnect(): void {
+  private disconnect(): void {
     if (!this.watcher) return;
     this.watcher.destroy();
     this.watcher = null;
