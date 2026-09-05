@@ -30,6 +30,11 @@ import type {
   InstallationResetOutcome,
 } from './account-runtime.models';
 
+interface BooleanCleanupOperation {
+  readonly run: () => Promise<boolean>;
+  readonly budgetMs: number;
+}
+
 /** Owns full-installation cleanup and safe, local-only residue retries. */
 @Injectable({ providedIn: 'root' })
 export class InstallationResetWorkflow {
@@ -307,15 +312,6 @@ export class InstallationResetWorkflow {
     resolve = false,
   ): Observable<unknown> {
     const operations: Observable<unknown>[] = [];
-    let preferencesCleared: boolean | null = null;
-    let webStorageCleared: boolean | null = null;
-    const recordPreferences = (): void => {
-      if (preferencesCleared && webStorageCleared) {
-        if (resolve) attempt.resolveIssue('preferences');
-      } else if (preferencesCleared === false || webStorageCleared === false) {
-        attempt.addIssue('preferences', 'retry-installation-reset');
-      }
-    };
     if (selected.secureStorage) {
       operations.push(
         attempt.step(
@@ -333,31 +329,20 @@ export class InstallationResetWorkflow {
     }
     if (selected.preferences) {
       operations.push(
-        attempt.step(
-          defer(() => from(this.wipe.wipePreferences())),
-          {
-            budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
-            scope: 'preferences',
-            recovery: 'retry-installation-reset',
-            fallback: false,
-            onSettled: (succeeded) => {
-              preferencesCleared = succeeded;
-              recordPreferences();
+        this.wipePair(
+          attempt,
+          'preferences',
+          [
+            {
+              run: () => this.wipe.wipePreferences(),
+              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
             },
-          },
-        ),
-        attempt.step(
-          defer(() => from(this.wipe.wipeWebStorage())),
-          {
-            budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
-            scope: 'preferences',
-            recovery: 'retry-installation-reset',
-            fallback: false,
-            onSettled: (succeeded) => {
-              webStorageCleared = succeeded;
-              recordPreferences();
+            {
+              run: () => this.wipe.wipeWebStorage(),
+              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
             },
-          },
+          ],
+          resolve,
         ),
       );
     }
@@ -373,47 +358,53 @@ export class InstallationResetWorkflow {
     attempt: AccountCleanupAttempt<InstallationResetOutcome>,
     resolve = false,
   ): Observable<unknown> {
-    let cacheStorageCleared: boolean | null = null;
-    let registrationsCleared: boolean | null = null;
-    const record = (): void => {
-      if (cacheStorageCleared && registrationsCleared) {
-        if (resolve) attempt.resolveIssue('service-worker');
-      } else if (
-        cacheStorageCleared === false ||
-        registrationsCleared === false
-      ) {
-        attempt.addIssue('service-worker', 'retry-installation-reset');
-      }
-    };
-    return from([
-      attempt.step(
-        defer(() => from(this.wipe.wipeCacheStorage())),
+    return this.wipePair(
+      attempt,
+      'service-worker',
+      [
         {
+          run: () => this.wipe.wipeCacheStorage(),
           budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.cacheStorageWipe,
-          scope: 'service-worker',
-          recovery: 'retry-installation-reset',
-          fallback: false,
-          onSettled: (succeeded) => {
-            cacheStorageCleared = succeeded;
-            record();
-          },
         },
-      ),
-      attempt.step(
-        defer(() => from(this.wipe.wipeServiceWorkerRegistrations())),
         {
+          run: () => this.wipe.wipeServiceWorkerRegistrations(),
           budgetMs:
             ACCOUNT_CLEANUP_STEP_BUDGET_MS.serviceWorkerRegistrationWipe,
-          scope: 'service-worker',
-          recovery: 'retry-installation-reset',
-          fallback: false,
-          onSettled: (succeeded) => {
-            registrationsCleared = succeeded;
-            record();
-          },
         },
+      ],
+      resolve,
+    );
+  }
+
+  private wipePair(
+    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
+    scope: AccountCleanupScope,
+    operations: readonly [BooleanCleanupOperation, BooleanCleanupOperation],
+    resolve: boolean,
+  ): Observable<unknown> {
+    const settlements: (boolean | null)[] = [null, null];
+    const record = (index: number, succeeded: boolean): void => {
+      settlements[index] = succeeded;
+      if (settlements.every((settlement) => settlement === true)) {
+        if (resolve) attempt.resolveIssue(scope);
+      } else if (settlements.some((settlement) => settlement === false)) {
+        attempt.addIssue(scope, 'retry-installation-reset');
+      }
+    };
+    return from(
+      operations.map(({ run, budgetMs }, index) =>
+        attempt.step(
+          defer(() => from(run())),
+          {
+            budgetMs,
+            scope,
+            recovery: 'retry-installation-reset',
+            fallback: false,
+            onSettled: (succeeded) => record(index, succeeded),
+          },
+        ),
       ),
-    ]).pipe(
+    ).pipe(
       concatMap((operation) => operation),
       reduce(() => undefined, undefined),
     );
