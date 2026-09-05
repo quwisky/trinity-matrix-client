@@ -1,37 +1,37 @@
 # End-to-end test architecture
 
-Trinity's system-level tests use an environment-first execution model. The environment owns
-processes, prerequisites, serialization and artifacts; product capabilities classify journeys
-inside that lifecycle. This prevents a folder name such as `playwright` from accidentally becoming
-the owner of Android, Electron, Synapse or component-browser support.
+Trinity's end-to-end suite is organized by execution environment, then by product
+capability. Each journey runs against the host and resources it needs without letting
+independently started tests contend for the same application, emulator, or homeserver.
 
-The typed registry locks the finalized lifecycle topology and every executable surface without
-losing the behavior of retained compatibility commands.
+[Commands](commands.md#end-to-end-and-protocol-checks) is the canonical command list.
+[`e2e/README.md`](../../e2e/README.md) routes a task to the right environment.
 
 ## Executable registry
 
-[`e2e/registry/index.mts`](../../e2e/registry/index.mts) is the public registry entrypoint. It
-combines lifecycle-specific suite declarations with package-command, CI, serialization, timeout,
-artifact and quarantine contracts. `pnpm architecture:check` runs the validator, and the scripts
-test project mutation-tests its refusal paths.
+`e2e/registry/index.mts` is the executable inventory. It describes each suite's Nx
+project, prerequisites, CI tier, cache policy, serialization, source entrypoints, and
+artifact location. `pnpm architecture:check` validates that registry alongside the
+other repository contracts.
 
-Every suite declares:
+| Environment                | Owning project           | What it observes                                                                    |
+| -------------------------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| Canonical browser journeys | `trinity-e2e-browser`    | Product workflows in Chromium against disposable Synapse                            |
+| Web/PWA                    | `trinity-e2e-web`        | Production routing, manifest, service worker, offline shell, and renderer contracts |
+| Components                 | `trinity-e2e-components` | Storybook, styling, accessibility, and scrollbar contracts                          |
+| Protocol                   | `trinity-e2e-protocol`   | Verification, crypto, media, rooms, search, and Matrix round trips                  |
+| Android                    | `trinity-e2e-android`    | Production Capacitor app in an installed WebView                                    |
+| Electron                   | `trinity-e2e-electron`   | Launched desktop shell behavior                                                     |
+| Shared support             | `trinity-e2e-support`    | Invocation lifecycle, reports, servers, and disposable services                     |
 
-- a stable id and lifecycle-owned Nx project/target;
-- environment, capability and contract annotations;
-- required browsers, Docker, network, Electron, Xvfb, Android SDK/JDK, KVM or Android AVD;
-- pull-request, scheduled or local-only classification;
-- non-cacheable runtime policy and any exclusive serialization resources;
-- enforced timeout class, canonical package command and standardized artifact root;
-- the source config or runner entrypoints it owns.
+Do not infer a project target from a directory. Inspect it first with
+`pnpm nx show project <name> --json`.
 
-The validator fails on missing or multiply-owned entrypoints, unregistered or drifting targets,
-command drift, cacheable E2E results, undefined serialization ownership, missing annotations or
-prerequisites, stale spec counts, unclassified CI commands and expired quarantine. A quarantine
-entry must name its suite, issue, owner, reason, expiry date and excluded tier. Quarantine removes
-the suite only from that tier; the exhaustive local `e2e:all` selection continues to run it.
-
-Inspect the current selection without starting browsers or external services:
+A registry entry declares its stable target, environment/capability/contract annotations,
+prerequisites, CI tier, timeout, artifact root, serialization key, cache policy, and source
+entrypoint. Validation rejects command drift, unregistered or multiply owned entrypoints,
+cacheable E2E results, absent prerequisites or serialization, stale catalog counts, and expired
+quarantine. Inspect the selected registry without launching a host:
 
 ```bash
 node scripts/e2e-suite-registry.mjs list e2e-pr
@@ -39,143 +39,76 @@ node scripts/e2e-suite-registry.mjs list e2e-all
 node scripts/e2e-suite-registry.mjs check
 ```
 
-The registry validates Nx's resolved project graph, not only authored `project.json` files. Nx
-Playwright per-spec atomization is disabled because each inferred target would otherwise start and
-cache work against the same fixed-port Synapse stack. The lifecycle-owned
-`trinity-e2e-browser:e2e` target is the serialized, uncached execution atom; Playwright path and
-`--grep` arguments still focus that target without changing resource ownership.
+## Lifecycle and resource ownership
 
-CI tiers have executable meanings:
+A lifecycle target owns the complete invocation: it selects a build, acquires locks,
+starts and tears down services, gives children scoped credentials, and writes ignored
+diagnostics. Children join that invocation; they do not launch fallback servers or
+homeservers.
 
-| Tier           | Contract                                                                                    |
-| -------------- | ------------------------------------------------------------------------------------------- |
-| `pull-request` | Appears exactly once in the checked-in CI command registry and runs in the current workflow |
-| `scheduled`    | Excluded from pull-request CI; run by the weekly registry-driven scheduled workflow         |
-| `local-only`   | Excluded from CI; included by exhaustive local or its environment selection                 |
+Synapse-backed browser, protocol, Android, and production-renderer work shares a
+fixed-port disposable stack. All E2E aggregates and lifecycle targets are uncached and serialized.
+Run Synapse-backed commands strictly sequentially. Aggregate targets coordinate safe ordering;
+launching two focused commands at once can make both results unreliable. Nx per-spec atomization
+is disabled for this reason.
 
-The current pull-request tier contains the canonical browser, production-renderer, Storybook,
-styling, full Electron, QR verification and Android suites. Production Web/PWA, Electron smoke
-and SAS verification remain local-only; the remaining protocol and cross-browser scrollbar suites
-are scheduled. Changing a tier without changing its CI command classification fails validation.
+The support stack includes Synapse, a federation peer, Caddy, and Dex. Docker is a hard
+prerequisite for suites that declare it. The owner creates a private ignored session descriptor,
+then children validate and join it; they must never start fallback servers or homeservers. Browser
+journeys use the development bundle; the production PWA target builds production without Docker.
+A development journey therefore does not establish service-worker, native, or Electron behavior.
 
-## Canonical commands
+The Android runner validates a dedicated API 36 x86_64 emulator, installs the Capacitor
+app, and owns ADB reverse mappings and driver cleanup. It must not select an arbitrary
+attached device. Electron needs separately installed shell dependencies and a display
+(`xvfb-run -a` may supply one on headless Linux). iOS has static and simulator build
+targets but no installed-WebView journey runner. See [Platforms](../platforms/index.md)
+for host setup.
 
-| Command               | Selection                                                                             |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| `pnpm e2e`            | Pull-request-classified suites                                                        |
-| `pnpm e2e:all`        | Complete local gate; every current registered suite is required                       |
-| `pnpm e2e:scheduled`  | Scheduled-classified suites                                                           |
-| `pnpm e2e:browser`    | Canonical Synapse browser journeys                                                    |
-| `pnpm e2e:web`        | Production Web/PWA host and production-renderer contracts                             |
-| `pnpm e2e:components` | Storybook, styling and cross-browser scrollbar contracts                              |
-| `pnpm e2e:protocol`   | Verification, crypto, media, relation, room, search and emoji protocol/system drivers |
-| `pnpm e2e:electron`   | Docker-independent shell smoke plus the full Synapse-backed Electron journey          |
-| `pnpm e2e:android`    | Installed API 36 WebView journeys                                                     |
+## Focus without changing ownership
 
-Every canonical aggregate is an uncached, serialized Nx target. Pull-request, scheduled and
-environment aggregates fail preflight before starting any suite when a required prerequisite is
-unavailable. `e2e:all` also fails before execution when any suite classified `required` is
-unavailable, and continues only past a suite explicitly classified `optional`. Every current
-suite is required; the optional policy exists for a future genuinely host-inapplicable runtime.
-The runner opens one support invocation and stops after the first executed suite failure.
-Docker and the Android AVD are required for the local delivery gate. On headless Linux the
-aggregate wraps Electron targets with `xvfb-run`. Every child target is terminated at the timeout
-declared by its registry class, with process-group termination escalating from `SIGTERM` to
-`SIGKILL`. Shared external resources declare the same serialization key, acquire one
-cross-invocation process lock and remain non-parallel Nx targets. Application, Storybook and
-report servers bind real port-zero sockets; only Synapse, Dex and Caddy retain fixed protocol
-ports.
-
-The older focused package commands, including `pnpm e2e:ui:shipped`, remain behavior-compatible
-Nx aliases through the first released changelog cycle after this migration. Removing an alias
-requires documented replacements, zero repository or CI references, and one complete released
-cycle without reported migration failures.
-
-## Lifecycle ownership
-
-`trinity-e2e-support` owns the invocation descriptor,
-process-group cancellation, dynamic static servers, explicit resource locks, the disposable
-Synapse lease and stack, Matrix API primitives, per-attempt resource namespaces, cleanup and
-Playwright report paths. One owner writes a private descriptor below
-`dist/.playwright/sessions/`; children receive its path through
-`TRINITY_E2E_SESSION_FILE`, validate the live owner and requested resources, and only join. A
-child cannot silently fall back to starting or stopping a replacement resource.
-
-The aggregate opens the owner before its first child and closes it after its last child. Direct
-Nx targets use the same support wrappers, so focused and aggregate runs have identical ownership.
-`trinity-e2e-web` now owns production Web/PWA startup, offline behavior and the production-renderer
-matrix. The `trinity-e2e-components` project owns explicit Storybook, styling and scrollbar
-targets. `trinity-e2e-browser` owns the canonical Chromium/Synapse config, capability catalog and
-journey tree. `trinity-e2e-protocol` owns twelve Playwright Test specs selected by thirteen
-registered suite targets; the shared config supplies standard reports, traces, retries,
-annotations and attempt-scoped Matrix resources. `trinity-e2e-electron` owns the launched-shell
-smoke and full desktop configs; `trinity-e2e-android` owns the emulator runner, installed-WebView
-fixture and config. The `trinity-desktop`, `trinity-android`, and root `trinity-e2e` host targets
-are compatibility delegates and own no lifecycle implementation. The aggregate composition
-fixture selects the Web or Android adapter for shared journeys without either environment
-importing the other. Browser, Android and Electron adapters depend inward on support contracts;
-only `e2e/fixtures.mts` chooses an environment fixture.
-
-Every Playwright attempt receives a deterministic namespace containing the invocation, suite,
-worker, retry and test identity. Multi-client roles derive distinct names from that namespace.
-Registered cleanup runs in reverse order, attempts every operation and raises an aggregate error
-instead of hiding best-effort failures. Teardown is bounded and reports static-server and Synapse
-failures without printing credentials. Acquisition never removes stale locks implicitly; after
-checking that no runner is active, recover a named stale lock explicitly with:
+Forward Playwright selection after `--` to the owning target:
 
 ```bash
-node e2e/support/recover-lock.mts synapse
+pnpm nx run trinity-e2e-browser:e2e -- conversations/message-links.spec.mts
+pnpm nx run trinity-e2e-browser:e2e -- --grep "message link"
 ```
 
-The lifecycle migration uses these owners
-without changing assertions:
+These commands remain one serialized browser lifecycle; they are safer than invoking
+Playwright directly. Use `pnpm e2e` for the pull-request-classified aggregate and
+`pnpm e2e:all` for the full local suite set. Aggregates preflight declared prerequisites
+before starting work, stop after an executed suite failure, and treat every current suite as
+required. A missing prerequisite is not coverage. On headless Linux, Electron needs Xvfb;
+Docker and the Android AVD are required for the full local delivery gate.
 
-| Project                  | Owns                                                                  |
-| ------------------------ | --------------------------------------------------------------------- |
-| `trinity-e2e`            | Cross-environment fixture composition and aggregate commands          |
-| `trinity-e2e-support`    | **Current:** processes, ports, Synapse, APIs, resources and reporting |
-| `trinity-e2e-browser`    | **Current:** capability-owned canonical application journeys          |
-| `trinity-e2e-protocol`   | Verification, crypto and Matrix protocol/system drivers               |
-| `trinity-e2e-web`        | **Current:** production Web/PWA host and renderer behavior            |
-| `trinity-e2e-electron`   | Launched desktop shell and full Electron journeys                     |
-| `trinity-e2e-android`    | Installed Capacitor WebView and Android-only journeys                 |
-| `trinity-e2e-components` | **Current:** Storybook, styling and scrollbar contracts               |
+## Coverage and artifacts
 
-Environment fixtures may depend on `trinity-e2e-support`; they must not import another
-environment's fixture implementation. Playwright configurations stay small and lifecycle-specific
-instead of becoming one mega-config.
+Every canonical browser spec belongs to one capability and one primary contract type in
+`e2e/browser/journey-catalog.mts`. Registry and catalog guards reject missing, duplicate,
+stale, or misplaced coverage entries. The [executable browser inventory](../../scripts/e2e-browser-inventory.mjs)
+owns the expected source counts. Add or move a journey with its catalog entry and run
+the relevant guard. The report groups results by environment, capability, and contract type.
 
-Every migrated lifecycle Playwright config writes below
-`dist/.playwright/<lifecycle-project>/<run-id>/<suite-id>/`. Raw output, mergeable blob reports,
-JUnit XML and local HTML share that identity, and the Playwright metadata repeats the registry's
-suite, environment, capabilities, contract types, prerequisites and CI tier. This keeps parallel
-or repeated runs distinct while allowing one job to merge results by lifecycle project.
+Runs keep traces, screenshots, videos, reports, and suite summaries under ignored
+`dist/.playwright/` paths. Teardown failures fail the invocation; they are not best-effort
+noise. Inspect retained diagnostics when a run fails and attach selected review proof to the
+pull request when useful. Do not commit these artifacts.
 
-Each suite also writes `suite-summary.json` with its final Playwright status, attempts, retry count,
-duration and attempt-status totals. An aggregate rejects a successful child that omitted or
-misidentified this summary. It then writes JSON and Markdown under
-`dist/.playwright/trinity-e2e/<run-id>/<aggregate>/`, grouped by environment, capability and
-contract type. Outcomes distinguish pass, failure, retry, quarantine, unavailable,
-skipped-by-tier and not-run; invocation teardown failure changes the aggregate result to failure.
+## Delivery evidence
 
-Canonical browser files add a finer-grained typed catalog. Each spec has exactly one capability
-and one primary `journey`, `host`, `accessibility`, `visual`, or `security` contract. Repository
-validation requires an exact catalog-to-filesystem match and preserves the pre-move inventory of
-266 executable tests and 1,782 assertion calls. The browser reporter copies the per-file
-classification onto every Playwright result and emits a JSON summary grouped by capability and
-contract type below `capability-coverage/` in the run artifact tree.
+For a delivery change, record exact commands and exit statuses in the pull request. A focused
+journey proves only its selected host and contract. The full local E2E gate is `pnpm e2e:all`;
+run it after the repository quality gates when the delivery scope requires it. Native iOS runtime
+evidence requires a macOS/Xcode host. `pnpm ios:verify` runs the static host contract on
+other systems too; it does not prove an iOS build or launch. `trinity-ios:verify-native`
+requires macOS and Xcode for its simulator build.
 
-## Local delivery evidence
+## What a result does and does not prove
 
-Focused checks are appropriate while iterating. Before each migration pull request, and after a
-review change affecting behavior or tests, run the repository quality gates plus `pnpm e2e:all`.
-Record exact commands and exit statuses in the pull request. The local Linux host must exercise
-Docker/Synapse, Web/PWA, Electron and the Android AVD. It can run only static iOS/shared-renderer
-verification; absence of an Xcode run is recorded as unavailable, never passed.
+- A unit or source-shape guard does not prove browser layout or a host integration.
+- A browser journey does not prove production service worker, Android WebView, or Electron shell.
+- A static native host contract does not prove a native launch.
+- An unavailable environment is a recorded limitation, not a skipped success.
 
-Existing GitHub workflows remain declared and their current commands are registry-classified.
-Unavailable Actions capacity is not validation evidence and is not a reason to weaken workflow or
-branch safeguards.
-
-All reports, traces, screenshots, videos and session descriptors stay in ignored output. Review
-proof may be attached to a pull request, but none of those artifacts belongs in version control.
+Use [Testing](testing.md) to select the narrowest check that observes the changed behavior,
+then add the host boundary that the change crosses.

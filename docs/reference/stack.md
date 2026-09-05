@@ -1,49 +1,44 @@
 # Stack reference
 
-Every version below is the version installed on disk, not the range in `package.json`.
-That is enforced: [`scripts/stack-versions.spec.mjs`](https://github.com/quwisky/trinity-matrix-client/blob/develop/scripts/stack-versions.spec.mjs)
-parses the tables on this page, and for every row whose version cell is a complete
-`major.minor.patch` it asserts the value equals
-`node_modules/<package>/package.json`'s `version`. It runs as part of `pnpm test`, so a
-dependency bump that does not update this page turns CI red.
+Use this page when checking prerequisites or updating dependencies. The application and
+build-tool tables record installed root package versions; the desktop table records
+its separate manifest pins. For the checkout recipe, use
+[getting started](../contributing/getting-started.md).
 
-The spec skips rows whose version cell is not a complete semver, and asserts that at
-least ten rows survive that filter — otherwise a table rewrite could quietly leave a
-guard that verifies nothing. The guard exists because the table drifted after four
-separate dependency waves and had to be corrected by hand each time, once with the
-correction itself leaving another row stale.
+[`stack-versions.spec.mjs`](../../scripts/stack-versions.spec.mjs) compares complete
+`major.minor.patch` table cells here and in the Matrix architecture guide with installed
+root manifests. It requires at least **12** matching rows. Keep package names backticked
+and version cells numeric so the guard can parse them. Packages absent from the root
+installation are skipped; this is not a complete dependency compatibility test.
 
-!!! warning "The version guard replays a stale cached pass locally"
+Run the guard after changing dependencies or these tables:
 
-    The `scripts` project inherits Nx's default `test` inputs (`{projectRoot}/**/*`
-    plus `sharedGlobals`). This page, `package.json` and `pnpm-lock.yaml` are all
-    outside that set, and `node_modules/*/package.json` is read at runtime where Nx
-    never sees it — so the cache key only moves when a file under `scripts/` changes.
-    After editing this table run `pnpm nx test scripts --skip-nx-cache`. CI is
-    unaffected: its runners are always cold.
+```bash
+pnpm nx test scripts -- stack-versions
+```
+
+The resolved `scripts:test` target disables caching and declares cross-repository inputs,
+including documentation, manifests and the lockfile. Diagnose failures against the current
+installation; a successful run does not validate an uninstalled desktop package.
 
 ## Runtimes
 
-| Runtime | Pin                      | Where it is set                                                   |
-| ------- | ------------------------ | ----------------------------------------------------------------- |
-| Node.js | `^24.15.0 \|\| >=26.0.0` | `package.json` `engines`, `.nvmrc` (`24.18.1`), CI `node-version` |
-| pnpm    | `11.19.0`                | `package.json` `packageManager`, enforced by corepack             |
+| Runtime | Requirement                          | Source                                            |
+| ------- | ------------------------------------ | ------------------------------------------------- |
+| Node.js | `^24.15.0` — Node 24, at least 24.15 | Root `package.json`; `.nvmrc` selects the 24 line |
+| pnpm    | `11.19.0`                            | Root `packageManager` pin; use Corepack           |
 
-Node 25 is excluded, and that is not arbitrary: the range is Angular 22's own engines
-window. matrix-js-sdk only asks for `>=22`, so "newer is fine" does not hold here.
-A `preinstall` script inspects `npm_config_user_agent` and aborts anything that is not
-pnpm.
+The repository's Node range governs this checkout even if a dependency accepts a broader
+range. The preinstall guard rejects npm and Yarn. Internal libraries are Nx projects
+resolved through TypeScript aliases, not separately installed pnpm workspace packages.
+`electron/` deliberately has its own package installation.
 
-Browser floors live in `.browserslistrc`: Chrome, Edge and Firefox `>=119`, Safari and iOS
-`>=17`, plus separate `ChromeAndroid` and `FirefoxAndroid` entries.
-Those two Android entries are not redundant — browserslist treats them as distinct
-targets, and without them the Android WebView Trinity ships through Capacitor would be
-absent from the target set entirely. The list is the resolved form of Angular 22.1's
-`baseline widely available on 2026-05-07` policy; re-resolve it after each Angular
-major rather than editing numbers by hand.
-
-Firefox and Firefox Android first support `oklch()` at 113. The framework floor of 119 is
-therefore also the effective floor for Trinity's authored OKLCH colours.
+Browser build targets in [`.browserslistrc`](../../.browserslistrc) are Chrome, Edge and
+Firefox 119+, Android Chrome and Firefox 119+, and Safari/iOS 17+. Android entries are
+separate build targets; keep them when updating the policy. The native deployment target
+and renderer browser floor are different constraints; see [mobile](../platforms/mobile.md).
+On an Angular major update, inspect the installed builder's support policy and re-resolve
+the browser list before accepting new floors.
 
 ## Application dependencies
 
@@ -51,7 +46,7 @@ therefore also the effective floor for Trinity's authored OKLCH colours.
 | ------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `@angular/core`                       | 22.1.0  | Standalone components, signals, zoneless. `polyfills.ts` is empty on purpose: no zone.js                                                     |
 | `@angular/forms`                      | 22.1.0  | Signal Forms (`@angular/forms/signals`) only. No `FormControl`, `FormGroup` or `ngModel` anywhere                                            |
-| `@angular/cdk`                        | 22.1.0  | Overlay and Dialog under the Helm overlays, and the encryption route dialogs                                                                 |
+| `@angular/cdk`                        | 22.1.0  | Overlay and Dialog behind the public component tier                                                                                          |
 | `@angular/service-worker`             | 22.1.0  | PWA service worker, production web build only. Off in the Electron shell                                                                     |
 | `@spartan-ng/brain`                   | 1.3.0   | Headless UI primitives. The styled Helm layer is copied into `libs/spartan/*` and aliased `@trinity/helm/*`                                  |
 | `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Theme Foundation exposes one aggregate stylesheet and keeps semantic values plus framework wiring internal          |
@@ -81,8 +76,7 @@ therefore also the effective floor for Trinity's authored OKLCH colours.
 | `@capawesome/capacitor-badge`         | 8.0.2   | Native launcher badge on iOS and Android                                                                                                     |
 | `@aparajita/capacitor-secure-storage` | 8.0.0   | Keychain and Keystore for the access token on native                                                                                         |
 
-`matrix-encrypt-attachment` was removed rather than upgraded: it has been unmaintained
-since 2022, and its logic is ported into `attachment-crypto.ts` in `@trinity/util/matrix`.
+Attachment encryption is implemented in `attachment-crypto.ts` in `@trinity/util/matrix`.
 
 ## Toolchain
 
@@ -98,21 +92,22 @@ since 2022, and its logic is ported into `attachment-crypto.ts` in `@trinity/uti
 | `jsdom`                         | 30.0.1  | DOM environment for unit tests                                                                      |
 | `@testing-library/angular`      | 19.4.1  | Component tests. Import `render` from `@trinity/testing`, not from here, see below                  |
 | `ng-mocks`                      | 14.16.0 | `MockProvider` and `MockComponent` for isolating a component under test                             |
-| `@playwright/test`              | 1.62.1  | The `trinity-e2e` app-journey suite and the Electron suite. `playwright` standalone tracks it       |
+| `@playwright/test`              | 1.62.1  | Browser journeys, host and protocol suites; standalone `playwright` tracks it                       |
 | `eslint`                        | 10.8.0  | Flat config in `eslint.config.mjs`                                                                  |
 | `typescript-eslint`             | 8.65.0  | Supplies the type-aware `no-deprecated` rule                                                        |
 | `angular-eslint`                | 22.1.0  | Template and component rules, including the `trn` selector prefix                                   |
 | `prettier`                      | 3.9.6   | `singleQuote`; Angular parser for `*.page.html`; Tailwind class sort                                |
-| `stylelint`                     | 17.14.1 | SCSS lint, run separately from `pnpm lint`                                                          |
+| `stylelint`                     | 17.14.1 | SCSS and CSS lint, run separately from `pnpm lint`                                                  |
 | `@commitlint/cli`               | 21.2.1  | `commit-msg` hook enforcing Conventional Commits                                                    |
 | `husky`                         | 9.1.7   | Installs the `pre-commit` and `commit-msg` hooks                                                    |
 | `lint-staged`                   | 17.3.0  | ESLint plus Prettier over staged files                                                              |
 
 ### Desktop shell
 
-The Electron shell in `electron/` is a separate package with its own `package.json`,
-its own `node_modules` and its own TypeScript. Its versions are therefore not visible
-to the guard above, which only reads the workspace root's `node_modules`.
+The Electron shell has a separate manifest, lockfile and dependency installation. These
+are its **declared pins** in `electron/package.json`; the root version guard does not
+verify the installed Electron dependency tree. Run the shell's typecheck and relevant
+host checks after updating it.
 
 | Package            | Version | Notes                                                                  |
 | ------------------ | ------- | ---------------------------------------------------------------------- |
@@ -126,108 +121,86 @@ See [the desktop platform page](../platforms/desktop.md) for what that shell doe
 
 ### The crypto WASM needs an explicit URL
 
-matrix-js-sdk's default loader resolves `matrix_sdk_crypto_wasm_bg.wasm` relative to its
-own bundled JavaScript (`./pkg/…`). Angular's esbuild never emits an asset at that path,
-so the fetch 404s and crypto never initializes.
-
-The fix has two halves that must stay in step. The build target copies the file out of
-`node_modules/@matrix-org/matrix-sdk-crypto-wasm/pkg` into `assets/crypto`, and
-[`crypto-wasm-loader.ts`](https://github.com/quwisky/trinity-matrix-client/blob/develop/libs/util/matrix/src/lib/crypto-wasm-loader.ts)
-calls `initAsync` against that served path before `initRustCrypto()`:
-
-```ts
-const url = new URL('assets/crypto/matrix_sdk_crypto_wasm_bg.wasm', document.baseURI);
-return from(initAsync(url));
-```
-
-The call is memoized with `shareReplay(1)`, so the loader matrix-js-sdk invokes later
-inside `initRustCrypto()` reuses the same module instance. The Electron copy step
-re-checks the file exists after copying and prints its byte size, because a silently
-missing WASM is otherwise only discovered at sign-in.
+The renderer build copies `matrix_sdk_crypto_wasm_bg.wasm` into `assets/crypto/`.
+[`crypto-wasm-loader.ts`](../../libs/util/matrix/src/lib/crypto-wasm-loader.ts) resolves
+that URL against `document.baseURI` and memoizes `initAsync` through a shared Observable.
+It must complete before `initRustCrypto()`: the SDK's default bundle-relative asset path
+is not emitted by Angular. Verify the asset in the built host output after changing the
+SDK, build assets or host copy step. See
+[Matrix and encryption](../architecture/matrix-and-encryption.md).
 
 ### Crypto types are deep imports
 
-matrix-js-sdk does not re-export the crypto API from the package root (still true in 42.x). `CryptoApi`,
-`CryptoEvent`, `decodeRecoveryKey`, `EventShieldColour`, `ServerSideSecretStorage` and
-`SecretStorageKeyDescriptionAesV1` come from `matrix-js-sdk/lib/crypto-api` and
-`matrix-js-sdk/lib/secret-storage`.
-
-Those deep paths resolve only because the SDK's `package.json` has no `exports` field.
-If upstream adds one, every deep import in this repository breaks at once. The root does
-export a `SecretStorage` namespace, which is a different thing and is not what the code
-uses.
+Existing SDK adapters import crypto and secret-storage APIs from
+`matrix-js-sdk/lib/crypto-api` and `matrix-js-sdk/lib/secret-storage`. Check these paths
+against the installed SDK on upgrades; a new package export map can restrict them.
+Keep SDK imports inside their owning adapters, behind Trinity's public capability APIs.
 
 ### Shiki is pinned exactly, and stays out of the eager bundle
 
-The three `@shikijs/*` packages must move together. `@shikijs/langs-precompiled` is not
-usable here at all: it emits `v`-flag regular-expression literals, which are below the
-Safari 16.4 floor the browserslist policy sets.
-
-The grammars are roughly 813 KB raw and 134 kB gzipped. Their implementation lives in
-`libs/feature/rooms/src/lib/message-presentation/code-highlight.ts` and is imported
-relatively for side effect at the top of the lazy rooms page. It registers the synchronous
-highlighter before the first Message Presentation pass without creating a public secondary
-entrypoint that an eager consumer could import.
+Update the three `@shikijs/*` packages together. The current integration uses the
+JavaScript regexp engine and explicitly imported grammars in
+[`code-highlight.ts`](../../libs/feature/rooms/src/lib/message-presentation/code-highlight.ts).
+The lazy Rooms page registers the synchronous highlighter before Message Presentation
+uses it. Preserve that lazy loading boundary and check renderer compatibility and bundle
+output when changing engines or grammars; old bundle measurements are not current budgets.
 
 ### The web build output goes to www, flat
 
-`outputPath` is `{ "base": "www", "browser": "" }`. The empty `browser` is the
-load-bearing half: Angular 17 and later otherwise emit into `<base>/browser/`.
-Flattening puts `index.html` directly in `www/`, which is what Capacitor's
-`webDir: 'www'` expects and what the Electron shell copies verbatim.
-
-`defaultConfiguration` is `production`, so a bare `pnpm build` is a production build —
-and every `electron:*`, `android:*` and `ios:*` script chains off it. Only the spike and
-e2e scripts pass `--configuration=development` explicitly.
+The renderer's `outputPath` has `base: "www"` and `browser: ""`, putting `index.html`
+directly in `www/`. Capacitor's `webDir` and Electron's copy step consume that layout.
+The default renderer build is production. For development output use the explicit
+`trinity:build:development` target; inspect a host target's resolved dependencies before
+assuming a configuration flag changes its renderer build. See the
+[command reference](../contributing/commands.md).
 
 ### Angular framework and CLI versions differ on purpose
 
-The framework packages sit at 22.1.0 while `@angular/build` and `@angular/cli` sit at
-22.1.2. They are released on separate lines; matching them is not a goal, and a
-dependency tool that "fixes" the mismatch is wrong.
+Framework packages are on 22.1.0; the builder and CLI are on 22.1.2. Treat the installed
+peer requirements and tested package groups as the compatibility constraints, rather than
+requiring every Angular-related package to share an identical patch number.
 
 ### Vitest runs in the forks pool
 
-`vite.base.config.ts` sets `pool: 'forks'`. That is Vitest's own default, but
-`@analogjs/vite-plugin-angular` overrides it to `vmThreads` — the one pool that sets no
-worker isolation, so jsdom windows, TestBed state and module graphs accumulate in a
-single V8 isolate. Measured: `feature-rooms` peaked at 4.27 GB and was OOM-killed on
-about half of full `nx run-many -t test` runs. `forks` drops it to 0.91 GB at roughly
-19 percent more wall time.
+[`vite.base.config.ts`](../../vite.base.config.ts) explicitly selects `forks` for Angular
+unit suites. Preserve worker isolation and investigate resource failures using measured
+process evidence. Shared config changes affect many projects; a single passing spec does
+not establish whole-suite reliability. See [testing](../contributing/testing.md).
 
 ### Testing Library is wrapped
 
-The app is zoneless. Angular Testing Library 19.4.1's zoneless `render()` binds only
-through Angular's native `bindings` API and silently ignores the `inputs` and `on`
-options, which surfaces as NG0950 during the first change detection. `@trinity/testing`
-wraps it: render with `skipDetectChanges`, apply `inputs` via `setInput`, wire `on`
-handlers, then detect. Always `import { render } from '@trinity/testing'`.
+Import `render` from `@trinity/testing`. Its zoneless wrapper applies `inputs` and `on`
+before first change detection; bypassing it can leave required inputs unset. Unit tests
+still do not typecheck specs or prove browser layout. The separate checks are documented
+in [testing](../contributing/testing.md).
 
 ### pnpm 11 build scripts are strict
 
-pnpm 11 replaced `pnpm.onlyBuiltDependencies` with an `allowBuilds` name-to-boolean map
-in `pnpm-workspace.yaml`, and `strictDepBuilds` now defaults to true. A dependency with
-an install script that is neither allowed nor blocked fails the install rather than
-being skipped. Six are allowed (`@parcel/watcher`, `@swc/core`, `esbuild`, `lmdb`,
-`msgpackr-extract`, `nx`); `less` is explicitly blocked because it arrives transitively
-with a build script and was never on the old allowlist.
+[`pnpm-workspace.yaml`](../../pnpm-workspace.yaml) owns the explicit `allowBuilds` map.
+It permits six dependency build scripts and blocks `less`. The standalone Electron
+workspace separately blocks `electron-winstaller`. If installation reports an unreviewed
+build script, inspect that dependency and the appropriate workspace policy before changing
+it; do not broadly enable scripts to get a green install.
 
-`electron/pnpm-workspace.yaml` exists for the same reason on the shell's own root, and
-blocks `electron-winstaller`.
+Both workspace policies also set `minimumReleaseAge`. Keep the root's
+`matrix-widget-api@1.17.0` patch wired to its matching dependency version and inspect its
+continued necessity during upgrades. Update the appropriate lockfile with the pinned pnpm
+and review generated/native changes. Release ownership is described in
+[maintainer guidance](../maintaining/index.md).
 
 ## Version-specific traps
 
-| Trap                                                                    | What to do                                                                                                                                                                                                                                              |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A TypeScript bump rewrites `electron/tsconfig.json`                     | `@nx/js` codemods glob every `tsconfig*.json`, the shell's included. It must keep the Node16 `module`/`moduleResolution` pair — TypeScript 6 rejects node10 with TS5107. Verify with `cd electron && ./node_modules/.bin/tsc -p tsconfig.json --noEmit` |
-| A Playwright bump invalidates the downloaded browsers                   | Each release pins its own browser build. Run `pnpm exec playwright install chromium webkit` after the bump. The 1.61 to 1.62 bump failed 165 of 167 specs this way                                                                                      |
-| A Capacitor bump strands the checked-in native projects                 | `cap sync` writes pnpm content-addressed absolute paths into `android/capacitor.settings.gradle` and `ios/App/CapApp-SPM/Package.swift`. Re-run `pnpm android:sync` and `pnpm ios:sync` and commit the regenerated files                                |
-| A matrix-js-sdk bump can change `resetEncryption` without changing ours | Trinity owns a hand-written copy of that flow. Diff `rust-crypto.js`'s `resetEncryption` on every bump; see [Matrix and encryption](../architecture/matrix-and-encryption.md)                                                                           |
-| An Angular major moves the browserslist baseline                        | Re-resolve rather than editing numbers: `node -e "console.log(require('browserslist')('baseline widely available on <DATE>').join('\n'))"`                                                                                                              |
-| An Angular major moves the TypeScript peer window                       | `@angular/compiler-cli` peer-depends on one minor window and pnpm only warns about an unmet peer, so the root TypeScript ceiling is capped by hand in the dependency-bot config                                                                         |
+| Change                     | Required follow-through                                                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript or Nx migration | Inspect `electron/tsconfig.json`: the shell uses the Node16 `module` and `moduleResolution` pair. Run `pnpm electron:typecheck`.                     |
+| Playwright update          | Refresh the matching browser downloads with `pnpm exec playwright install chromium webkit`; execute the relevant suite.                              |
+| Capacitor update           | Re-sync each supported native project and review generated paths; use the platform prerequisites in [mobile](../platforms/mobile.md).                |
+| Matrix SDK update          | Compare upstream `resetEncryption` with Trinity's owned recovery-reset sequence; recheck crypto assets, API imports and recovery contracts.          |
+| Angular update             | Check compiler TypeScript peers, builder browser support and renderer compilation together. A successful install alone does not prove compatibility. |
 
 ## Related pages
 
-- [Getting started](../contributing/getting-started.md) for the install and first build
-- [Troubleshooting](troubleshooting.md) for symptoms these versions produce
-- [Architecture overview](../architecture/index.md) for how the libraries fit together
+- [Getting started](../contributing/getting-started.md) — prepare a checkout
+- [Commands](../contributing/commands.md) — canonical invocations and target ownership
+- [Troubleshooting](troubleshooting.md) — diagnose installation and validation failures
+- [Architecture overview](../architecture/index.md) — capability and library boundaries

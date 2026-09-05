@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Contributor documentation now provides a checkout-to-review workflow, a canonical command
+  reference, scoped validation guidance and source-checked setup and troubleshooting notes.
+
 - Everyday-use documentation now connects account scope, Rooms and Spaces, messaging,
   personal settings and notification workflows with implemented permissions and host limits.
 
