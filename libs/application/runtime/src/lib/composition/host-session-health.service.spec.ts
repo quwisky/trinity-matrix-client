@@ -6,7 +6,7 @@ import {
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
-import { lastValueFrom, of } from 'rxjs';
+import { NEVER, lastValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CapabilityHealthService } from '../capability-health.service';
 import { HostSessionHealthService } from './host-session-health.service';
@@ -34,6 +34,7 @@ describe('HostSessionHealthService', () => {
   }
 
   afterEach(() => {
+    vi.useRealTimers();
     TestBed.resetTestingModule();
     vi.clearAllMocks();
   });
@@ -104,6 +105,35 @@ describe('HostSessionHealthService', () => {
       kind: 'success',
     });
     expect(health.problems()).toHaveLength(0);
+  });
+
+  it('bounds update checks to one finite outcome and reports a timeout safely', async () => {
+    vi.useFakeTimers();
+    const { service, health } = setup();
+    updateCheck.mockReturnValueOnce(NEVER);
+
+    const timedOut = lastValueFrom(service.checkUpdates());
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(timedOut).resolves.toBeUndefined();
+    expect(health.problems()[0]).toMatchObject({
+      capability: 'updates',
+      operation: 'check',
+      condition: 'degraded',
+      code: 'update-check-failed',
+    });
+
+    updateCheck.mockReturnValueOnce(
+      of(
+        { kind: 'completed' as const },
+        {
+          kind: 'rejected' as const,
+          diagnostic: { code: 'late-outcome' },
+        },
+      ),
+    );
+    await lastValueFrom(service.checkUpdates());
+    expect(health.problems()).toHaveLength(0);
+    vi.useRealTimers();
   });
 
   it('rejects obsolete badge recovery without probing the host again', async () => {

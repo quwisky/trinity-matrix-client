@@ -188,7 +188,9 @@ export class NativePushLifetime {
         publish('recovering', 'push-registration-preparing', 'pending');
         if (retained) {
           listener.add(
-            this.push.register().subscribe({ error: () => observeStatus() }),
+            this.push
+              .retryRegistration()
+              .subscribe({ error: () => observeStatus() }),
           );
           watchdog = setTimeout(
             () => publish('degraded', 'push-registration-timeout', 'failed'),

@@ -10,10 +10,20 @@ import type {
   CapabilityHealthFact,
   CapabilityRecoveryOutcome,
 } from '@trinity/runtime/projection';
-import { Observable, catchError, defer, map, of } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  defer,
+  map,
+  of,
+  take,
+  throwIfEmpty,
+  timeout,
+} from 'rxjs';
 import { CapabilityHealthService } from '../capability-health.service';
 
 type HostHealthOperation = 'badge:support' | 'updates:check';
+const UPDATE_CHECK_BUDGET_MS = 10_000;
 
 /** Application policy for finite Host outcomes; live stream ownership stays in the session. */
 @Injectable({ providedIn: 'root' })
@@ -46,6 +56,9 @@ export class HostSessionHealthService {
 
   checkUpdates(): Observable<void> {
     return defer(() => this.updates.check()).pipe(
+      take(1),
+      throwIfEmpty(() => new Error('Update check returned no outcome.')),
+      timeout(UPDATE_CHECK_BUDGET_MS),
       map((outcome) => {
         this.reportUpdate(outcome);
       }),

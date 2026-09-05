@@ -246,6 +246,14 @@ export class PushService {
     });
   }
 
+  /** Restart a registration attempt whose native callback never settled. */
+  retryRegistration(): Observable<void> {
+    return defer(() => {
+      this.registered = false;
+      return this.register();
+    });
+  }
+
   /**
    * Delete pusher(s). With a `userId`, remove just that account's pusher (on
    * per-account sign-out) while the others keep theirs. Without one, tear everything

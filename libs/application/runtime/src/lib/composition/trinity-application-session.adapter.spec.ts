@@ -48,7 +48,7 @@ import {
   HostLifecycleService,
   HostUpdatesService,
 } from '@trinity/runtime/host';
-import { MockProvider } from 'ng-mocks';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import {
   EMPTY,
   Observable,
@@ -276,6 +276,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   let locationStub: ReturnType<typeof stubLocation> | null = null;
 
   afterEach(() => {
+    vi.useRealTimers();
     locationStub?.restore();
     locationStub = null;
     TestBed.resetTestingModule();
@@ -678,6 +679,49 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(JSON.stringify(test.health.incidents())).not.toContain('private');
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
+  });
+
+  it('reports released deep-link and Back ownership and reattaches both streams', async () => {
+    vi.useFakeTimers();
+    let deepLinkAttachments = 0;
+    let backAttachments = 0;
+    const test = setup();
+    ngMocks.stubMember(
+      TestBed.inject(HostDeepLinksService),
+      'received',
+      new Observable<{ readonly url: string }>((subscriber) => {
+        deepLinkAttachments++;
+        subscriber.complete();
+      }),
+    );
+    ngMocks.stubMember(
+      TestBed.inject(HostBackService),
+      'intents',
+      new Observable<{ readonly canGoBack: boolean }>((subscriber) => {
+        backAttachments++;
+        subscriber.complete();
+      }),
+    );
+
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    expect(test.health.incidents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: 'deep-links',
+          code: 'deep-link-listener-ownership-released',
+        }),
+        expect.objectContaining({
+          operation: 'back',
+          code: 'host-back-listener-ownership-released',
+        }),
+      ]),
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(deepLinkAttachments).toBe(2);
+    expect(backAttachments).toBe(2);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
   });
 
   it('submits typed notification activation to semantic Workspace navigation', async () => {

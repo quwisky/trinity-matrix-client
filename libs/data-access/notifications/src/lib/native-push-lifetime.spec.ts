@@ -35,8 +35,10 @@ describe('NativePushLifetime', () => {
       }),
   );
   const register = vi.fn(() => of(void 0));
+  const retryRegistration = vi.fn(() => of(void 0));
 
   beforeEach(() => {
+    vi.useRealTimers();
     accountIds.set(['@a:example.org']);
     configured.set(true);
     runtimeStatus.set({
@@ -58,6 +60,7 @@ describe('NativePushLifetime', () => {
         MockProvider(PushService, {
           run,
           register,
+          retryRegistration,
           runtimeStatus: runtimeStatus.asReadonly(),
           runtimePrerequisite: () => prerequisite,
         }),
@@ -110,6 +113,33 @@ describe('NativePushLifetime', () => {
       code: 'push-registration-ready',
     });
     expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('restarts a timed-out native registration during exact recovery', async () => {
+    vi.useFakeTimers();
+    const service = TestBed.inject(NativePushLifetime);
+    const facts: NativePushHealth[] = [];
+    const lifetime = service.run().subscribe((event) => {
+      if (event.kind === 'health') facts.push(event.fact);
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    const timedOut = facts.at(-1)!;
+    expect(timedOut.code).toBe('push-registration-timeout');
+
+    const recovery = lastValueFrom(
+      service.recover(timedOut.context, timedOut.generation),
+    );
+    expect(retryRegistration).toHaveBeenCalledOnce();
+    runtimeStatus.set({
+      status: 'available',
+      code: 'push-registration-ready',
+    });
+    TestBed.tick();
+
+    await expect(recovery).resolves.toEqual({ kind: 'success' });
     lifetime.unsubscribe();
     vi.useRealTimers();
   });

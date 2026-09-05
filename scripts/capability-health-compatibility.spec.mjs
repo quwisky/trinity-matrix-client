@@ -14,6 +14,8 @@ const legacyFiles = [
 ];
 const root = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(root, file), 'utf8');
+const containsWarningCall = (source, code) =>
+  new RegExp(`\\bwarning\\([^)]*['"]${code}['"]`, 'u').test(source);
 
 describe('capability health expand-migrate-contract ledger', () => {
   it('freezes exactly five legacy warning producers and consumers until removal', () => {
@@ -74,10 +76,12 @@ describe('capability health expand-migrate-contract ledger', () => {
       'badge-update-failed',
       'update-check-failed',
     ]) {
-      expect(sessionAdapter).not.toContain(`warning('${code}`);
-      expect(sessionAdapter).not.toContain(`warning('host', '${code}')`);
-      expect(sessionAdapter).not.toContain(`warning('badge', '${code}')`);
-      expect(sessionAdapter).not.toContain(`warning('updates', '${code}')`);
+      expect(containsWarningCall(`warning('workspace', '${code}')`, code)).toBe(
+        true,
+      );
+      for (const source of [sessionAdapter, runtimeAdapter]) {
+        expect(containsWarningCall(source, code)).toBe(false);
+      }
     }
     expect(runtimeAdapter).not.toContain(
       "warning('session-capabilities', 'badge'",

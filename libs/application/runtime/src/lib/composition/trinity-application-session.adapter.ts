@@ -46,6 +46,7 @@ import {
   map,
   merge,
   of,
+  repeat,
   retry,
   switchMap,
   take,
@@ -275,8 +276,14 @@ export class TrinityApplicationSessionAdapter {
       tap({
         error: () =>
           this.reportHostIncident('deep-links', 'deep-link-listener-failed'),
+        complete: () =>
+          this.reportHostIncident(
+            'deep-links',
+            'deep-link-listener-ownership-released',
+          ),
       }),
       retry({ delay: 1_000 }),
+      repeat({ delay: 1_000 }),
       concatMap(({ url }) => this.handleDeepLink(url)),
     );
   }
@@ -328,8 +335,14 @@ export class TrinityApplicationSessionAdapter {
       tap({
         error: () =>
           this.reportHostIncident('back', 'host-back-listener-failed'),
+        complete: () =>
+          this.reportHostIncident(
+            'back',
+            'host-back-listener-ownership-released',
+          ),
       }),
       retry({ delay: 1_000 }),
+      repeat({ delay: 1_000 }),
       concatMap(({ canGoBack }) =>
         defer(() => {
           if (
