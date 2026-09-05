@@ -11,7 +11,10 @@ import {
   AvatarComponent,
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
-import { TrnOverlaySurfaceDirective } from '@trinity/components/overlay';
+import {
+  TrnDialogService,
+  TrnOverlaySurfaceDirective,
+} from '@trinity/components/overlay';
 import { isMobileOs } from '@trinity/platform-native';
 import type { CapabilityRecoveryOutcome } from '@trinity/runtime/projection';
 import { take } from 'rxjs';
@@ -42,6 +45,7 @@ export class SystemStatusComponent implements AfterViewInit {
   readonly status = inject(CapabilityStatusService);
   readonly mobile = isMobileOs();
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly dialog = inject(TrnDialogService);
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly startupRecovery = inject(ApplicationRecoveryPresenter);
 
@@ -54,6 +58,7 @@ export class SystemStatusComponent implements AfterViewInit {
 
   protected keydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
+      if (event.defaultPrevented || this.dialog.hasOpen()) return;
       event.preventDefault();
       this.status.close();
       return;

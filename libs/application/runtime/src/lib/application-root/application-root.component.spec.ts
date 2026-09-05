@@ -30,6 +30,7 @@ describe('ApplicationRootComponent', () => {
     const prompt = vi.fn(() => of<string | null>(null));
     const confirm = vi.fn(() => of(true));
     const showToast = vi.fn();
+    const hasOpenDialog = vi.fn(() => false);
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter([]),
@@ -46,7 +47,7 @@ describe('ApplicationRootComponent', () => {
           }),
         }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
-        MockProvider(TrnDialogService),
+        MockProvider(TrnDialogService, { hasOpen: hasOpenDialog }),
         MockProvider(TrnAlertService, { prompt$: prompt, confirm$: confirm }),
         MockProvider(TrnToastService, { show: showToast }),
         MockProvider(TrinityApplicationSessionAdapter, {
@@ -60,6 +61,7 @@ describe('ApplicationRootComponent', () => {
       recover,
       prompt,
       confirm,
+      hasOpenDialog,
       showToast,
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
@@ -147,6 +149,51 @@ describe('ApplicationRootComponent', () => {
     expect(installation.prompt).toHaveBeenCalledWith(
       expect.objectContaining({ placeholder: 'DEFAULTS' }),
     );
+  });
+
+  it('keeps System Status open when Escape dismisses a recovery confirmation', async () => {
+    const { fixture, getByTestId, queryByTestId, confirm, hasOpenDialog } =
+      await setup({
+        phase: 'blocked',
+        attempt: 1,
+        failure: {
+          stage: 'account-restoration',
+          recovery: 'reauthenticate',
+          diagnostic: { code: 'active-account-unavailable' },
+        },
+        settlements: [],
+      });
+    [...fixture.nativeElement.querySelectorAll('button')]
+      .find((item: HTMLButtonElement) =>
+        item.textContent?.includes('System Status'),
+      )
+      .click();
+    fixture.detectChanges();
+    confirm.mockReturnValue(NEVER);
+    [...fixture.nativeElement.querySelectorAll('button')]
+      .find((item: HTMLButtonElement) =>
+        item.textContent?.includes('Sign in again'),
+      )
+      .click();
+    hasOpenDialog.mockReturnValue(true);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(getByTestId('system-status')).toBeTruthy();
+
+    hasOpenDialog.mockReturnValue(false);
+    const handledByConfirmation = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      cancelable: true,
+    });
+    handledByConfirmation.preventDefault();
+    document.dispatchEvent(handledByConfirmation);
+    fixture.detectChanges();
+    expect(getByTestId('system-status')).toBeTruthy();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    fixture.detectChanges();
+    expect(queryByTestId('system-status')).toBeNull();
   });
 
   it('keeps routed content while grouping scoped problems in System Status', async () => {
