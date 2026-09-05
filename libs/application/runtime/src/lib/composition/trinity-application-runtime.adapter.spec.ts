@@ -25,7 +25,10 @@ import {
   type AccountRestoreResult,
 } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
-import { IdentityLifetime } from '@trinity/data-access/identity';
+import {
+  IdentityLifetime,
+  type IdentityLifetimeEvent,
+} from '@trinity/data-access/identity';
 import {
   NotificationLifetime,
   NotificationService,
@@ -86,7 +89,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let orderSession: Subject<void>;
   let roomLibrarySession: Subject<RoomLibraryLifetimeEvent>;
   let trustSession: Subject<void>;
-  let identitySession: Subject<void>;
+  let identitySession: Subject<IdentityLifetimeEvent>;
   let deepLinks: Subject<{ readonly url: string }>;
   let backIntents: Subject<{ readonly canGoBack: boolean }>;
   let versionUpdates: Subject<never>;
@@ -132,7 +135,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     orderSession = new Subject<void>();
     roomLibrarySession = new Subject<RoomLibraryLifetimeEvent>();
     trustSession = new Subject<void>();
-    identitySession = new Subject<void>();
+    identitySession = new Subject<IdentityLifetimeEvent>();
     deepLinks = new Subject<{ readonly url: string }>();
     backIntents = new Subject<{ readonly canGoBack: boolean }>();
     versionUpdates = new Subject<never>();
@@ -480,7 +483,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     ]).toEqual(Array(10).fill(false));
     roomLibrarySession.next({ kind: 'prepared' });
     trustSession.next();
-    identitySession.next();
+    identitySession.next({ kind: 'prepared' });
     expect(events).toEqual([{ kind: 'prepared' }]);
     readiness.next();
     readiness.complete();
@@ -540,7 +543,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     const second = adapter.runSession(secondReadiness).subscribe();
     roomLibrarySession.next({ kind: 'prepared' });
     trustSession.next();
-    identitySession.next();
+    identitySession.next({ kind: 'prepared' });
     secondReadiness.next();
     TestBed.tick();
     expect(badgeSession.observed).toBe(true);

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Application Runtime now tracks scoped Identity presence health separately from preparation
+  and subscription ownership. Unavailable presence is unknown, and its visible retry preserves
+  the Conversation. Unexpected runtime adapter failures expose safe, executable startup retry.
+
 - Documentation now has reconciled reader paths and complete first-party ownership, with
   superseded plans and migration pointers retired after preserving active requirements and
   decisions. Push integration and production-renderer guidance describe their current owners

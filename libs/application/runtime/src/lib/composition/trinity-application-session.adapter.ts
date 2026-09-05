@@ -6,6 +6,7 @@ import type {
   ApplicationRuntimeWarning,
   ApplicationSessionEvent,
 } from '../application-runtime.models';
+import { CapabilityHealthService } from '../capability-health.service';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
 import {
@@ -23,10 +24,7 @@ import {
   type NotificationDestination,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
-import {
-  IdentityLifetime,
-  IdentityOperationError,
-} from '@trinity/data-access/identity';
+import { IdentityLifetime } from '@trinity/data-access/identity';
 import {
   RoomLibraryLifetime,
   SpaceRoomOrderService,
@@ -94,6 +92,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly roomLibrary = inject(RoomLibraryLifetime);
   private readonly trust = inject(TrustLifetime);
   private readonly identity = inject(IdentityLifetime);
+  private readonly health = inject(CapabilityHealthService);
   private readonly notificationLifetime = inject(NotificationLifetime);
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
 
@@ -188,11 +187,18 @@ export class TrinityApplicationSessionAdapter {
         ),
       );
       observeOptional(
-        this.optionalLifetime(
-          this.identity.run(this.routedSurfaces.roomProjectionDemand),
-          'identity',
-          'identity-presence-unavailable',
-          (error) => error instanceof IdentityOperationError,
+        this.identity.run(this.routedSurfaces.roomProjectionDemand).pipe(
+          tap((event) => {
+            if (event.kind === 'health')
+              this.health.report(event.fact, () =>
+                this.identity.recover(
+                  event.fact.context,
+                  event.fact.generation,
+                ),
+              );
+          }),
+          filter((event) => event.kind === 'prepared'),
+          map(() => null),
         ),
       );
       observeOptional(

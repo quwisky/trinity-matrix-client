@@ -1,3 +1,4 @@
+import { devices } from '@playwright/test';
 import {
   testResourceId,
   test,
@@ -13,10 +14,9 @@ import {
 import { registerUser } from '../../../support/account.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
-// presence dot (`.presence-dot`) on every member's avatar, driven by the SDK's
-// `User.presence` via IdentityPresenceService. Presence delivery depends on the homeserver,
-// so this asserts the dots RENDER for the room's members (the state itself — green/
-// amber/grey — is environment-dependent), which is what proves the wiring end to end.
+// presence indicators from the SDK's User.presence through IdentityPresenceService.
+// Unknown presence has no online/offline dot. The current user's known presence
+// proves rendering, while injected read failure proves unknown state and targeted retry.
 // Needs a Synapse homeserver (Docker); self-skips otherwise like the other web specs.
 const session = synapseSession();
 
@@ -149,7 +149,7 @@ async function seedDirectMessage(
 test.describe('Member online status', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('shows a presence dot on every member avatar in the member list', async ({
+  test('shows known presence on member avatars in the member list', async ({
     page,
     request,
   }) => {
@@ -163,10 +163,10 @@ test.describe('Member online status', () => {
     await login(page, reader);
     await openRoomWithMembers(page, roomName);
 
-    // Both members render, and each carries a presence indicator.
+    // Both members render; only known presence carries an indicator.
     const rows = page.locator('.members .member');
     await expect(rows).toHaveCount(2, { timeout: 20_000 });
-    await expect(page.locator('.members .presence-dot')).toHaveCount(2);
+    await expect(page.locator('.members .presence-dot').first()).toBeVisible();
 
     // The dot is a real, labelled status indicator (role=img with an aria-label).
     const firstDot = page.locator('.members .presence-dot').first();
@@ -200,3 +200,142 @@ test.describe('Member online status', () => {
     });
   });
 });
+
+// Inject at the producer read seam using Angular's development-only debug API.
+// The actual Projection Runtime, Identity lifetime, health policy and UI retry run unchanged.
+interface PresenceFaultWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      runtime: {
+        adapter: {
+          session: {
+            identity: {
+              matrix: { activeAccountId(): string };
+              presence: {
+                presenceFor(userId: string): () => unknown;
+                currentPresence: (...args: unknown[]) => unknown;
+                projection: { schedule(): void };
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  restorePresenceRead?: () => void;
+  currentPresenceValue?: () => unknown;
+}
+
+for (const mobile of [false, true]) {
+  test.describe(
+    mobile ? 'Presence recovery on mobile' : 'Presence recovery on desktop',
+    () => {
+      test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+      if (mobile) {
+        const profile = devices['Pixel 5'];
+        test.use({
+          viewport: profile.viewport,
+          userAgent: profile.userAgent,
+          deviceScaleFactor: profile.deviceScaleFactor,
+          isMobile: profile.isMobile,
+          hasTouch: profile.hasTouch,
+        });
+      }
+
+      test('recovers a failed live presence projection without losing the Conversation', async ({
+        page,
+        request,
+      }, testInfo) => {
+        const { reader, roomName } = await seedRoomWithMember(
+          request,
+          session.hs as string,
+          testResourceId('presence-recovery'),
+        );
+        await login(page, reader);
+        await page.getByTestId('rail-rooms').click();
+        await page.locator('.channel', { hasText: roomName }).first().click();
+        await expect(page.getByTestId('composer-input')).toBeVisible({
+          timeout: 30_000,
+        });
+        const conversationUrl = page.url();
+        await page.evaluate(() => {
+          const target = window as unknown as PresenceFaultWindow;
+          const root = document.querySelector('trn-root');
+          if (!root) throw new Error('Application root unavailable');
+          const identity =
+            target.ng.getComponent(root).runtime.adapter.session.identity;
+          target.currentPresenceValue = identity.presence.presenceFor(
+            identity.matrix.activeAccountId(),
+          );
+        });
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              (
+                window as unknown as PresenceFaultWindow
+              ).currentPresenceValue?.(),
+            ),
+          )
+          .toBe('online');
+
+        await page.evaluate(() => {
+          const target = window as unknown as PresenceFaultWindow;
+          const root = document.querySelector('trn-root');
+          if (!root) throw new Error('Application root unavailable');
+          const presence =
+            target.ng.getComponent(root).runtime.adapter.session.identity
+              .presence;
+          const read = presence.currentPresence;
+          target.restorePresenceRead = () => {
+            presence.currentPresence = read;
+          };
+          presence.currentPresence = () => {
+            throw new Error('synthetic private adapter response');
+          };
+          presence.projection.schedule();
+        });
+        const status = page.getByTestId('app-presence-health');
+        await expect(status).toBeVisible();
+        await expect(status).toContainText('Online status is unknown');
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              (
+                window as unknown as PresenceFaultWindow
+              ).currentPresenceValue?.(),
+            ),
+          )
+          .toBeNull();
+        await expect(page.getByTestId('composer-input')).toBeVisible();
+        await expect(page).toHaveURL(conversationUrl);
+        await testInfo.attach('presence-unavailable', {
+          body: await page.screenshot(),
+          contentType: 'image/png',
+        });
+
+        await page.evaluate(() => {
+          const target = window as unknown as PresenceFaultWindow;
+          target.restorePresenceRead?.();
+          delete target.restorePresenceRead;
+        });
+        await page.getByTestId('app-presence-retry').click();
+        await expect(status).toHaveCount(0);
+        await expect
+          .poll(() =>
+            page.evaluate(() =>
+              (
+                window as unknown as PresenceFaultWindow
+              ).currentPresenceValue?.(),
+            ),
+          )
+          .toBe('online');
+        await expect(page.getByTestId('composer-input')).toBeVisible();
+        await expect(page).toHaveURL(conversationUrl);
+        await testInfo.attach('presence-recovered', {
+          body: await page.screenshot(),
+          contentType: 'image/png',
+        });
+      });
+    },
+  );
+}

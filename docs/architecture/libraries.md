@@ -40,7 +40,7 @@ Use the narrowest owner that can state the contract.
 | @trinity/data-access/timeline            | the Conversations capability; Conversation Runtime owns exact timeline-handle lifetime, while its public API exposes message presentation, drafts, media, threads, pins, and focused proxies |
 | @trinity/data-access/trust               | trust health, recovery and device verification                                                                                                                                               |
 | @trinity/data-access/room-administration | members, bans, power-level policy, aliases, configuration and moderation ports                                                                                                               |
-| @trinity/application/runtime             | ordered startup, recovery and the session-long host stream                                                                                                                                   |
+| @trinity/application/runtime             | ordered startup, scoped capability-health policy, targeted recovery and the session-long host stream                                                                                         |
 | @trinity/application/workspace           | semantic navigation, URL and history projection, account readiness, and conversation focus                                                                                                   |
 
 Other data-access capabilities follow the same rule: Discovery owns homeserver,

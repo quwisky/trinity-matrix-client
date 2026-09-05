@@ -86,6 +86,83 @@ describe('ApplicationRuntimeService', () => {
     runtime = TestBed.inject(ApplicationRuntimeService);
   });
 
+  it('classifies an unknown late adapter fault and recovers through the same runtime owner', async () => {
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+    session.error(new Error('token=secret server response'));
+    expect(runtime.state()).toMatchObject({
+      phase: 'blocked',
+      failure: {
+        recovery: 'retry-startup',
+        diagnostic: { code: 'application-adapter-failed' },
+      },
+    });
+    expect(lifetime.closed).toBe(false);
+    expect(JSON.stringify(runtime.state())).not.toContain('secret');
+    session = new Subject<ApplicationSessionEvent>();
+    expect(await firstValueFrom(runtime.recover())).toEqual({
+      kind: 'accepted',
+    });
+    expect(runtime.state().phase).toBe('ready');
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual([
+      'ready',
+      'blocked',
+      'ready',
+    ]);
+    lifetime.unsubscribe();
+  });
+
+  it('reattaches a failed preference lifetime when unknown-fault recovery restarts the session', async () => {
+    const lifetime = runtime.run().subscribe();
+    preferenceLifetime.error(new Error('private preference fault'));
+    expect(runtime.state().phase).toBe('blocked');
+    expect(lifetime.closed).toBe(false);
+    preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
+    await firstValueFrom(runtime.recover());
+    expect(runtime.state().phase).toBe('ready');
+    expect(preferenceLifetime.observed).toBe(true);
+    expect(adapter.runPreferenceLifetime).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('classifies a synchronous preference adapter fault without publishing readiness', () => {
+    vi.mocked(adapter.runPreferenceLifetime).mockImplementationOnce(() => {
+      throw new Error('private fault');
+    });
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+    expect(runtime.state().phase).toBe('blocked');
+    expect(outcomes.map((outcome) => outcome.kind)).toEqual(['blocked']);
+    lifetime.unsubscribe();
+  });
+
+  it('rejects a late recovery result after stop and a new blocked attempt', async () => {
+    sessionPreparation = {
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'blocked' },
+    };
+    const first = runtime.run().subscribe();
+    const outcome = new Subject<{ kind: 'ready' }>();
+    vi.mocked(adapter.recover).mockReturnValue(outcome);
+    const pending = firstValueFrom(runtime.recover());
+    await firstValueFrom(runtime.stop());
+    const second = runtime.run().subscribe();
+    const blocked = runtime.state();
+    outcome.next({ kind: 'ready' });
+    expect(await pending).toEqual({
+      kind: 'unavailable',
+      reason: 'transition-in-progress',
+    });
+    expect(runtime.state()).toBe(blocked);
+    first.unsubscribe();
+    second.unsubscribe();
+  });
+
   it('starts cleanly through every accepted stage before owning the session', async () => {
     const outcomes: ApplicationStartOutcome[] = [];
     const lifetime = runtime

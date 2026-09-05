@@ -1,4 +1,4 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { ApplicationRef, computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { UserEvent, type MatrixClient } from 'matrix-js-sdk';
@@ -71,25 +71,43 @@ function presenceHandler(client: ReturnType<typeof fakeClient>) {
 describe('IdentityPresenceService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
+  it('can register a presence view from a computed member row without writing signals during the read', async () => {
+    const { svc } = setup({ '@online:hs': 'online' });
+    const lifetime = svc.runProjection().subscribe();
+    const row = computed(() => svc.presenceFor('@online:hs')());
+    expect(row()).toBeNull();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(row()).toBe('online');
+    lifetime.unsubscribe();
+  });
+
   it('reports the signed-in user as online even when the server never echoes our own presence', () => {
     // getUser(self) is null/offline here (homeservers typically don't send you your
     // own presence), but we ARE online while our client runs — self must read online.
     const { svc } = setup();
-    expect(svc.presenceFor(SELF)()).toBe('online');
+    const state = svc.presenceFor(SELF);
+    expect(state()).toBeNull();
+    svc.runProjection().subscribe();
+    expect(state()).toBe('online');
   });
 
-  it('keeps the signed-in user online even if a self presence event says otherwise', () => {
+  it('keeps the signed-in user online even if a self presence event says otherwise', async () => {
     const { svc, client } = setup();
     const state = svc.presenceFor(SELF);
     svc.runProjection().subscribe();
     presenceHandler(client)(undefined, { userId: SELF, presence: 'offline' });
+    await Promise.resolve();
     expect(state()).toBe('online');
   });
 
-  it('seeds presence from the client, defaulting unknown users to offline', () => {
+  it('seeds presence from the client and leaves unknown users unknown', () => {
     const { svc } = setup({ '@online:hs': 'online' });
-    expect(svc.presenceFor('@online:hs')()).toBe('online');
-    expect(svc.presenceFor('@stranger:hs')()).toBe('offline');
+    const online = svc.presenceFor('@online:hs');
+    const stranger = svc.presenceFor('@stranger:hs');
+    svc.runProjection().subscribe();
+    expect(online()).toBe('online');
+    expect(stranger()).toBeNull();
   });
 
   it('memoizes the signal per user id', () => {
@@ -97,19 +115,31 @@ describe('IdentityPresenceService', () => {
     expect(svc.presenceFor('@a:hs')).toBe(svc.presenceFor('@a:hs'));
   });
 
-  it('updates a tracked user’s signal when a presence event arrives', () => {
+  it('updates a tracked user’s signal when a presence event arrives', async () => {
     const { svc, client } = setup();
     const state = svc.presenceFor('@a:hs'); // track it (starts offline)
-    expect(state()).toBe('offline');
+    expect(state()).toBeNull();
 
     svc.runProjection().subscribe();
+    client.getUser.mockReturnValue({
+      userId: '@a:hs',
+      presence: 'online',
+      presenceStatusMsg: '',
+    });
     presenceHandler(client)(undefined, { userId: '@a:hs', presence: 'online' });
+    await Promise.resolve();
     expect(state()).toBe('online');
 
+    client.getUser.mockReturnValue({
+      userId: '@a:hs',
+      presence: 'unavailable',
+      presenceStatusMsg: '',
+    });
     presenceHandler(client)(undefined, {
       userId: '@a:hs',
       presence: 'unavailable',
     });
+    await Promise.resolve();
     expect(state()).toBe('unavailable');
   });
 
