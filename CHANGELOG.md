@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Architecture documentation now connects capability owners, runtime lifetimes and Matrix/Trust
+  contracts, with source-backed recovery limits and a separate record of historical decisions
+  and validation evidence.
+
 - Platform documentation now follows Web/PWA, Electron, Android and iOS run/debug/package
   workflows, with current capability boundaries and explicit validation and signing limits.
 

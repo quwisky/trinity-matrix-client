@@ -10,3 +10,7 @@ The Room-surface sequence is contracted. All callers, including test setup, use 
 transitions; the lifecycle constructs surface records and keeps panel, return-origin, and jump
 state private. Its public signals describe presentation only. Type contracts and structural
 guards enforce zero compatibility callers and prevent generic state setters from returning.
+
+## Current guidance
+
+This decision records its accepted context. See the [current architecture contract](../architecture/target-architecture.md), [capability ownership](../architecture/libraries.md) and [runtime lifetimes](../architecture/state-and-reactivity.md) for the implemented boundaries.

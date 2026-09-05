@@ -62,3 +62,7 @@ changes outside `/rooms` release active projections; returning restores them eve
 semantic destination did not change. There is no lazy activator, registered page implementation,
 caller-built destination, or caller-supplied history policy. The structural contract in
 `scripts/workspace-navigation-contract.spec.mjs` prevents those seams from returning.
+
+## Current guidance
+
+This decision records its accepted context. See the [current architecture contract](../architecture/target-architecture.md), [capability ownership](../architecture/libraries.md) and [runtime lifetimes](../architecture/state-and-reactivity.md) for the implemented boundaries.

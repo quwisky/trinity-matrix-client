@@ -25,3 +25,7 @@ operation services. File export, location, and secure storage expose capability 
 their platform adapters rather than leaking host identity. Electron's preload bridge contains only
 required, grouped capability objects; runtime validation rejects a bridge missing any required
 operation instead of casting a partial object into a valid protocol.
+
+## Current guidance
+
+This decision records its accepted context. See the [current architecture contract](../architecture/target-architecture.md), [capability ownership](../architecture/libraries.md) and [runtime lifetimes](../architecture/state-and-reactivity.md) for the implemented boundaries.
