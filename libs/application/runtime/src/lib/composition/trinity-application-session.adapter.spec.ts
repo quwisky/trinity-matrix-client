@@ -34,7 +34,8 @@ import {
 } from '@trinity/data-access/room-library';
 import {
   RoomAdministrationLifetime,
-  RoomAdministrationLifetimeError,
+  type RoomAdministrationHealth,
+  type RoomAdministrationLifetimeEvent,
 } from '@trinity/data-access/room-administration';
 import {
   TrustLifetime,
@@ -93,6 +94,7 @@ interface SessionHarness {
   readonly health: CapabilityHealthService;
   readonly recoverTrust: ReturnType<typeof vi.fn>;
   readonly recoverPresentation: ReturnType<typeof vi.fn>;
+  readonly recoverRoomAdministration: ReturnType<typeof vi.fn>;
 }
 
 function setup(
@@ -105,7 +107,9 @@ function setup(
   notificationSession: Observable<NotificationLifetimeEvent> = of({
     kind: 'prepared',
   }),
-  roomAdministrationSession: Observable<void> = of(void 0),
+  roomAdministrationSession: Observable<RoomAdministrationLifetimeEvent> = of({
+    kind: 'prepared',
+  }),
 ): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
@@ -135,9 +139,13 @@ function setup(
   const activateUpdate = vi.fn().mockResolvedValue(true);
   const showToast = vi.fn();
   const roomProjectionDemand = signal(true);
+  const activeRoomId = signal<string | null>('!room:example.org');
   const recoverTrust = vi.fn(() => of({ kind: 'success' as const }));
   const recoverNotifications = vi.fn(() => of({ kind: 'success' as const }));
   const recoverPresentation = vi.fn(() => of({ kind: 'success' as const }));
+  const recoverRoomAdministration = vi.fn(() =>
+    of({ kind: 'success' as const }),
+  );
 
   TestBed.configureTestingModule({
     providers: [
@@ -156,6 +164,7 @@ function setup(
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, {
         roomProjectionDemand: roomProjectionDemand.asReadonly(),
+        activeRoomId: activeRoomId.asReadonly(),
         run: () => EMPTY,
       }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -176,6 +185,7 @@ function setup(
       }),
       MockProvider(RoomAdministrationLifetime, {
         run: () => roomAdministrationSession,
+        recover: recoverRoomAdministration,
       }),
       MockProvider(HostDeepLinksService, {
         support: () => of({ kind: 'supported' as const }),
@@ -242,6 +252,7 @@ function setup(
     health: TestBed.inject(CapabilityHealthService),
     recoverTrust,
     recoverPresentation,
+    recoverRoomAdministration,
   };
 }
 
@@ -274,6 +285,20 @@ function notificationRuleHealth(context: symbol): NotificationRuleHealth {
     ownership: 'retained',
     condition: 'degraded',
     code: 'room-rules-reconciliation-failed',
+  };
+}
+
+function roomAdministrationHealth(context: symbol): RoomAdministrationHealth {
+  return {
+    capability: 'room-administration',
+    operation: 'members',
+    context,
+    generation: 3,
+    demanded: true,
+    preparation: 'failed',
+    ownership: 'retained',
+    condition: 'degraded',
+    code: 'room-administration-reconciliation-failed',
   };
 }
 
@@ -389,7 +414,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<NotificationLifetimeEvent>();
-    const roomAdministration = new Subject<void>();
+    const roomAdministration = new Subject<RoomAdministrationLifetimeEvent>();
     const test = setup(
       undefined,
       roomLibrary,
@@ -404,7 +429,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     trust.next({ kind: 'prepared' });
     identity.next({ kind: 'prepared' });
     notifications.next({ kind: 'prepared' });
-    roomAdministration.next();
+    roomAdministration.next({ kind: 'prepared' });
     roomLibrary.next({
       kind: 'blocked',
       diagnostic: { code: 'room-library-projection-preparation-failed' },
@@ -427,7 +452,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
     const notifications = new Subject<NotificationLifetimeEvent>();
-    const roomAdministration = new Subject<void>();
+    const roomAdministration = new Subject<RoomAdministrationLifetimeEvent>();
     const readiness = new Subject<void>();
     const test = setup(
       undefined,
@@ -470,7 +495,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       optional,
       of({ kind: 'prepared' }),
       of({ kind: 'prepared' }),
-      of(void 0),
+      of({ kind: 'prepared' }),
     );
     const events: unknown[] = [];
     const lifetime = test.adapter
@@ -486,7 +511,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(optional.observed).toBe(false);
   });
 
-  it('reports Notification rule health separately from Room Administration compatibility', () => {
+  it('registers Room Administration health and targeted recovery without a legacy warning', () => {
     const readiness = new Subject<void>();
     const context = Symbol();
     const test = setup(
@@ -498,7 +523,13 @@ describe('TrinityApplicationSessionAdapter', () => {
         { kind: 'health' as const, fact: notificationRuleHealth(context) },
         { kind: 'prepared' as const },
       ),
-      throwError(() => new RoomAdministrationLifetimeError()),
+      of(
+        {
+          kind: 'health' as const,
+          fact: roomAdministrationHealth(context),
+        },
+        { kind: 'prepared' as const },
+      ),
     );
     const events: unknown[] = [];
     const lifetime = test.adapter
@@ -509,23 +540,28 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     readiness.next();
 
-    expect(events).toEqual([
-      { kind: 'prepared' },
-      {
-        kind: 'warning',
-        warning: expect.objectContaining({
-          scope: 'room-administration',
-          diagnostic: { code: 'room-administration-projection-unavailable' },
-        }),
-      },
-    ]);
+    expect(events).toEqual([{ kind: 'prepared' }]);
     expect(test.health.problems()).toEqual([
       expect.objectContaining({
         capability: 'notifications',
         operation: 'room-rules',
         code: 'room-rules-reconciliation-failed',
       }),
+      expect.objectContaining({
+        capability: 'room-administration',
+        operation: 'members',
+        code: 'room-administration-reconciliation-failed',
+      }),
     ]);
+    const roomProblem = test.health
+      .problems()
+      .find((problem) => problem.capability === 'room-administration')!;
+    test.health.recover(roomProblem).subscribe();
+    expect(test.recoverRoomAdministration).toHaveBeenCalledWith(
+      'members',
+      context,
+      3,
+    );
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
@@ -542,11 +578,13 @@ describe('TrinityApplicationSessionAdapter', () => {
         return () => (notificationTeardowns += 1);
       },
     );
-    const roomAdministration = new Observable<void>((subscriber) => {
-      administrationSubscriptions += 1;
-      subscriber.next();
-      return () => (administrationTeardowns += 1);
-    });
+    const roomAdministration = new Observable<RoomAdministrationLifetimeEvent>(
+      (subscriber) => {
+        administrationSubscriptions += 1;
+        subscriber.next({ kind: 'prepared' });
+        return () => (administrationTeardowns += 1);
+      },
+    );
     const test = setup(
       undefined,
       of({ kind: 'prepared' }),

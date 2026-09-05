@@ -22,6 +22,8 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { initialOf } from '@trinity/util/matrix';
 import type { Observable } from 'rxjs';
+import type { RoomAdministrationView } from './room-administration-health.models';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
 /** A joined member projected from authoritative Matrix room state.
  *
@@ -53,6 +55,7 @@ const EMPTY_BANS: readonly BannedMember[] = Object.freeze([]);
 @Injectable({ providedIn: 'root' })
 export class RoomMembersService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly projectionState = inject(RoomAdministrationProjectionState);
   private readonly memberSignals = new Map<
     string,
     WritableSignal<readonly MemberSummary[]>
@@ -64,6 +67,7 @@ export class RoomMembersService {
   private readonly dirtyRooms = new Set<string>();
   private allDirty = false;
   private lastClient: MatrixClient | null = null;
+  private retryRequested = false;
   private readonly collator = new Intl.Collator();
   private readonly memberCache = new Map<
     string,
@@ -101,7 +105,8 @@ export class RoomMembersService {
     matrix: this.matrix,
     events: [ClientEvent.Sync],
     rebuild: (client) => {
-      if (client !== this.lastClient) {
+      if (client !== this.lastClient || this.retryRequested) {
+        this.retryRequested = false;
         this.lastClient = client;
         this.memberCache.clear();
         this.bannedCache.clear();
@@ -123,6 +128,7 @@ export class RoomMembersService {
       this.flusher.cancel();
       this.dirtyRooms.clear();
       this.allDirty = false;
+      this.retryRequested = false;
       for (const members of this.memberSignals.values()) {
         members.set(EMPTY_MEMBERS);
       }
@@ -137,6 +143,12 @@ export class RoomMembersService {
     return this.projection.run();
   }
 
+  /** Repair this retained projection without adding another listener owner. */
+  retryProjection(): void {
+    this.retryRequested = true;
+    this.projection.schedule();
+  }
+
   /** A memoized signal for one Room's joined members. */
   membersFor(roomId: string | null): Signal<readonly MemberSummary[]> {
     const key = roomId ?? '';
@@ -146,6 +158,17 @@ export class RoomMembersService {
       this.memberSignals.set(key, members);
     }
     return members.asReadonly();
+  }
+
+  /** Joined members with explicit current, stale, or unavailable authority. */
+  membersView(
+    roomId: string | null,
+  ): RoomAdministrationView<readonly MemberSummary[]> {
+    return this.projectionState.view(
+      'members',
+      roomId,
+      this.membersFor(roomId)(),
+    );
   }
 
   /** One authoritative snapshot of a Room's joined members. */
@@ -187,6 +210,13 @@ export class RoomMembersService {
       this.bannedSignals.set(key, members);
     }
     return members.asReadonly();
+  }
+
+  /** Banned members with explicit current, stale, or unavailable authority. */
+  bannedView(
+    roomId: string | null,
+  ): RoomAdministrationView<readonly BannedMember[]> {
+    return this.projectionState.view('bans', roomId, this.bannedFor(roomId)());
   }
 
   /** One authoritative snapshot of a Room's banned members. */

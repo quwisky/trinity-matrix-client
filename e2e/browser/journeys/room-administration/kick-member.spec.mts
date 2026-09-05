@@ -22,6 +22,27 @@ interface ApiUser {
   headers: { Authorization: string };
 }
 
+interface RoomAdministrationFaultWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      runtime: {
+        state(): unknown;
+        adapter: {
+          session: {
+            roomAdministration: {
+              members: {
+                membersOf(roomId: string | null): readonly unknown[];
+                retryProjection(): void;
+              };
+            };
+          };
+        };
+      };
+    };
+  };
+  restoreRoomAdministrationMembers?: () => void;
+}
+
 async function apiLogin(
   request: APIRequestContext,
   hs: string,
@@ -142,4 +163,109 @@ test.describe('Remove a member', () => {
       expect(membership.membership).toBe(moderation.expectedMembership);
     });
   }
+
+  test('labels a retained stale roster and recovers without closing its panel', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}health`;
+    const adminUser = `administration-health-${runId}`;
+    const adminPass = `${adminUser}-pass`;
+    const memberUser = `administration-member-${runId}`;
+    const memberPass = `${memberUser}-pass`;
+    const roomName = `administration health ${runId}`;
+    const memberName = `Visible member ${runId}`;
+
+    await registerUser(request, adminUser, adminPass);
+    await registerUser(request, memberUser, memberPass);
+    const admin = await apiLogin(request, hs, adminUser, adminPass);
+    const member = await apiLogin(request, hs, memberUser, memberPass);
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(member.userId)}/displayname`,
+      { headers: member.headers, data: { displayname: memberName } },
+    );
+    await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: admin.headers,
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [member.userId],
+        },
+      })
+      .then((response) => response.json())
+      .then(({ room_id }) =>
+        request.post(
+          `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id as string)}/join`,
+          { headers: member.headers },
+        ),
+      );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: adminUser,
+      pass: adminPass,
+    } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('toggle-members').click();
+    const roster = page.getByTestId('member-list');
+    const memberRow = page.getByTestId('member-row').filter({
+      hasText: memberName,
+    });
+    await expect(memberRow).toBeVisible({ timeout: 20_000 });
+
+    await page.evaluate(() => {
+      const target = window as unknown as RoomAdministrationFaultWindow;
+      const root = document.querySelector('trn-root');
+      if (!root) throw new Error('Application root unavailable');
+      const members =
+        target.ng.getComponent(root).runtime.adapter.session.roomAdministration
+          .members;
+      const membersOf = members.membersOf;
+      target.restoreRoomAdministrationMembers = () => {
+        members.membersOf = membersOf;
+      };
+      members.membersOf = () => {
+        throw new Error('synthetic private membership response');
+      };
+      members.retryProjection();
+    });
+
+    const memberHealth = page.getByTestId('app-room-members-health');
+    const banHealth = page.getByTestId('app-room-bans-health');
+    await expect(memberHealth).toContainText('member list may be stale');
+    await expect(banHealth).toContainText('ban list may be stale');
+    await expect(memberHealth).not.toContainText('synthetic');
+    await expect(page.getByTestId('member-list-freshness')).toContainText(
+      'Showing the last known member list',
+    );
+    await expect(memberRow).toBeVisible();
+    await expect(page.getByTestId('invite-people')).not.toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await testInfo.attach('room-administration-stale-roster', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+
+    await page.evaluate(() => {
+      const target = window as unknown as RoomAdministrationFaultWindow;
+      target.restoreRoomAdministrationMembers?.();
+      delete target.restoreRoomAdministrationMembers;
+    });
+    await page.getByTestId('app-room-members-retry').click();
+
+    await expect(memberHealth).toHaveCount(0);
+    await expect(banHealth).toHaveCount(0);
+    await expect(page.getByTestId('member-list-freshness')).toHaveCount(0);
+    await expect(roster).toBeVisible();
+    await expect(memberRow).toBeVisible();
+    await testInfo.attach('room-administration-recovered-roster', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
+    });
+  });
 });

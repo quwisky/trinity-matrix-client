@@ -17,6 +17,7 @@ import {
   MEMBER_ROLE_LABEL,
   MEMBER_ROLE_ORDER,
   type MemberRole,
+  type RoomAdministrationAvailability,
   type MemberSummary,
   memberRole,
 } from '@trinity/data-access/room-administration';
@@ -130,6 +131,7 @@ export class MemberListComponent {
   private readonly presence = inject(IdentityPresenceService);
 
   readonly members = input<readonly MemberSummary[]>([]);
+  readonly availability = input<RoomAdministrationAvailability>('coherent');
   /**
    * Whether this is a direct message. A DM has no owner — both participants sit at power
    * level 100 by the trusted_private_chat preset — so the section is suppressed there.

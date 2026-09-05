@@ -77,6 +77,11 @@ async function build(
       }),
       MockProvider(RoomMembersService, {
         bannedFor: () => noBans.asReadonly(),
+        bannedView: () => ({
+          availability: 'coherent',
+          current: noBans(),
+          stale: null,
+        }),
       }),
       MockProvider(RoomAliasesService, {
         serverName: () => 'hs',

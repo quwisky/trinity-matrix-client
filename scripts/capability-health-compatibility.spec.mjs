@@ -88,6 +88,17 @@ describe('capability health expand-migrate-contract ledger', () => {
     );
   });
 
+  it('does not route migrated Room Administration health through compatibility warnings', () => {
+    const session = read(legacyFiles[4]);
+
+    expect(session).not.toContain('room-administration-projection-unavailable');
+    expect(session).not.toContain('RoomAdministrationLifetimeError');
+    expect(session.match(/this\.roomAdministration\s*\.run\(/gu)).toHaveLength(
+      1,
+    );
+    expect(session).toContain('this.roomAdministration.recover(');
+  });
+
   it('keeps required startup producers out of warning compatibility', () => {
     const policy = read(
       'libs/application/runtime/src/lib/application-startup.policy.ts',

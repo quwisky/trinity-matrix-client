@@ -2,6 +2,7 @@ import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { DefaultUrlSerializer, NavigationEnd, Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
+import { encodeRoomSegment } from '@trinity/util/matrix';
 import { firstValueFrom, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
@@ -119,30 +120,64 @@ describe('Workspace routed-surface composition adapter', () => {
   });
 
   it('publishes and releases Room projection demand across route changes', () => {
-    build('/rooms/!room:example.org');
+    build(`/rooms/${encodeRoomSegment('!room:example.org')}`);
     const adapter = TestBed.inject(WorkspaceRoutedSurfaceAdapter);
 
     expect(adapter.roomProjectionDemand()).toBe(true);
+    expect(adapter.activeRoomId()).toBe('!room:example.org');
 
     router.url = '/settings/security';
     events.next(
       new NavigationEnd(2, '/settings/security', '/settings/security'),
     );
     expect(adapter.roomProjectionDemand()).toBe(false);
+    expect(adapter.activeRoomId()).toBeNull();
 
     router.url = '/rooms';
     events.next(new NavigationEnd(3, '/rooms', '/rooms'));
     expect(adapter.roomProjectionDemand()).toBe(true);
+    expect(adapter.activeRoomId()).toBeNull();
 
     lifetime.unsubscribe();
     expect(adapter.roomProjectionDemand()).toBe(false);
+    expect(adapter.activeRoomId()).toBeNull();
   });
 
   it('exposes initial Room demand before its route stream starts', () => {
-    router.url = '/rooms/!room:example.org';
+    router.url = `/rooms/${encodeRoomSegment('!room:example.org')}`;
 
     expect(
       TestBed.inject(WorkspaceRoutedSurfaceAdapter).roomProjectionDemand(),
     ).toBe(true);
+    expect(TestBed.inject(WorkspaceRoutedSurfaceAdapter).activeRoomId()).toBe(
+      '!room:example.org',
+    );
+  });
+
+  it('does not expose an invalid Room route segment as an exact Room id', () => {
+    build('/rooms/not-an-encoded-room');
+
+    expect(
+      TestBed.inject(WorkspaceRoutedSurfaceAdapter).roomProjectionDemand(),
+    ).toBe(true);
+    expect(
+      TestBed.inject(WorkspaceRoutedSurfaceAdapter).activeRoomId(),
+    ).toBeNull();
+  });
+
+  it('uses the exact selected Space when no child Room is routed', () => {
+    build(`/rooms?space=${encodeRoomSegment('!space:example.org')}`);
+
+    expect(TestBed.inject(WorkspaceRoutedSurfaceAdapter).activeRoomId()).toBe(
+      '!space:example.org',
+    );
+  });
+
+  it('rejects a conflicting Space and named view as an administration scope', () => {
+    build(`/rooms?view=rooms&space=${encodeRoomSegment('!space:example.org')}`);
+
+    expect(
+      TestBed.inject(WorkspaceRoutedSurfaceAdapter).activeRoomId(),
+    ).toBeNull();
   });
 });

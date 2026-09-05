@@ -204,6 +204,16 @@ disabled, unavailable and released-activation states. An individual presentation
 navigation failure is a contextual incident and never becomes persistent health merely because it
 repeats.
 
+Room Administration publishes distinct permissions, members and bans operations for the exact
+Active Account and routed Room. The member and ban operations observe one shared membership
+projection owner; this preserves the capability boundary while allowing each consequence to be
+explained and recovered. A retained failure keeps last-known membership data in the stale arm of a
+discriminated view, whereas initial failure and released ownership expose no value. Permission
+reads are coherent-only for state-backed mutations, so stale data cannot authorize a command.
+Room or Account transitions retire the prior opaque context and reject its recovery generation.
+Retry schedules only a retained failed projection or recreates both leases after release, without
+changing the Room surface's remembered members-panel state.
+
 Native push owns one session-long activation-listener lifetime and a finite registration state.
 Missing platform support, gateway configuration or Account prerequisites are expected states;
 permission denial is disabled rather than failed initialization. Device-token, Matrix-pusher and
@@ -227,8 +237,8 @@ inactive-Account retry. A required Active Account or registry failure remains a 
 
 ### Diagnostic privacy
 
-Health facts copy only typed fields. Trust's, Identity's, Notifications' and startup composition's
-concrete Account IDs stay inside their producers;
+Health facts copy only typed fields. Trust's, Identity's, Notifications', Room Administration's
+and startup composition's concrete Account and Room IDs stay inside their producers;
 no Account ID, personal label, token, preference value, exception or server response enters the
 health ledger. On-screen Account identity is a separate future presentation concern.
 `CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
@@ -240,7 +250,7 @@ session history and are regenerated after the application lifetime resets.
 
 Unmigrated producers retain their existing warning, blocker and recovery behavior. The exact five
 legacy warning files are frozen by `scripts/capability-health-compatibility.spec.mjs`; the guard
-also prevents Trust, Identity, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
+also prevents Trust, Identity, Room Administration, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
 coverage remains in the Application Runtime adapter and root tests. The removal owner is
 [Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
 Notification and Host producers no longer publish through this warning path; its source guard pins

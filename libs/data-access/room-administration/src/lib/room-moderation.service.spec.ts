@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomModerationService } from './room-moderation.service';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
 function setup(
   opts: {
@@ -65,6 +66,9 @@ function setup(
       }),
     ],
   });
+  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
+  projectionState.select(me, '!r:hs');
+  projectionState.update('permissions', 'available', 'retained');
   return {
     svc: TestBed.inject(RoomModerationService),
     matrix: TestBed.inject(MatrixClientService),

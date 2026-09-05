@@ -5,6 +5,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomMembersService } from './room-members.service';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
 function member(
   userId: string,
@@ -76,8 +77,12 @@ function setup(initialClient: ReturnType<typeof client>) {
     initialClient as unknown as MatrixClient,
   );
   const service = TestBed.inject(RoomMembersService);
+  const projectionState = TestBed.inject(RoomAdministrationProjectionState);
+  projectionState.select(activeUserId(), '!room:hs');
+  projectionState.update('members', 'available', 'retained');
+  projectionState.update('bans', 'available', 'retained');
   const lifetime = service.runProjection().subscribe();
-  return { service, matrix, activeUserId, lifetime };
+  return { service, matrix, activeUserId, lifetime, projectionState };
 }
 
 function fireMemberChange(
@@ -167,6 +172,22 @@ describe('RoomMembersService', () => {
     expect(roster()[0].powerLevel).toBe(100);
   });
 
+  it('authoritatively rereads retained member and ban signals on retry', async () => {
+    const members = [member('@ada:hs', 'Ada')];
+    const source = room('!room:hs', members);
+    const { service } = setup(client([source]));
+    const roster = service.membersFor('!room:hs');
+
+    members.push(member('@bob:hs', 'Bob'));
+    service.retryProjection();
+    await Promise.resolve();
+
+    expect(roster().map((item) => item.roomDisplayName)).toEqual([
+      'Ada',
+      'Bob',
+    ]);
+  });
+
   it('projects bans and waits for authoritative member events to update them', async () => {
     const banned = [
       bannedMember('@zed:hs', 'Zed', 'spam'),
@@ -202,5 +223,41 @@ describe('RoomMembersService', () => {
 
     expect(roster()).toEqual([]);
     expect(matrixClient.off as Mock).toHaveBeenCalled();
+  });
+
+  it('separates coherent, stale, and unavailable membership presentation', () => {
+    const source = room('!room:hs', [member('@ada:hs', 'Ada')]);
+    const { service, projectionState } = setup(client([source]));
+
+    expect(service.membersView('!room:hs')).toMatchObject({
+      availability: 'coherent',
+      current: [{ userId: '@ada:hs' }],
+      stale: null,
+    });
+
+    projectionState.update('members', 'failed', 'retained');
+    expect(service.membersView('!room:hs')).toMatchObject({
+      availability: 'stale',
+      current: null,
+      stale: [{ userId: '@ada:hs' }],
+    });
+
+    projectionState.update('members', 'released', 'released');
+    expect(service.membersView('!room:hs')).toEqual({
+      availability: 'unavailable',
+      current: null,
+      stale: null,
+    });
+  });
+
+  it('does not label an unavailable empty ban list as authoritative', () => {
+    const { service, projectionState } = setup(client([room('!room:hs', [])]));
+    projectionState.update('bans', 'released', 'released');
+
+    expect(service.bannedView('!room:hs')).toEqual({
+      availability: 'unavailable',
+      current: null,
+      stale: null,
+    });
   });
 });

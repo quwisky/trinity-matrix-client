@@ -14,6 +14,7 @@ import {
 import { liveRoomState } from '@trinity/util/matrix';
 import type { Observable } from 'rxjs';
 import { RoomAdministrationError } from './room-administration-error';
+import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
 export interface ActionAvailability {
   readonly available: boolean;
@@ -88,6 +89,7 @@ const denied = (reason: string): ActionAvailability => ({
 @Injectable({ providedIn: 'root' })
 export class RoomActionPermissionsService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly projectionState = inject(RoomAdministrationProjectionState);
   private readonly revision = signal(0);
 
   private readonly onStateEvent = (event: MatrixEvent): void => {
@@ -113,7 +115,14 @@ export class RoomActionPermissionsService {
     return this.projection.run();
   }
 
+  /** Repair this retained projection without adding another listener owner. */
+  retryProjection(): void {
+    this.projection.schedule();
+  }
+
   room(roomId: string): RoomActionPermissions {
+    const freshness = this.freshness(roomId);
+    if (freshness) return { invite: freshness, curateSpace: freshness };
     return this.roomPermissions(this.context(roomId));
   }
 
@@ -125,6 +134,17 @@ export class RoomActionPermissionsService {
   }
 
   settings(roomId: string): RoomSettingsPermissions {
+    const freshness = this.freshness(roomId);
+    if (freshness) {
+      return {
+        name: freshness,
+        topic: freshness,
+        avatar: freshness,
+        joinRule: freshness,
+        history: freshness,
+        aliases: freshness,
+      };
+    }
     const context = this.context(roomId);
     if (!context) {
       const unavailable = denied('Join this room to change its settings.');
@@ -152,6 +172,11 @@ export class RoomActionPermissionsService {
   }
 
   member(roomId: string, targetUserId: string): MemberActionPermissions {
+    const freshness = this.freshness(roomId);
+    if (freshness)
+      return this.deniedMember(
+        freshness.reason ?? 'Current room permissions are unavailable.',
+      );
     const context = this.context(roomId);
     if (!context) {
       return this.deniedMember('Join this room to manage its members.');
@@ -214,6 +239,8 @@ export class RoomActionPermissionsService {
   }
 
   unban(roomId: string, targetUserId: string): ActionAvailability {
+    const freshness = this.freshness(roomId);
+    if (freshness) return freshness;
     const context = this.context(roomId);
     if (!context) {
       return denied('Join this room to manage its banned members.');
@@ -258,6 +285,15 @@ export class RoomActionPermissionsService {
         ? ALLOWED
         : denied('Your role cannot manage rooms in this space.'),
     };
+  }
+
+  private freshness(roomId: string): ActionAvailability | null {
+    return this.projectionState.availability('permissions', roomId) ===
+      'coherent'
+      ? null
+      : denied(
+          'Current room permissions are unavailable. Retry Room administration before making changes.',
+        );
   }
 
   private context(roomId: string): PermissionContext | null {

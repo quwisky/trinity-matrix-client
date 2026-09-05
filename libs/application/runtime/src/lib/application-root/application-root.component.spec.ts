@@ -317,6 +317,49 @@ describe('ApplicationRootComponent', () => {
     expect(getByTestId('app-notification-rules-retry')).toBeTruthy();
   });
 
+  it('explains exact Room Administration consequences and offers scoped recovery', async () => {
+    const { fixture, health, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+      settlements: [],
+    });
+    const retry = vi.fn(() => of({ kind: 'success' as const }));
+    for (const operation of ['permissions', 'members', 'bans'] as const) {
+      health.report(
+        {
+          capability: 'room-administration',
+          operation,
+          context: Symbol('@private:example.org'),
+          generation: 1,
+          demanded: true,
+          preparation: 'failed',
+          ownership: 'retained',
+          condition: 'degraded',
+          code: 'room-administration-reconciliation-failed',
+        },
+        retry,
+      );
+    }
+    fixture.detectChanges();
+
+    expect(getByTestId('app-room-permissions-health').textContent).toContain(
+      'Administrative changes are paused',
+    );
+    expect(getByTestId('app-room-members-health').textContent).toContain(
+      'visible member list may be stale',
+    );
+    expect(getByTestId('app-room-bans-health').textContent).toContain(
+      'visible ban list may be stale',
+    );
+    expect(getByTestId('app-room-members-health').textContent).not.toContain(
+      '@private:example.org',
+    );
+    expect(getByTestId('app-room-members-retry').textContent).toContain(
+      'Retry Room administration',
+    );
+  });
+
   it('presents the fallback and exact retry for each degraded host capability', async () => {
     const { fixture, health, getByTestId } = await setup({
       phase: 'ready',

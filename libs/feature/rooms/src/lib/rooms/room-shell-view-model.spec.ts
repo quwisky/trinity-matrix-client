@@ -101,7 +101,14 @@ function build(
       MockProvider(SelectedRoomLibraryService, {
         view: selectedView.asReadonly(),
       }),
-      MockProvider(RoomMembersService, { membersFor }),
+      MockProvider(RoomMembersService, {
+        membersFor,
+        membersView: () => ({
+          availability: 'coherent',
+          current: membersFor(activeRoomId())(),
+          stale: null,
+        }),
+      }),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomActionPermissionsService, {
         room: () => ({

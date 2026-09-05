@@ -218,6 +218,15 @@ failure and proves visible targeted recovery without leaving the Room route. Its
 Playwright attachments under ignored output. Browser mobile emulation does not prove APNs, FCM,
 native badge or iOS runtime behavior; report installed-host validation separately.
 
+Room Administration health changes cover permissions separately from the shared member-and-ban
+projection, initial unavailable data versus retained stale snapshots, coherent command authority,
+released-owner reattachment, exact Account-and-Room generation rejection and expected no-demand
+dormancy. The `room-administration/kick-member.spec.mts` journey injects a retained membership
+reconciliation failure through Angular's development-only debug API. It proves that the last-known
+roster is labeled stale, fresh permission-backed actions remain usable, retry repairs both member
+and ban health, and the open members panel survives recovery. Screenshots remain ignored
+Playwright attachments rather than repository media.
+
 Preference-health changes additionally cover the exact twelve-producer policy ledger, independent
 settlement, declared defaults, explicit missing-baseline blockers, and one exact recovery that does
 not rerun healthy siblings. Reset tests assert the exact exported catalogue and exclusions,

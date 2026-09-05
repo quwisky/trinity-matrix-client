@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Room Administration now reports separate exact Account-and-Room health for permissions,
+  members and bans. Retained membership failures preserve and label last-known roster or ban data,
+  initial and released states no longer look like authoritative empty Rooms, state-backed changes
+  require coherent permissions, and targeted retry repairs the retained projection or restores
+  both released owners without closing the remembered members panel.
+
 - Room notification rules, notification presentation, native push registration, app badges and
   update checks now report separate scoped health. Room-rule recovery reattaches released
   projection ownership without implying that delivery failed; unsupported or disabled hosts stay
