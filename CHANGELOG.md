@@ -11,7 +11,9 @@ All notable changes to this project are documented here. The format is based on
 - Application startup now applies one bounded required-producer policy from Host negotiation
   through final readiness. Room Library preparation cannot wait indefinitely, optional session
   work settles independently, failed saved navigation falls back to a safe root, and the overall
-  watchdog rejects obsolete late results without timing healthy retained ownership. Inactive
+  watchdog rejects obsolete late results without timing healthy retained ownership. Every producer
+  records an exact ready, degraded, blocked, or dependency-skipped settlement, and recovery resumes
+  from the narrowest ownership stage instead of repeating healthy upstream startup. Inactive
   Accounts recover in independent opaque scopes without rerunning healthy Accounts, while denied
   browser persistence continues with an explicit local-data eviction-risk warning.
 

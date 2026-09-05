@@ -11,6 +11,7 @@ import type {
   ApplicationRecoveryAdapterOutcome,
   ApplicationSessionEvent,
   ApplicationRuntimeWarning,
+  ApplicationStartupProducerSettlement,
   ApplicationStartupRecovery,
   ApplicationStartupStageOutcome,
 } from '../application-runtime.models';
@@ -60,13 +61,19 @@ import {
   timeout,
 } from 'rxjs';
 import { AccountStartupHealthService } from './account-startup-health.service';
+import {
+  optionalProducerDegraded,
+  optionalProducerReady,
+} from './optional-startup-outcome';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 
 const ready = (
   warnings: readonly ApplicationRuntimeWarning[] = [],
+  settlements: readonly ApplicationStartupProducerSettlement[] = [],
 ): ApplicationStartupStageOutcome => ({
   kind: 'ready',
   ...(warnings.length > 0 ? { warnings } : {}),
+  ...(settlements.length > 0 ? { settlements } : {}),
 });
 
 const warning = (
@@ -244,24 +251,30 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
       return forkJoin({
         ordering: defer(() => this.spaceOrder.hydrateKnownAccounts()).pipe(
           timeout({ first: ordering.budgetMs }),
-          map(() => [] as readonly ApplicationRuntimeWarning[]),
-          defaultIfEmpty([
-            warning(
-              'session-capabilities',
-              'workspace',
-              'room-order-hydration-failed',
-            ),
-          ]),
-          catchError((error: unknown) =>
-            of([
+          map(() => optionalProducerReady('room-order')),
+          defaultIfEmpty(
+            optionalProducerDegraded(
+              'room-order',
               warning(
                 'session-capabilities',
                 'workspace',
-                error instanceof TimeoutError
-                  ? ordering.timeoutCode
-                  : 'room-order-hydration-failed',
+                'room-order-hydration-failed',
               ),
-            ]),
+            ),
+          ),
+          catchError((error: unknown) =>
+            of(
+              optionalProducerDegraded(
+                'room-order',
+                warning(
+                  'session-capabilities',
+                  'workspace',
+                  error instanceof TimeoutError
+                    ? ordering.timeoutCode
+                    : 'room-order-hydration-failed',
+                ),
+              ),
+            ),
           ),
         ),
         persistence: defer(() =>
@@ -270,37 +283,47 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           timeout({ first: persistence.budgetMs }),
           map((persisted) =>
             persisted
-              ? ([] as readonly ApplicationRuntimeWarning[])
-              : [
+              ? optionalProducerReady('browser-storage-persistence')
+              : optionalProducerDegraded(
+                  'browser-storage-persistence',
                   warning(
                     'session-capabilities',
                     'storage',
                     'storage-persistence-denied',
                   ),
-                ],
+                ),
           ),
-          defaultIfEmpty([
-            warning(
-              'session-capabilities',
-              'storage',
-              'storage-persistence-unavailable',
-            ),
-          ]),
-          catchError((error: unknown) =>
-            of([
+          defaultIfEmpty(
+            optionalProducerDegraded(
+              'browser-storage-persistence',
               warning(
                 'session-capabilities',
                 'storage',
-                error instanceof TimeoutError
-                  ? persistence.timeoutCode
-                  : 'storage-persistence-unavailable',
+                'storage-persistence-unavailable',
               ),
-            ]),
+            ),
+          ),
+          catchError((error: unknown) =>
+            of(
+              optionalProducerDegraded(
+                'browser-storage-persistence',
+                warning(
+                  'session-capabilities',
+                  'storage',
+                  error instanceof TimeoutError
+                    ? persistence.timeoutCode
+                    : 'storage-persistence-unavailable',
+                ),
+              ),
+            ),
           ),
         ),
       }).pipe(
         map(({ ordering, persistence }) =>
-          ready([...badgeWarning, ...ordering, ...persistence]),
+          ready(
+            [...badgeWarning, ...ordering.warnings, ...persistence.warnings],
+            [ordering.settlement, persistence.settlement],
+          ),
         ),
       );
     });

@@ -1,17 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import {
-  Observable,
-  TimeoutError,
-  catchError,
-  finalize,
-  map,
-  of,
-  shareReplay,
-  take,
-  throwError,
-  throwIfEmpty,
-  timeout,
-} from 'rxjs';
+import { Observable, finalize, map, of, shareReplay } from 'rxjs';
 import {
   ACCOUNT_RESTORE_POLICY,
   ACCOUNT_RUNTIME_ADAPTER,
@@ -20,6 +8,7 @@ import type {
   AccountRestoreOutcome,
   InactiveAccountRestoreRetryOutcome,
 } from './account-runtime.models';
+import { restoreAccountWithinPolicy } from './account-restore-attempt';
 
 /** Owns exact inactive-Account retry deduplication and its per-Account deadline. */
 @Injectable({ providedIn: 'root' })
@@ -50,38 +39,12 @@ export class InactiveAccountRestoreWorkflow {
     const inFlight = this.attempts.get(accountId);
     if (inFlight) return inFlight;
 
-    const startedAt = performance.now();
-    const attempt = this.adapter.restoreAccount(accountId, 'inactive').pipe(
-      take(1),
-      throwIfEmpty(
-        () => new Error('Account Runtime adapter emitted no outcome.'),
-      ),
-      map((outcome): AccountRestoreOutcome =>
-        outcome.kind === 'failed'
-          ? {
-              ...outcome,
-              accountId,
-              role: 'inactive',
-              durationMs: performance.now() - startedAt,
-            }
-          : {
-              kind: outcome.kind,
-              accountId,
-              role: 'inactive',
-              durationMs: performance.now() - startedAt,
-            },
-      ),
-      timeout({ first: this.policy.timeoutMs }),
-      catchError((error: unknown) =>
-        error instanceof TimeoutError
-          ? of({
-              kind: 'timed-out' as const,
-              accountId,
-              role: 'inactive' as const,
-              durationMs: performance.now() - startedAt,
-            })
-          : throwError(() => error),
-      ),
+    const attempt = restoreAccountWithinPolicy(
+      this.adapter,
+      this.policy,
+      accountId,
+      'inactive',
+    ).pipe(
       map((outcome) => {
         publish(outcome);
         return outcome;

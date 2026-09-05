@@ -312,7 +312,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
-    ).resolves.toEqual({ kind: 'ready' });
+    ).resolves.toMatchObject({ kind: 'ready' });
     expect(updateCheck).not.toHaveBeenCalled();
   });
 
@@ -365,7 +365,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await expect(negotiation).resolves.toEqual({ kind: 'ready' });
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       kind: 'ready',
       warnings: [
         expect.objectContaining({
@@ -409,7 +409,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       kind: 'ready',
       warnings: [
         expect.objectContaining({
@@ -418,6 +418,18 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         expect.objectContaining({
           scope: 'storage',
+          diagnostic: { code: 'storage-persistence-denied' },
+        }),
+      ],
+      settlements: [
+        expect.objectContaining({
+          producer: 'room-order',
+          status: 'degraded',
+          diagnostic: { code: 'room-order-hydration-failed' },
+        }),
+        expect.objectContaining({
+          producer: 'browser-storage-persistence',
+          status: 'degraded',
           diagnostic: { code: 'storage-persistence-denied' },
         }),
       ],
@@ -436,13 +448,25 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'].budgetMs,
     );
 
-    await expect(outcome).resolves.toEqual({
+    await expect(outcome).resolves.toMatchObject({
       kind: 'ready',
       warnings: [
         expect.objectContaining({
           diagnostic: { code: 'room-order-hydration-timeout' },
         }),
         expect.objectContaining({
+          diagnostic: { code: 'storage-persistence-timeout' },
+        }),
+      ],
+      settlements: [
+        expect.objectContaining({
+          producer: 'room-order',
+          status: 'degraded',
+          diagnostic: { code: 'room-order-hydration-timeout' },
+        }),
+        expect.objectContaining({
+          producer: 'browser-storage-persistence',
+          status: 'degraded',
           diagnostic: { code: 'storage-persistence-timeout' },
         }),
       ],
@@ -459,7 +483,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     const establishment = adapter.establishSessionCapabilities();
 
     expect(updateCheck).not.toHaveBeenCalled();
-    await expect(firstValueFrom(establishment)).resolves.toEqual({
+    await expect(firstValueFrom(establishment)).resolves.toMatchObject({
       kind: 'ready',
     });
     expect(updateCheck).not.toHaveBeenCalled();

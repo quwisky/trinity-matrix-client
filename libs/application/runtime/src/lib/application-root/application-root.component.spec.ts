@@ -39,6 +39,7 @@ describe('ApplicationRootComponent', () => {
       attempt: 1,
       stage: 'account-restoration',
       warnings: [],
+      settlements: [],
     });
 
     expect(getByTestId('app-booting')).toBeTruthy();
@@ -54,6 +55,7 @@ describe('ApplicationRootComponent', () => {
         diagnostic: { code: 'active-account-unavailable' },
       },
       warnings: [],
+      settlements: [],
     });
 
     expect(getByTestId('app-startup-recovery').textContent).toContain(
@@ -71,9 +73,10 @@ describe('ApplicationRootComponent', () => {
       attempt: 1,
       stage: 'readiness',
       warnings: [],
+      settlements: [],
     });
 
-    state.set({ phase: 'ready', attempt: 1, warnings: [] });
+    state.set({ phase: 'ready', attempt: 1, warnings: [], settlements: [] });
     fixture.detectChanges();
 
     expect(queryByTestId('app-booting')).toBeNull();
@@ -84,6 +87,7 @@ describe('ApplicationRootComponent', () => {
     const { getByTestId } = await setup({
       phase: 'ready',
       attempt: 1,
+      settlements: [],
       warnings: [
         {
           stage: 'session-capabilities',
@@ -146,6 +150,7 @@ describe('ApplicationRootComponent', () => {
       phase: 'ready',
       attempt: 1,
       warnings: [],
+      settlements: [],
     });
     const retry = vi.fn(() => of({ kind: 'success' as const }));
     health.report(

@@ -10,6 +10,27 @@ export const APPLICATION_STARTUP_STAGES = [
 export type ApplicationStartupStage =
   (typeof APPLICATION_STARTUP_STAGES)[number];
 
+export const APPLICATION_STARTUP_PRODUCERS = [
+  'host-contract',
+  'preference-hydration',
+  'account-registry',
+  'room-library',
+  'room-order',
+  'browser-storage-persistence',
+  'workspace',
+  'readiness',
+] as const;
+
+export type ApplicationStartupProducer =
+  (typeof APPLICATION_STARTUP_PRODUCERS)[number];
+
+export interface ApplicationStartupProducerSettlement {
+  readonly producer: ApplicationStartupProducer;
+  readonly stage: ApplicationStartupStage;
+  readonly status: 'ready' | 'degraded' | 'blocked' | 'dependency-skipped';
+  readonly diagnostic?: ApplicationRuntimeDiagnostic;
+}
+
 export type ApplicationStartupRecovery =
   | 'retry-startup'
   | 'reset-preferences'
@@ -65,12 +86,14 @@ export type ApplicationStartupStageOutcome =
   | {
       readonly kind: 'ready';
       readonly warnings?: readonly ApplicationRuntimeWarning[];
+      readonly settlements?: readonly ApplicationStartupProducerSettlement[];
     }
   | {
       readonly kind: 'blocked';
       readonly recovery: ApplicationStartupRecovery;
       readonly diagnostic: ApplicationRuntimeDiagnostic;
       readonly warnings?: readonly ApplicationRuntimeWarning[];
+      readonly settlements?: readonly ApplicationStartupProducerSettlement[];
     };
 
 export type ApplicationStartOutcome =
@@ -78,12 +101,14 @@ export type ApplicationStartOutcome =
       readonly kind: 'ready';
       readonly attempt: number;
       readonly warnings: readonly ApplicationRuntimeWarning[];
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
     }
   | {
       readonly kind: 'blocked';
       readonly attempt: number;
       readonly failure: ApplicationStartupFailure;
       readonly warnings: readonly ApplicationRuntimeWarning[];
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
     };
 
 export type ApplicationRuntimeState =
@@ -93,17 +118,20 @@ export type ApplicationRuntimeState =
       readonly attempt: number;
       readonly stage: ApplicationStartupStage;
       readonly warnings: readonly ApplicationRuntimeWarning[];
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
     }
   | {
       readonly phase: 'blocked';
       readonly attempt: number;
       readonly failure: ApplicationStartupFailure;
       readonly warnings: readonly ApplicationRuntimeWarning[];
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
     }
   | {
       readonly phase: 'ready';
       readonly attempt: number;
       readonly warnings: readonly ApplicationRuntimeWarning[];
+      readonly settlements: readonly ApplicationStartupProducerSettlement[];
     }
   | { readonly phase: 'stopping'; readonly attempt: number };
 

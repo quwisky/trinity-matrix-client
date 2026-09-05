@@ -207,7 +207,9 @@ tests must distinguish unsupported optional Host operations from a failed Host c
 from inactive Account restoration; empty Room Library dormancy from preparation failure and
 timeout; safe-root Workspace repair from an unrecoverable route; persistence denial from a
 required blocker; readiness timeout from retained session ownership; and an overall watchdog
-from an operation deadline. Advance fake time using exported budgets rather than copying values.
+from an operation deadline. Assert exact producer settlements, dependency-skipped stages, and
+that scoped recovery does not repeat healthy upstream stages. Advance fake time using exported
+budgets rather than copying values.
 
 Timeout tests must prove late results cannot advance an obsolete attempt. They must not imply
 that wrapping a Promise cancelled its underlying work, and must advance beyond a preparation

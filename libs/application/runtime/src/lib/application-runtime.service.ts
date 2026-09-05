@@ -29,14 +29,24 @@ import {
   requiredStartupPolicyForStage,
 } from './application-startup.policy';
 import {
+  recoveryStartIndex,
+  settlementsBefore,
+  stageSettlements,
+  warningsBefore,
+  withDependencySkips,
+} from './application-startup-settlements';
+import { ApplicationSessionStartupWorkflow } from './application-session-startup.workflow';
+import { startupFailureOutcome } from './application-startup-failure';
+import { applicationStartupStageCommand } from './application-startup-stage-command';
+import {
   APPLICATION_STARTUP_STAGES,
   type ApplicationRecoveryOutcome,
-  type ApplicationSessionEvent,
   type ApplicationRuntimeState,
   type ApplicationRuntimeWarning,
   type ApplicationStartOutcome,
   type ApplicationStartupStage,
   type ApplicationStartupStageOutcome,
+  type ApplicationStartupProducerSettlement,
   type ApplicationStopOutcome,
 } from './application-runtime.models';
 
@@ -50,6 +60,7 @@ export class ApplicationRuntimeAlreadyRunningError extends Error {
 export class ApplicationRuntimeService {
   private readonly adapter = inject(APPLICATION_RUNTIME_ADAPTER);
   private readonly health = inject(CapabilityHealthService);
+  private readonly sessionStartup = inject(ApplicationSessionStartupWorkflow);
   private readonly runtimeState = signal<ApplicationRuntimeState>({
     phase: 'stopped',
   });
@@ -101,13 +112,19 @@ export class ApplicationRuntimeService {
           }),
           ignoreElements(),
         ),
-        this.attemptUntilReady(() => {
-          preferenceLifetimeStart.next();
-          preferenceLifetimeStart.complete();
-          // A synchronous source fault closes the merged owner during this callback.
-          // Do not advance startup and overwrite its classified blocker afterward.
-          if (preferenceFailed) throw new Error('Preference lifetime failed.');
-        }),
+        this.attemptUntilReady(
+          () => {
+            preferenceLifetimeStart.next();
+            preferenceLifetimeStart.complete();
+            // A synchronous source fault closes the merged owner during this callback.
+            // Do not advance startup and overwrite its classified blocker afterward.
+            if (preferenceFailed)
+              throw new Error('Preference lifetime failed.');
+          },
+          0,
+          [],
+          [],
+        ),
       ).pipe(
         finalize(() => preferenceLifetimeStart.complete()),
         catchError(() =>
@@ -169,8 +186,16 @@ export class ApplicationRuntimeService {
 
   private attemptUntilReady(
     onPreferencesHydrated: () => void,
+    startIndex: number,
+    warnings: readonly ApplicationRuntimeWarning[],
+    settlements: readonly ApplicationStartupProducerSettlement[],
   ): Observable<ApplicationStartOutcome> {
-    return this.runAttempt(onPreferencesHydrated).pipe(
+    return this.runAttempt(
+      onPreferencesHydrated,
+      startIndex,
+      warnings,
+      settlements,
+    ).pipe(
       switchMap((outcome) =>
         outcome.kind === 'ready'
           ? of(outcome)
@@ -178,7 +203,15 @@ export class ApplicationRuntimeService {
               of(outcome),
               this.retries.pipe(
                 take(1),
-                switchMap(() => this.attemptUntilReady(onPreferencesHydrated)),
+                switchMap(() => {
+                  const resumeIndex = recoveryStartIndex(outcome.failure.stage);
+                  return this.attemptUntilReady(
+                    onPreferencesHydrated,
+                    resumeIndex,
+                    warningsBefore(resumeIndex, outcome.warnings),
+                    settlementsBefore(resumeIndex, outcome.settlements),
+                  );
+                }),
               ),
             ),
       ),
@@ -187,12 +220,20 @@ export class ApplicationRuntimeService {
 
   private runAttempt(
     onPreferencesHydrated: () => void,
+    startIndex: number,
+    warnings: readonly ApplicationRuntimeWarning[],
+    settlements: readonly ApplicationStartupProducerSettlement[],
   ): Observable<ApplicationStartOutcome> {
     return defer(() => {
       const attempt = ++this.attempt;
-      this.health.reset();
       return defer(() =>
-        this.runStage(attempt, 0, [], onPreferencesHydrated),
+        this.runStage(
+          attempt,
+          startIndex,
+          warnings,
+          settlements,
+          onPreferencesHydrated,
+        ),
       ).pipe(
         timeout({
           first: APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
@@ -204,56 +245,77 @@ export class ApplicationRuntimeService {
   }
 
   private watchdogFailure(attempt: number): ApplicationStartOutcome {
-    const current = this.runtimeState();
-    const stage =
-      current.phase === 'starting' ? current.stage : 'session-capabilities';
-    const warnings = 'warnings' in current ? current.warnings : [];
-    const failure = {
-      stage,
-      recovery: 'retry-startup',
-      diagnostic: { code: 'application-startup-watchdog-expired' },
-    } as const;
-    this.runtimeState.set({ phase: 'blocked', attempt, failure, warnings });
-    return { kind: 'blocked', attempt, failure, warnings };
+    return this.publishFailure(
+      startupFailureOutcome(
+        attempt,
+        this.runtimeState(),
+        'application-startup-watchdog-expired',
+      ),
+    );
   }
 
   private unknownFailure(attempt: number): ApplicationStartOutcome {
-    const current = this.runtimeState();
-    const stage =
-      current.phase === 'starting' ? current.stage : 'session-capabilities';
-    const warnings = 'warnings' in current ? current.warnings : [];
-    const failure = {
-      stage,
-      recovery: 'retry-startup',
-      diagnostic: { code: 'application-adapter-failed' },
-    } as const;
-    this.runtimeState.set({ phase: 'blocked', attempt, failure, warnings });
-    return { kind: 'blocked', attempt, failure, warnings };
+    return this.publishFailure(
+      startupFailureOutcome(
+        attempt,
+        this.runtimeState(),
+        'application-adapter-failed',
+      ),
+    );
+  }
+
+  private publishFailure(
+    outcome: Extract<ApplicationStartOutcome, { readonly kind: 'blocked' }>,
+  ): ApplicationStartOutcome {
+    this.runtimeState.set({
+      phase: 'blocked',
+      attempt: outcome.attempt,
+      failure: outcome.failure,
+      warnings: outcome.warnings,
+      settlements: outcome.settlements,
+    });
+    return outcome;
   }
 
   private runStage(
     attempt: number,
     index: number,
     warnings: readonly ApplicationRuntimeWarning[],
+    settlements: readonly ApplicationStartupProducerSettlement[],
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
     const stage = APPLICATION_STARTUP_STAGES[index];
     if (!stage) {
-      const outcome = { kind: 'ready', attempt, warnings } as const;
-      this.runtimeState.set({ phase: 'ready', attempt, warnings });
+      const outcome = {
+        kind: 'ready',
+        attempt,
+        warnings,
+        settlements,
+      } as const;
+      this.runtimeState.set({ phase: 'ready', attempt, warnings, settlements });
       return of(outcome);
     }
-    this.runtimeState.set({ phase: 'starting', attempt, stage, warnings });
+    this.runtimeState.set({
+      phase: 'starting',
+      attempt,
+      stage,
+      warnings,
+      settlements,
+    });
     if (stage === 'session-capabilities') {
       return this.runSessionStage(
         attempt,
         index,
         stage,
         warnings,
+        settlements,
         onPreferencesHydrated,
       );
     }
-    return this.boundRequiredStage(stage, this.stageCommand(stage)).pipe(
+    return this.boundRequiredStage(
+      stage,
+      applicationStartupStageCommand(this.adapter, stage),
+    ).pipe(
       take(1),
       throwIfEmpty(
         () =>
@@ -265,6 +327,7 @@ export class ApplicationRuntimeService {
           index,
           stage,
           warnings,
+          settlements,
           outcome,
           onPreferencesHydrated,
         ),
@@ -277,89 +340,72 @@ export class ApplicationRuntimeService {
     index: number,
     stage: ApplicationStartupStage,
     warnings: readonly ApplicationRuntimeWarning[],
+    settlements: readonly ApplicationStartupProducerSettlement[],
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
     const readiness = new ReplaySubject<void>(1);
-    return this.boundSessionPreparation(
-      stage,
-      this.adapter.runSession(readiness),
-    ).pipe(
+    return this.sessionStartup.run(readiness).pipe(
       connect((events) =>
         events.pipe(
           take(1),
           switchMap((event) => {
-            if (event.kind === 'warning') {
+            if (event.kind !== 'settled') {
               return throwError(
                 () =>
                   new Error(
-                    'Application Runtime session warned before preparation.',
+                    'Application Runtime session emitted live state before settlement.',
                   ),
               );
             }
-            if (event.kind === 'blocked') {
-              return this.advanceStage(
-                attempt,
-                index,
-                stage,
-                warnings,
-                event,
-                onPreferencesHydrated,
-              );
-            }
-            return this.stageCommand(stage).pipe(
-              take(1),
-              throwIfEmpty(
-                () =>
-                  new Error(
-                    `Application Runtime stage '${stage}' emitted nothing.`,
-                  ),
+            return this.advanceStage(
+              attempt,
+              index,
+              stage,
+              warnings,
+              settlements,
+              event.outcome,
+              onPreferencesHydrated,
+            );
+          }),
+          switchMap((outcome) => {
+            if (outcome.kind === 'blocked') return of(outcome);
+            return merge(
+              events.pipe(
+                switchMap((event) => {
+                  if (event.kind === 'warning') {
+                    this.recordSessionWarning(event.warning);
+                    return EMPTY;
+                  }
+                  if (event.kind === 'blocked') {
+                    const current = this.runtimeState();
+                    const currentWarnings =
+                      'warnings' in current ? current.warnings : warnings;
+                    const currentSettlements =
+                      'settlements' in current
+                        ? current.settlements
+                        : settlements;
+                    return this.advanceStage(
+                      attempt,
+                      index,
+                      stage,
+                      currentWarnings,
+                      currentSettlements,
+                      event.outcome,
+                      onPreferencesHydrated,
+                    );
+                  }
+                  return throwError(
+                    () =>
+                      new Error(
+                        'Application Runtime session prepared more than once.',
+                      ),
+                  );
+                }),
               ),
-              switchMap((outcome) =>
-                this.advanceStage(
-                  attempt,
-                  index,
-                  stage,
-                  warnings,
-                  outcome,
-                  onPreferencesHydrated,
-                ),
-              ),
-              switchMap((outcome) => {
-                if (outcome.kind === 'blocked') return of(outcome);
-                return merge(
-                  events.pipe(
-                    switchMap((sessionEvent) => {
-                      if (sessionEvent.kind === 'warning') {
-                        this.recordSessionWarning(sessionEvent.warning);
-                        return EMPTY;
-                      }
-                      if (sessionEvent.kind === 'blocked') {
-                        const current = this.runtimeState();
-                        const currentWarnings =
-                          'warnings' in current ? current.warnings : warnings;
-                        return this.advanceStage(
-                          attempt,
-                          index,
-                          stage,
-                          currentWarnings,
-                          sessionEvent,
-                          onPreferencesHydrated,
-                        );
-                      }
-                      return throwError(
-                        () =>
-                          new Error(
-                            'Application Runtime session prepared more than once.',
-                          ),
-                      );
-                    }),
-                  ),
-                  defer(() => {
-                    readiness.next();
-                    readiness.complete();
-                    return of(outcome);
-                  }),
-                );
+              defer(() => {
+                readiness.next();
+                readiness.complete();
+                return of(outcome);
               }),
             );
           }),
@@ -374,10 +420,21 @@ export class ApplicationRuntimeService {
     index: number,
     stage: ApplicationStartupStage,
     warnings: readonly ApplicationRuntimeWarning[],
+    settlements: readonly ApplicationStartupProducerSettlement[],
     outcome: ApplicationStartupStageOutcome,
     onPreferencesHydrated: () => void,
   ): Observable<ApplicationStartOutcome> {
     const nextWarnings = [...warnings, ...(outcome.warnings ?? [])];
+    const outcomeSettlements = stageSettlements(stage, outcome);
+    const settledProducers = new Set(
+      outcomeSettlements.map((settlement) => settlement.producer),
+    );
+    const nextSettlements = [
+      ...settlements.filter(
+        (settlement) => !settledProducers.has(settlement.producer),
+      ),
+      ...outcomeSettlements,
+    ];
     if (outcome.kind === 'blocked') {
       const failure = {
         stage,
@@ -389,12 +446,14 @@ export class ApplicationRuntimeService {
         attempt,
         failure,
         warnings: nextWarnings,
+        settlements: withDependencySkips(stage, nextSettlements, []),
       } as const;
       this.runtimeState.set({
         phase: 'blocked',
         attempt,
         failure,
         warnings: nextWarnings,
+        settlements: blocked.settlements,
       });
       return of(blocked);
     }
@@ -405,25 +464,9 @@ export class ApplicationRuntimeService {
       attempt,
       index + 1,
       nextWarnings,
+      nextSettlements,
       onPreferencesHydrated,
     );
-  }
-
-  private stageCommand(
-    stage: ApplicationStartupStage,
-  ): Observable<ApplicationStartupStageOutcome> {
-    const commands: Record<
-      ApplicationStartupStage,
-      () => Observable<ApplicationStartupStageOutcome>
-    > = {
-      'host-negotiation': () => this.adapter.negotiateHost(),
-      'preference-hydration': () => this.adapter.hydratePreferences(),
-      'account-restoration': () => this.adapter.restoreAccounts(),
-      'session-capabilities': () => this.adapter.establishSessionCapabilities(),
-      'workspace-restoration': () => this.adapter.restoreWorkspace(),
-      readiness: () => this.adapter.awaitReadiness(),
-    };
-    return defer(commands[stage]);
   }
 
   private boundRequiredStage(
@@ -433,25 +476,6 @@ export class ApplicationRuntimeService {
     const policy = requiredStartupPolicyForStage(stage);
     if (!policy || stage === 'session-capabilities') return command;
     return command.pipe(
-      timeout({
-        first: policy.budgetMs,
-        with: () =>
-          of({
-            kind: 'blocked',
-            recovery: 'retry-startup',
-            diagnostic: { code: policy.timeoutCode },
-          } as const),
-      }),
-    );
-  }
-
-  private boundSessionPreparation(
-    stage: ApplicationStartupStage,
-    session: Observable<ApplicationSessionEvent>,
-  ): Observable<ApplicationSessionEvent> {
-    const policy = requiredStartupPolicyForStage(stage);
-    if (!policy) return session;
-    return session.pipe(
       timeout({
         first: policy.budgetMs,
         with: () =>

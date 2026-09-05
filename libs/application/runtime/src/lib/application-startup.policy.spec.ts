@@ -10,6 +10,7 @@ describe('Application startup producer policy', () => {
   it('registers every current producer with a finite budget and no automatic retry', () => {
     expect(Object.keys(APPLICATION_STARTUP_PRODUCER_POLICIES)).toEqual([
       'host-contract',
+      'preference-hydration',
       'account-registry',
       'room-library',
       'room-order',
@@ -25,6 +26,9 @@ describe('Application startup producer policy', () => {
     expect(APPLICATION_STARTUP_PRODUCER_POLICIES['room-library'].budgetMs).toBe(
       ROOM_LIBRARY_PREPARATION_BUDGET_MS,
     );
+    expect(
+      APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
+    ).toMatchObject({ compatibility: true, required: false });
     expect(REQUIRED_STARTUP_PRODUCER_COMPATIBILITY).toHaveLength(0);
   });
 

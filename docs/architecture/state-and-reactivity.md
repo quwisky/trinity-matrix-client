@@ -85,22 +85,23 @@ restore a destination against an unprepared library.
 
 Application Runtime has one producer-policy ledger for Host contract negotiation, Account
 registry restoration, required Room Library preparation, optional Room ordering and browser
-storage persistence, Workspace restoration, and final Angular readiness. Each preparation
-operation has a documented first-result budget and an automatic retry limit of zero. The
-overall watchdog is the sum of the longest required path, the optional initializer allowance,
-and the temporary preference-migration allowance. A timeout stops observation; it does not
+storage persistence, Workspace restoration, final Angular readiness, and the compatibility-owned
+preference-hydration stage. Each preparation operation has a documented first-result budget and
+an automatic retry limit of zero. The overall watchdog is the sum of the longest required path,
+the optional initializer allowance, and the registered preference compatibility allowance. A timeout stops observation; it does not
 claim to cancel an underlying Promise. Attempt and Workspace-navigation generations reject
 obsolete completions.
 
-| Producer                    | Required | First-result budget | Automatic retries |
-| --------------------------- | -------- | ------------------- | ----------------- |
-| Host contract               | Yes      | 10 seconds          | 0                 |
-| Account registry            | Yes      | 150 seconds         | 0                 |
-| Room Library                | Yes      | 15 seconds          | 0                 |
-| Room ordering               | No       | 5 seconds           | 0                 |
-| Browser storage persistence | No       | 2 seconds           | 0                 |
-| Workspace                   | Yes      | 15 seconds          | 0                 |
-| Final readiness             | Yes      | 30 seconds          | 0                 |
+| Producer                    | Required      | First-result budget | Automatic retries |
+| --------------------------- | ------------- | ------------------- | ----------------- |
+| Host contract               | Yes           | 10 seconds          | 0                 |
+| Preference hydration        | Compatibility | 30 seconds          | 0                 |
+| Account registry            | Yes           | 150 seconds         | 0                 |
+| Room Library                | Yes           | 15 seconds          | 0                 |
+| Room ordering               | No            | 5 seconds           | 0                 |
+| Browser storage persistence | No            | 2 seconds           | 0                 |
+| Workspace                   | Yes           | 15 seconds          | 0                 |
+| Final readiness             | Yes           | 30 seconds          | 0                 |
 
 The complete startup watchdog is 255 seconds: 220 seconds for the required path, 30 seconds
 for the preference stage that its own migration will refine, and 5 seconds for the longest
@@ -115,12 +116,21 @@ only failure of both the requested destination and safe root blocks Workspace. O
 ordering settles to its default, and denied or unavailable browser persistence keeps best-effort
 storage while warning that local data is at greater eviction risk.
 
+Every attempt records a typed settlement for each producer. Required and optional siblings use
+their exact producer identities; degraded optional work keeps its diagnostic. When a blocker
+prevents a later dependent producer from running, that producer settles as `dependency-skipped`
+with the blocking stage rather than appearing as another failure. Room ordering and storage
+persistence still settle independently when Room Library preparation blocks because neither is a
+Workspace restoration attempt.
+
 Only Room Library gates the session preparation event. Trust, Identity, Notifications, and Room
 Administration lifetimes are subscribed and retained independently, but an unsettled optional
 lifetime cannot hold startup open. First-result deadlines never apply to a healthy retained
 lifetime. A required Room Library failure after readiness closes the session owner and exposes
-its typed startup recovery; retry recreates that ownership without restarting the healthy
-preference lifetime.
+its typed startup recovery. Retry resumes at session preparation, recreates that ownership and
+then repairs Workspace/readiness without repeating Host negotiation, preference hydration or
+Account restoration. Account and earlier-stage recovery likewise resumes from the failed stage;
+the healthy preference lifetime is never duplicated.
 
 ## Capability health and targeted recovery
 

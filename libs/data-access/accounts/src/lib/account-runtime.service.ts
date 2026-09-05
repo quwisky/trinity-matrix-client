@@ -1,7 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Observable,
-  TimeoutError,
   catchError,
   defer,
   finalize,
@@ -15,7 +14,6 @@ import {
   tap,
   throwError,
   throwIfEmpty,
-  timeout,
   toArray,
 } from 'rxjs';
 import {
@@ -29,10 +27,10 @@ import { AccountLifecycleWorkflow } from './account-lifecycle.workflow';
 import { InactiveAccountRestoreWorkflow } from './inactive-account-restore.workflow';
 import {
   accountRestoreResultFor,
-  accountRestoreOutcomeFor,
   accountRestoreTransitionResult,
   emptyAccountRestoreResult,
 } from './account-restore-results';
+import { restoreAccountWithinPolicy } from './account-restore-attempt';
 import {
   AuthenticatedAccountGrant,
   authenticatedAccountGrantPayload,
@@ -78,32 +76,12 @@ export class AccountRuntimeService {
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
     return defer(() => {
       const startedAt = performance.now();
-      if (this.inactiveRestore.inProgress) {
+      const operation = this.currentOperation();
+      if (operation) {
         return of(
           accountRestoreTransitionResult(
             performance.now() - startedAt,
-            'restoring-accounts',
-          ),
-        );
-      }
-      if (this.establishment) {
-        return of(
-          accountRestoreTransitionResult(performance.now() - startedAt),
-        );
-      }
-      if (this.switchWorkflow.inProgress) {
-        return of(
-          accountRestoreTransitionResult(
-            performance.now() - startedAt,
-            'switching-account',
-          ),
-        );
-      }
-      if (this.lifecycleWorkflow.operation) {
-        return of(
-          accountRestoreTransitionResult(
-            performance.now() - startedAt,
-            this.lifecycleWorkflow.operation,
+            operation,
           ),
         );
       }
@@ -195,16 +173,8 @@ export class AccountRuntimeService {
   ): Observable<AccountEstablishmentOutcome> {
     return defer(() => {
       const session = authenticatedAccountGrantPayload(grant);
-      if (this.inactiveRestore.inProgress) {
-        return of(this.transitionOutcome(session.userId, intent));
-      }
-      if (this.runtimeState().phase === 'restoring') {
-        return of(this.transitionOutcome(session.userId, intent));
-      }
-      if (this.switchWorkflow.inProgress) {
-        return of(this.transitionOutcome(session.userId, intent));
-      }
-      if (this.lifecycleWorkflow.operation) {
+      const operation = this.currentOperation();
+      if (operation && operation !== 'establishing-account') {
         return of(this.transitionOutcome(session.userId, intent));
       }
       const inFlight = this.establishment;
@@ -213,6 +183,9 @@ export class AccountRuntimeService {
           this.sameIntent(inFlight.intent, intent)
           ? inFlight.outcome
           : of(this.transitionOutcome(session.userId, intent));
+      }
+      if (operation) {
+        return of(this.transitionOutcome(session.userId, intent));
       }
 
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
@@ -299,29 +272,34 @@ export class AccountRuntimeService {
     AccountRuntimeOperation,
     'switching-account'
   > | null {
-    if (this.inactiveRestore.inProgress) return 'restoring-accounts';
-    const phase = this.runtimeState().phase;
-    if (phase === 'restoring') return 'restoring-accounts';
-    if (phase === 'establishing') return 'establishing-account';
-    return this.lifecycleWorkflow.operation;
+    const operation = this.currentOperation();
+    return operation === 'switching-account' ? null : operation;
   }
 
   private blockingLifecycleOperation(): Exclude<
     AccountRuntimeOperation,
     'signing-out-account' | 'resetting-installation'
   > | null {
-    if (this.inactiveRestore.inProgress) return 'restoring-accounts';
-    const phase = this.runtimeState().phase;
-    if (phase === 'restoring') return 'restoring-accounts';
-    if (phase === 'establishing') return 'establishing-account';
-    if (this.switchWorkflow.inProgress) return 'switching-account';
-    return null;
+    const operation = this.currentOperation();
+    return operation === 'signing-out-account' ||
+      operation === 'resetting-installation'
+      ? null
+      : operation;
   }
 
   private blockingInactiveRestoreOperation(): AccountRuntimeOperation | null {
+    return this.currentOperation(false);
+  }
+
+  private currentOperation(
+    includeInactiveRestore = true,
+  ): AccountRuntimeOperation | null {
+    if (includeInactiveRestore && this.inactiveRestore.inProgress)
+      return 'restoring-accounts';
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
-    if (phase === 'establishing') return 'establishing-account';
+    if (phase === 'establishing' || this.establishment)
+      return 'establishing-account';
     if (this.switchWorkflow.inProgress) return 'switching-account';
     return this.lifecycleWorkflow.operation;
   }
@@ -416,31 +394,11 @@ export class AccountRuntimeService {
     accountId: string,
     role: AccountRestoreRole,
   ): Observable<AccountRestoreOutcome> {
-    const startedAt = performance.now();
-    return this.adapter.restoreAccount(accountId, role).pipe(
-      take(1),
-      throwIfEmpty(
-        () => new Error('Account Runtime adapter emitted no outcome.'),
-      ),
-      map((outcome) =>
-        accountRestoreOutcomeFor(
-          accountId,
-          role,
-          performance.now() - startedAt,
-          outcome,
-        ),
-      ),
-      timeout({ first: this.policy.timeoutMs }),
-      catchError((error: unknown) =>
-        error instanceof TimeoutError
-          ? of({
-              kind: 'timed-out' as const,
-              accountId,
-              role,
-              durationMs: performance.now() - startedAt,
-            })
-          : throwError(() => error),
-      ),
+    return restoreAccountWithinPolicy(
+      this.adapter,
+      this.policy,
+      accountId,
+      role,
     );
   }
 
