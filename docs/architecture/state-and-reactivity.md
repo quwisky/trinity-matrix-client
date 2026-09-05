@@ -106,9 +106,12 @@ Workspace-navigation generations reject obsolete publication.
 | Workspace                   | Yes      | 15 seconds          | 0                 |
 | Final readiness             | Yes      | 30 seconds          | 0                 |
 
-The complete startup watchdog is 225 seconds: 220 seconds for the required path and 5 seconds
-for the longest parallel optional initializer. Preference producers enforce their own parallel
-10-second observations and therefore add no serial compatibility allowance. Account Runtime also keeps its existing 30-second per-Account deadline
+The complete startup watchdog is 230 seconds: 10 seconds for Host, 10 seconds for the serial
+Preference stage, 150 seconds for Accounts, 15 seconds for the longest parallel Session-capability
+producer, 15 seconds for Workspace and 30 seconds for Readiness. Preference producers enforce
+their own parallel 10-second observations inside that Preference-stage allowance. Room ordering
+and browser storage settle in parallel with Room Library and remain below its 15-second stage
+budget. Account Runtime also keeps its existing 30-second per-Account deadline
 and concurrency of four inside the Account-registry budget. Workspace gives the saved destination
 and safe root up to 7 seconds each inside its 15-second stage budget.
 
