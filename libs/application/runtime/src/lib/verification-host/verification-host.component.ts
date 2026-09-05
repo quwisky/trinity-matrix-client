@@ -12,7 +12,6 @@ import {
   TrustVerificationService,
   type VerificationView,
 } from '@trinity/data-access/trust';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   TrnDialogService,
   type TrnDialogRef,
@@ -26,7 +25,6 @@ import { defer, finalize, take } from 'rxjs';
   template: '',
 })
 export class VerificationHostComponent {
-  private readonly matrix = inject(MatrixClientService);
   private readonly verification = inject(TrustVerificationService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
@@ -42,9 +40,6 @@ export class VerificationHostComponent {
     this.destroyRef.onDestroy(() => {
       this.presentationGeneration++;
       this.dismissModal();
-    });
-    effect(() => {
-      if (this.matrix.syncState()) this.verification.connect();
     });
     effect(() => {
       const shouldShow = this.shouldPresent(this.verification.active());

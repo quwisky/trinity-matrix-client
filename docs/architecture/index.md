@@ -198,7 +198,8 @@ the app wires it to `AvatarService.resolve`, and unwired, `<trn-avatar>` just us
 `VerificationHostComponent` reuses the Application Runtime loader seam rather than adding a second one. It renders
 nothing, is mounted app-wide in `app.component.html` so an incoming verification is caught on any
 route, and subscribes to `dialogComponents?.verify()` to lazy-load a page from a library it does
-not import.
+not import. It only presents `TrustVerificationService.active`; the named Trust session lifetime
+owns incoming-request attachment and teardown.
 
 !!! warning "Do not reach for a token first"
 

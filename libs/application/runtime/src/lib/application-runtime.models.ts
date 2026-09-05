@@ -23,7 +23,9 @@ export type ApplicationWarningScope =
   | 'push'
   | 'badge'
   | 'updates'
-  | 'workspace';
+  | 'workspace'
+  | 'trust'
+  | 'identity';
 
 /** Stable, value-free metadata suitable for logs and support reports. */
 export interface ApplicationRuntimeDiagnostic {

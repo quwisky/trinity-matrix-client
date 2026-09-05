@@ -107,5 +107,9 @@ function warningMessage(warning: ApplicationRuntimeWarning): string {
       return 'Some host integrations may be unavailable.';
     case 'workspace':
       return 'Some workspace state could not be restored.';
+    case 'trust':
+      return 'Encryption trust status may be unavailable.';
+    case 'identity':
+      return 'User presence may be unavailable.';
   }
 }

@@ -317,6 +317,17 @@ barrier, later blocked startup stage, stop, or destruction releases the selected
 runtime lease exactly once; a retry or restart creates one fresh generation. Exact Conversation
 children remain demand-owned and are not part of this preparation lifetime.
 
+The same Application Runtime session owns `TrustLifetime` and `IdentityLifetime`. Trust retains
+encryption-health and incoming-verification projections across routes. Application Runtime derives
+Identity demand from the routed Workspace: the presence listener attaches on a Room route and
+detaches when no routed Room surface can display it, while the Identity lifetime itself stays
+session-owned. `ActiveAccountProjectionLifetime` centralizes this demand and initially-empty-Account
+handling; ordinary Account-to-Account reattachment remains Projection Runtime's responsibility.
+Both capabilities release on blocked startup, stop, destruction, or restart. Trust's initial health
+refresh makes an expected operational preparation failure a secret-safe runtime warning; an
+unexpected adapter defect remains on the Observable error channel. Presentation hosts read their
+signals and never call `connect()`.
+
 A projecting service typically just delegates:
 
 ```ts
@@ -628,6 +639,7 @@ delegate.
 
 Application Runtime now solely owns the Room Library preparation lifetime; the Rooms route no
 longer attaches joined Rooms, Spaces, invitations, or Space hierarchy. The page temporarily retains
-startup only for Trust, Identity, and Notification projections until their own session lifetimes
-migrate. Local notification delivery is not page-owned: the readiness-gated session stream stays
+startup only for Notification and Room Administration projections until their own session lifetimes
+migrate. Trust and Identity are already session-owned, and the verification host only presents
+state. Local notification delivery is not page-owned: the readiness-gated session stream stays
 dormant until final readiness and releases every Matrix and host listener on runtime stop.

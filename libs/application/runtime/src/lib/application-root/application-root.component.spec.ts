@@ -2,7 +2,6 @@ import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { TrustVerificationService } from '@trinity/data-access/trust';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
@@ -19,7 +18,6 @@ describe('ApplicationRootComponent', () => {
       providers: [
         provideRouter([]),
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
-        MockProvider(MatrixClientService, { syncState: signal(null) }),
         MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnDialogService),
       ],
@@ -84,6 +82,16 @@ describe('ApplicationRootComponent', () => {
           scope: 'push',
           diagnostic: { code: 'push-registration-failed' },
         },
+        {
+          stage: 'session',
+          scope: 'trust',
+          diagnostic: { code: 'trust-projection-unavailable' },
+        },
+        {
+          stage: 'session',
+          scope: 'identity',
+          diagnostic: { code: 'identity-presence-unavailable' },
+        },
       ],
     });
 
@@ -91,6 +99,10 @@ describe('ApplicationRootComponent', () => {
     expect(warnings.textContent).toContain(
       'Push notifications may be unavailable.',
     );
+    expect(warnings.textContent).toContain(
+      'Encryption trust status may be unavailable.',
+    );
+    expect(warnings.textContent).toContain('User presence may be unavailable.');
     expect(warnings.getAttribute('aria-label')).toBe(
       'Application runtime warnings',
     );
