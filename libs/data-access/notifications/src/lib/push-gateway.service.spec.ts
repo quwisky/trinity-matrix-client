@@ -7,12 +7,15 @@ const h = vi.hoisted(() => ({
   store: new Map<string, string>(),
   platform: 'ios' as string,
   available: true,
+  failStorage: false,
 }));
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
     get: vi.fn(async ({ key }: { key: string }) => ({
-      value: h.store.get(key) ?? null,
+      value: h.failStorage
+        ? await Promise.reject(new Error('token=do-not-export'))
+        : (h.store.get(key) ?? null),
     })),
     set: vi.fn(async ({ key, value }: { key: string; value: string }) => {
       h.store.set(key, value);
@@ -59,10 +62,22 @@ describe('PushGatewayService', () => {
     h.store.clear();
     h.platform = 'ios';
     h.available = true;
+    h.failStorage = false;
     TestBed.resetTestingModule();
   });
 
   describe('resolution order', () => {
+    it('reports the build default when storage is unavailable', async () => {
+      h.failStorage = true;
+      const svc = setup(ENV);
+
+      await expect(svc.init()).resolves.toEqual({
+        kind: 'defaulted',
+        reason: 'storage-unavailable',
+      });
+      expect(svc.effective()).toEqual(ENV);
+    });
+
     it('is null when neither a build default nor an override exists', async () => {
       const svc = setup(null);
       await svc.init();

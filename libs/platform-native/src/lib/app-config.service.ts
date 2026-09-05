@@ -1,12 +1,18 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import {
   Observable,
+  ReplaySubject,
+  Subscription,
+  catchError,
   concatMap,
   defer,
   from,
   isObservable,
   map,
   of,
+  race,
+  tap,
+  timer,
   toArray,
 } from 'rxjs';
 import {
@@ -17,15 +23,25 @@ import {
 import {
   APP_CONFIG_ENTRIES,
   CONFIG_EXPORT_VERSION,
+  CONFIG_RESET_OBSERVATION_BUDGET_MS,
   type ConfigAction,
   type ConfigDocument,
   type ConfigEntry,
+  type ConfigResetEntryOutcome,
+  type ConfigResetLedger,
+  type ConfigResetOutcome,
   type ConfigSettings,
   type ConfigValue,
 } from './config-schema';
 
 /** A tree node while it is being built; handed back as the readonly {@link ConfigSettings}. */
 type ConfigTreeNode = { [key: string]: ConfigValue };
+
+interface OwnedConfigResetAttempt {
+  readonly id: number;
+  readonly completion: ReplaySubject<ConfigResetOutcome>;
+  readonly owner: Subscription;
+}
 
 /** How many spaces the exported JSON is indented with — part of what people paste around. */
 const INDENT = 2;
@@ -49,6 +65,10 @@ const INDENT = 2;
  */
 @Injectable({ providedIn: 'root' })
 export class AppConfigService {
+  private readonly resetState = signal<ConfigResetLedger | null>(null);
+  private activeReset: OwnedConfigResetAttempt | null = null;
+  private resetAttempt = 0;
+
   /**
    * Every registered setting, sorted by path so the document's key order is stable across
    * launches — a diff between two exports should show what changed, not what was injected
@@ -58,6 +78,9 @@ export class AppConfigService {
   readonly entries: readonly ConfigEntry[] = flatten(
     inject(APP_CONFIG_ENTRIES, { optional: true }) ?? [],
   );
+
+  /** Latest value-free reset progress; entry identities are portable catalogue paths. */
+  readonly resetLedger = this.resetState.asReadonly();
 
   /**
    * The current settings, nested by path. Reads the owning services' signals, so wrapping
@@ -170,33 +193,174 @@ export class AppConfigService {
    * Restore every exported setting to its documented default, through the owning services'
    * setters, so the app follows without a reload.
    *
-   * Cold, like every other one-shot action here: nothing happens until it is subscribed.
-   * Completes once every reset that persists asynchronously has settled.
+   * Starts on the first subscription. Once started, the service owns the attempt even if that
+   * observer leaves; a bounded observer receives a partial ledger while an asynchronous setter
+   * continues, and later callers join the same attempt instead of issuing conflicting writes.
    */
-  resetToDefaults(): Observable<void> {
-    return defer(() =>
-      from(this.entries).pipe(
-        concatMap((entry) => runConfigAction(() => entry.reset())),
-        toArray(),
-        map(() => undefined),
+  resetToDefaults(): Observable<ConfigResetOutcome> {
+    return defer(() => {
+      if (this.activeReset) return this.observeReset(this.activeReset);
+      return this.observeReset(this.startReset(this.entries));
+    });
+  }
+
+  /** Continue one exact partial attempt, preserving completed entries and writes in flight. */
+  retryResetToDefaults(attempt: number): Observable<ConfigResetOutcome> {
+    return defer(() => {
+      if (this.activeReset) {
+        return this.activeReset.id === attempt
+          ? this.observeReset(this.activeReset)
+          : of({ kind: 'unavailable', reason: 'stale-attempt' } as const);
+      }
+      const ledger = this.resetState();
+      if (!ledger || ledger.attempt !== attempt) {
+        return of({ kind: 'unavailable', reason: 'stale-attempt' } as const);
+      }
+      const outstanding = new Set(
+        ledger.entries
+          .filter((entry) => entry.status !== 'completed')
+          .map((entry) => entry.entry),
+      );
+      if (outstanding.size === 0) {
+        return of({ kind: 'unavailable', reason: 'nothing-to-retry' } as const);
+      }
+      return this.observeReset(
+        this.startReset(
+          this.entries.filter((entry) => outstanding.has(entry.path)),
+          ledger.entries,
+        ),
+      );
+    });
+  }
+
+  private startReset(
+    entries: readonly ConfigEntry[],
+    previous: readonly ConfigResetEntryOutcome[] = [],
+  ): OwnedConfigResetAttempt {
+    const id = ++this.resetAttempt;
+    const retained = new Map(previous.map((entry) => [entry.entry, entry]));
+    const selected = new Set(entries.map((entry) => entry.path));
+    const initial = this.entries.map((entry): ConfigResetEntryOutcome =>
+      selected.has(entry.path)
+        ? { entry: entry.path, status: 'queued' }
+        : (retained.get(entry.path) ?? {
+            entry: entry.path,
+            status: 'completed',
+          }),
+    );
+    const completion = new ReplaySubject<ConfigResetOutcome>(1);
+    const attempt: OwnedConfigResetAttempt = {
+      id,
+      completion,
+      owner: new Subscription(),
+    };
+    this.activeReset = attempt;
+    this.resetState.set({ attempt: id, status: 'running', entries: initial });
+    attempt.owner.add(
+      from(entries)
+        .pipe(
+          concatMap((entry) => {
+            this.updateResetEntry(id, {
+              entry: entry.path,
+              status: 'in-progress',
+            });
+            return runConfigAction(() => entry.reset()).pipe(
+              map((): ConfigResetEntryOutcome => ({
+                entry: entry.path,
+                status: 'completed',
+              })),
+              catchError(() =>
+                of({
+                  entry: entry.path,
+                  status: 'failed',
+                  diagnostic: { code: 'config-reset-entry-failed' },
+                } as const),
+              ),
+              tap((outcome) => this.updateResetEntry(id, outcome)),
+            );
+          }),
+          toArray(),
+        )
+        .subscribe({
+          complete: () => this.settleReset(attempt),
+        }),
+    );
+    return attempt;
+  }
+
+  private observeReset(
+    attempt: OwnedConfigResetAttempt,
+  ): Observable<ConfigResetOutcome> {
+    return race(
+      attempt.completion,
+      timer(CONFIG_RESET_OBSERVATION_BUDGET_MS).pipe(
+        map(() => this.resetOutcome(attempt.id)),
       ),
     );
   }
+
+  private updateResetEntry(
+    attempt: number,
+    outcome: ConfigResetEntryOutcome,
+  ): void {
+    const ledger = this.resetState();
+    if (!ledger || ledger.attempt !== attempt || ledger.status !== 'running') {
+      return;
+    }
+    this.resetState.set({
+      ...ledger,
+      entries: ledger.entries.map((entry) =>
+        entry.entry === outcome.entry ? outcome : entry,
+      ),
+    });
+  }
+
+  private settleReset(attempt: OwnedConfigResetAttempt): void {
+    if (this.activeReset !== attempt) return;
+    const ledger = this.resetState();
+    if (!ledger || ledger.attempt !== attempt.id) return;
+    const settled = { ...ledger, status: 'settled' as const };
+    this.resetState.set(settled);
+    this.activeReset = null;
+    attempt.completion.next(resetOutcome(settled));
+    attempt.completion.complete();
+    attempt.owner.unsubscribe();
+  }
+
+  private resetOutcome(attempt: number): ConfigResetOutcome {
+    const ledger = this.resetState();
+    if (!ledger || ledger.attempt !== attempt) {
+      return { kind: 'unavailable', reason: 'stale-attempt' };
+    }
+    return resetOutcome(ledger);
+  }
+}
+
+function resetOutcome(ledger: ConfigResetLedger): ConfigResetOutcome {
+  return {
+    kind: ledger.entries.every((entry) => entry.status === 'completed')
+      ? 'completed'
+      : 'partial',
+    attempt: ledger.attempt,
+    entries: ledger.entries,
+  };
 }
 
 function runConfigAction(action: () => ConfigAction): Observable<void> {
-  const result = action();
-  const completion = isObservable(result)
-    ? result
-    : isPromiseResult(result)
-      ? from(result)
-      : of(result);
-  return completion.pipe(
-    map((outcome) => {
-      assertConfigActionCompleted(outcome);
-      return undefined;
-    }),
-  );
+  return defer(() => {
+    const result = action();
+    const completion = isObservable(result)
+      ? result
+      : isPromiseResult(result)
+        ? from(result)
+        : of(result);
+    return completion.pipe(
+      map((outcome) => {
+        assertConfigActionCompleted(outcome);
+        return undefined;
+      }),
+    );
+  });
 }
 
 function isPromiseResult(result: ConfigAction): result is Promise<void> {

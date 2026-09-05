@@ -34,7 +34,7 @@ const GATES = [
   },
   {
     what: 'reset settings to defaults',
-    file: 'libs/feature/settings/src/lib/advanced/reset-config.ts',
+    file: 'libs/platform-native/src/lib/config-reset.policy.ts',
     constant: 'RESET_CONFIG_CONFIRMATION_WORD',
   },
 ];

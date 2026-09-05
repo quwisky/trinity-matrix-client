@@ -132,6 +132,47 @@ export class PreferenceStoreService {
     });
   }
 
+  /** Reset only failed hydration cells through their descriptors' declared defaults. */
+  recoverHydration(
+    context: PreferenceContext,
+    failures: readonly PreferenceFailure[],
+  ): Observable<PreferenceHydrationOutcome> {
+    return defer(() => {
+      const selected = [
+        ...new Map(
+          failures.map((failure) => [failure.preferenceId, failure]),
+        ).values(),
+      ];
+      return from(selected).pipe(
+        concatMap((failure) => {
+          const descriptor =
+            this.catalog.descriptor(failure.preferenceId) ??
+            this.descriptorsById.get(failure.preferenceId);
+          if (!descriptor || descriptor.scope !== context.kind) {
+            return of(failure);
+          }
+          return this.setPreference(
+            descriptor,
+            context,
+            descriptor.defaultValue,
+          ).pipe(
+            map((outcome): PreferenceFailure | null =>
+              outcome.kind === 'completed'
+                ? null
+                : {
+                    preferenceId: descriptor.id,
+                    recovery: outcome.recovery,
+                    diagnostic: outcome.diagnostic,
+                  },
+            ),
+          );
+        }),
+        toArray(),
+        map(preferenceHydrationOutcome),
+      );
+    });
+  }
+
   set(
     id: string,
     context: PreferenceContext,

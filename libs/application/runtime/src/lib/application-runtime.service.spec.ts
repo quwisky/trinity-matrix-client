@@ -1,5 +1,14 @@
 import { TestBed } from '@angular/core/testing';
-import { NEVER, Observable, Subject, firstValueFrom, of } from 'rxjs';
+import {
+  NEVER,
+  Observable,
+  Subject,
+  concat,
+  firstValueFrom,
+  map,
+  of,
+  timer,
+} from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -14,7 +23,6 @@ import {
   type ApplicationRuntimeAdapter,
 } from './application-runtime.adapter';
 import type {
-  ApplicationRuntimeWarning,
   ApplicationSessionEvent,
   ApplicationStartOutcome,
   ApplicationStartupStageOutcome,
@@ -29,7 +37,7 @@ const ready = (): ApplicationStartupStageOutcome => ({ kind: 'ready' });
 
 describe('ApplicationRuntimeService', () => {
   let order: string[];
-  let preferenceLifetime: Subject<ApplicationRuntimeWarning>;
+  let preferenceLifetime: Subject<never>;
   let preferenceLifetimeStopped: Mock<() => void>;
   let session: Subject<ApplicationSessionEvent>;
   let sessionPreparation: ApplicationSessionEvent;
@@ -39,7 +47,7 @@ describe('ApplicationRuntimeService', () => {
 
   beforeEach(() => {
     order = [];
-    preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
+    preferenceLifetime = new Subject<never>();
     preferenceLifetimeStopped = vi.fn<() => void>();
     session = new Subject<ApplicationSessionEvent>();
     sessionPreparation = { kind: 'prepared' };
@@ -57,9 +65,9 @@ describe('ApplicationRuntimeService', () => {
       restoreWorkspace: stage('workspace-restoration'),
       awaitReadiness: stage('readiness'),
       recover: vi.fn(() => of({ kind: 'ready' as const })),
-      runPreferenceLifetime: vi.fn<() => Observable<ApplicationRuntimeWarning>>(
+      runPreferenceLifetime: vi.fn<() => Observable<never>>(
         () =>
-          new Observable<ApplicationRuntimeWarning>((subscriber) => {
+          new Observable<never>((subscriber) => {
             order.push('preference-lifetime');
             const subscription = preferenceLifetime.subscribe(subscriber);
             return () => {
@@ -130,7 +138,16 @@ describe('ApplicationRuntimeService', () => {
     vi.mocked(adapter.hydratePreferences).mockReturnValueOnce(NEVER);
     const lifetime = runtime.run().subscribe();
 
-    await vi.advanceTimersByTimeAsync(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS);
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_WATCHDOG_BUDGET_MS - 1,
+    );
+
+    expect(runtime.state()).toMatchObject({
+      phase: 'starting',
+      stage: 'preference-hydration',
+    });
+
+    await vi.advanceTimersByTimeAsync(1);
 
     expect(runtime.state()).toMatchObject({
       phase: 'blocked',
@@ -140,6 +157,62 @@ describe('ApplicationRuntimeService', () => {
       },
     });
     expect(adapter.restoreAccounts).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('keeps the watchdog open through every stage near its declared deadline', async () => {
+    vi.useFakeTimers();
+    const delayedReady = (budgetMs: number) =>
+      timer(budgetMs - 1).pipe(map(() => ready()));
+    vi.mocked(adapter.negotiateHost).mockReturnValueOnce(
+      delayedReady(
+        APPLICATION_STARTUP_PRODUCER_POLICIES['host-contract'].budgetMs,
+      ),
+    );
+    vi.mocked(adapter.hydratePreferences).mockReturnValueOnce(
+      delayedReady(
+        APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'].budgetMs,
+      ),
+    );
+    vi.mocked(adapter.restoreAccounts).mockReturnValueOnce(
+      delayedReady(
+        APPLICATION_STARTUP_PRODUCER_POLICIES['account-registry'].budgetMs,
+      ),
+    );
+    vi.mocked(adapter.runSession).mockReturnValueOnce(
+      concat(
+        timer(
+          APPLICATION_STARTUP_PRODUCER_POLICIES['room-library'].budgetMs - 1,
+        ).pipe(map(() => ({ kind: 'prepared' as const }))),
+        NEVER,
+      ),
+    );
+    vi.mocked(adapter.restoreWorkspace).mockReturnValueOnce(
+      delayedReady(APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.budgetMs),
+    );
+    vi.mocked(adapter.awaitReadiness).mockReturnValueOnce(
+      delayedReady(APPLICATION_STARTUP_PRODUCER_POLICIES.readiness.budgetMs),
+    );
+    const lifetime = runtime.run().subscribe();
+
+    for (const [producer, stage] of [
+      ['host-contract', 'preference-hydration'],
+      ['preference-hydration', 'account-restoration'],
+      ['account-registry', 'session-capabilities'],
+      ['room-library', 'workspace-restoration'],
+      ['workspace', 'readiness'],
+    ] as const) {
+      await vi.advanceTimersByTimeAsync(
+        APPLICATION_STARTUP_PRODUCER_POLICIES[producer].budgetMs - 1,
+      );
+      expect(runtime.state()).toMatchObject({ phase: 'starting', stage });
+    }
+
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.readiness.budgetMs - 1,
+    );
+
+    expect(runtime.state().phase).toBe('ready');
     lifetime.unsubscribe();
   });
 
@@ -217,7 +290,7 @@ describe('ApplicationRuntimeService', () => {
     preferenceLifetime.error(new Error('private preference fault'));
     expect(runtime.state().phase).toBe('blocked');
     expect(lifetime.closed).toBe(false);
-    preferenceLifetime = new Subject<ApplicationRuntimeWarning>();
+    preferenceLifetime = new Subject<never>();
     await firstValueFrom(runtime.recover());
     expect(runtime.state().phase).toBe('ready');
     expect(preferenceLifetime.observed).toBe(true);

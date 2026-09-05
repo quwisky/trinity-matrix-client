@@ -1,6 +1,7 @@
 import { ROOM_LIBRARY_PREPARATION_BUDGET_MS } from '@trinity/data-access/room-library';
 import {
   APPLICATION_STARTUP_PRODUCERS,
+  APPLICATION_STARTUP_STAGES,
   type ApplicationStartupProducer,
   type ApplicationStartupStage,
 } from './application-runtime.models';
@@ -31,8 +32,7 @@ export const APPLICATION_STARTUP_PRODUCER_POLICIES = {
   'preference-hydration': {
     stage: 'preference-hydration',
     required: false,
-    compatibility: true,
-    budgetMs: 30_000,
+    budgetMs: 10_000,
     automaticRetryLimit: 0,
     timeoutCode: 'preference-hydration-timeout',
   },
@@ -87,26 +87,22 @@ export const APPLICATION_STARTUP_PRODUCER_POLICIES = {
 /** No required producer remains behind the legacy warning compatibility path. */
 export const REQUIRED_STARTUP_PRODUCER_COMPATIBILITY = [] as const;
 
-const OPTIONAL_PREPARATION_ALLOWANCE_MS = Math.max(
-  APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'].budgetMs,
-  APPLICATION_STARTUP_PRODUCER_POLICIES['browser-storage-persistence'].budgetMs,
-);
-const REQUIRED_PATH_BUDGET_MS = Object.values(
-  APPLICATION_STARTUP_PRODUCER_POLICIES,
-)
-  .filter((policy) => policy.required)
-  .reduce((total, policy) => total + policy.budgetMs, 0);
-const COMPATIBILITY_PATH_BUDGET_MS = Object.values(
-  APPLICATION_STARTUP_PRODUCER_POLICIES,
-)
-  .filter((policy) => 'compatibility' in policy && policy.compatibility)
-  .reduce((total, policy) => total + policy.budgetMs, 0);
-
-/** Longest declared required path plus the still-compatible preference stage. */
+/**
+ * The stages are serial, while producers within one stage settle in parallel. The watchdog
+ * therefore owns the sum of each stage's longest declared producer budget, including optional
+ * serial stages such as preference hydration.
+ */
 export const APPLICATION_STARTUP_WATCHDOG_BUDGET_MS =
-  REQUIRED_PATH_BUDGET_MS +
-  COMPATIBILITY_PATH_BUDGET_MS +
-  OPTIONAL_PREPARATION_ALLOWANCE_MS;
+  APPLICATION_STARTUP_STAGES.reduce(
+    (pathBudget, stage) =>
+      pathBudget +
+      Math.max(
+        ...Object.values(APPLICATION_STARTUP_PRODUCER_POLICIES)
+          .filter((policy) => policy.stage === stage)
+          .map((policy) => policy.budgetMs),
+      ),
+    0,
+  );
 
 export function startupProducersForStage(
   stage: ApplicationStartupStage,

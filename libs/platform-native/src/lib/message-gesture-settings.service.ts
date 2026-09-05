@@ -1,5 +1,10 @@
 import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import {
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+} from './preference-initialization';
 
 const MESSAGE_SWIPE_KEY = 'trinity.message-swipe';
 
@@ -70,14 +75,17 @@ export class MessageGestureSettingsService {
   readonly swipeActions = TRINITY_SWIPE_ACTIONS;
 
   /** Read the saved preference. Call once at app startup. */
-  async init(): Promise<void> {
+  async init(): Promise<PreferenceInitializationOutcome> {
     try {
       const { value } = await Preferences.get({ key: MESSAGE_SWIPE_KEY });
       if (isSwipeAction(value)) {
         this._messageSwipe.set(value);
       }
+      return value === null || isSwipeAction(value)
+        ? preferenceInitializationReady
+        : preferenceInitializationDefaulted('invalid-stored-value');
     } catch {
-      // No stored value (or storage unavailable) → keep the default (off).
+      return preferenceInitializationDefaulted('storage-unavailable');
     }
   }
 

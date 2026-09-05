@@ -121,7 +121,7 @@ describe('ShellLayoutService', () => {
   it('keeps the default when nothing is stored', async () => {
     // `Number(null)` is 0, which would clamp to the MINIMUM — a pane nobody chose, and the
     // failure mode a missing key would otherwise produce silently.
-    await service.init();
+    await expect(service.init()).resolves.toEqual({ kind: 'ready' });
 
     expect(service.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
     expect(service.rightPanelWidth()).toBe(DEFAULT_RIGHT_PANEL_WIDTH);
@@ -134,7 +134,10 @@ describe('ShellLayoutService', () => {
   ])('keeps the default when the stored value is %s', async (_l, value) => {
     stored.set('trinity.shell.sidebar-width', value);
 
-    await service.init();
+    await expect(service.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'invalid-stored-value',
+    });
 
     expect(service.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
   });
@@ -150,7 +153,10 @@ describe('ShellLayoutService', () => {
   it('keeps the default when storage itself fails', async () => {
     vi.mocked(Preferences.get).mockRejectedValue(new Error('no storage'));
 
-    await service.init();
+    await expect(service.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
 
     expect(service.sidebarWidth()).toBe(DEFAULT_SIDEBAR_WIDTH);
   });

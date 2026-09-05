@@ -84,28 +84,34 @@ restore a destination against an unprepared library.
 ## Required startup policy
 
 Application Runtime has one producer-policy ledger for Host contract negotiation, Account
-registry restoration, required Room Library preparation, optional Room ordering and browser
-storage persistence, Workspace restoration, final Angular readiness, and the compatibility-owned
-preference-hydration stage. Each preparation operation has a documented first-result budget and
-an automatic retry limit of zero. The overall watchdog is the sum of the longest required path,
-the optional initializer allowance, and the registered preference compatibility allowance. A timeout stops observation; it does not
-claim to cancel an underlying Promise. Attempt and Workspace-navigation generations reject
-obsolete completions.
+registry restoration, required Room Library preparation, optional preference, Room ordering and
+browser storage preparation, Workspace restoration, and final Angular readiness. Preference
+composition has a second exhaustive ledger for its twelve independent producers; each has a stable
+`hydrate-*` operation, installation context, device-preference storage policy, typed safe-default
+and consequence presentation keys, and a 10-second observation budget. Legacy device-preference
+initializers return value-free `ready` or `defaulted` evidence, distinguishing a normal absent key
+from invalid stored data or unavailable storage. One rejected initializer cannot erase sibling outcomes. A timeout
+stops observation; it does not claim to cancel an underlying Promise. Owned work may settle later,
+and a late success clears its health without requiring another write, while attempt and
+Workspace-navigation generations reject obsolete publication.
 
-| Producer                    | Required      | First-result budget | Automatic retries |
-| --------------------------- | ------------- | ------------------- | ----------------- |
-| Host contract               | Yes           | 10 seconds          | 0                 |
-| Preference hydration        | Compatibility | 30 seconds          | 0                 |
-| Account registry            | Yes           | 150 seconds         | 0                 |
-| Room Library                | Yes           | 15 seconds          | 0                 |
-| Room ordering               | No            | 5 seconds           | 0                 |
-| Browser storage persistence | No            | 2 seconds           | 0                 |
-| Workspace                   | Yes           | 15 seconds          | 0                 |
-| Final readiness             | Yes           | 30 seconds          | 0                 |
+| Producer                    | Required | First-result budget | Automatic retries |
+| --------------------------- | -------- | ------------------- | ----------------- |
+| Host contract               | Yes      | 10 seconds          | 0                 |
+| Preference hydration        | No       | 10 seconds each     | 0                 |
+| Account registry            | Yes      | 150 seconds         | 0                 |
+| Room Library                | Yes      | 15 seconds          | 0                 |
+| Room ordering               | No       | 5 seconds           | 0                 |
+| Browser storage persistence | No       | 2 seconds           | 0                 |
+| Workspace                   | Yes      | 15 seconds          | 0                 |
+| Final readiness             | Yes      | 30 seconds          | 0                 |
 
-The complete startup watchdog is 255 seconds: 220 seconds for the required path, 30 seconds
-for the preference stage that its own migration will refine, and 5 seconds for the longest
-optional initializer. Account Runtime also keeps its existing 30-second per-Account deadline
+The complete startup watchdog is 230 seconds: 10 seconds for Host, 10 seconds for the serial
+Preference stage, 150 seconds for Accounts, 15 seconds for the longest parallel Session-capability
+producer, 15 seconds for Workspace and 30 seconds for Readiness. Preference producers enforce
+their own parallel 10-second observations inside that Preference-stage allowance. Room ordering
+and browser storage settle in parallel with Room Library and remain below its 15-second stage
+budget. Account Runtime also keeps its existing 30-second per-Account deadline
 and concurrency of four inside the Account-registry budget. Workspace gives the saved destination
 and safe root up to 7 seconds each inside its 15-second stage budget.
 
@@ -113,8 +119,25 @@ The stage order is strict. A Host contract or required Active Account failure bl
 Room Library work. Room Library must prepare before Workspace restores. An empty Account scope
 is valid dormant preparation. Failed saved navigation tries `/` with replace-history semantics;
 only failure of both the requested destination and safe root blocks Workspace. Optional Room
-ordering settles to its default, and denied or unavailable browser persistence keeps best-effort
-storage while warning that local data is at greater eviction risk.
+ordering settles each Account to the declared recent-activity default and exposes exact scoped
+recovery. Denied or unavailable browser persistence keeps best-effort storage while warning that
+local data is at greater eviction risk.
+
+Preference hydration publishes one value-free health operation per producer. Appearance, Privacy
+and Room Library Account-scope recovery reset only failed descriptors through their declared
+defaults. Every fallback presents the consequence selected by its typed policy key. An
+authoritatively disabled or removed producer publishes `not-applicable`, invalidates its old
+recovery generation, and disappears from problems without announcing a recovery. The long-lived
+Appearance effect has no deadline; Application Runtime owns it through stop/restart, and a fault becomes the recoverable `apply-appearance` health operation. Room
+ordering similarly publishes opaque per-Account scopes and retires a scope as not applicable when
+the Account disappears.
+
+Reset is not atomic. `AppConfigService` owns a per-entry ledger for the exact exported catalogue,
+continues an already-started setter after observer timeout or cancellation, and publishes no
+values. A partial attempt preserves completed entries and exact retry selects only failed or still
+queued/in-progress entries. The Account registry, drafts, push applied-id ledger and per-Account Space
+ordering remain structurally excluded. Both Advanced Settings and startup compatibility
+presentation require the existing `DEFAULTS` confirmation before starting the attempt.
 
 Every attempt records a typed settlement for each producer. Required and optional siblings use
 their exact producer identities; degraded optional work keeps its diagnostic. When a blocker
@@ -183,9 +206,9 @@ session history and are regenerated after the application lifetime resets.
 
 ### Temporary warning compatibility
 
-Unmigrated producers retain their existing warning, blocker and recovery behavior. The exact six
+Unmigrated producers retain their existing warning, blocker and recovery behavior. The exact five
 legacy warning files are frozen by `scripts/capability-health-compatibility.spec.mjs`; the guard
-also prevents Identity from returning to permanent warning publication. Existing warning parity
+also prevents Identity, preference and Room-order producers from returning to permanent warning publication. Existing warning parity
 coverage remains in the Application Runtime adapter and root tests. The removal owner is
 [Present startup-safe capability status and actionable recovery](https://github.com/quwisky/trinity-matrix-client/issues/455).
 Later producer slices shrink this ledger; final System Status presentation removes it.

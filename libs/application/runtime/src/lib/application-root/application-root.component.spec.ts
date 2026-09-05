@@ -1,6 +1,10 @@
 import { signal } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { TrnDialogService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import { TrustVerificationService } from '@trinity/data-access/trust';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -15,18 +19,24 @@ describe('ApplicationRootComponent', () => {
   async function setup(initial: ApplicationRuntimeState) {
     const state = signal(initial);
     const recover = vi.fn(() => of({ kind: 'accepted' as const }));
+    const prompt = vi.fn(() => of<string | null>(null));
+    const showToast = vi.fn();
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter([]),
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
         MockProvider(TrustVerificationService, { active: signal(null) }),
         MockProvider(TrnDialogService),
+        MockProvider(TrnAlertService, { prompt$: prompt }),
+        MockProvider(TrnToastService, { show: showToast }),
       ],
     });
     return {
       ...rendered,
       state,
       recover,
+      prompt,
+      showToast,
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
       ),
@@ -65,6 +75,37 @@ describe('ApplicationRootComponent', () => {
     fixture.detectChanges();
 
     expect(recover).toHaveBeenCalledOnce();
+  });
+
+  it('requires DEFAULTS before preference recovery can reset settings', async () => {
+    const { fixture, getByTestId, recover, prompt, showToast } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'preference-hydration',
+        recovery: 'reset-preferences',
+        diagnostic: { code: 'preference-safe-baseline-unavailable' },
+      },
+      warnings: [],
+      settlements: [],
+    });
+
+    prompt.mockReturnValueOnce(of('almost'));
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+    expect(recover).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('DEFAULTS'),
+      expect.anything(),
+    );
+
+    prompt.mockReturnValueOnce(of(' defaults '));
+    getByTestId('app-startup-recovery').click();
+    fixture.detectChanges();
+    expect(recover).toHaveBeenCalledOnce();
+    expect(prompt).toHaveBeenLastCalledWith(
+      expect.objectContaining({ placeholder: 'DEFAULTS', variant: 'danger' }),
+    );
   });
 
   it('reveals the routed application only after readiness', async () => {
@@ -177,5 +218,33 @@ describe('ApplicationRootComponent', () => {
     getByTestId('app-capability-retry').click();
     fixture.detectChanges();
     expect(retry).toHaveBeenCalledOnce();
+  });
+
+  it('explains the declared fallback consequence for the exact preference producer', async () => {
+    const { fixture, health, getByTestId } = await setup({
+      phase: 'ready',
+      attempt: 1,
+      warnings: [],
+      settlements: [],
+    });
+    health.report(
+      {
+        capability: 'preferences',
+        operation: 'hydrate-gestures',
+        context: Symbol('installation'),
+        generation: 1,
+        demanded: true,
+        preparation: 'acknowledged',
+        ownership: 'released',
+        condition: 'degraded',
+        code: 'gestures-hydration-failed',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+    fixture.detectChanges();
+
+    expect(getByTestId('app-capability-health').textContent).toContain(
+      'Message swipe actions are turned off.',
+    );
   });
 });

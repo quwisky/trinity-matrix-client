@@ -12,10 +12,12 @@ import {
   providePreferenceDescriptors,
   type PreferenceCommandOutcome,
   type PreferenceDescriptor,
+  type PreferenceFailure,
+  type PreferenceHydrationOutcome,
   type PreferenceValidation,
   type StoredPreference,
 } from '@trinity/runtime/preferences';
-import { Observable, defer, map, of } from 'rxjs';
+import { Observable, defer, of } from 'rxjs';
 
 /** Persisted set of account ids the user has opted into mixing. */
 const SCOPE_KEY = 'trinity.accounts.mixed';
@@ -125,12 +127,20 @@ export class AccountScopeService {
   readonly mixing = computed(() => this.selected().size > 1);
 
   /** Restore the saved selection. Wired as an app initializer at startup. */
-  init(): Observable<void> {
-    return this.preferences
-      .hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
-        ACCOUNT_SCOPE_PREFERENCE,
-      ])
-      .pipe(map(() => void 0));
+  init(): Observable<PreferenceHydrationOutcome> {
+    return this.preferences.hydrateDescriptors(
+      INSTALLATION_PREFERENCE_CONTEXT,
+      [ACCOUNT_SCOPE_PREFERENCE],
+    );
+  }
+
+  recoverHydration(
+    failures: readonly PreferenceFailure[],
+  ): Observable<PreferenceHydrationOutcome> {
+    return this.preferences.recoverHydration(
+      INSTALLATION_PREFERENCE_CONTEXT,
+      failures,
+    );
   }
 
   /** Whether an account is currently included in the view. */

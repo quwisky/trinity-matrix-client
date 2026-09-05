@@ -107,6 +107,17 @@ fallbacks on partial hydration, and owns one effect lifetime for system Mode, do
 and Mode-only native chrome. Failed persistence must not publish a candidate value. The
 [UI guide](ui-and-theming.md) owns the design and contribution details.
 
+Application Runtime settles all twelve current preference producers independently under stable
+installation operations. Concrete initializers return typed fallback evidence, and each producer
+declares typed safe-default and consequence presentation keys. Failures retain declared defaults
+and exact recovery; late retained success repairs health, while authoritative removal retires the
+old recovery generation. The Appearance
+effect stays session-owned without a deadline. Room-order storage failure uses the declared
+recent-activity default in an opaque per-Account health scope. Exported reset keeps a value-free
+per-entry ledger, owns late setters, and retries only outstanding entries after the shared
+`DEFAULTS` gate; it never expands into Account registry, drafts, push-ledger, or per-Account order
+storage.
+
 ## Public interfaces
 
 Use each library's explicit primary `@trinity/*` entrypoint. Wildcard and secondary

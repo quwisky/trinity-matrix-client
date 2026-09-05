@@ -199,6 +199,14 @@ restored presence and an unchanged Conversation URL. It introduces no production
 Screenshots are Playwright attachments under ignored invocation output, never tracked media.
 Browser mobile emulation does not establish native Android or iOS runtime validation.
 
+Preference-health changes additionally cover the exact twelve-producer policy ledger, independent
+settlement, declared defaults, explicit missing-baseline blockers, and one exact recovery that does
+not rerun healthy siblings. Reset tests assert the exact exported catalogue and exclusions,
+value-free per-entry partial results, stale-attempt rejection, outstanding-only retry, and retained
+Promise ownership after timeout or subscriber cancellation. Room-order tests use separate Account
+scopes and prove that removal retires a failure. Long-lived Appearance-effect tests have no fake
+deadline: fault, exact restart, runtime stop and restart are ownership assertions.
+
 ## Required startup-policy validation
 
 For Application Runtime startup-policy changes, run the Application Runtime, Accounts, Room

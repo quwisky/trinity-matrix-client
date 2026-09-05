@@ -289,6 +289,51 @@ describe('PreferenceStoreService', () => {
     expect(write).toHaveBeenCalledTimes(1);
   });
 
+  it('recovers only failed hydration entries through their declared defaults', async () => {
+    const first = booleanPreference({ id: 'conversations.first' });
+    const second = booleanPreference({
+      id: 'conversations.second',
+      persistence: {
+        key: 'test.second',
+        migration: {
+          currentVersion: 1,
+          migrate: booleanMigration,
+        },
+      },
+    });
+    const write = vi.fn(() => of({ kind: 'completed' } as const));
+    const store = setup([first, second], {
+      read: (request) =>
+        of(
+          request.key === 'test.second'
+            ? { kind: 'found', payload: '{"version":1,"value":"bad"}' }
+            : { kind: 'found', payload: '{"version":1,"value":false}' },
+        ),
+      write,
+    });
+    const hydration = await firstValueFrom(
+      store.hydrate({ kind: 'installation' }),
+    );
+    if (hydration.kind !== 'partial') {
+      throw new Error('Expected partial hydration.');
+    }
+
+    const recovery = await firstValueFrom(
+      store.recoverHydration({ kind: 'installation' }, hydration.failures),
+    );
+
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'test.second',
+        payload: '{"version":1,"value":true}',
+      }),
+    );
+    expect(recovery).toEqual({ kind: 'ready', hydrated: 1 });
+    expect(store.value(first.id, { kind: 'installation' })()).toBe(false);
+    expect(store.value(second.id, { kind: 'installation' })()).toBe(true);
+  });
+
   it('keeps the current value and emits secret-safe recovery on persistence failure', async () => {
     const secret = 'do-not-leak-this-value';
     const descriptor = definePreference({

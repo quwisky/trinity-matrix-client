@@ -174,6 +174,19 @@ describe('KeyboardShortcutsService', () => {
     expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toBeNull();
   });
 
+  it('reports the built-in bindings when storage is unavailable', async () => {
+    get.mockRejectedValue(new Error('access_token=do-not-export'));
+    const svc = build();
+
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
+    expect(svc.resolve(keydown({ key: 'k', ctrlKey: true }))).toEqual({
+      id: 'switcher.open',
+    });
+  });
+
   it('drops a stored binding that is not a usable chord, rather than resolving through it', async () => {
     // This used to parse straight into the signal, so a malformed binding was consulted on
     // every keystroke for the life of the session.

@@ -63,6 +63,7 @@ import {
 } from 'rxjs';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
+import { RoomOrderHealthService } from './room-order-health.service';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -89,6 +90,7 @@ export class TrinityApplicationSessionAdapter {
     WorkspaceApplicationSurfacePresenterAdapter,
   );
   private readonly spaceOrder = inject(SpaceRoomOrderService);
+  private readonly roomOrderHealth = inject(RoomOrderHealthService);
   private readonly roomLibrary = inject(RoomLibraryLifetime);
   private readonly trust = inject(TrustLifetime);
   private readonly identity = inject(IdentityLifetime);
@@ -248,7 +250,10 @@ export class TrinityApplicationSessionAdapter {
       this.navigationFocus.run().pipe(ignoreElements()),
       this.routedSurfaces.run().pipe(ignoreElements()),
       this.applicationSurfaces.run().pipe(ignoreElements()),
-      this.spaceOrder.run().pipe(ignoreElements()),
+      this.spaceOrder.run().pipe(
+        tap((event) => this.roomOrderHealth.reportRuntime(event)),
+        ignoreElements(),
+      ),
       this.runDeepLinks().pipe(ignoreElements()),
       this.runBackIntents().pipe(ignoreElements()),
       this.runNavigationGesturePolicy().pipe(ignoreElements()),

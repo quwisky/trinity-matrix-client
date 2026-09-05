@@ -102,7 +102,6 @@ export class ApplicationRuntimeService {
           take(1),
           switchMap(() => this.adapter.runPreferenceLifetime()),
           tap({
-            next: (warning) => this.recordSessionWarning(warning),
             error: () => {
               preferenceFailed = true;
             },

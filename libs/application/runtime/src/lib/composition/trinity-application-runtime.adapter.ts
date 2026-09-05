@@ -16,29 +16,11 @@ import type {
   ApplicationStartupStageOutcome,
 } from '../application-runtime.models';
 import { APPLICATION_STARTUP_PRODUCER_POLICIES } from '../application-startup.policy';
-import {
-  AppearanceEffects,
-  AppearancePreferences,
-} from '@trinity/application/appearance';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
-import { GifSettingsService } from '@trinity/data-access/gif';
-import { PushGatewayService } from '@trinity/data-access/notifications';
-import {
-  AccountScopeService,
-  SpaceRoomOrderService,
-} from '@trinity/data-access/room-library';
 import {
   AppConfigService,
-  ComposerSettingsService,
-  DateTimeFormatService,
   DraftStoreService,
-  FeatureFlagsService,
-  KeyboardShortcutsService,
-  MessageGestureSettingsService,
-  PrivacySettingsService,
-  ShellLayoutService,
   StoragePersistenceService,
-  SystemLineSettingsService,
 } from '@trinity/platform-native';
 import {
   HostCapabilitiesService,
@@ -53,7 +35,6 @@ import {
   filter,
   forkJoin,
   from,
-  ignoreElements,
   map,
   of,
   switchMap,
@@ -61,11 +42,16 @@ import {
   timeout,
 } from 'rxjs';
 import { AccountStartupHealthService } from './account-startup-health.service';
+import { PreferenceStartupHealthService } from './preference-startup-health.service';
+import { PreferenceEffectHealthService } from './preference-effect-health.service';
+import { RoomOrderHealthService } from './room-order-health.service';
 import {
   optionalProducerDegraded,
+  optionalProducerHealthDegraded,
   optionalProducerReady,
 } from './optional-startup-outcome';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
+import { TrinityPreferenceStartupSources } from './trinity-preference-startup-sources';
 
 const ready = (
   warnings: readonly ApplicationRuntimeWarning[] = [],
@@ -95,26 +81,17 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly host = inject(HostCapabilitiesService);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly session = inject(TrinityApplicationSessionAdapter);
-  private readonly appearance = inject(AppearancePreferences);
-  private readonly appearanceEffects = inject(AppearanceEffects);
-  private readonly shellLayout = inject(ShellLayoutService);
-  private readonly featureFlags = inject(FeatureFlagsService);
-  private readonly privacy = inject(PrivacySettingsService);
   private readonly drafts = inject(DraftStoreService);
-  private readonly systemLines = inject(SystemLineSettingsService);
-  private readonly composer = inject(ComposerSettingsService);
-  private readonly gestures = inject(MessageGestureSettingsService);
-  private readonly dateTime = inject(DateTimeFormatService);
-  private readonly shortcuts = inject(KeyboardShortcutsService);
-  private readonly gifs = inject(GifSettingsService);
-  private readonly accountScope = inject(AccountScopeService);
   private readonly appConfig = inject(AppConfigService);
-  private readonly pushGateway = inject(PushGatewayService);
-  private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly storagePersistence = inject(StoragePersistenceService);
   private readonly accountHealth = inject(AccountStartupHealthService);
+  private readonly preferenceHealth = inject(PreferenceStartupHealthService);
+  private readonly preferenceEffects = inject(PreferenceEffectHealthService);
+  private readonly roomOrderHealth = inject(RoomOrderHealthService);
+  private readonly preferenceSources = inject(TrinityPreferenceStartupSources);
   private manifest: HostCapabilityManifest | null = null;
   private accountRecoveryId: string | null = null;
+  private preferenceResetAttempt: number | null = null;
   private workspaceNavigationStarted = false;
   private workspaceUrl: string | null = null;
   private workspaceNavigationGeneration = 0;
@@ -145,51 +122,15 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   }
 
   hydratePreferences(): Observable<ApplicationStartupStageOutcome> {
-    return defer(() =>
-      forkJoin({
-        appearance: this.appearance.hydrate(),
-        shellLayout: from(this.shellLayout.init()),
-        featureFlags: from(this.featureFlags.init()),
-        privacy: this.privacy.init(),
-        drafts: from(this.drafts.init()),
-        systemLines: from(this.systemLines.init()),
-        composer: from(this.composer.init()),
-        gestures: from(this.gestures.init()),
-        dateTime: from(this.dateTime.init()),
-        shortcuts: from(this.shortcuts.init()),
-        gifs: from(this.gifs.init()),
-        accountScope: this.accountScope.init(),
-        pushGateway: from(this.pushGateway.init()),
-      }),
-    ).pipe(
-      map(({ appearance, privacy }) => {
-        const warnings: ApplicationRuntimeWarning[] = [];
-        if (appearance.kind === 'partial') {
-          warnings.push({
-            stage: 'preference-hydration',
-            scope: 'preferences',
-            diagnostic: { code: appearance.warning.code },
-            recovery: appearance.warning.recovery,
-          });
-        }
-        if (privacy.kind === 'partial') {
-          warnings.push({
-            stage: 'preference-hydration',
-            scope: 'preferences',
-            diagnostic: { code: 'preference-hydration-partial' },
-            recovery: 'reset-preferences',
-          });
-        }
-        return ready(warnings);
-      }),
-      catchError(() =>
-        of({
-          kind: 'blocked',
-          recovery: 'reset-preferences',
-          diagnostic: { code: 'preference-hydration-failed' },
-        } as const),
+    return forkJoin({
+      preferences: this.preferenceHealth.hydrate(
+        this.preferenceSources.sources(),
       ),
-    );
+      // Drafts are deliberately outside preference policy and the exported reset catalogue.
+      drafts: defer(() => from(this.drafts.init())).pipe(
+        catchError(() => of(void 0)),
+      ),
+    }).pipe(map(({ preferences }) => preferences));
   }
 
   restoreAccounts(): Observable<ApplicationStartupStageOutcome> {
@@ -245,38 +186,21 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         badgeSupport.reason !== 'not-implemented'
           ? [warning('session-capabilities', 'badge', 'badge-unavailable')]
           : [];
-      const ordering = APPLICATION_STARTUP_PRODUCER_POLICIES['room-order'];
       const persistence =
         APPLICATION_STARTUP_PRODUCER_POLICIES['browser-storage-persistence'];
       return forkJoin({
-        ordering: defer(() => this.spaceOrder.hydrateKnownAccounts()).pipe(
-          timeout({ first: ordering.budgetMs }),
-          map(() => optionalProducerReady('room-order')),
-          defaultIfEmpty(
-            optionalProducerDegraded(
-              'room-order',
-              warning(
-                'session-capabilities',
-                'workspace',
-                'room-order-hydration-failed',
-              ),
+        ordering: this.roomOrderHealth
+          .hydrate()
+          .pipe(
+            map((outcome) =>
+              outcome.kind === 'ready'
+                ? optionalProducerReady('room-order')
+                : optionalProducerHealthDegraded(
+                    'room-order',
+                    'room-order-hydration-degraded',
+                  ),
             ),
           ),
-          catchError((error: unknown) =>
-            of(
-              optionalProducerDegraded(
-                'room-order',
-                warning(
-                  'session-capabilities',
-                  'workspace',
-                  error instanceof TimeoutError
-                    ? ordering.timeoutCode
-                    : 'room-order-hydration-failed',
-                ),
-              ),
-            ),
-          ),
-        ),
         persistence: defer(() =>
           this.storagePersistence.requestPersistence(),
         ).pipe(
@@ -384,8 +308,21 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
       case 'retry-startup':
         return of({ kind: 'ready' });
       case 'reset-preferences':
-        return this.appConfig.resetToDefaults().pipe(
-          map(() => ({ kind: 'ready' }) as const),
+        return defer(() =>
+          this.preferenceResetAttempt === null
+            ? this.appConfig.resetToDefaults()
+            : this.appConfig.retryResetToDefaults(this.preferenceResetAttempt),
+        ).pipe(
+          map((outcome): ApplicationRecoveryAdapterOutcome => {
+            if (outcome.kind === 'completed') {
+              this.preferenceResetAttempt = null;
+              return { kind: 'ready' };
+            }
+            if (outcome.kind === 'partial') {
+              this.preferenceResetAttempt = outcome.attempt;
+            }
+            return { kind: 'unavailable', reason: 'recovery-failed' };
+          }),
           catchError(() =>
             of({ kind: 'unavailable', reason: 'recovery-failed' } as const),
           ),
@@ -434,8 +371,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
     return this.session.run(readiness);
   }
 
-  runPreferenceLifetime(): Observable<ApplicationRuntimeWarning> {
-    return this.appearanceEffects.run().pipe(ignoreElements());
+  runPreferenceLifetime(): Observable<never> {
+    return this.preferenceEffects.run();
   }
 
   private initialWorkspaceNavigation(): Observable<boolean> {

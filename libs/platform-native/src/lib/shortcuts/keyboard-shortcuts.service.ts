@@ -1,5 +1,10 @@
 import { Injectable, computed, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import {
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+} from '../preference-initialization';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
 import {
   hasModifier,
@@ -209,17 +214,22 @@ export class KeyboardShortcutsService {
   });
 
   /** Load persisted overrides. Call once at app startup (before any shortcut fires). */
-  async init(): Promise<void> {
+  async init(): Promise<PreferenceInitializationOutcome> {
+    let value: string | null;
     try {
-      const { value } = await Preferences.get({ key: OVERRIDES_KEY });
-      if (value) {
-        // Checked, not trusted: this used to parse straight into the signal, so a malformed
-        // binding written by an older build (or by hand) reached `resolve` on every keystroke
-        // for the life of the session. Anything unrecognised falls back to its default.
-        this.overrides.set(acceptedOverrides(JSON.parse(value)));
-      }
+      ({ value } = await Preferences.get({ key: OVERRIDES_KEY }));
     } catch {
-      // Absent or corrupt → start with the defaults.
+      return preferenceInitializationDefaulted('storage-unavailable');
+    }
+    if (!value) return preferenceInitializationReady;
+    try {
+      // Checked, not trusted: this used to parse straight into the signal, so a malformed
+      // binding written by an older build (or by hand) reached `resolve` on every keystroke
+      // for the life of the session. Anything unrecognised falls back to its default.
+      this.overrides.set(acceptedOverrides(JSON.parse(value)));
+      return preferenceInitializationReady;
+    } catch {
+      return preferenceInitializationDefaulted('invalid-stored-value');
     }
   }
 

@@ -10,6 +10,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { DevicePreferenceStorageService } from '@trinity/platform-native';
 import {
   Observable,
+  catchError,
   defer,
   firstValueFrom,
   from,
@@ -45,6 +46,25 @@ type OrderKey = 'default' | 'overrides';
 type Change = (order: AccountOrder) => AccountOrder;
 
 const EMPTY: AccountOrder = { fallback: DEFAULT_ROOM_SORT, bySpace: {} };
+
+export type RoomOrderHydrationSettlement =
+  | { readonly accountId: string; readonly kind: 'ready' }
+  | {
+      readonly accountId: string;
+      readonly kind: 'defaulted';
+      readonly diagnostic: { readonly code: 'room-order-storage-unavailable' };
+    }
+  | { readonly accountId: string; readonly kind: 'not-applicable' };
+
+export interface RoomOrderHydrationOutcome {
+  readonly kind: 'ready' | 'partial';
+  readonly accounts: readonly RoomOrderHydrationSettlement[];
+}
+
+export interface RoomOrderRuntimeEvent {
+  readonly kind: 'reconciled';
+  readonly accounts: readonly RoomOrderHydrationSettlement[];
+}
 
 /**
  * How rooms are ordered inside a space: a per-account default plus per-space overrides.
@@ -108,30 +128,78 @@ export class SpaceRoomOrderService {
    * Hydrate whatever accounts are already known during the session-capabilities stage.
    * Cold and finite: Application Runtime decides when startup may advance.
    */
-  hydrateKnownAccounts(): Observable<void> {
+  hydrateKnownAccounts(): Observable<RoomOrderHydrationOutcome> {
     return defer(() =>
       from(
-        Promise.all(this.matrix.accountIds().map((id) => this.hydrate(id))),
-      ).pipe(map(() => undefined)),
+        Promise.all(
+          this.knownAccountIds().map((id) =>
+            firstValueFrom(this.retryHydration(id)),
+          ),
+        ),
+      ).pipe(map(roomOrderOutcome)),
     );
+  }
+
+  /** Stable Account identities for composition; never include them in diagnostics. */
+  knownAccountIds(): readonly string[] {
+    return this.matrix.accountIds();
+  }
+
+  /** Retry one exact Account scope, joining an already-owned read when one is in flight. */
+  retryHydration(accountId: string): Observable<RoomOrderHydrationSettlement> {
+    return defer(() => {
+      if (!this.matrix.accountIds().includes(accountId)) {
+        return of({ accountId, kind: 'not-applicable' } as const);
+      }
+      return from(this.hydrate(accountId)).pipe(
+        map((hydrated): RoomOrderHydrationSettlement =>
+          hydrated
+            ? { accountId, kind: 'ready' }
+            : {
+                accountId,
+                kind: 'defaulted',
+                diagnostic: { code: 'room-order-storage-unavailable' },
+              },
+        ),
+        catchError(() =>
+          of({
+            accountId,
+            kind: 'defaulted',
+            diagnostic: { code: 'room-order-storage-unavailable' },
+          } as const),
+        ),
+      );
+    });
   }
 
   /**
    * Keep later sign-ins hydrated for one Application Runtime session. The subscriber owns
    * the signal effect, so stop/restart cannot retain an observer from an earlier session.
    */
-  run(): Observable<void> {
-    return new Observable(() => {
+  run(): Observable<RoomOrderRuntimeEvent> {
+    return new Observable((subscriber) => {
+      let generation = 0;
       const hydration = effect(
         () => {
           // Keyed on accountIds rather than activeUserId so an account is warm before a switch.
-          for (const userId of this.matrix.accountIds()) {
-            void this.hydrate(userId).catch(() => undefined);
-          }
+          const accountIds = [...this.matrix.accountIds()];
+          const current = ++generation;
+          void Promise.all(
+            accountIds.map((accountId) =>
+              firstValueFrom(this.retryHydration(accountId)),
+            ),
+          ).then((accounts) => {
+            if (generation === current && !subscriber.closed) {
+              subscriber.next({ kind: 'reconciled', accounts });
+            }
+          });
         },
         { injector: this.injector },
       );
-      return () => hydration.destroy();
+      return () => {
+        generation += 1;
+        hydration.destroy();
+      };
     });
   }
 
@@ -261,6 +329,20 @@ export class SpaceRoomOrderService {
     }
     return true;
   }
+}
+
+function roomOrderOutcome(
+  accounts: readonly RoomOrderHydrationSettlement[],
+): RoomOrderHydrationOutcome {
+  return {
+    kind: accounts.every(
+      (account) =>
+        account.kind === 'ready' || account.kind === 'not-applicable',
+    )
+      ? 'ready'
+      : 'partial',
+    accounts,
+  };
 }
 
 /**

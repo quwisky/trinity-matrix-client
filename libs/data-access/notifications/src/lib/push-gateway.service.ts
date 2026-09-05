@@ -3,6 +3,10 @@ import { firstValueFrom } from 'rxjs';
 import {
   DevicePreferenceStorageService,
   NativePushRegistrationService,
+  combinePreferenceInitialization,
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
 } from '@trinity/platform-native';
 import { normalizeGatewayUrl } from './push-gateway-url';
 import { PUSH_CONFIG, type PushConfig } from './push-config';
@@ -34,6 +38,11 @@ const APPLIED_KEY = 'trinity.push.applied-app-id';
 interface StoredGateway {
   readonly gatewayUrl: string;
   readonly appId?: string;
+}
+
+interface StoredGatewayLoad {
+  readonly legacyApplied?: string;
+  readonly outcome: PreferenceInitializationOutcome;
 }
 
 /**
@@ -97,8 +106,10 @@ export class PushGatewayService {
   readonly supported = computed(() => this.nativePush.supported());
 
   /** Read the saved override + the applied-id ledger. Wired as an app initializer. */
-  async init(): Promise<void> {
-    await this.loadAppliedAppId(await this.loadOverride());
+  async init(): Promise<PreferenceInitializationOutcome> {
+    const override = await this.loadOverride();
+    const ledger = await this.loadAppliedAppId(override.legacyApplied);
+    return combinePreferenceInitialization([override.outcome, ledger]);
   }
 
   /**
@@ -107,52 +118,73 @@ export class PushGatewayService {
    * @returns the ledger value from the legacy in-blob field, if this install predates
    * {@link APPLIED_KEY} — the caller migrates it.
    */
-  private async loadOverride(): Promise<string | undefined> {
+  private async loadOverride(): Promise<StoredGatewayLoad> {
+    let value: string | null;
     try {
-      const value = await firstValueFrom(this.storage.get(STORAGE_KEY));
-      const stored = value
-        ? (JSON.parse(value) as Partial<StoredGateway> & {
-            appliedAppId?: unknown;
-          })
-        : null;
-      if (!stored || typeof stored.gatewayUrl !== 'string') {
-        return undefined;
-      }
-      const legacyApplied =
-        typeof stored.appliedAppId === 'string'
-          ? stored.appliedAppId
-          : undefined;
-      // Re-validate on load: the blob could be hand-edited, or written by a build whose
-      // rules differed. Normalising is idempotent, so a good value survives untouched.
-      const check = normalizeGatewayUrl(stored.gatewayUrl);
-      if (!check.ok) {
-        return legacyApplied;
-      }
-      this._override.set({
-        gatewayUrl: check.url,
-        appId: typeof stored.appId === 'string' ? stored.appId : undefined,
-      });
-      return legacyApplied;
+      value = await firstValueFrom(this.storage.get(STORAGE_KEY));
     } catch {
-      // No stored override, or storage/parse failure → the build-time default applies.
-      return undefined;
+      return {
+        outcome: preferenceInitializationDefaulted('storage-unavailable'),
+      };
     }
+    if (!value) return { outcome: preferenceInitializationReady };
+    let stored: Partial<StoredGateway> & { appliedAppId?: unknown };
+    try {
+      stored = JSON.parse(value) as Partial<StoredGateway> & {
+        appliedAppId?: unknown;
+      };
+    } catch {
+      return {
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
+    }
+    if (typeof stored.gatewayUrl !== 'string') {
+      return {
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
+    }
+    const legacyApplied =
+      typeof stored.appliedAppId === 'string' ? stored.appliedAppId : undefined;
+    // Re-validate on load: the blob could be hand-edited, or written by a build whose
+    // rules differed. Normalising is idempotent, so a good value survives untouched.
+    const check = normalizeGatewayUrl(stored.gatewayUrl);
+    if (!check.ok) {
+      return {
+        legacyApplied,
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
+    }
+    this._override.set({
+      gatewayUrl: check.url,
+      appId: typeof stored.appId === 'string' ? stored.appId : undefined,
+    });
+    return { legacyApplied, outcome: preferenceInitializationReady };
   }
 
-  private async loadAppliedAppId(legacy: string | undefined): Promise<void> {
-    const value = await firstValueFrom(this.storage.get(APPLIED_KEY)).catch(
-      () => null,
-    );
+  private async loadAppliedAppId(
+    legacy: string | undefined,
+  ): Promise<PreferenceInitializationOutcome> {
+    let value: string | null;
+    try {
+      value = await firstValueFrom(this.storage.get(APPLIED_KEY));
+    } catch {
+      return preferenceInitializationDefaulted('storage-unavailable');
+    }
     if (typeof value === 'string' && value) {
       this._appliedAppId.set(value);
-      return;
+      return preferenceInitializationReady;
     }
     if (legacy) {
       this._appliedAppId.set(legacy);
-      await firstValueFrom(this.storage.set(APPLIED_KEY, legacy)).catch(
-        () => undefined,
-      );
+      try {
+        await firstValueFrom(this.storage.set(APPLIED_KEY, legacy));
+      } catch {
+        return preferenceInitializationDefaulted('storage-unavailable');
+      }
     }
+    return value === ''
+      ? preferenceInitializationDefaulted('invalid-stored-value')
+      : preferenceInitializationReady;
   }
 
   /**

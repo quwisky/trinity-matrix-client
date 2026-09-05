@@ -1,5 +1,12 @@
 import { Injectable, signal } from '@angular/core';
 import { Preferences } from '@capacitor/preferences';
+import {
+  combinePreferenceInitialization,
+  preferenceInitializationDefaulted,
+  preferenceInitializationReady,
+  type PreferenceInitializationOutcome,
+  type PreferenceInitializationRead,
+} from './preference-initialization';
 
 const MEMBERSHIP_KEY = 'trinity.timeline.show-membership';
 const PROFILE_KEY = 'trinity.timeline.show-profile';
@@ -38,14 +45,20 @@ export class SystemLineSettingsService {
   readonly showRoomChanges = this._showRoomChanges.asReadonly();
 
   /** Read the saved preferences and apply them. Call once at app startup. */
-  async init(): Promise<void> {
-    this._showMembership.set(
-      await this.read(MEMBERSHIP_KEY, DEFAULT_SHOW_MEMBERSHIP),
-    );
-    this._showProfile.set(await this.read(PROFILE_KEY, DEFAULT_SHOW_PROFILE));
-    this._showRoomChanges.set(
-      await this.read(ROOM_CHANGES_KEY, DEFAULT_SHOW_ROOM_CHANGES),
-    );
+  async init(): Promise<PreferenceInitializationOutcome> {
+    const [membership, profile, roomChanges] = await Promise.all([
+      this.read(MEMBERSHIP_KEY, DEFAULT_SHOW_MEMBERSHIP),
+      this.read(PROFILE_KEY, DEFAULT_SHOW_PROFILE),
+      this.read(ROOM_CHANGES_KEY, DEFAULT_SHOW_ROOM_CHANGES),
+    ]);
+    this._showMembership.set(membership.value);
+    this._showProfile.set(profile.value);
+    this._showRoomChanges.set(roomChanges.value);
+    return combinePreferenceInitialization([
+      membership.outcome,
+      profile.outcome,
+      roomChanges.outcome,
+    ]);
   }
 
   /** Toggle + persist whether membership lines are shown. */
@@ -66,12 +79,30 @@ export class SystemLineSettingsService {
     this.persist(ROOM_CHANGES_KEY, on);
   }
 
-  private async read(key: string, fallback: boolean): Promise<boolean> {
+  private async read(
+    key: string,
+    fallback: boolean,
+  ): Promise<PreferenceInitializationRead<boolean>> {
     try {
       const { value } = await Preferences.get({ key });
-      return value === null ? fallback : value === 'true';
+      if (value === null) {
+        return { value: fallback, outcome: preferenceInitializationReady };
+      }
+      if (value === 'true' || value === 'false') {
+        return {
+          value: value === 'true',
+          outcome: preferenceInitializationReady,
+        };
+      }
+      return {
+        value: fallback,
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
     } catch {
-      return fallback; // storage unavailable → keep the default
+      return {
+        value: fallback,
+        outcome: preferenceInitializationDefaulted('storage-unavailable'),
+      };
     }
   }
 

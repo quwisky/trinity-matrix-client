@@ -22,6 +22,43 @@ export type ConfigValue =
 export type ConfigSettings = { readonly [key: string]: ConfigValue };
 export type ConfigAction = void | Promise<void> | Observable<unknown>;
 
+/** Finite caller observation; an already-started setter remains owned after this deadline. */
+export const CONFIG_RESET_OBSERVATION_BUDGET_MS = 10_000;
+
+export type ConfigResetEntryOutcome =
+  | {
+      readonly entry: string;
+      readonly status: 'queued' | 'in-progress' | 'completed';
+    }
+  | {
+      readonly entry: string;
+      readonly status: 'failed';
+      readonly diagnostic: { readonly code: 'config-reset-entry-failed' };
+    };
+
+/** Value-free progress for one reset attempt across the exact exported catalogue. */
+export interface ConfigResetLedger {
+  readonly attempt: number;
+  readonly status: 'running' | 'settled';
+  readonly entries: readonly ConfigResetEntryOutcome[];
+}
+
+export type ConfigResetOutcome =
+  | {
+      readonly kind: 'completed';
+      readonly attempt: number;
+      readonly entries: readonly ConfigResetEntryOutcome[];
+    }
+  | {
+      readonly kind: 'partial';
+      readonly attempt: number;
+      readonly entries: readonly ConfigResetEntryOutcome[];
+    }
+  | {
+      readonly kind: 'unavailable';
+      readonly reason: 'stale-attempt' | 'nothing-to-retry';
+    };
+
 /**
  * A JSON type name, spelled exactly as JSON Schema spells it.
  *

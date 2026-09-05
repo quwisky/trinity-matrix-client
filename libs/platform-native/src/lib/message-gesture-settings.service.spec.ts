@@ -44,7 +44,7 @@ describe('MessageGestureSettingsService', () => {
     // layered onto a scrolling timeline changes how the app answers a drag people already
     // make, and the conflicts it dodges are with recognisers no test can install.
     const service = build();
-    await service.init();
+    await expect(service.init()).resolves.toEqual({ kind: 'ready' });
 
     expect(service.messageSwipe()).toBe('off');
   });
@@ -64,7 +64,10 @@ describe('MessageGestureSettingsService', () => {
     stored[KEY] = 'diagonal';
     const service = build();
 
-    await service.init();
+    await expect(service.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'invalid-stored-value',
+    });
 
     expect(service.messageSwipe()).toBe('off');
   });
@@ -82,7 +85,10 @@ describe('MessageGestureSettingsService', () => {
     get.mockRejectedValue(new Error('no storage'));
     const service = build();
 
-    await service.init();
+    await expect(service.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
 
     expect(service.messageSwipe()).toBe('off');
   });

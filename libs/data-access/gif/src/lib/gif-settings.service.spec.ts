@@ -48,7 +48,20 @@ describe('GifSettingsService', () => {
 
   it('ignores a malformed persisted value', async () => {
     prefs.get.mockResolvedValue({ value: '{not json' });
-    await svc.init();
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'invalid-stored-value',
+    });
+    expect(svc.configured()).toBe(false);
+  });
+
+  it('reports its unconfigured default when storage is unavailable', async () => {
+    prefs.get.mockRejectedValue(new Error('apiKey=do-not-export'));
+
+    await expect(svc.init()).resolves.toEqual({
+      kind: 'defaulted',
+      reason: 'storage-unavailable',
+    });
     expect(svc.configured()).toBe(false);
   });
 

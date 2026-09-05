@@ -40,3 +40,19 @@ export function optionalProducerDegraded(
     },
   };
 }
+
+/** A producer whose scoped health replaces the legacy global warning surface. */
+export function optionalProducerHealthDegraded(
+  producer: ApplicationStartupProducer,
+  code: string,
+): OptionalProducerOutcome {
+  return {
+    warnings: [],
+    settlement: {
+      producer,
+      stage: 'session-capabilities',
+      status: 'degraded',
+      diagnostic: { code },
+    },
+  };
+}

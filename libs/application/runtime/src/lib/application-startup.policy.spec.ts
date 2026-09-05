@@ -1,5 +1,6 @@
 import { ROOM_LIBRARY_PREPARATION_BUDGET_MS } from '@trinity/data-access/room-library';
 import { describe, expect, it } from 'vitest';
+import { APPLICATION_STARTUP_STAGES } from './application-runtime.models';
 import {
   APPLICATION_STARTUP_PRODUCER_POLICIES,
   APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
@@ -28,17 +29,27 @@ describe('Application startup producer policy', () => {
     );
     expect(
       APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
-    ).toMatchObject({ compatibility: true, required: false });
+    ).toMatchObject({ budgetMs: 10_000, required: false });
+    expect(
+      'compatibility' in
+        APPLICATION_STARTUP_PRODUCER_POLICIES['preference-hydration'],
+    ).toBe(false);
     expect(REQUIRED_STARTUP_PRODUCER_COMPATIBILITY).toHaveLength(0);
   });
 
-  it('budgets the watchdog beyond the full required staged path', () => {
-    const requiredPath = Object.values(APPLICATION_STARTUP_PRODUCER_POLICIES)
-      .filter((policy) => policy.required)
-      .reduce((total, policy) => total + policy.budgetMs, 0);
-
-    expect(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS).toBeGreaterThan(
-      requiredPath,
+  it('budgets the watchdog for every serial stage and its longest parallel producer', () => {
+    const completeStagedPath = APPLICATION_STARTUP_STAGES.reduce(
+      (total, stage) =>
+        total +
+        Math.max(
+          ...Object.values(APPLICATION_STARTUP_PRODUCER_POLICIES)
+            .filter((policy) => policy.stage === stage)
+            .map((policy) => policy.budgetMs),
+        ),
+      0,
     );
+
+    expect(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS).toBe(completeStagedPath);
+    expect(APPLICATION_STARTUP_WATCHDOG_BUDGET_MS).toBe(230_000);
   });
 });
