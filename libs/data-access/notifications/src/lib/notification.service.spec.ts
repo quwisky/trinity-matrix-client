@@ -8,7 +8,7 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { EMPTY, Subject, Subscription, of } from 'rxjs';
+import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import type {
@@ -24,6 +24,7 @@ import {
   type HostCapabilitySupport,
 } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
+import type { NotificationPresentationHealth } from './notification-health.models';
 
 const cap = vi.hoisted(() => ({ native: false }));
 vi.mock('@capacitor/core', () => ({
@@ -126,16 +127,19 @@ function setup(
   });
   const service = TestBed.inject(NotificationService);
   const activations: NotificationDestination[] = [];
-  const warnings: string[] = [];
+  const health: string[] = [];
+  const healthFacts: NotificationPresentationHealth[] = [];
+  const incidents: string[] = [];
   let lifetime: Subscription | null = null;
   const svc = Object.assign(service, {
     connect: (): void => {
       lifetime = service.run().subscribe((event: NotificationRuntimeEvent) => {
         if (event.kind === 'activated') {
           activations.push(event.destination);
-        } else {
-          warnings.push(event.diagnostic.code);
-        }
+        } else if (event.kind === 'health') {
+          health.push(event.fact.code);
+          healthFacts.push(event.fact);
+        } else incidents.push(event.incident.code);
       });
     },
     disconnect: (): void => {
@@ -152,7 +156,9 @@ function setup(
     accountIds,
     timeline,
     activations,
-    warnings,
+    health,
+    healthFacts,
+    incidents,
   };
 }
 
@@ -467,37 +473,36 @@ describe('NotificationService', () => {
 
   it('does not attach delivery listeners without granted permission', () => {
     MockNotification.permission = 'denied';
-    const { svc, client, warnings } = setup();
+    const { svc, client, health } = setup();
     svc.connect();
 
     expect(client.on).not.toHaveBeenCalled();
     expect(MockNotification.instances).toHaveLength(0);
-    expect(warnings).toEqual(['notification-permission-failed']);
+    expect(health.at(-1)).toBe('notification-presentation-disabled');
   });
 
   it('does not track a synchronous warning consumer as an account dependency', () => {
     MockNotification.permission = 'denied';
     const { svc } = setup();
-    const runtimeWarnings = signal<readonly string[]>([]);
+    const runtimeHealth = signal<readonly string[]>([]);
     const lifetime = svc.run().subscribe((event) => {
-      if (event.kind !== 'warning') return;
-      const current = runtimeWarnings();
-      runtimeWarnings.set([...current, event.diagnostic.code]);
+      if (event.kind !== 'health') return;
+      const current = runtimeHealth();
+      runtimeHealth.set([...current, event.fact.code]);
     });
 
     const appRef = TestBed.inject(ApplicationRef);
     expect(() => appRef.tick()).not.toThrow();
-    const afterInitialReconciliation = runtimeWarnings();
-    expect(afterInitialReconciliation).toEqual([
-      'notification-permission-failed',
-      'notification-permission-failed',
-    ]);
+    const afterInitialReconciliation = runtimeHealth();
+    expect(afterInitialReconciliation).toContain(
+      'notification-presentation-disabled',
+    );
 
-    runtimeWarnings.set([...afterInitialReconciliation, 'unrelated-warning']);
+    runtimeHealth.set([...afterInitialReconciliation, 'unrelated-health']);
     expect(() => appRef.tick()).not.toThrow();
-    expect(runtimeWarnings()).toEqual([
+    expect(runtimeHealth()).toEqual([
       ...afterInitialReconciliation,
-      'unrelated-warning',
+      'unrelated-health',
     ]);
     lifetime.unsubscribe();
   });
@@ -508,7 +513,7 @@ describe('NotificationService', () => {
     const { svc, client } = setup({
       hostNotifications: {
         support: () => of({ kind: 'supported' as const }),
-        activated: EMPTY,
+        activated: NEVER,
         requestPermission: () => of({ kind: 'completed' as const }),
         present,
       },
@@ -582,7 +587,7 @@ describe('NotificationService', () => {
     const { svc, client } = setup({
       hostNotifications: {
         support: () => support,
-        activated: EMPTY,
+        activated: NEVER,
         requestPermission,
         present: () => of({ kind: 'completed' } as const),
       },
@@ -598,11 +603,49 @@ describe('NotificationService', () => {
     expect(requestPermission).not.toHaveBeenCalled();
   });
 
-  it('warns on a permission failure without attaching or ending the session', () => {
-    const { svc, client, warnings } = setup({
+  it('reports released activation ownership and reattaches it through exact recovery', async () => {
+    const firstOwner = new Subject<NotificationDestination>();
+    const retainedOwner = new Subject<NotificationDestination>();
+    let ownerAttempt = 0;
+    const support = vi.fn(() => of({ kind: 'supported' as const }));
+    const hostNotifications = {
+      support,
+      activated: defer(() => {
+        ownerAttempt += 1;
+        return ownerAttempt === 1 ? firstOwner : retainedOwner;
+      }),
+      requestPermission: () => of({ kind: 'completed' as const }),
+      present: () => of({ kind: 'completed' as const }),
+    };
+    const { svc, client, health, healthFacts } = setup({
+      hostNotifications,
+    });
+
+    svc.connect();
+    firstOwner.complete();
+
+    expect(health.at(-1)).toBe('notification-activation-ownership-released');
+    expect(client.off).toHaveBeenCalledWith(
+      RoomEvent.Timeline,
+      expect.any(Function),
+    );
+    const released = healthFacts.at(-1)!;
+
+    await expect(
+      lastValueFrom(
+        svc.recoverPresentation(released.context, released.generation),
+      ),
+    ).resolves.toEqual({ kind: 'success' });
+    expect(support).toHaveBeenCalledTimes(2);
+    expect(health.at(-1)).toBe('notification-presentation-ready');
+    expect(client.on).toHaveBeenCalledTimes(6);
+  });
+
+  it('reports disabled permission without attaching or ending the session', () => {
+    const { svc, client, health } = setup({
       hostNotifications: {
         support: () => of({ kind: 'supported' as const }),
-        activated: EMPTY,
+        activated: NEVER,
         requestPermission: () =>
           of({
             kind: 'rejected' as const,
@@ -614,13 +657,13 @@ describe('NotificationService', () => {
 
     svc.connect();
 
-    expect(warnings).toEqual(['notification-permission-failed']);
+    expect(health.at(-1)).toBe('notification-presentation-disabled');
     expect(client.on).not.toHaveBeenCalled();
   });
 
-  it('warns on a presenter rejection while keeping activation delivery alive', () => {
+  it('reports a presenter rejection as an incident while keeping activation delivery alive', () => {
     const activated = new Subject<NotificationDestination>();
-    const { svc, client, warnings, activations } = setup({
+    const { svc, client, incidents, activations } = setup({
       hostNotifications: {
         support: () => of({ kind: 'supported' as const }),
         activated,
@@ -640,7 +683,7 @@ describe('NotificationService', () => {
       eventId: '$event',
     });
 
-    expect(warnings).toEqual(['notification-presentation-failed']);
+    expect(incidents).toEqual(['notification-presentation-failed']);
     expect(activations).toEqual([
       {
         accountId: '@me:hs',

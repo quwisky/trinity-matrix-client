@@ -552,6 +552,18 @@ describe('PushService', () => {
     expect(h.push.register).toHaveBeenCalledTimes(1);
   });
 
+  it('restarts an in-progress OS-registration flow only through exact retry', async () => {
+    const { svc } = setup();
+
+    await firstValueFrom(svc.register());
+    await firstValueFrom(svc.register());
+    expect(h.push.register).toHaveBeenCalledOnce();
+
+    await firstValueFrom(svc.retryRegistration());
+    expect(h.push.requestPermissions).toHaveBeenCalledTimes(2);
+    expect(h.push.register).toHaveBeenCalledTimes(2);
+  });
+
   it('re-applies pushers for all accounts on a repeat register (new account)', async () => {
     const { svc, clients } = setup({ accounts: ['@me:hs'] });
 

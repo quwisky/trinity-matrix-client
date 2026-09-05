@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Room notification rules, notification presentation, native push registration, app badges and
+  update checks now report separate scoped health. Room-rule recovery reattaches released
+  projection ownership without implying that delivery failed; unsupported or disabled hosts stay
+  expected states. Failed notification navigation/presentation, badge writes and host Back or
+  deep-link actions are contextual incidents with safe feedback rather than permanent startup
+  warnings. Native-push listeners and finite host checks have targeted, generation-safe retry,
+  privacy-safe diagnostics and explicit fallbacks while messaging and Workspace remain usable.
+
 - Trust now distinguishes coherent current encryption health from explicitly stale or unavailable
   state, so failed crypto reads cannot imply verification, unlock readiness or disabled backup.
   Application Runtime reports opaque active-Account Trust health with bounded scoped recovery,

@@ -137,6 +137,11 @@ work reaches readiness, Application Runtime opens the readiness gate and starts 
 streams while retaining preparation lifetimes. This ordering prevents Workspace from targeting an unprepared
 account projection.
 
+Notification Room-rule health is independent from host presentation and native push registration.
+Application Runtime keeps their exact recovery owners while treating individual presentation,
+activation, badge-write, deep-link and Back failures as contextual incidents. Unsupported and
+disabled host functions remain expected states, and all copied diagnostics are value-free.
+
 Unsubscribing from the runtime's owned subscription stops it. Callers should not
 start a second runtime subscription or create competing session lifetimes.
 

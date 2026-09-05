@@ -53,6 +53,24 @@ describe('ActiveAccountProjectionLifetime', () => {
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
+  it('limits readiness to the projections owned by the lifetime', () => {
+    const projectionIds = ['owned.one', 'owned.two'] as const;
+    const lifetime = TestBed.inject(ActiveAccountProjectionLifetime)
+      .run({
+        activeAccountId: activeAccountId.asReadonly(),
+        projectionIds,
+        runProjection,
+      })
+      .subscribe();
+
+    expect(waitFor).toHaveBeenCalledWith(
+      { kind: 'active-account' },
+      projectionIds,
+    );
+
+    lifetime.unsubscribe();
+  });
+
   it('stays dormant without demand and follows later demand changes', () => {
     demanded.set(false);
     const prepared = vi.fn();

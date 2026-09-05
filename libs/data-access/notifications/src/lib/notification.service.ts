@@ -17,12 +17,17 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { NotificationSoundService } from './notification-sound.service';
-import { Observable, Subscriber, Subscription, take } from 'rxjs';
+import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
 import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
+import type {
+  CapabilityContext,
+  CapabilityRecoveryOutcome,
+} from '@trinity/runtime/projection';
+import { NotificationPresentationHealthTracker } from './notification-presentation-health';
 
 /** One account's client plus its bound timeline / decrypted listeners. */
 interface AccountNotifier {
@@ -95,7 +100,9 @@ export class NotificationService {
   private readonly notifiers = new Map<string, AccountNotifier>();
 
   private connection: Subscription | null = null;
+  private presentationConnection = new Subscription();
   private runtimeSubscriber: Subscriber<NotificationRuntimeEvent> | null = null;
+  private readonly health = new NotificationPresentationHealthTracker();
 
   /**
    * Live, still-encrypted events seen on the timeline that we deferred until
@@ -149,6 +156,7 @@ export class NotificationService {
       this.connection = connection;
       this.runtimeSubscriber = subscriber;
       this.enabled = true;
+      this.health.start((event) => subscriber.next(event));
       this.reconcile(this.matrix.accountIds());
       return () => this.stop(connection);
     });
@@ -158,10 +166,13 @@ export class NotificationService {
     if (owner !== this.connection) return;
     this.connection?.unsubscribe();
     this.connection = null;
+    this.presentationConnection.unsubscribe();
+    this.presentationConnection = new Subscription();
     this.runtimeSubscriber = null;
     this.enabled = false;
     this.presentationReady = false;
     this.presentationPreparing = false;
+    this.health.reset();
     for (const notifier of this.notifiers.values()) {
       this.detach(notifier);
     }
@@ -183,6 +194,13 @@ export class NotificationService {
       this.notifiers.clear();
       this.pendingDecryption.clear();
       this.notified.clear();
+      this.releasePresentation();
+      this.health.publish(
+        'not-applicable',
+        'notification-presentation-not-demanded',
+        'acknowledged',
+        false,
+      );
       return;
     }
     if (!this.presentationReady) {
@@ -222,66 +240,105 @@ export class NotificationService {
   private preparePresentation(): void {
     if (this.presentationPreparing || !this.connection) return;
     this.presentationPreparing = true;
+    this.health.begin();
     const connection = this.connection;
-    connection.add(
+    this.presentationConnection = new Subscription();
+    connection.add(this.presentationConnection);
+    this.presentationConnection.add(
       this.presenter
         .support()
-        .pipe(take(1))
+        .pipe(take(1), timeout(10_000))
         .subscribe({
           next: (support) => {
             if (connection.closed) return;
             if (support.kind === 'unavailable') {
               this.presentationPreparing = false;
-              if (
-                support.reason !== 'not-supported' &&
-                support.reason !== 'not-implemented'
-              ) {
-                this.warn('notification-presentation-unavailable');
-              }
+              const expected =
+                support.reason === 'not-supported' ||
+                support.reason === 'not-implemented';
+              this.health.publish(
+                expected ? 'not-applicable' : 'degraded',
+                expected
+                  ? 'notification-presentation-unsupported'
+                  : 'notification-presentation-unavailable',
+                expected ? 'acknowledged' : 'failed',
+                true,
+              );
               return;
             }
-            connection.add(
+            this.presentationConnection.add(
               this.presenter.activated.subscribe({
                 next: (destination) =>
                   this.runtimeSubscriber?.next({
                     kind: 'activated',
                     destination,
                   }),
-                error: () =>
-                  this.warn('notification-activation-listener-failed'),
+                error: () => this.presentationOwnershipReleased(),
+                complete: () => this.presentationOwnershipReleased(),
               }),
             );
-            connection.add(
+            this.presentationConnection.add(
               this.presenter
                 .requestPermission()
-                .pipe(take(1))
+                .pipe(take(1), timeout(10_000))
                 .subscribe({
                   next: (outcome) => {
                     this.presentationPreparing = false;
                     if (connection.closed) return;
                     if (outcome.kind !== 'completed') {
-                      if (
-                        outcome.kind === 'rejected' ||
-                        (outcome.reason !== 'not-supported' &&
-                          outcome.reason !== 'not-implemented')
-                      ) {
-                        this.warn('notification-permission-failed');
-                      }
+                      const denied =
+                        outcome.kind === 'rejected' &&
+                        outcome.diagnostic.code ===
+                          'notification-permission-denied';
+                      const unsupported =
+                        outcome.kind === 'unavailable' &&
+                        (outcome.reason === 'not-supported' ||
+                          outcome.reason === 'not-implemented');
+                      this.health.publish(
+                        denied
+                          ? 'disabled'
+                          : unsupported
+                            ? 'not-applicable'
+                            : 'degraded',
+                        denied
+                          ? 'notification-presentation-disabled'
+                          : unsupported
+                            ? 'notification-presentation-unsupported'
+                            : 'notification-presentation-unavailable',
+                        denied || unsupported ? 'acknowledged' : 'failed',
+                        true,
+                      );
                       return;
                     }
                     this.presentationReady = true;
+                    this.health.publish(
+                      'available',
+                      'notification-presentation-ready',
+                      'acknowledged',
+                      true,
+                    );
                     this.reconcile(this.matrix.accountIds());
                   },
                   error: () => {
                     this.presentationPreparing = false;
-                    this.warn('notification-permission-failed');
+                    this.health.publish(
+                      'degraded',
+                      'notification-presentation-unavailable',
+                      'failed',
+                      true,
+                    );
                   },
                 }),
             );
           },
           error: () => {
             this.presentationPreparing = false;
-            this.warn('notification-presentation-negotiation-failed');
+            this.health.publish(
+              'degraded',
+              'notification-presentation-unavailable',
+              'failed',
+              false,
+            );
           },
         }),
     );
@@ -422,16 +479,51 @@ export class NotificationService {
       .subscribe({
         next: (outcome) => {
           if (outcome.kind !== 'completed') {
-            this.warn('notification-presentation-failed');
+            this.health.incident(
+              'presentation-command',
+              'notification-presentation-failed',
+            );
           }
         },
-        error: () => this.warn('notification-presentation-failed'),
+        error: () =>
+          this.health.incident(
+            'presentation-command',
+            'notification-presentation-failed',
+          ),
       });
     this.connection?.add(subscription);
   }
 
-  private warn(code: string): void {
-    this.runtimeSubscriber?.next({ kind: 'warning', diagnostic: { code } });
+  recoverPresentation(
+    context: CapabilityContext,
+    generation: number,
+  ): Observable<CapabilityRecoveryOutcome> {
+    return this.health.recover(context, generation, () => {
+      this.releasePresentation();
+      this.preparePresentation();
+    });
+  }
+
+  private releasePresentation(): void {
+    this.presentationConnection.unsubscribe();
+    this.presentationConnection = new Subscription();
+    this.presentationReady = false;
+    this.presentationPreparing = false;
+    for (const notifier of this.notifiers.values()) {
+      this.detach(notifier);
+    }
+    this.notifiers.clear();
+  }
+
+  private presentationOwnershipReleased(): void {
+    if (!this.enabled) return;
+    this.releasePresentation();
+    this.health.publish(
+      'degraded',
+      'notification-activation-ownership-released',
+      'failed',
+      false,
+    );
   }
 
   /** Namespace a dedupe key by account so two accounts don't share event ids. */

@@ -165,13 +165,29 @@ export class ProjectionRuntime {
     );
   }
 
-  waitFor(scope: ProjectionScope): Observable<ProjectionReadiness> {
+  /**
+   * Wait for the current generations in `scope`.
+   *
+   * A capability-owned lifetime can name its projections so an unrelated
+   * sibling failure cannot poison its readiness barrier.
+   */
+  waitFor(
+    scope: ProjectionScope,
+    projectionIds?: readonly string[],
+  ): Observable<ProjectionReadiness> {
     return defer(
       () =>
         new Observable<ProjectionReadiness>((subscriber) => {
           const startedAt = performance.now();
+          const includedIds = projectionIds
+            ? new Set(projectionIds)
+            : undefined;
           const keys = [...this.entries.values()]
-            .filter((entry) => sameScope(entry.definition.scope, scope))
+            .filter(
+              (entry) =>
+                sameScope(entry.definition.scope, scope) &&
+                (!includedIds || includedIds.has(entry.definition.id)),
+            )
             .map((entry) => entry.key);
           let finished = false;
 

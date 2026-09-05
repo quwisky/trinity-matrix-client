@@ -31,6 +31,7 @@ import {
 } from '@trinity/data-access/identity';
 import {
   NotificationLifetime,
+  NativePushLifetime,
   NotificationService,
   PushGatewayService,
   PushService,
@@ -231,6 +232,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(PushService, {
           run: () => EMPTY,
         }),
+        MockProvider(NativePushLifetime, {
+          run: () => EMPTY,
+          recover: () => of({ kind: 'success' as const }),
+        }),
         MockProvider(BadgeCoordinator, { run: () => badgeSession }),
         MockProvider(NotificationService, { run: () => notificationSession }),
         MockProvider(SwUpdate, {
@@ -252,8 +257,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
           navigate: () => of({ kind: 'ready', change: 'committed' }),
         }),
         MockProvider(NativeNavigationService, { setHistoryGesturesEnabled }),
-        MockProvider(HostDeepLinksService, { received: deepLinks }),
-        MockProvider(HostBackService, { intents: backIntents }),
+        MockProvider(HostDeepLinksService, {
+          support: () => of({ kind: 'supported' }),
+          received: deepLinks,
+        }),
+        MockProvider(HostBackService, {
+          support: () => of({ kind: 'supported' }),
+          intents: backIntents,
+        }),
         MockProvider(HostUpdatesService, { check: updateCheck }),
         MockProvider(NavigationFocusService, { run: () => focusSession }),
         MockProvider(WorkspaceRoutedSurfaceAdapter, {
@@ -302,7 +313,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(TrustLifetime, { run: () => trustSession }),
         MockProvider(IdentityLifetime, { run: () => identitySession }),
-        MockProvider(NotificationLifetime, { run: () => of(void 0) }),
+        MockProvider(NotificationLifetime, {
+          run: () => of({ kind: 'prepared' as const }),
+          recover: () => of({ kind: 'success' as const }),
+        }),
         MockProvider(RoomAdministrationLifetime, { run: () => of(void 0) }),
         MockProvider(StoragePersistenceService, {
           requestPersistence,
@@ -398,7 +412,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(appearanceRecover).toHaveBeenCalledWith(failures);
   });
 
-  it('keeps a rejected badge probe as an optional startup warning', async () => {
+  it('keeps a rejected badge probe as scoped optional health', async () => {
     const operations = Object.fromEntries(
       HOST_OPERATIONS.map((operation) => [
         operation,
@@ -419,16 +433,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await expect(negotiation).resolves.toEqual({ kind: 'ready' });
     await expect(
       firstValueFrom(adapter.establishSessionCapabilities()),
-    ).resolves.toMatchObject({
-      kind: 'ready',
-      warnings: [
-        expect.objectContaining({
-          stage: 'session-capabilities',
-          scope: 'badge',
-          diagnostic: { code: 'badge-unavailable' },
-        }),
-      ],
-    });
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(health.problems()).toEqual([
+      expect.objectContaining({
+        capability: 'badge',
+        operation: 'support',
+        code: 'badge-support-unavailable',
+      }),
+    ]);
   });
 
   it('accepts unsupported optional host operations', async () => {
@@ -787,16 +799,13 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       kind: 'rejected',
       diagnostic: { code: 'badge-write-rejected' },
     });
-    expect(events).toEqual([
-      { kind: 'prepared' },
-      {
-        kind: 'warning',
-        warning: expect.objectContaining({
-          stage: 'session',
-          scope: 'badge',
-          diagnostic: { code: 'badge-update-failed' },
-        }),
-      },
+    expect(events).toEqual([{ kind: 'prepared' }]);
+    expect(health.incidents()).toEqual([
+      expect.objectContaining({
+        capability: 'badge',
+        operation: 'write',
+        code: 'badge-write-failed',
+      }),
     ]);
 
     first.unsubscribe();

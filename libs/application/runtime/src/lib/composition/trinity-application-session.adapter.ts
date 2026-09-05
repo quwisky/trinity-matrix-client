@@ -9,20 +9,11 @@ import type {
 import { CapabilityHealthService } from '../capability-health.service';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { BadgeCoordinator } from '@trinity/application/badge';
-import {
-  WorkspaceBackService,
-  WorkspaceNavigationService,
-  type WorkspaceNavigationIntent,
-} from '@trinity/application/workspace';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationLifetime,
-  NotificationLifetimeError,
-  NotificationService,
-  PushService,
-  type NativePushActivation,
-  type NotificationDestination,
-  type NotificationRuntimeEvent,
+  type NotificationLifetimeEvent,
 } from '@trinity/data-access/notifications';
 import { IdentityLifetime } from '@trinity/data-access/identity';
 import {
@@ -40,11 +31,12 @@ import {
   HostBackService,
   HostDeepLinksService,
   HostLifecycleService,
-  HostUpdatesService,
+  type HostCapabilitySupport,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import {
   EMPTY,
+  NEVER,
   Observable,
   Subscription,
   catchError,
@@ -56,14 +48,21 @@ import {
   map,
   merge,
   of,
+  repeat,
+  retry,
   switchMap,
   take,
   tap,
   throwError,
+  throwIfEmpty,
+  timer,
+  timeout,
 } from 'rxjs';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { RoomOrderHealthService } from './room-order-health.service';
+import { HostSessionHealthService } from './host-session-health.service';
+import { NotificationSessionService } from './notification-session.service';
 
 /** Owns every live host and Workspace subscription for one Application Runtime session. */
 @Injectable({ providedIn: 'root' })
@@ -72,18 +71,15 @@ export class TrinityApplicationSessionAdapter {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
   private readonly badge = inject(BadgeCoordinator);
-  private readonly notifications = inject(NotificationService);
-  private readonly push = inject(PushService);
   private readonly swUpdate = inject(SwUpdate);
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnDialogService);
   private readonly workspaceBack = inject(WorkspaceBackService);
-  private readonly workspaceNavigation = inject(WorkspaceNavigationService);
   private readonly nativeNavigation = inject(NativeNavigationService);
   private readonly hostDeepLinks = inject(HostDeepLinksService);
   private readonly hostBack = inject(HostBackService);
   private readonly hostLifecycle = inject(HostLifecycleService);
-  private readonly hostUpdates = inject(HostUpdatesService);
+  private readonly hostHealth = inject(HostSessionHealthService);
   private readonly navigationFocus = inject(NavigationFocusService);
   private readonly routedSurfaces = inject(WorkspaceRoutedSurfaceAdapter);
   private readonly applicationSurfaces = inject(
@@ -97,6 +93,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly health = inject(CapabilityHealthService);
   private readonly notificationLifetime = inject(NotificationLifetime);
   private readonly roomAdministration = inject(RoomAdministrationLifetime);
+  private readonly notificationSession = inject(NotificationSessionService);
 
   run(readiness: Observable<void>): Observable<ApplicationSessionEvent> {
     return new Observable<ApplicationSessionEvent>((subscriber) => {
@@ -208,15 +205,21 @@ export class TrinityApplicationSessionAdapter {
           map(() => null),
         ),
       );
-      observeOptional(
-        this.optionalLifetime(
-          this.notificationLifetime.run(
-            this.routedSurfaces.roomProjectionDemand,
-          ),
-          'notifications',
-          'room-notification-projection-unavailable',
-          (error) => error instanceof NotificationLifetimeError,
-        ),
+      subscriptions.add(
+        this.notificationLifetime
+          .run(this.routedSurfaces.roomProjectionDemand)
+          .subscribe({
+            next: (event: NotificationLifetimeEvent) => {
+              if (event.kind === 'health')
+                this.health.report(event.fact, () =>
+                  this.notificationLifetime.recover(
+                    event.fact.context,
+                    event.fact.generation,
+                  ),
+                );
+            },
+            error: fail,
+          }),
       );
       observeOptional(
         this.optionalLifetime(
@@ -249,8 +252,16 @@ export class TrinityApplicationSessionAdapter {
 
   private runLive(): Observable<ApplicationRuntimeWarning> {
     return merge(
-      this.badge.run().pipe(concatMap((outcome) => this.badgeWarning(outcome))),
-      this.runNotificationActivations(),
+      this.badge.run().pipe(
+        tap((outcome) => {
+          if (this.hostHealth.badgeWrite(outcome))
+            this.toast.show('The app badge could not be updated.', {
+              duration: 4000,
+            });
+        }),
+        ignoreElements(),
+      ),
+      this.notificationSession.run(),
       this.navigationFocus.run().pipe(ignoreElements()),
       this.routedSurfaces.run().pipe(ignoreElements()),
       this.applicationSurfaces.run().pipe(ignoreElements()),
@@ -261,89 +272,33 @@ export class TrinityApplicationSessionAdapter {
       this.runDeepLinks().pipe(ignoreElements()),
       this.runBackIntents().pipe(ignoreElements()),
       this.runNavigationGesturePolicy().pipe(ignoreElements()),
-      this.runUpdates(),
+      this.runUpdates().pipe(ignoreElements()),
     );
-  }
-
-  private runNotificationActivations(): Observable<ApplicationRuntimeWarning> {
-    return merge(
-      this.notifications
-        .run()
-        .pipe(concatMap((event) => this.handleNotificationEvent(event))),
-      this.push.run().pipe(
-        concatMap((activation) => this.openNativePush(activation)),
-        catchError(() => of(warning('host', 'push-session-failed'))),
-      ),
-    );
-  }
-
-  private handleNotificationEvent(
-    event: NotificationRuntimeEvent,
-  ): Observable<ApplicationRuntimeWarning> {
-    return event.kind === 'activated'
-      ? this.openNotification(event.destination)
-      : of(warning('host', event.diagnostic.code));
-  }
-
-  private openNotification(
-    destination: NotificationDestination,
-  ): Observable<ApplicationRuntimeWarning> {
-    return this.openWorkspaceIntent({
-      kind: 'notification',
-      accountId: destination.accountId,
-      roomId: destination.roomId,
-      eventId: destination.eventId,
-    });
-  }
-
-  private openNativePush(
-    activation: NativePushActivation,
-  ): Observable<ApplicationRuntimeWarning> {
-    return this.openWorkspaceIntent({
-      kind: 'notification',
-      ...activation,
-    });
-  }
-
-  private openWorkspaceIntent(
-    intent: WorkspaceNavigationIntent,
-  ): Observable<ApplicationRuntimeWarning> {
-    return defer(() => {
-      try {
-        window.focus();
-      } catch {
-        // Browser focus may be denied; Workspace navigation is still valid.
-      }
-      return this.workspaceNavigation.navigate(intent).pipe(
-        switchMap((outcome) =>
-          outcome.kind === 'ready'
-            ? EMPTY
-            : of(warning('workspace', 'notification-navigation-rejected')),
-        ),
-        catchError(() =>
-          of(warning('workspace', 'notification-navigation-failed')),
-        ),
-      );
-    });
-  }
-
-  private badgeWarning(
-    outcome: HostOperationOutcome,
-  ): Observable<ApplicationRuntimeWarning> {
-    if (
-      outcome.kind === 'completed' ||
-      (outcome.kind === 'unavailable' &&
-        (outcome.reason === 'not-supported' ||
-          outcome.reason === 'not-implemented'))
-    ) {
-      return EMPTY;
-    }
-    return of(warning('badge', 'badge-update-failed'));
   }
 
   private runDeepLinks(): Observable<void> {
-    return this.hostDeepLinks.received.pipe(
-      concatMap(({ url }) => this.handleDeepLink(url)),
+    return this.runSupportedHostStream(
+      'deep-links',
+      'deep-link-support-check-failed',
+      () => this.hostDeepLinks.support(),
+      () =>
+        this.hostDeepLinks.received.pipe(
+          tap({
+            error: () =>
+              this.reportHostIncident(
+                'deep-links',
+                'deep-link-listener-failed',
+              ),
+            complete: () =>
+              this.reportHostIncident(
+                'deep-links',
+                'deep-link-listener-ownership-released',
+              ),
+          }),
+          retry({ delay: 1_000 }),
+          repeat({ delay: 1_000 }),
+          concatMap(({ url }) => this.handleDeepLink(url)),
+        ),
     );
   }
 
@@ -368,45 +323,128 @@ export class TrinityApplicationSessionAdapter {
       if (value !== null) queryParams[key] = value;
     }
     return this.hostDeepLinks.closeAuthentication().pipe(
+      tap((outcome) => {
+        if (hostOutcomeFailed(outcome))
+          this.reportHostIncident(
+            'authentication-handoff',
+            'authentication-close-failed',
+          );
+      }),
       switchMap(() =>
         from(this.router.navigate(['/sso-callback'], { queryParams })),
       ),
-      map(() => void 0),
+      switchMap((navigated) =>
+        navigated
+          ? of(void 0)
+          : this.hostIncident('deep-links', 'deep-link-navigation-rejected'),
+      ),
+      catchError(() =>
+        this.hostIncident('deep-links', 'deep-link-navigation-failed'),
+      ),
     );
   }
 
   private runBackIntents(): Observable<void> {
-    return this.hostBack.intents.pipe(
-      concatMap(({ canGoBack }) =>
-        defer(() => {
-          if (
-            this.dialog.hasOpen() &&
-            !this.workspaceBack.activeOwnsTopmostOverlay()
-          ) {
-            this.dialog.closeTopmost();
-            return of(void 0);
-          }
-          if (this.workspaceBack.hasActive()) {
-            return this.workspaceBack.back().pipe(
-              take(1),
-              map(() => void 0),
-            );
-          }
-          if (this.dialog.hasOpen()) {
-            this.dialog.closeTopmost();
-            return of(void 0);
-          }
-          if (canGoBack) {
-            this.location.back();
-            return of(void 0);
-          }
-          return this.hostBack.background().pipe(
-            take(1),
-            map(() => void 0),
-          );
-        }),
-      ),
+    return this.runSupportedHostStream(
+      'back',
+      'host-back-support-check-failed',
+      () => this.hostBack.support(),
+      () =>
+        this.hostBack.intents.pipe(
+          tap({
+            error: () =>
+              this.reportHostIncident('back', 'host-back-listener-failed'),
+            complete: () =>
+              this.reportHostIncident(
+                'back',
+                'host-back-listener-ownership-released',
+              ),
+          }),
+          retry({ delay: 1_000 }),
+          repeat({ delay: 1_000 }),
+          concatMap(({ canGoBack }) =>
+            defer(() => {
+              if (
+                this.dialog.hasOpen() &&
+                !this.workspaceBack.activeOwnsTopmostOverlay()
+              ) {
+                this.dialog.closeTopmost();
+                return of(void 0);
+              }
+              if (this.workspaceBack.hasActive()) {
+                return this.workspaceBack.back().pipe(
+                  take(1),
+                  map(() => void 0),
+                  catchError(() =>
+                    this.hostIncident('back', 'workspace-back-failed'),
+                  ),
+                );
+              }
+              if (this.dialog.hasOpen()) {
+                this.dialog.closeTopmost();
+                return of(void 0);
+              }
+              if (canGoBack) {
+                this.location.back();
+                return of(void 0);
+              }
+              return this.hostBack.background().pipe(
+                take(1),
+                switchMap((outcome) =>
+                  hostOutcomeFailed(outcome)
+                    ? this.hostIncident('back', 'host-background-failed')
+                    : of(void 0),
+                ),
+              );
+            }),
+          ),
+        ),
     );
+  }
+
+  private runSupportedHostStream(
+    operation: 'deep-links' | 'back',
+    failureCode: string,
+    support: () => Observable<HostCapabilitySupport>,
+    stream: () => Observable<void>,
+  ): Observable<void> {
+    let incidentReported = false;
+    return defer(support).pipe(
+      take(1),
+      throwIfEmpty(() => new Error('Host support returned no outcome.')),
+      timeout(10_000),
+      switchMap((outcome) => {
+        if (outcome.kind === 'supported') {
+          incidentReported = false;
+          return stream();
+        }
+        return outcome.reason === 'not-supported' ||
+          outcome.reason === 'not-implemented'
+          ? NEVER
+          : throwError(() => new Error('Host support negotiation failed.'));
+      }),
+      retry({
+        delay: () => {
+          if (!incidentReported) {
+            incidentReported = true;
+            this.reportHostIncident(operation, failureCode);
+          }
+          return timer(1_000);
+        },
+      }),
+    );
+  }
+
+  private hostIncident(operation: string, code: string): Observable<never> {
+    this.reportHostIncident(operation, code);
+    return EMPTY;
+  }
+
+  private reportHostIncident(operation: string, code: string): void {
+    this.hostHealth.incident('host', operation, code);
+    this.toast.show('A host navigation action could not be completed.', {
+      duration: 4000,
+    });
   }
 
   private runNavigationGesturePolicy(): Observable<void> {
@@ -423,7 +461,7 @@ export class TrinityApplicationSessionAdapter {
     });
   }
 
-  private runUpdates(): Observable<ApplicationRuntimeWarning> {
+  private runUpdates(): Observable<void> {
     const initialCheck = this.checkForUpdates();
     const serviceWorkerEvents = this.swUpdate.isEnabled
       ? merge(
@@ -456,15 +494,8 @@ export class TrinityApplicationSessionAdapter {
     return merge(initialCheck, serviceWorkerEvents, foregroundChecks);
   }
 
-  private checkForUpdates(): Observable<ApplicationRuntimeWarning> {
-    return defer(() => this.hostUpdates.check()).pipe(
-      switchMap((outcome) =>
-        outcome.kind === 'rejected'
-          ? of(warning('updates', 'update-check-failed'))
-          : EMPTY,
-      ),
-      catchError(() => of(warning('updates', 'update-check-failed'))),
-    );
+  private checkForUpdates(): Observable<void> {
+    return this.hostHealth.checkUpdates();
   }
 
   private activateUpdate(): void {
@@ -495,3 +526,12 @@ const CALLBACK_PARAMS = [
   'error',
   'error_description',
 ] as const;
+
+function hostOutcomeFailed(outcome: HostOperationOutcome): boolean {
+  return (
+    outcome.kind === 'rejected' ||
+    (outcome.kind === 'unavailable' &&
+      outcome.reason !== 'not-supported' &&
+      outcome.reason !== 'not-implemented')
+  );
+}

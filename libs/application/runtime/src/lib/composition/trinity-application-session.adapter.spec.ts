@@ -16,10 +16,11 @@ import {
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
   NotificationLifetime,
-  NotificationLifetimeError,
+  NativePushLifetime,
   NotificationService,
-  PushService,
-  type NativePushActivation,
+  type NativePushLifetimeEvent,
+  type NotificationLifetimeEvent,
+  type NotificationRuleHealth,
   type NotificationRuntimeEvent,
 } from '@trinity/data-access/notifications';
 import {
@@ -47,7 +48,7 @@ import {
   HostLifecycleService,
   HostUpdatesService,
 } from '@trinity/runtime/host';
-import { MockProvider } from 'ng-mocks';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import {
   EMPTY,
   Observable,
@@ -67,7 +68,7 @@ interface SessionHarness {
   readonly deepLinks: Subject<{ readonly url: string }>;
   readonly backIntents: Subject<{ readonly canGoBack: boolean }>;
   readonly notificationEvents: Subject<NotificationRuntimeEvent>;
-  readonly pushActivations: Subject<NativePushActivation>;
+  readonly pushActivations: Subject<NativePushLifetimeEvent>;
   readonly lifecycleEvents: Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >;
@@ -91,22 +92,25 @@ interface SessionHarness {
   readonly showToast: ReturnType<typeof vi.fn>;
   readonly health: CapabilityHealthService;
   readonly recoverTrust: ReturnType<typeof vi.fn>;
+  readonly recoverPresentation: ReturnType<typeof vi.fn>;
 }
 
 function setup(
-  pushSession?: Observable<NativePushActivation>,
+  pushSession?: Observable<NativePushLifetimeEvent>,
   roomLibrarySession: Observable<RoomLibraryLifetimeEvent> = of({
     kind: 'prepared',
   }),
   trustSession: Observable<TrustLifetimeEvent> = of({ kind: 'prepared' }),
   identitySession: Observable<IdentityLifetimeEvent> = of({ kind: 'prepared' }),
-  notificationSession: Observable<void> = of(void 0),
+  notificationSession: Observable<NotificationLifetimeEvent> = of({
+    kind: 'prepared',
+  }),
   roomAdministrationSession: Observable<void> = of(void 0),
 ): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
   const notificationEvents = new Subject<NotificationRuntimeEvent>();
-  const pushActivations = new Subject<NativePushActivation>();
+  const pushActivations = new Subject<NativePushLifetimeEvent>();
   const lifecycleEvents = new Subject<
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
@@ -132,6 +136,8 @@ function setup(
   const showToast = vi.fn();
   const roomProjectionDemand = signal(true);
   const recoverTrust = vi.fn(() => of({ kind: 'success' as const }));
+  const recoverNotifications = vi.fn(() => of({ kind: 'success' as const }));
+  const recoverPresentation = vi.fn(() => of({ kind: 'success' as const }));
 
   TestBed.configureTestingModule({
     providers: [
@@ -139,8 +145,14 @@ function setup(
       MockProvider(Router, { navigate }),
       MockProvider(Location, { back: locationBack }),
       MockProvider(BadgeCoordinator, { run: () => EMPTY }),
-      MockProvider(NotificationService, { run: () => notificationEvents }),
-      MockProvider(PushService, { run: () => pushSession ?? pushActivations }),
+      MockProvider(NotificationService, {
+        run: () => notificationEvents,
+        recoverPresentation,
+      }),
+      MockProvider(NativePushLifetime, {
+        run: () => pushSession ?? pushActivations,
+        recover: () => of({ kind: 'success' as const }),
+      }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, {
         roomProjectionDemand: roomProjectionDemand.asReadonly(),
@@ -158,15 +170,23 @@ function setup(
         recover: recoverTrust,
       }),
       MockProvider(IdentityLifetime, { run: () => identitySession }),
-      MockProvider(NotificationLifetime, { run: () => notificationSession }),
+      MockProvider(NotificationLifetime, {
+        run: () => notificationSession,
+        recover: recoverNotifications,
+      }),
       MockProvider(RoomAdministrationLifetime, {
         run: () => roomAdministrationSession,
       }),
       MockProvider(HostDeepLinksService, {
+        support: () => of({ kind: 'supported' as const }),
         received: deepLinks,
         closeAuthentication,
       }),
-      MockProvider(HostBackService, { intents: backIntents, background }),
+      MockProvider(HostBackService, {
+        support: () => of({ kind: 'supported' as const }),
+        intents: backIntents,
+        background,
+      }),
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
       MockProvider(HostUpdatesService, { check: hostUpdateCheck }),
       MockProvider(TrnDialogService, {
@@ -221,6 +241,7 @@ function setup(
     showToast,
     health: TestBed.inject(CapabilityHealthService),
     recoverTrust,
+    recoverPresentation,
   };
 }
 
@@ -242,10 +263,25 @@ function trustHealth(
   };
 }
 
+function notificationRuleHealth(context: symbol): NotificationRuleHealth {
+  return {
+    capability: 'notifications',
+    operation: 'room-rules',
+    context,
+    generation: 1,
+    demanded: true,
+    preparation: 'failed',
+    ownership: 'retained',
+    condition: 'degraded',
+    code: 'room-rules-reconciliation-failed',
+  };
+}
+
 describe('TrinityApplicationSessionAdapter', () => {
   let locationStub: ReturnType<typeof stubLocation> | null = null;
 
   afterEach(() => {
+    vi.useRealTimers();
     locationStub?.restore();
     locationStub = null;
     TestBed.resetTestingModule();
@@ -352,7 +388,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
     const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
-    const notifications = new Subject<void>();
+    const notifications = new Subject<NotificationLifetimeEvent>();
     const roomAdministration = new Subject<void>();
     const test = setup(
       undefined,
@@ -367,7 +403,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
     trust.next({ kind: 'prepared' });
     identity.next({ kind: 'prepared' });
-    notifications.next();
+    notifications.next({ kind: 'prepared' });
     roomAdministration.next();
     roomLibrary.next({
       kind: 'blocked',
@@ -390,7 +426,7 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('retains all optional capability lifetimes across readiness until teardown', () => {
     const trust = new Subject<TrustLifetimeEvent>();
     const identity = new Subject<IdentityLifetimeEvent>();
-    const notifications = new Subject<void>();
+    const notifications = new Subject<NotificationLifetimeEvent>();
     const roomAdministration = new Subject<void>();
     const readiness = new Subject<void>();
     const test = setup(
@@ -433,7 +469,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       of({ kind: 'prepared' }),
       optional,
       of({ kind: 'prepared' }),
-      of(void 0),
+      of({ kind: 'prepared' }),
       of(void 0),
     );
     const events: unknown[] = [];
@@ -450,14 +486,18 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(optional.observed).toBe(false);
   });
 
-  it('reports optional Notification and Room Administration preparation failures', () => {
+  it('reports Notification rule health separately from Room Administration compatibility', () => {
     const readiness = new Subject<void>();
+    const context = Symbol();
     const test = setup(
       undefined,
       of({ kind: 'prepared' }),
       of({ kind: 'prepared' }),
       of({ kind: 'prepared' }),
-      throwError(() => new NotificationLifetimeError()),
+      of(
+        { kind: 'health' as const, fact: notificationRuleHealth(context) },
+        { kind: 'prepared' as const },
+      ),
       throwError(() => new RoomAdministrationLifetimeError()),
     );
     const events: unknown[] = [];
@@ -474,17 +514,17 @@ describe('TrinityApplicationSessionAdapter', () => {
       {
         kind: 'warning',
         warning: expect.objectContaining({
-          scope: 'notifications',
-          diagnostic: { code: 'room-notification-projection-unavailable' },
-        }),
-      },
-      {
-        kind: 'warning',
-        warning: expect.objectContaining({
           scope: 'room-administration',
           diagnostic: { code: 'room-administration-projection-unavailable' },
         }),
       },
+    ]);
+    expect(test.health.problems()).toEqual([
+      expect.objectContaining({
+        capability: 'notifications',
+        operation: 'room-rules',
+        code: 'room-rules-reconciliation-failed',
+      }),
     ]);
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
@@ -495,11 +535,13 @@ describe('TrinityApplicationSessionAdapter', () => {
     let notificationTeardowns = 0;
     let administrationSubscriptions = 0;
     let administrationTeardowns = 0;
-    const notifications = new Observable<void>((subscriber) => {
-      notificationSubscriptions += 1;
-      subscriber.next();
-      return () => (notificationTeardowns += 1);
-    });
+    const notifications = new Observable<NotificationLifetimeEvent>(
+      (subscriber) => {
+        notificationSubscriptions += 1;
+        subscriber.next({ kind: 'prepared' });
+        return () => (notificationTeardowns += 1);
+      },
+    );
     const roomAdministration = new Observable<void>((subscriber) => {
       administrationSubscriptions += 1;
       subscriber.next();
@@ -616,6 +658,154 @@ describe('TrinityApplicationSessionAdapter', () => {
     lifetime.unsubscribe();
   });
 
+  it('keeps a failed authentication close contextual while completing the deep link', async () => {
+    const test = setup();
+    test.closeAuthentication.mockReturnValueOnce(
+      of({
+        kind: 'unavailable',
+        reason: 'host-rejected',
+        diagnostic: { code: 'private-host-response' },
+      }),
+    );
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.deepLinks.next({
+      url: 'eu.qwky.trinity://sso-callback?loginToken=TOKEN',
+    });
+
+    await vi.waitFor(() => expect(test.navigate).toHaveBeenCalledOnce());
+    expect(test.health.incidents()).toContainEqual(
+      expect.objectContaining({
+        capability: 'host',
+        operation: 'authentication-handoff',
+        code: 'authentication-close-failed',
+      }),
+    );
+    expect(JSON.stringify(test.health.incidents())).not.toContain('private');
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('reports released deep-link and Back ownership and reattaches both streams', async () => {
+    vi.useFakeTimers();
+    let deepLinkAttachments = 0;
+    let backAttachments = 0;
+    const test = setup();
+    ngMocks.stubMember(
+      TestBed.inject(HostDeepLinksService),
+      'received',
+      new Observable<{ readonly url: string }>((subscriber) => {
+        deepLinkAttachments++;
+        subscriber.complete();
+      }),
+    );
+    ngMocks.stubMember(
+      TestBed.inject(HostBackService),
+      'intents',
+      new Observable<{ readonly canGoBack: boolean }>((subscriber) => {
+        backAttachments++;
+        subscriber.complete();
+      }),
+    );
+
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    expect(test.health.incidents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: 'deep-links',
+          code: 'deep-link-listener-ownership-released',
+        }),
+        expect.objectContaining({
+          operation: 'back',
+          code: 'host-back-listener-ownership-released',
+        }),
+      ]),
+    );
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(deepLinkAttachments).toBe(2);
+    expect(backAttachments).toBe(2);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('keeps unsupported deep-link and Back streams dormant without incidents', async () => {
+    vi.useFakeTimers();
+    const test = setup();
+    ngMocks.stubMember(TestBed.inject(HostDeepLinksService), 'support', () =>
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+    ngMocks.stubMember(TestBed.inject(HostBackService), 'support', () =>
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(test.deepLinks.observed).toBe(false);
+    expect(test.backIntents.observed).toBe(false);
+    expect(test.health.incidents()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ operation: 'deep-links' }),
+        expect.objectContaining({ operation: 'back' }),
+      ]),
+    );
+    expect(test.showToast).not.toHaveBeenCalledWith(
+      'A host navigation action could not be completed.',
+      expect.anything(),
+    );
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  it('retries failed and empty host support probes before attaching streams', async () => {
+    vi.useFakeTimers();
+    const test = setup();
+    const deepLinkSupport = vi
+      .fn()
+      .mockReturnValueOnce(
+        throwError(() => new Error('private deep-link failure')),
+      )
+      .mockReturnValue(of({ kind: 'supported' as const }));
+    const backSupport = vi
+      .fn()
+      .mockReturnValueOnce(EMPTY)
+      .mockReturnValue(of({ kind: 'supported' as const }));
+    ngMocks.stubMember(
+      TestBed.inject(HostDeepLinksService),
+      'support',
+      deepLinkSupport,
+    );
+    ngMocks.stubMember(TestBed.inject(HostBackService), 'support', backSupport);
+
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+    expect(deepLinkSupport).toHaveBeenCalledOnce();
+    expect(backSupport).toHaveBeenCalledOnce();
+    expect(test.deepLinks.observed).toBe(false);
+    expect(test.backIntents.observed).toBe(false);
+    expect(test.health.incidents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          operation: 'deep-links',
+          code: 'deep-link-support-check-failed',
+        }),
+        expect.objectContaining({
+          operation: 'back',
+          code: 'host-back-support-check-failed',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(test.health.incidents())).not.toContain('private');
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(deepLinkSupport).toHaveBeenCalledTimes(2);
+    expect(backSupport).toHaveBeenCalledTimes(2);
+    expect(test.deepLinks.observed).toBe(true);
+    expect(test.backIntents.observed).toBe(true);
+    lifetime.unsubscribe();
+    vi.useRealTimers();
+  });
+
   it('submits typed notification activation to semantic Workspace navigation', async () => {
     const test = setup();
     const focus = vi.spyOn(window, 'focus').mockImplementation(() => undefined);
@@ -646,15 +836,20 @@ describe('TrinityApplicationSessionAdapter', () => {
   it('owns native push from synchronous startup activation through teardown and restart', async () => {
     let subscriptions = 0;
     let teardowns = 0;
-    const pushSession = new Observable<NativePushActivation>((subscriber) => {
-      subscriptions++;
-      subscriber.next({
-        accountId: '@background:example.org',
-        roomId: '!room:example.org',
-        eventId: '$event',
-      });
-      return () => teardowns++;
-    });
+    const pushSession = new Observable<NativePushLifetimeEvent>(
+      (subscriber) => {
+        subscriptions++;
+        subscriber.next({
+          kind: 'activated',
+          destination: {
+            accountId: '@background:example.org',
+            roomId: '!room:example.org',
+            eventId: '$event',
+          },
+        });
+        return () => teardowns++;
+      },
+    );
     const test = setup(pushSession);
     const firstLifetime = test.adapter.run(of(void 0)).subscribe();
 
@@ -684,10 +879,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.workspaceNavigate.mockReturnValueOnce(
       of({ kind: 'unavailable', reason: 'navigation-rejected' }),
     );
-    const warnings: unknown[] = [];
-    const lifetime = test.adapter
-      .run(of(void 0))
-      .subscribe((value) => warnings.push(value));
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'activated',
@@ -699,15 +891,17 @@ describe('TrinityApplicationSessionAdapter', () => {
     });
 
     await vi.waitFor(() =>
-      expect(warnings).toContainEqual(
+      expect(test.health.incidents()).toContainEqual(
         expect.objectContaining({
-          kind: 'warning',
-          warning: expect.objectContaining({
-            scope: 'workspace',
-            diagnostic: { code: 'notification-navigation-rejected' },
-          }),
+          capability: 'notifications',
+          operation: 'navigation',
+          code: 'notification-navigation-rejected',
         }),
       ),
+    );
+    expect(test.showToast).toHaveBeenCalledWith(
+      'That notification destination could not be opened.',
+      { duration: 4000 },
     );
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
@@ -718,10 +912,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     test.workspaceNavigate.mockReturnValueOnce(
       new Observable((subscriber) => subscriber.error(new Error('broken'))),
     );
-    const warnings: unknown[] = [];
-    const lifetime = test.adapter
-      .run(of(void 0))
-      .subscribe((value) => warnings.push(value));
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
       kind: 'activated',
@@ -733,14 +924,8 @@ describe('TrinityApplicationSessionAdapter', () => {
     });
 
     await vi.waitFor(() =>
-      expect(warnings).toContainEqual(
-        expect.objectContaining({
-          kind: 'warning',
-          warning: expect.objectContaining({
-            scope: 'workspace',
-            diagnostic: { code: 'notification-navigation-failed' },
-          }),
-        }),
+      expect(test.health.incidents()).toContainEqual(
+        expect.objectContaining({ code: 'notification-navigation-failed' }),
       ),
     );
     expect(lifetime.closed).toBe(false);
@@ -749,26 +934,58 @@ describe('TrinityApplicationSessionAdapter', () => {
 
   it('reports presentation failures without navigating or ending the session', () => {
     const test = setup();
-    const warnings: unknown[] = [];
-    const lifetime = test.adapter
-      .run(of(void 0))
-      .subscribe((value) => warnings.push(value));
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
 
     test.notificationEvents.next({
-      kind: 'warning',
-      diagnostic: { code: 'notification-presentation-failed' },
+      kind: 'incident',
+      incident: {
+        context: Symbol(),
+        capability: 'notifications',
+        operation: 'presentation-command',
+        code: 'notification-presentation-failed',
+      },
     });
 
-    expect(warnings).toContainEqual(
+    expect(test.health.incidents()).toContainEqual(
       expect.objectContaining({
-        kind: 'warning',
-        warning: expect.objectContaining({
-          scope: 'host',
-          diagnostic: { code: 'notification-presentation-failed' },
-        }),
+        capability: 'notifications',
+        operation: 'presentation-command',
+        code: 'notification-presentation-failed',
       }),
     );
+    expect(test.showToast).toHaveBeenCalledWith(
+      'A notification could not be shown.',
+      { duration: 4000 },
+    );
     expect(test.workspaceNavigate).not.toHaveBeenCalled();
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('registers exact notification-presentation health recovery', async () => {
+    const context = Symbol();
+    const test = setup();
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.notificationEvents.next({
+      kind: 'health',
+      fact: {
+        capability: 'notifications',
+        operation: 'presentation',
+        context,
+        generation: 3,
+        demanded: true,
+        preparation: 'failed',
+        ownership: 'released',
+        condition: 'degraded',
+        code: 'notification-activation-ownership-released',
+      },
+    });
+
+    const problem = test.health.problems()[0];
+    await lastValueFrom(test.health.recover(problem));
+
+    expect(test.recoverPresentation).toHaveBeenCalledWith(context, 3);
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
@@ -794,6 +1011,30 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     test.backIntents.next({ canGoBack: false });
     expect(test.background).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('reports a rejected host background action as an incident without ending Back ownership', () => {
+    const test = setup();
+    test.background.mockReturnValueOnce(
+      of({
+        kind: 'unavailable',
+        reason: 'host-rejected',
+        diagnostic: { code: 'private-background' },
+      }),
+    );
+    const lifetime = test.adapter.run(of(void 0)).subscribe();
+
+    test.backIntents.next({ canGoBack: false });
+
+    expect(test.health.incidents()).toContainEqual(
+      expect.objectContaining({
+        capability: 'host',
+        operation: 'back',
+        code: 'host-background-failed',
+      }),
+    );
+    expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
   });
 
@@ -880,7 +1121,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(locationStub.calls).not.toContain('reload');
   });
 
-  it('projects a rejected initial host update check as a runtime warning', () => {
+  it('projects a rejected initial host update check as recoverable health', () => {
     const test = setup();
     test.hostUpdateCheck.mockReturnValueOnce(
       of({
@@ -888,19 +1129,17 @@ describe('TrinityApplicationSessionAdapter', () => {
         diagnostic: { code: 'host-update-failed' },
       }),
     );
-    const warnings: unknown[] = [];
+    const events: unknown[] = [];
     const lifetime = test.adapter
       .run(of(void 0))
-      .subscribe((warning) => warnings.push(warning));
+      .subscribe((event) => events.push(event));
 
-    expect(warnings).toEqual([
-      { kind: 'prepared' },
+    expect(events).toEqual([{ kind: 'prepared' }]);
+    expect(test.health.problems()).toEqual([
       expect.objectContaining({
-        kind: 'warning',
-        warning: expect.objectContaining({
-          scope: 'updates',
-          diagnostic: { code: 'update-check-failed' },
-        }),
+        capability: 'updates',
+        operation: 'check',
+        code: 'update-check-failed',
       }),
     ]);
     lifetime.unsubscribe();

@@ -54,6 +54,12 @@ and the web adapter uses the browser or controlling service worker. A host resul
 can be unavailable, denied, timed out, or failed without changing Matrix read
 state or Workspace ownership.
 
+Application Runtime therefore displays Room-rule and presentation health separately. A failed
+Room-rule projection means its last known setting may be stale, not that alerts stopped. A denied
+permission is disabled and an unsupported host is expected; a lost presentation/activation owner
+is recoverable health. Failure to show one alert or open one activation is a contextual incident,
+so it does not leave a permanent outage banner or expose its title, body or destination.
+
 An accepted activation is an immutable account, room, and event destination.
 [`runNotificationActivations`](../../libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts)
 forwards it to Workspace. Workspace performs the account switch and room-ready
@@ -129,7 +135,7 @@ than assuming arbitrary pusher metadata survives delivery.
 
 ### Registration lifetime
 
-`PushService` owns registration:
+`NativePushLifetime` owns runtime health around `PushService` registration:
 
 1. Its cold `run()` lifetime listens for native events only while Application
    Runtime subscribes to it. `NativePushRegistrationService.listen()` supplies
@@ -145,6 +151,11 @@ than assuming arbitrary pusher metadata survives delivery.
    listener ends with the runtime `run()` subscription, rather than during
    unregister. Remove pushers before invalidating credentials or clearing the
    gateway configuration.
+
+5. Listener preparation and recovery observation are bounded, but a healthy retained listener has
+   no idle timeout. Targeted retry reuses retained ownership for registration failures and
+   reattaches only the push listener when ownership was released. Diagnostics include stable
+   registration codes, never tokens, Account IDs, gateway responses or notification payloads.
 
 The gateway setting is device-local and not secret: its URL is sent to the
 homeserver in pusher metadata. The user-facing settings flow validates and

@@ -51,6 +51,19 @@ export type PushRegistrationState =
     }
   | { readonly status: 'error'; readonly message: string };
 
+/** Value-free runtime status; unlike settings copy, safe to copy into diagnostics. */
+export type PushRuntimeStatus =
+  | { readonly status: 'idle'; readonly code: 'push-registration-idle' }
+  | { readonly status: 'available'; readonly code: 'push-registration-ready' }
+  | {
+      readonly status: 'disabled' | 'degraded';
+      readonly code:
+        | 'push-permission-disabled'
+        | 'push-device-registration-failed'
+        | 'push-pusher-registration-failed'
+        | 'push-pusher-verification-failed';
+    };
+
 /**
  * Best human-readable message from a rejected pusher call. A `MatrixError` carries the
  * homeserver's own text in `data.error` (e.g. the notify-path config error); fall back
@@ -124,6 +137,19 @@ export class PushService {
    * reset to idle when all pushers are torn down.
    */
   readonly registration = this._registration.asReadonly();
+  private readonly _runtimeStatus = signal<PushRuntimeStatus>({
+    status: 'idle',
+    code: 'push-registration-idle',
+  });
+  readonly runtimeStatus = this._runtimeStatus.asReadonly();
+
+  runtimePrerequisite():
+    'ready' | 'unsupported' | 'not-configured' | 'no-account' {
+    if (!this.nativePush.supported()) return 'unsupported';
+    if (!this.gateway.configured()) return 'not-configured';
+    if (!this.matrix.isInitialized) return 'no-account';
+    return 'ready';
+  }
 
   /**
    * Own native callbacks for one Application Runtime session and expose only semantic
@@ -174,7 +200,15 @@ export class PushService {
         permission = await firstValueFrom(this.nativePush.requestPermission());
       } catch (error) {
         this.registered = false;
-        throw error;
+        this._registration.set({
+          status: 'error',
+          message: deviceErrorMessage(error),
+        });
+        this._runtimeStatus.set({
+          status: 'degraded',
+          code: 'push-device-registration-failed',
+        });
+        return;
       }
       if (!permission) {
         this.registered = false;
@@ -184,6 +218,10 @@ export class PushService {
           status: 'error',
           message:
             'Notifications are turned off for Trinity in system settings.',
+        });
+        this._runtimeStatus.set({
+          status: 'disabled',
+          code: 'push-permission-disabled',
         });
         return;
       }
@@ -200,7 +238,19 @@ export class PushService {
           status: 'error',
           message: deviceErrorMessage(e),
         });
+        this._runtimeStatus.set({
+          status: 'degraded',
+          code: 'push-device-registration-failed',
+        });
       });
+    });
+  }
+
+  /** Restart a registration attempt whose native callback never settled. */
+  retryRegistration(): Observable<void> {
+    return defer(() => {
+      this.registered = false;
+      return this.register();
     });
   }
 
@@ -228,6 +278,10 @@ export class PushService {
       // Every pusher is going away — a lingering "applied to N accounts" would be a lie
       // the settings page shows after a clear or logout.
       this._registration.set({ status: 'idle' });
+      this._runtimeStatus.set({
+        status: 'idle',
+        code: 'push-registration-idle',
+      });
       if (pushkey) {
         for (const account of this.matrix.all()) {
           for (const appId of appIds) {
@@ -295,6 +349,10 @@ export class PushService {
               status: 'error',
               message: deviceErrorMessage(error),
             });
+            this._runtimeStatus.set({
+              status: 'degraded',
+              code: 'push-device-registration-failed',
+            });
             return EMPTY;
           }),
         );
@@ -305,6 +363,10 @@ export class PushService {
         this._registration.set({
           status: 'error',
           message: event.message || DEVICE_REGISTRATION_FAILED,
+        });
+        this._runtimeStatus.set({
+          status: 'degraded',
+          code: 'push-device-registration-failed',
         });
         return EMPTY;
       case 'activated':
@@ -389,9 +451,17 @@ export class PushService {
     if (failure === null) {
       await this.gateway.markApplied(config.appId ?? DEFAULT_APP_ID);
       this._registration.set({ status: 'applied', accounts, at: Date.now() });
+      this._runtimeStatus.set({
+        status: 'available',
+        code: 'push-registration-ready',
+      });
       await this.verifyPushers(pushkey, appId);
     } else {
       this._registration.set({ status: 'error', message: failure });
+      this._runtimeStatus.set({
+        status: 'degraded',
+        code: 'push-pusher-registration-failed',
+      });
     }
   }
 
@@ -426,6 +496,10 @@ export class PushService {
         this._registration.set({
           status: 'error',
           message: `${account.userId} accepted the pusher but the homeserver did not keep it.`,
+        });
+        this._runtimeStatus.set({
+          status: 'degraded',
+          code: 'push-pusher-verification-failed',
         });
         return;
       }

@@ -6,6 +6,11 @@ import { Observable, catchError, combineLatest, map, throwError } from 'rxjs';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomMembersService } from './room-members.service';
 
+const ROOM_ADMINISTRATION_PROJECTION_IDS = [
+  'room-administration.action-permissions',
+  'room-administration.members',
+] as const;
+
 /** Value-safe failure from preparing Room Administration projections. */
 export class RoomAdministrationLifetimeError extends Error {
   override readonly name = 'RoomAdministrationLifetimeError';
@@ -29,6 +34,7 @@ export class RoomAdministrationLifetime {
       .run({
         activeAccountId: this.matrix.activeUserId,
         demanded,
+        projectionIds: ROOM_ADMINISTRATION_PROJECTION_IDS,
         runProjection: () =>
           combineLatest([
             this.permissions.runProjection(),

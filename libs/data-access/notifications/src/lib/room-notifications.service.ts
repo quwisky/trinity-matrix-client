@@ -91,6 +91,11 @@ export class RoomNotificationsService {
     );
   }
 
+  /** Reconcile the retained rules projection without replacing its listener owner. */
+  retryProjection(): void {
+    this.activeProjection.schedule();
+  }
+
   private connect(): void {
     this.connected = true;
     this.activeProjection.connect();

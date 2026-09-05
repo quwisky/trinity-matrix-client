@@ -14,6 +14,8 @@ const legacyFiles = [
 ];
 const root = join(import.meta.dirname, '..');
 const read = (file) => readFileSync(join(root, file), 'utf8');
+const containsWarningCall = (source, code) =>
+  new RegExp(`\\bwarning\\([^)]*['"]${code}['"]`, 'u').test(source);
 
 describe('capability health expand-migrate-contract ledger', () => {
   it('freezes exactly five legacy warning producers and consumers until removal', () => {
@@ -55,6 +57,35 @@ describe('capability health expand-migrate-contract ledger', () => {
     expect(runtimeAdapter).not.toContain('appearance-effects-unavailable');
     expect(runtimeAdapter).not.toContain('room-order-hydration-failed');
     expect(sessionAdapter).not.toContain('room-order-hydration-failed');
+  });
+
+  it('keeps migrated notification and Host outcomes out of permanent warnings', () => {
+    const runtimeAdapter = read(
+      'libs/application/runtime/src/lib/composition/trinity-application-runtime.adapter.ts',
+    );
+    const sessionAdapter = read(
+      'libs/application/runtime/src/lib/composition/trinity-application-session.adapter.ts',
+    );
+
+    for (const code of [
+      'room-notification-projection-unavailable',
+      'notification-navigation-rejected',
+      'notification-navigation-failed',
+      'notification-presentation-failed',
+      'push-session-failed',
+      'badge-update-failed',
+      'update-check-failed',
+    ]) {
+      expect(containsWarningCall(`warning('workspace', '${code}')`, code)).toBe(
+        true,
+      );
+      for (const source of [sessionAdapter, runtimeAdapter]) {
+        expect(containsWarningCall(source, code)).toBe(false);
+      }
+    }
+    expect(runtimeAdapter).not.toContain(
+      "warning('session-capabilities', 'badge'",
+    );
   });
 
   it('keeps required startup producers out of warning compatibility', () => {

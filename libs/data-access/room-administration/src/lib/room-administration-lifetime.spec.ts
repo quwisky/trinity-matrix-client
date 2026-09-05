@@ -20,6 +20,7 @@ describe('RoomAdministrationLifetime', () => {
   const permissionsDisconnect = vi.fn();
   const membersConnect = vi.fn();
   const membersDisconnect = vi.fn();
+  const waitFor = vi.fn(() => of(readiness()));
   const projection = (connect: () => void, disconnect: () => void) => () =>
     defer(() => {
       connect();
@@ -43,7 +44,7 @@ describe('RoomAdministrationLifetime', () => {
           runProjection: projection(membersConnect, membersDisconnect),
         }),
         MockProvider(ProjectionRuntime, {
-          waitFor: () => of(readiness()),
+          waitFor,
         }),
       ],
     });
@@ -62,6 +63,10 @@ describe('RoomAdministrationLifetime', () => {
     expect(prepared).toHaveBeenCalledWith(undefined);
     expect(permissionsConnect).toHaveBeenCalledOnce();
     expect(membersConnect).toHaveBeenCalledOnce();
+    expect(waitFor).toHaveBeenCalledWith({ kind: 'active-account' }, [
+      'room-administration.action-permissions',
+      'room-administration.members',
+    ]);
 
     lifetime.unsubscribe();
     expect(membersDisconnect).toHaveBeenCalledOnce();

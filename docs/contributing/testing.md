@@ -208,6 +208,16 @@ released ownership recovery separately, plus Account-switch generation rejection
 development-only debug API and uses the visible scoped retry; proof remains an ignored Playwright
 attachment.
 
+Notification and Host-health changes distinguish Room-rule projection failure from delivery,
+unsupported presentation and denied permission from failure, and individual presentation,
+navigation and badge-write incidents from persistent health. Cover retained and released
+Room-rule recovery, native-push registration/listener ownership, finite badge/update checks,
+foreground retry, obsolete recovery rejection and value-free diagnostics. The
+`notifications/notification-settings.spec.mts` journey injects a real Room-rule reconciliation
+failure and proves visible targeted recovery without leaving the Room route. Its screenshots are
+Playwright attachments under ignored output. Browser mobile emulation does not prove APNs, FCM,
+native badge or iOS runtime behavior; report installed-host validation separately.
+
 Preference-health changes additionally cover the exact twelve-producer policy ledger, independent
 settlement, declared defaults, explicit missing-baseline blockers, and one exact recovery that does
 not rerun healthy siblings. Reset tests assert the exact exported catalogue and exclusions,

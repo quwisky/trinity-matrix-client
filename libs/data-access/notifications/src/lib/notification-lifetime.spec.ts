@@ -1,15 +1,24 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { ProjectionRuntime } from '@trinity/runtime/projection';
-import { MatrixError } from '@trinity/util/matrix';
-import { MockProvider } from 'ng-mocks';
-import { NEVER, concat, defer, finalize, of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  NotificationLifetime,
-  NotificationLifetimeError,
-} from './notification-lifetime';
+  ProjectionRuntime,
+  type ProjectionObservation,
+} from '@trinity/runtime/projection';
+import { MockProvider } from 'ng-mocks';
+import {
+  BehaviorSubject,
+  NEVER,
+  Observable,
+  concat,
+  defer,
+  finalize,
+  lastValueFrom,
+  of,
+} from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NotificationRuleHealth } from './notification-health.models';
+import { NotificationLifetime } from './notification-lifetime';
 import { RoomNotificationsService } from './room-notifications.service';
 
 describe('NotificationLifetime', () => {
@@ -17,6 +26,11 @@ describe('NotificationLifetime', () => {
   const demand = signal(true);
   const connect = vi.fn();
   const disconnect = vi.fn();
+  const retryProjection = vi.fn();
+  const states = new BehaviorSubject<ProjectionObservation>({
+    condition: 'available',
+    generation: 1,
+  });
   const runProjection = () =>
     defer(() => {
       connect();
@@ -26,6 +40,7 @@ describe('NotificationLifetime', () => {
   beforeEach(() => {
     activeAccountId.set('@a:example.org');
     demand.set(true);
+    states.next({ condition: 'available', generation: 1 });
     vi.clearAllMocks();
     TestBed.configureTestingModule({
       providers: [
@@ -33,103 +48,169 @@ describe('NotificationLifetime', () => {
         MockProvider(MatrixClientService, {
           activeUserId: activeAccountId.asReadonly(),
         }),
-        MockProvider(RoomNotificationsService, { runProjection }),
-        MockProvider(ProjectionRuntime, {
-          waitFor: () => of(readiness()),
+        MockProvider(RoomNotificationsService, {
+          runProjection,
+          retryProjection,
         }),
+        MockProvider(ProjectionRuntime, { observe: () => states }),
       ],
     });
   });
 
-  it('is cold and retains per-Room notification rules until teardown', () => {
+  it('is cold, distinguishes preparation from retained rule availability, and releases once', () => {
+    const events: unknown[] = [];
     const source = TestBed.inject(NotificationLifetime).run(
       demand.asReadonly(),
     );
-    const prepared = vi.fn();
 
     expect(connect).not.toHaveBeenCalled();
-    const lifetime = source.subscribe(prepared);
+    const lifetime = source.subscribe((event) => events.push(event));
 
-    expect(prepared).toHaveBeenCalledWith(undefined);
     expect(connect).toHaveBeenCalledOnce();
-    expect(lifetime.closed).toBe(false);
+    expect(events).toContainEqual({ kind: 'prepared' });
+    expect(events).toContainEqual({
+      kind: 'health',
+      fact: expect.objectContaining({
+        capability: 'notifications',
+        operation: 'room-rules',
+        preparation: 'acknowledged',
+        ownership: 'retained',
+        condition: 'available',
+        code: 'room-rules-ready',
+      }),
+    });
 
+    lifetime.unsubscribe();
     lifetime.unsubscribe();
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
-  it('keeps Room-specific work dormant until Application Runtime demands it', () => {
+  it('reports no-Account and no-demand dormancy as expected, not failed initialization', () => {
+    activeAccountId.set(null);
     demand.set(false);
+    const events: unknown[] = [];
     const lifetime = TestBed.inject(NotificationLifetime)
       .run(demand.asReadonly())
-      .subscribe();
+      .subscribe((event) => events.push(event));
 
     expect(connect).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      {
+        kind: 'health',
+        fact: expect.objectContaining({
+          demanded: false,
+          preparation: 'acknowledged',
+          ownership: 'released',
+          condition: 'not-applicable',
+          code: 'room-rules-not-demanded',
+        }),
+      },
+      { kind: 'prepared' },
+    ]);
 
+    activeAccountId.set('@b:example.org');
     demand.set(true);
     TestBed.tick();
     expect(connect).toHaveBeenCalledOnce();
-
-    demand.set(false);
-    TestBed.tick();
-    expect(disconnect).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
-  it('reacquires notification rules when an Account appears after an empty set', () => {
-    activeAccountId.set(null);
+  it('separates a retained reconciliation failure from released ownership', () => {
+    const facts: NotificationRuleHealth[] = [];
     const lifetime = TestBed.inject(NotificationLifetime)
       .run(demand.asReadonly())
-      .subscribe();
+      .subscribe((event) => {
+        if (event.kind === 'health') facts.push(event.fact);
+      });
 
-    expect(connect).not.toHaveBeenCalled();
+    states.next({ condition: 'failed', generation: 2 });
+    expect(facts.at(-1)).toMatchObject({
+      ownership: 'retained',
+      condition: 'degraded',
+      code: 'room-rules-reconciliation-failed',
+    });
 
-    activeAccountId.set('@b:example.org');
-    TestBed.tick();
+    lifetime.unsubscribe();
+  });
+
+  it('retries a retained failure in place and waits for authoritative success', async () => {
+    const service = TestBed.inject(NotificationLifetime);
+    const facts: NotificationRuleHealth[] = [];
+    const lifetime = service.run(demand.asReadonly()).subscribe((event) => {
+      if (event.kind === 'health') facts.push(event.fact);
+    });
+    states.next({ condition: 'failed', generation: 2 });
+    const failed = facts.at(-1)!;
+
+    const recovery = lastValueFrom(
+      service.recover(failed.context, failed.generation),
+    );
+    expect(retryProjection).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledOnce();
+    expect(facts.at(-1)).toMatchObject({
+      condition: 'recovering',
+      generation: failed.generation + 1,
+    });
+
+    states.next({ condition: 'available', generation: 3 });
+    await expect(recovery).resolves.toEqual({ kind: 'success' });
     expect(connect).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
-  it('keeps unexpected attachment defects on the error channel', () => {
-    const defect = new Error('broken notification adapter');
-    connect.mockImplementationOnce(() => {
-      throw defect;
+  it('reports released ownership and rejects an obsolete Account target', async () => {
+    const releasedProjection = () =>
+      new Observable<void>((subscriber) => {
+        subscriber.next();
+        subscriber.complete();
+      });
+    TestBed.overrideProvider(RoomNotificationsService, {
+      useValue: { runProjection: releasedProjection, retryProjection },
     });
-    const error = vi.fn();
+    const service = TestBed.inject(NotificationLifetime);
+    const facts: NotificationRuleHealth[] = [];
+    const lifetime = service.run(demand.asReadonly()).subscribe((event) => {
+      if (event.kind === 'health') facts.push(event.fact);
+    });
+    const released = facts.at(-1)!;
+    expect(released).toMatchObject({
+      ownership: 'released',
+      condition: 'degraded',
+      code: 'room-rules-ownership-released',
+    });
 
-    TestBed.inject(NotificationLifetime)
-      .run(demand.asReadonly())
-      .subscribe({ error });
-
-    expect(error).toHaveBeenCalledWith(defect);
-    expect(disconnect).toHaveBeenCalledOnce();
+    activeAccountId.set('@b:example.org');
+    TestBed.tick();
+    await expect(
+      lastValueFrom(service.recover(released.context, released.generation)),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    lifetime.unsubscribe();
   });
 
-  it('classifies a transient Matrix attachment failure without leaking details', () => {
-    connect.mockImplementationOnce(() => {
-      throw new MatrixError(
-        { errcode: 'M_UNKNOWN', error: 'private server response' },
-        503,
-      );
-    });
-    const error = vi.fn();
-
-    TestBed.inject(NotificationLifetime)
+  it('bounds preparation without timing a healthy retained lifetime', () => {
+    vi.useFakeTimers();
+    states.next({ condition: 'reconciling', generation: 2 });
+    const facts: NotificationRuleHealth[] = [];
+    const lifetime = TestBed.inject(NotificationLifetime)
       .run(demand.asReadonly())
-      .subscribe({ error });
+      .subscribe((event) => {
+        if (event.kind === 'health') facts.push(event.fact);
+      });
 
-    expect(error).toHaveBeenCalledWith(expect.any(NotificationLifetimeError));
-    expect(error.mock.calls[0]?.[0].message).not.toContain('private');
+    vi.advanceTimersByTime(10_000);
+    expect(facts.at(-1)).toMatchObject({
+      ownership: 'retained',
+      condition: 'degraded',
+      code: 'room-rules-preparation-timeout',
+    });
+    states.next({ condition: 'available', generation: 3 });
+    vi.advanceTimersByTime(20_000);
+    expect(facts.at(-1)).toMatchObject({
+      ownership: 'retained',
+      condition: 'available',
+      code: 'room-rules-ready',
+    });
+    lifetime.unsubscribe();
+    vi.useRealTimers();
   });
 });
-
-function readiness() {
-  return {
-    scope: { kind: 'active-account' } as const,
-    durationMs: 0,
-    projectionCount: 0,
-    listenerCount: 0,
-    retainedBytes: 0,
-    acknowledgements: [],
-  };
-}
