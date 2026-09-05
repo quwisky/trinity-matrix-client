@@ -4,10 +4,19 @@ Read this with planning, review, simplification, research, prototype, product-de
 specialize the generic upstream workflows; maintain them here instead of editing installed
 skills. User instructions and accepted authorization govern the task.
 
+## Investigation and output
+
+- Search for relevant symbols and paths before reading files. Expand to callers, dependencies
+  and source references when needed to establish behavior; a summary is not proof of correctness.
+- Return targeted excerpts and actionable results. Keep verbose logs in ignored output or
+  tool artifacts, with locations available for inspection; preserve failures and exit status.
+
 ## Planning and tickets
 
 - Reuse accepted decisions and confirmation from the conversation. Ask again only for an
   unresolved decision or material scope change; invoking another skill does not restart a quiz.
+- Reuse verified investigation through the [compact handoff](roles.md#handoffs), refreshing
+  evidence when an affected input changes or an unresolved question needs further investigation.
 - Preserve parents by default. When the user authorizes a parent-map update, perform that
   update and verify its native graph and readable index together. Close a parent only when
   its destination is achieved and closure is authorized.
@@ -47,6 +56,9 @@ skills. User instructions and accepted authorization govern the task.
 - Include staged, unstaged and relevant untracked changes when reviewing work in progress.
   A comparison ending at `HEAD` alone omits those changes. Give each reviewer the same complete
   artifact and record its comparison base and scope.
+- Complete the first independent review against that stable artifact. Follow-up review covers
+  material changes and their affected behavior; retain the complete evidence while reporting
+  compact summaries.
 - Follow [Branches and publication](../docs/contributing/conventions.md#branches-and-publication)
   for the default base, temporary integration branches and authorization. A conflict-resolution
   skill does not authorize staging unrelated files or creating commits. Follow a request to stop
@@ -75,6 +87,10 @@ skills. User instructions and accepted authorization govern the task.
 - Inspect resolved targets with `nx-workspace`, then follow
   [Choose validation by the change](../docs/contributing/testing.md#choose-validation-by-the-change).
   This policy governs test selection and exceptions to generic skills' blanket test requirements.
+- Record required checks with their command/target, checked revision or working-tree state,
+  relevant environment, exit status and log/artifact location. Reuse a pass only for unchanged
+  relevant inputs; repeat when changed code, dependencies, configuration, environment, failures
+  or unresolved concerns invalidate it. Required CI gates still run under their own policy.
 
 If a skill requests a dedicated Skill tool that is unavailable, read the named repository-local
 `SKILL.md` and follow it with the available tools. Skill examples do not authorize extra commits,

@@ -24,21 +24,24 @@ configuration; they are separate from the managed skill catalog.
 ## Handoffs
 
 - The coordinator supplies the exact worktree, branch/base, task scope, accepted decisions,
-  applicable skills, owned files and acceptance criteria. Carry relevant evidence explicitly;
-  a model override may require a fresh agent context rather than a full conversation fork.
+  applicable skills, owned files and acceptance criteria. Handoffs use a compact evidence packet:
+  conclusions, decision status, evidence references and limitations; retain full logs and artifacts
+  at their locations. Reuse accepted decisions and verified investigation until affected evidence
+  changes. A model override may require a fresh agent context rather than a full conversation fork.
 - Planning returns evidence, unresolved decisions and testable slices to the coordinator.
   The coordinator handles user questions and authorized ticket publication, preserving prior
   approvals. An implementer receives the accepted slice after its dependencies are resolved.
-- Assign one writer to a given set of files. Independent assignments may run concurrently;
-  dependent planning, implementation and review steps wait for their input. The coordinator
-  can inspect dependencies or prepare integration checks while a role works.
+- Assign one writer to a given set of files. Delegate only bounded work that can progress
+  independently; dependent planning, implementation and review steps wait for their input. The
+  coordinator can inspect dependencies or prepare integration checks while a role works.
 - Implementers return changed files, behavior, checks actually run and remaining limitations.
   Freeze the review scope before assigning the reviewer: base and head identifiers, plus
   staged, unstaged and relevant untracked changes for work in progress. Keep that artifact
   stable during review. Findings include concrete evidence and file locations.
 - The coordinator evaluates findings, routes in-scope fixes to the implementer and verifies
-  the affected behavior. Re-review material fixes; track unrelated concerns separately.
-  The coordinator owns authorized commits, pushes and issue/PR updates.
+  the affected behavior. Re-review material changes against the stable artifact and affected
+  behavior; track unrelated concerns separately. The coordinator owns authorized commits,
+  pushes and issue/PR updates.
 - Delegated roles complete their assignment directly and return to the coordinator. Generic
   skill instructions to spawn more reviewers or researchers do not create recursive delegation.
 

@@ -23,6 +23,8 @@ selects a skill by matching the task to the descriptions below.
 [Role routing](roles.md) connects these skills to planning, implementation and review.
 Project-local Codex agent definitions live in [`.codex/agents/`](../.codex/agents).
 They configure models for delegated work; skills remain CLI-managed and model-independent.
+The root [`AGENTS.md`](../AGENTS.md) routes detailed command, capability and convention
+guidance to task-specific references so each task loads only the context it needs.
 
 Skills are loaded on demand — an agent reads a skill's `SKILL.md` when a task matches its
 triggers. The repository keeps 26 skills focused on building and maintaining the Trinity client:

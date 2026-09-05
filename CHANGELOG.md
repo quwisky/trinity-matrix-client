@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Agent instructions now load detailed command, capability and convention guidance on demand,
+  use compact handoffs and reuse current investigation and validation evidence. Implementation
+  uses Terra with high reasoning; required validation and independent review remain intact.
+
 - Repository agent roles now use Astra for planning and independent review, and Terra for
   implementation, with explicit handoffs and Trinity-specific scope and validation rules.
 
