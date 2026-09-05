@@ -150,7 +150,7 @@ describe('Identity production boundary', () => {
 
     expect(lifetime).toContain('class IdentityLifetime');
     expect(session).toContain('inject(IdentityLifetime)');
-    expect(session).toContain('identityPresenceDemand');
+    expect(session).toContain('roomProjectionDemand');
     expect(page).not.toContain('this.presence.connect()');
   });
 });

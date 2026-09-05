@@ -8,7 +8,10 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { Observable, defer, from, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  projectFromClient,
+} from '@trinity/data-access/matrix-client';
 
 /**
  * Per-room notification level:
@@ -56,6 +59,17 @@ export class RoomNotificationsService {
   private connected = false;
 
   private readonly onAccountData = (): void => this.bumpRevision();
+  private readonly activeProjection = projectFromClient({
+    id: 'notifications.room-rules',
+    matrix: this.matrix,
+    bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),
+    unbind: (client) => client.off(ClientEvent.AccountData, this.onAccountData),
+    rebuild: () => {
+      this.rebindClients();
+      this.bumpRevision();
+    },
+    reset: () => this.bumpRevision(),
+  });
 
   constructor() {
     /** Keep listeners aligned with the full live account set, including background accounts. */
@@ -71,6 +85,7 @@ export class RoomNotificationsService {
   /** Start projecting remote push-rule changes into the zoneless room list. Idempotent. */
   connect(): void {
     this.connected = true;
+    this.activeProjection.connect();
     this.rebindClients();
     this.bumpRevision();
   }
@@ -81,6 +96,7 @@ export class RoomNotificationsService {
       client.off(ClientEvent.AccountData, this.onAccountData);
     }
     this.boundClients.clear();
+    this.activeProjection.disconnect();
   }
 
   /** The room's current notification mode, derived from its push rules. Pass `accountId`
@@ -323,7 +339,12 @@ export class RoomNotificationsService {
     // account set so narrow component-test doubles do not have to construct SDK clients
     // merely to exercise unrelated room-shell focus behaviour.
     const accounts = this.matrix.all?.() ?? [];
-    const next = new Set(accounts.map((account) => account.client));
+    const activeClient = this.activeProjection.client();
+    const next = new Set(
+      accounts
+        .map((account) => account.client)
+        .filter((client) => client !== activeClient),
+    );
     for (const client of this.boundClients) {
       if (!next.has(client)) {
         client.off(ClientEvent.AccountData, this.onAccountData);

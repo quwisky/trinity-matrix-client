@@ -118,23 +118,31 @@ describe('Workspace routed-surface composition adapter', () => {
     });
   });
 
-  it('publishes and releases Identity presence demand across route changes', () => {
+  it('publishes and releases Room projection demand across route changes', () => {
     build('/rooms/!room:example.org');
     const adapter = TestBed.inject(WorkspaceRoutedSurfaceAdapter);
 
-    expect(adapter.identityPresenceDemand()).toBe(true);
+    expect(adapter.roomProjectionDemand()).toBe(true);
 
     router.url = '/settings/security';
     events.next(
       new NavigationEnd(2, '/settings/security', '/settings/security'),
     );
-    expect(adapter.identityPresenceDemand()).toBe(false);
+    expect(adapter.roomProjectionDemand()).toBe(false);
 
     router.url = '/rooms';
     events.next(new NavigationEnd(3, '/rooms', '/rooms'));
-    expect(adapter.identityPresenceDemand()).toBe(true);
+    expect(adapter.roomProjectionDemand()).toBe(true);
 
     lifetime.unsubscribe();
-    expect(adapter.identityPresenceDemand()).toBe(false);
+    expect(adapter.roomProjectionDemand()).toBe(false);
+  });
+
+  it('exposes initial Room demand before its route stream starts', () => {
+    router.url = '/rooms/!room:example.org';
+
+    expect(
+      TestBed.inject(WorkspaceRoutedSurfaceAdapter).roomProjectionDemand(),
+    ).toBe(true);
   });
 });

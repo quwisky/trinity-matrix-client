@@ -28,9 +28,11 @@ export class WorkspaceRoutedSurfaceAdapter {
   private readonly location = inject(Location);
   private readonly back = inject(WorkspaceBackService);
   private readonly active = signal<WorkspaceSurface | null>(null);
-  private readonly _identityPresenceDemand = signal(false);
-  /** Whether the routed Workspace can currently present user presence. */
-  readonly identityPresenceDemand = this._identityPresenceDemand.asReadonly();
+  private readonly _roomProjectionDemand = signal(
+    this.isRoomRoute(this.router.url),
+  );
+  /** Whether the routed Workspace can currently present Room-scoped projections. */
+  readonly roomProjectionDemand = this._roomProjectionDemand.asReadonly();
   private currentUrl: string | null = null;
   private previousUrl: string | null = null;
 
@@ -58,7 +60,7 @@ export class WorkspaceRoutedSurfaceAdapter {
         routes.unsubscribe();
         unregister();
         this.active.set(null);
-        this._identityPresenceDemand.set(false);
+        this._roomProjectionDemand.set(false);
         this.currentUrl = null;
         this.previousUrl = null;
       };
@@ -128,7 +130,7 @@ export class WorkspaceRoutedSurfaceAdapter {
   }
 
   private update(url: string): void {
-    this._identityPresenceDemand.set(this.isRoomRoute(url));
+    this._roomProjectionDemand.set(this.isRoomRoute(url));
     const surface = this.applicationSurface(url);
     this.active.set(surface ? { layer: 'application', surface } : null);
   }

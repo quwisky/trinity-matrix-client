@@ -95,6 +95,8 @@ function warningMessage(warning: ApplicationRuntimeWarning): string {
   switch (warning.scope) {
     case 'push':
       return 'Push notifications may be unavailable.';
+    case 'notifications':
+      return 'Room notification settings may be unavailable.';
     case 'badge':
       return 'App badge updates may be unavailable.';
     case 'updates':
@@ -111,5 +113,7 @@ function warningMessage(warning: ApplicationRuntimeWarning): string {
       return 'Encryption trust status may be unavailable.';
     case 'identity':
       return 'User presence may be unavailable.';
+    case 'room-administration':
+      return 'Room permissions and member lists may be unavailable.';
   }
 }

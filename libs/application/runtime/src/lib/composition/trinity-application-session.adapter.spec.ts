@@ -15,6 +15,8 @@ import {
 } from '@trinity/application/workspace';
 import { TrnDialogService, TrnToastService } from '@trinity/components/overlay';
 import {
+  NotificationLifetime,
+  NotificationLifetimeError,
   NotificationService,
   PushService,
   type NativePushActivation,
@@ -29,6 +31,10 @@ import {
   type RoomLibraryLifetimeEvent,
   SpaceRoomOrderService,
 } from '@trinity/data-access/room-library';
+import {
+  RoomAdministrationLifetime,
+  RoomAdministrationLifetimeError,
+} from '@trinity/data-access/room-administration';
 import { TrustLifetime, TrustOperationError } from '@trinity/data-access/trust';
 import { NativeNavigationService } from '@trinity/platform-native';
 import {
@@ -80,6 +86,8 @@ function setup(
   }),
   trustSession: Observable<void> = of(void 0),
   identitySession: Observable<void> = of(void 0),
+  notificationSession: Observable<void> = of(void 0),
+  roomAdministrationSession: Observable<void> = of(void 0),
 ): SessionHarness {
   const deepLinks = new Subject<{ readonly url: string }>();
   const backIntents = new Subject<{ readonly canGoBack: boolean }>();
@@ -108,7 +116,7 @@ function setup(
   const hostUpdateCheck = vi.fn(() => of({ kind: 'completed' as const }));
   const activateUpdate = vi.fn().mockResolvedValue(true);
   const showToast = vi.fn();
-  const identityPresenceDemand = signal(true);
+  const roomProjectionDemand = signal(true);
 
   TestBed.configureTestingModule({
     providers: [
@@ -120,7 +128,7 @@ function setup(
       MockProvider(PushService, { run: () => pushSession ?? pushActivations }),
       MockProvider(NavigationFocusService, { run: () => EMPTY }),
       MockProvider(WorkspaceRoutedSurfaceAdapter, {
-        identityPresenceDemand: identityPresenceDemand.asReadonly(),
+        roomProjectionDemand: roomProjectionDemand.asReadonly(),
         run: () => EMPTY,
       }),
       MockProvider(WorkspaceApplicationSurfacePresenterAdapter, {
@@ -132,6 +140,10 @@ function setup(
       }),
       MockProvider(TrustLifetime, { run: () => trustSession }),
       MockProvider(IdentityLifetime, { run: () => identitySession }),
+      MockProvider(NotificationLifetime, { run: () => notificationSession }),
+      MockProvider(RoomAdministrationLifetime, {
+        run: () => roomAdministrationSession,
+      }),
       MockProvider(HostDeepLinksService, {
         received: deepLinks,
         closeAuthentication,
@@ -269,12 +281,23 @@ describe('TrinityApplicationSessionAdapter', () => {
     const roomLibrary = new Subject<RoomLibraryLifetimeEvent>();
     const trust = new Subject<void>();
     const identity = new Subject<void>();
-    const test = setup(undefined, roomLibrary, trust, identity);
+    const notifications = new Subject<void>();
+    const roomAdministration = new Subject<void>();
+    const test = setup(
+      undefined,
+      roomLibrary,
+      trust,
+      identity,
+      notifications,
+      roomAdministration,
+    );
     const events: unknown[] = [];
 
     test.adapter.run(of(void 0)).subscribe((event) => events.push(event));
     trust.next();
     identity.next();
+    notifications.next();
+    roomAdministration.next();
     roomLibrary.next({
       kind: 'blocked',
       diagnostic: { code: 'room-library-projection-preparation-failed' },
@@ -289,13 +312,24 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(roomLibrary.observed).toBe(false);
     expect(trust.observed).toBe(false);
     expect(identity.observed).toBe(false);
+    expect(notifications.observed).toBe(false);
+    expect(roomAdministration.observed).toBe(false);
   });
 
-  it('retains Trust and Identity lifetimes across readiness until teardown', () => {
+  it('retains all optional capability lifetimes across readiness until teardown', () => {
     const trust = new Subject<void>();
     const identity = new Subject<void>();
+    const notifications = new Subject<void>();
+    const roomAdministration = new Subject<void>();
     const readiness = new Subject<void>();
-    const test = setup(undefined, of({ kind: 'prepared' }), trust, identity);
+    const test = setup(
+      undefined,
+      of({ kind: 'prepared' }),
+      trust,
+      identity,
+      notifications,
+      roomAdministration,
+    );
     const events: unknown[] = [];
     const lifetime = test.adapter
       .run(readiness)
@@ -303,20 +337,109 @@ describe('TrinityApplicationSessionAdapter', () => {
 
     expect(trust.observed).toBe(true);
     expect(identity.observed).toBe(true);
+    expect(notifications.observed).toBe(true);
+    expect(roomAdministration.observed).toBe(true);
     expect(events).toEqual([]);
 
     trust.next();
     expect(events).toEqual([]);
     identity.next();
+    expect(events).toEqual([]);
+    notifications.next();
+    expect(events).toEqual([]);
+    roomAdministration.next();
     expect(events).toEqual([{ kind: 'prepared' }]);
 
     readiness.next();
     expect(trust.observed).toBe(true);
     expect(identity.observed).toBe(true);
+    expect(notifications.observed).toBe(true);
+    expect(roomAdministration.observed).toBe(true);
 
     lifetime.unsubscribe();
     expect(trust.observed).toBe(false);
     expect(identity.observed).toBe(false);
+    expect(notifications.observed).toBe(false);
+    expect(roomAdministration.observed).toBe(false);
+  });
+
+  it('reports optional Notification and Room Administration preparation failures', () => {
+    const readiness = new Subject<void>();
+    const test = setup(
+      undefined,
+      of({ kind: 'prepared' }),
+      of(void 0),
+      of(void 0),
+      throwError(() => new NotificationLifetimeError()),
+      throwError(() => new RoomAdministrationLifetimeError()),
+    );
+    const events: unknown[] = [];
+    const lifetime = test.adapter
+      .run(readiness)
+      .subscribe((event) => events.push(event));
+
+    expect(events).toEqual([{ kind: 'prepared' }]);
+
+    readiness.next();
+
+    expect(events).toEqual([
+      { kind: 'prepared' },
+      {
+        kind: 'warning',
+        warning: expect.objectContaining({
+          scope: 'notifications',
+          diagnostic: { code: 'room-notification-projection-unavailable' },
+        }),
+      },
+      {
+        kind: 'warning',
+        warning: expect.objectContaining({
+          scope: 'room-administration',
+          diagnostic: { code: 'room-administration-projection-unavailable' },
+        }),
+      },
+    ]);
+    expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('restarts Notification and Room Administration lifetimes without retaining listeners', () => {
+    let notificationSubscriptions = 0;
+    let notificationTeardowns = 0;
+    let administrationSubscriptions = 0;
+    let administrationTeardowns = 0;
+    const notifications = new Observable<void>((subscriber) => {
+      notificationSubscriptions += 1;
+      subscriber.next();
+      return () => (notificationTeardowns += 1);
+    });
+    const roomAdministration = new Observable<void>((subscriber) => {
+      administrationSubscriptions += 1;
+      subscriber.next();
+      return () => (administrationTeardowns += 1);
+    });
+    const test = setup(
+      undefined,
+      of({ kind: 'prepared' }),
+      of(void 0),
+      of(void 0),
+      notifications,
+      roomAdministration,
+    );
+
+    const first = test.adapter.run(of(void 0)).subscribe();
+    expect(notificationSubscriptions).toBe(1);
+    expect(administrationSubscriptions).toBe(1);
+    first.unsubscribe();
+    expect(notificationTeardowns).toBe(1);
+    expect(administrationTeardowns).toBe(1);
+
+    const second = test.adapter.run(of(void 0)).subscribe();
+    expect(notificationSubscriptions).toBe(2);
+    expect(administrationSubscriptions).toBe(2);
+    second.unsubscribe();
+    expect(notificationTeardowns).toBe(2);
+    expect(administrationTeardowns).toBe(2);
   });
 
   it('reports optional Trust and Identity failures after readiness', () => {
