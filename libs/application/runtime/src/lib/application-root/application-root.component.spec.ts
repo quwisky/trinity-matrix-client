@@ -167,7 +167,7 @@ describe('ApplicationRootComponent', () => {
         preparation: 'failed',
         ownership: 'retained',
         condition: 'degraded',
-        code: 'account-restore-network',
+        code: 'account-restore-transient-network',
       },
       () => of({ kind: 'success' as const }),
     );

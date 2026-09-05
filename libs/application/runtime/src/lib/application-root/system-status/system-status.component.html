@@ -35,27 +35,37 @@
   </header>
 
   <div class="system-status__body">
-    @if (status.startupBlocker(); as blocker) {
+    @if (status.startupBlockers().length > 0) {
       <section
         class="system-status__group"
         aria-labelledby="system-status-startup"
       >
         <h2 id="system-status-startup">Startup</h2>
-        <article class="system-status__entry system-status__entry--blocking">
-          <h3>{{ blocker.heading }}</h3>
-          <p>{{ blocker.consequence }}</p>
-          <p class="system-status__recovery">
-            Current stage: {{ blocker.stage }}
-          </p>
+        <div class="system-status__entries">
+          @for (blocker of status.startupBlockers(); track blocker.producer) {
+            <article
+              class="system-status__entry system-status__entry--blocking"
+            >
+              <h3>{{ blocker.heading }}</h3>
+              <p>{{ blocker.consequence }}</p>
+              <p class="system-status__recovery">
+                Current stage: {{ blocker.stage }}
+              </p>
+            </article>
+          }
+        </div>
+        @if (status.startupRecovery(); as recovery) {
           <div class="system-status__actions">
             <button trnBtn type="button" (click)="recoverStartup()">
-              {{ blocker.recovery }}
+              {{ recovery }}
             </button>
           </div>
-        </article>
+        }
       </section>
     }
-    @if (!status.startupBlocker() && status.groups().length === 0) {
+    @if (
+      status.startupBlockers().length === 0 && status.groups().length === 0
+    ) {
       <section
         class="system-status__empty"
         role="status"

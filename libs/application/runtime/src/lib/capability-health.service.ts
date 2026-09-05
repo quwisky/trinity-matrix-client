@@ -21,6 +21,7 @@ import type {
   CapabilityRecovery,
   CapabilityRecoveryOutcome,
 } from '@trinity/runtime/projection';
+import { capabilityStatusCopy } from './capability-status.catalog';
 
 export interface ApplicationCapabilityHealth extends CapabilityHealthFact {
   readonly reference: string;
@@ -134,6 +135,10 @@ export class CapabilityHealthService {
       unresolved && fact.condition === 'waiting-for-precondition'
         ? previous.condition
         : fact.condition;
+    const safeDiagnosticReason =
+      unresolved && fact.condition === 'waiting-for-precondition'
+        ? previous.code
+        : capabilityStatusCopy({ ...fact, condition }).safeDiagnosticReason;
     const severity = expected
       ? 'none'
       : failed || unresolved
@@ -152,15 +157,13 @@ export class CapabilityHealthService {
       preparation: fact.preparation,
       ownership: fact.ownership,
       condition,
-      code:
-        unresolved && fact.condition === 'waiting-for-precondition'
-          ? previous.code
-          : fact.code,
+      code: safeDiagnosticReason,
       reference,
       severity,
       occurrence:
         (previous?.occurrence ?? 0) +
-        (severity !== 'none' && (previous?.severity ?? 'none') !== severity
+        (severity !== 'none' &&
+        isNewOrWorse(previous, severity, condition, safeDiagnosticReason)
           ? 1
           : 0),
     };
@@ -318,4 +321,21 @@ export class CapabilityHealthService {
     )
       this.recoveryNoticeState.set(null);
   }
+}
+
+function isNewOrWorse(
+  previous: ApplicationCapabilityHealth | undefined,
+  severity: ApplicationCapabilityHealth['severity'],
+  condition: ApplicationCapabilityHealth['condition'],
+  safeDiagnosticReason: string,
+): boolean {
+  if (!previous || previous.severity === 'none') return true;
+  const rank = { none: 0, limited: 1, blocking: 2 } as const;
+  if (rank[severity] > rank[previous.severity]) return true;
+  return (
+    severity === previous.severity &&
+    (condition === 'degraded' || condition === 'blocked') &&
+    condition === previous.condition &&
+    safeDiagnosticReason !== previous.code
+  );
 }

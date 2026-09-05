@@ -243,14 +243,18 @@ no Account ID, personal label, token, preference value, exception or server resp
 health ledger. System Status resolves Account names and avatars through a separate view-only
 presentation map; those values never enter the diagnostic export.
 `CapabilityHealthService.diagnostics` explicitly exports a generated scoped reference, capability,
-operation, stable code/condition, startup or session stage, attempt, version and platform kind.
+operation, catalogue-allowlisted safe reason/condition, startup or session stage, attempt, version
+and platform kind. A reason or condition pair outside that closed catalogue is normalized to the
+generic unknown-capability reason before it enters health or copied support details.
 It neither uploads nor copies automatically. References are stable within a scoped operation's
 session history and are regenerated after the application lifetime resets.
 
 ### System Status presentation
 
 Application Runtime owns the complete English capability catalogue and a generic unknown entry.
-Each entry names the user-facing condition, consequence, safe fallback and supported recovery.
+Each entry names the user-facing condition, consequence, safe fallback, supported recovery and
+allowlisted diagnostic reasons. During blocked startup, independently settled blockers are listed
+in startup dependency order and share only the recovery supported by the current runtime failure.
 The compact degraded summary can be dismissed for one occurrence; a new scope, a materially worse
 condition, failed recovery or a new outage after resolution resurfaces it, while System Status
 always reflects current health. Expected disabled, dormant and not-applicable states never count

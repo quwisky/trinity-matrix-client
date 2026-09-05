@@ -57,6 +57,10 @@ import {
   timer,
   timeout,
 } from 'rxjs';
+import type {
+  CapabilityHealthFact,
+  CapabilityRecovery,
+} from '@trinity/runtime/projection';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { RoomOrderHealthService } from './room-order-health.service';
@@ -169,9 +173,7 @@ export class TrinityApplicationSessionAdapter {
         this.trust.run().pipe(
           tap((event) => {
             if (event.kind === 'health')
-              this.reportForActiveAccount(event.fact.context);
-            if (event.kind === 'health')
-              this.health.report(event.fact, () =>
+              this.reportHealthForActiveAccount(event.fact, () =>
                 this.trust.recover(event.fact.context, event.fact.generation),
               );
           }),
@@ -183,9 +185,7 @@ export class TrinityApplicationSessionAdapter {
         this.identity.run(this.routedSurfaces.roomProjectionDemand).pipe(
           tap((event) => {
             if (event.kind === 'health')
-              this.reportForActiveAccount(event.fact.context);
-            if (event.kind === 'health')
-              this.health.report(event.fact, () =>
+              this.reportHealthForActiveAccount(event.fact, () =>
                 this.identity.recover(
                   event.fact.context,
                   event.fact.generation,
@@ -202,9 +202,7 @@ export class TrinityApplicationSessionAdapter {
           .subscribe({
             next: (event: NotificationLifetimeEvent) => {
               if (event.kind === 'health')
-                this.reportForActiveAccount(event.fact.context);
-              if (event.kind === 'health')
-                this.health.report(event.fact, () =>
+                this.reportHealthForActiveAccount(event.fact, () =>
                   this.notificationLifetime.recover(
                     event.fact.context,
                     event.fact.generation,
@@ -223,9 +221,7 @@ export class TrinityApplicationSessionAdapter {
           .subscribe({
             next: (event: RoomAdministrationLifetimeEvent) => {
               if (event.kind === 'health')
-                this.reportForActiveAccount(event.fact.context);
-              if (event.kind === 'health')
-                this.health.report(event.fact, () =>
+                this.reportHealthForActiveAccount(event.fact, () =>
                   this.roomAdministration.recover(
                     event.fact.operation,
                     event.fact.context,
@@ -271,9 +267,13 @@ export class TrinityApplicationSessionAdapter {
     return this.interactions;
   }
 
-  private reportForActiveAccount(context: symbol): void {
+  private reportHealthForActiveAccount(
+    fact: CapabilityHealthFact,
+    recovery: CapabilityRecovery,
+  ): void {
     const accountId = this.accounts.activeAccountId();
-    if (accountId) this.health.presentForAccount(context, accountId);
+    if (accountId) this.health.presentForAccount(fact.context, accountId);
+    this.health.report(fact, recovery);
   }
 
   private runDeepLinks(): Observable<void> {

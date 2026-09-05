@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { BUILD_INFO } from '@trinity/platform-native';
@@ -6,6 +6,7 @@ import type { CapabilityRecovery } from '@trinity/runtime/projection';
 import { firstValueFrom, of, toArray } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApplicationRuntimeService } from './application-runtime.service';
+import type { ApplicationRuntimeState } from './application-runtime.models';
 import {
   CAPABILITY_STATUS_CATALOG,
   capabilityStatusCopy,
@@ -16,8 +17,10 @@ import { CapabilityStatusService } from './capability-status.service';
 describe('CapabilityStatusService', () => {
   let health: CapabilityHealthService;
   let status: CapabilityStatusService;
+  let runtimeState: WritableSignal<ApplicationRuntimeState>;
 
   beforeEach(() => {
+    runtimeState = signal({ phase: 'ready', attempt: 7, settlements: [] });
     TestBed.configureTestingModule({
       providers: [
         CapabilityHealthService,
@@ -25,7 +28,7 @@ describe('CapabilityStatusService', () => {
         {
           provide: ApplicationRuntimeService,
           useValue: {
-            state: signal({ phase: 'ready', attempt: 7, settlements: [] }),
+            state: runtimeState,
           },
         },
         {
@@ -83,11 +86,64 @@ describe('CapabilityStatusService', () => {
       ].sort(),
     );
     expect(
-      capabilityStatusCopy({ capability: 'new', operation: 'future' }),
+      capabilityStatusCopy({
+        capability: 'new',
+        operation: 'future',
+        condition: 'degraded',
+        code: 'future-private-detail',
+      }),
     ).toMatchObject({
       heading: 'A feature needs attention',
       recovery: 'Try again',
+      safeDiagnosticReason: 'unrecognized-capability-status',
     });
+    expect(
+      capabilityStatusCopy({
+        capability: 'accounts',
+        operation: 'restore',
+        condition: 'degraded',
+        code: 'account-private-detail',
+      }),
+    ).toMatchObject({
+      heading: 'A feature needs attention',
+      safeDiagnosticReason: 'unrecognized-capability-status',
+    });
+  });
+
+  it('lists independent startup blockers in dependency order', () => {
+    runtimeState.set({
+      phase: 'blocked',
+      attempt: 8,
+      failure: {
+        stage: 'session-capabilities',
+        recovery: 'retry-startup',
+        diagnostic: { code: 'room-library-projection-preparation-failed' },
+      },
+      settlements: [
+        {
+          producer: 'browser-storage-persistence',
+          stage: 'session-capabilities',
+          status: 'blocked',
+        },
+        {
+          producer: 'host-contract',
+          stage: 'host-negotiation',
+          status: 'blocked',
+        },
+        {
+          producer: 'room-library',
+          stage: 'session-capabilities',
+          status: 'blocked',
+        },
+      ],
+    });
+    expect(status.startupBlockers().map(({ producer }) => producer)).toEqual([
+      'host-contract',
+      'room-library',
+      'browser-storage-persistence',
+    ]);
+    expect(status.startupRecovery()).toBe('Retry startup');
+    expect(status.actionableCount()).toBe(3);
   });
 
   it('counts distinct actionable scopes and groups view-only Account identities', () => {
@@ -104,7 +160,7 @@ describe('CapabilityStatusService', () => {
         preparation: 'failed',
         ownership: 'retained',
         condition: 'degraded',
-        code: 'same-outage-refreshed',
+        code: 'account-restore-transient-network',
       },
       () => of({ kind: 'success' as const }),
     );
@@ -127,7 +183,7 @@ describe('CapabilityStatusService', () => {
         preparation: 'acknowledged',
         ownership: 'released',
         condition: 'not-applicable',
-        code: 'push-not-configured',
+        code: 'push-registration-not-configured',
       },
       () => of({ kind: 'unavailable' as const }),
     );
@@ -151,7 +207,7 @@ describe('CapabilityStatusService', () => {
         context,
         generation: 2,
         condition: 'available',
-        code: 'ready',
+        code: 'account-restore-ready',
       },
       () => of({ kind: 'success' as const }),
     );
@@ -161,11 +217,28 @@ describe('CapabilityStatusService', () => {
         context,
         generation: 3,
         condition: 'degraded',
-        code: 'failed-again',
+        code: 'account-restore-crypto-failure',
       },
       () => of({ kind: 'success' as const }),
     );
     expect(status.visibleEntries()).toHaveLength(1);
+  });
+
+  it('resurfaces a materially different failure at the same severity', () => {
+    const context = report('@a:hs', 'accounts', 'restore');
+    const entry = status.visibleEntries()[0]!;
+    status.dismiss(entry);
+    health.report(
+      {
+        ...entry.problem,
+        context,
+        generation: 2,
+        code: 'account-restore-crypto-failure',
+      },
+      () => of({ kind: 'success' as const }),
+    );
+    expect(status.visibleEntries()).toHaveLength(1);
+    expect(status.visibleEntries()[0]?.problem.occurrence).toBe(2);
   });
 
   it('exports only the explicit safe support-detail fields', () => {
@@ -204,7 +277,7 @@ describe('CapabilityStatusService', () => {
         context,
         generation: 3,
         condition: 'degraded',
-        code: 'failed-again',
+        code: 'account-restore-crypto-failure',
       },
       () => of({ kind: 'success' as const }),
     );
@@ -214,7 +287,7 @@ describe('CapabilityStatusService', () => {
         context,
         generation: 4,
         condition: 'available',
-        code: 'ready',
+        code: 'account-restore-ready',
       },
       () => of({ kind: 'success' as const }),
     );
@@ -239,7 +312,10 @@ describe('CapabilityStatusService', () => {
         preparation: 'failed',
         ownership: 'retained',
         condition: 'degraded',
-        code: 'safe-code',
+        code:
+          capability === 'accounts'
+            ? 'account-restore-transient-network'
+            : 'room-order-storage-unavailable',
       },
       recovery,
     );

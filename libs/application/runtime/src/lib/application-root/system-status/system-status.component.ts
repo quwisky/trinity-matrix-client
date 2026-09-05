@@ -3,7 +3,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
-  HostListener,
   ViewChild,
   inject,
 } from '@angular/core';
@@ -36,6 +35,7 @@ import { ApplicationRecoveryPresenter } from '../application-recovery.presenter'
   styleUrl: './system-status.component.scss',
   host: {
     '[class.system-status--mobile]': 'mobile',
+    '(document:keydown)': 'keydown($event)',
   },
 })
 export class SystemStatusComponent implements AfterViewInit {
@@ -52,7 +52,6 @@ export class SystemStatusComponent implements AfterViewInit {
     this.heading?.nativeElement.focus();
   }
 
-  @HostListener('document:keydown', ['$event'])
   protected keydown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       event.preventDefault();

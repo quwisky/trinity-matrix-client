@@ -11,7 +11,7 @@
   .system-status__backdrop {
     position: absolute;
     inset: 0;
-    background: rgb(0 0 0 / 48%);
+    background: var(--trinity-overlay-scrim);
   }
 
   .system-status__surface {

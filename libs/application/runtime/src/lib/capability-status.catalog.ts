@@ -1,4 +1,7 @@
-import type { ApplicationCapabilityHealth } from './capability-health.service';
+import type {
+  CapabilityCondition,
+  CapabilityHealthFact,
+} from '@trinity/runtime/projection';
 
 export interface CapabilityStatusCopy {
   readonly capability: string;
@@ -7,6 +10,10 @@ export interface CapabilityStatusCopy {
   readonly consequence: string;
   readonly fallback: string;
   readonly recovery: string;
+}
+
+export interface ResolvedCapabilityStatusCopy extends CapabilityStatusCopy {
+  readonly safeDiagnosticReason: string;
 }
 
 export const CAPABILITY_STATUS_CATALOG = {
@@ -124,6 +131,141 @@ export const CAPABILITY_STATUS_CATALOG = {
   },
 } as const satisfies Record<string, CapabilityStatusCopy>;
 
+type CatalogKey = keyof typeof CAPABILITY_STATUS_CATALOG;
+
+interface DiagnosticReasonGroups {
+  readonly available?: readonly string[];
+  readonly pending?: readonly string[];
+  readonly expected?: readonly string[];
+  readonly problem?: readonly string[];
+}
+
+const CAPABILITY_DIAGNOSTIC_REASONS = {
+  'accounts:restore': reasons({
+    available: ['account-restore-ready'],
+    problem: [
+      'account-reauthentication-required',
+      'account-restoration-timeout',
+      'account-restore-transient-network',
+      'account-restore-corrupt-local-state',
+      'account-restore-crypto-failure',
+    ],
+  }),
+  'identity:presence': projectionReasons('presence', [
+    'presence-reconciliation-failed',
+    'presence-preparation-timeout',
+    'presence-recovery-failed',
+  ]),
+  'preferences:apply-appearance': reasons({
+    available: ['appearance-effect-ready'],
+    problem: ['appearance-effect-ended', 'appearance-effect-unavailable'],
+  }),
+  'preferences:hydrate-appearance': preferenceReasons('appearance', [
+    'appearance-hydration-failed',
+    'appearance-preference-hydration-partial',
+    'appearance-safe-baseline-unavailable',
+  ]),
+  'preferences:hydrate-shell-layout': preferenceReasons('shell-layout'),
+  'preferences:hydrate-feature-flags': preferenceReasons('feature-flags'),
+  'preferences:hydrate-composer': preferenceReasons('composer'),
+  'preferences:hydrate-date-time': preferenceReasons('date-time'),
+  'preferences:hydrate-gifs': preferenceReasons(
+    'gifs',
+    [],
+    ['gifs-capability-removed'],
+  ),
+  'preferences:hydrate-gestures': preferenceReasons('gestures'),
+  'preferences:hydrate-privacy': preferenceReasons('privacy', [
+    'privacy-preference-hydration-partial',
+  ]),
+  'preferences:hydrate-account-scope': preferenceReasons('account-scope', [
+    'account-scope-preference-hydration-partial',
+  ]),
+  'preferences:hydrate-push-gateway': preferenceReasons(
+    'push-gateway',
+    [],
+    ['push-gateway-platform-unavailable'],
+  ),
+  'preferences:hydrate-shortcuts': preferenceReasons('shortcuts'),
+  'preferences:hydrate-system-lines': preferenceReasons('system-lines'),
+  'room-library:hydrate-order': reasons({
+    available: ['room-order-hydration-ready'],
+    expected: ['room-order-account-removed'],
+    problem: [
+      'room-order-hydration-degraded',
+      'room-order-hydration-timeout',
+      'room-order-storage-unavailable',
+    ],
+  }),
+  'trust:projection': projectionReasons('trust', [
+    'trust-reconciliation-failed',
+    'trust-preparation-timeout',
+  ]),
+  'notifications:room-rules': projectionReasons('room-rules', [
+    'room-rules-reconciliation-failed',
+    'room-rules-preparation-timeout',
+  ]),
+  'notifications:presentation': reasons({
+    available: ['notification-presentation-ready'],
+    pending: ['notification-presentation-preparing'],
+    expected: [
+      'notification-presentation-not-demanded',
+      'notification-presentation-unsupported',
+      'notification-presentation-disabled',
+    ],
+    problem: [
+      'notification-presentation-unavailable',
+      'notification-presentation-timeout',
+      'notification-activation-ownership-released',
+    ],
+  }),
+  'push:registration': reasons({
+    available: ['push-registration-ready'],
+    pending: ['push-registration-preparing'],
+    expected: [
+      'push-registration-unsupported',
+      'push-registration-not-configured',
+      'push-registration-no-account',
+      'push-permission-disabled',
+    ],
+    problem: [
+      'push-device-registration-failed',
+      'push-pusher-registration-failed',
+      'push-pusher-verification-failed',
+      'push-registration-timeout',
+      'push-listener-ownership-released',
+    ],
+  }),
+  'room-administration:permissions': roomAdministrationReasons(),
+  'room-administration:members': roomAdministrationReasons(),
+  'room-administration:bans': roomAdministrationReasons(),
+  'badge:support': reasons({
+    available: ['badge-ready'],
+    expected: ['badge-unsupported'],
+    problem: ['badge-support-unavailable'],
+  }),
+  'updates:check': reasons({
+    available: ['update-check-ready'],
+    expected: ['updates-unsupported'],
+    problem: ['update-check-failed'],
+  }),
+  'host:contract': reasons({
+    available: ['host-contract-ready'],
+    problem: ['host-protocol-mismatch'],
+  }),
+  'storage:persistence': reasons({
+    available: ['storage-persistence-ready'],
+    problem: [
+      'storage-persistence-denied',
+      'storage-persistence-timeout',
+      'storage-persistence-unavailable',
+    ],
+  }),
+} as const satisfies Record<
+  CatalogKey,
+  Readonly<Record<string, readonly CapabilityCondition[]>>
+>;
+
 const UNKNOWN_COPY: CapabilityStatusCopy = {
   capability: 'Trinity',
   heading: 'A feature needs attention',
@@ -133,14 +275,85 @@ const UNKNOWN_COPY: CapabilityStatusCopy = {
   recovery: 'Try again',
 };
 
+const UNKNOWN_SAFE_DIAGNOSTIC_REASON = 'unrecognized-capability-status';
+
 export function capabilityStatusCopy(
-  problem: Pick<ApplicationCapabilityHealth, 'capability' | 'operation'>,
-): CapabilityStatusCopy {
-  return (
-    CAPABILITY_STATUS_CATALOG[
-      `${problem.capability}:${problem.operation}` as keyof typeof CAPABILITY_STATUS_CATALOG
-    ] ?? UNKNOWN_COPY
-  );
+  problem: Pick<
+    CapabilityHealthFact,
+    'capability' | 'operation' | 'condition' | 'code'
+  >,
+): ResolvedCapabilityStatusCopy {
+  const key = `${problem.capability}:${problem.operation}` as CatalogKey;
+  const copy = CAPABILITY_STATUS_CATALOG[key];
+  const allowedConditions = CAPABILITY_DIAGNOSTIC_REASONS[key]?.[problem.code];
+  if (!copy || !allowedConditions?.includes(problem.condition)) {
+    return {
+      ...UNKNOWN_COPY,
+      safeDiagnosticReason: UNKNOWN_SAFE_DIAGNOSTIC_REASON,
+    };
+  }
+  return { ...copy, safeDiagnosticReason: problem.code };
+}
+
+function reasons(
+  groups: DiagnosticReasonGroups,
+): Readonly<Record<string, readonly CapabilityCondition[]>> {
+  return Object.fromEntries([
+    ...(groups.available ?? []).map((code) => [code, ['available']] as const),
+    ...(groups.pending ?? []).map(
+      (code) => [code, ['initializing', 'recovering']] as const,
+    ),
+    ...(groups.expected ?? []).map(
+      (code) =>
+        [
+          code,
+          ['waiting-for-precondition', 'disabled', 'not-applicable'],
+        ] as const,
+    ),
+    ...(groups.problem ?? []).map(
+      (code) =>
+        [code, ['waiting-for-precondition', 'degraded', 'blocked']] as const,
+    ),
+  ]);
+}
+
+function preferenceReasons(
+  producer: string,
+  extraProblems: readonly string[] = [],
+  expected: readonly string[] = [],
+): Readonly<Record<string, readonly CapabilityCondition[]>> {
+  return reasons({
+    available: [`${producer}-hydration-ready`],
+    pending: [`${producer}-hydration-retrying`],
+    expected,
+    problem: [
+      `${producer}-hydration-failed`,
+      `${producer}-stored-value-invalid`,
+      `${producer}-hydration-timeout`,
+      ...extraProblems,
+    ],
+  });
+}
+
+function projectionReasons(
+  prefix: string,
+  problems: readonly string[],
+): Readonly<Record<string, readonly CapabilityCondition[]>> {
+  return reasons({
+    available: [`${prefix}-ready`],
+    pending: [`${prefix}-preparing`],
+    expected: [`${prefix}-not-demanded`, `${prefix}-dormant`],
+    problem: [...problems, `${prefix}-ownership-released`],
+  });
+}
+
+function roomAdministrationReasons(): Readonly<
+  Record<string, readonly CapabilityCondition[]>
+> {
+  return projectionReasons('room-administration', [
+    'room-administration-reconciliation-failed',
+    'room-administration-preparation-timeout',
+  ]);
 }
 
 function preferenceCopy(name: string): CapabilityStatusCopy {

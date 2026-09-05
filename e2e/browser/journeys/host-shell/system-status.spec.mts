@@ -108,7 +108,8 @@ test.describe('System Status on desktop', () => {
     await expect(unknownEntry).not.toContainText('safe-unknown-fault');
     await support.click();
     const details = dialog.locator('pre');
-    await expect(details).toContainText('safe-unknown-fault');
+    await expect(details).toContainText('unrecognized-capability-status');
+    await expect(details).not.toContainText('safe-unknown-fault');
     await expect(details).not.toContainText('@private:example.org');
     await expect(details).not.toContainText(
       'synthetic private adapter response',

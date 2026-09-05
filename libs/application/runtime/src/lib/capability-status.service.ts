@@ -11,6 +11,12 @@ import { take } from 'rxjs';
 import { ApplicationRuntimeService } from './application-runtime.service';
 import type { ApplicationStartupRecovery } from './application-runtime.models';
 import {
+  APPLICATION_STARTUP_PRODUCERS,
+  APPLICATION_STARTUP_STAGES,
+  type ApplicationStartupProducer,
+  type ApplicationStartupProducerSettlement,
+} from './application-runtime.models';
+import {
   CapabilityHealthService,
   type ApplicationCapabilityHealth,
 } from './capability-health.service';
@@ -38,10 +44,10 @@ export interface CapabilityStatusGroup {
 }
 
 export interface StartupStatusEntry {
+  readonly producer: ApplicationStartupProducer | 'runtime';
   readonly stage: string;
   readonly heading: string;
   readonly consequence: string;
-  readonly recovery: string;
 }
 
 const CAPABILITY_ORDER = [
@@ -99,20 +105,33 @@ export class CapabilityStatusService {
           a.capability.localeCompare(b.capability),
       );
   });
-  readonly startupBlocker = computed<StartupStatusEntry | null>(() => {
+  readonly startupBlockers = computed<readonly StartupStatusEntry[]>(() => {
     const state = this.runtime.state();
-    if (state.phase !== 'blocked') return null;
-    return {
-      stage: state.failure.stage,
-      heading: 'Trinity could not finish starting',
-      consequence: startupBlockerConsequence(state.failure.recovery),
-      recovery: startupRecoveryLabel(state.failure.recovery),
-    };
+    if (state.phase !== 'blocked') return [];
+    const blocked = state.settlements
+      .filter((settlement) => settlement.status === 'blocked')
+      .sort(startupSettlementOrder);
+    return blocked.length > 0
+      ? blocked.map(startupStatusEntry)
+      : [
+          {
+            producer: 'runtime',
+            stage: state.failure.stage,
+            heading: 'Trinity could not finish starting',
+            consequence: startupBlockerConsequence(state.failure.recovery),
+          },
+        ];
+  });
+  readonly startupRecovery = computed(() => {
+    const state = this.runtime.state();
+    return state.phase === 'blocked'
+      ? startupRecoveryLabel(state.failure.recovery)
+      : null;
   });
   readonly actionableCount = computed(
     () =>
       new Set(this.health.problems().map(({ reference }) => reference)).size +
-      (this.startupBlocker() ? 1 : 0),
+      this.startupBlockers().length,
   );
   readonly hasBlocking = computed(() =>
     this.visibleEntries().some(
@@ -241,6 +260,66 @@ function startupRecoveryLabel(recovery: ApplicationStartupRecovery): string {
     case 'reset-installation':
       return 'Reset this installation';
   }
+}
+
+const STARTUP_STATUS_COPY = {
+  'host-contract': {
+    heading: 'Device integration could not be prepared',
+    consequence: 'Trinity cannot safely use this host yet.',
+  },
+  'preference-hydration': {
+    heading: 'Safe settings could not be prepared',
+    consequence: 'Trinity cannot establish a safe settings baseline.',
+  },
+  'account-registry': {
+    heading: 'Accounts could not be restored',
+    consequence: 'The required Account session is unavailable.',
+  },
+  'room-library': {
+    heading: 'Rooms could not be prepared',
+    consequence: 'The required Room library is unavailable.',
+  },
+  'room-order': {
+    heading: 'Saved Room ordering could not be prepared',
+    consequence: 'Rooms may not use their saved order.',
+  },
+  'browser-storage-persistence': {
+    heading: 'Protected local storage could not be prepared',
+    consequence: 'Local Trinity data may be cleared under storage pressure.',
+  },
+  workspace: {
+    heading: 'The workspace could not be restored',
+    consequence: 'Trinity cannot open a safe application destination.',
+  },
+  readiness: {
+    heading: 'Application readiness could not be confirmed',
+    consequence: 'Trinity cannot safely expose the workspace yet.',
+  },
+} as const satisfies Record<
+  ApplicationStartupProducer,
+  { readonly heading: string; readonly consequence: string }
+>;
+
+function startupStatusEntry(
+  settlement: ApplicationStartupProducerSettlement,
+): StartupStatusEntry {
+  return {
+    producer: settlement.producer,
+    stage: settlement.stage,
+    ...STARTUP_STATUS_COPY[settlement.producer],
+  };
+}
+
+function startupSettlementOrder(
+  a: ApplicationStartupProducerSettlement,
+  b: ApplicationStartupProducerSettlement,
+): number {
+  return (
+    APPLICATION_STARTUP_STAGES.indexOf(a.stage) -
+      APPLICATION_STARTUP_STAGES.indexOf(b.stage) ||
+    APPLICATION_STARTUP_PRODUCERS.indexOf(a.producer) -
+      APPLICATION_STARTUP_PRODUCERS.indexOf(b.producer)
+  );
 }
 
 function platformKind(): 'web' | 'ios' | 'android' | 'desktop' {

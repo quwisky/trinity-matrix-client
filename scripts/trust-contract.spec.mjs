@@ -139,7 +139,8 @@ describe('Trust production boundary', () => {
     expect(lifetime).toContain('this.health.retryProjection()');
     expect(lifetime).toContain('this.verification.retryProjection()');
     expect(session).toContain('inject(TrustLifetime)');
-    expect(session).toContain('this.health.report(event.fact');
+    expect(session).toContain('this.reportHealthForActiveAccount(event.fact');
+    expect(session).toContain('this.health.report(fact, recovery)');
   });
 
   it('separates current Trust state from explicitly stale last-known data', () => {
