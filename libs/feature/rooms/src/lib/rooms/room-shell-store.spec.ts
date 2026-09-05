@@ -7,7 +7,7 @@ import { WorkspaceNavigationService } from '@trinity/application/workspace';
 describe('RoomShellStore Workspace lifetimes', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('releases an exact-room panel when Account changes but Room id stays equal', () => {
+  it('releases exact-room member info when Account changes but Room id stays equal', () => {
     const activeAccountId = signal<string | null>('@alice:example.org');
     TestBed.configureTestingModule({
       providers: [
@@ -31,13 +31,21 @@ describe('RoomShellStore Workspace lifetimes', () => {
       ],
     });
     const store = TestBed.inject(RoomShellStore);
-    store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+    store.rightPanel.set({
+      kind: 'member',
+      member: {
+        userId: '@bob:example.org',
+        roomDisplayName: 'Bob',
+        roomInitial: 'B',
+        roomAvatarMxc: null,
+        powerLevel: 0,
+        isCreator: false,
+      },
+      direct: false,
+    });
 
     activeAccountId.set('@bob:example.org');
 
-    expect(store.rightPanel()).not.toEqual({
-      kind: 'thread',
-      rootEventId: '$root',
-    });
+    expect(store.rightPanel()?.kind).not.toBe('member');
   });
 });

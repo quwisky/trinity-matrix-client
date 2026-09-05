@@ -70,7 +70,11 @@ import { EncryptionBannerComponent } from '../encryption-banner/encryption-banne
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
 import { TombstoneBannerComponent } from '../tombstone-banner/tombstone-banner.component';
 import { type SwipeDirection } from '../message-row/message-row.component';
-import { RoomShellStore, type RightPanel } from './room-shell-store';
+import { RoomShellStore, type LegacyMemberSurface } from './room-shell-store';
+import {
+  RoomSurfaceLifecycle,
+  type RenderedRoomSurface,
+} from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -108,6 +112,7 @@ const PANEL_DRAWER_PX = 480;
   // what every runWithBusy subscription is tied to. See shell-invariants.spec.ts.
   providers: [
     RoomShellStore,
+    RoomSurfaceLifecycle,
     ShellStatusService,
     RoomShellViewModel,
     RoomShellNavigationService,
@@ -193,8 +198,8 @@ export class RoomsPage implements OnDestroy {
    * other halves — which is why it resolves the direction rather than passing the preference
    * through.
    *
-   * `store.rightPanel()` is the literal expression `[drawerOpen]` is bound to below, so the
-   * two cannot drift. It is NOT what stops the row gesture competing with the drawer: while
+   * `roomSurfaces.renderedSurface()` is the expression `[drawerOpen]` is bound to below, so
+   * the two cannot drift. It is NOT what stops the row gesture competing with the drawer: while
    * a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
    * reaches a timeline row in that state at all. This clause is a mirror of the drawer's own
    * arming condition, kept because a gesture that is off should be off for a stated reason
@@ -213,7 +218,7 @@ export class RoomsPage implements OnDestroy {
     if (!this.membersAreDrawer() || !isMobileOs()) {
       return 'off';
     }
-    if (this.store.rightPanel()) {
+    if (this.roomSurfaces.renderedSurface()) {
       return 'off';
     }
     return this.gestures.messageSwipe();
@@ -241,7 +246,7 @@ export class RoomsPage implements OnDestroy {
    * template call is re-evaluated each pass so a rotation is picked up.
    */
   protected drawerWidth(): number {
-    const panel = this.store.rightPanel();
+    const panel = this.roomSurfaces.renderedSurface();
     if (!panel || panel.kind === 'members') {
       return MEMBERS_DRAWER_PX;
     }
@@ -268,6 +273,7 @@ export class RoomsPage implements OnDestroy {
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
   readonly store = inject(RoomShellStore);
+  readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly workspace = inject(WorkspaceNavigationService);
   readonly status = inject(ShellStatusService);
   readonly vm = inject(RoomShellViewModel);
@@ -318,12 +324,6 @@ export class RoomsPage implements OnDestroy {
     // In the constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle
     // hooks, so binding there left the callback unset for all 170 unit tests.
     this.nav.bindFocus(() => this.focusActiveView());
-    effect(() => {
-      const target = this.workspace.eventTarget();
-      if (!target) return;
-      this.store.messageSearchTarget.set(target.eventId);
-      this.store.jumpRequest.update((revision) => revision + 1);
-    });
     // ShellStatusService presents runWithBusy failures directly. In the zoneless app,
     // a component effect that only reads the error signal is not a reliable render
     // trigger when the failed action changes no template-read state.
@@ -365,9 +365,9 @@ export class RoomsPage implements OnDestroy {
    */
   private manageRightPanelFocus(): void {
     let trigger: HTMLElement | null = null;
-    let previousPanel: RightPanel = null;
+    let previousPanel: RenderedRoomSurface | null = null;
     effect(() => {
-      const panel = this.store.rightPanel();
+      const panel = this.roomSurfaces.renderedSurface();
       untracked(() => {
         const previous = previousPanel;
         previousPanel = panel;
@@ -387,7 +387,7 @@ export class RoomsPage implements OnDestroy {
         afterNextRender(
           () => {
             if (
-              this.store.rightPanel() === null &&
+              this.roomSurfaces.renderedSurface() === null &&
               target.isConnected &&
               document.activeElement === document.body
             ) {
@@ -401,11 +401,11 @@ export class RoomsPage implements OnDestroy {
   }
 
   /** Focus the destination of a panel-to-panel replacement after its template exists. */
-  private focusRightPanelAfterSwap(panel: Exclude<RightPanel, null>): void {
+  private focusRightPanelAfterSwap(panel: RenderedRoomSurface): void {
     afterNextRender(
       () => {
         if (
-          this.store.rightPanel() !== panel ||
+          this.roomSurfaces.renderedSurface() !== panel ||
           document.activeElement !== document.body
         ) {
           return;
@@ -488,14 +488,21 @@ export class RoomsPage implements OnDestroy {
     // Toggling OFF only when the member list is what is showing. With one slot, pressing
     // "Members" while a thread is open means "show me members instead", not "close the
     // thread" — the button is a destination, not a switch.
-    this.store.rightPanel.update((panel) =>
-      panel?.kind === 'members' ? null : { kind: 'members' },
-    );
+    if (this.roomSurfaces.renderedSurface()?.kind === 'members') {
+      this.store.rightPanel.set(null);
+      return;
+    }
+    this.roomSurfaces.transition({ kind: 'dismiss' });
+    this.store.rightPanel.set({ kind: 'members' });
   }
 
   /** Empty the slot — the mobile drawer's backdrop, and every panel's own close button. */
   closeRightPanel(): void {
-    this.store.rightPanel.set(null);
+    if (this.roomSurfaces.surface()) {
+      this.roomSurfaces.transition({ kind: 'dismiss' });
+    } else {
+      this.store.rightPanel.set(null);
+    }
   }
 
   /**
@@ -509,6 +516,7 @@ export class RoomsPage implements OnDestroy {
     if (!this.store.activeRoomId()) {
       return; // no room, no roster to show — the slot's template is gated on one
     }
+    this.roomSurfaces.transition({ kind: 'dismiss' });
     this.store.rightPanel.set({ kind: 'members' });
     this.haptics.gestureCommitted();
   }
@@ -535,9 +543,9 @@ export class RoomsPage implements OnDestroy {
     this.closeRightPanel();
   }
 
-  /** Current semantic Room surface, then the compact Conversation beneath it. */
+  /** Legacy member surface, then the compact Conversation beneath it. */
   private activeWorkspaceSurface(): WorkspaceSurface | null {
-    const panel = this.store.rightPanel();
+    const panel: LegacyMemberSurface = this.store.rightPanel();
     if (panel) {
       return {
         layer: 'room',
@@ -592,7 +600,7 @@ export class RoomsPage implements OnDestroy {
    * composer. As the narrow drawer it is an overlay like the rest and goes with them.
    */
   onEscapeKey(): void {
-    const panel = this.store.rightPanel();
+    const panel = this.roomSurfaces.renderedSurface();
     if (!panel || (panel.kind === 'members' && !this.membersAreDrawer())) {
       return;
     }

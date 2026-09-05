@@ -74,6 +74,14 @@ destination nor history. A cold RxJS transition validates and projects the URL b
 Account commit can begin, publishes the view only after Account readiness, and retains ownership
 through post-commit completion if its initiating subscriber disappears.
 
+The Room shell owns one page-scoped surface lifecycle for message-related work. Threads, a thread,
+pinned messages, in-Room search, and message reveal enter one synchronous semantic transition;
+consumers read exact Account-and-Room state without a writable panel handle. Opening replaces the
+current surface, a Conversation change drops its transient state, and reveal closes before a
+post-render jump whose revision makes repeated event selection observable. The lifecycle registers
+its semantic Room surface with Workspace Back while the page remains the renderer. The member and
+member-detail path stays on a frozen writable compatibility allowlist until its next contraction.
+
 ## State and commands
 
 The Matrix SDK remains authoritative for protocol state. Adapters normalize SDK input before capabilities consume it. Capabilities project state to private writable signals and expose only read-only signals and computed views.

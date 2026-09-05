@@ -13,6 +13,7 @@ import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { type ExactRoomSelection } from '../shared/exact-selection';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 
 /**
  * The keyboard surface: the global chord handler, room hopping and list walking, and the
@@ -25,6 +26,7 @@ import { ShellStatusService } from './shell-status.service';
 @Injectable()
 export class ShellShortcutsService {
   private readonly store = inject(RoomShellStore);
+  private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
@@ -112,7 +114,7 @@ export class ShellShortcutsService {
 
   /** Whether the shell's right-hand slot is showing something ON TOP of the timeline. */
   private panelOwnsTheScreen(): boolean {
-    const panel = this.store.rightPanel();
+    const panel = this.roomSurfaces.renderedSurface();
     return panel !== null && panel.kind !== 'members';
   }
 

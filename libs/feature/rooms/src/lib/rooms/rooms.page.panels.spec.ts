@@ -545,7 +545,7 @@ describe('RoomsPage panels, pins and media', () => {
     // The slot itself, not a spy on a service that no longer exists: the shell's one
     // right-hand slot IS the presentation now, so this is what the user sees. Asserting a
     // call would still pass if the value never reached the layout.
-    expect(shell.store.rightPanel()).toEqual({ kind: 'threads' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'threads' });
   });
 
   it('does not open the threads-list panel without an active room', () => {
@@ -554,11 +554,11 @@ describe('RoomsPage panels, pins and media', () => {
     // Whatever the slot was showing before the press (the member list, seeded at this
     // width). Identity, so "opened threads" and "re-opened members" both fail: nothing at
     // all may be written when there is no room for the list to be about.
-    const before = shell.store.rightPanel();
+    const before = shell.surfaces.renderedSurface();
 
     shell.messages.openThreadsList();
 
-    expect(shell.store.rightPanel()).toBe(before);
+    expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
   it('drops a room-scoped panel when the open room changes', async () => {
@@ -570,7 +570,7 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!a:hs');
     await settleWorkspace();
     shell.messages.onOpenThread('$root');
-    expect(shell.store.rightPanel()).toEqual({
+    expect(shell.surfaces.renderedSurface()).toEqual({
       kind: 'thread',
       rootEventId: '$root',
     });
@@ -578,7 +578,7 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!b:hs');
     await settleWorkspace();
 
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
   it('carries the roster — and a closed slot — across a room change', async () => {
@@ -592,12 +592,12 @@ describe('RoomsPage panels, pins and media', () => {
 
     setRouteRoom('!b:hs');
     await settleWorkspace();
-    expect(shell.store.rightPanel()).toBeNull();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
 
     shell.store.rightPanel.set({ kind: 'members' });
     setRouteRoom('!c:hs');
     await settleWorkspace();
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('onTogglePin pins an unpinned message', () => {
@@ -650,26 +650,28 @@ describe('RoomsPage panels, pins and media', () => {
     );
   });
 
-  it('openPinnedPanel jumps the timeline to the chosen pinned message', () => {
+  it('openPinnedPanel jumps the timeline to the chosen pinned message', async () => {
     // Two steps rather than one awaited dialog result: the panel goes into the slot, and a
     // picked row comes back through `onPanelJump` — which is what the template binds the
     // panel's (selected) output to.
     const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
 
     shell.messages.openPinnedPanel();
-    expect(shell.store.rightPanel()).toEqual({ kind: 'pinned' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'pinned' });
 
     shell.messages.onPanelJump('$evt:hs');
 
     flushPanelJump();
 
-    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
-    expect(shell.store.jumpRequest()).toBe(1);
+    expect(shell.surfaces.jumpTarget()).toBe('$evt:hs');
+    expect(shell.surfaces.jumpRevision()).toBe(1);
     // And the slot closes, exactly as the dialog it replaced did. Below the `members`
     // breakpoint the slot is a full-width drawer over the timeline, so jumping with it open
     // scrolls to a message the user cannot see — `pin-messages.spec.mts` pins this in a real
     // browser and caught it when this briefly stayed open.
-    expect(shell.store.rightPanel()).toBeNull();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
   it('jumpToDate scrolls to the event the date resolved to', async () => {
@@ -684,11 +686,12 @@ describe('RoomsPage panels, pins and media', () => {
     );
 
     await shell.messages.jumpToDate();
+    flushPanelJump();
 
     expect(timeline.jumpToDate).toHaveBeenCalledWith(1_700_000_000_000);
     // Reuses the one definition of "scroll the list to this event".
-    expect(shell.store.messageSearchTarget()).toBe('$day:hs');
-    expect(shell.store.jumpRequest()).toBe(1);
+    expect(shell.surfaces.jumpTarget()).toBe('$day:hs');
+    expect(shell.surfaces.jumpRevision()).toBe(1);
   });
 
   it('jumpToDate does nothing at all when the picker is cancelled', async () => {
@@ -703,7 +706,7 @@ describe('RoomsPage panels, pins and media', () => {
     await shell.messages.jumpToDate();
 
     expect(timeline.jumpToDate).not.toHaveBeenCalled();
-    expect(shell.store.jumpRequest()).toBe(0);
+    expect(shell.surfaces.jumpRevision()).toBe(0);
   });
 
   it('jumpToDate says something different for each way it can fail', async () => {
@@ -733,43 +736,48 @@ describe('RoomsPage panels, pins and media', () => {
         expect.objectContaining({ variant: 'danger' }),
       );
       // And it must NOT pretend the jump happened.
-      expect(shell.store.jumpRequest(), kind).toBe(0);
+      expect(shell.surfaces.jumpRevision(), kind).toBe(0);
     }
   });
 
-  it('openPinnedPanel bumps jumpRequest again when the SAME message is re-picked', () => {
+  it('openPinnedPanel bumps the revision again when the SAME message is re-picked', async () => {
     // The bug: re-selecting the same pinned row must still re-trigger a jump —
-    // messageSearchTarget alone is a no-op signal write (Object.is), so the list
-    // only re-fires because jumpRequest keeps incrementing. Re-picking is cheaper to do
+    // The target alone is a no-op signal write (Object.is), so the list only
+    // re-fires because the revision keeps incrementing. Re-picking is cheaper to do
     // now than it was against a dialog, not rarer: the panel never closed.
     const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
     shell.messages.openPinnedPanel();
 
     shell.messages.onPanelJump('$evt:hs');
 
     flushPanelJump();
-    expect(shell.store.jumpRequest()).toBe(1);
+    expect(shell.surfaces.jumpRevision()).toBe(1);
 
     shell.messages.onPanelJump('$evt:hs');
 
     flushPanelJump();
 
-    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
-    expect(shell.store.jumpRequest()).toBe(2);
+    expect(shell.surfaces.jumpTarget()).toBe('$evt:hs');
+    expect(shell.surfaces.jumpRevision()).toBe(2);
   });
 
-  it('openPinnedPanel does not jump when the panel is dismissed without a pick', () => {
+  it('openPinnedPanel does not jump when the panel is dismissed without a pick', async () => {
     // "Cancelled" is a dismissal now — the panel's (dismissed) output, which the page
     // handles by emptying the slot. Opening and closing it must leave the timeline exactly
     // where it was: no target, no bump.
     const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
     shell.messages.openPinnedPanel();
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'pinned' });
 
     shell.page.closeRightPanel();
 
-    expect(shell.store.rightPanel()).toBeNull();
-    expect(shell.store.messageSearchTarget()).toBeNull();
-    expect(shell.store.jumpRequest()).toBe(0);
+    expect(shell.surfaces.renderedSurface()).toBeNull();
+    expect(shell.surfaces.jumpTarget()).toBeNull();
+    expect(shell.surfaces.jumpRevision()).toBe(0);
   });
 
   const pngFile = () =>

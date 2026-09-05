@@ -1,27 +1,17 @@
-import {
-  Injectable,
-  computed,
-  inject,
-  linkedSignal,
-  signal,
-} from '@angular/core';
+import { Injectable, computed, inject, linkedSignal } from '@angular/core';
 import type { MemberSummary } from '@trinity/data-access/room-administration';
 import { BELOW_MEMBERS_QUERY, matchesQuery } from '@trinity/util/ui';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 
 /**
- * The surfaces that can occupy the shell's right-hand slot.
+ * The member-family surfaces still on the writable compatibility path.
  *
  * `null` is "nothing showing", which on the narrow layout is the only honest state — the slot
  * is an overlay drawer there, and an overlay that is always open is what the member list used
  * to be before this phase.
  */
-export type RightPanel =
+export type LegacyMemberSurface =
   | { readonly kind: 'members' }
-  | { readonly kind: 'threads' }
-  | { readonly kind: 'thread'; readonly rootEventId: string }
-  | { readonly kind: 'pinned' }
-  | { readonly kind: 'search' }
   // Member info carries its subject. Permission is deliberately not snapshotted here: the
   // panel projects it from live room state so a remote promotion/demotion updates in place.
   | {
@@ -32,8 +22,8 @@ export type RightPanel =
   | null;
 
 /**
- * What the slot shows with nothing else asked for: the member list at the wide layout,
- * closed below it — which is what the member column has always done.
+ * What the legacy member path shows with nothing else asked for: the member list at the
+ * wide layout, closed below it — which is what the member column has always done.
  *
  * A one-shot `matchesQuery` and deliberately NOT `mediaQuerySignal`: this SEEDS a state the
  * user then owns, and a live signal would re-evaluate on every rotation across the boundary
@@ -44,7 +34,7 @@ export type RightPanel =
  * should mean. Asking the BELOW query makes the unknown case the static column, which is
  * what this has always done.
  */
-function seedRightPanel(): RightPanel {
+function seedRightPanel(): LegacyMemberSurface {
   return matchesQuery(BELOW_MEMBERS_QUERY) ? null : { kind: 'members' };
 }
 
@@ -122,36 +112,24 @@ export class RoomShellStore {
   });
 
   /**
-   * What the right-hand slot is showing, if anything.
+   * What the legacy member-family path is showing, if anything.
    *
-   * ONE slot, not five independent flags. The member list was a column with its own boolean
-   * while threads, the threads list, pinned messages and search were CDK dialogs with
-   * `side: 'end'` — so they stacked OVER the member list rather than sharing the layout with
-   * it, and only one could be open at a time by accident (each service kept its own
-   * re-entrancy guard) rather than by design. A single slot makes "only one" structural:
-   * opening threads while members is showing replaces it, because there is one value.
-   *
-   * A discriminated union rather than a string, because two of the surfaces carry data —
-   * a thread needs its root event, a member card needs its member — and a bare
-   * `'thread' | null` would have to be shadowed by a second signal holding the id, which is
-   * the invalid-state-is-representable shape this exists to avoid.
+   * Message-related surfaces moved to `RoomSurfaceLifecycle`. This writable signal remains
+   * only until the member family follows in issue #379; its production caller allowlist is
+   * frozen by `room-surface-lifecycle-contract.spec.mjs`.
    */
-  readonly rightPanel = linkedSignal<string, RightPanel>({
-    // Keyed on the exact Account-and-Room, because four of the six surfaces are about a
-    // particular Conversation and cannot follow the user out of it. A thread names a root
-    // event, pinned and search hand back an event id, and member info carries its subject
-    // against the room whose row was clicked — while the template binds every panel to
-    // `room.id`, the room that is open NOW. Left to persist, switching rooms with member
-    // info open pointed "Remove from room" at a room the user never opened it for. Account
-    // is equally load-bearing: two Accounts may share one Room id but own distinct handles.
+  readonly rightPanel = linkedSignal<string, LegacyMemberSurface>({
+    // Member info carries a Room-scoped subject and cannot follow the user out of its exact
+    // Conversation. Account is equally load-bearing: two Accounts may share one Room id but
+    // own distinct handles.
     source: () =>
       `${this.workspace.activeAccountId() ?? ''}|${this.activeRoomId() ?? ''}|${this.pane()}`,
     computation: (_conversationKey, previous) => {
       const panel = previous?.value;
       // The roster and "nothing" are the column's own open/closed state, which the user owns
       // and which has always survived a room change — the list re-projects itself onto the
-      // new room. Everything else goes back to whatever this width shows by default. (On the
-      // very first read `previous` is undefined, which falls through to the seed.)
+      // new room. Member info goes back to whatever this width shows by default. (On the
+      // first read `previous` is undefined, which falls through to the seed.)
       return panel === null || panel?.kind === 'members'
         ? panel
         : seedRightPanel();
@@ -160,14 +138,4 @@ export class RoomShellStore {
 
   /** Whether the member list is the surface currently in the slot. */
   readonly membersOpen = computed(() => this.rightPanel()?.kind === 'members');
-
-  /**
-   * Event id the message list should scroll to, set by in-room search, a reply
-   * preview, or the pinned panel. Bound to the list's `jumpToId`, paired with
-   * {@link jumpRequest} so re-selecting the SAME message still re-triggers the jump.
-   */
-  readonly messageSearchTarget = signal<string | null>(null);
-
-  /** Bumped on every jump request so the list re-jumps even to an unchanged target. */
-  readonly jumpRequest = signal(0);
 }

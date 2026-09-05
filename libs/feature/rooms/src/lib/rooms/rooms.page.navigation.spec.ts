@@ -56,7 +56,7 @@ import {
   vi,
 } from 'vitest';
 import { RoomsPage } from './rooms.page';
-import { type RightPanel } from './room-shell-store';
+import { type RenderedRoomSurface } from './room-surface-lifecycle';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { desktopBridgeFixture } from '@trinity/testing';
@@ -66,6 +66,23 @@ import { desktopBridgeFixture } from '@trinity/testing';
 // test that opens a room hands it to the next test, where "no room is open" then silently
 // asserts against the previous test's room.
 beforeEach(() => setRouteRoom(null));
+
+function showSurface(
+  shell: ReturnType<typeof shellFrom>,
+  surface: RenderedRoomSurface,
+): void {
+  if (
+    surface.kind === 'threads' ||
+    surface.kind === 'thread' ||
+    surface.kind === 'pinned' ||
+    surface.kind === 'search'
+  ) {
+    shell.surfaces.transition({ kind: 'open', surface });
+    return;
+  }
+  shell.surfaces.transition({ kind: 'dismiss' });
+  shell.store.rightPanel.set(surface);
+}
 
 // The quick switcher (Ctrl/Cmd+K) presents a modal and, on a selection, jumps per
 // kind: room/dm open the room, space selects it in the rail, a directory person
@@ -310,22 +327,22 @@ describe('RoomsPage quick switcher', () => {
     await settleWorkspace();
 
     shell.messages.openMessageSearch();
-    expect(shell.store.rightPanel()).toEqual({ kind: 'search' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'search' });
 
     shell.messages.onPanelJump('$evt:hs');
 
     flushPanelJump();
 
-    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
-    expect(shell.store.jumpRequest()).toBe(1);
+    expect(shell.surfaces.jumpTarget()).toBe('$evt:hs');
+    expect(shell.surfaces.jumpRevision()).toBe(1);
     // And the slot closes, as the dialog it replaced did: on the drawer layout it covers
     // the timeline, so jumping with it open scrolls a message nobody can see.
-    expect(shell.store.rightPanel()).toBeNull();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
-  it('in-room search bumps jumpRequest again when the SAME hit is re-picked', async () => {
+  it('in-room search bumps the revision again when the SAME hit is re-picked', async () => {
     // Same crux as the pinned panel: picking the identical hit twice must still
-    // re-fire the jump, which only happens because jumpRequest keeps incrementing.
+    // re-fire the jump, which only happens because the revision keeps incrementing.
     // Easier to reach now — the panel stays open, so the second pick is just another row
     // click rather than reopening the whole dialog.
     const shell = build();
@@ -336,14 +353,14 @@ describe('RoomsPage quick switcher', () => {
     shell.messages.onPanelJump('$evt:hs');
 
     flushPanelJump();
-    expect(shell.store.jumpRequest()).toBe(1);
+    expect(shell.surfaces.jumpRevision()).toBe(1);
 
     shell.messages.onPanelJump('$evt:hs');
 
     flushPanelJump();
 
-    expect(shell.store.messageSearchTarget()).toBe('$evt:hs');
-    expect(shell.store.jumpRequest()).toBe(2);
+    expect(shell.surfaces.jumpTarget()).toBe('$evt:hs');
+    expect(shell.surfaces.jumpRevision()).toBe(2);
   });
 
   it('does not jump when in-room search is dismissed without a pick', async () => {
@@ -354,20 +371,20 @@ describe('RoomsPage quick switcher', () => {
     shell.messages.openMessageSearch();
     shell.page.closeRightPanel();
 
-    expect(shell.store.messageSearchTarget()).toBeNull();
-    expect(shell.store.jumpRequest()).toBe(0);
-    expect(shell.store.rightPanel()).toBeNull();
+    expect(shell.surfaces.jumpTarget()).toBeNull();
+    expect(shell.surfaces.jumpRevision()).toBe(0);
+    expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
   it('does not open in-room search when no room is active', () => {
     const shell = build();
-    const before = shell.store.rightPanel();
+    const before = shell.surfaces.renderedSurface();
 
     shell.messages.openMessageSearch();
 
     // Reference identity, so this fails for ANY write to the slot, not only for search.
-    expect(shell.store.rightPanel()).toBe(before);
-    expect(shell.store.messageSearchTarget()).toBeNull();
+    expect(shell.surfaces.renderedSurface()).toBe(before);
+    expect(shell.surfaces.jumpTarget()).toBeNull();
   });
 });
 
@@ -460,7 +477,7 @@ describe('RoomsPage mobile navigation', () => {
       setRouteRoom('!r:hs');
       const shell = build();
       await settleWorkspace();
-      shell.store.rightPanel.set({ kind: 'threads' });
+      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       const workspaceBack = TestBed.inject(WorkspaceBackService);
 
       await expect(firstValueFrom(workspaceBack.back())).resolves.toMatchObject(
@@ -469,7 +486,7 @@ describe('RoomsPage mobile navigation', () => {
           surface: { layer: 'room', surface: { kind: 'threads' } },
         },
       );
-      expect(shell.store.rightPanel()).toBeNull();
+      expect(shell.surfaces.renderedSurface()).toBeNull();
       expect(shell.store.pane()).toBe('conversation');
 
       await expect(firstValueFrom(workspaceBack.back())).resolves.toMatchObject(
@@ -532,7 +549,7 @@ describe('RoomsPage mobile navigation', () => {
 
   it('closeRightPanel empties the slot (the mobile drawer backdrop)', () => {
     const shell = build();
-    shell.store.rightPanel.set({ kind: 'members' });
+    showSurface(shell, { kind: 'members' });
     expect(shell.store.membersOpen()).toBe(true);
 
     shell.page.closeRightPanel();
@@ -545,11 +562,11 @@ describe('RoomsPage mobile navigation', () => {
     // the guard that used to read `membersAreDrawer()` alone made Escape a no-op here.
     const shell = build();
     setRouteRoom('!r:hs');
-    shell.store.rightPanel.set({ kind: 'threads' });
+    shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
 
     shell.page.onEscapeKey();
 
-    expect(shell.store.rightPanel()).toBeNull();
+    expect(shell.surfaces.renderedSurface()).toBeNull();
   });
 
   it('Escape leaves the wide roster alone (the composer owns Escape there)', () => {
@@ -562,7 +579,7 @@ describe('RoomsPage mobile navigation', () => {
 
     shell.page.onEscapeKey();
 
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('Escape on member info goes back to the roster, like its close button', () => {
@@ -585,7 +602,7 @@ describe('RoomsPage mobile navigation', () => {
 
     shell.page.onEscapeKey();
 
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
   it('gives focus back to whatever opened the slot once it empties', () => {
@@ -600,7 +617,7 @@ describe('RoomsPage mobile navigation', () => {
     try {
       trigger.focus();
 
-      shell.store.rightPanel.set({ kind: 'threads' });
+      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
       trigger.blur(); // the panel took focus, then its removal orphans it
       shell.page.closeRightPanel();
@@ -624,7 +641,7 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, elsewhere);
     try {
       trigger.focus();
-      shell.store.rightPanel.set({ kind: 'threads' });
+      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
 
       shell.page.closeRightPanel();
@@ -639,7 +656,7 @@ describe('RoomsPage mobile navigation', () => {
     }
   });
 
-  const bobPanel: Exclude<RightPanel, null> = {
+  const bobPanel: RenderedRoomSurface = {
     kind: 'member',
     member: {
       userId: '@bob:hs',
@@ -654,8 +671,8 @@ describe('RoomsPage mobile navigation', () => {
 
   it.each<{
     name: string;
-    from: Exclude<RightPanel, null>;
-    to: Exclude<RightPanel, null>;
+    from: RenderedRoomSurface;
+    to: RenderedRoomSurface;
     targetTag: 'button' | 'input';
   }>([
     {
@@ -687,13 +704,13 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, slot);
     try {
       trigger.focus();
-      shell.store.rightPanel.set(from);
+      showSurface(shell, from);
       TestBed.tick();
 
       const source = document.createElement('button');
       slot.append(source);
       source.focus();
-      shell.store.rightPanel.set(to);
+      showSurface(shell, to);
       source.remove(); // the outgoing panel's render removal orphans focus
       const target = document.createElement(targetTag);
       target.dataset['rightPanelFocus'] = '';
@@ -719,13 +736,16 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, slot);
     try {
       trigger.focus();
-      shell.store.rightPanel.set({ kind: 'threads' });
+      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
 
       const source = document.createElement('button');
       slot.append(source);
       source.focus();
-      shell.store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+      shell.surfaces.transition({
+        kind: 'open',
+        surface: { kind: 'thread', rootEventId: '$root' },
+      });
       source.remove();
       const threadClose = document.createElement('button');
       threadClose.dataset['rightPanelFocus'] = '';
@@ -749,7 +769,7 @@ describe('RoomsPage mobile navigation', () => {
   it('remembers an outside opener when the wide roster was already seeded', () => {
     const shell = build();
     setRouteRoom('!r:hs');
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     TestBed.tick(); // establish the already-rendered roster before its toolbar replacement
     const trigger = document.createElement('button');
     const slot = document.createElement('div');
@@ -757,13 +777,16 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, slot);
     try {
       trigger.focus();
-      shell.store.rightPanel.set({ kind: 'threads' });
+      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
 
       const threadRow = document.createElement('button');
       slot.append(threadRow);
       threadRow.focus();
-      shell.store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+      shell.surfaces.transition({
+        kind: 'open',
+        surface: { kind: 'thread', rootEventId: '$root' },
+      });
       threadRow.remove();
       const threadClose = document.createElement('button');
       threadClose.dataset['rightPanelFocus'] = '';
@@ -787,7 +810,7 @@ describe('RoomsPage mobile navigation', () => {
   it('remembers a timeline opener beside the seeded wide roster', () => {
     const shell = build();
     setRouteRoom('!r:hs');
-    expect(shell.store.rightPanel()).toEqual({ kind: 'members' });
+    expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     TestBed.tick();
     const slot = document.createElement('div');
     slot.dataset['rightPanelSlot'] = '';
@@ -796,7 +819,10 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(slot);
     try {
       timelineTrigger.focus();
-      shell.store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+      shell.surfaces.transition({
+        kind: 'open',
+        surface: { kind: 'thread', rootEventId: '$root' },
+      });
       TestBed.tick();
 
       const panel = document.createElement('div');
@@ -830,13 +856,16 @@ describe('RoomsPage mobile navigation', () => {
     document.body.append(trigger, elsewhere, slot);
     try {
       trigger.focus();
-      shell.store.rightPanel.set({ kind: 'threads' });
+      shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
       TestBed.tick();
 
       const source = document.createElement('button');
       slot.append(source);
       source.focus();
-      shell.store.rightPanel.set({ kind: 'thread', rootEventId: '$root' });
+      shell.surfaces.transition({
+        kind: 'open',
+        surface: { kind: 'thread', rootEventId: '$root' },
+      });
       source.remove();
       const target = document.createElement('button');
       target.dataset['rightPanelFocus'] = '';
@@ -870,7 +899,7 @@ describe('RoomsPage mobile navigation', () => {
     shell.store.rightPanel.set(null);
     expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
 
-    shell.store.rightPanel.set({ kind: 'threads' });
+    shell.surfaces.transition({ kind: 'open', surface: { kind: 'threads' } });
     expect(widthOf()).toBe(Math.min(480, window.innerWidth));
   });
 
@@ -879,11 +908,11 @@ describe('RoomsPage mobile navigation', () => {
     // a roster queued for whichever room is opened next.
     const shell = build();
     setRouteRoom(null);
-    const before = shell.store.rightPanel();
+    const before = shell.surfaces.renderedSurface();
 
     shell.page.onDrawerSwipedOpen();
 
-    expect(shell.store.rightPanel()).toBe(before);
+    expect(shell.surfaces.renderedSurface()).toBe(before);
   });
 
   it('semantic Room selection opens the mobile Conversation pane', async () => {
@@ -1399,11 +1428,11 @@ describe('RoomsPage keyboard room switching', () => {
     const shell = build();
     await visitABC(shell); // in c, MRU [c, b, a]
 
-    shell.store.rightPanel.set({ kind: 'search' });
+    shell.surfaces.transition({ kind: 'open', surface: { kind: 'search' } });
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
     expect(shell.store.activeRoomId()).toBe('!c:hs'); // suppressed
 
-    shell.store.rightPanel.set({ kind: 'members' });
+    showSurface(shell, { kind: 'members' });
     shell.shortcuts.onGlobalKeydown(key({ key: "'", ctrlKey: true }));
     await settleWorkspace();
     expect(shell.store.activeRoomId()).toBe('!b:hs'); // still hops

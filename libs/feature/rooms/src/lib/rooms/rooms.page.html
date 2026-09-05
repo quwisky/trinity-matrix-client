@@ -362,7 +362,7 @@
         data-right-panel-slot
         trnDrawerSwipe
         [drawerEnabled]="membersAreDrawer()"
-        [drawerOpen]="!!store.rightPanel()"
+        [drawerOpen]="!!roomSurfaces.renderedSurface()"
         [drawerWidth]="drawerWidth()"
         (opened)="onDrawerSwipedOpen()"
         (closed)="onDrawerSwipedClosed()"
@@ -399,8 +399,8 @@
               [roomName]="room.name"
               [uploadProgress]="messageActions.uploadProgress()"
               [stickerPacks]="imagePacks()"
-              [jumpToId]="store.messageSearchTarget()"
-              [jumpToNonce]="store.jumpRequest()"
+              [jumpToId]="roomSurfaces.jumpTarget()"
+              [jumpToNonce]="roomSurfaces.jumpRevision()"
               (loadOlder)="messageActions.loadOlder()"
               (openThread)="messageActions.onOpenThread($event)"
               (togglePin)="messageActions.onTogglePin($event)"
@@ -432,8 +432,8 @@
               [roomName]="room.name"
               [uploadProgress]="messageActions.uploadProgress()"
               [stickerPacks]="imagePacks()"
-              [jumpToId]="store.messageSearchTarget()"
-              [jumpToNonce]="store.jumpRequest()"
+              [jumpToId]="roomSurfaces.jumpTarget()"
+              [jumpToNonce]="roomSurfaces.jumpRevision()"
               (loadOlder)="messageActions.loadOlder()"
               (openThread)="messageActions.onOpenThread($event)"
               (togglePin)="messageActions.onTogglePin($event)"
@@ -448,7 +448,7 @@
               (pollEnd)="messageActions.onPollEnd($event)"
             />
           }
-          @if (store.rightPanel(); as panel) {
+          @if (roomSurfaces.renderedSurface(); as panel) {
             @if (panel.kind !== 'members') {
               <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
                    where the slot is an overlay drawer rather than a column sharing the row —

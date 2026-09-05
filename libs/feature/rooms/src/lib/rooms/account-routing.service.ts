@@ -9,6 +9,7 @@ import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { ShellStatusService } from './shell-status.service';
+import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import {
   type ExactRoomSelection,
   type ExactSpaceSelection,
@@ -31,6 +32,7 @@ export class AccountRoutingService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly status = inject(ShellStatusService);
   private readonly workspace = inject(WorkspaceNavigationService);
+  private readonly roomSurfaces = inject(RoomSurfaceLifecycle);
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -102,12 +104,15 @@ export class AccountRoutingService {
       room.accountId !== this.store.activeAccountId() ||
       this.store.pane() !== 'conversation'
     ) {
-      this.openRoom({ roomId, accountId: room.accountId }, 'room-action');
+      this.openRoom(
+        { roomId, accountId: room.accountId },
+        'room-action',
+        eventId,
+      );
+      return;
     }
     if (eventId) {
-      // Jump to the linked event (a no-op until it's in the loaded timeline).
-      this.store.messageSearchTarget.set(eventId);
-      this.store.jumpRequest.update((n) => n + 1);
+      this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
     }
   }
 
@@ -143,6 +148,7 @@ export class AccountRoutingService {
   private openRoom(
     selection: ExactRoomSelection,
     origin: WorkspaceRoomNavigationOrigin,
+    eventId?: string,
   ): void {
     const changesAccount =
       selection.accountId !== this.workspace.activeAccountId();
@@ -151,15 +157,24 @@ export class AccountRoutingService {
       changesAccount
         ? 'Unable to open that account right now.'
         : 'Unable to open that destination right now.',
+      eventId,
     );
   }
 
-  private navigate(intent: WorkspaceNavigationIntent, error: string): void {
+  private navigate(
+    intent: WorkspaceNavigationIntent,
+    error: string,
+    eventId?: string,
+  ): void {
     this.workspace
       .navigate(intent)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
-        if (outcome.kind !== 'ready') void this.status.showError(error);
+        if (outcome.kind !== 'ready') {
+          void this.status.showError(error);
+        } else if (eventId) {
+          this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
+        }
       });
   }
 }
