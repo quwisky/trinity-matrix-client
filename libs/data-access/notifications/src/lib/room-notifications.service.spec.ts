@@ -1,10 +1,11 @@
-import { effect } from '@angular/core';
+import { effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ClientEvent, ConditionKind, PushRuleKind } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 import {
   RoomNotificationsService,
   type RoomNotifyMode,
@@ -741,5 +742,62 @@ describe('RoomNotificationsService per-account rules', () => {
       firstValueFrom(svc.setMode(ROOM, 'mute', '@gone:hs')),
     ).rejects.toThrow('Not signed in.');
     expect(activeClient.setRoomMutePushRule).not.toHaveBeenCalled();
+  });
+
+  it('moves the active listener through Projection Runtime without dropping background Accounts', async () => {
+    const { client: first } = makeClient({}, '@first:hs');
+    const { client: second } = makeClient({}, '@second:hs');
+    const activeAccountId = signal('@first:hs');
+    let activeClient = first;
+    TestBed.configureTestingModule({
+      providers: [
+        RoomNotificationsService,
+        {
+          provide: MatrixClientService,
+          useValue: {
+            isInitialized: true,
+            get instance() {
+              return activeClient;
+            },
+            activeUserId: activeAccountId.asReadonly(),
+            accountIds: signal(['@first:hs', '@second:hs']).asReadonly(),
+            all: () => [{ client: first }, { client: second }],
+            clientFor: (accountId: string) =>
+              accountId === '@first:hs' ? first : second,
+          },
+        },
+      ],
+    });
+    const service = TestBed.inject(RoomNotificationsService);
+    const runtime = TestBed.inject(ProjectionRuntime);
+
+    service.connect();
+    expect(first.on).toHaveBeenCalledWith(
+      ClientEvent.AccountData,
+      expect.any(Function),
+    );
+    expect(second.on).toHaveBeenCalledWith(
+      ClientEvent.AccountData,
+      expect.any(Function),
+    );
+
+    activeClient = second;
+    activeAccountId.set('@second:hs');
+    await firstValueFrom(runtime.transition({ kind: 'active-account' }));
+
+    expect(first.off).toHaveBeenCalledWith(
+      ClientEvent.AccountData,
+      expect.any(Function),
+    );
+    expect(second.off).toHaveBeenCalledWith(
+      ClientEvent.AccountData,
+      expect.any(Function),
+    );
+    expect(first.on).toHaveBeenCalledTimes(2);
+    expect(second.on).toHaveBeenCalledTimes(2);
+
+    service.disconnect();
+    expect(first.off).toHaveBeenCalledTimes(2);
+    expect(second.off).toHaveBeenCalledTimes(2);
   });
 });

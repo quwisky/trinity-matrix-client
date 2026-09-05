@@ -21,6 +21,7 @@ export type ApplicationWarningScope =
   | 'preferences'
   | 'accounts'
   | 'push'
+  | 'notifications'
   | 'badge'
   | 'updates'
   | 'workspace'

@@ -329,9 +329,9 @@ incoming-verification projections across routes. Application Runtime derives one
 the routed Workspace: Identity presence, per-Room notification-rule observation, and Room
 Administration permission/member projections attach on a Room route and detach when no routed Room
 surface can display them, while their lifetimes remain session-owned. Notification rule observation
-continues to cover every live Account client, so an active switch changes the exact Account read by
-the UI without losing another Account's rule updates. Room Administration's client projections
-reattach through Projection Runtime's active-Account transition.
+registers its active listener with Projection Runtime, so an active-Account transition reattaches it
+while the service retains listeners for the remaining live Accounts. Room Administration's client
+projections reattach through the same transition.
 
 `ActiveAccountProjectionLifetime` centralizes route demand and initially-empty-Account handling;
 ordinary Account-to-Account reattachment remains Projection Runtime's responsibility. All four

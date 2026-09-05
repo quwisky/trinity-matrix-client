@@ -28,7 +28,9 @@ export class WorkspaceRoutedSurfaceAdapter {
   private readonly location = inject(Location);
   private readonly back = inject(WorkspaceBackService);
   private readonly active = signal<WorkspaceSurface | null>(null);
-  private readonly _roomProjectionDemand = signal(false);
+  private readonly _roomProjectionDemand = signal(
+    this.isRoomRoute(this.router.url),
+  );
   /** Whether the routed Workspace can currently present Room-scoped projections. */
   readonly roomProjectionDemand = this._roomProjectionDemand.asReadonly();
   private currentUrl: string | null = null;

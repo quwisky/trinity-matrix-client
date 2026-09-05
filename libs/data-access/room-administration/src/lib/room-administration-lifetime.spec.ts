@@ -6,10 +6,7 @@ import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
-import {
-  RoomAdministrationLifetime,
-  RoomAdministrationLifetimeError,
-} from './room-administration-lifetime';
+import { RoomAdministrationLifetime } from './room-administration-lifetime';
 import { RoomMembersService } from './room-members.service';
 
 describe('RoomAdministrationLifetime', () => {
@@ -85,9 +82,10 @@ describe('RoomAdministrationLifetime', () => {
     lifetime.unsubscribe();
   });
 
-  it('cleans up a partial attachment and exposes only a typed lifetime error', () => {
+  it('cleans up a partial attachment without masking an adapter defect', () => {
+    const defect = new Error('broken member adapter');
     membersConnect.mockImplementationOnce(() => {
-      throw new Error('private Matrix failure');
+      throw defect;
     });
     const error = vi.fn();
 
@@ -95,12 +93,7 @@ describe('RoomAdministrationLifetime', () => {
       .run(demand.asReadonly())
       .subscribe({ error });
 
-    expect(error).toHaveBeenCalledWith(
-      expect.any(RoomAdministrationLifetimeError),
-    );
-    expect(error.mock.calls[0]?.[0].message).not.toContain(
-      'private Matrix failure',
-    );
+    expect(error).toHaveBeenCalledWith(defect);
     expect(membersDisconnect).toHaveBeenCalledOnce();
     expect(permissionsDisconnect).toHaveBeenCalledOnce();
   });

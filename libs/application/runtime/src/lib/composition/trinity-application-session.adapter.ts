@@ -200,7 +200,7 @@ export class TrinityApplicationSessionAdapter {
           this.notificationLifetime.run(
             this.routedSurfaces.roomProjectionDemand,
           ),
-          'push',
+          'notifications',
           'room-notification-projection-unavailable',
           (error) => error instanceof NotificationLifetimeError,
         ),

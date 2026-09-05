@@ -387,7 +387,7 @@ describe('TrinityApplicationSessionAdapter', () => {
       {
         kind: 'warning',
         warning: expect.objectContaining({
-          scope: 'push',
+          scope: 'notifications',
           diagnostic: { code: 'room-notification-projection-unavailable' },
         }),
       },

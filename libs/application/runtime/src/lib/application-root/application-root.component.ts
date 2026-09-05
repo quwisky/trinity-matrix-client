@@ -95,6 +95,8 @@ function warningMessage(warning: ApplicationRuntimeWarning): string {
   switch (warning.scope) {
     case 'push':
       return 'Push notifications may be unavailable.';
+    case 'notifications':
+      return 'Room notification settings may be unavailable.';
     case 'badge':
       return 'App badge updates may be unavailable.';
     case 'updates':

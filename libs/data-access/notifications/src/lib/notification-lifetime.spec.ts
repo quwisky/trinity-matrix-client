@@ -5,10 +5,7 @@ import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  NotificationLifetime,
-  NotificationLifetimeError,
-} from './notification-lifetime';
+import { NotificationLifetime } from './notification-lifetime';
 import { RoomNotificationsService } from './room-notifications.service';
 
 describe('NotificationLifetime', () => {
@@ -84,9 +81,10 @@ describe('NotificationLifetime', () => {
     lifetime.unsubscribe();
   });
 
-  it('reports attachment failures as a value-safe capability error', () => {
+  it('keeps unexpected attachment defects on the error channel', () => {
+    const defect = new Error('broken notification adapter');
     connect.mockImplementationOnce(() => {
-      throw new Error('secret SDK detail');
+      throw defect;
     });
     const error = vi.fn();
 
@@ -94,8 +92,7 @@ describe('NotificationLifetime', () => {
       .run(demand.asReadonly())
       .subscribe({ error });
 
-    expect(error).toHaveBeenCalledWith(expect.any(NotificationLifetimeError));
-    expect(error.mock.calls[0]?.[0].message).not.toContain('secret SDK detail');
+    expect(error).toHaveBeenCalledWith(defect);
     expect(disconnect).toHaveBeenCalledOnce();
   });
 });

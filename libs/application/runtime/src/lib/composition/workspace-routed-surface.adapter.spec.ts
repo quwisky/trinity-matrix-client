@@ -137,4 +137,12 @@ describe('Workspace routed-surface composition adapter', () => {
     lifetime.unsubscribe();
     expect(adapter.roomProjectionDemand()).toBe(false);
   });
+
+  it('exposes initial Room demand before its route stream starts', () => {
+    router.url = '/rooms/!room:example.org';
+
+    expect(
+      TestBed.inject(WorkspaceRoutedSurfaceAdapter).roomProjectionDemand(),
+    ).toBe(true);
+  });
 });
