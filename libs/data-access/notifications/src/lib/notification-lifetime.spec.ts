@@ -2,10 +2,14 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
+import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NotificationLifetime } from './notification-lifetime';
+import {
+  NotificationLifetime,
+  NotificationLifetimeError,
+} from './notification-lifetime';
 import { RoomNotificationsService } from './room-notifications.service';
 
 describe('NotificationLifetime', () => {
@@ -94,6 +98,23 @@ describe('NotificationLifetime', () => {
 
     expect(error).toHaveBeenCalledWith(defect);
     expect(disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('classifies a transient Matrix attachment failure without leaking details', () => {
+    connect.mockImplementationOnce(() => {
+      throw new MatrixError(
+        { errcode: 'M_UNKNOWN', error: 'private server response' },
+        503,
+      );
+    });
+    const error = vi.fn();
+
+    TestBed.inject(NotificationLifetime)
+      .run(demand.asReadonly())
+      .subscribe({ error });
+
+    expect(error).toHaveBeenCalledWith(expect.any(NotificationLifetimeError));
+    expect(error.mock.calls[0]?.[0].message).not.toContain('private');
   });
 });
 

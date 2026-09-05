@@ -69,7 +69,6 @@ export class RoomNotificationsService {
       this.bumpRevision();
     },
     reset: () => this.bumpRevision(),
-    reprojectOnSwitch: false,
   });
 
   constructor() {

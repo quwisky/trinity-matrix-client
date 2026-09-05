@@ -2,11 +2,15 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
+import { MatrixError } from '@trinity/util/matrix';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
-import { RoomAdministrationLifetime } from './room-administration-lifetime';
+import {
+  RoomAdministrationLifetime,
+  RoomAdministrationLifetimeError,
+} from './room-administration-lifetime';
 import { RoomMembersService } from './room-members.service';
 
 describe('RoomAdministrationLifetime', () => {
@@ -96,6 +100,25 @@ describe('RoomAdministrationLifetime', () => {
     expect(error).toHaveBeenCalledWith(defect);
     expect(membersDisconnect).toHaveBeenCalledOnce();
     expect(permissionsDisconnect).toHaveBeenCalledOnce();
+  });
+
+  it('classifies a transient Matrix projection failure without leaking details', () => {
+    membersConnect.mockImplementationOnce(() => {
+      throw new MatrixError(
+        { errcode: 'M_UNKNOWN', error: 'private server response' },
+        503,
+      );
+    });
+    const error = vi.fn();
+
+    TestBed.inject(RoomAdministrationLifetime)
+      .run(demand.asReadonly())
+      .subscribe({ error });
+
+    expect(error).toHaveBeenCalledWith(
+      expect.any(RoomAdministrationLifetimeError),
+    );
+    expect(error.mock.calls[0]?.[0].message).not.toContain('private');
   });
 
   it('reacquires both projections when an Account appears after an empty set', () => {

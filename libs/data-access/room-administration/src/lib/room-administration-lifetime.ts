@@ -1,7 +1,8 @@
 import { Injectable, inject, type Signal } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ActiveAccountProjectionLifetime } from '@trinity/runtime/projection';
-import { Observable } from 'rxjs';
+import { isTransientMatrixError } from '@trinity/util/matrix';
+import { Observable, catchError, throwError } from 'rxjs';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { RoomMembersService } from './room-members.service';
 
@@ -24,12 +25,22 @@ export class RoomAdministrationLifetime {
 
   /** Attach on routed Room demand and release with the owning Runtime session. */
   run(demanded: Signal<boolean>): Observable<void> {
-    return this.lifetime.run({
-      activeAccountId: this.matrix.activeUserId,
-      demanded,
-      connect: () => this.connect(),
-      disconnect: () => this.disconnect(),
-    });
+    return this.lifetime
+      .run({
+        activeAccountId: this.matrix.activeUserId,
+        demanded,
+        connect: () => this.connect(),
+        disconnect: () => this.disconnect(),
+      })
+      .pipe(
+        catchError((error: unknown) =>
+          throwError(() =>
+            isTransientMatrixError(error)
+              ? new RoomAdministrationLifetimeError()
+              : error,
+          ),
+        ),
+      );
   }
 
   private connect(): void {
