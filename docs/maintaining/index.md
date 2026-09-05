@@ -1,23 +1,32 @@
 # Maintaining Trinity
 
-This guide is for the work that keeps Trinity buildable, releasable and diagnosable across its
-web, desktop and mobile hosts. Start with the operation you need to perform; the linked pages
-remain the source of the detailed commands and policy.
+Use these procedures to diagnose automation, prepare a release, recover a partial packaging
+run or update dependencies. They describe the workflows committed to this checkout; proposed
+CI and mobile-distribution changes are identified separately in the release guide.
 
-| Task                                         | Read                                                                                                                                        | Why it matters                                                                |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Understand a pull-request or scheduled check | [CI and releases](../contributing/ci-and-releases.md#the-ci-jobs)                                                                           | Explains each CI job, what it runs and the contract it protects.              |
-| Diagnose a known warning                     | [Validation warning ledger](../contributing/validation-warnings.md)                                                                         | Separates classified upstream output from repository regressions.             |
-| Prepare or publish a release                 | [Releases](../contributing/ci-and-releases.md#releases) and [changelog and releases](../contributing/conventions.md#changelog-and-releases) | Covers the release workflow, versioning and the authorization boundary.       |
-| Package or verify a host                     | [Platforms](../platforms/index.md)                                                                                                          | Routes to the web, desktop and mobile host guides.                            |
-| Update a dependency or check compatibility   | [Stack reference](../reference/stack.md) and [Renovate](../contributing/ci-and-releases.md#renovate-and-the-trigger-it-silently-depends-on) | Records pinned versions, integration constraints and dependency automation.   |
-| Choose or reproduce local validation         | [Testing](../contributing/testing.md#choose-validation-by-the-change) and [commands](../contributing/commands.md)                           | Selects the check that proves the changed behavior and its host requirements. |
+| Task                                       | Start here                                                                                                                  | Check before proceeding                                                                                                               |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Understand a missing or failed CI result   | [CI jobs and triggers](ci-and-releases.md#the-ci-jobs)                                                                      | Match the event, changed paths, job and candidate commit; a skipped job proves no validation.                                         |
+| Diagnose noisy or incomplete validation    | [Validation warnings](validation-warnings.md)                                                                               | Keep exit status, cache provenance and expected output; distinguish a warning from a failed assertion.                                |
+| Prepare a release candidate                | [Release procedure](ci-and-releases.md#releases)                                                                            | Coordinate versions and changelog, check the exact tag target and complete the required validation.                                   |
+| Diagnose signing or partial release assets | [Release recovery](ci-and-releases.md#releases) and [desktop packaging](../platforms/desktop.md)                            | Verify prerequisites and artifact completeness; a draft or partial matrix is not a public release.                                    |
+| Package another host                       | [Platforms](../platforms/index.md)                                                                                          | Native signing, device proof and publication have their own prerequisites; desktop release automation does not distribute every host. |
+| Update a dependency                        | [Renovate](ci-and-releases.md#renovate-and-the-trigger-it-silently-depends-on) and [stack reference](../reference/stack.md) | Follow the configured patch/non-patch approval route, validate compatibility and inspect bot health.                                  |
+| Reproduce a check locally                  | [Testing](../contributing/testing.md#choose-validation-by-the-change) and [commands](../contributing/commands.md)           | Choose the check that proves the claim and report unavailable host coverage.                                                          |
 
-For ordinary source changes, begin with [Developing Trinity](../contributing/index.md);
-maintenance work still follows its branch, publication and validation conventions.
+An ordinary documentation or implementation change does not authorize a release, a store
+submission, credentials changes or infrastructure changes. Follow the existing
+[branch and publication conventions](../contributing/conventions.md#branches-and-publication)
+and the user's accepted scope. Release commands belong to an explicitly authorized release
+operation; this documentation migration does not execute them.
+
+For ordinary source changes, start with [Developing Trinity](../contributing/index.md).
+Architecture and host guides remain the canonical owners of implementation and platform detail;
+maintenance procedures link to them rather than restating their full instructions.
 
 ## Documentation migration coordination
 
-The [documentation map](../documentation-map.md) records migration ownership and status. It is
-an administrative inventory for maintainers, not the route to use when looking for product,
-development or agent guidance.
+The [documentation map](../documentation-map.md) records first-party topic ownership,
+replacement destinations and retained history. When moving a guide, repair its readers' links
+and any script that loads its path, then check both outgoing and incoming anchors. Keep
+generated/vendor documentation under its existing tooling ownership.

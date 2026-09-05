@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Maintainer documentation now connects CI diagnosis, coordinated release preparation, signing,
+  partial-artifact recovery and dependency updates, with a canonical warning guide and explicit
+  distinctions between current automation, historical evidence and pending proposals.
+
 - UI contributor documentation now connects public component composition, appearance and cascade
   contracts, Storybook verification and image-pack presentation. Deferred redesign requirements
   have tracked owners so the superseded plan can be removed during final integration.

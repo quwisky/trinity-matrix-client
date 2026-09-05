@@ -102,7 +102,7 @@ electron/package.json to the same version, rename the Unreleased section with th
 date, then start a new Unreleased section. The tag must match both manifests. Tagging and
 publishing require their own authorization. Choose PATCH for compatible fixes, MINOR for a new
 compatible capability, and MAJOR for a breaking config or API change. See
-[CI and releases](ci-and-releases.md#releases) for the executable release process.
+[CI and releases](../maintaining/ci-and-releases.md#releases) for the executable release process.
 
 ## Formatting and unavailable checks
 

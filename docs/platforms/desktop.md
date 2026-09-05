@@ -168,7 +168,7 @@ needed for real OS notification delivery. The local `electron:package:mac` helpe
 arm64 output-path assumption and can fail after packaging on Intel macOS; use the signed
 release path or correct the local re-sign path for that host. Windows signing is not
 configured, and automatic updates are not implemented. Follow
-[CI and releases](../contributing/ci-and-releases.md) for the authorized signing, tagging,
+[CI and releases](../maintaining/ci-and-releases.md) for the authorized signing, tagging,
 and publication process; do not treat a locally packaged file as a release.
 
 ## How the desktop contract is tested

@@ -3,7 +3,7 @@
 This is the canonical command reference. Run Nx through the workspace package manager:
 `pnpm nx …`. This package script calls `scripts/nx.mjs`, which normalizes the
 command environment before starting the installed Nx CLI. See the
-[validation warning ledger](validation-warnings.md). The repository needs Node `^24.15.0` and pnpm `11.19.0`; see
+[validation warning ledger](../maintaining/validation-warnings.md). The repository needs Node `^24.15.0` and pnpm `11.19.0`; see
 [Getting started](getting-started.md) for installation and [Testing](testing.md) for
 which command is meaningful for a change.
 

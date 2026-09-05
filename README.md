@@ -51,7 +51,7 @@ Start with the [documentation guide](docs/index.md), organized around what you w
   hooks (lint-staged + commitlint / Angular commit convention), re-run on every PR
   (and on pushes to `develop`/`master`) by **GitHub Actions** — alongside the unit tests, the production build, the
   Electron main-process checks, and the Playwright e2e journeys (the badge above; see
-  [CI and releases](docs/contributing/ci-and-releases.md))
+  [CI and releases](docs/maintaining/ci-and-releases.md))
 
 Exact versions and gotchas live in the [stack reference](docs/reference/stack.md).
 

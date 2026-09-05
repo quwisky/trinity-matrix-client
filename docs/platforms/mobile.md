@@ -179,5 +179,5 @@ Android release packaging is `pnpm android:build:release`; configure release sig
 the checked-in Gradle target before treating its AAB as distributable. iOS distributable
 packaging needs a macOS signing identity. These commands create artifacts; they do not authorize
 version changes, tags, stores, or publication. Follow
-[CI and releases](../contributing/ci-and-releases.md) for the release process and record
+[CI and releases](../maintaining/ci-and-releases.md) for the release process and record
 unavailable native OS, SDK, device, or credentials with the command result.
