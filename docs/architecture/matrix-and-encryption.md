@@ -133,10 +133,14 @@ Account's default” and therefore remains live to later default changes; explic
 isolated by both Account and Space. Neither path writes `m.space.child`, whose shared order and
 Suggested state remain separate Space-curation authority.
 
-Incrementally retained local-address and ban adapters in both hubs, and the Room-only widget
-adapter, stay behind an opening-Account-active gate until their exact-target migrations land; they
-never fall through to a newly active Account. Space settings deliberately does not inherit Room
-history or widget policy. UI feedback uses focusable `trnActionAllowed` controls,
+Address reads and cold finite add, canonical-address and removal commands resolve the immutable
+opening Account-and-Room/Space target directly. The address section keeps local-directory entries
+and canonical state distinct, remains readable without administration authority, and rechecks
+exact-target permission after confirmations and between a canonical clear and directory removal.
+The incrementally retained ban adapters in both hubs and the Room-only widget adapter stay behind
+an opening-Account-active gate until their exact-target migrations land; they never fall through
+to a newly active Account. Space settings deliberately does not inherit Room history or widget
+policy. UI feedback uses focusable `trnActionAllowed` controls,
 keyboard-accessible explanations and a touch status surface. Every cold migrated mutation
 rechecks permission at subscription time after pickers/confirmations and before the SDK write;
 avatar publication checks both before upload and before publishing state. Space leave captures

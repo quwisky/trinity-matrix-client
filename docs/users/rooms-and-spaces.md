@@ -96,7 +96,7 @@ The hub has these sections:
 | General   | Room avatar, name and topic.                                                                             |
 | For you   | Notification mode, Favourite and Low priority for the opening Account.                                   |
 | Access    | Who can join and who can read earlier history. A restricted room must retain at least one allowed Space. |
-| Addresses | Published Room links and local addresses.                                                                |
+| Addresses | Primary and local Matrix addresses for finding and joining the Room.                                     |
 | Widgets   | Third-party widgets declared for the room.                                                               |
 | Bans      | The list of banned members, with unban actions where allowed.                                            |
 
@@ -104,18 +104,22 @@ The hub has these sections:
 that did not save as drafts, so retry sends only what remains. For you first confirms the opening
 Account's current homeserver notification rule instead of showing a guessed default; it names
 loading, unavailable and failed-read states explicitly. Its Favourite and Low priority values come
-from that Account's synced Matrix Room tags. Avatar selection, address add/remove actions, widget
+from that Account's synced Matrix Room tags. Avatar selection, address actions, widget
 publication/removal and unbanning use their own immediate actions; discarding a draft does not undo
-those completed actions. Leaving a section, closing Room settings, or using browser or device Back
+those completed actions. In **Addresses**, the primary and local addresses remain readable and
+copyable for every member. Administrators can add a local address, make one primary, or remove one
+after confirming the exact address and its effect on joining and links. Each action reports its own
+progress and result; a failed add retains the entered value for correction or retry. Removing an
+address never deletes the Room or Space. Leaving a section, closing Room settings, or using browser or device Back
 asks before discarding a draft. A remote update refreshes untouched General and Access fields
 without overwriting fields you are editing.
 
-General details and Access policy remain bound to the Account and Room that opened Room settings
+General details, Access policy and Addresses remain bound to the Account and Room that opened Room settings
 even if another Account becomes active. If that Account signs out, the target becomes unavailable
-and pending results cannot write into the newly active Account. Local-address, Widgets and Bans
-actions still use their established active-Account projections during the incremental hub
-migration, so those panels explain that you must switch back to the opening Account instead of
-risking a redirected write. Matrix permissions are checked live and per action, so a member may be
+and pending results cannot write into the newly active Account. Widgets and Bans actions still use
+their established active-Account projections during the incremental hub migration, so those panels
+explain that you must switch back to the opening Account instead of risking a redirected write.
+Matrix permissions are checked live and per action, so a member may be
 able to read a section or edit an avatar but not change the access rule, aliases, widgets or bans.
 Losing a role while Room settings is open disables the affected controls without hiding readable
 information or erasing drafts. Access and history choices affect other people and can expose
@@ -138,6 +142,10 @@ the hub. General changes the Space avatar, name and topic; **For you** stages th
 device-local Room ordering; Access changes who can join; Addresses manages published Space links;
 and Bans lists barred members. Each working destination stays reachable while the remaining
 Space-specific sections are added.
+
+Space Addresses has the same exact-Account behavior and explicit actions as Room Addresses. Long
+addresses wrap on phones, while copy and Matrix-link actions remain available when the opening
+Account can read but cannot administer the Space.
 
 General, For you and Access have independent Save and Discard actions. For you names loading,
 failed-read, pending and failed-save states explicitly and protects a staged choice on section,

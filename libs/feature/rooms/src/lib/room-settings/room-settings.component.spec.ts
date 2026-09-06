@@ -169,6 +169,7 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => snapshots.value.permissions,
+        settingsFor: () => snapshots.value.permissions,
         unban: () => DENIED,
       }),
       MockProvider(RoomAliasesService, {
@@ -647,7 +648,7 @@ describe('RoomSettingsComponent', () => {
   });
 
   it('keeps Room addresses reachable in their own section', async () => {
-    const { cmp, fixture, container } = await build();
+    const { cmp, fixture, container, emit } = await build();
 
     cmp.selectSection('addresses');
     await fixture.whenStable();
@@ -659,6 +660,9 @@ describe('RoomSettingsComponent', () => {
     expect(
       container.querySelector('[data-testid="room-settings-panel-access"]'),
     ).toBeNull();
+
+    emit(roomSnapshot({ openingAccountActive: false }));
+    expect(container.querySelector('trn-room-aliases')).not.toBeNull();
   });
 
   it('does not expose legacy writers after switching away from the opening Account', async () => {

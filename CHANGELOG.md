@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room and Space addresses now stay bound to the Account that opened settings.** Their own
+  readable section shows the primary address and every local address, including long values and
+  an explicit empty state. Copy and Matrix-link actions remain available without edit permission;
+  administrators get separate add, make-primary and confirmed removal actions with independent
+  progress and failure feedback. Failed additions retain the entered address, Account switches
+  cannot retarget pending work, and removing the primary address clears canonical state before
+  deleting its directory entry.
+
 - **Room and Space access policies now have dedicated settings sections.** Members can read the
   live join and Room-history policy with field-level permission explanations and no unusable Save
   footer. Administrators get exact-target Save and Discard behavior, required-Space validation,

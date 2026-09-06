@@ -38,13 +38,16 @@
         class="space-settings__legacy-panel"
         data-testid="space-settings-panel-addresses"
       >
-        @if (legacyUnavailableReason(); as reason) {
+        @if (draft.targetUnavailableReason(); as reason) {
           <p class="space-settings__target-warning" role="status">
-            Local address actions require the opening Account to be active.
             {{ reason }}
           </p>
         } @else {
-          <trn-room-aliases [roomId]="spaceId()" />
+          <trn-room-aliases
+            [accountId]="accountId()"
+            [roomId]="spaceId()"
+            noun="Space"
+          />
         }
       </section>
     }
