@@ -379,8 +379,11 @@ test.describe('@production-renderer application surface', () => {
     });
     await seedAppearance(page, appearance);
 
-    await page.goto('/login', { waitUntil: 'networkidle' });
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await expectProductionReducedMotionContract(page);
+    await expect(page.getByLabel('Homeserver', { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
     await fillLabeledInput(page, 'Homeserver', credentials.hs as string);
     await page.getByText('Continue', { exact: true }).click();
     await expect(page.getByLabel('Username', { exact: true })).toBeVisible({
@@ -398,32 +401,28 @@ test.describe('@production-renderer application surface', () => {
     }
     await openRoom(page, roomName);
     if (testInfo.project.name === 'small-light-large') {
-      const warnings = page.getByTestId('app-runtime-warnings');
-      await expect(warnings).toBeVisible();
-      await expect(warnings).toHaveAccessibleName(
-        'Application runtime warnings',
+      const systemStatus = page.getByRole('button', {
+        name: 'System Status',
+        exact: true,
+      });
+      await expect(systemStatus).toBeVisible();
+      await expect(systemStatus).toHaveAccessibleName('System Status');
+      await expectInsideViewport(
+        page,
+        systemStatus,
+        'mobile system status access',
       );
-      await expect(warnings).toHaveAttribute('tabindex', '0');
+      await expectInsideViewport(
+        page,
+        page.getByRole('heading', { name: roomName }),
+        'mobile room heading',
+      );
       await expect(
         page.locator('trn-encryption-banner trn-banner'),
       ).toBeVisible();
     }
     await stabilize(page);
     const shell = page.locator('.rooms-shell');
-    if (testInfo.project.name === 'small-light-large') {
-      const warnings = page.getByTestId('app-runtime-warnings');
-      await expectInsideViewport(page, warnings, 'runtime warnings');
-      const [warningBox, shellBox] = await Promise.all([
-        warnings.boundingBox(),
-        shell.boundingBox(),
-      ]);
-      expect(warningBox, 'runtime warnings are laid out').not.toBeNull();
-      expect(shellBox, 'room shell is laid out').not.toBeNull();
-      expect(
-        shellBox!.y,
-        'room shell starts below runtime warnings',
-      ).toBeGreaterThanOrEqual(warningBox!.y + warningBox!.height - 1);
-    }
     await expectInsideViewport(page, shell, 'room shell');
     await expectInsideViewport(
       page,

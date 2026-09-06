@@ -88,6 +88,11 @@ For broader flows and host prerequisites, use [the E2E router](../../e2e/README.
 [E2E architecture](e2e-architecture.md). Do not start an extra server, Synapse, or
 emulator beside a lifecycle target: the target owns that resource and its cleanup.
 
+Production renderer journeys wait for the visible login form after DOM readiness;
+background network activity is not a login readiness signal. Mobile geometry checks
+cover the current System Status access control and room heading. Settings geometry
+checks use the shared frame's public directory hook, including in Electron.
+
 ## Failure handling and review evidence
 
 On failure, keep command output and inspect the retained trace, report, or host diagnostic

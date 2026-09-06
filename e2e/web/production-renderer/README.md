@@ -47,8 +47,8 @@ The application group gives representative cross-capability evidence, including
 the login card, room shell, composer, overflow, readable headings, seeded
 messages, appearance projection, accessible labels, emoji-picker focus return,
 Settings, and encryption setup. The narrow profiles also check safe-area
-placement and 44px Back and Send targets; `small-light-large` checks the runtime
-warning layout, `standard-amethyst-cosy` changes Theme, and
+placement and 44px Back and Send targets; `small-light-large` checks System Status
+access and room-heading geometry, `standard-amethyst-cosy` changes Theme, and
 `tablet-light-compact` checks keyboard focus under forced colours. The WebKit
 project proves it is using WebKit.
 

@@ -1118,6 +1118,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Startup no longer loops when an unsupported app badge reports its health
+  synchronously, including on Android WebView and WebKit. Badge updates track
+  unread totals without subscribing to signal reads made by outcome consumers.
+
+- Production renderer checks wait for the usable login form and verify the current
+  mobile System Status control. Electron settings geometry checks use the shared
+  Settings directory hook after the layout migration.
+
 - Electron allows persistent storage for its trusted main window, preventing the
   “Protected browser storage is unavailable” warning when restoring a signed-in Account.
   Remote content and child frames remain denied.
