@@ -118,7 +118,7 @@ Final integration isolated that scan race: Storybook's accessibility addon can r
 `window.axe` and start scanning between the helper's injection and its later global lookup.
 The [shared helper](../../e2e/components/storybook/catalog-accessibility.mts) now captures its
 injected instance in the same browser operation and disposes the retained handle after its
-scan. The [regression](../../e2e/components/storybook/navigation-overlay-catalog.spec.mts)
+scan. The [dedicated regression](../../e2e/components/storybook/catalog-accessibility.spec.mts)
 holds the actual addon module response until injection, then checks that both owners finish
 using distinct instances. Restoring the former helper failed that regression; the corrected
 helper passed. Accessibility rules and result assertions remain intact.

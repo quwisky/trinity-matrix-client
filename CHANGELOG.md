@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- The Storybook Axe scan concurrency regression now has a dedicated accessibility-helper spec,
+  leaving the navigation and overlay catalog focused on product-surface behavior while retaining
+  distinct scan-owner and completion proof with retries disabled.
+
 - **Space settings now owns Account-bound Rooms and Spaces management.** Members can inspect
   direct child Rooms and nested Spaces with explicit loading, empty and failed states, while
   live Space permission controls whether Add existing, Create Room, Create Space and confirmed
