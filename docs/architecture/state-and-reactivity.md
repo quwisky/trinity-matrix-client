@@ -263,6 +263,12 @@ always reflects current health. Expected disabled, dormant and not-applicable st
 as outages. Contextual incidents remain toast-level feedback and do not enter the persistent list.
 
 System Status is startup-safe and independent of readiness-gated Settings and session surfaces.
+The room shell exposes an icon immediately left of Settings in the sidebar and at the end of the compact
+conversation menu. These controls use the application-owned status state and highlight current
+problems even when their summary is dismissed. Outside the room shell, the application root
+retains an in-flow entry, while startup blockers and problem summaries keep direct access.
+The conversation menu supplies its persistent trigger as the focus-return target because its
+menu item is removed when the menu closes.
 Web and Electron use a centred dialog treatment; native mobile interaction uses a bottom sheet
 selected by operating system rather than pointer type. The one shared Host Back owner starts with
 the application root, closes the topmost confirmation before System Status, and remains shared as

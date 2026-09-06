@@ -217,6 +217,10 @@ The Pixel 5 profile also proves the operating-system-selected bottom-sheet geome
 text-scaled compact layout remains usable. A touch-capable desktop is kept on the desktop
 interaction model; this does not establish native sheet behavior on Android or iOS.
 
+The companion `host-shell/system-status-placement.spec.mts` journey opens a signed-in
+conversation on desktop and Pixel 5. It checks the icon-only sidebar entry left of Settings, mobile menu placement, focus restoration after
+closing System Status, and sending a message through the unobstructed composer.
+
 Trust-health changes additionally prove that asynchronous initial and event-driven reads settle
 through Projection Runtime, last-known data is explicitly stale, and compatibility signals never
 turn unavailable verification or backup state into `false`. Exercise retained invalidation and

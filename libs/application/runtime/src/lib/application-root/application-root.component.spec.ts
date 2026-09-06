@@ -1,6 +1,6 @@
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { provideTrnIcons } from '@trinity/components/foundations';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router, type Routes } from '@angular/router';
 import {
   TrnAlertService,
   TrnDialogService,
@@ -23,8 +23,14 @@ import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 
+@Component({
+  standalone: true,
+  template: '<p>probe</p>',
+})
+class RouteProbeComponent {}
+
 describe('ApplicationRootComponent', () => {
-  async function setup(initial: ApplicationRuntimeState) {
+  async function setup(initial: ApplicationRuntimeState, routes: Routes = []) {
     const state = signal(initial);
     const recover = vi.fn<() => Observable<ApplicationRecoveryOutcome>>(() =>
       of({ kind: 'accepted' }),
@@ -35,7 +41,7 @@ describe('ApplicationRootComponent', () => {
     const hasOpenDialog = vi.fn(() => false);
     const rendered = await render(ApplicationRootComponent, {
       providers: [
-        provideRouter([]),
+        provideRouter(routes),
         provideTrnIcons(),
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
         {
@@ -66,11 +72,43 @@ describe('ApplicationRootComponent', () => {
       confirm,
       hasOpenDialog,
       showToast,
+      router: rendered.fixture.debugElement.injector.get(Router),
       health: rendered.fixture.debugElement.injector.get(
         CapabilityHealthService,
       ),
     };
   }
+
+  it('keeps the healthy fallback on login and removes it across every shell URL', async () => {
+    const { fixture, router, getByTestId, queryByTestId } = await setup(
+      { phase: 'ready', attempt: 1, settlements: [] },
+      [
+        { path: 'login', component: RouteProbeComponent },
+        { path: 'rooms', component: RouteProbeComponent },
+        { path: 'rooms/:roomId', component: RouteProbeComponent },
+      ],
+    );
+
+    await router.navigateByUrl('/login');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(getByTestId('system-status-access')).toBeTruthy();
+
+    await router.navigateByUrl('/rooms?view=recent');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(queryByTestId('system-status-access')).toBeNull();
+
+    await router.navigateByUrl('/rooms/room');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(queryByTestId('system-status-access')).toBeNull();
+
+    await router.navigateByUrl('/login?returnTo=%2Frooms');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(getByTestId('system-status-access')).toBeTruthy();
+  });
 
   it('keeps fast startup calm and reveals routed content only after readiness', async () => {
     const { fixture, state, getByTestId, queryByTestId } = await setup({

@@ -40,6 +40,7 @@ import {
   RoomMembersService,
 } from '@trinity/data-access/room-administration';
 import {
+  WORKSPACE_SYSTEM_STATUS,
   WorkspaceApplicationSurfaceService,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
@@ -147,6 +148,11 @@ export const ROUTE_PROVIDER: Provider = {
   useValue: { queryParamMap, paramMap } as unknown as ActivatedRoute,
 };
 
+export const SYSTEM_STATUS_PROVIDER: Provider = {
+  provide: WORKSPACE_SYSTEM_STATUS,
+  useFactory: () => ({ hasProblems: signal(false), show: vi.fn() }),
+};
+
 /**
  * Providers every TestBed block across the rooms.page specs supplies identically, with
  * no stub.
@@ -162,6 +168,7 @@ export const ROUTE_PROVIDER: Provider = {
  * one has to be supplied to the TestBed by hand, in every block.
  */
 export const SHARED_MOCKS: Provider[] = [
+  SYSTEM_STATUS_PROVIDER,
   // Page-scoped in the component; TestBed.inject(RoomsPage) does not apply component
   // providers, so it is supplied here as the real class.
   RoomShellStore,

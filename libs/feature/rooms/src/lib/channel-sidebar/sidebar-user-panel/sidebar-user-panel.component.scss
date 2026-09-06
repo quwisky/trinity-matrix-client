@@ -97,6 +97,14 @@
     }
   }
 
+  .userbar__system-status {
+    flex: 0 0 auto;
+
+    &--problem {
+      color: var(--trinity-danger);
+    }
+  }
+
   .account-row {
     display: flex;
     align-items: center;

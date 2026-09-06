@@ -100,6 +100,8 @@
         (openAccountPicker)="onOpenAccountPicker()"
         (toggleAccountShown)="routing.onToggleAccountShown($event)"
         (openSettings)="session.goToSettings()"
+        [hasSystemStatusProblems]="systemStatus.hasProblems()"
+        (openSystemStatus)="systemStatus.show()"
         (accountsOpened)="vm.loadHomeserverInfo()"
         (switchAccount)="session.switchAccount($event)"
         (reauthAccount)="session.reauthAccount($event)"
@@ -276,6 +278,7 @@
               align="end"
               aria-label="More actions"
               data-testid="room-actions-overflow"
+              #roomActionsOverflow
             >
               <trn-icon size="lg" name="ellipsis-vertical" motion="pop" />
               @if (pinned.messages().length > 0) {
@@ -339,6 +342,27 @@
                 >
                   <trn-icon name="users" />
                   Members
+                </button>
+                <div
+                  trnDropdownMenuSeparator
+                  class="md:hidden"
+                  role="separator"
+                ></div>
+                <button
+                  class="md:hidden"
+                  trnDropdownMenuItem
+                  (triggered)="openSystemStatus()"
+                  data-testid="overflow-open-system-status"
+                >
+                  <trn-icon name="shield-alert" />
+                  System Status
+                  @if (systemStatus.hasProblems()) {
+                    <span
+                      class="ml-auto text-danger"
+                      aria-label="Needs attention"
+                      >●</span
+                    >
+                  }
                 </button>
               </div>
             </ng-template>

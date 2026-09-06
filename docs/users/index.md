@@ -80,8 +80,11 @@ or clearing local data, check your
 ## When an action is unavailable
 
 If Trinity starts with a limited capability, its compact summary keeps the Workspace available.
-Open **System Status** to see which user-facing feature and Account are affected, what remains
-safe to use, and whether a scoped retry is available. Dismissing the summary hides only that
+Open the **System Status** icon immediately left of **Settings** in the sidebar, or from **More actions** in a mobile
+conversation. It remains available when everything is working and is highlighted when a
+capability needs attention. Startup blockers and problem summaries also offer direct access.
+The panel shows which user-facing feature and Account are affected, what remains safe to use,
+and whether a scoped retry is available. Dismissing the summary hides only that
 occurrence; System Status continues to show current health, and a new or worse outage resurfaces
 the summary. **Support details** contain only generated references and safe operation metadata.
 They are copied locally only when you choose **Copy support details** and are never uploaded by

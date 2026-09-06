@@ -6,7 +6,7 @@ import {
   output,
 } from '@angular/core';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { TrnIconButton } from '@trinity/components/controls';
+import { TrnButton, TrnIconButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
 import {
@@ -47,6 +47,7 @@ export interface AccountSummary extends IdentityProfile {
   selector: 'trn-sidebar-user-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnButton,
     TrnIconButton,
     TrnTooltip,
     AvatarComponent,
@@ -130,6 +131,8 @@ export class SidebarUserPanelComponent {
   });
   /** Gear — open the settings page. */
   readonly openSettings = output<void>();
+  readonly hasSystemStatusProblems = input(false);
+  readonly openSystemStatus = output<void>();
   /**
    * The account menu was reached for. The host uses it to look up each account's homeserver
    * version lazily — nobody may ever look at it, so nothing is spent until someone reaches
