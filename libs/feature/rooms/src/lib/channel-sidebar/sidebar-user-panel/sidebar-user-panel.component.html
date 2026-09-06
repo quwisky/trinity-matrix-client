@@ -61,6 +61,24 @@
   >
     <trn-icon name="settings" motion="rotate" />
   </button>
+  <button
+    trnBtn
+    presentation="ghost"
+    size="sm"
+    class="userbar__system-status"
+    [class.userbar__system-status--problem]="hasSystemStatusProblems()"
+    (click)="openSystemStatus.emit()"
+    aria-label="System Status"
+    trnTooltip="System Status"
+    data-testid="open-system-status"
+  >
+    <trn-icon
+      name="shield-alert"
+      [variant]="hasSystemStatusProblems() ? 'danger' : 'muted'"
+      motion="pop"
+    />
+    <span class="userbar__system-status-label">System Status</span>
+  </button>
 </footer>
 
 <ng-template #accountMenu>

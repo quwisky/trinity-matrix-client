@@ -292,6 +292,11 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'accessibility',
   },
   {
+    path: 'journeys/host-shell/system-status-placement.spec.mts',
+    capability: 'host-shell',
+    contractType: 'visual',
+  },
+  {
     path: 'journeys/host-shell/unauthenticated-shell.spec.mts',
     capability: 'host-shell',
     contractType: 'host',

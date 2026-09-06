@@ -5,15 +5,18 @@ import { Injectable, signal } from '@angular/core';
 export class SystemStatusVisibilityService {
   private readonly opened = signal(false);
   private backHandler: (() => void) | null = null;
-  private returnFocus: HTMLElement | null = null;
+  private returnFocus: (() => void) | null = null;
   readonly open = this.opened.asReadonly();
 
-  show(): void {
+  show(restoreFocus?: () => void): void {
     if (!this.opened()) {
+      const activeElement = document.activeElement;
       this.returnFocus =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
+        restoreFocus ??
+        (() => {
+          if (activeElement instanceof HTMLElement && activeElement.isConnected)
+            activeElement.focus();
+        });
     }
     this.opened.set(true);
   }
@@ -36,7 +39,7 @@ export class SystemStatusVisibilityService {
     this.returnFocus = null;
     this.opened.set(false);
     queueMicrotask(() => {
-      if (returnFocus?.isConnected) returnFocus.focus();
+      returnFocus?.();
     });
   }
 }

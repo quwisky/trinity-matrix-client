@@ -6,12 +6,17 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RouterOutlet } from '@angular/router';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import {
+  NavigationEnd,
+  PRIMARY_OUTLET,
+  Router,
+  RouterOutlet,
+} from '@angular/router';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnToasterComponent } from '@trinity/components/overlay';
-import { take } from 'rxjs';
+import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import type {
   ApplicationStartupRecovery,
@@ -42,7 +47,15 @@ export class ApplicationRootComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly recovery = inject(ApplicationRecoveryPresenter);
   private readonly session = inject(TrinityApplicationSessionAdapter);
+  private readonly router = inject(Router);
   private readonly showStartupDetail = signal(false);
+  private readonly routeUrl = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+    ),
+    { initialValue: this.router.url },
+  );
 
   readonly status = inject(CapabilityStatusService);
   readonly state = this.runtime.state;
@@ -62,6 +75,12 @@ export class ApplicationRootComponent {
   });
   readonly recoveryAction = computed(() =>
     recoveryAction(this.blocked()?.failure.recovery ?? 'retry-startup'),
+  );
+
+  protected readonly isShellRoute = computed(
+    () =>
+      this.router.parseUrl(this.routeUrl()).root.children[PRIMARY_OUTLET]
+        ?.segments[0]?.path === 'rooms',
   );
 
   constructor() {

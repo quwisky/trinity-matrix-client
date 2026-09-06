@@ -27,7 +27,10 @@ import { ReadStateService } from './read-state.service';
 import { MessageActionsService } from './message-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { SessionActionsService } from './session-actions.service';
-import { ROUTE_PROVIDER } from './rooms-page.spec-harness';
+import {
+  ROUTE_PROVIDER,
+  SYSTEM_STATUS_PROVIDER,
+} from './rooms-page.spec-harness';
 
 /**
  * The two framework behaviours the #62 decomposition rests on, pinned before anything
@@ -229,7 +232,11 @@ describe('the shell coordinators are page-scoped, not root-provided', () => {
     // asked what its own node injector holds. Root-registering the same token as well
     // proves the page is answering, not the environment.
     TestBed.configureTestingModule({
-      providers: [{ provide: RoomShellStore, useValue: {} }, ROUTE_PROVIDER],
+      providers: [
+        { provide: RoomShellStore, useValue: {} },
+        ROUTE_PROVIDER,
+        SYSTEM_STATUS_PROVIDER,
+      ],
     });
     TestBed.overrideComponent(RoomsPage, {
       set: { template: '', imports: [], host: {} },

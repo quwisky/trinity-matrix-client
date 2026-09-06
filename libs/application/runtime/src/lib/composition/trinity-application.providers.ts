@@ -1,5 +1,7 @@
 import {
   ErrorHandler,
+  computed,
+  inject,
   makeEnvironmentProviders,
   provideBrowserGlobalErrorListeners,
   provideZonelessChangeDetection,
@@ -13,7 +15,11 @@ import {
   withRouterConfig,
   type Routes,
 } from '@angular/router';
-import { WORKSPACE_APPLICATION_SURFACE_PRESENTER } from '@trinity/application/workspace';
+import {
+  WORKSPACE_APPLICATION_SURFACE_PRESENTER,
+  WORKSPACE_SYSTEM_STATUS,
+  type WorkspaceSystemStatus,
+} from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideTrnOverlayDefaults } from '@trinity/components/overlay';
 import type { PushConfig } from '@trinity/data-access/notifications';
@@ -33,6 +39,8 @@ import {
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { TrinityApplicationRuntimeAdapter } from './trinity-application-runtime.adapter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
+import { CapabilityHealthService } from '../capability-health.service';
+import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 
 export interface TrinityApplicationDialogLoaders {
   readonly settings: ApplicationDialogLoader;
@@ -79,6 +87,17 @@ export function provideTrinityApplication(
     {
       provide: WORKSPACE_APPLICATION_SURFACE_PRESENTER,
       useExisting: WorkspaceApplicationSurfacePresenterAdapter,
+    },
+    {
+      provide: WORKSPACE_SYSTEM_STATUS,
+      useFactory: (): WorkspaceSystemStatus => {
+        const health = inject(CapabilityHealthService);
+        const visibility = inject(SystemStatusVisibilityService);
+        return {
+          hasProblems: computed(() => health.problems().length > 0),
+          show: (restoreFocus) => visibility.show(restoreFocus),
+        };
+      },
     },
     {
       provide: SETTINGS_DIALOG_COMPONENT,

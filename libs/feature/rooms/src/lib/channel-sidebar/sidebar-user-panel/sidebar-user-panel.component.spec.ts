@@ -50,6 +50,32 @@ describe('SidebarUserPanelComponent', () => {
     expect(opened).toBe(true);
   });
 
+  it('keeps System Status beside Settings and emits its open action', async () => {
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER },
+    });
+
+    let opened = false;
+    fixture.componentInstance.openSystemStatus.subscribe(() => (opened = true));
+    const status = container.querySelector<HTMLElement>(
+      '[data-testid="open-system-status"]',
+    );
+    expect(status?.getAttribute('aria-label')).toBe('System Status');
+    status!.click();
+
+    expect(opened).toBe(true);
+  });
+
+  it('marks the System Status entry when capability problems exist', async () => {
+    const { container } = await render(SidebarUserPanelComponent, {
+      inputs: { user: USER, hasSystemStatusProblems: true },
+    });
+
+    expect(
+      container.querySelector('[data-testid="open-system-status"]'),
+    ).toHaveClass('userbar__system-status--problem');
+  });
+
   it('uses the themeable tooltip contract instead of a native title', async () => {
     const { fixture, container } = await render(SidebarUserPanelComponent, {
       inputs: { user: USER },

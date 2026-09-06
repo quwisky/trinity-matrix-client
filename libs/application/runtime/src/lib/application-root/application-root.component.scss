@@ -17,11 +17,9 @@
   }
 
   .system-status-access {
-    position: fixed;
-    z-index: var(--trinity-z-sticky);
-    inset-inline-end: 0.75rem;
-    inset-block-end: 0.75rem;
-    opacity: 0.72;
+    align-self: flex-end;
+    flex: 0 0 auto;
+    margin: var(--trinity-space-2);
   }
 
   @media (max-width: 32rem) {

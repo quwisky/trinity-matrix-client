@@ -97,6 +97,19 @@
     }
   }
 
+  .userbar__system-status {
+    flex: 0 0 auto;
+
+    &--problem {
+      color: var(--trinity-danger);
+    }
+  }
+
+  .userbar__system-status-label {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
   .account-row {
     display: flex;
     align-items: center;

@@ -17,11 +17,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
+import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import {
   TrnDropdownMenu,
   TrnDropdownMenuItem,
+  TrnDropdownMenuSeparator,
   TrnDropdownMenuTrigger,
 } from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
@@ -119,6 +121,7 @@ const PANEL_DRAWER_PX = 480;
     TrnActionAvailability,
     TrnDropdownMenu,
     TrnDropdownMenuItem,
+    TrnDropdownMenuSeparator,
     TrnDropdownMenuTrigger,
     TrnTooltip,
     TrnIconComponent,
@@ -253,6 +256,16 @@ export class RoomsPage {
   readonly messageActions = inject(MessageActionsService);
   readonly shortcutActions = inject(ShellShortcutsService);
   readonly session = inject(SessionActionsService);
+  readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
+  private readonly roomActionsOverflow = viewChild<ElementRef<HTMLElement>>(
+    'roomActionsOverflow',
+  );
+
+  protected openSystemStatus(): void {
+    this.systemStatus.show(() =>
+      this.roomActionsOverflow()?.nativeElement.focus(),
+    );
+  }
 
   /** Phones use a dialog because the narrow navigation has no room for the desktop submenu. */
   protected onOpenAccountPicker(): void {

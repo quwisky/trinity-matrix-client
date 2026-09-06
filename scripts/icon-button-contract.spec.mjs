@@ -88,7 +88,7 @@ const expectedCompositeCounts = {
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html': 1,
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.html': 1,
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.html': 1,
-  'libs/feature/rooms/src/lib/rooms/rooms.page.html': 5,
+  'libs/feature/rooms/src/lib/rooms/rooms.page.html': 6,
 };
 
 const countsByFile = (controls) =>
