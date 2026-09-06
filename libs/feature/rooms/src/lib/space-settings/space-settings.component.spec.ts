@@ -159,6 +159,7 @@ async function build(options: BuildOptions = {}) {
             availability: 'available',
             unavailableReason: null,
             items: [],
+            curationLinks: [],
             candidates: [],
             canManage: false,
             managementUnavailableReason: 'Read only.',

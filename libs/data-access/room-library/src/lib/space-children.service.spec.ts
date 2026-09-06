@@ -316,7 +316,9 @@ describe('SpaceChildrenService', () => {
         ],
       });
 
-      await firstValueFrom(svc.setSuggested('!s:hs', '!a:hs', true));
+      await firstValueFrom(
+        svc.setSuggested('@me:hs.example', '!s:hs', '!a:hs', true),
+      );
 
       expect(sendStateEvent).toHaveBeenCalledWith(
         '!s:hs',
@@ -331,7 +333,9 @@ describe('SpaceChildrenService', () => {
         children: [{ childId: '!a:hs', suggested: true }],
       });
 
-      await firstValueFrom(svc.setSuggested('!s:hs', '!a:hs', false));
+      await firstValueFrom(
+        svc.setSuggested('@me:hs.example', '!s:hs', '!a:hs', false),
+      );
 
       expect(sentContent(sendStateEvent)).not.toHaveProperty('suggested');
     });
@@ -340,8 +344,24 @@ describe('SpaceChildrenService', () => {
       const { svc, sendStateEvent } = setup({ children: [] });
 
       await expect(
-        firstValueFrom(svc.setSuggested('!s:hs', '!nope:hs', true)),
+        firstValueFrom(
+          svc.setSuggested('@me:hs.example', '!s:hs', '!nope:hs', true),
+        ),
       ).rejects.toThrow(/not in this space/i);
+      expect(sendStateEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not fall through to the active Account when the target is gone', async () => {
+      const { svc, sendStateEvent } = setup({
+        signedOut: true,
+        children: [{ childId: '!a:hs' }],
+      });
+
+      await expect(
+        firstValueFrom(
+          svc.setSuggested('@me:hs.example', '!s:hs', '!a:hs', true),
+        ),
+      ).rejects.toThrow(/account unavailable/i);
       expect(sendStateEvent).not.toHaveBeenCalled();
     });
   });
@@ -357,7 +377,9 @@ describe('SpaceChildrenService', () => {
       });
 
       // Put c between a and b.
-      await firstValueFrom(svc.moveChildBefore('!s:hs', '!c:hs', '!b:hs'));
+      await firstValueFrom(
+        svc.moveChildBefore('@me:hs.example', '!s:hs', '!c:hs', '!b:hs'),
+      );
 
       expect(sendStateEvent).toHaveBeenCalledTimes(1);
       const order = sentContent(sendStateEvent)['order'] as string;
@@ -373,7 +395,9 @@ describe('SpaceChildrenService', () => {
         ],
       });
 
-      await firstValueFrom(svc.moveChildBefore('!s:hs', '!b:hs', '!a:hs'));
+      await firstValueFrom(
+        svc.moveChildBefore('@me:hs.example', '!s:hs', '!b:hs', '!a:hs'),
+      );
 
       expect(sentContent(sendStateEvent)['via']).toEqual(['b.example']);
     });
@@ -386,7 +410,9 @@ describe('SpaceChildrenService', () => {
         ],
       });
 
-      await firstValueFrom(svc.moveChildBefore('!s:hs', '!a:hs', null));
+      await firstValueFrom(
+        svc.moveChildBefore('@me:hs.example', '!s:hs', '!a:hs', null),
+      );
 
       const order = sentContent(sendStateEvent)['order'] as string;
       expect(compareOrder('5', order)).toBe(-1);
@@ -403,9 +429,16 @@ describe('SpaceChildrenService', () => {
         ],
       });
 
-      await firstValueFrom(svc.moveChildBefore('!s:hs', '!c:hs', '!b:hs'));
+      const receipt = await firstValueFrom(
+        svc.moveChildBefore('@me:hs.example', '!s:hs', '!c:hs', '!b:hs'),
+      );
 
       expect(sendStateEvent.mock.calls.length).toBeGreaterThan(1);
+      expect(receipt.expectedLinks.map(({ childId }) => childId)).toEqual([
+        '!a:hs',
+        '!c:hs',
+        '!b:hs',
+      ]);
       // Whatever it wrote, the resulting arrangement must be a, c, b.
       const written = new Map(
         sendStateEvent.mock.calls.map((call) => [
@@ -431,7 +464,9 @@ describe('SpaceChildrenService', () => {
       });
 
       await expect(
-        firstValueFrom(svc.moveChildBefore('!s:hs', '!nope:hs', null)),
+        firstValueFrom(
+          svc.moveChildBefore('@me:hs.example', '!s:hs', '!nope:hs', null),
+        ),
       ).rejects.toThrow(/not in this space/i);
       expect(sendStateEvent).not.toHaveBeenCalled();
     });
@@ -442,8 +477,24 @@ describe('SpaceChildrenService', () => {
       });
 
       await expect(
-        firstValueFrom(svc.moveChildBefore('!s:hs', '!a:hs', '!nope:hs')),
+        firstValueFrom(
+          svc.moveChildBefore('@me:hs.example', '!s:hs', '!a:hs', '!nope:hs'),
+        ),
       ).rejects.toThrow(/not in this space/i);
+      expect(sendStateEvent).not.toHaveBeenCalled();
+    });
+
+    it('does not reorder through the active Account when the target is gone', async () => {
+      const { svc, sendStateEvent } = setup({
+        signedOut: true,
+        children: [{ childId: '!a:hs' }],
+      });
+
+      await expect(
+        firstValueFrom(
+          svc.moveChildBefore('@me:hs.example', '!s:hs', '!a:hs', null),
+        ),
+      ).rejects.toThrow(/account unavailable/i);
       expect(sendStateEvent).not.toHaveBeenCalled();
     });
   });

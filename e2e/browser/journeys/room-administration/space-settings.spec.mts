@@ -658,6 +658,12 @@ test.describe('Space settings', () => {
     await expect(
       panel.getByTestId(`space-content-unlink-${candidateSpaceId}`),
     ).toHaveCount(0);
+    await expect(
+      panel.getByTestId(`space-content-suggest-${candidateSpaceId}`),
+    ).toHaveCount(0);
+    await expect(
+      panel.getByTestId(`space-content-move-up-${candidateSpaceId}`),
+    ).toHaveCount(0);
   });
 
   test('a member without permission sees the fields but cannot edit them', async ({

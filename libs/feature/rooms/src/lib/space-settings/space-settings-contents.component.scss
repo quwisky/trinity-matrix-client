@@ -17,7 +17,6 @@
 
   .space-contents__heading,
   .space-contents__actions,
-  .space-contents__row,
   .space-contents__candidate,
   .space-contents__recovery,
   .space-contents__picker-actions {
@@ -55,7 +54,6 @@
     gap: 8px;
   }
 
-  .space-contents__list,
   .space-contents__candidate-list {
     display: flex;
     flex-direction: column;
@@ -65,7 +63,6 @@
     list-style: none;
   }
 
-  .space-contents__row,
   .space-contents__candidate {
     min-height: 52px;
     gap: 10px;
@@ -86,17 +83,13 @@
     overflow-wrap: anywhere;
   }
 
-  .space-contents__kind,
-  .space-contents__membership {
-    flex: none;
-    color: var(--trinity-text-muted);
-    font-size: 12px;
-  }
-
   .space-contents__kind {
+    flex: none;
     padding: 2px 7px;
     border-radius: 999px;
     background: var(--trinity-surface-control);
+    color: var(--trinity-text-muted);
+    font-size: 12px;
   }
 
   .space-contents__picker {
@@ -162,7 +155,6 @@
 
     .space-contents__heading,
     .space-contents__actions,
-    .space-contents__row,
     .space-contents__recovery,
     .space-contents__state--danger {
       align-items: stretch;
@@ -170,15 +162,13 @@
     }
 
     .space-contents__actions button,
-    .space-contents__row button,
     .space-contents__recovery button,
     .space-contents__state--danger button {
       min-height: 44px;
       width: 100%;
     }
 
-    .space-contents__kind,
-    .space-contents__membership {
+    .space-contents__kind {
       align-self: flex-start;
     }
   }

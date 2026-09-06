@@ -46,6 +46,8 @@ async function build(
       kind: 'room' as const,
       joined: true,
       via: [],
+      suggested: false,
+      order: '',
       direct: Boolean((candidate as { directUserId?: string }).directUserId),
     })),
     ...(opts.spaces ?? []).map((candidate) => ({
@@ -53,6 +55,8 @@ async function build(
       kind: 'space' as const,
       joined: true,
       via: [],
+      suggested: false,
+      order: '',
       direct: false,
     })),
   ].filter(({ id }) => id !== '!s:hs' && !existing.has(id));
@@ -61,6 +65,7 @@ async function build(
     availability: 'available' as const,
     unavailableReason: null,
     items: [],
+    curationLinks: [],
     candidates,
     canManage: true,
     managementUnavailableReason: null,

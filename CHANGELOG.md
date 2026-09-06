@@ -15,7 +15,11 @@ All notable changes to this project are documented here. The format is based on
   attached to the Account and Space that opened settings. Creation links only through the parent,
   removal neither leaves nor deletes the child, and a created item whose link fails is preserved
   by name and Matrix ID with a link-only retry that cannot create a duplicate. The existing Space
-  header shortcuts remain available; shared order and Suggested controls stay in Organise rooms.
+  header shortcuts remain available, and Organise rooms now opens this same destination. Each child
+  row exposes immediate shared-order and Suggested controls when permitted, with boundary-aware
+  moves, retryable failures, optimistic rollback, and a Space-wide lock that waits for the exact
+  Account's synced echo before accepting another conflicting write. These shared changes never
+  overwrite the Account's Recent, Alphabetical, Space order, or default preference.
 
 - **Room Widgets now has an Account-bound section in the responsive Room settings hub.** Existing
   declarations, URL-template disclosures, restricted in-app opening and external-browser launch

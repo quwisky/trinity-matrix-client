@@ -293,7 +293,7 @@
         (triggered)="manageSpaceRooms.emit()"
         [trnActionAllowed]="canCurateSpace()"
         [trnActionDisabledReason]="curateSpaceReason()"
-        [trnTooltip]="curateSpaceReason() ?? 'Organise rooms'"
+        [trnTooltip]="curateSpaceReason() ?? 'Organise rooms in Space settings'"
         data-testid="space-manage-rooms"
       >
         <trn-icon name="list-ordered" />

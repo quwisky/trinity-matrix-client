@@ -13,7 +13,6 @@ import {
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
-import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { runWithBusy } from '@trinity/util/ui';
 import { isMobileOs } from '@trinity/platform-native';
@@ -321,7 +320,7 @@ export class SpaceActionsService {
   private openSpaceSettings(
     accountId: string,
     spaceId: string,
-    initialSection: 'general' | 'members',
+    initialSection: 'general' | 'contents' | 'members',
   ): void {
     this.dialog
       .openAndWait$(SpaceSettingsComponent, {
@@ -357,19 +356,14 @@ export class SpaceActionsService {
       .subscribe();
   }
 
-  /** Space overflow "Organise rooms": curate the child order and suggestions. */
+  /** Space overflow "Organise rooms": enter shared curation in Space settings. */
   onManageSpaceRooms(): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId || !this.vm.canCurateSpace()) {
+    const accountId = this.store.activeAccountId();
+    if (!spaceId || !accountId || !this.vm.canCurateSpace()) {
       return;
     }
-    this.dialog
-      .openAndWait$(ManageSpaceRoomsComponent, {
-        ariaLabel: 'Organise this space',
-        inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
-      })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.openSpaceSettings(accountId, spaceId, 'contents');
   }
 
   /**

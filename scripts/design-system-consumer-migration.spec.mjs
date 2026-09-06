@@ -308,7 +308,7 @@ describe('migrated application design-system consumers', () => {
     );
 
     const surfaces = tags(/<[^>]*\btrnOverlaySurface\b[^>]*>/gu);
-    expect(surfaces).toHaveLength(28);
+    expect(surfaces).toHaveLength(27);
     for (const [file, tag] of surfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
     }
@@ -320,7 +320,7 @@ describe('migrated application design-system consumers', () => {
       '2xl',
       '2xl',
       '2xl',
-      ...Array(6).fill('lg'),
+      ...Array(5).fill('lg'),
       ...Array(14).fill('md'),
       ...Array(4).fill('sm'),
       'xl',
@@ -330,7 +330,7 @@ describe('migrated application design-system consumers', () => {
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      ...Array(14).fill('dialog'),
+      ...Array(13).fill('dialog'),
       'dynamic',
       'dynamic',
       'dynamic',

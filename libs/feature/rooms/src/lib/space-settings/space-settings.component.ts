@@ -27,7 +27,7 @@ import { SpaceSettingsGeneralComponent } from './space-settings-general.componen
 type SpaceSettingsSection =
   'general' | 'for-you' | 'access' | 'contents' | 'members' | 'addresses';
 
-/** Working Account-bound Space destinations; child organisation joins this hub in #524. */
+/** Account-bound Space settings destinations, including authoritative child curation. */
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: SpaceSettingsSection;
 })[] = [
