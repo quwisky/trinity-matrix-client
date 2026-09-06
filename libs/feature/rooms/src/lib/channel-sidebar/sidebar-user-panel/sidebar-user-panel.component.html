@@ -52,6 +52,24 @@
     </div>
   </button>
   <button
+    trnBtn
+    presentation="ghost"
+    shape="icon"
+    size="sm"
+    class="userbar__system-status"
+    [class.userbar__system-status--problem]="hasSystemStatusProblems()"
+    (click)="openSystemStatus.emit()"
+    aria-label="System Status"
+    trnTooltip="System Status"
+    data-testid="open-system-status"
+  >
+    <trn-icon
+      name="shield-alert"
+      [variant]="hasSystemStatusProblems() ? 'danger' : 'muted'"
+      motion="pop"
+    />
+  </button>
+  <button
     trnIconButton
     class="userbar__settings"
     (click)="openSettings.emit()"

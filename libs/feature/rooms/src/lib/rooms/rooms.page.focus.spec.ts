@@ -55,7 +55,11 @@ import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomsPage } from './rooms.page';
-import { ROUTE_PROVIDER, setRouteRoom } from './rooms-page.spec-harness';
+import {
+  ROUTE_PROVIDER,
+  SYSTEM_STATUS_PROVIDER,
+  setRouteRoom,
+} from './rooms-page.spec-harness';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
@@ -139,6 +143,7 @@ describe('RoomsPage rendered right-panel focus', () => {
     TestBed.configureTestingModule({
       providers: [
         ROUTE_PROVIDER,
+        SYSTEM_STATUS_PROVIDER,
         MockProvider(Router),
         MockProvider(MessageGestureSettingsService, {
           messageSwipe: signal('off'),
