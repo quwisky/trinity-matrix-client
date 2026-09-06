@@ -261,7 +261,7 @@ always reflects current health. Expected disabled, dormant and not-applicable st
 as outages. Contextual incidents remain toast-level feedback and do not enter the persistent list.
 
 System Status is startup-safe and independent of readiness-gated Settings and session surfaces.
-The room shell exposes its entry beside Settings in the sidebar and at the end of the compact
+The room shell exposes an icon immediately left of Settings in the sidebar and at the end of the compact
 conversation menu. These controls use the application-owned status state and highlight current
 problems even when their summary is dismissed. Outside the room shell, the application root
 retains an in-flow entry, while startup blockers and problem summaries keep direct access.

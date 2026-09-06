@@ -86,8 +86,10 @@ describe('SidebarUserPanelComponent', () => {
 
     expect(button?.hasAttribute('title')).toBe(false);
     expect(
-      fixture.debugElement.query(By.directive(TrnTooltip)).nativeElement,
-    ).toBe(button);
+      fixture.debugElement
+        .queryAll(By.directive(TrnTooltip))
+        .map((element) => element.nativeElement),
+    ).toContain(button);
   });
 
   it('asks the host to look up the homeserver versions when the menu is opened', async () => {

@@ -209,7 +209,7 @@ text-scaled compact layout remains usable. A touch-capable desktop is kept on th
 interaction model; this does not establish native sheet behavior on Android or iOS.
 
 The companion `host-shell/system-status-placement.spec.mts` journey opens a signed-in
-conversation on desktop and Pixel 5. It checks sidebar/menu placement, focus restoration after
+conversation on desktop and Pixel 5. It checks the icon-only sidebar entry left of Settings, mobile menu placement, focus restoration after
 closing System Status, and sending a message through the unobstructed composer.
 
 Trust-health changes additionally prove that asynchronous initial and event-driven reads settle

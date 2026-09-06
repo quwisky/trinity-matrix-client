@@ -1112,8 +1112,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
-- System Status no longer floats over message-composer controls. It stays available beside
-  Settings in the sidebar and in the mobile conversation's More actions menu, with emphasis
+- System Status no longer floats over message-composer controls. It stays available as an icon immediately
+  left of Settings in the sidebar and in the mobile conversation's More actions menu, with emphasis
   when a capability needs attention. Startup and problem-banner access remain available.
 
 - Electron allows persistent storage for its trusted main window, preventing the

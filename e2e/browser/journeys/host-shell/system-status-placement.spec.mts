@@ -14,7 +14,7 @@ import {
 import { registerUser } from '../../../support/account.mts';
 
 // System Status is an application surface, but its entry point follows the shell's navigation:
-// beside Settings on desktop and in the room header's mobile overflow when the sidebar page is
+// an icon left of Settings on desktop and in the room header's mobile overflow when the sidebar page is
 // not present. These checks need a real conversation because a login-page status button can hide
 // both placement and composer regressions.
 const session = synapseSession();
@@ -81,7 +81,7 @@ async function expectComposerUsable(page: Page, body: string): Promise<void> {
 test.describe('System Status navigation placement', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('sits beside Settings on desktop and leaves the composer usable', async ({
+  test('sits as an icon left of Settings on desktop and leaves the composer usable', async ({
     page,
     request,
   }, testInfo) => {
@@ -91,6 +91,8 @@ test.describe('System Status navigation placement', () => {
     const settings = page.getByTestId('open-settings');
     await expect(page.getByTestId('system-status-access')).toHaveCount(0);
     await expect(sidebarStatus).toBeVisible();
+    await expect(sidebarStatus).toHaveText('');
+    await expect(sidebarStatus).toHaveAccessibleName('System Status');
     await expect(settings).toBeVisible();
     const statusBox = await sidebarStatus.boundingBox();
     const settingsBox = await settings.boundingBox();
@@ -102,10 +104,7 @@ test.describe('System Status navigation placement', () => {
       statusBox!.y < settingsBox!.y + settingsBox!.height &&
       settingsBox!.y < statusBox!.y + statusBox!.height;
     expect(verticallyBeside).toBe(true);
-    expect(
-      statusBox!.x + statusBox!.width <= settingsBox!.x + 1 ||
-        settingsBox!.x + settingsBox!.width <= statusBox!.x + 1,
-    ).toBe(true);
+    expect(statusBox!.x + statusBox!.width <= settingsBox!.x + 1).toBe(true);
     expect(
       statusBox!.x + statusBox!.width <= sendBox!.x + 1 ||
         sendBox!.x + sendBox!.width <= statusBox!.x + 1 ||

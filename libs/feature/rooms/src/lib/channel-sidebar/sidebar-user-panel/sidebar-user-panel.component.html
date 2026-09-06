@@ -52,18 +52,9 @@
     </div>
   </button>
   <button
-    trnIconButton
-    class="userbar__settings"
-    (click)="openSettings.emit()"
-    aria-label="Settings"
-    trnTooltip="Settings"
-    data-testid="open-settings"
-  >
-    <trn-icon name="settings" motion="rotate" />
-  </button>
-  <button
     trnBtn
     presentation="ghost"
+    shape="icon"
     size="sm"
     class="userbar__system-status"
     [class.userbar__system-status--problem]="hasSystemStatusProblems()"
@@ -77,7 +68,16 @@
       [variant]="hasSystemStatusProblems() ? 'danger' : 'muted'"
       motion="pop"
     />
-    <span class="userbar__system-status-label">System Status</span>
+  </button>
+  <button
+    trnIconButton
+    class="userbar__settings"
+    (click)="openSettings.emit()"
+    aria-label="Settings"
+    trnTooltip="Settings"
+    data-testid="open-settings"
+  >
+    <trn-icon name="settings" motion="rotate" />
   </button>
 </footer>
 

@@ -80,7 +80,7 @@ or clearing local data, check your
 ## When an action is unavailable
 
 If Trinity starts with a limited capability, its compact summary keeps the Workspace available.
-Open **System Status** beside **Settings** in the sidebar, or from **More actions** in a mobile
+Open the **System Status** icon immediately left of **Settings** in the sidebar, or from **More actions** in a mobile
 conversation. It remains available when everything is working and is highlighted when a
 capability needs attention. Startup blockers and problem summaries also offer direct access.
 The panel shows which user-facing feature and Account are affected, what remains safe to use,
