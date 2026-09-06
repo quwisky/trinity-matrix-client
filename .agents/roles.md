@@ -1,6 +1,6 @@
 # Planning, implementation, and review
 
-The coordinator keeps the user's chosen session model, accepted decisions,
+The coordinator uses the configured Astra default, preserves accepted decisions,
 integration, and authorized publication. Choose a role for substantive work;
 handle a short, unambiguous edit directly.
 
@@ -18,38 +18,48 @@ while that work proceeds, then routes material findings to the implementer.
 
 ## Use the configured defaults deliberately
 
-The repository-owned definitions record the default model and reasoning effort
-for delegated work:
+The project configuration in [`.codex/config.toml`](../.codex/config.toml) sets
+Astra/high for the root, Luna/medium for generic execution subagents, and six
+concurrent child threads. Explicit user choices take precedence.
 
-| Role        | Configuration                                                         | Default                 |
-| ----------- | --------------------------------------------------------------------- | ----------------------- |
-| Planner     | [`.codex/agents/planner.toml`](../.codex/agents/planner.toml)         | `gpt-6-astra`, `high`   |
-| Implementer | [`.codex/agents/implementer.toml`](../.codex/agents/implementer.toml) | `gpt-5.6-terra`, `high` |
-| Reviewer    | [`.codex/agents/reviewer.toml`](../.codex/agents/reviewer.toml)       | `gpt-6-astra`, `high`   |
+| Role | Configuration | Default |
+| --- | --- | --- |
+| Planner | [planner.toml](../.codex/agents/planner.toml) | Astra/high; retained Trinity planning role |
+| Implementer | [implementer.toml](../.codex/agents/implementer.toml) | Luna/medium; retained Trinity implementation role |
+| Explorer | [explorer.toml](../.codex/agents/explorer.toml) | Luna/medium; read-only repository exploration |
+| Worker | [worker.toml](../.codex/agents/worker.toml) | Luna/medium; bounded implementation |
+| Tester | [tester.toml](../.codex/agents/tester.toml) | Luna/medium; focused verification |
+| Researcher | [researcher.toml](../.codex/agents/researcher.toml) | Luna/medium; read-only research |
+| Reviewer | [reviewer.toml](../.codex/agents/reviewer.toml) | Astra/low; read-only independent review |
 
-These defaults do not change the main session's user-selected model. For a client
-that supports named custom agents, ask it to delegate a bounded task to `planner`,
-`implementer`, or `reviewer`, then confirm the selected role and model in its result.
-The [Codex custom-agent documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-specifies that a named file's model and effort take precedence over explicit spawn
-arguments. Where those file values are absent, selection falls through spawn
-arguments, configured agent defaults, and the parent session. Changing a named
-role's defaults means reviewing its TOML; a prompt alone does not replace them.
-Project configuration is also subject to [project trust](https://learn.chatgpt.com/docs/config-file/config-reference).
+The [astra-orchestrator skill](skills/astra-orchestrator/SKILL.md) supplies the
+role-selection and delegation workflow. Existing planner and implementer names
+remain available for existing handoffs. Named roles pin their own model and effort;
+update their TOMLs as well as generic defaults when changing routing. The separate
+review_model setting keeps built-in review on Astra.
 
-In the coordination runtime inspected for this guide, delegated tasks can receive
-explicit model and reasoning arguments, but there is no named-custom-agent field.
-A full-history fork cannot combine those overrides; use a bounded context packet.
-Explicit Terra/high implementation and Astra/high review were exercised during this
-rewrite. The TOMLs and Codex CLI 0.153.4 help were inspected; named-role loading and
-the built-in review command were not exercised. When a role or model override is
-unavailable, apply its instructions with the available model and record that limit.
+Start a new Codex session from a trusted checkout to load project settings.
+The root uses upstream's workspace-write and on-request defaults; execution roles
+use workspace-write and exploration/research/review roles use read-only.
+Personal configuration remains outside this installation. If the client does not
+expose named roles, supply the role instructions and configured model through its
+available delegation interface and report any unsupported selection.
 
-[`review_model`](../.codex/config.toml) is independent model-only configuration
-for the built-in review feature, as described in the [Codex configuration
-reference](https://learn.chatgpt.com/docs/config-file/config-reference). It
-currently names `gpt-6-astra`; it does not set reasoning effort and does not
-control the `code-review` skill.
+## Upstream installation and maintenance
+
+Installed from [donvito/codex-astra-luna-orchestrator](https://github.com/donvito/codex-astra-luna-orchestrator)
+at commit `84a2d194b7c10c60c7ba67c8136130797bf47044` (Apache-2.0).
+The upstream license is retained beside the imported skill. This is a manually
+vendored integration, separate from CLI-managed skills-lock.json imports.
+
+The skill and role defaults come from upstream. Trinity adds repository instruction
+pointers and publication ownership to the roles, retains planner and implementer
+compatibility, and merges orchestration guidance into AGENTS.md. For updates,
+compare the pinned revision with the desired upstream revision and merge only
+these files; the upstream installer would replace existing configuration and
+repository guidance. Update this revision and the changelog, parse every TOML,
+and validate with the installed Codex CLI before publication. Named-role execution
+requires a separate live session to verify.
 
 ## Work in sequence
 

@@ -49,6 +49,14 @@ and expand through their links as needed. Repository paths in their prose are re
 | Changelog, versions or releases                                  | [Changelog and releases](docs/contributing/conventions.md#changelog-and-releases)                                                                                     |
 | Setup or an unfamiliar failure                                   | [Contributing](docs/contributing/index.md), [troubleshooting](docs/reference/troubleshooting.md)                                                                      |
 
+## Codex orchestration
+
+For complex multi-file work or explicit delegation requests, use the
+[astra-orchestrator skill](.agents/skills/astra-orchestrator/SKILL.md) together with
+[Trinity role routing](.agents/roles.md). The root owns architecture, integration,
+verification and authorized publication; assign bounded work with one writer per
+file set. Handle trivial edits directly. User instructions take precedence.
+
 ## Constraints to keep in view
 
 - Use **pnpm** and repository Nx targets. The web app is `apps/trinity`; its build emits
