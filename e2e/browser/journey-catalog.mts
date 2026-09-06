@@ -402,6 +402,21 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
+    path: 'journeys/room-administration/space-leave.spec.mts',
+    capability: 'room-administration',
+    contractType: 'journey',
+  },
+  {
+    path: 'journeys/room-administration/space-settings-mobile.spec.mts',
+    capability: 'room-administration',
+    contractType: 'journey',
+  },
+  {
+    path: 'journeys/room-administration/space-settings-resilience.spec.mts',
+    capability: 'room-administration',
+    contractType: 'journey',
+  },
+  {
     path: 'journeys/room-administration/space-settings.spec.mts',
     capability: 'room-administration',
     contractType: 'journey',

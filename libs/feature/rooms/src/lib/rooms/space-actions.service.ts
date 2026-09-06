@@ -1,10 +1,6 @@
-import {
-  type MemberSummary,
-  RoomSettingsService,
-} from '@trinity/data-access/room-administration';
+import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { RoomAliasesService } from '@trinity/data-access/room-administration';
 import {
   RoomLibraryService,
   RoomReadinessService,
@@ -21,9 +17,11 @@ import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-ro
 import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { runWithBusy } from '@trinity/util/ui';
+import { isMobileOs } from '@trinity/platform-native';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
+import { AccountRoutingService } from './account-routing.service';
 import { MemberActionsService } from './member-actions.service';
 import { ShellStatusService } from './shell-status.service';
 
@@ -43,6 +41,7 @@ export class SpaceActionsService {
   private readonly store = inject(RoomShellStore);
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
+  private readonly routing = inject(AccountRoutingService);
   private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
@@ -50,8 +49,6 @@ export class SpaceActionsService {
   private readonly spaces = inject(SpacesService);
   private readonly spaceChildren = inject(SpaceChildrenService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
-  private readonly roomSettings = inject(RoomSettingsService);
-  private readonly aliases = inject(RoomAliasesService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
@@ -135,19 +132,22 @@ export class SpaceActionsService {
   /** Sidebar exit icon: confirm, then leave the active space (back to Home). */
   onLeaveSpace(): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId) {
+    const accountId = this.store.activeAccountId();
+    if (!spaceId || !accountId) {
       return;
     }
+    const spaceName = this.vm.activeSpaceName();
+    const accountName = this.routing.accountLabel(accountId);
     this.status.error.set(null);
     this.alert
       .confirm$({
         header: 'Leave space',
-        message: `Leave “${this.vm.activeSpaceName()}”? Its rooms stay on your account — only the space is left.`,
+        message: `Leave “${spaceName}” as ${accountName}? You remain a member of its Rooms; only the Space itself is left.`,
         confirmText: 'Leave',
         variant: 'danger',
       })
       .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.applyLeaveSpace(spaceId));
+      .subscribe(() => this.applyLeaveSpace(accountId, spaceId));
   }
 
   private applyCreateSpace(accountId: string, name: string): void {
@@ -209,12 +209,11 @@ export class SpaceActionsService {
       .pipe(map(() => spaceId));
   }
 
-  private applyLeaveSpace(spaceId: string): void {
-    const accountId = this.store.activeAccountId();
-    if (!accountId) return;
-    runWithBusy(this.spaces.leaveSpace(spaceId), this.status).subscribe(() =>
-      this.nav.onSelectSpace({ spaceId: null, accountId }),
-    );
+  private applyLeaveSpace(accountId: string, spaceId: string): void {
+    runWithBusy(
+      this.spaces.leaveSpace(accountId, spaceId),
+      this.status,
+    ).subscribe(() => this.nav.onSelectSpace({ spaceId: null, accountId }));
   }
 
   /** Sidebar "Join" on a not-yet-joined child: join it (via its routing servers). */
@@ -291,26 +290,21 @@ export class SpaceActionsService {
    */
   onOpenSpaceSettings(): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId || !this.vm.canConfigureSpace()) {
+    const accountId = this.store.activeAccountId();
+    if (!spaceId || !accountId || !this.vm.canConfigureSpace()) {
       return;
     }
-    const identity = this.roomSettings.currentIdentity(spaceId);
-    const editable = this.roomSettings.editableFields(spaceId);
-    const access = this.roomSettings.currentAccess(spaceId);
     this.dialog
       .openAndWait$(SpaceSettingsComponent, {
         ariaLabel: 'Space settings',
+        placement: isMobileOs() ? 'fullscreen' : 'center',
+        autoFocus: '[data-autofocus]',
+        dismissGuard: (component) =>
+          component?.requestExternalDismiss() ?? true,
         inputs: {
+          accountId,
           spaceId,
-          name: identity.name,
-          topic: identity.topic,
-          avatarMxc: identity.avatarMxc,
-          joinRule: access.joinRule,
-          canEditName: editable.name,
-          canEditTopic: editable.topic,
-          canEditAvatar: editable.avatar,
-          canEditJoinRule: editable.joinRule,
-          canManageAliases: this.aliases.canManageAliases(spaceId),
+          spaceDisplayName: this.vm.activeSpaceName(),
         },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))

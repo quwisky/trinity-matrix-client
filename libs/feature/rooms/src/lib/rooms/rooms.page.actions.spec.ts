@@ -245,7 +245,14 @@ describe('RoomsPage space actions', () => {
 
     shell.spaces.onLeaveSpace();
 
-    expect(leaveSpace).toHaveBeenCalledWith('!s:hs');
+    expect(leaveSpace).toHaveBeenCalledWith('@me:hs', '!s:hs');
+    expect(alertConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringMatching(
+          /Leave .* as .*You remain a member of its Rooms/,
+        ),
+      }),
+    );
     await vi.waitFor(() => expect(shell.store.activeSpaceId()).toBeNull());
   });
 

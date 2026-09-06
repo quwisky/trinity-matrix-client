@@ -1,0 +1,26 @@
+@use '../styles/mixins' as rooms;
+@use './space-settings-form' as settings;
+
+@layer components {
+  @include settings.common;
+
+  .space-settings__card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .space-settings__topic {
+    min-height: 88px;
+    resize: vertical;
+  }
+
+  @media #{rooms.$below-md} {
+    .space-settings__card-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+}

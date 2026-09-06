@@ -222,21 +222,17 @@ export async function openMessageActionSheet(
 }
 
 /**
- * Switch a settings surface to one section and wait for its visible panel. Room settings uses
- * mobile master-detail navigation, so reveal its directory before choosing another section.
- * Space settings retains its tabbed surface.
+ * Switch a settings surface to one section and wait for its visible panel. Responsive settings
+ * hubs reveal their directory before choosing another section on mobile.
  */
 export async function openSettingsTab(
   page: Page,
   prefix: 'room-settings' | 'space-settings',
-  tab: 'general' | 'access' | 'widgets' | 'bans',
+  tab: 'general' | 'access' | 'addresses' | 'widgets' | 'bans',
 ): Promise<void> {
   const tabButton = page.getByTestId(`${prefix}-tab-${tab}`);
-  if (
-    prefix === 'room-settings' &&
-    !(await tabButton.isVisible().catch(() => false))
-  ) {
-    await page.getByTestId('room-settings-mobile-back').click();
+  if (!(await tabButton.isVisible().catch(() => false))) {
+    await page.getByTestId(`${prefix}-mobile-back`).click();
   }
   await tabButton.click();
   await expect(page.getByTestId(`${prefix}-panel-${tab}`)).toBeVisible({

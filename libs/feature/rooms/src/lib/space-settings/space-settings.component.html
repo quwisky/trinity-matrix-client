@@ -1,106 +1,63 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="sm"
-  layout="dialog"
-  class="space-settings flex flex-col"
-  data-testid="space-settings"
+<trn-settings-hub
+  testId="space-settings"
+  noun="Space"
+  [accountId]="accountId()"
+  [accountName]="account().displayName"
+  [accountAvatarMxc]="account().avatarMxc"
+  [accountInitial]="accountInitial()"
+  [targetName]="draft.model().name || spaceDisplayName()"
+  [targetAvatarMxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
+  [targetInitial]="spaceInitial()"
+  [sections]="sections"
+  [selectedSection]="selectedSection()"
+  [sectionTitle]="sectionTitle()"
+  [compactNavigation]="compactNavigation()"
+  [directoryVisible]="directoryVisible()"
+  [mobileHost]="mobileHost"
+  [unavailableReason]="draft.targetUnavailableReason()"
+  (sectionSelected)="selectSection($event)"
+  (directoryRequested)="showDirectory()"
+  (closeRequested)="close()"
 >
-  <h2 class="space-settings__title">Space settings</h2>
-
-  <form [formRoot]="form" class="space-settings__form" (submit)="save()">
-    @if (!canSave() && !mayEditAvatar()) {
-      <p class="space-settings__note">
-        You don’t have permission to change this space’s settings.
-      </p>
+  @switch (selectedSection()) {
+    @case ('general') {
+      <trn-space-settings-general
+        [accountId]="accountId()"
+        [spaceId]="spaceId()"
+        [spaceDisplayName]="spaceDisplayName()"
+      />
     }
-
-    <trn-tabs
-      tab="general"
-      variant="neutral"
-      presentation="line"
-      [tabs]="settingsTabs()"
-      class="space-settings__tabs"
-    >
-      <trn-tab-panel value="general" data-testid="space-settings-panel-general">
-        <trn-avatar-field
-          [roomId]="spaceId()"
-          [name]="name()"
-          [avatarMxc]="avatarMxc()"
-          [initial]="avatarInitial()"
-          [editable]="mayEditAvatar()"
-          noun="space"
-          testid="space-settings-avatar"
-        />
-
-        <label class="space-settings__field">
-          <span class="space-settings__label">Name</span>
-          <input
-            trnInput
-            class="w-full"
-            [formField]="form.name"
-            autocomplete="off"
-            data-testid="space-settings-name"
-          />
-        </label>
-
-        <label class="space-settings__field">
-          <span class="space-settings__label">Topic</span>
-          <textarea
-            trnTextarea
-            class="w-full"
-            rows="3"
-            [formField]="form.topic"
-            data-testid="space-settings-topic"
-          ></textarea>
-        </label>
-      </trn-tab-panel>
-
-      <trn-tab-panel value="access" data-testid="space-settings-panel-access">
-        <label class="space-settings__field">
-          <span class="space-settings__label">Who can join</span>
-          <trn-select
-            [options]="joinRuleOptions()"
-            [formField]="form.joinRule"
-            data-testid="space-settings-join-rule"
-          />
-          <!-- Rooms inside a space keep their own join rules; this governs the space itself. -->
-          <span class="space-settings__hint">
-            This controls the space. The rooms inside it keep their own
-            settings.
-          </span>
-        </label>
-
-        <trn-room-aliases [roomId]="spaceId()" />
-      </trn-tab-panel>
-
-      <trn-tab-panel value="bans" data-testid="space-settings-panel-bans">
-        <trn-banned-members [roomId]="spaceId()" />
-      </trn-tab-panel>
-    </trn-tabs>
-
-    <div class="space-settings__actions">
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        presentation="ghost"
-        (click)="close()"
-        data-testid="space-settings-cancel"
+    @case ('access') {
+      <trn-space-settings-access />
+    }
+    @case ('addresses') {
+      <section
+        class="space-settings__legacy-panel"
+        data-testid="space-settings-panel-addresses"
       >
-        Cancel
-      </button>
-      <button
-        trnBtn
-        [trnActionAllowed]="canSave()"
-        [trnActionDisabledReason]="saveUnavailableReason()"
-        [trnTooltip]="saveUnavailableReason()"
-        type="submit"
-        [disabled]="saving()"
-        data-testid="space-settings-save"
+        @if (legacyUnavailableReason(); as reason) {
+          <p class="space-settings__target-warning" role="status">
+            Local address actions require the opening Account to be active.
+            {{ reason }}
+          </p>
+        } @else {
+          <trn-room-aliases [roomId]="spaceId()" />
+        }
+      </section>
+    }
+    @case ('bans') {
+      <section
+        class="space-settings__legacy-panel"
+        data-testid="space-settings-panel-bans"
       >
-        {{ saving() ? 'Saving…' : 'Save' }}
-      </button>
-    </div>
-  </form>
-</div>
+        @if (legacyUnavailableReason(); as reason) {
+          <p class="space-settings__target-warning" role="status">
+            {{ reason }}
+          </p>
+        } @else {
+          <trn-banned-members [roomId]="spaceId()" />
+        }
+      </section>
+    }
+  }
+</trn-settings-hub>

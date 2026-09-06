@@ -449,10 +449,12 @@ export class SpacesService {
    * (leaving the children too is a deferred follow-up). The rail drops the pill once
    * the membership change syncs back through the existing listeners.
    */
-  leaveSpace(spaceId: string): Observable<void> {
-    return defer(() => from(this.matrix.instance.leave(spaceId))).pipe(
-      map(() => void 0),
-    );
+  leaveSpace(accountId: string, spaceId: string): Observable<void> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) return throwError(() => new Error('Account unavailable.'));
+      return from(client.leave(spaceId)).pipe(map(() => void 0));
+    });
   }
 
   /**

@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Space settings now shares the Account-bound responsive settings hub.** General and Access
+  stay attached to the Account and Space that opened the hub, preserve section drafts across
+  live Matrix updates, retry only failed fields, and never retarget a late write after an Account
+  switch. Desktop keeps the section directory beside the editor; phones use a full-screen
+  master-detail flow with protected Back and Close navigation. Existing unfamiliar access rules
+  remain readable without offering new restricted choices, while Addresses and Bans remain
+  reachable behind their opening-Account safety gate. Leaving a Space now confirms the exact
+  Account and Space and makes clear that membership in its Rooms is retained.
+
 - **Room settings is now an Account-bound responsive hub.** Web and desktop keep a centred
   directory-and-section dialog, while a real phone uses a full-screen master-detail flow with
   reachable scrolling and Back behavior. General opens first with the opening Account and Room

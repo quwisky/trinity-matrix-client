@@ -11,13 +11,10 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/controls';
-import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnDialogRef,
   TrnDialogService,
-  TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { isMobileOs } from '@trinity/platform-native';
@@ -29,6 +26,10 @@ import {
 } from '@trinity/application/workspace';
 import { Observable, defer, of, take } from 'rxjs';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
+import {
+  SettingsHubComponent,
+  type SettingsHubSection,
+} from '../shared/settings-hub/settings-hub.component';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import { RoomSettingsGeneralComponent } from './room-settings-general.component';
@@ -39,13 +40,9 @@ export type { ParentSpace } from './room-settings.models';
 
 type RoomSettingsSection = 'general' | 'access' | 'widgets' | 'bans';
 
-interface RoomSettingsSectionOption {
+const SECTIONS: readonly (SettingsHubSection & {
   readonly value: RoomSettingsSection;
-  readonly label: string;
-  readonly description: string;
-}
-
-const SECTIONS: readonly RoomSettingsSectionOption[] = [
+})[] = [
   {
     value: 'general',
     label: 'General',
@@ -74,13 +71,11 @@ const SECTIONS: readonly RoomSettingsSectionOption[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [RoomSettingsDraftService],
   imports: [
-    AvatarComponent,
     BannedMembersComponent,
     RoomSettingsAccessComponent,
     RoomSettingsGeneralComponent,
     RoomWidgetsComponent,
-    TrnButton,
-    TrnOverlaySurfaceDirective,
+    SettingsHubComponent,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
@@ -160,7 +155,11 @@ export class RoomSettingsComponent implements OnInit {
     this.backActive.set(true);
   }
 
-  selectSection(section: RoomSettingsSection): void {
+  selectSection(value: string): void {
+    const section = SECTIONS.find(
+      (candidate) => candidate.value === value,
+    )?.value;
+    if (!section) return;
     if (section === this.selectedSection() && !this.directoryVisible()) {
       return;
     }

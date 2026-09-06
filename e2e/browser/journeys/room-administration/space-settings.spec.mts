@@ -148,13 +148,77 @@ test.describe('Space settings', () => {
     await openSpaceMenu(page, originalName);
 
     await page.getByTestId('open-space-settings').click();
+    const settings = page.getByTestId('space-settings');
     await expect(page.getByTestId('space-settings-name')).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByTestId('space-settings-directory')).toBeVisible();
+    await expect(page.getByTestId('space-settings-account')).toContainText(
+      user,
+    );
+    await expect(
+      page.getByTestId('space-settings-section-heading'),
+    ).toBeFocused();
+    const settingsBox = await settings.boundingBox();
+    expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
+
+    const openingViewport = page.viewportSize();
+    if (!openingViewport) throw new Error('Space settings needs a viewport');
+    await page.setViewportSize({ width: 700, height: 800 });
+    await expect(page.getByTestId('space-settings-directory')).toBeHidden();
+    await expect(page.getByTestId('space-settings-mobile-back')).toBeVisible();
+    await page.setViewportSize(openingViewport);
+    await expect(page.getByTestId('space-settings-directory')).toBeVisible();
+
+    const openingRootSize = await page.evaluate(
+      () => document.documentElement.style.fontSize,
+    );
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '125%';
+    });
+    await expect(page.getByTestId('space-settings-cancel')).toBeVisible();
+    await expect(page.getByTestId('space-settings-save')).toBeVisible();
+    await page.evaluate((size) => {
+      document.documentElement.style.fontSize = size;
+    }, openingRootSize);
+
+    const openingAppearance = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      theme: document.documentElement.getAttribute('data-theme'),
+    }));
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.removeAttribute('data-theme');
+    });
+    await test.info().attach('space-settings-desktop-general-light', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'amethyst');
+    });
+    await test.info().attach('space-settings-desktop-general-dark-amethyst', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(({ dark, theme }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      if (theme === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+    }, openingAppearance);
+
     await page.getByTestId('space-settings-name').fill(newName);
     await page.getByTestId('space-settings-topic').fill(newTopic);
-    // Name and topic are General; the join rule is behind Access. Saving spans both, which
-    // is the point of the eager panels — one form, one Save.
+    await page.getByTestId('space-settings-save').click();
+    await expect(
+      page.getByTestId('space-settings-general-feedback'),
+    ).toContainText(/Name.*topic.*saved|Topic.*name.*saved/i, {
+      timeout: 30_000,
+    });
+
+    // Access has its own draft and Save; changing sections never commits General implicitly.
     await openSettingsTab(page, 'space-settings', 'access');
     // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
     // options live in a CDK portal.
@@ -318,7 +382,7 @@ test.describe('Space settings', () => {
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
-    await openSettingsTab(page, 'space-settings', 'access');
+    await openSettingsTab(page, 'space-settings', 'addresses');
     await expect(page.getByTestId('room-aliases')).toBeVisible({
       timeout: 10_000,
     });
@@ -330,7 +394,7 @@ test.describe('Space settings', () => {
 
     // The dialog is still open (Enter must not have submitted it) and the address is live.
     // The DIALOG, not the name field: that field lives on the General tab, and this test is
-    // standing on Access — a still-open dialog would have failed a visibility check on it.
+    // standing on Addresses — a still-open dialog would have failed a visibility check on it.
     await expect(page.getByTestId('space-settings')).toBeVisible();
     await expect(
       page.getByTestId('room-alias').filter({ hasText: alias }),

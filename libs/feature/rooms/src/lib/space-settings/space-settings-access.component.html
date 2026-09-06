@@ -1,0 +1,63 @@
+<form
+  [formRoot]="draft.form"
+  class="space-settings__form"
+  data-testid="space-settings-panel-access"
+  (submit)="draft.saveAccess()"
+>
+  <section class="space-settings__card space-settings__fields">
+    <label class="space-settings__field">
+      <span class="space-settings__label">Who can join</span>
+      <trn-select
+        [options]="draft.joinRuleOptions()"
+        [formField]="draft.form.joinRule"
+        data-testid="space-settings-join-rule"
+      />
+      <span class="space-settings__hint">
+        This controls the Space itself. Rooms inside it keep their own access
+        settings.
+      </span>
+      @if (!draft.mayEditJoinRule()) {
+        <span class="space-settings__restriction">
+          {{ draft.permissions().joinRule.reason }}
+        </span>
+      }
+    </label>
+  </section>
+
+  @if (draft.accessFeedback(); as feedback) {
+    <p
+      class="space-settings__feedback"
+      [class.space-settings__feedback--danger]="feedback.tone === 'danger'"
+      role="status"
+      aria-live="polite"
+      data-testid="space-settings-access-feedback"
+    >
+      {{ feedback.message }}
+    </p>
+  }
+
+  <div class="space-settings__actions">
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="ghost"
+      [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
+      data-testid="space-settings-access-discard"
+      (click)="draft.discardAccess()"
+    >
+      Discard
+    </button>
+    <button
+      trnBtn
+      type="submit"
+      [trnActionAllowed]="draft.mayEditJoinRule()"
+      [trnActionDisabledReason]="draft.accessSaveUnavailableReason()"
+      [trnTooltip]="draft.accessSaveUnavailableReason()"
+      [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
+      data-testid="space-settings-save"
+    >
+      {{ draft.saving() === 'access' ? 'Saving…' : 'Save access' }}
+    </button>
+  </div>
+</form>

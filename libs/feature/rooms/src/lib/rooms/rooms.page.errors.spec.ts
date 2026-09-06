@@ -524,51 +524,23 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.vm.canCurateSpace()).toBe(false);
   });
 
-  it('opens space settings seeded from raw state and the viewer’s permissions', async () => {
+  it('opens one exact Account-and-Space settings lifetime', async () => {
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
-    currentIdentity.mockReturnValue({
-      name: 'Design',
-      topic: 'Where design happens',
-      avatarMxc: 'mxc://a/b',
-    });
-    currentAccess.mockReturnValue({
-      joinRule: 'public',
-      historyVisibility: 'shared',
-      allowedSpaceIds: [],
-    });
-    editableFields.mockReturnValue({
-      name: true,
-      topic: true,
-      avatar: false,
-      joinRule: true,
-      history: false,
-    });
-    canManageAliases.mockReturnValue(false);
-
     shell.spaces.onOpenSpaceSettings();
 
-    // Every read is against the SPACE id — a space is a room, so these services take it
-    // unchanged, and passing the active ROOM id here would silently configure the wrong one.
-    expect(currentIdentity).toHaveBeenCalledWith('!s:hs');
-    expect(editableFields).toHaveBeenCalledWith('!s:hs');
-    expect(currentAccess).toHaveBeenCalledWith('!s:hs');
     expect(dialogOpen).toHaveBeenCalledWith(SpaceSettingsComponent, {
       ariaLabel: 'Space settings',
-      inputs: expect.objectContaining({
+      placement: 'center',
+      autoFocus: '[data-autofocus]',
+      dismissGuard: expect.any(Function),
+      inputs: {
+        accountId: '@me:hs',
         spaceId: '!s:hs',
-        name: 'Design',
-        topic: 'Where design happens',
-        avatarMxc: 'mxc://a/b',
-        joinRule: 'public',
-        canEditName: true,
-        canEditTopic: true,
-        canEditAvatar: false,
-        canEditJoinRule: true,
-        canManageAliases: false,
-      }),
+        spaceDisplayName: 'Space !s:hs',
+      },
     });
   });
 
@@ -598,8 +570,8 @@ describe('RoomsPage action error feedback', () => {
   });
 
   it('refuses to configure another account’s space', async () => {
-    // RoomSettingsService resolves the ACTIVE client, so this dialog would seed blank and
-    // every write would land on the wrong account — or nowhere.
+    // A rail Space may belong to another Account in a mixed view. Its own row must be
+    // selected first so Workspace establishes that Account before settings can open.
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!theirs:hs', accountId: '@me:hs' });
     await settleWorkspace();
@@ -610,7 +582,6 @@ describe('RoomsPage action error feedback', () => {
     shell.spaces.onOpenSpaceSettings();
 
     expect(dialogOpen).not.toHaveBeenCalled();
-    expect(currentIdentity).not.toHaveBeenCalled();
   });
 
   it('allows configuring a space on the signed-in account', async () => {

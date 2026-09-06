@@ -116,19 +116,27 @@ authority, while an exact-Account operation with its own current authorization r
 independent. Retrying a retained failure schedules only its existing projection; released
 ownership recreates both Room Administration leases without reopening the Room surface.
 
-Room settings takes an immutable Account-and-Room target for General and Access policy and observes
-that Account's exact client, independent of later Active Account changes. SDK state and sync
-invalidations refresh untouched fields and permission gates while section-owned drafts remain
-local; removal of the opening Account makes the target unavailable, and a late avatar upload cannot
-publish into a replacement Account. General and Access commands commit successful fields
-independently so retry writes only the retained failures. Incrementally retained local-address,
-widget and ban adapters stay behind an opening-Account-active gate until their exact-target
-migrations land; they never fall through to a newly active Account. UI feedback uses focusable
-`trnActionAllowed` controls, keyboard-accessible explanations and a touch status surface. Every
-cold migrated mutation rechecks permission at subscription time after pickers/confirmations and
-before the SDK write; avatar publication checks both before upload and before publishing state.
-The homeserver remains authoritative for races. UI details belong in the [UI guide](ui-and-theming.md),
-not in a second authorization implementation.
+Room and Space settings share a domain-neutral responsive hub, but keep separate policy owners.
+Each hub takes an immutable Account-and-Room target (a Space is a Matrix Room) for General and
+Access policy and observes that Account's exact client, independent of later Active Account
+changes. SDK state and sync invalidations refresh untouched fields and permission gates while
+section-owned drafts remain local; removal of the opening Account makes the target unavailable,
+and a late avatar upload cannot publish into a replacement Account. General and Access commands
+commit successful fields independently so retry writes only the retained failures. Space Access
+offers invite-only and public transitions; an already-authoritative unfamiliar or restricted rule
+remains readable without inventing a new restricted configuration flow.
+
+Incrementally retained local-address and ban adapters in both hubs, and the Room-only widget
+adapter, stay behind an opening-Account-active gate until their exact-target migrations land; they
+never fall through to a newly active Account. Space settings deliberately does not inherit Room
+history or widget policy. UI feedback uses focusable `trnActionAllowed` controls,
+keyboard-accessible explanations and a touch status surface. Every cold migrated mutation
+rechecks permission at subscription time after pickers/confirmations and before the SDK write;
+avatar publication checks both before upload and before publishing state. Space leave captures
+the immutable Account-and-Space pair before confirmation and resolves that exact client for the
+write; it leaves the Space Room only, not its child Rooms. The homeserver remains authoritative
+for races. UI details belong in the [UI guide](ui-and-theming.md), not in a second authorization
+implementation.
 
 ## Session persistence
 

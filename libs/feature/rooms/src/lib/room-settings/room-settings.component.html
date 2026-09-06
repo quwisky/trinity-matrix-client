@@ -1,165 +1,60 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="2xl"
-  [layout]="mobileHost ? 'fullscreen' : 'workspace'"
-  class="room-settings"
-  data-testid="room-settings"
+<trn-settings-hub
+  testId="room-settings"
+  noun="Room"
+  [accountId]="accountId()"
+  [accountName]="account().displayName"
+  [accountAvatarMxc]="account().avatarMxc"
+  [accountInitial]="accountInitial()"
+  [targetName]="draft.model().name || roomDisplayName()"
+  [targetAvatarMxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
+  [targetInitial]="roomInitial()"
+  [sections]="sections"
+  [selectedSection]="selectedSection()"
+  [sectionTitle]="sectionTitle()"
+  [compactNavigation]="compactNavigation()"
+  [directoryVisible]="directoryVisible()"
+  [mobileHost]="mobileHost"
+  [unavailableReason]="draft.targetUnavailableReason()"
+  (sectionSelected)="selectSection($event)"
+  (directoryRequested)="showDirectory()"
+  (closeRequested)="close()"
 >
-  <header class="room-settings__header">
-    <div class="room-settings__identity">
-      <trn-avatar
-        size="sm"
-        shape="person"
-        [mxc]="account().avatarMxc"
-        [name]="account().displayName"
-        [initial]="accountInitial()"
+  @switch (selectedSection()) {
+    @case ('general') {
+      <trn-room-settings-general
         [accountId]="accountId()"
+        [roomId]="roomId()"
+        [roomDisplayName]="roomDisplayName()"
       />
-      <div>
-        <p class="room-settings__account-label">Opening Account</p>
-        <p
-          class="room-settings__account-name"
-          data-testid="room-settings-account"
-        >
-          {{ account().displayName }}
-        </p>
-      </div>
-    </div>
-    <button
-      trnBtn
-      type="button"
-      presentation="ghost"
-      data-testid="room-settings-cancel"
-      (click)="close()"
-    >
-      Close
-    </button>
-  </header>
-
-  @if (draft.targetUnavailableReason(); as unavailableReason) {
-    <p class="room-settings__target-warning" role="alert">
-      {{ unavailableReason }}
-    </p>
+    }
+    @case ('access') {
+      <trn-room-settings-access
+        [roomId]="roomId()"
+        [parentSpaces]="parentSpaces()"
+        [legacyUnavailableReason]="legacyUnavailableReason()"
+      />
+    }
+    @case ('widgets') {
+      <section data-testid="room-settings-panel-widgets">
+        @if (legacyUnavailableReason(); as reason) {
+          <p class="room-settings__target-warning" role="status">
+            {{ reason }}
+          </p>
+        } @else {
+          <trn-room-widgets [roomId]="roomId()" />
+        }
+      </section>
+    }
+    @case ('bans') {
+      <section data-testid="room-settings-panel-bans">
+        @if (legacyUnavailableReason(); as reason) {
+          <p class="room-settings__target-warning" role="status">
+            {{ reason }}
+          </p>
+        } @else {
+          <trn-banned-members [roomId]="roomId()" />
+        }
+      </section>
+    }
   }
-
-  <div class="room-settings__workspace">
-    <nav
-      class="room-settings__directory"
-      [class.room-settings__directory--hidden]="
-        compactNavigation() && !directoryVisible()
-      "
-      aria-label="Room settings sections"
-      data-testid="room-settings-directory"
-    >
-      <div class="room-settings__room-summary">
-        <trn-avatar
-          [mxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
-          [name]="draft.model().name || roomDisplayName()"
-          [initial]="roomInitial()"
-          [exactSize]="48"
-          shape="place"
-          [accountId]="accountId()"
-        />
-        <div>
-          <p class="room-settings__eyebrow">Room settings</p>
-          <h1 data-testid="room-settings-room-name">
-            {{ draft.model().name || roomDisplayName() }}
-          </h1>
-        </div>
-      </div>
-
-      <div class="room-settings__section-list">
-        @for (section of sections; track section.value) {
-          <button
-            type="button"
-            class="room-settings__section-link"
-            [class.room-settings__section-link--active]="
-              selectedSection() === section.value
-            "
-            [attr.aria-current]="
-              selectedSection() === section.value ? 'page' : null
-            "
-            [attr.data-testid]="'room-settings-tab-' + section.value"
-            (click)="selectSection(section.value)"
-          >
-            <span>{{ section.label }}</span>
-            <small>{{ section.description }}</small>
-          </button>
-        }
-      </div>
-    </nav>
-
-    <main
-      class="room-settings__section"
-      [class.room-settings__section--hidden]="
-        compactNavigation() && directoryVisible()
-      "
-    >
-      <div class="room-settings__section-header">
-        @if (compactNavigation()) {
-          <button
-            trnBtn
-            type="button"
-            presentation="ghost"
-            data-testid="room-settings-mobile-back"
-            (click)="showDirectory()"
-          >
-            Back
-          </button>
-        }
-        <div>
-          <p class="room-settings__eyebrow">Room settings</p>
-          <h2
-            tabindex="-1"
-            data-autofocus
-            data-testid="room-settings-section-heading"
-          >
-            {{ sectionTitle() }}
-          </h2>
-        </div>
-      </div>
-
-      <div class="room-settings__section-scroll">
-        @switch (selectedSection()) {
-          @case ('general') {
-            <trn-room-settings-general
-              [accountId]="accountId()"
-              [roomId]="roomId()"
-              [roomDisplayName]="roomDisplayName()"
-            />
-          }
-          @case ('access') {
-            <trn-room-settings-access
-              [roomId]="roomId()"
-              [parentSpaces]="parentSpaces()"
-              [legacyUnavailableReason]="legacyUnavailableReason()"
-            />
-          }
-          @case ('widgets') {
-            <section data-testid="room-settings-panel-widgets">
-              @if (legacyUnavailableReason(); as reason) {
-                <p class="room-settings__target-warning" role="status">
-                  {{ reason }}
-                </p>
-              } @else {
-                <trn-room-widgets [roomId]="roomId()" />
-              }
-            </section>
-          }
-          @case ('bans') {
-            <section data-testid="room-settings-panel-bans">
-              @if (legacyUnavailableReason(); as reason) {
-                <p class="room-settings__target-warning" role="status">
-                  {{ reason }}
-                </p>
-              } @else {
-                <trn-banned-members [roomId]="roomId()" />
-              }
-            </section>
-          }
-        }
-      </div>
-    </main>
-  </div>
-</div>
+</trn-settings-hub>
