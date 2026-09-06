@@ -248,6 +248,9 @@ test.describe('Space settings on a phone', () => {
     await contents.tap();
     const contentsPanel = page.getByTestId('space-settings-panel-contents');
     await expect(
+      page.getByTestId('space-settings-section-heading'),
+    ).toBeFocused();
+    await expect(
       contentsPanel.getByText(roomName, { exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     const createRoom = contentsPanel.getByRole('button', {
@@ -261,6 +264,31 @@ test.describe('Space settings on a phone', () => {
     expect((createBox?.x ?? 0) + (createBox?.width ?? 0)).toBeLessThanOrEqual(
       (panelBox?.x ?? 0) + (panelBox?.width ?? 0),
     );
+    const suggestedControl = contentsPanel.getByTestId(
+      `space-content-suggest-control-${roomId}`,
+    );
+    expect(
+      (await suggestedControl.boundingBox())?.height ?? 0,
+    ).toBeGreaterThanOrEqual(44);
+    const suggestedCheckbox = suggestedControl.getByRole('checkbox');
+    await expect(suggestedCheckbox).toBeChecked();
+    const moveUp = contentsPanel.getByTestId(`space-content-move-up-${roomId}`);
+    const moveDown = contentsPanel.getByTestId(
+      `space-content-move-down-${roomId}`,
+    );
+    expect((await moveUp.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
+      44,
+    );
+    await expect(moveUp).toBeDisabled();
+    await expect(moveDown).toBeDisabled();
+    await suggestedCheckbox.tap();
+    await expect
+      .poll(
+        async () =>
+          (await childLink(request, hs, token, spaceId, roomId))?.['suggested'],
+        { timeout: 30_000 },
+      )
+      .not.toBe(true);
     await test.info().attach('space-contents-mobile', {
       body: await contentsPanel.screenshot(),
       contentType: 'image/png',

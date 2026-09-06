@@ -6,7 +6,10 @@
   <div class="space-contents__heading">
     <div>
       <h3 id="space-contents-title">Rooms &amp; spaces</h3>
-      <p>Everything linked directly inside this Space.</p>
+      <p>
+        Everything linked directly inside this Space. Shared order and Suggested
+        changes save immediately for everyone.
+      </p>
     </div>
     @if (snapshot()?.canManage) {
       <div class="space-contents__actions" data-testid="space-contents-actions">
@@ -15,7 +18,7 @@
           type="button"
           variant="secondary"
           presentation="ghost"
-          [disabled]="pending() !== null"
+          [disabled]="actionsBusy()"
           (click)="openPicker()"
           data-testid="space-contents-add-existing"
         >
@@ -25,7 +28,7 @@
           trnBtn
           type="button"
           variant="secondary"
-          [disabled]="pending() !== null"
+          [disabled]="actionsBusy()"
           (click)="create('room')"
           data-testid="space-contents-create-room"
         >
@@ -34,7 +37,7 @@
         <button
           trnBtn
           type="button"
-          [disabled]="pending() !== null"
+          [disabled]="actionsBusy()"
           (click)="create('space')"
           data-testid="space-contents-create-space"
         >
@@ -69,7 +72,7 @@
           trnBtn
           type="button"
           variant="secondary"
-          [disabled]="pending() !== null"
+          [disabled]="actionsBusy()"
           (click)="retryLink()"
           data-testid="space-contents-retry-link"
         >
@@ -137,7 +140,7 @@
           type="button"
           variant="secondary"
           presentation="ghost"
-          [disabled]="pending() !== null"
+          [disabled]="actionsBusy()"
           (click)="closePicker()"
           data-testid="space-contents-add-cancel"
         >
@@ -146,7 +149,7 @@
         <button
           trnBtn
           type="button"
-          [disabled]="pending() !== null || selectedCount() === 0"
+          [disabled]="actionsBusy() || selectedCount() === 0"
           (click)="addSelected()"
           data-testid="space-contents-add-confirm"
         >
@@ -177,52 +180,15 @@
         </button>
       </div>
     } @else {
-      <ul class="space-contents__list" data-testid="space-contents-list">
-        @for (item of state.items; track item.id) {
-          <li
-            class="space-contents__row"
-            [attr.data-testid]="'space-content-' + item.id"
-          >
-            <trn-avatar
-              [mxc]="item.avatarMxc"
-              [initial]="item.initial"
-              [name]="item.name"
-              shape="place"
-              size="md"
-            />
-            <span class="space-contents__identity">
-              <strong>{{ item.name }}</strong>
-              <span>{{ item.id }}</span>
-            </span>
-            <span class="space-contents__kind">{{
-              item.kind === 'space' ? 'Space' : 'Room'
-            }}</span>
-            <span class="space-contents__membership">{{
-              item.joined ? 'Joined' : 'Not joined'
-            }}</span>
-            @if (state.canManage) {
-              <button
-                trnBtn
-                type="button"
-                variant="secondary"
-                presentation="ghost"
-                [disabled]="pending() !== null"
-                (click)="unlink(item)"
-                [attr.data-testid]="'space-content-unlink-' + item.id"
-              >
-                {{ pending() === 'unlink:' + item.id ? 'Removing…' : 'Remove' }}
-              </button>
-            }
-          </li>
-        } @empty {
-          <li>
-            <trn-empty-state
-              title="This Space is empty"
-              body="Rooms and nested Spaces linked here will appear in this list."
-            />
-          </li>
-        }
-      </ul>
+      <trn-space-settings-contents-list
+        [target]="target()"
+        [items]="state.items"
+        [links]="state.curationLinks"
+        [canManage]="state.canManage"
+        [externalBusy]="pending() !== null"
+        (busyChange)="curationBusy.set($event)"
+        (removeRequested)="unlink($event)"
+      />
       @if (!state.canManage && state.managementUnavailableReason) {
         <p
           class="space-contents__policy"

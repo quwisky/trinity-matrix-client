@@ -1,0 +1,125 @@
+<ul class="contents-list" data-testid="space-contents-list">
+  @for (item of visibleItems(); track item.id) {
+    <li
+      class="contents-list__row"
+      [attr.data-testid]="'space-content-' + item.id"
+    >
+      <div class="contents-list__identity-group">
+        <trn-avatar
+          [mxc]="item.avatarMxc"
+          [initial]="item.initial"
+          [name]="item.name"
+          shape="place"
+          size="md"
+        />
+        <span class="contents-list__identity">
+          <strong>{{ item.name }}</strong>
+          <span>{{ item.id }}</span>
+        </span>
+      </div>
+
+      <div class="contents-list__facts">
+        <span class="contents-list__kind">{{
+          item.kind === 'space' ? 'Space' : 'Room'
+        }}</span>
+        <span>{{ item.joined ? 'Joined' : 'Not joined' }}</span>
+        @if (!canManage() && item.suggested) {
+          <span class="contents-list__suggested-readonly">Suggested</span>
+        }
+      </div>
+
+      @if (canManage()) {
+        <div class="contents-list__controls">
+          <label
+            class="contents-list__suggested"
+            [attr.data-testid]="'space-content-suggest-control-' + item.id"
+          >
+            <trn-checkbox
+              [checked]="item.suggested"
+              [disabled]="writeLocked()"
+              (checkedChange)="toggleSuggested(item.id, $event)"
+              [attr.data-testid]="'space-content-suggest-' + item.id"
+            />
+            Suggested
+          </label>
+          <div class="contents-list__moves">
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="md"
+              shape="icon"
+              [disabled]="isFirst(item.id) || writeLocked()"
+              (click)="move(item.id, 'up')"
+              [attr.aria-label]="'Move ' + item.name + ' up'"
+              [attr.data-testid]="'space-content-move-up-' + item.id"
+            >
+              <trn-icon name="chevron-up" motion="nudge-up" />
+            </button>
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="md"
+              shape="icon"
+              [disabled]="isLast(item.id) || writeLocked()"
+              (click)="move(item.id, 'down')"
+              [attr.aria-label]="'Move ' + item.name + ' down'"
+              [attr.data-testid]="'space-content-move-down-' + item.id"
+            >
+              <trn-icon name="chevron-down" motion="nudge-down" />
+            </button>
+          </div>
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            [disabled]="writeLocked()"
+            (click)="requestRemove(item)"
+            [attr.data-testid]="'space-content-unlink-' + item.id"
+          >
+            Remove
+          </button>
+        </div>
+      }
+    </li>
+  } @empty {
+    <li>
+      <trn-empty-state
+        title="This Space is empty"
+        body="Rooms and nested Spaces linked here will appear in this list."
+      />
+    </li>
+  }
+</ul>
+
+@if (writeStatus(); as status) {
+  <p class="contents-list__status" role="status" aria-live="polite">
+    {{ status }}
+  </p>
+}
+
+@if (failure(); as failed) {
+  <aside
+    class="contents-list__failure"
+    role="alert"
+    data-testid="space-content-curation-failure"
+  >
+    <p>{{ failed.message }}</p>
+    @if (canManage()) {
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        [disabled]="writeLocked()"
+        (click)="retry()"
+        data-testid="space-content-curation-retry"
+      >
+        Try again
+      </button>
+    }
+  </aside>
+}

@@ -28,6 +28,8 @@ function snapshot(
         kind: 'room',
         joined: true,
         via: ['hs'],
+        suggested: false,
+        order: 'a',
       },
       {
         id: '!nested:hs',
@@ -37,8 +39,11 @@ function snapshot(
         kind: 'space',
         joined: false,
         via: ['hs'],
+        suggested: true,
+        order: 'b',
       },
     ],
+    curationLinks: [],
     candidates: [
       {
         id: '!candidate:hs',
@@ -48,6 +53,8 @@ function snapshot(
         kind: 'room',
         joined: true,
         via: [],
+        suggested: false,
+        order: '',
         direct: false,
       },
     ],

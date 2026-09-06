@@ -72,10 +72,12 @@ Use the rail's **+** to create a space. In a space, use the header menu to creat
 add an existing joined room or space, invite people, leave the space, or organize its children.
 Creating a channel adds an encrypted room to that space.
 
-**Organise rooms** changes the space for its members. Use it to place child rooms and mark them
-suggested. Creating a subspace has two server changes: Trinity creates it first and then links it
-to the parent. If linking fails, the new space still exists; add it to the parent later through
-**Add existing rooms**.
+**Organise rooms** opens Space settings → **Rooms & spaces**. People with permission can move each
+direct child up or down in the order shared by the Space and mark it **Suggested** for members.
+Those changes save immediately; there is no section Save button, and Trinity waits for the synced
+Space update before accepting another shared change. Creating a subspace has two server changes:
+Trinity creates it first and then links it to the parent. If linking fails, the new space still
+exists; add it to the parent later through **Add existing rooms**.
 
 Some actions remain visible but disabled with an explanation. Read that explanation: you may
 need permission or may need to switch to the Account that owns the selected Space. A later
@@ -141,24 +143,28 @@ Open **Space settings** from the Space header's overflow menu. Like Room setting
 opening Account and Space visible and uses a directory beside the editor on a wide screen. On a
 phone it opens full screen; **Back** returns from a section to the directory before Close leaves
 the hub. General changes the Space avatar, name and topic; **For you** stages the opening Account's
-device-local Room ordering; Access changes who can join; **Rooms & spaces** lists the Space's direct
-children; Members combines the searchable roster, member details, invitations, roles, moderation
-and banned list; and Addresses manages published Space links. The Space Members shortcut opens this
-same destination rather than a separate dialog.
+device-local Room ordering; Access changes who can join; **Rooms & spaces** lists and curates the
+Space's direct children; Members combines the searchable roster, member details, invitations,
+roles, moderation and banned list; and Addresses manages published Space links. The Space Members
+and Organise rooms shortcuts open this same destination rather than separate dialogs.
 
 Every member who can inspect the Space may read **Rooms & spaces**, including each child's Matrix
 identity, whether it is a Room or nested Space, and whether the opening Account has joined it.
 People with live Space-curation permission can search the opening Account's joined Rooms and Spaces,
 add an existing one, create an encrypted Room, create a nested Space, or remove a direct child after
-an exact-name confirmation. These are immediate actions: there is no section-wide Save or Cancel.
+an exact-name confirmation. Each row also offers Suggested and boundary-aware Move up and Move down
+controls. These are immediate actions: there is no section-wide Save or Cancel. While a shared
+change is saving, Trinity disables conflicting row actions until that Account receives the synced
+Space state. A rejected change returns to the authoritative value and keeps a **Try again** action.
 Each operation reports its own pending and completed result. Removing a child only replaces the
 parent Space's child link; it never leaves or deletes the child. Creating also writes only that
 parent-owned link. If creation succeeds but linking fails, Trinity keeps the new Room or Space,
 shows its Matrix ID, and offers a link-only retry so recovery cannot create a duplicate.
 
-The Space header's create, add and remove shortcuts continue to use the same exact-Account parent
-policy. **Organise rooms** remains the separate shared workflow for child order and Suggested state;
-the Rooms & spaces destination does not silently reset either field.
+The Space header's create, add and Organise rooms shortcuts continue through the same exact-Account
+parent policy and destination. Shared order and Suggested state affect everyone in the Space, while
+the **For you** choice only decides whether this Account uses Recent activity, Space order,
+Alphabetical, or its default on this device. Neither workflow overwrites the other.
 
 Space Addresses has the same exact-Account behavior and explicit actions as Room Addresses. Long
 addresses wrap on phones, while copy and Matrix-link actions remain available when the opening
@@ -173,8 +179,8 @@ erasing its readable value or local draft. Existing unfamiliar or restricted acc
 visible, but Space settings does not offer a new restricted rule until its full policy workflow
 exists. Space settings never shows Room history, widgets, or Room notification inheritance: a
 Space's access rule controls the Space itself, while child Rooms keep their own access and history
-settings. Use **Organise rooms** for shared child ordering and suggested status; personal Space
-order never calls that shared Matrix workflow.
+settings. Use **Rooms & spaces** directly, or its **Organise rooms** shortcut, for shared child
+ordering and Suggested status; personal Space order never calls that shared Matrix workflow.
 
 **Leave space** confirms both the Space and acting Account. Cancelling makes no membership change;
 confirming leaves only the Space itself. You remain joined to its Rooms, which continue to appear

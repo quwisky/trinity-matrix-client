@@ -131,7 +131,8 @@ draft captures an exact Account-and-Space pair, hydrates that Account's device s
 exact-target commands even after Active Account changes. One absent override means “follow this
 Account's default” and therefore remains live to later default changes; explicit overrides are
 isolated by both Account and Space. Neither path writes `m.space.child`, whose shared order and
-Suggested state remain separate Space-curation authority.
+Suggested state remain separate Space-curation authority even though both controls now share one
+settings lifecycle.
 
 Space contents is a separate Room Library projection keyed by the immutable opening Account and
 parent Space. It reattaches only to that Account's replacement client, reads direct children through
@@ -140,8 +141,13 @@ governance for every cold command. Add and create write only the parent's `m.spa
 not invent a child-side `m.space.parent` write whose authority may differ. Unlink replaces only that
 parent event with its empty tombstone and never calls a membership command. Creation returns a
 discriminated created-but-unlinked outcome when its second step fails, retaining the durable child
-identity so recovery repeats only the link. Shared child order and Suggested remain owned by the
-separate curation workflow.
+identity so recovery repeats only the link. The same projection overlays hierarchy identity with
+the exact Account's synced `m.space.child` order and Suggested state. Shared curation commands are
+cold, exact-target read-modify-writes that preserve `via`; the settings surface serializes them
+through the authoritative full child-link projection until every written state event has echoed,
+rolls rejected optimistic state back, and retains the failed intent for retry. The device-local
+personal ordering service remains an independent preference and is never touched by those shared
+writes.
 
 Member settings owns a local exact-target observation lifetime for joined and banned membership.
 Filtered membership and sync events republish immutable snapshots from the opening Account; losing

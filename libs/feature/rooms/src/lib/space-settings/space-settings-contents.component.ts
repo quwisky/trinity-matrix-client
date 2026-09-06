@@ -29,13 +29,13 @@ import {
 } from '@trinity/data-access/room-library';
 import { filter } from 'rxjs';
 import { saveFields } from '../shared/save-fields';
+import { SpaceSettingsContentsListComponent } from './space-settings-contents-list.component';
 
 interface ContentsFeedback {
   readonly tone: 'success' | 'danger';
   readonly message: string;
 }
 
-/** Immediate, exact-target Room and Space child-link management for Space settings. */
 @Component({
   selector: 'trn-space-settings-contents',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -46,6 +46,7 @@ interface ContentsFeedback {
     TrnButton,
     TrnCheckboxComponent,
     TrnInput,
+    SpaceSettingsContentsListComponent,
   ],
   templateUrl: './space-settings-contents.component.html',
   styleUrl: './space-settings-contents.component.scss',
@@ -70,7 +71,11 @@ export class SpaceSettingsContentsComponent implements OnInit {
   readonly pending = this.pendingState.asReadonly();
   readonly feedback = this.feedbackState.asReadonly();
   readonly recovery = this.recoveryState.asReadonly();
+  readonly curationBusy = signal(false);
   readonly loading = signal(true);
+  readonly actionsBusy = computed(
+    () => this.pending() !== null || this.curationBusy(),
+  );
   readonly visibleCandidates = computed(() => {
     const term = this.searchModel().query.trim().toLowerCase();
     const candidates = this.snapshot()?.candidates ?? [];
@@ -105,6 +110,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
   }
 
   openPicker(): void {
+    if (this.actionsBusy()) return;
     this.feedbackState.set(null);
     this.pickerOpenState.set(true);
   }
@@ -120,7 +126,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
     const chosen = (this.snapshot()?.candidates ?? []).filter(({ id }) =>
       selected.has(id),
     );
-    if (chosen.length === 0 || this.pending()) return;
+    if (chosen.length === 0 || this.actionsBusy()) return;
     this.pendingState.set('add');
     this.feedbackState.set(null);
     saveFields(
@@ -154,7 +160,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
   }
 
   create(kind: CreatedSpaceContent['kind']): void {
-    if (this.pending()) return;
+    if (this.actionsBusy()) return;
     const noun = kind === 'space' ? 'Space' : 'Room';
     this.alert
       .prompt$({
@@ -175,7 +181,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
   }
 
   unlink(item: SpaceContentsItem): void {
-    if (this.pending()) return;
+    if (this.actionsBusy()) return;
     this.alert
       .confirm$({
         header: `Remove ${item.kind === 'space' ? 'Space' : 'Room'} from Space`,
@@ -189,7 +195,7 @@ export class SpaceSettingsContentsComponent implements OnInit {
 
   retryLink(): void {
     const item = this.recovery();
-    if (!item || this.pending()) return;
+    if (!item || this.actionsBusy()) return;
     this.pendingState.set(`retry:${item.id}`);
     this.feedbackState.set(null);
     this.contents
@@ -289,6 +295,5 @@ export class SpaceSettingsContentsComponent implements OnInit {
   }
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);

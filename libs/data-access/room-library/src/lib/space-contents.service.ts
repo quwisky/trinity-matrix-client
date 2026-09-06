@@ -29,7 +29,11 @@ import {
   assertRoomLibraryGovernance,
   type RoomLibraryGovernanceDecision,
 } from './room-library-governance-policy';
-import { SpaceChildrenService } from './space-children.service';
+import {
+  SpaceChildrenService,
+  type SpaceChildLink,
+  type SpaceChildWriteReceipt,
+} from './space-children.service';
 import { compareOrder } from './space-child-order';
 import { SpacesService } from './spaces.service';
 
@@ -48,6 +52,8 @@ export interface SpaceContentsItem {
   readonly kind: 'room' | 'space';
   readonly joined: boolean;
   readonly via: readonly string[];
+  readonly suggested: boolean;
+  readonly order: string;
 }
 
 export interface SpaceContentsCandidate extends SpaceContentsItem {
@@ -62,6 +68,7 @@ export interface SpaceContentsSnapshot {
   readonly availability: SpaceContentsAvailability;
   readonly unavailableReason: string | null;
   readonly items: readonly SpaceContentsItem[];
+  readonly curationLinks: readonly SpaceChildLink[];
   readonly candidates: readonly SpaceContentsCandidate[];
   readonly canManage: boolean;
   readonly managementUnavailableReason: string | null;
@@ -124,6 +131,38 @@ export class SpaceContentsService {
         target.accountId,
         target.spaceId,
         childId,
+      ),
+    );
+  }
+
+  /** Change one child suggestion through the immutable opening Account and Space. */
+  setSuggested(
+    target: SpaceContentsTarget,
+    childId: string,
+    suggested: boolean,
+  ): Observable<SpaceChildWriteReceipt> {
+    return defer(() =>
+      this.children.setSuggested(
+        target.accountId,
+        target.spaceId,
+        childId,
+        suggested,
+      ),
+    );
+  }
+
+  /** Move one child in the shared Space order through the immutable target. */
+  moveChildBefore(
+    target: SpaceContentsTarget,
+    childId: string,
+    beforeChildId: string | null,
+  ): Observable<SpaceChildWriteReceipt> {
+    return defer(() =>
+      this.children.moveChildBefore(
+        target.accountId,
+        target.spaceId,
+        childId,
+        beforeChildId,
       ),
     );
   }
@@ -206,9 +245,15 @@ export class SpaceContentsService {
         if (this.matrix.clientFor(target.accountId) !== client) {
           return this.unavailableSnapshot(target);
         }
+        const current = this.localSnapshot(target, client);
         return {
-          ...this.localSnapshot(target, client),
-          items: projectHierarchy(target.spaceId, client, rooms),
+          ...current,
+          items: projectHierarchy(
+            target.spaceId,
+            client,
+            rooms,
+            current.curationLinks,
+          ),
         };
       }),
       catchError((error: unknown) =>
@@ -229,11 +274,11 @@ export class SpaceContentsService {
       space?.getMyMembership() === 'join' && space.isSpaceRoom();
     if (!available) return this.unavailableSnapshot(target, Boolean(client));
     const decision = this.managementDecision(target);
-    const linked = new Set(
-      this.children
-        .childLinksFor(target.accountId, target.spaceId)
-        .map(({ childId }) => childId),
+    const curationLinks = this.children.childLinksFor(
+      target.accountId,
+      target.spaceId,
     );
+    const linked = new Set(curationLinks.map(({ childId }) => childId));
     const { ids: directIds } = directMapOf(client);
     const candidates = client
       .getRooms()
@@ -254,6 +299,8 @@ export class SpaceContentsService {
           kind: room.isSpaceRoom() ? 'space' : 'room',
           joined: true,
           via: [],
+          suggested: false,
+          order: '',
           direct,
         };
       })
@@ -263,6 +310,7 @@ export class SpaceContentsService {
       availability: 'available',
       unavailableReason: null,
       items: [],
+      curationLinks,
       candidates,
       canManage: decision.kind === 'allowed',
       managementUnavailableReason:
@@ -286,6 +334,7 @@ export class SpaceContentsService {
           ? 'This Account is no longer available.'
           : 'This Space is no longer joined for the opening Account.',
       items: [],
+      curationLinks: [],
       candidates: [],
       canManage: false,
       managementUnavailableReason:
@@ -334,30 +383,18 @@ function projectHierarchy(
   spaceId: string,
   client: MatrixClient,
   rooms: readonly HierarchyRoom[],
+  childLinks: readonly SpaceChildLink[],
 ): SpaceContentsItem[] {
-  const root = rooms.find(({ room_id }) => room_id === spaceId);
-  const links = new Map<string, { via: string[]; order: string }>();
-  for (const relation of root?.children_state ?? []) {
-    if (!relation.state_key) continue;
-    const via = Array.isArray(relation.content.via)
-      ? relation.content.via.filter(
-          (value): value is string => typeof value === 'string',
-        )
-      : [];
-    if (via.length === 0) continue;
-    links.set(relation.state_key, {
-      via,
-      order:
-        typeof relation.content.order === 'string'
-          ? relation.content.order
-          : '',
-    });
-  }
+  // Names and membership come from hierarchy, but curation comes from the exact
+  // Account's synced room state. That state event is the authoritative echo the UI must
+  // wait for before allowing another read-modify-write; a fresh hierarchy request can
+  // still race the homeserver's federated hierarchy view.
+  const links = new Map(childLinks.map((link) => [link.childId, link]));
   return rooms
     .filter(({ room_id }) => room_id !== spaceId && links.has(room_id))
     .map((room) => {
       const name = room.name || room.canonical_alias || room.room_id;
-      const link = links.get(room.room_id) as { via: string[]; order: string };
+      const link = links.get(room.room_id) as SpaceChildLink;
       return {
         item: {
           id: room.room_id,
@@ -367,6 +404,8 @@ function projectHierarchy(
           kind: room.room_type === RoomType.Space ? 'space' : 'room',
           joined: client.getRoom(room.room_id)?.getMyMembership() === 'join',
           via: link.via,
+          suggested: link.suggested,
+          order: link.order,
         } satisfies SpaceContentsItem,
         order: link.order,
       };

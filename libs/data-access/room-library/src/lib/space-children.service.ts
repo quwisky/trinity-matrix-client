@@ -36,7 +36,6 @@ interface SpaceChildContent {
   order?: string;
 }
 
-/** A child link as it currently stands, for deciding what a curation write should say. */
 export interface SpaceChildLink {
   childId: string;
   via: string[];
@@ -44,47 +43,26 @@ export interface SpaceChildLink {
   order: string;
 }
 
+/** The exact state-event values whose sync echoes complete a curation write. */
+export interface SpaceChildWriteReceipt {
+  readonly expectedLinks: readonly SpaceChildLink[];
+}
+
 /**
- * A space's `m.space.child` links — the curation half of Spaces: a live read model
- * ({@link linksFor}) plus the writes that change it.
- *
- * Separate from `SpacesService` rather than added to it: that service is past the 500-line
- * refactor threshold already, and its read surfaces answer different questions —
- * `spaces().childRoomIds` is joined-children-only and carries no `suggested`/`via`, and
- * `openSpaceChildren()` comes from the `/hierarchy` network fetch, which no state listener
- * re-fetches and which is therefore stale for curation changes by construction. Neither can
- * drive a curation UI, which needs every link exactly as the space's state has it.
- *
- * **Every write re-sends the whole child event.** Matrix state events are replaced, not
- * merged, so a curation write that omitted `via` would strip the routing servers and leave
- * the child unjoinable for anyone whose homeserver has not already seen it — the failure
- * this class is most careful about. {@link currentLink} reads the live state first and the
- * writes carry it forward.
- *
- * **The writes deliberately keep reading live state, not {@link linksFor}.** They are
- * read-modify-write against what the SDK holds *now*, and they must stay correct before
- * anything has called {@link connect} — a dialog opened from a menu writes on its first
- * interaction.
+ * State-backed `m.space.child` links and exact-Account curation writes. Writes preserve
+ * the whole live event because Matrix replaces state rather than merging it.
  */
 @Injectable({ providedIn: 'root' })
 export class SpaceChildrenService {
   private readonly matrix = inject(MatrixClientService);
   private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
 
-  /** One signal per space whose links someone is watching, keyed by space id. */
   private readonly links = new Map<
     string,
     WritableSignal<readonly SpaceChildLink[]>
   >();
 
-  /**
-   * Every state event in every room flows through here, so filter hard: to `m.space.child`,
-   * and to a space someone is actually watching. Scheduling for an unwatched room would
-   * rebuild every watched one for nothing.
-   *
-   * Bound by hand rather than listed in `events` because the handler has to read the event
-   * to tell a child link from every other state change.
-   */
+  /** Filter the shared state-event stream to watched child-link changes. */
   private readonly onStateEvent = (event: MatrixEvent): void => {
     const roomId = event.getRoomId();
     if (
@@ -272,13 +250,14 @@ export class SpaceChildrenService {
     });
   }
 
-  /** Flag (or unflag) a child as `suggested`, preserving its routing and order. */
+  /** Flag an exact Account's child as `suggested`, preserving its routing and order. */
   setSuggested(
+    accountId: string,
     spaceId: string,
     childId: string,
     suggested: boolean,
-  ): Observable<void> {
-    return this.rewriteLink(spaceId, childId, (link) => ({
+  ): Observable<SpaceChildWriteReceipt> {
+    return this.rewriteLink(accountId, spaceId, childId, (link) => ({
       ...link,
       suggested,
     }));
@@ -296,15 +275,17 @@ export class SpaceChildrenService {
    * so the next move is a single write again.
    */
   moveChildBefore(
+    accountId: string,
     spaceId: string,
     childId: string,
     beforeChildId: string | null,
-  ): Observable<void> {
+  ): Observable<SpaceChildWriteReceipt> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Account unavailable.'));
       }
-      const links = this.childLinks(spaceId);
+      const links = readLinksFrom(client, spaceId);
       const moving = links.find((link) => link.childId === childId);
       if (!moving) {
         return throwError(() => new Error('That room is not in this space.'));
@@ -320,7 +301,10 @@ export class SpaceChildrenService {
       const next = target < remaining.length ? remaining[target].order : '';
       const minted = orderBetween(prev, next);
       if (minted !== null) {
-        return this.writeLink(spaceId, { ...moving, order: minted });
+        return this.writeLink(accountId, spaceId, {
+          ...moving,
+          order: minted,
+        });
       }
       // No gap: renumber every sibling in the order they should end up in.
       const reordered = [
@@ -330,6 +314,7 @@ export class SpaceChildrenService {
       ];
       const keys = spreadOrders(reordered.length);
       return this.writeAll(
+        accountId,
         spaceId,
         reordered.map((link, index) => ({ ...link, order: keys[index] })),
       );
@@ -338,33 +323,41 @@ export class SpaceChildrenService {
 
   /** Read-modify-write one child link, so `via` always survives. */
   private rewriteLink(
+    accountId: string,
     spaceId: string,
     childId: string,
     change: (link: SpaceChildLink) => SpaceChildLink,
-  ): Observable<void> {
+  ): Observable<SpaceChildWriteReceipt> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
-        return throwError(() => new Error('Not signed in.'));
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Account unavailable.'));
       }
-      const link = this.currentLink(spaceId, childId);
+      const link =
+        readLinksFrom(client, spaceId).find(
+          (candidate) => candidate.childId === childId,
+        ) ?? null;
       if (!link) {
         return throwError(() => new Error('That room is not in this space.'));
       }
-      return this.writeLink(spaceId, change(link));
+      return this.writeLink(accountId, spaceId, change(link));
     });
   }
 
-  private writeLink(spaceId: string, link: SpaceChildLink): Observable<void> {
+  private writeLink(
+    accountId: string,
+    spaceId: string,
+    link: SpaceChildLink,
+  ): Observable<SpaceChildWriteReceipt> {
     const content: SpaceChildContent = {
       via: link.via,
       ...(link.suggested ? { suggested: true } : {}),
       ...(link.order ? { order: link.order } : {}),
     };
     return defer(() => {
-      const client = this.matrix.instance;
-      const accountId = client.getUserId();
-      if (!accountId) {
-        return throwError(() => new Error('Not signed in.'));
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Account unavailable.'));
       }
       assertRoomLibraryGovernance(
         this.governance.authorize(
@@ -379,20 +372,27 @@ export class SpaceChildrenService {
           content,
           link.childId,
         ),
-      ).pipe(map(() => void 0));
+      ).pipe(map(() => ({ expectedLinks: [link] })));
     });
   }
 
   /** Write links one after another, so a renumber cannot interleave with itself. */
   private writeAll(
+    accountId: string,
     spaceId: string,
     links: readonly SpaceChildLink[],
-  ): Observable<void> {
-    return links.reduce<Observable<void>>(
-      (chain, link) =>
-        chain.pipe(switchMap(() => this.writeLink(spaceId, link))),
-      from(Promise.resolve()).pipe(map(() => void 0)),
-    );
+  ): Observable<SpaceChildWriteReceipt> {
+    return links
+      .reduce<Observable<void>>(
+        (chain, link) =>
+          chain.pipe(
+            switchMap(() =>
+              this.writeLink(accountId, spaceId, link).pipe(map(() => void 0)),
+            ),
+          ),
+        from(Promise.resolve()).pipe(map(() => void 0)),
+      )
+      .pipe(map(() => ({ expectedLinks: links })));
   }
 
   private spaceState(spaceId: string) {

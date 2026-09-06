@@ -7,6 +7,7 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
+  openSettingsTab,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -262,13 +263,65 @@ test.describe('Space curation', () => {
     await pill.click();
     await page.getByTestId('space-actions-overflow').click();
     await page.getByTestId('space-manage-rooms').click();
-    await expect(page.getByTestId('manage-space-rooms')).toBeVisible({
+    const panel = page.getByTestId('space-settings-panel-contents');
+    await expect(panel).toBeVisible({
       timeout: 10_000,
     });
-    await expectOpaque(page, 'manage-space-rooms');
+    await expectOpaque(page, 'space-settings');
 
-    // Suggest the second room, then move it above the first.
-    await page.getByTestId(`suggest-${second}`).click();
+    // Personal ordering is a separate Account-and-device preference. Give it a
+    // non-default value before shared curation so the shared writes below can prove they
+    // never overwrite it.
+    await openSettingsTab(page, 'space-settings', 'for-you');
+    await page.getByTestId('space-settings-order-alphabetical').click();
+    await page.getByTestId('space-settings-for-you-save').click();
+    await expect(
+      page.getByTestId('space-settings-for-you-feedback'),
+    ).toContainText('saved for this Account on this device');
+    await openSettingsTab(page, 'space-settings', 'contents');
+
+    // First refusal: the optimistic checkbox must roll back and preserve a retryable
+    // command rather than presenting an uncommitted Suggested state.
+    const childRoute = `**/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(second)}`;
+    await page.route(childRoute, (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          errcode: 'M_FORBIDDEN',
+          error: 'curation rejected',
+        }),
+      }),
+    );
+    const suggested = panel
+      .getByTestId(`space-content-suggest-${second}`)
+      .getByRole('checkbox');
+    await suggested.focus();
+    await page.keyboard.press('Space');
+    const failure = panel.getByTestId('space-content-curation-failure');
+    await expect(failure).toContainText('curation rejected');
+    await expect(suggested).not.toBeChecked();
+    await page.unroute(childRoute);
+
+    // Retry against the real server, but pause the request. All conflicting controls must
+    // remain disabled through the response boundary and until the synced echo reaches the
+    // exact Account projection.
+    let releaseWrite = (): void => undefined;
+    const writeGate = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let heldWrite = false;
+    await page.route(childRoute, async (route) => {
+      if (!heldWrite) {
+        heldWrite = true;
+        await writeGate;
+      }
+      await route.continue();
+    });
+    await failure.getByRole('button', { name: 'Try again' }).click();
+    const moveUp = panel.getByTestId(`space-content-move-up-${second}`);
+    await expect(moveUp).toBeDisabled();
+    releaseWrite();
     await expect
       .poll(
         async () =>
@@ -276,8 +329,11 @@ test.describe('Space curation', () => {
         { timeout: 30_000 },
       )
       .toBe(true);
+    await page.unroute(childRoute);
+    await expect(moveUp).toBeEnabled({ timeout: 30_000 });
 
-    await page.getByTestId(`move-up-${second}`).click();
+    await moveUp.focus();
+    await page.keyboard.press('Enter');
 
     // The order key must now sort BEFORE the first room's, and the write must not have
     // dropped `via` — re-sending a child event replaces it wholesale.
@@ -295,6 +351,14 @@ test.describe('Space curation', () => {
     expect((moved?.['via'] as string[])?.length).toBeGreaterThan(0);
     // And the suggestion it already carried survived the reorder.
     expect(moved?.['suggested']).toBe(true);
+
+    await openSettingsTab(page, 'space-settings', 'for-you');
+    await expect(
+      page
+        .getByTestId('space-settings-order-alphabetical')
+        .getByRole('radio', { name: 'Alphabetical' }),
+    ).toBeChecked();
+    await openSettingsTab(page, 'space-settings', 'contents');
 
     // A third room linked into the space from OUTSIDE this browser, with the dialog still
     // open — the direction every other assertion here is blind to. The rest of this spec
@@ -320,7 +384,7 @@ test.describe('Space curation', () => {
       },
     );
 
-    await expect(page.getByTestId(`managed-${third}`)).toBeVisible({
+    await expect(panel.getByTestId(`space-content-${third}`)).toBeVisible({
       timeout: 30_000,
     });
   });

@@ -1,0 +1,138 @@
+@use '../styles/mixins' as rooms;
+
+@layer components {
+  :host {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .contents-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .contents-list__row {
+    display: flex;
+    min-height: 64px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-control-radius);
+  }
+
+  .contents-list__identity-group,
+  .contents-list__facts,
+  .contents-list__controls,
+  .contents-list__moves,
+  .contents-list__suggested,
+  .contents-list__failure {
+    display: flex;
+    align-items: center;
+  }
+
+  .contents-list__identity-group {
+    min-width: 190px;
+    flex: 1;
+    gap: 10px;
+  }
+
+  .contents-list__identity {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .contents-list__identity strong,
+  .contents-list__identity span {
+    overflow-wrap: anywhere;
+  }
+
+  .contents-list__identity span,
+  .contents-list__facts {
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+  }
+
+  .contents-list__facts,
+  .contents-list__controls,
+  .contents-list__moves {
+    flex: none;
+    gap: 8px;
+  }
+
+  .contents-list__kind,
+  .contents-list__suggested-readonly {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--trinity-surface-control);
+  }
+
+  .contents-list__suggested {
+    min-height: 44px;
+    gap: 6px;
+    color: var(--trinity-text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .contents-list__moves button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .contents-list__status,
+  .contents-list__failure {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-control);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .contents-list__failure {
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--trinity-danger);
+  }
+
+  .contents-list__failure p {
+    margin: 0;
+  }
+
+  @media #{rooms.$below-md} {
+    .contents-list__row,
+    .contents-list__controls,
+    .contents-list__failure {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .contents-list__identity-group {
+      min-width: 0;
+    }
+
+    .contents-list__facts {
+      flex-wrap: wrap;
+    }
+
+    .contents-list__suggested,
+    .contents-list__controls > button,
+    .contents-list__failure button {
+      width: 100%;
+      min-height: 44px;
+    }
+
+    .contents-list__moves button {
+      flex: 1;
+    }
+  }
+}

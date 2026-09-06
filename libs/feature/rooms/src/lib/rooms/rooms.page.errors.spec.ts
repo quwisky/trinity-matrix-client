@@ -44,7 +44,6 @@ import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
-import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
@@ -446,7 +445,7 @@ describe('RoomsPage action error feedback', () => {
     );
   });
 
-  it('opens the curation dialog for the active space', async () => {
+  it('opens shared curation inside the exact Space settings lifetime', async () => {
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
@@ -455,9 +454,13 @@ describe('RoomsPage action error feedback', () => {
     shell.spaces.onManageSpaceRooms();
 
     expect(dialogOpen).toHaveBeenCalledWith(
-      ManageSpaceRoomsComponent,
+      SpaceSettingsComponent,
       expect.objectContaining({
-        inputs: expect.objectContaining({ spaceId: '!s:hs' }),
+        inputs: expect.objectContaining({
+          accountId: '@me:hs',
+          spaceId: '!s:hs',
+          initialSection: 'contents',
+        }),
       }),
     );
   });

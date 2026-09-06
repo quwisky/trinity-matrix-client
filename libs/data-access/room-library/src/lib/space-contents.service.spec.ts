@@ -37,7 +37,7 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
             children_state: [
               {
                 state_key: '!child:remote',
-                content: { via: ['remote'], order: 'a' },
+                content: { via: ['remote'], order: 'a', suggested: true },
               },
               {
                 state_key: '!nested:hs',
@@ -85,8 +85,21 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
   const createSpace = vi.fn(() => of('!created-space:hs'));
   const addExistingRoom = vi.fn(() => of(undefined));
   const removeExistingRoom = vi.fn(() => of(undefined));
-  const links = new BehaviorSubject<readonly { childId: string }[]>([
-    { childId: '!nested:hs' },
+  const setSuggested = vi.fn(() => of({ expectedLinks: [] }));
+  const moveChildBefore = vi.fn(() => of({ expectedLinks: [] }));
+  const links = new BehaviorSubject([
+    {
+      childId: '!child:remote',
+      via: ['remote'],
+      suggested: true,
+      order: 'a',
+    },
+    {
+      childId: '!nested:hs',
+      via: ['hs'],
+      suggested: false,
+      order: 'b',
+    },
   ]);
   TestBed.configureTestingModule({
     providers: [
@@ -102,6 +115,8 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
         childLinksFor: () => links.value as never,
         addExistingRoom,
         removeExistingRoom,
+        setSuggested,
+        moveChildBefore,
       }),
       { provide: ROOM_LIBRARY_GOVERNANCE_POLICY, useValue: { authorize } },
     ],
@@ -116,6 +131,8 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
     createSpace,
     addExistingRoom,
     removeExistingRoom,
+    setSuggested,
+    moveChildBefore,
   };
 }
 
@@ -138,6 +155,8 @@ describe('SpaceContentsService', () => {
         name: 'Public child',
         kind: 'room',
         joined: false,
+        suggested: true,
+        order: 'a',
       },
       { id: '!nested:hs', name: 'Nested', kind: 'space', joined: true },
     ]);
@@ -254,6 +273,28 @@ describe('SpaceContentsService', () => {
     expect(removeExistingRoom).toHaveBeenCalledWith(
       TARGET.accountId,
       TARGET.spaceId,
+      '!child:remote',
+    );
+  });
+
+  it('curates shared state through the exact target', async () => {
+    const { service, setSuggested, moveChildBefore } = setup();
+
+    await firstValueFrom(service.setSuggested(TARGET, '!child:remote', true));
+    await firstValueFrom(
+      service.moveChildBefore(TARGET, '!nested:hs', '!child:remote'),
+    );
+
+    expect(setSuggested).toHaveBeenCalledWith(
+      TARGET.accountId,
+      TARGET.spaceId,
+      '!child:remote',
+      true,
+    );
+    expect(moveChildBefore).toHaveBeenCalledWith(
+      TARGET.accountId,
+      TARGET.spaceId,
+      '!nested:hs',
       '!child:remote',
     );
   });
