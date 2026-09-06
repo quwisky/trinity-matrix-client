@@ -7,7 +7,7 @@
   ],
   "description": [
     "prConcurrentLimit and prHourlyLimit are 0, which is Renovate's spelling of 'no limit'. They are NOT redundant lines to tidy away: deleting them restores the defaults of 10 concurrent and 2 per hour, so the throttle would come back silently.",
-    "What replaced them is the dashboard gate — for everything EXCEPT patches, which are exempt from both and never become pull requests at all (see the patch rule below). So patches are the one unbounded category: they land on their own, in whatever quantity a given day produces, each firing the full CI matrix against a renovate/patch-* branch. That is the deliberate shape of this config, not an oversight, but it is the thing to change first if the runners ever suffer for it."
+    "The dashboard gate applies to everything except patches. Patch updates open pull requests after the release-age delay and Renovate merges them once CI passes. They remain exempt from concurrency and hourly limits."
   ],
   "baseBranchPatterns": ["develop"],
   "timezone": "Europe/Berlin",
@@ -40,10 +40,8 @@
   },
   "vulnerabilityAlerts": {
     "description": [
-      "A security fix must never sit behind a tick nobody has looked at, so this opts out of the dashboard gate as well as the three-day soak. It is the one category where a delay is the risk rather than the safeguard.",
-      "The last three keys exist because a security fix is frequently ALSO a patch, and would otherwise inherit the patch rule's no-pull-request automerge. Renovate injects each vulnerability as a package rule carrying this object as `force`, which outranks the ordinary rules — but only for the keys it contains, and automerge/automergeType/additionalBranchPrefix are not among them by default. Left inherited, a security patch merges as a bare branch: the `security` label below is never applied (labels are a pull request thing), and the CVE detail Renovate writes into prBodyNotes is discarded with the PR that never existed. The commit says `[SECURITY]` and nothing records WHICH advisory it closed.",
-      "So security updates keep a pull request, and it costs no latency: prCreation is `immediate` by default here, and automerge — where the patch rule turned it on — merges the moment CI is green, exactly as it did before patches moved to branches. The empty additionalBranchPrefix also keeps these off renovate/patch-*, which ci.yml treats as 'no PR exists': with both a push trigger and a pull request, the five jobs would run twice.",
-      "platformAutomerge is false for the reason it was originally false on the patch rule: GitHub's native auto-merge waits only for checks a branch protection rule marks REQUIRED, and develop has no protection rule, so nothing is required and a red run would not stop the merge. Renovate merging it itself means the branch is verified green first. Not needed on the patch rule any more — branch automerge never involves a pull request for the platform to act on — but very much needed here."
+      "Security fixes bypass the dashboard gate and release-age delay. They retain a labeled pull request with advisory details, including when the update also matches the patch automerge rule.",
+      "Renovate performs PR automerge after verifying CI itself; platformAutomerge remains false so native GitHub auto-merge is not a prerequisite."
     ],
     "labels": ["security"],
     "minimumReleaseAge": null,
@@ -55,18 +53,15 @@
   "packageRules": [
     {
       "description": [
-        "Patch updates are the one category that needs no human at any point: exempt from the dashboard gate, and merged by Renovate once CI is green. A patch is the update type least likely to change behaviour, and minimumReleaseAge already holds every release for three days, so a version yanked hours after publishing never reaches a branch in the first place. Everything else waits for a tick under the top-level dependencyDashboardApproval.",
-        "automergeType 'branch' means these never become pull requests: Renovate pushes renovate/*, waits for that branch's checks, and merges it into develop itself. A PR is the fallback rather than the route — Renovate opens one if the branch goes red, or if its checks stay pending for 24 hours — so a failing patch still surfaces somewhere a human can see it, it just arrives as a PR instead of a merge. platformAutomerge is deliberately NOT set here: it only governs GitHub's native auto-merge on a pull request, and there is no pull request in this path.",
-        "additionalBranchPrefix puts these on renovate/patch-* instead of renovate/*, and it exists to keep ci.yml's push trigger narrow. CI has to run on the branch for any of this to work (below), but a trigger of renovate/** would also match every dashboard-approved update — which DOES get a pull request — and each rebase there would then fire a push run and a pull_request run of the same five jobs, e2e included. The prefix makes the push trigger match only the branches that never become a PR. Renovate composes branch names as branchPrefix + additionalBranchPrefix + branchTopic from the config resolved for each update, so a rule-level value is applied here and nowhere else.",
-        "This rule depends on ci.yml running on push to renovate/patch-**, and the dependency is one-directional and silent. With no checks on the branch Renovate declines to merge (automerging an untested branch needs an explicit ignoreTests, which is not set), so it waits out the pending window and opens a PR. Removing that trigger therefore breaks nothing loudly — it quietly turns this whole rule back into ordinary pull requests.",
-        "rebaseWhen is overridden because nothing reads these branches before they land. With no protection rule on develop there is no 'branch must be up to date' gate, so the green result Renovate merges on could otherwise have been produced against a base that has since moved. 'behind-base-branch' re-runs CI against the current base before that can happen. It costs extra CI on branches the base outpaces, which is the right way round for the only rule that merges with nobody looking."
+        "Patch updates bypass the dashboard gate after the three-day release age, open a pull request, and merge automatically after CI passes. Required pull requests on develop prohibit direct branch automerge.",
+        "Rebase behind the base branch so unattended merges are checked against the current develop. CI runs on pull_request; no additional push trigger is needed for Renovate branches."
       ],
       "matchUpdateTypes": ["patch"],
-      "additionalBranchPrefix": "patch-",
       "automerge": true,
-      "automergeType": "branch",
+      "automergeType": "pr",
       "dependencyDashboardApproval": false,
-      "rebaseWhen": "behind-base-branch"
+      "rebaseWhen": "behind-base-branch",
+      "platformAutomerge": false
     },
     {
       "description": "Angular and everything version-locked to it. These must move together — a partial bump leaves @angular/compiler-cli disagreeing with @angular/core and the build fails outright.",
@@ -166,9 +161,7 @@
     },
     {
       "description": [
-        "Action digests are pinned for supply-chain reasons (see .github/actions/setup/action.yml); this is what keeps the pins from rotting.",
-        "It opts back OUT of the patch automerge above, and that is not a stylistic preference. A pinned action reads `owner/action@<sha> # v7.0.1`, so a v7.0.1 to v7.0.2 bump is updateType 'patch' and would otherwise qualify — but unlike a library patch it repoints a SHA at new third-party code that runs inside CI, including release.yml, whose environment holds the signing certificates. Merging that unattended into an unprotected branch is precisely the exposure the digest pinning exists to prevent: retargeting a tag is how CVE-2025-30066 reached ~23k repositories. These stay behind a tick and a human.",
-        "Opting out of the automerge means it must also opt out of that rule's branch prefix, hence the empty additionalBranchPrefix — this rule matches patches, so it would otherwise inherit renovate/patch-*, which ci.yml treats as 'no pull request exists for this branch'. An action digest bump is one of the more frequent updates here, so leaving it inherited is a doubled CI run — push and pull_request — on most of them."
+        "Action digests stay behind dashboard approval and do not automerge, including patch-version updates. Each digest changes third-party code executed by CI and release jobs, so a maintainer reviews it before it lands."
       ],
       "groupName": "github actions",
       "matchManagers": ["github-actions"],

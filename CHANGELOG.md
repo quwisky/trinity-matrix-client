@@ -15,6 +15,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Run CI for every pull request, including documentation-only changes, and use
+  Renovate pull-request automerge so dependency updates comply with protection
+  on `develop` and `master`.
+
 - Install project-scoped Astra orchestration and Luna execution defaults, specialized
   Codex roles and the upstream astra-orchestrator skill, preserving Trinity role
   instructions and existing planner/implementer names.

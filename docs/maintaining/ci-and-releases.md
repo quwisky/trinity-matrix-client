@@ -17,19 +17,18 @@ changelog, and publication rules, use the [conventions](../contributing/conventi
 | [`release.yml`](../../.github/workflows/release.yml)   | A stable `vX.Y.Z` tag push, or a manual dispatch with a tag input | Tag verification, desktop packages, and a draft GitHub release |
 | [`renovate.yml`](../../.github/workflows/renovate.yml) | Daily at 00:00 UTC or a manual dispatch                           | Dependency update maintenance through a GitHub App token       |
 
-The branch workflow accepts pushes to `develop`, `master`, and
-`renovate/patch-**`; pull requests are its usual review path. A newer run for
-the same workflow and ref cancels an older run. Diagnose the newest run rather
-than treating a cancelled predecessor as a product failure.
+The branch workflow accepts pushes to `develop` and `master`, plus every pull
+request, including documentation-only changes. Required checks must always report;
+do not add workflow-level path filters that leave a pull request waiting forever.
+A newer run for the same workflow and ref cancels an older run. Diagnose the newest
+run rather than treating a cancelled predecessor as a product failure.
 
-`ci.yml` deliberately ignores a limited set of documentation-only pull-request
-paths. That set covers the established user, contributor, architecture, and
-platform documentation paths, plus two named reference guides. It does **not**
-cover every documentation path, including `docs/maintaining/`, root documents,
-agent instructions, or the stack reference. A skipped workflow is therefore
-evidence only that the changed paths matched that filter. Run the relevant local
-checks when a documentation change changes an executable claim or needs a host
-proof.
+The protection policy for `develop` and `master` requires a pull request, passing
+CI checks against the current base, and resolved review conversations. No second
+person's approval is required. Force pushes and branch deletion are blocked, with
+no administrator or bot bypass. GitHub settings hold the enforced rules; keep their
+required check names synchronized with the job names in `ci.yml`. The scheduled-only
+job is not a required pull-request check.
 
 ### Diagnose setup and cache failures
 
@@ -185,7 +184,7 @@ commit are not guaranteed to be byte-identical. Compare the release workflow's
 inputs, artifact names, signatures, and intended version rather than claiming a
 re-run is reproducible by hash alone.
 
-## Renovate and the trigger it silently depends on
+## Renovate and protected branches
 
 Renovate runs daily at 00:00 UTC and can be manually dispatched with a dry-run
 and log-level choice. It reads [`.github/renovate.json`](../../.github/renovate.json)
@@ -205,14 +204,14 @@ The committed [Renovate policy](../../.github/renovate.json) applies a
 three-day minimum release age before its exceptions. Use this table when
 reviewing an update branch or diagnosing why it did not merge.
 
-| Update                        | Current behavior                                                                                                                                                                        | Maintainer action                                                                                                                |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                                                                                       | Approve the dashboard entry, then review CI.                                                                                     |
-| Patch dependency              | After the three-day age, Renovate uses branch automerge and rebases behind `develop`; it waits for CI on `renovate/patch-*`. A failed or 24-hour-pending branch becomes a pull request. | Keep the narrow `ci.yml` push trigger for `renovate/patch-**`; without it, patch automerge silently falls back to pull requests. |
-| Security advisory             | Bypasses the age and dashboard gate, keeps a pull request, and can automerge after CI.                                                                                                  | Review the advisory and its labeled pull request; it intentionally does not use the patch-branch path.                           |
-| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                                                                           | Review the changed pinned action digest before approval.                                                                         |
-| Native platform dependency    | Stays behind dashboard approval.                                                                                                                                                        | Use the native build/device evidence described in the [mobile guide](../platforms/mobile.md) before approval.                    |
-| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window.                                                         | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                                        |
+| Update                        | Current behavior                                                                                                                | Maintainer action                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Ordinary non-patch dependency | Waits for Dependency Dashboard approval and opens a pull request.                                                               | Approve the dashboard entry, then review CI.                                                                  |
+| Patch dependency              | After the three-day age, Renovate opens a pull request, rebases behind `develop`, and merges once CI passes.                    | Keep PR-based automerge; direct branch automerge cannot satisfy protection.                                   |
+| Security advisory             | Bypasses the age and dashboard gate, keeps a pull request, and can automerge after CI.                                          | Review the advisory and its labeled pull request.                                                             |
+| GitHub Actions digest         | Stays behind dashboard approval and does not patch-automerge.                                                                   | Review the changed pinned action digest before approval.                                                      |
+| Native platform dependency    | Stays behind dashboard approval.                                                                                                | Use the native build/device evidence described in the [mobile guide](../platforms/mobile.md) before approval. |
+| TypeScript                    | Moves root and `electron/` manifests together in the `typescript` group, pinned below `6.1.0` for Angular 22's compiler window. | Widen that bound deliberately with an Angular upgrade; do not split the Electron version.                     |
 
 ## Work that is not automated yet
 
