@@ -24,23 +24,30 @@
   }
 
   .room-settings__identity,
-  .room-settings__room-summary,
-  .room-settings__card-heading {
+  .room-settings__room-summary {
     display: flex;
     align-items: center;
     gap: 12px;
     min-width: 0;
+
+    > div {
+      min-width: 0;
+    }
+  }
+
+  .room-settings__identity {
+    flex: 1 1 auto;
+  }
+
+  .room-settings__header > button {
+    flex: 0 0 auto;
   }
 
   .room-settings__account-label,
   .room-settings__account-name,
   .room-settings__eyebrow,
-  .room-settings__hint,
-  .room-settings__restriction,
-  .room-settings__card p,
   .room-settings h1,
-  .room-settings h2,
-  .room-settings h3 {
+  .room-settings h2 {
     margin: 0;
   }
 
@@ -180,101 +187,6 @@
     scrollbar-gutter: stable;
   }
 
-  .room-settings__form,
-  .room-settings__fields {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  .room-settings__card {
-    padding: 18px;
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-panel);
-
-    h3 {
-      color: var(--trinity-text-bright);
-      font-size: 15px;
-      font-weight: 650;
-    }
-  }
-
-  .room-settings__card-heading {
-    justify-content: space-between;
-  }
-
-  .room-settings__field {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-  }
-
-  .room-settings__label {
-    color: var(--trinity-text);
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .room-settings__hint,
-  .room-settings__restriction,
-  .room-settings__card p {
-    color: var(--trinity-text-muted);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .room-settings__restriction,
-  .room-settings__error,
-  .room-settings__feedback--danger {
-    color: var(--trinity-danger);
-  }
-
-  .room-settings__topic {
-    min-height: 88px;
-    resize: vertical;
-  }
-
-  .room-settings__spaces {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-
-  .room-settings__space {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    font-size: 14px;
-    cursor: pointer;
-  }
-
-  .room-settings__error,
-  .room-settings__feedback {
-    margin: 0;
-    font-size: 13px;
-  }
-
-  .room-settings__feedback {
-    color: var(--trinity-text);
-  }
-
-  .room-settings__actions {
-    position: sticky;
-    bottom: -28px;
-    z-index: 1;
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin: 0 -4px;
-    padding: 14px 4px 0;
-    background: var(--trinity-surface-workspace);
-  }
-
   .room-settings__directory--hidden,
   .room-settings__section--hidden {
     display: none;
@@ -333,25 +245,6 @@
     .room-settings__section-scroll {
       padding: 14px 12px calc(18px + env(safe-area-inset-bottom));
       scrollbar-gutter: auto;
-    }
-
-    .room-settings__card {
-      padding: 14px;
-    }
-
-    .room-settings__card-heading {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-
-    .room-settings__actions {
-      bottom: calc(-18px - env(safe-area-inset-bottom));
-      margin: 0 -12px;
-      padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
-
-      > button {
-        min-height: 44px;
-      }
     }
   }
 }

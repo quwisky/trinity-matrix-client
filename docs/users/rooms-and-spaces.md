@@ -101,14 +101,17 @@ topic draft does not undo those completed actions. Leaving a section, closing Ro
 using browser or device Back asks before discarding a draft. A remote update refreshes untouched
 fields without overwriting fields you are editing.
 
-Room settings remains bound to the Account and Room that opened it even if another Account becomes
-active. If that Account signs out, the target becomes unavailable and pending results cannot write
-into the newly active Account. Matrix permissions are checked live and per action, so a member may
-be able to read a section or edit an avatar but not change the access rule, aliases, widgets or
-bans. Losing a role while Room settings is open disables the affected controls without hiding
-readable information or erasing drafts. Access and history choices affect other people and can
-expose earlier messages or allow new members; confirm the Room's policy before saving. A restricted
-join rule controls which Space members may join, not whether you yourself remain in the Room.
+General details and Access policy remain bound to the Account and Room that opened Room settings
+even if another Account becomes active. If that Account signs out, the target becomes unavailable
+and pending results cannot write into the newly active Account. Local-address, Widgets and Bans
+actions still use their established active-Account projections during the incremental hub
+migration, so those panels explain that you must switch back to the opening Account instead of
+risking a redirected write. Matrix permissions are checked live and per action, so a member may be
+able to read a section or edit an avatar but not change the access rule, aliases, widgets or bans.
+Losing a role while Room settings is open disables the affected controls without hiding readable
+information or erasing drafts. Access and history choices affect other people and can expose
+earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
+rule controls which Space members may join, not whether you yourself remain in the Room.
 
 Open **Space settings** from the space header's overflow menu. Its General tab changes the
 space avatar, name and topic; Access changes who can join the space and its local addresses; Bans

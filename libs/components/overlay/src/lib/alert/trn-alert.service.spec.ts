@@ -1,7 +1,8 @@
 import { ApplicationRef } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TrnAlertService } from './trn-alert.service';
 
 function render(): void {
@@ -48,6 +49,25 @@ describe('TrnAlertService', () => {
       svc.confirm$({ header: 'Leave?', cancelText: 'Cancel' }),
     );
     render();
+    clickButton('Cancel');
+    expect(await result).toBe(false);
+  });
+
+  it('can keep a route-guard confirmation open across navigation cancellation', async () => {
+    const dialog = TestBed.inject(Dialog);
+    const open = vi.spyOn(dialog, 'open');
+    const result = firstValueFrom(
+      TestBed.inject(TrnAlertService).confirm$({
+        header: 'Discard changes?',
+        closeOnNavigation: false,
+      }),
+    );
+    render();
+
+    expect(open).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ closeOnNavigation: false }),
+    );
     clickButton('Cancel');
     expect(await result).toBe(false);
   });

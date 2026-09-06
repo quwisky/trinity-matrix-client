@@ -1,0 +1,35 @@
+@use '../styles/mixins' as rooms;
+
+@mixin layout {
+  .room-settings__card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .room-settings__hint,
+  .room-settings__restriction {
+    margin: 0;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .room-settings__restriction {
+    color: var(--trinity-danger);
+  }
+
+  .room-settings__topic {
+    min-height: 88px;
+    resize: vertical;
+  }
+
+  @media #{rooms.$below-md} {
+    .room-settings__card-heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+}

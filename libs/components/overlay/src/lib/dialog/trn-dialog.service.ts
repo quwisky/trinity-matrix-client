@@ -5,8 +5,6 @@ import { Overlay, type ConnectedPosition } from '@angular/cdk/overlay';
 import { defer, map, merge, take, type Observable } from 'rxjs';
 import { TrnDialogRef } from './trn-dialog-ref';
 
-const DIALOG_HISTORY_KEY = '__trinityGuardedDialog';
-
 /** Structural position for a component dialog. Appearance belongs to its surface. */
 export type TrnDialogPlacement =
   'center' | 'inline-end' | 'bottom' | 'fullscreen';
@@ -44,9 +42,8 @@ export interface DialogOptions<C = object> {
   /**
    * Synchronous gate for user dismissal (backdrop, Escape, or host Back). Returning false
    * keeps the dialog open; the callback may start a confirmation and close later with an
-   * explicit result. Component-owned closes with a result bypass this gate. A guarded dialog
-   * also owns one same-URL browser-history entry, so browser Back reaches this gate before it
-   * can navigate the page underneath the overlay.
+   * explicit result. Component-owned closes with a result bypass this gate. Browser and host
+   * Back policy stays with Workspace; this UI primitive never creates history entries.
    */
   dismissGuard?: (component: C | null) => boolean;
   /**
@@ -128,7 +125,6 @@ export class TrnDialogService {
     TrnDialogRef<unknown>,
     DialogRef<unknown, unknown>
   >();
-  private navigationBarrierId = 0;
 
   /**
    * Reactive view of the shared CDK overlay stack.
@@ -160,6 +156,7 @@ export class TrnDialogService {
     const placement = opts.placement ?? 'center';
     const fullScreen = placement === 'fullscreen';
     const bottomSheet = placement === 'bottom';
+    let trinityRef: TrnDialogRef<R> | null = null;
     const ref = this.dialog.open<R, unknown, C>(component, {
       backdropClass: anchor
         ? ['cdk-overlay-transparent-backdrop']
@@ -209,90 +206,24 @@ export class TrnDialogService {
                   .bottom('0')
                   .left('0')
               : undefined,
-      // What lets a modal'd component `inject(TrnDialogRef)` instead of CDK's own class.
-      // The explicit `deps` is a choice, not a constraint, and this comment used to claim
-      // otherwise ("because `DialogConfig.providers` is typed `StaticProvider[]`"). Checked
-      // against Angular 22 rather than reasoned about: `StaticProvider` accepts a
-      // `useFactory` with no `deps` at all, and `inject()` does work inside a factory built
-      // through `Injector.create`, which is how CDK assembles this injector
-      // (`dialog.mjs:609`). Naming the dependency at the provider instead of reaching for it
-      // inside the closure is simply the clearer of two working forms.
-      //
-      // CDK also accepts `providers: (dialogRef, config, container) => StaticProvider[]`.
-      // That form would hand the ref in directly and let `open()` return the SAME instance
-      // it provides. Today the two wrappers close identically, while `isTopmost()` deliberately
-      // tracks only the specific handle returned to the opener; injected components use their
-      // sibling wrapper only to close themselves.
-      providers: [
-        {
-          provide: TrnDialogRef,
-          useFactory: (cdkRef: DialogRef<R, unknown>) =>
-            new TrnDialogRef<R>(cdkRef),
-          deps: [DialogRef],
-        },
-      ],
+      // Give the component and opener the same vendor-neutral handle. Besides closing, this
+      // lets a semantic surface prove that its own dialog is topmost without exposing CDK.
+      providers: (cdkRef) => {
+        trinityRef = new TrnDialogRef<R>(cdkRef);
+        return [{ provide: TrnDialogRef, useValue: trinityRef }];
+      },
     });
     if (opts.inputs && ref.componentRef) {
       for (const [key, value] of Object.entries(opts.inputs)) {
         ref.componentRef.setInput(key, value);
       }
     }
-    const releaseNavigationBarrier = opts.dismissGuard
-      ? this.installNavigationBarrier(ref)
-      : null;
-    if (releaseNavigationBarrier) {
-      ref.closed.pipe(take(1)).subscribe(() => releaseNavigationBarrier());
-    }
-    const trinityRef = new TrnDialogRef<R>(ref);
+    trinityRef ??= new TrnDialogRef<R>(ref);
     this.refs.set(
       trinityRef as TrnDialogRef<unknown>,
       ref as DialogRef<unknown, unknown>,
     );
     return trinityRef;
-  }
-
-  /** Make browser Back dismiss a guarded overlay before Router navigation can start. */
-  private installNavigationBarrier<R, C>(
-    ref: DialogRef<R, C>,
-  ): (() => void) | null {
-    if (
-      typeof window === 'undefined' ||
-      typeof window.history?.pushState !== 'function'
-    ) {
-      return null;
-    }
-    const marker = String(++this.navigationBarrierId);
-    const url = window.location.href;
-    let listening = true;
-    const hasMarker = (): boolean =>
-      window.history.state?.[DIALOG_HISTORY_KEY] === marker;
-    const pushMarker = (): void => {
-      const current = window.history.state;
-      const state =
-        current && typeof current === 'object'
-          ? (current as Record<string, unknown>)
-          : {};
-      window.history.pushState(
-        { ...state, [DIALOG_HISTORY_KEY]: marker },
-        '',
-        url,
-      );
-    };
-    const onPopState = (): void => {
-      if (!listening) return;
-      // A newer guarded dialog can pop back onto this dialog's still-owned entry.
-      // That removes only the newer barrier; this dialog has not been backed out of.
-      if (hasMarker()) return;
-      ref.close();
-      if (this.dialog.openDialogs.includes(ref) && !hasMarker()) pushMarker();
-    };
-    pushMarker();
-    window.addEventListener('popstate', onPopState);
-    return () => {
-      listening = false;
-      window.removeEventListener('popstate', onPopState);
-      if (hasMarker()) window.history.back();
-    };
   }
 
   /** Whether a ref returned by this wrapper is currently the top shared overlay. */

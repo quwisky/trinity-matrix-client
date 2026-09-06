@@ -1,10 +1,12 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type SynapseSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { addAccountViaUi } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
   openRoom,
   session,
+  tokenFor,
 } from '../../support/room-settings-journey.mts';
 
 test.describe('Room settings', () => {
@@ -23,6 +25,7 @@ test.describe('Room settings', () => {
     const runId = `${testResourceId('run')}s`;
     const user = `settings-user-${runId}`;
     const pass = `${user}-pass`;
+    const priorName = `Prior ${runId}`;
     const originalName = `Before ${runId}`;
     const newName = `After ${runId}`;
 
@@ -38,10 +41,15 @@ test.describe('Room settings', () => {
       .then((r) => r.json());
     await request.post(`${hs}/_matrix/client/v3/createRoom`, {
       headers: { Authorization: `Bearer ${access_token}` },
+      data: { name: priorName, preset: 'private_chat' },
+    });
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${access_token}` },
       data: { name: originalName, preset: 'private_chat' },
     });
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, priorName);
     await openRoom(page, originalName);
 
     // Open the room settings dialog and rename the room.
@@ -182,5 +190,166 @@ test.describe('Room settings', () => {
     await expect(
       page.getByLabel('Notifications alt+T').getByText('Room photo updated.'),
     ).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('retains a partial General failure and retries only the unsaved field', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}partial`;
+    const user = `settings-partial-${runId}`;
+    const pass = `${user}-pass`;
+    const roomName = `Partial settings ${runId}`;
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { name: roomName, preset: 'private_chat' },
+    });
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+
+    let nameWrites = 0;
+    let topicWrites = 0;
+    await page.route(
+      /\/state\/m\.room\.(name|topic)(?:\/|\?|$)/,
+      async (route) => {
+        if (route.request().url().includes('m.room.name')) {
+          nameWrites++;
+          await route.continue();
+          return;
+        }
+        topicWrites++;
+        if (topicWrites === 1) {
+          await route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ errcode: 'M_UNKNOWN', error: 'retry me' }),
+          });
+          return;
+        }
+        await route.continue();
+      },
+    );
+
+    await page.getByTestId('room-settings-name').fill(`${roomName} renamed`);
+    await page.getByTestId('room-settings-topic').fill('Eventually saved');
+    await page.getByTestId('room-settings-save').click();
+    const feedback = page.getByTestId('room-settings-general-feedback');
+    await expect(feedback).toContainText('still unsaved', { timeout: 30_000 });
+    expect(nameWrites).toBe(1);
+    expect(topicWrites).toBe(1);
+
+    await page
+      .getByTestId('room-settings-save')
+      .evaluate((element: HTMLButtonElement) => element.click());
+    await expect(feedback).toContainText('Topic saved', { timeout: 30_000 });
+    expect(nameWrites).toBe(1);
+    expect(topicWrites).toBe(2);
+  });
+
+  test('keeps late and subsequent General writes on the opening Account after a shared-Room switch', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}account`;
+    const userA = `settings-owner-${runId}`;
+    const passA = `${userA}-pass`;
+    const userB = `settings-member-${runId}`;
+    const passB = `${userB}-pass`;
+    const userBId = `@${userB}:localhost`;
+    const roomName = `Shared settings ${runId}`;
+    const renamed = `${roomName} renamed`;
+    await registerUser(request, userA, passA);
+    await registerUser(request, userB, passB);
+    const tokenA = await tokenFor(request, hs, userA, passA);
+    const tokenB = await tokenFor(request, hs, userB, passB);
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${tokenA}` },
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [userBId],
+        },
+      })
+      .then((response) => response.json())
+      .then((body) => body.room_id as string);
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: { Authorization: `Bearer ${tokenB}` } },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: userA,
+      pass: passA,
+    } as SynapseSession);
+    await addAccountViaUi(page, hs, userB, passB);
+    await page.getByTestId('user-menu-trigger').click();
+    await page
+      .getByTestId('account-row')
+      .filter({ hasText: `@${userA}:` })
+      .click();
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-settings-account')).toContainText(
+      userA,
+    );
+
+    let releaseName!: () => void;
+    const nameGate = new Promise<void>((resolve) => {
+      releaseName = resolve;
+    });
+    await page.route(/\/state\/m\.room\.name(?:\/|\?|$)/, async (route) => {
+      await nameGate;
+      await route.continue();
+    });
+    await page.getByTestId('room-settings-name').fill(renamed);
+    await page.getByTestId('room-settings-save').click();
+    await expect(page.getByTestId('room-settings-save')).toContainText(
+      'Saving',
+    );
+
+    // The modal intentionally prevents pointer access to the underlying Account picker.
+    // Invoke the same DOM handlers to model an external active-Account transition while
+    // the exact-target command is in flight, then let the real Account Runtime settle.
+    await page
+      .getByTestId('user-menu-trigger')
+      .evaluate((element: HTMLElement) => element.click());
+    const memberRow = page
+      .getByTestId('account-row')
+      .filter({ hasText: `@${userB}:` });
+    await expect(memberRow).toBeVisible();
+    await memberRow.click();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    await expect(page.getByTestId('room-settings-account')).toContainText(
+      userA,
+    );
+    releaseName();
+    await expect(
+      page.getByTestId('room-settings-general-feedback'),
+    ).toContainText('Name saved', { timeout: 30_000 });
+
+    // B is an ordinary member and cannot write Room state. Success after B becomes active
+    // therefore proves the new command resolves A's retained client, not the active one.
+    await page.getByTestId('room-settings-topic').fill('Owned by account A');
+    await page.getByTestId('room-settings-save').click();
+    await expect(
+      page.getByTestId('room-settings-general-feedback'),
+    ).toContainText('Topic saved', { timeout: 30_000 });
+    const topic = await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.topic`,
+        { headers: { Authorization: `Bearer ${tokenB}` } },
+      )
+      .then((response) => response.json());
+    expect(topic.topic).toBe('Owned by account A');
   });
 });

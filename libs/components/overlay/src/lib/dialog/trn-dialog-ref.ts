@@ -30,10 +30,8 @@ interface ClosableRef<R> {
  * subscription — and anything genuinely new should arrive as a named method on
  * {@link TrnDialogService}, where it can be given Trinity's semantics.
  *
- * A thin, stateless delegate: two instances wrapping the same CDK ref close identically. The
- * service does retain the specific handle returned by `open()` for its vendor-neutral
- * `isTopmost()` query, so callers of that query pass the returned handle rather than an injected
- * sibling wrapper.
+ * A thin, stateless delegate. The dialog service provides the same wrapper to the component and
+ * opener so either owner can use its vendor-neutral `isTopmost()` query.
  */
 export class TrnDialogRef<R = unknown> {
   /**

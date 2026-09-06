@@ -33,7 +33,7 @@ const LOCAL_STACKING = [
   'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
   // The Room-settings save bar is sticky only within its section scroller. Its local value
   // keeps the bar above the fields it scrolls over; the dialog service owns app-level placement.
-  'libs/feature/rooms/src/lib/room-settings/room-settings.component.scss',
+  'libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss',
   // The close control and image are children of the same full-screen lightbox. This value only
   // keeps the control above that image; the overlay service owns the lightbox's app-level layer.
   'libs/feature/rooms/src/lib/media-attachment/lightbox/lightbox.component.scss',

@@ -20,6 +20,7 @@ import {
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
   WidgetManagementService,
   WidgetsService,
@@ -28,6 +29,7 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import {
   BehaviorSubject,
+  firstValueFrom,
   Subject,
   of,
   throwError,
@@ -240,6 +242,34 @@ describe('RoomSettingsComponent', () => {
     expect(setName).toHaveBeenCalledWith(TARGET, 'Renamed');
   });
 
+  it('allows clearing an optional Room name while saving the section', async () => {
+    const { cmp, setName } = await build();
+    cmp.draft.form.name().value.set('');
+
+    cmp.draft.saveGeneral();
+
+    expect(setName).toHaveBeenCalledWith(TARGET, '');
+    expect(cmp.draft.form.name().invalid()).toBe(false);
+  });
+
+  it('offers browser and host Back to the canonical Workspace surface', async () => {
+    const { cmp, confirm } = await build();
+    cmp.draft.form.topic().value.set('Protected by Workspace Back');
+
+    const outcome = await firstValueFrom(
+      TestBed.inject(WorkspaceBackService).back(),
+    );
+
+    expect(outcome).toMatchObject({
+      kind: 'blocked',
+      surface: {
+        layer: 'room',
+        surface: { kind: 'settings', ...TARGET },
+      },
+    });
+    expect(confirm).toHaveBeenCalledOnce();
+  });
+
   it('protects a dirty section change until the user explicitly discards', async () => {
     const { cmp, confirm, confirmResult } = await build();
     cmp.draft.form.name().value.set('Unsaved');
@@ -417,16 +447,14 @@ describe('RoomSettingsComponent', () => {
     const { cmp, fixture, container, emit } = await build();
     emit(roomSnapshot({ openingAccountActive: false }));
 
-    cmp.selectSection('access');
+    cmp.selectSection('widgets');
     fixture.detectChanges();
 
     expect(
-      container.querySelector('[data-testid="room-settings-panel-access"]')
+      container.querySelector('[data-testid="room-settings-panel-widgets"]')
         ?.textContent,
     ).toContain('Switch back to the opening Account');
-    expect(
-      container.querySelector('[data-testid="room-settings-join-rule"]'),
-    ).toBeNull();
+    expect(container.querySelector('trn-room-widgets')).toBeNull();
   });
 });
 

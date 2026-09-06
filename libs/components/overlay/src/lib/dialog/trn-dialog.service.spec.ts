@@ -262,44 +262,6 @@ describe('TrnDialogService', () => {
     expect(svc.hasOpen()).toBe(false);
   });
 
-  it('routes browser Back through the same dismissal guard', async () => {
-    const svc = TestBed.inject(TrnDialogService);
-    const guard = vi.fn(() => false);
-    const pushState = vi.spyOn(window.history, 'pushState');
-    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {
-      dismissGuard: guard,
-    });
-    TestBed.inject(ApplicationRef).tick();
-    expect(pushState).toHaveBeenCalledTimes(1);
-
-    // Model the browser having popped the sentinel before it delivers popstate.
-    window.history.replaceState({}, '', window.location.href);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-
-    expect(guard).toHaveBeenCalledWith(expect.any(TestDialogComponent));
-    expect(svc.hasOpen()).toBe(true);
-    expect(pushState).toHaveBeenCalledTimes(2);
-
-    ref.close('discarded');
-    pushState.mockRestore();
-  });
-
-  it('does not dismiss when browser history lands on its still-owned barrier', () => {
-    const svc = TestBed.inject(TrnDialogService);
-    const guard = vi.fn(() => false);
-    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {
-      dismissGuard: guard,
-    });
-    TestBed.inject(ApplicationRef).tick();
-
-    // This is what a lower guarded dialog observes when a newer barrier is popped.
-    window.dispatchEvent(new PopStateEvent('popstate'));
-
-    expect(guard).not.toHaveBeenCalled();
-    expect(svc.hasOpen()).toBe(true);
-    ref.close('discarded');
-  });
-
   it('leaves a disableClose dialog alone, which CDK would not', async () => {
     // The flag exists so a flow-critical dialog cannot be dismissed out from under
     // itself — encryption-unlock and device-verification both set it. CDK enforces it

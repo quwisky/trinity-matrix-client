@@ -56,6 +56,11 @@ export type WorkspaceApplicationSurfaceOutcome =
 
 /** Semantic surfaces nested inside one exact Room destination. */
 export type WorkspaceRoomSurface =
+  | {
+      readonly kind: 'settings';
+      readonly accountId: string;
+      readonly roomId: string;
+    }
   | { readonly kind: 'members' }
   | { readonly kind: 'threads' }
   | { readonly kind: 'thread'; readonly rootEventId: string }

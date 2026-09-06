@@ -11,33 +11,27 @@ import {
   input,
   signal,
 } from '@angular/core';
-import { FormField, FormRoot } from '@angular/forms/signals';
-import {
-  TrnActionAvailability,
-  TrnButton,
-  TrnCheckboxComponent,
-  TrnInput,
-  TrnSelectComponent,
-  TrnTextarea,
-} from '@trinity/components/controls';
-import {
-  AvatarComponent,
-  TrnTooltip,
-} from '@trinity/components/generic-content';
+import { TrnButton } from '@trinity/components/controls';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnDialogRef,
+  TrnDialogService,
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { isMobileOs } from '@trinity/platform-native';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { initialOf } from '@trinity/util/matrix';
-import { take } from 'rxjs';
+import {
+  WorkspaceBackService,
+  type WorkspaceSurface,
+} from '@trinity/application/workspace';
+import { Observable, defer, of, take } from 'rxjs';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
-import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
-import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
+import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
+import { RoomSettingsGeneralComponent } from './room-settings-general.component';
 import type { ParentSpace } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
@@ -81,20 +75,12 @@ const SECTIONS: readonly RoomSettingsSectionOption[] = [
   providers: [RoomSettingsDraftService],
   imports: [
     AvatarComponent,
-    AvatarFieldComponent,
     BannedMembersComponent,
-    FormField,
-    FormRoot,
-    RoomAliasesComponent,
+    RoomSettingsAccessComponent,
+    RoomSettingsGeneralComponent,
     RoomWidgetsComponent,
-    TrnActionAvailability,
     TrnButton,
-    TrnCheckboxComponent,
-    TrnInput,
     TrnOverlaySurfaceDirective,
-    TrnSelectComponent,
-    TrnTextarea,
-    TrnTooltip,
   ],
   templateUrl: './room-settings.component.html',
   styleUrl: './room-settings.component.scss',
@@ -106,6 +92,7 @@ export class RoomSettingsComponent implements OnInit {
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
 
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
+  private readonly dialog = inject(TrnDialogService);
   private readonly alert = inject(TrnAlertService);
   private readonly identities = inject(AccountIdentitiesService);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -115,6 +102,7 @@ export class RoomSettingsComponent implements OnInit {
     inject(DestroyRef),
   );
   private readonly confirmingDiscard = signal(false);
+  private readonly backActive = signal(false);
 
   readonly draft = inject(RoomSettingsDraftService);
   readonly mobileHost = isMobileOs();
@@ -136,15 +124,6 @@ export class RoomSettingsComponent implements OnInit {
       SECTIONS.find(({ value }) => value === this.selectedSection())?.label ??
       'General',
   );
-  readonly encryptionStatus = computed(() => {
-    const encrypted = this.draft.snapshot()?.encrypted;
-    if (encrypted === null || encrypted === undefined) {
-      return 'Encryption status is unavailable.';
-    }
-    return encrypted
-      ? 'Messages in this Room are end-to-end encrypted.'
-      : 'Messages in this Room are not end-to-end encrypted.';
-  });
   readonly legacyUnavailableReason = computed(() => {
     if (this.draft.targetUnavailableReason()) {
       return this.draft.targetUnavailableReason();
@@ -154,11 +133,31 @@ export class RoomSettingsComponent implements OnInit {
       : 'Switch back to the opening Account to manage this section. General remains attached to the opening Account.';
   });
 
+  constructor() {
+    const unregister = inject(WorkspaceBackService).register({
+      surface: () =>
+        this.backActive()
+          ? {
+              layer: 'room',
+              surface: {
+                kind: 'settings',
+                accountId: this.accountId(),
+                roomId: this.roomId(),
+              },
+            }
+          : null,
+      dismiss: (surface) => this.dismissFromWorkspace(surface),
+      ownsTopmostOverlay: () => this.dialog.isTopmost(this.dialogRef),
+    });
+    inject(DestroyRef).onDestroy(unregister);
+  }
+
   ngOnInit(): void {
     this.draft.start(
       { accountId: this.accountId(), roomId: this.roomId() },
       this.parentSpaces(),
     );
+    this.backActive.set(true);
   }
 
   selectSection(section: RoomSettingsSection): void {
@@ -200,6 +199,24 @@ export class RoomSettingsComponent implements OnInit {
     this.dialogRef.close(false);
   }
 
+  private dismissFromWorkspace(
+    surface: WorkspaceSurface,
+  ): Observable<'dismissed' | 'blocked'> {
+    return defer(() => {
+      if (
+        surface.layer !== 'room' ||
+        surface.surface.kind !== 'settings' ||
+        surface.surface.accountId !== this.accountId() ||
+        surface.surface.roomId !== this.roomId()
+      ) {
+        return of('blocked' as const);
+      }
+      if (!this.requestExternalDismiss()) return of('blocked' as const);
+      this.dialogRef.close(false);
+      return of('dismissed' as const);
+    });
+  }
+
   private guardUnsavedNavigation(navigate: () => void): void {
     if (!this.draft.dirty()) {
       navigate();
@@ -223,6 +240,7 @@ export class RoomSettingsComponent implements OnInit {
         confirmText: 'Discard changes',
         cancelText: 'Keep editing',
         variant: 'danger',
+        closeOnNavigation: false,
       })
       .pipe(take(1))
       .subscribe((discard) => {

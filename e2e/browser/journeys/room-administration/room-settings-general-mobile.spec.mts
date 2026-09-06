@@ -55,6 +55,14 @@ test.describe('Room settings on a phone', () => {
     await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();
     await expect(page.getByTestId('room-settings-directory')).toBeHidden();
 
+    const surfaceBox = await settings.boundingBox();
+    const accountBox = await page
+      .getByTestId('room-settings-account')
+      .boundingBox();
+    expect((accountBox?.x ?? 0) + (accountBox?.width ?? 0)).toBeLessThanOrEqual(
+      (surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0),
+    );
+
     const topic = page.getByTestId('room-settings-topic');
     await topic.fill('A mobile draft');
     await page.getByTestId('room-settings-mobile-back').click();
@@ -68,6 +76,12 @@ test.describe('Room settings on a phone', () => {
     await discard.getByRole('button', { name: 'Discard changes' }).click();
     const directory = page.getByTestId('room-settings-directory');
     await expect(directory).toBeVisible();
+    const roomNameBox = await page
+      .getByTestId('room-settings-room-name')
+      .boundingBox();
+    expect(
+      (roomNameBox?.x ?? 0) + (roomNameBox?.width ?? 0),
+    ).toBeLessThanOrEqual((surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0));
     const general = page.getByTestId('room-settings-tab-general');
     const generalBox = await general.boundingBox();
     expect(generalBox?.height ?? 0).toBeGreaterThanOrEqual(44);

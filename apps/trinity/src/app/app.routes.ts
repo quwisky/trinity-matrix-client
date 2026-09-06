@@ -1,5 +1,8 @@
 import { Routes } from '@angular/router';
-import { authGuard } from '@trinity/application/runtime';
+import {
+  authGuard,
+  workspaceBrowserBackGuard,
+} from '@trinity/application/runtime';
 // Type-only: a value import here would pull the lazy crypto feature into the initial
 // bundle, which is the whole point of loadComponent below.
 import type {
@@ -49,7 +52,9 @@ export const routes: Routes = [
       }
       return null;
     },
-    canActivate: [authGuard],
+    canActivate: [authGuard, workspaceBrowserBackGuard],
+    canDeactivate: [workspaceBrowserBackGuard],
+    runGuardsAndResolvers: 'always',
     loadComponent: () =>
       import('@trinity/feature/rooms').then((m) => m.RoomsPage),
   },

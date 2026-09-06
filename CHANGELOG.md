@@ -14,7 +14,9 @@ All notable changes to this project are documented here. The format is based on
   clearly identified; General and Access keep independent drafts, save successful fields
   separately, and retry only failures. Browser, device and in-hub navigation protect dirty work,
   live permission changes disable only affected writes, and Account switching or sign-out cannot
-  retarget pending Room updates. Existing Access, Widgets and Bans workflows remain reachable.
+  retarget pending Room updates. Existing local-address, Widgets and Bans workflows remain
+  reachable; until their follow-up migrations land, they ask users to switch back to the opening
+  Account instead of risking an active-Account write.
 
 - System Status now presents startup blockers and live capability limits from one application-owned
   English catalogue, grouped by user-facing capability and Account with scoped recovery, recurrence-aware

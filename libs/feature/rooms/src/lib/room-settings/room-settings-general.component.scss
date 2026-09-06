@@ -1,0 +1,7 @@
+@use './room-settings-general' as general;
+@use './room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout;
+  @include general.layout;
+}

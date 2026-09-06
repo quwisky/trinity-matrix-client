@@ -6,7 +6,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { disabled, form, required } from '@angular/forms/signals';
+import { disabled, form } from '@angular/forms/signals';
 import { TrnToastService } from '@trinity/components/overlay';
 import {
   HistoryVisibility,
@@ -55,16 +55,26 @@ export class RoomSettingsDraftService {
   private readonly checkedSpaces = signal<ReadonlySet<string>>(new Set());
   private started = false;
 
-  readonly snapshot = signal<RoomSettingsSnapshot | null>(null);
-  readonly model = signal<RoomSettingsModel>({
+  private readonly snapshotState = signal<RoomSettingsSnapshot | null>(null);
+  private readonly modelState = signal<RoomSettingsModel>({
     name: '',
     topic: '',
     joinRule: JoinRule.Invite,
     historyVisibility: HistoryVisibility.Shared,
   });
-  readonly saving = signal<'general' | 'access' | null>(null);
-  readonly generalFeedback = signal<RoomSettingsFeedback | null>(null);
-  readonly accessFeedback = signal<RoomSettingsFeedback | null>(null);
+  private readonly savingState = signal<'general' | 'access' | null>(null);
+  private readonly generalFeedbackState = signal<RoomSettingsFeedback | null>(
+    null,
+  );
+  private readonly accessFeedbackState = signal<RoomSettingsFeedback | null>(
+    null,
+  );
+
+  readonly snapshot = this.snapshotState.asReadonly();
+  readonly model = this.modelState.asReadonly();
+  readonly saving = this.savingState.asReadonly();
+  readonly generalFeedback = this.generalFeedbackState.asReadonly();
+  readonly accessFeedback = this.accessFeedbackState.asReadonly();
   readonly historyOptions = ROOM_HISTORY_OPTIONS;
 
   readonly permissions = computed(
@@ -95,13 +105,12 @@ export class RoomSettingsDraftService {
     () => this.targetAvailable() && this.permissions().history.available,
   );
 
-  readonly form = form(this.model, (path) => {
+  readonly form = form(this.modelState, (path) => {
     applyRoomBasicsGates(path, {
       canEditName: this.mayEditName,
       canEditTopic: this.mayEditTopic,
       canEditJoinRule: this.mayEditJoinRule,
     });
-    required(path.name, { message: 'Enter a room name.' });
     disabled(path.historyVisibility, { when: () => !this.mayEditHistory() });
   });
   readonly generalDirty = computed(() => {
@@ -150,7 +159,6 @@ export class RoomSettingsDraftService {
 
   readonly generalSaveUnavailableReason = computed(() => {
     if (this.targetUnavailableReason()) return this.targetUnavailableReason();
-    if (this.form.name().invalid()) return 'Enter a room name before saving.';
     if (!this.mayEditName() && !this.mayEditTopic()) {
       return 'Your role cannot change this Room’s name or topic.';
     }
@@ -215,30 +223,30 @@ export class RoomSettingsDraftService {
       else next.delete(spaceId);
       return next;
     });
-    this.accessFeedback.set(null);
+    this.accessFeedbackState.set(null);
   }
 
   discardGeneral(): void {
     const baseline = this.generalBaseline();
-    this.model.update((current) => ({ ...current, ...baseline }));
-    this.generalFeedback.set(null);
+    this.modelState.update((current) => ({ ...current, ...baseline }));
+    this.generalFeedbackState.set(null);
     this.form().reset();
   }
 
   discardAccess(): void {
     const baseline = this.accessBaseline();
-    this.model.update((current) => ({
+    this.modelState.update((current) => ({
       ...current,
       joinRule: baseline.joinRule,
       historyVisibility: baseline.historyVisibility,
     }));
     this.seedCheckedSpaces(baseline);
-    this.accessFeedback.set(null);
+    this.accessFeedbackState.set(null);
   }
 
   saveGeneral(): void {
     const target = this.target();
-    if (!target || !this.generalDirty() || this.form.name().invalid()) return;
+    if (!target || !this.generalDirty()) return;
     const candidate = {
       name: this.model().name.trim(),
       topic: this.model().topic.trim(),
@@ -324,12 +332,12 @@ export class RoomSettingsDraftService {
       });
       return;
     }
-    this.saving.set(section);
+    this.savingState.set(section);
     this.setFeedback(section, null);
     saveFields(writes)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(({ saved, failed }) => {
-        this.saving.set(null);
+        this.savingState.set(null);
         commit(new Set(saved));
         const remaining = [...failed, ...blocked];
         if (remaining.length === 0) {
@@ -351,9 +359,10 @@ export class RoomSettingsDraftService {
     section: 'general' | 'access',
     feedback: RoomSettingsFeedback | null,
   ): void {
-    (section === 'general' ? this.generalFeedback : this.accessFeedback).set(
-      feedback,
-    );
+    (section === 'general'
+      ? this.generalFeedbackState
+      : this.accessFeedbackState
+    ).set(feedback);
   }
 
   private commitGeneral(
@@ -365,7 +374,7 @@ export class RoomSettingsDraftService {
       name: saved.has('name') ? candidate.name : previous.name,
       topic: saved.has('topic') ? candidate.topic : previous.topic,
     });
-    this.model.update((current) => ({
+    this.modelState.update((current) => ({
       ...current,
       name:
         saved.has('name') && current.name.trim() === candidate.name
@@ -410,7 +419,7 @@ export class RoomSettingsDraftService {
       );
     const historyWasDirty =
       current.historyVisibility !== previousAccess.historyVisibility;
-    this.snapshot.set(snapshot);
+    this.snapshotState.set(snapshot);
     if (snapshot.availability !== 'available') return;
 
     const nextGeneral: GeneralBaseline = {
@@ -422,7 +431,7 @@ export class RoomSettingsDraftService {
       historyVisibility: snapshot.access.historyVisibility,
       allowedSpaceIds: snapshot.access.allowedSpaceIds,
     };
-    this.model.set({
+    this.modelState.set({
       name: hadSnapshot && nameWasDirty ? current.name : nextGeneral.name,
       topic: hadSnapshot && topicWasDirty ? current.topic : nextGeneral.topic,
       joinRule:
