@@ -121,6 +121,16 @@ export class RoomSettingsDraftService {
       model.topic.trim() !== baseline.topic
     );
   });
+  readonly nameHasPermissionBlockedEdit = computed(
+    () =>
+      !this.mayEditName() &&
+      this.model().name.trim() !== this.generalBaseline().name,
+  );
+  readonly topicHasPermissionBlockedEdit = computed(
+    () =>
+      !this.mayEditTopic() &&
+      this.model().topic.trim() !== this.generalBaseline().topic,
+  );
   readonly accessDirty = computed(() => {
     const model = this.model();
     const baseline = this.accessBaseline();
@@ -435,7 +445,16 @@ export class RoomSettingsDraftService {
       );
     const historyWasDirty =
       current.historyVisibility !== previousAccess.historyVisibility;
-    this.snapshotState.set(snapshot);
+    const previousSnapshot = this.snapshot();
+    this.snapshotState.set(
+      snapshot.availability !== 'available' && previousSnapshot
+        ? {
+            ...snapshot,
+            identity: previousSnapshot.identity,
+            encrypted: previousSnapshot.encrypted,
+          }
+        : snapshot,
+    );
     if (snapshot.availability !== 'available') return;
 
     const nextGeneral: GeneralBaseline = {

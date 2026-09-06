@@ -61,7 +61,7 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('room-settings-directory')).toBeVisible();
     await expect(page.getByTestId('room-settings-account')).toContainText(user);
     await expect(
-      page.getByTestId('room-settings-section-heading'),
+      settings.getByRole('heading', { name: 'Room settings', level: 1 }),
     ).toBeFocused();
     const settingsBox = await settings.boundingBox();
     expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
@@ -85,7 +85,9 @@ test.describe('Room settings', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await expect(page.getByTestId('room-settings-cancel')).toBeVisible();
-    await expect(page.getByTestId('room-settings-save')).toBeVisible();
+    await expect(page.getByTestId('room-settings-general-actions')).toHaveCount(
+      0,
+    );
     await page.evaluate((size) => {
       document.documentElement.style.fontSize = size;
     }, openingRootSize);
@@ -183,7 +185,8 @@ test.describe('Room settings', () => {
       'base64',
     );
     await page
-      .locator('.room-settings input[type="file"]')
+      .getByTestId('room-settings')
+      .locator('input[type="file"]')
       .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
 
     // The upload + m.room.avatar write succeed, surfacing the success toast.

@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Settings, Room settings and Space settings now share the same dialog layout, icon navigation,
+  typography and section presentation. Room and Space context stays visible beneath the title;
+  mobile opens the section directory unless a shortcut selects a section. Larger text also adapts
+  the navigation layout. Pending section edits reveal Save and Discard, while read-only General
+  details remain selectable and permission loss preserves clearly marked unfinished edits.
+
 - The Storybook Axe scan concurrency regression now has a dedicated accessibility-helper spec,
   leaving the navigation and overlay catalog focused on product-surface behavior while retaining
   distinct scan-owner and completion proof with retries disabled.

@@ -542,7 +542,7 @@ test.describe('Member role sections', () => {
     );
   });
 
-  test('disables an open settings dialog after remote demotion', async ({
+  test('shows plain General values after remote demotion', async ({
     page,
     request,
   }) => {
@@ -565,10 +565,12 @@ test.describe('Member role sections', () => {
 
     await setPowerLevel(request, hs, admin, roomId, admin.userId, 0);
 
-    await expect(name).toBeDisabled({ timeout: 20_000 });
-    await expect(page.getByTestId('room-settings-save')).toHaveAttribute(
-      'aria-disabled',
-      'true',
+    await expect(name).toHaveText(roomName, { timeout: 20_000 });
+    await expect
+      .poll(() => name.evaluate((element) => element.tagName))
+      .toBe('P');
+    await expect(page.getByTestId('room-settings-general-actions')).toHaveCount(
+      0,
     );
     await page.getByTestId('room-settings-tab-addresses').click();
     await expect(page.getByTestId('room-aliases-read-only')).toContainText(

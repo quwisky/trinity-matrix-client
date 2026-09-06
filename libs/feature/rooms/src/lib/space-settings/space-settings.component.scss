@@ -1,19 +1,5 @@
 @layer components {
   :host {
-    display: contents;
-  }
-
-  .space-settings__section-panel {
-    padding: 18px;
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-panel);
-  }
-
-  .space-settings__target-warning {
-    margin: 0;
-    color: var(--trinity-danger);
-    font-size: 13px;
-    line-height: 1.45;
+    display: block;
   }
 }

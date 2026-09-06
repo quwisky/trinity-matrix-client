@@ -51,6 +51,7 @@ export class RoomAliasesComponent implements OnChanges {
   readonly accountId = input.required<string>();
   readonly roomId = input.required<string>();
   readonly noun = input<'Room' | 'Space'>('Room');
+  readonly available = input(true);
   readonly aliases = signal<readonly string[]>([]);
   readonly canonical = signal<string | null>(null);
   readonly loading = signal(true);
@@ -69,8 +70,10 @@ export class RoomAliasesComponent implements OnChanges {
     const canonical = this.canonical();
     return canonical !== null && this.aliases().includes(canonical);
   });
-  readonly availability = computed(
-    () => this.permissions.settingsFor(this.target()).aliases,
+  readonly availability = computed(() =>
+    this.available()
+      ? this.permissions.settingsFor(this.target()).aliases
+      : { available: false, reason: null },
   );
   readonly restrictionReason = computed(() =>
     this.noun() === 'Space'
@@ -84,7 +87,10 @@ export class RoomAliasesComponent implements OnChanges {
   });
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (!changes['accountId'] && !changes['roomId']) return;
+    if (!changes['accountId'] && !changes['roomId']) {
+      if (changes['available'] && this.available()) this.load();
+      return;
+    }
     this.targetGeneration += 1;
     this.loadGeneration += 1;
     this.adding.set(false);
@@ -97,6 +103,10 @@ export class RoomAliasesComponent implements OnChanges {
 
   /** Reload the homeserver directory for this immutable settings target. */
   load(): void {
+    if (!this.available()) {
+      this.loading.set(false);
+      return;
+    }
     const target = this.target();
     const targetGeneration = this.targetGeneration;
     const loadGeneration = ++this.loadGeneration;

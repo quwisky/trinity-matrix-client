@@ -64,6 +64,7 @@ async function build(
   const openExternal = over.openExternal ?? vi.fn(() => of(true));
   const widgets = signal<readonly RoomWidget[]>(over.widgets ?? []);
   const canManage = signal(over.canManage ?? false);
+  const create = vi.fn(() => of('created'));
   const remove = over.remove ?? vi.fn(() => of(undefined));
   const confirm = over.confirm ?? vi.fn(() => of(true));
   const toastShow = vi.fn();
@@ -88,7 +89,7 @@ async function build(
       MockProvider(TrnAlertService, { confirm$: confirm }),
       MockProvider(TrnDialogService, { open: openDialog }),
       MockProvider(WidgetManagementService, {
-        create: () => of('created'),
+        create,
         remove,
       }),
     ],
@@ -98,6 +99,7 @@ async function build(
     fixture,
     connect,
     disconnect,
+    create,
     openExternal,
     toastShow,
     openDialog,
@@ -164,6 +166,73 @@ describe('RoomWidgetsComponent', () => {
     expect(
       container.querySelector('[data-testid="room-widget-remove-board"]'),
     ).toBeNull();
+  });
+
+  it('does not announce removal until the confirmation is accepted', async () => {
+    const decision = new Subject<boolean>();
+    const completion = new Subject<void>();
+    const { fixture, container, remove } = await build({
+      widgets: [BOARD_WIDGET],
+      canManage: true,
+      confirm: vi.fn(() => decision),
+      remove: vi.fn(() => completion),
+    });
+    const button = container.querySelector<HTMLButtonElement>(
+      '[data-testid="room-widget-remove-board"]',
+    )!;
+    button.click();
+    await fixture.whenStable();
+    expect(remove).not.toHaveBeenCalled();
+    expect(button).toHaveTextContent('Remove widget');
+    expect(button).not.toHaveTextContent('Removing');
+    decision.next(true);
+    await fixture.whenStable();
+    expect(remove).toHaveBeenCalledWith(TARGET, BOARD_WIDGET);
+    expect(button).toHaveTextContent('Removing');
+  });
+
+  it('retains last-known widgets but removes write controls when the target becomes unavailable', async () => {
+    const { fixture, container, widgets } = await build({
+      widgets: [BOARD_WIDGET],
+      canManage: true,
+    });
+    fixture.componentRef.setInput('available', false);
+    widgets.set([]);
+    await fixture.whenStable();
+    expect(
+      container.querySelector('[data-testid="room-widget-board"]'),
+    ).toHaveTextContent('Planning board');
+    expect(
+      container.querySelector('[data-testid="room-widget-remove-board"]'),
+    ).toBeNull();
+  });
+
+  it('retains a widget draft but blocks editing and submission after availability loss', async () => {
+    const { fixture, container, create } = await build({ canManage: true });
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="room-widget-create-name"]',
+    )!;
+    const url = container.querySelector<HTMLInputElement>(
+      '[data-testid="room-widget-create-url"]',
+    )!;
+    name.value = 'Draft board';
+    name.dispatchEvent(new Event('input'));
+    url.value = 'https://widgets.example/board';
+    url.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    fixture.componentRef.setInput('available', false);
+    await fixture.whenStable();
+    expect(name).toHaveValue('Draft board');
+    expect(name).toBeDisabled();
+    expect(url).toBeDisabled();
+    const submit = container.querySelector<HTMLButtonElement>(
+      '[data-testid="room-widget-create-submit"]',
+    )!;
+    expect(submit).toBeDisabled();
+    submit.click();
+    name.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await fixture.whenStable();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('confirms cross-client impact before removing the exact widget', async () => {

@@ -138,29 +138,31 @@
           </p>
         }
 
-        <div class="room-settings__actions">
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="ghost"
-            [disabled]="!draft.dirty() || draft.saving()"
-            data-testid="room-settings-for-you-discard"
-            (click)="draft.discard()"
-          >
-            Discard
-          </button>
-          <button
-            trnBtn
-            type="submit"
-            [disabled]="
-              !draft.dirty() || draft.saving() || !room.targetAvailable()
-            "
-            data-testid="room-settings-for-you-save"
-          >
-            {{ draft.saving() ? 'Saving…' : 'Save preferences' }}
-          </button>
-        </div>
+        @if (draft.dirty()) {
+          <div class="room-settings__actions">
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              [disabled]="!draft.dirty() || draft.saving()"
+              data-testid="room-settings-for-you-discard"
+              (click)="draft.discard()"
+            >
+              Discard
+            </button>
+            <button
+              trnBtn
+              type="submit"
+              [disabled]="
+                !draft.dirty() || draft.saving() || !room.targetAvailable()
+              "
+              data-testid="room-settings-for-you-save"
+            >
+              {{ draft.saving() ? 'Saving…' : 'Save preferences' }}
+            </button>
+          </div>
+        }
       </form>
     }
   }

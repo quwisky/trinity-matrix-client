@@ -4,4 +4,17 @@
 @layer components {
   @include panel.layout;
   @include general.layout;
+
+  .room-settings__static-value {
+    color: var(--trinity-text);
+    font-size: var(--trinity-type-body-size);
+    line-height: var(--trinity-type-body-line-height);
+    overflow-wrap: anywhere;
+    user-select: text;
+    white-space: pre-wrap;
+  }
+
+  .room-settings__readonly-value {
+    cursor: text;
+  }
 }

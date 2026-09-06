@@ -241,7 +241,7 @@ test.describe('Space settings', () => {
       user,
     );
     await expect(
-      page.getByTestId('space-settings-section-heading'),
+      settings.getByRole('heading', { name: 'Space settings', level: 1 }),
     ).toBeFocused();
     const settingsBox = await settings.boundingBox();
     expect(settingsBox?.width ?? 0).toBeGreaterThan(700);
@@ -261,7 +261,9 @@ test.describe('Space settings', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await expect(page.getByTestId('space-settings-cancel')).toBeVisible();
-    await expect(page.getByTestId('space-settings-save')).toBeVisible();
+    await expect(
+      page.getByTestId('space-settings-general-actions'),
+    ).toHaveCount(0);
     await page.evaluate((size) => {
       document.documentElement.style.fontSize = size;
     }, openingRootSize);
@@ -666,7 +668,7 @@ test.describe('Space settings', () => {
     ).toHaveCount(0);
   });
 
-  test('a member without permission sees the fields but cannot edit them', async ({
+  test('a member without permission sees plain General values without actions', async ({
     page,
     request,
   }) => {
@@ -725,13 +727,21 @@ test.describe('Space settings', () => {
     await openSpaceMenu(page, spaceName);
     await page.getByTestId('open-space-settings').click();
 
-    // Shown, so the member can still READ the space's settings — but not writable.
-    await expect(page.getByTestId('space-settings-name')).toHaveValue(
-      spaceName,
-      { timeout: 10_000 },
-    );
-    await expect(page.getByTestId('space-settings-name')).toBeDisabled();
-    await expect(page.getByTestId('space-settings-topic')).toBeDisabled();
+    // Shown as text, so the member can still READ the Space details without a
+    // disabled form implying that they can save them.
+    const name = page.getByTestId('space-settings-name');
+    const topic = page.getByTestId('space-settings-topic');
+    await expect(name).toHaveText(spaceName, { timeout: 10_000 });
+    await expect(topic).toHaveText('No topic set.');
+    await expect
+      .poll(() => name.evaluate((element) => element.tagName))
+      .toBe('P');
+    await expect
+      .poll(() => topic.evaluate((element) => element.tagName))
+      .toBe('P');
+    await expect(
+      page.getByTestId('space-settings-general-actions'),
+    ).toHaveCount(0);
     await openSettingsTab(page, 'space-settings', 'access');
     await expect(page.getByTestId('space-settings-join-rule')).toBeDisabled();
     await expect(
@@ -759,6 +769,82 @@ test.describe('Space settings', () => {
       body: await page.getByTestId('space-settings').screenshot(),
       contentType: 'image/png',
     });
+  });
+
+  test('keeps a dirty General edit visible and readonly after permission is lost', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}permissionloss`;
+    const owner = `space-permission-owner-${runId}`;
+    const ownerPass = `${owner}-pass`;
+    const member = `space-permission-member-${runId}`;
+    const memberPass = `${member}-pass`;
+    const memberId = `@${member}:localhost`;
+    const spaceName = `Permission loss ${runId}`;
+    const unsavedTopic = `Keep this draft ${runId}`;
+    await registerUser(request, owner, ownerPass);
+    await registerUser(request, member, memberPass);
+    const ownerToken = await apiLogin(request, hs, owner, ownerPass);
+    const memberToken = await apiLogin(request, hs, member, memberPass);
+    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
+    await joinAsMember(request, hs, ownerToken, spaceId, memberToken, memberId);
+
+    const powerLevels = (await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.power_levels`,
+        { headers: { Authorization: `Bearer ${ownerToken}` } },
+      )
+      .then((response) => response.json())) as Record<string, unknown>;
+    const setMemberPower = async (power: number): Promise<void> => {
+      const response = await request.put(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.power_levels`,
+        {
+          headers: { Authorization: `Bearer ${ownerToken}` },
+          data: {
+            ...powerLevels,
+            users: {
+              ...(powerLevels.users as Record<string, number> | undefined),
+              [memberId]: power,
+            },
+          },
+        },
+      );
+      if (!response.ok()) {
+        throw new Error(
+          `set member power → ${response.status()} ${await response.text()}`,
+        );
+      }
+    };
+    await setMemberPower(50);
+
+    await login(page, {
+      available: true,
+      hs,
+      user: member,
+      pass: memberPass,
+    } as SynapseSession);
+    await openSpaceMenu(page, spaceName);
+    await page.getByTestId('open-space-settings').click();
+    const topic = page.getByTestId('space-settings-topic');
+    await expect(topic).toBeEditable({ timeout: 20_000 });
+    await topic.fill(unsavedTopic);
+    await expect(
+      page.getByTestId('space-settings-general-actions'),
+    ).toBeVisible();
+
+    await setMemberPower(0);
+    await expect(topic).toHaveAttribute('aria-readonly', 'true', {
+      timeout: 30_000,
+    });
+    await expect(topic).toHaveValue(unsavedTopic);
+    await expect(
+      page.getByText('This unsaved Topic edit is now read-only.'),
+    ).toBeVisible();
+    await expect(page.getByTestId('space-settings-discard')).toBeVisible();
+    await expect(page.getByTestId('space-settings-save')).toBeDisabled();
   });
 
   test('an admin publishes an address for the space', async ({

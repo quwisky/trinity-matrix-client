@@ -56,7 +56,7 @@ test.describe('Room settings · For you on a phone', () => {
     await page.getByTestId('overflow-open-room-settings').tap();
     const settings = page.getByTestId('room-settings');
     await expect(settings).toBeVisible({ timeout: 10_000 });
-    await page.getByTestId('room-settings-mobile-back').tap();
+    await expect(page.getByTestId('room-settings-directory')).toBeVisible();
     await page.getByTestId('room-settings-tab-for-you').tap();
     await expect(page.getByTestId('room-settings-for-you-form')).toBeVisible({
       timeout: 15_000,

@@ -52,6 +52,7 @@ interface ContentsFeedback {
   styleUrl: './space-settings-contents.component.scss',
 })
 export class SpaceSettingsContentsComponent implements OnInit {
+  readonly showUnavailableReason = input(true);
   private readonly contents = inject(SpaceContentsService);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
@@ -290,7 +291,19 @@ export class SpaceSettingsContentsComponent implements OnInit {
   }
 
   private publish(snapshot: SpaceContentsSnapshot): void {
-    this.snapshotState.set(snapshot);
+    const previous = this.snapshot();
+    this.snapshotState.set(
+      snapshot.availability !== 'available' &&
+        previous &&
+        previous.target.accountId === snapshot.target.accountId &&
+        previous.target.spaceId === snapshot.target.spaceId
+        ? {
+            ...snapshot,
+            items: previous.items,
+            curationLinks: previous.curationLinks,
+          }
+        : snapshot,
+    );
     this.loading.set(false);
   }
 }

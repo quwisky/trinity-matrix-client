@@ -3,7 +3,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   EnvironmentInjector,
   Injector,
   afterNextRender,
@@ -15,14 +14,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { TrnButton } from '@trinity/components/controls';
-import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   TrnDialogRef,
-  TrnOverlaySurfaceDirective,
+  TrnSettingsLayoutComponent,
+  type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
 import { BUILD_INFO } from '@trinity/platform-native';
-import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { textScaledViewportSignal } from '@trinity/util/ui';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
@@ -32,12 +30,7 @@ import {
 @Component({
   selector: 'trn-settings-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    NgComponentOutlet,
-    TrnButton,
-    TrnIconComponent,
-    TrnOverlaySurfaceDirective,
-  ],
+  imports: [NgComponentOutlet, TrnSettingsLayoutComponent],
   templateUrl: './settings-dialog.component.html',
   styleUrl: './settings-dialog.component.scss',
 })
@@ -48,15 +41,20 @@ export class SettingsDialogComponent {
   private readonly injector = inject(Injector);
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly document = inject(DOCUMENT);
-  private readonly nav = viewChild<ElementRef<HTMLElement>>('nav');
-  private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
+  private readonly layout = viewChild(TrnSettingsLayoutComponent);
   private appliedInitialSection?: string;
 
   readonly initialSection = input<string>();
   readonly initialSource = input<string>();
-  readonly menu = SETTINGS_SECTIONS;
+  readonly layoutSections: readonly TrnSettingsLayoutSection[] =
+    SETTINGS_SECTIONS.map(({ path, label, icon, group }) => ({
+      id: path,
+      label,
+      icon,
+      group,
+    }));
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
-  readonly wide = mediaQuerySignal(MD_QUERY, this.destroyRef);
+  readonly wide = textScaledViewportSignal(48, this.destroyRef);
   readonly selectedPath = signal<string | null>(null);
   readonly selectedSection = computed(() =>
     SETTINGS_SECTIONS.find((item) => item.path === this.selectedPath()),
@@ -92,18 +90,11 @@ export class SettingsDialogComponent {
     });
   }
 
-  selectSection(section: SettingsSectionDefinition): void {
-    this.selectedPath.set(section.path);
-    afterNextRender(
-      () => {
-        const heading =
-          this.detail()?.nativeElement.querySelector<HTMLElement>('h2');
-        if (!heading) return;
-        heading.tabIndex = -1;
-        heading.focus({ preventScroll: true });
-      },
-      { injector: this.injector },
-    );
+  selectSection(path: string): void {
+    this.selectedPath.set(path);
+    afterNextRender(() => this.layout()?.focusSectionHeading(), {
+      injector: this.injector,
+    });
   }
 
   sectionInjector(section: SettingsSectionDefinition): Injector {
@@ -116,15 +107,9 @@ export class SettingsDialogComponent {
     const selected = this.selectedPath();
     if (!this.wide() && selected) {
       this.selectedPath.set(null);
-      afterNextRender(
-        () =>
-          this.nav()
-            ?.nativeElement.querySelector<HTMLElement>(
-              `[data-testid="settings-nav-${selected}"]`,
-            )
-            ?.focus({ preventScroll: true }),
-        { injector: this.injector },
-      );
+      afterNextRender(() => this.layout()?.focusSectionLink(selected), {
+        injector: this.injector,
+      });
       return;
     }
     this.ref.close();

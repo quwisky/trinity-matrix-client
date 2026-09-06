@@ -1,91 +1,23 @@
-<section
-  trnOverlaySurface
-  variant="neutral"
-  size="2xl"
-  layout="workspace"
-  class="settings-dialog"
-  data-testid="settings-dialog"
+<trn-settings-layout
+  title="Settings"
+  [sections]="layoutSections"
+  [selectedSection]="selectedPath()"
+  [compact]="!wide()"
+  [directoryVisible]="wide() || !selectedPath()"
+  testId="settings-dialog"
+  navItemTestIdPrefix="settings-nav-"
+  detailTestId="settings-detail"
+  closeTestId="close-settings"
+  (sectionSelected)="selectSection($event); clearRouteFocusTargets()"
+  (backRequested)="goBackOrClose()"
+  (closeRequested)="close()"
 >
-  <header class="settings-dialog__header">
-    @if (!wide() && selectedPath()) {
-      <button
-        trnBtn
-        presentation="ghost"
-        shape="icon"
-        size="md"
-        aria-label="Back to settings sections"
-        (click)="goBackOrClose()"
-      >
-        <trn-icon name="arrow-left" motion="nudge-left" />
-      </button>
-    }
-    <h1 data-settings-autofocus tabindex="-1">Settings</h1>
-    <button
-      trnBtn
-      presentation="ghost"
-      shape="icon"
-      size="md"
-      aria-label="Close settings"
-      data-testid="close-settings"
-      (click)="close()"
-    >
-      <trn-icon name="x" motion="rotate" />
-    </button>
-  </header>
-
-  <div class="settings-workspace" data-testid="settings-workspace">
-    <nav
-      #nav
-      class="settings-nav no-scrollbar"
-      aria-label="Settings sections"
-      [class.settings-pane--hidden]="selectedPath() && !wide()"
-    >
-      @for (item of menu; track item.path; let index = $index) {
-        @if (index === 0 || menu[index - 1].group !== item.group) {
-          <p class="settings-nav__group">{{ item.group }}</p>
-        }
-        <button
-          trnBtn
-          [variant]="selectedPath() === item.path ? 'secondary' : 'primary'"
-          [presentation]="selectedPath() === item.path ? 'solid' : 'ghost'"
-          size="md"
-          class="settings-nav__item w-full justify-start"
-          [class.is-active]="selectedPath() === item.path"
-          [attr.aria-current]="selectedPath() === item.path ? 'page' : null"
-          [attr.data-testid]="'settings-nav-' + item.path"
-          (click)="selectSection(item); clearRouteFocusTargets()"
-        >
-          <trn-icon
-            [name]="item.icon"
-            size="md"
-            [variant]="selectedPath() === item.path ? 'accent' : 'muted'"
-          />
-          <span class="settings-nav__label">{{ item.label }}</span>
-          @if (!wide()) {
-            <trn-icon name="chevron-right" size="md" variant="muted" />
-          }
-        </button>
-      }
-      <p class="settings-nav__build" data-testid="settings-build">
-        {{ buildLabel }}
-      </p>
-    </nav>
-
-    <section
-      #detail
-      class="settings-detail"
-      [class.settings-pane--hidden]="!selectedPath() && !wide()"
-      data-testid="settings-detail"
-    >
-      <div class="settings-detail__content">
-        @if (selectedSection(); as section) {
-          <ng-container
-            [ngComponentOutlet]="section.component"
-            [ngComponentOutletInputs]="sectionInputs()"
-            [ngComponentOutletInjector]="sectionInjector(section)"
-          />
-        }
-      </div>
-    </section>
-  </div>
-</section>
+  @if (selectedSection(); as section) {
+    <ng-container
+      [ngComponentOutlet]="section.component"
+      [ngComponentOutletInputs]="sectionInputs()"
+      [ngComponentOutletInjector]="sectionInjector(section)"
+    />
+  }
+  <p settings-nav-footer data-testid="settings-build">{{ buildLabel }}</p>
+</trn-settings-layout>

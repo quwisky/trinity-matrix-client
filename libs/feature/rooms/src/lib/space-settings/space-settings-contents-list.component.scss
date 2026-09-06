@@ -57,7 +57,7 @@
   .contents-list__identity span,
   .contents-list__facts {
     color: var(--trinity-text-muted);
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
   }
 
   .contents-list__facts,
@@ -78,7 +78,7 @@
     min-height: 44px;
     gap: 6px;
     color: var(--trinity-text-muted);
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
     cursor: pointer;
     white-space: nowrap;
   }
@@ -94,7 +94,7 @@
     padding: 10px 12px;
     border-radius: var(--trinity-shape-control-radius);
     background: var(--trinity-surface-control);
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
     line-height: 1.45;
   }
 

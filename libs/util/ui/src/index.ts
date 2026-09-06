@@ -12,5 +12,6 @@
 export * from './lib/delayed-busy';
 export * from './lib/with-busy';
 export * from './lib/media-query';
+export { textScaledViewportSignal } from './lib/text-scaled-viewport';
 export * from './lib/reduced-motion';
 export * from './lib/internal-url';

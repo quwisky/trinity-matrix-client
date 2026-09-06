@@ -16,6 +16,7 @@ async function build(
     canonical?: string | null;
     server?: string | null;
     canManage?: boolean;
+    available?: boolean;
     noun?: 'Room' | 'Space';
   } = {},
   over: {
@@ -42,6 +43,7 @@ async function build(
       accountId: TARGET.accountId,
       roomId: TARGET.roomId,
       noun: opts.noun ?? 'Room',
+      available: opts.available ?? true,
     },
     providers: [
       MockProvider(RoomAliasesService, {
@@ -98,6 +100,23 @@ describe('RoomAliasesComponent', () => {
     const { cmp, container } = await build({ aliases: ['#a:hs.example'] });
     expect(cmp.aliases()).toEqual(['#a:hs.example']);
     expect(container.textContent).toContain('#a:hs.example');
+  });
+
+  it('loads aliases when the opening target becomes available', async () => {
+    const localAliases = vi.fn(() => of(['#available:hs.example']));
+    const { cmp, fixture } = await build(
+      { available: false },
+      { localAliases },
+    );
+
+    expect(localAliases).not.toHaveBeenCalled();
+
+    fixture.componentRef.setInput('available', true);
+    await fixture.whenStable();
+
+    expect(localAliases).toHaveBeenCalledOnce();
+    expect(localAliases).toHaveBeenCalledWith(TARGET);
+    expect(cmp.aliases()).toEqual(['#available:hs.example']);
   });
 
   it('shows the empty state when the room has no addresses', async () => {

@@ -116,7 +116,8 @@ authority, while an exact-Account operation with its own current authorization r
 independent. Retrying a retained failure schedules only its existing projection; released
 ownership recreates both Room Administration leases without reopening the Room surface.
 
-Room and Space settings share a domain-neutral responsive hub, but keep separate policy owners.
+Room and Space settings adapt the public Settings layout, but keep separate policy owners.
+The layout is also used by application Settings and owns presentation only.
 Each hub takes an immutable Account-and-Room target (a Space is a Matrix Room) for General,
 Access and Members policy and observes that Account's exact client, independent of later Active Account
 changes. SDK state and sync invalidations refresh untouched fields and permission gates while

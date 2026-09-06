@@ -162,7 +162,7 @@
   @if (loading()) {
     <p class="space-contents__state" role="status">Loading Space contents…</p>
   } @else if (snapshot(); as state) {
-    @if (state.unavailableReason) {
+    @if (showUnavailableReason() && state.unavailableReason) {
       <p
         class="space-contents__state space-contents__state--danger"
         role="alert"

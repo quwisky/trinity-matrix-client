@@ -21,13 +21,13 @@
 
     strong {
       color: var(--trinity-text-bright);
-      font-size: 13px;
+      font-size: var(--trinity-type-caption-size);
       font-weight: 650;
     }
 
     small {
       color: var(--trinity-text-muted);
-      font-size: 12px;
+      font-size: var(--trinity-type-caption-size);
       line-height: 1.45;
     }
   }

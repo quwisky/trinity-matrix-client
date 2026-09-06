@@ -24,7 +24,7 @@
 
     h2 {
       overflow: hidden;
-      font-size: 16px;
+      font-size: var(--trinity-type-body-size);
       font-weight: 600;
       color: var(--trinity-text-bright);
       text-overflow: ellipsis;
@@ -33,7 +33,7 @@
 
     p {
       overflow: hidden;
-      font-size: 12px;
+      font-size: var(--trinity-type-caption-size);
       color: var(--trinity-text-muted);
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -43,7 +43,7 @@
   .widget-frame__notice,
   .widget-frame__status {
     padding: 8px 16px;
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
     color: var(--trinity-text-muted);
   }
 

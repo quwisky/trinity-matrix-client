@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { RoomWidgetTarget } from '@trinity/data-access/widgets';
-import { initialOf } from '@trinity/util/matrix';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
@@ -35,31 +34,43 @@ const SECTIONS: readonly (SettingsHubSection & {
 })[] = [
   {
     value: 'general',
+    icon: 'settings',
+    group: 'Overview',
     label: 'General',
     description: 'Photo, name, topic, and encryption',
   },
   {
     value: 'for-you',
+    icon: 'user',
+    group: 'Personal',
     label: 'For you',
     description: 'Notifications and organisation',
   },
   {
     value: 'access',
+    icon: 'lock',
+    group: 'Manage',
     label: 'Access',
     description: 'Who can join and read history',
   },
   {
     value: 'members',
+    icon: 'users',
+    group: 'Manage',
     label: 'Members',
     description: 'People, roles, invitations, and bans',
   },
   {
     value: 'addresses',
+    icon: 'link',
+    group: 'Manage',
     label: 'Addresses',
     description: 'Published Room links',
   },
   {
     value: 'widgets',
+    icon: 'square-code',
+    group: 'Manage',
     label: 'Widgets',
     description: 'Connected room tools',
   },
@@ -92,7 +103,7 @@ export class RoomSettingsComponent implements OnInit {
   readonly roomDisplayName = input('Room');
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
   readonly direct = input(false);
-  readonly initialSection = input<RoomSettingsSection>('general');
+  readonly initialSection = input<RoomSettingsSection>();
 
   readonly draft = inject(RoomSettingsDraftService);
   readonly forYouDraft = inject(RoomSettingsForYouDraftService);
@@ -113,7 +124,6 @@ export class RoomSettingsComponent implements OnInit {
       this.widgetsSection()?.discardCreationDraft();
     },
   });
-  readonly mobileHost = this.hub.mobileHost;
   readonly sections = SECTIONS;
   readonly selectedSection = this.hub.selectedSection;
   readonly directoryVisible = this.hub.directoryVisible;
@@ -121,16 +131,15 @@ export class RoomSettingsComponent implements OnInit {
   readonly account = computed(() =>
     this.identities.identityOf(this.accountId()),
   );
+
+  readonly accountLabel = computed(() => {
+    const { displayName, userId } = this.account();
+    return displayName === userId ? userId : `${displayName} (${userId})`;
+  });
   readonly widgetTarget = computed<RoomWidgetTarget>(() => ({
     accountId: this.accountId(),
     roomId: this.roomId(),
   }));
-  readonly accountInitial = computed(() =>
-    initialOf(this.account().displayName),
-  );
-  readonly roomInitial = computed(() =>
-    initialOf(this.draft.model().name || this.roomDisplayName()),
-  );
   readonly sectionTitle = computed(
     () =>
       SECTIONS.find(({ value }) => value === this.selectedSection())?.label ??
@@ -145,7 +154,8 @@ export class RoomSettingsComponent implements OnInit {
       accountId: this.accountId(),
       roomId: this.roomId(),
     });
-    this.hub.selectSection(this.initialSection());
+    const initialSection = this.initialSection();
+    if (initialSection) this.hub.selectSection(initialSection);
     this.hub.activate();
   }
 

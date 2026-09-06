@@ -1,10 +1,14 @@
-@if (canManage()) {
-  <trn-room-widget-create [target]="target()" />
+@if (canManage() || hasCreationDraft()) {
+  <trn-room-widget-create [target]="target()" [editable]="canManage()" />
 }
 
 @if (widgets().length === 0) {
   <p class="room-widgets__note" data-testid="room-settings-widgets-empty">
-    No widgets are declared in this room.
+    {{
+      available()
+        ? 'No widgets are declared in this room.'
+        : 'No last-known widgets are available.'
+    }}
   </p>
 } @else {
   <p class="room-widgets__note">

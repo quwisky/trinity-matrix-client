@@ -3,6 +3,7 @@ import {
   ElementRef,
   Injector,
   afterNextRender,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -15,8 +16,7 @@ import {
   TrnDialogRef,
   TrnDialogService,
 } from '@trinity/components/overlay';
-import { isMobileOs } from '@trinity/platform-native';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { textScaledViewportSignal } from '@trinity/util/ui';
 import { Observable, defer, of, take } from 'rxjs';
 import type { SettingsHubSection } from './settings-hub.component';
 
@@ -42,13 +42,10 @@ export class SettingsHubController<Section extends string> {
   private readonly confirmingDiscard = signal(false);
   private readonly backActive = signal(false);
 
-  readonly mobileHost = isMobileOs();
-  readonly compactNavigation = mediaQuerySignal(
-    BELOW_MD_QUERY,
-    inject(DestroyRef),
-  );
+  private readonly wide = textScaledViewportSignal(48, inject(DestroyRef));
+  readonly compactNavigation = computed(() => !this.wide());
   readonly selectedSection;
-  readonly directoryVisible = signal(false);
+  readonly directoryVisible = signal(this.compactNavigation());
 
   constructor(private readonly config: SettingsHubControllerConfig<Section>) {
     this.selectedSection = signal(config.sections[0].value);

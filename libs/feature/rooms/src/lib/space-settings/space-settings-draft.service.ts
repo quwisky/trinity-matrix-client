@@ -133,6 +133,15 @@ export class SpaceSettingsDraftService {
       model.topic.trim() !== baseline.topic
     );
   });
+  readonly nameHasPermissionBlockedEdit = computed(
+    () =>
+      !this.mayEditName() && this.model().name.trim() !== this.baseline().name,
+  );
+  readonly topicHasPermissionBlockedEdit = computed(
+    () =>
+      !this.mayEditTopic() &&
+      this.model().topic.trim() !== this.baseline().topic,
+  );
   readonly accessDirty = computed(
     () => this.model().joinRule !== this.accessBaseline(),
   );
@@ -342,7 +351,16 @@ export class SpaceSettingsDraftService {
     const nameWasDirty = current.name.trim() !== previous.name;
     const topicWasDirty = current.topic.trim() !== previous.topic;
     const accessWasDirty = current.joinRule !== previousAccess;
-    this.snapshotState.set(snapshot);
+    const previousSnapshot = this.snapshot();
+    this.snapshotState.set(
+      snapshot.availability !== 'available' && previousSnapshot
+        ? {
+            ...snapshot,
+            identity: previousSnapshot.identity,
+            encrypted: previousSnapshot.encrypted,
+          }
+        : snapshot,
+    );
     if (snapshot.availability !== 'available') return;
 
     const next: GeneralBaseline = {

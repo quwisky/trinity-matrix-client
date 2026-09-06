@@ -1,132 +1,35 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="2xl"
-  [layout]="mobileHost() ? 'fullscreen' : 'workspace'"
-  class="settings-hub"
-  [attr.data-testid]="testId()"
+<trn-settings-layout
+  [testId]="testId()"
+  [title]="noun() + ' settings'"
+  [sections]="navigation()"
+  [selectedSection]="selectedSection()"
+  [compact]="compactNavigation()"
+  [directoryVisible]="directoryVisible()"
+  [detailClass]="testId() + '__section-scroll'"
+  (sectionSelected)="sectionSelected.emit($event)"
+  (backRequested)="directoryRequested.emit()"
+  (closeRequested)="closeRequested.emit()"
 >
-  <header class="settings-hub__header">
-    <div class="settings-hub__identity">
-      <trn-avatar
-        size="sm"
-        shape="person"
-        [mxc]="accountAvatarMxc()"
-        [name]="accountName()"
-        [initial]="accountInitial()"
-        [accountId]="accountId()"
-      />
-      <div>
-        <p class="settings-hub__account-label">Opening Account</p>
-        <p
-          class="settings-hub__account-name"
-          [attr.data-testid]="testId() + '-account'"
-        >
-          {{ accountName() }}
-        </p>
-      </div>
-    </div>
-    <button
-      trnBtn
-      type="button"
-      presentation="ghost"
-      [attr.data-testid]="testId() + '-cancel'"
-      (click)="closeRequested.emit()"
+  <p settings-context class="settings-hub__context">
+    <span
+      [attr.data-testid]="testId() + '-' + noun().toLowerCase() + '-name'"
+      >{{ targetName() }}</span
     >
-      Close
-    </button>
-  </header>
-
+    <span aria-hidden="true"> · </span>
+    <span [attr.data-testid]="testId() + '-account'">{{ accountName() }}</span>
+  </p>
   @if (unavailableReason(); as reason) {
-    <p class="settings-hub__target-warning" role="alert">
-      {{ reason }}
+    <p settings-warning class="settings-hub__target-warning" role="alert">
+      {{ reason }} Last-known details may be outdated. Unsaved changes are kept.
     </p>
   }
-
-  <div class="settings-hub__workspace">
-    <nav
-      class="settings-hub__directory"
-      [class.settings-hub__directory--hidden]="
-        compactNavigation() && !directoryVisible()
-      "
-      [attr.aria-label]="noun() + ' settings sections'"
-      [attr.data-testid]="testId() + '-directory'"
-    >
-      <div class="settings-hub__target-summary">
-        <trn-avatar
-          [mxc]="targetAvatarMxc()"
-          [name]="targetName()"
-          [initial]="targetInitial()"
-          [exactSize]="48"
-          shape="place"
-          [accountId]="accountId()"
-        />
-        <div>
-          <p class="settings-hub__eyebrow">{{ noun() }} settings</p>
-          <h1
-            [attr.data-testid]="testId() + '-' + noun().toLowerCase() + '-name'"
-          >
-            {{ targetName() }}
-          </h1>
-        </div>
-      </div>
-
-      <div class="settings-hub__section-list">
-        @for (section of sections(); track section.value) {
-          <button
-            type="button"
-            class="settings-hub__section-link"
-            [class.settings-hub__section-link--active]="
-              selectedSection() === section.value
-            "
-            [attr.aria-current]="
-              selectedSection() === section.value ? 'page' : null
-            "
-            [attr.data-testid]="testId() + '-tab-' + section.value"
-            (click)="sectionSelected.emit(section.value)"
-          >
-            <span>{{ section.label }}</span>
-            <small>{{ section.description }}</small>
-          </button>
-        }
-      </div>
-    </nav>
-
-    <main
-      class="settings-hub__section"
-      [class.settings-hub__section--hidden]="
-        compactNavigation() && directoryVisible()
-      "
-    >
-      <div class="settings-hub__section-header">
-        @if (compactNavigation()) {
-          <button
-            trnBtn
-            type="button"
-            presentation="ghost"
-            [attr.data-testid]="testId() + '-mobile-back'"
-            (click)="directoryRequested.emit()"
-          >
-            Back
-          </button>
-        }
-        <div>
-          <p class="settings-hub__eyebrow">{{ noun() }} settings</p>
-          <h2
-            tabindex="-1"
-            data-autofocus
-            [attr.data-testid]="testId() + '-section-heading'"
-          >
-            {{ sectionTitle() }}
-          </h2>
-        </div>
-      </div>
-
-      <div
-        class="settings-hub__section-scroll room-settings__section-scroll space-settings__section-scroll"
-      >
-        <ng-content />
-      </div>
-    </main>
+  <header class="settings-hub__section-heading">
+    <h2 tabindex="-1" [attr.data-testid]="testId() + '-section-heading'">
+      {{ sectionTitle() }}
+    </h2>
+    <p>{{ sectionDescription() }}</p>
+  </header>
+  <div class="settings-hub__section-content">
+    <ng-content />
   </div>
-</div>
+</trn-settings-layout>

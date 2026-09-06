@@ -519,7 +519,7 @@ describe('RoomsPage action error feedback', () => {
         accountId: '@me:hs',
         spaceId: '!s:hs',
         spaceDisplayName: 'Space !s:hs',
-        initialSection: 'general',
+        initialSection: undefined,
       },
     });
   });

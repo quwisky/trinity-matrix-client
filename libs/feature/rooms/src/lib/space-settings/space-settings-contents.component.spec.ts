@@ -65,7 +65,10 @@ function snapshot(
   };
 }
 
-async function build(initial = snapshot()) {
+async function build(
+  initial = snapshot(),
+  options: { readonly showUnavailableReason?: boolean } = {},
+) {
   const states = new BehaviorSubject(initial);
   const prompt = new Subject<string | null>();
   const confirm = new Subject<boolean>();
@@ -82,6 +85,7 @@ async function build(initial = snapshot()) {
     inputs: {
       target: TARGET,
       spaceName: 'Design',
+      showUnavailableReason: options.showUnavailableReason ?? true,
     },
     providers: [
       MockProvider(SpaceContentsService, {
@@ -162,6 +166,55 @@ describe('SpaceSettingsContentsComponent', () => {
       container.querySelector('[data-testid="space-contents-retry-link"]'),
     ).toBeNull();
     expect(container.textContent).toContain('your role cannot change them');
+  });
+
+  it('retains readable contents but disables curation when the same Space becomes unavailable', async () => {
+    const initial = snapshot({
+      curationLinks: [
+        {
+          childId: '!room:hs',
+          via: ['hs'],
+          suggested: false,
+          order: 'a',
+        },
+      ],
+    });
+    const { cmp, container, fixture, states } = await build(initial, {
+      showUnavailableReason: false,
+    });
+
+    states.next(
+      snapshot({
+        availability: 'space-unavailable',
+        unavailableReason: 'This Space is no longer available.',
+        items: [],
+        curationLinks: [],
+        candidates: [],
+        canManage: false,
+        managementUnavailableReason: 'This Space is no longer available.',
+      }),
+    );
+    await fixture.whenStable();
+
+    expect(cmp.snapshot()).toMatchObject({
+      availability: 'space-unavailable',
+      canManage: false,
+      items: initial.items,
+      curationLinks: initial.curationLinks,
+    });
+    expect(container.textContent).toContain('Design room');
+    expect(
+      container.querySelector('[data-testid="space-content-!room:hs"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="space-contents-actions"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid^="space-content-unlink-"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="space-contents-read-only"]'),
+    ).not.toBeNull();
   });
 
   it('searches joined candidates and links the selected exact item', async () => {
