@@ -85,11 +85,12 @@ server rejection can also mean permissions changed while the menu was open.
 
 ## Change Room and Space settings
 
-Open **Room settings** from a room header or its overflow menu. On a wide screen, the Room
-identity and section directory stay beside the current section in a centred dialog. On a phone,
-Room settings is a full-screen master-detail flow: **Back** returns from a section to the section
-directory. The header always names the Account that opened the Room so a similarly named Room on
-another Account cannot be mistaken for the target.
+Open **Room settings** from a room header or its overflow menu. Settings, Room settings and Space
+settings use the same dialog layout. On a wide screen, the section directory stays beside the
+current section. On a phone, settings opens the full-screen directory; choosing a section opens
+its details, and **Back** returns to the directory. A shortcut to a specific section opens it
+directly. Larger text can switch the dialog to directory navigation earlier so the content stays
+readable. The header keeps the Room name and opening Account identity visible beneath the title.
 
 The hub has these sections:
 
@@ -125,8 +126,12 @@ started. If that Account signs out, the target becomes unavailable instead of fa
 the newly active Account. Matrix permissions are checked live and per action, so a member may be
 able to read a section or edit an avatar but not change the access rule, aliases, widgets or
 membership.
-Losing a role while Room settings is open disables the affected controls without hiding readable
-information or erasing drafts. Access and history choices affect other people and can expose
+General shows selectable Name and Topic values when you cannot edit them. Each field follows its
+own permission, so one can be editable while another is read-only. Losing permission during an
+edit retains that unsaved value in a read-only field with an explanation and a Discard option.
+Save and Discard appear at the bottom of the active section only while it has pending changes.
+If the opening Account becomes unavailable, one header warning marks last-known details as
+potentially outdated, retains drafts and blocks further writes. Access and history choices affect other people and can expose
 earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
 rule controls which Space members may join, not whether you yourself remain in the Room. Trinity
 keeps unfamiliar server policy readable and preserves restricted allow-list entries it does not

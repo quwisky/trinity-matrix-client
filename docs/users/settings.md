@@ -5,6 +5,11 @@ room; mobile uses a full-page flow. Settings contains account, preference, app a
 sections. A setting can be tied to the Matrix account, to this Trinity installation, or to both
 an account and this device, so check the scope before expecting it on another device.
 
+Settings shares its dialog layout with Room and Space settings: icon navigation, consistent
+section spacing and larger-text support. Compact dialogs begin with the section directory;
+shortcuts still open the requested section directly. Room and Space details also identify the
+opening Account beneath the title and keep their own section-level Save and Discard behavior.
+
 ## Choose the setting you need
 
 | Section                                    | Main task                                              | Scope                                                                  |

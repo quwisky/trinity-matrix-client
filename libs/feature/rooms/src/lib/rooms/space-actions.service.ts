@@ -314,13 +314,13 @@ export class SpaceActionsService {
     if (!spaceId || !accountId || !this.vm.canConfigureSpace()) {
       return;
     }
-    this.openSpaceSettings(accountId, spaceId, 'general');
+    this.openSpaceSettings(accountId, spaceId);
   }
 
   private openSpaceSettings(
     accountId: string,
     spaceId: string,
-    initialSection: 'general' | 'contents' | 'members',
+    initialSection?: 'general' | 'contents' | 'members',
   ): void {
     this.dialog
       .openAndWait$(SpaceSettingsComponent, {

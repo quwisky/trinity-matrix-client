@@ -30,41 +30,103 @@
 
   <section class="room-settings__card room-settings__fields">
     <h3>Room details</h3>
-    <label class="room-settings__field">
-      <span class="room-settings__label">Name</span>
-      <input
-        trnInput
-        class="w-full"
-        [formField]="draft.form.name"
-        autocomplete="off"
-        data-testid="room-settings-name"
-        aria-describedby="room-settings-name-help"
-      />
+    <div class="room-settings__field">
+      <span id="room-settings-name-label" class="room-settings__label"
+        >Name</span
+      >
+      @if (draft.mayEditName()) {
+        <input
+          trnInput
+          class="w-full"
+          [formField]="draft.form.name"
+          autocomplete="off"
+          data-testid="room-settings-name"
+          aria-labelledby="room-settings-name-label"
+          aria-describedby="room-settings-name-help"
+        />
+      } @else if (draft.nameHasPermissionBlockedEdit()) {
+        <input
+          trnInput
+          class="room-settings__readonly-value w-full"
+          [value]="draft.model().name"
+          readonly
+          aria-readonly="true"
+          data-testid="room-settings-name"
+          aria-labelledby="room-settings-name-label"
+          aria-describedby="room-settings-name-help room-settings-name-blocked"
+        />
+      } @else {
+        <p class="room-settings__static-value" data-testid="room-settings-name">
+          {{ draft.model().name || 'No name set.' }}
+        </p>
+      }
       <span id="room-settings-name-help" class="room-settings__hint">
         Shown in Room lists and at the top of the Conversation.
       </span>
-      @if (!draft.mayEditName()) {
+      @if (draft.nameHasPermissionBlockedEdit()) {
+        <span
+          id="room-settings-name-blocked"
+          class="room-settings__restriction"
+        >
+          This unsaved Name edit is now read-only.
+          {{ draft.permissions().name.reason }}
+          Discard it to return to the saved value.
+        </span>
+      } @else if (!draft.mayEditName()) {
         <span class="room-settings__restriction">
           {{ draft.permissions().name.reason }}
         </span>
       }
-    </label>
+    </div>
 
-    <label class="room-settings__field">
-      <span class="room-settings__label">Topic</span>
-      <textarea
-        trnTextarea
-        class="room-settings__topic w-full"
-        [formField]="draft.form.topic"
-        rows="4"
-        data-testid="room-settings-topic"
-      ></textarea>
-      @if (!draft.mayEditTopic()) {
+    <div class="room-settings__field">
+      <span id="room-settings-topic-label" class="room-settings__label"
+        >Topic</span
+      >
+      @if (draft.mayEditTopic()) {
+        <textarea
+          trnTextarea
+          class="room-settings__topic w-full"
+          [formField]="draft.form.topic"
+          rows="4"
+          data-testid="room-settings-topic"
+          aria-labelledby="room-settings-topic-label"
+        ></textarea>
+      } @else if (draft.topicHasPermissionBlockedEdit()) {
+        <textarea
+          trnTextarea
+          class="room-settings__readonly-value room-settings__topic w-full"
+          [value]="draft.model().topic"
+          readonly
+          aria-readonly="true"
+          rows="4"
+          data-testid="room-settings-topic"
+          aria-labelledby="room-settings-topic-label"
+          aria-describedby="room-settings-topic-blocked"
+        ></textarea>
+      } @else {
+        <p
+          class="room-settings__static-value"
+          data-testid="room-settings-topic"
+        >
+          {{ draft.model().topic || 'No topic set.' }}
+        </p>
+      }
+      @if (draft.topicHasPermissionBlockedEdit()) {
+        <span
+          id="room-settings-topic-blocked"
+          class="room-settings__restriction"
+        >
+          This unsaved Topic edit is now read-only.
+          {{ draft.permissions().topic.reason }}
+          Discard it to return to the saved value.
+        </span>
+      } @else if (!draft.mayEditTopic()) {
         <span class="room-settings__restriction">
           {{ draft.permissions().topic.reason }}
         </span>
       }
-    </label>
+    </div>
   </section>
 
   <section class="room-settings__card">
@@ -87,30 +149,35 @@
     </p>
   }
 
-  <div class="room-settings__actions">
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="ghost"
-      [disabled]="!draft.generalDirty() || draft.saving() === 'general'"
-      data-testid="room-settings-discard"
-      (click)="draft.discardGeneral()"
+  @if (draft.generalDirty()) {
+    <div
+      class="room-settings__actions"
+      data-testid="room-settings-general-actions"
     >
-      Discard
-    </button>
-    <button
-      trnBtn
-      type="submit"
-      [trnActionAllowed]="draft.mayEditName() || draft.mayEditTopic()"
-      [trnActionDisabledReason]="draft.generalSaveUnavailableReason()"
-      [trnTooltip]="draft.generalSaveUnavailableReason()"
-      [disabled]="
-        !draft.generalHasWritableChanges() || draft.saving() === 'general'
-      "
-      data-testid="room-settings-save"
-    >
-      {{ draft.saving() === 'general' ? 'Saving…' : 'Save changes' }}
-    </button>
-  </div>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        [disabled]="draft.saving() === 'general'"
+        data-testid="room-settings-discard"
+        (click)="draft.discardGeneral()"
+      >
+        Discard
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [trnActionAllowed]="draft.mayEditName() || draft.mayEditTopic()"
+        [trnActionDisabledReason]="draft.generalSaveUnavailableReason()"
+        [trnTooltip]="draft.generalSaveUnavailableReason()"
+        [disabled]="
+          !draft.generalHasWritableChanges() || draft.saving() === 'general'
+        "
+        data-testid="room-settings-save"
+      >
+        {{ draft.saving() === 'general' ? 'Saving…' : 'Save changes' }}
+      </button>
+    </div>
+  }
 </form>

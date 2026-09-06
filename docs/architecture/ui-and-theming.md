@@ -12,6 +12,20 @@ ui:public category, rejects broad export barrels and migration exceptions, and
 marks the Storybook host as non-consumable. Run the architecture contract after
 changing a public surface.
 
+## Shared settings presentation
+
+`TrnSettingsLayoutComponent` in the public overlay tier owns the common Settings,
+Room settings and Space settings dialog presentation: overlay frame, header controls, optional
+context/warning slots, section navigation and one scroll region per pane. It does not own
+routing, Account identity, drafts or dismissal. The feature adapters supply those responsibilities
+and retain their existing focus and Workspace Back lifetimes.
+
+The dialogs use `textScaledViewportSignal(48, destroyRef)` for both navigation and presentation.
+Unlike CSS media-query rem units, this follows the current root font-size preference as well as
+viewport resizing. Compact dialogs open their directory unless an explicit section is requested.
+Room/Space forms use the same section typography and grouping, preserve per-field permissions and
+retained read-only drafts, and show sticky section actions only for pending edits.
+
 ## 1. Choose the owner before writing UI
 
 Trinity has four UI layers.

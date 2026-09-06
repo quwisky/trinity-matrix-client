@@ -14,7 +14,7 @@ test.use({ ...devices['Pixel 5'] });
 test.describe('Room settings on a phone', () => {
   configureRoomSettingsSuite();
 
-  test('uses a full-screen General-to-directory flow with protected drafts', async ({
+  test('opens the directory before General and protects drafts on the full-screen flow', async ({
     page,
     request,
   }) => {
@@ -52,8 +52,15 @@ test.describe('Room settings on a phone', () => {
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(
       (viewport?.height ?? 0) - 1,
     );
+    const directory = page.getByTestId('room-settings-directory');
+    const general = page.getByTestId('room-settings-tab-general');
+    await expect(directory).toBeVisible();
+    await expect(page.getByTestId('room-settings-panel-general')).toBeHidden();
+    await general.tap();
     await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();
-    await expect(page.getByTestId('room-settings-directory')).toBeHidden();
+    await expect(
+      page.getByTestId('room-settings-section-heading'),
+    ).toBeFocused();
 
     const surfaceBox = await settings.boundingBox();
     const accountBox = await page
@@ -64,7 +71,19 @@ test.describe('Room settings on a phone', () => {
     );
 
     const topic = page.getByTestId('room-settings-topic');
+    await expect(page.getByTestId('room-settings-general-actions')).toHaveCount(
+      0,
+    );
     await topic.fill('A mobile draft');
+    const actions = page.getByTestId('room-settings-general-actions');
+    await expect(actions).toBeVisible();
+    await expect
+      .poll(() =>
+        actions.evaluate((element) => getComputedStyle(element).position),
+      )
+      .toBe('sticky');
+    await expect(page.getByTestId('room-settings-discard')).toBeVisible();
+    await expect(page.getByTestId('room-settings-save')).toBeVisible();
     await page.getByTestId('room-settings-mobile-back').click();
     const discard = page.getByRole('dialog', {
       name: 'Discard Room settings changes?',
@@ -74,7 +93,6 @@ test.describe('Room settings on a phone', () => {
 
     await page.getByTestId('room-settings-mobile-back').click();
     await discard.getByRole('button', { name: 'Discard changes' }).click();
-    const directory = page.getByTestId('room-settings-directory');
     await expect(directory).toBeVisible();
     const roomNameBox = await page
       .getByTestId('room-settings-room-name')
@@ -82,7 +100,6 @@ test.describe('Room settings on a phone', () => {
     expect(
       (roomNameBox?.x ?? 0) + (roomNameBox?.width ?? 0),
     ).toBeLessThanOrEqual((surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0));
-    const general = page.getByTestId('room-settings-tab-general');
     const generalBox = await general.boundingBox();
     expect(generalBox?.height ?? 0).toBeGreaterThanOrEqual(44);
     const addresses = page.getByTestId('room-settings-tab-addresses');
@@ -100,9 +117,8 @@ test.describe('Room settings on a phone', () => {
     await expect(
       page.getByTestId('room-settings-section-heading'),
     ).toBeFocused();
-    const saveBox = await page.getByTestId('room-settings-save').boundingBox();
-    expect((saveBox?.x ?? 0) + (saveBox?.width ?? 0)).toBeLessThanOrEqual(
-      (surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0),
+    await expect(page.getByTestId('room-settings-access-actions')).toHaveCount(
+      0,
     );
     await test.info().attach('room-access-mobile', {
       body: await settings.screenshot(),

@@ -198,7 +198,15 @@ describe('Appearance contraction', () => {
       expect(filesContaining(`'${carrier}'`)).toEqual([adapter]);
     }
     expect(filesContaining("'font-size'")).toEqual([adapter]);
-    expect(filesContaining('documentElement')).toEqual([adapter]);
+    // Responsive presentation may observe root text size, but never owns its writes.
+    const viewportReader = 'libs/util/ui/src/lib/text-scaled-viewport.ts';
+    expect(filesContaining('documentElement')).toEqual([
+      adapter,
+      viewportReader,
+    ]);
+    expect(read(viewportReader)).not.toMatch(
+      /\.style\s*(?:\.|\[)|classList\.(?:add|remove|toggle)|setAttribute\(/u,
+    );
     expect(filesContaining('DARK_CLASS')).toEqual([adapter]);
     expect(filesContaining('classList.toggle(DARK_CLASS')).toEqual([adapter]);
     expect(filesContaining('BrowserAppearanceDocumentAdapter')).toEqual([

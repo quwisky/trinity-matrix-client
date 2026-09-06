@@ -1,4 +1,4 @@
-import { expect, test } from '../../../fixtures.mts';
+import { expect, test, testResourceId } from '../../../fixtures.mts';
 import { isAndroidE2E } from '../../../support/app.mts';
 import {
   closeSettings,
@@ -9,8 +9,10 @@ import {
   SECTIONS,
   configureSettingsSuite,
   openSection,
+  session,
   settingsTitleAlignment,
 } from '../../support/settings-journey.mts';
+import { settingsLayoutMetrics } from '../../support/settings-layout.mts';
 
 test.describe('Settings', () => {
   configureSettingsSuite();
@@ -101,6 +103,134 @@ test.describe('Settings', () => {
         .evaluate((element) => getComputedStyle(element).backgroundColor),
     ]);
     expect(activeBackground).not.toBe(idleBackground);
+  });
+
+  test('desktop: Room and Space use the same scaled settings frame', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      isAndroidE2E,
+      'the routed Android Settings page has its own host',
+    );
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}settingsframe`;
+    const roomName = `Frame room ${runId}`;
+    const spaceName = `Frame space ${runId}`;
+    const accessToken = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: session.user },
+          password: session.pass,
+        },
+      })
+      .then((response) => response.json())
+      .then((body) => body.access_token as string);
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers,
+      data: { name: roomName, preset: 'private_chat' },
+    });
+    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers,
+      data: {
+        name: spaceName,
+        preset: 'private_chat',
+        creation_content: { type: 'm.space' },
+      },
+    });
+
+    const mainFrame = {
+      rootTestId: 'settings-dialog',
+      directoryTestId: 'settings-dialog-directory',
+      detailTestId: 'settings-detail',
+    } as const;
+    const unscaled = await settingsLayoutMetrics(page, mainFrame);
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '125%';
+    });
+    const main = await settingsLayoutMetrics(page, mainFrame);
+    expect(main.titleFontSize).toBeGreaterThan(unscaled.titleFontSize);
+    expect(main.directoryLabelFontSize).toBeGreaterThan(
+      unscaled.directoryLabelFontSize,
+    );
+
+    const expectSharedFrame = (actual: typeof main): void => {
+      expect(actual.headerHeight).toBeCloseTo(main.headerHeight, 4);
+      expect(actual.directoryWidth).toBeCloseTo(main.directoryWidth, 4);
+      expect(actual.directoryIconWidth).toBeCloseTo(main.directoryIconWidth, 4);
+      expect(actual.directoryLabelFontSize).toBeCloseTo(
+        main.directoryLabelFontSize,
+        4,
+      );
+      expect(actual.titleFontSize).toBeCloseTo(main.titleFontSize, 4);
+      expect(actual.titleLineHeight).toBeCloseTo(main.titleLineHeight, 4);
+      expect(actual.detailStartsAfterDirectory).toBe(true);
+      expect(actual.directoryOverflowY).toBe('auto');
+      expect(actual.detailOverflowY).toBe('auto');
+      expect(actual.horizontalOverflow).toBeLessThanOrEqual(1);
+    };
+    expectSharedFrame(main);
+    await test.info().attach('main-settings-desktop-scaled', {
+      body: await page.getByTestId('settings-dialog').screenshot(),
+      contentType: 'image/png',
+    });
+
+    await closeSettings(page);
+    await page.getByTestId('rail-rooms').click();
+    const room = page.locator('.channel', { hasText: roomName }).first();
+    await room.waitFor({ state: 'visible', timeout: 30_000 });
+    await room.click();
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-settings')).toBeVisible();
+    const roomFrame = await settingsLayoutMetrics(page, {
+      rootTestId: 'room-settings',
+      directoryTestId: 'room-settings-directory',
+      detailTestId: 'room-settings-detail',
+    });
+    expectSharedFrame(roomFrame);
+    await test.info().attach('room-settings-desktop-scaled', {
+      body: await page.getByTestId('room-settings').screenshot(),
+      contentType: 'image/png',
+    });
+    const roomHeader = page
+      .getByTestId('room-settings')
+      .locator('.settings-layout__header');
+    await expect(roomHeader.getByTestId('room-settings-room-name')).toHaveText(
+      roomName,
+    );
+    await expect(roomHeader.getByTestId('room-settings-account')).toContainText(
+      session.user as string,
+    );
+    await page.getByTestId('room-settings-cancel').click();
+
+    const space = page.getByRole('button', { name: spaceName, exact: true });
+    await space.waitFor({ state: 'visible', timeout: 30_000 });
+    await space.click();
+    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('open-space-settings').click();
+    await expect(page.getByTestId('space-settings')).toBeVisible();
+    const spaceFrame = await settingsLayoutMetrics(page, {
+      rootTestId: 'space-settings',
+      directoryTestId: 'space-settings-directory',
+      detailTestId: 'space-settings-detail',
+    });
+    expectSharedFrame(spaceFrame);
+    await test.info().attach('space-settings-desktop-scaled', {
+      body: await page.getByTestId('space-settings').screenshot(),
+      contentType: 'image/png',
+    });
+    const spaceHeader = page
+      .getByTestId('space-settings')
+      .locator('.settings-layout__header');
+    await expect(
+      spaceHeader.getByTestId('space-settings-space-name'),
+    ).toHaveText(spaceName);
+    await expect(
+      spaceHeader.getByTestId('space-settings-account'),
+    ).toContainText(session.user as string);
   });
 
   test('desktop: settings content uses the shared grouped hierarchy', async ({
@@ -374,7 +504,7 @@ test.describe('Settings', () => {
     await appearance.click();
     await page
       .getByRole('button', {
-        name: isAndroidE2E ? 'Back' : 'Back to settings sections',
+        name: isAndroidE2E ? 'Back' : 'Back to sections',
       })
       .click();
     await expect(appearance).toBeFocused();

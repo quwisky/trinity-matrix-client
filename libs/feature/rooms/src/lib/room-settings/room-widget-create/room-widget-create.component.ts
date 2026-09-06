@@ -8,7 +8,13 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { FormField, form, submit, validate } from '@angular/forms/signals';
+import {
+  FormField,
+  disabled,
+  form,
+  submit,
+  validate,
+} from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
@@ -46,6 +52,7 @@ export class RoomWidgetCreateComponent {
     viewChild<ElementRef<HTMLInputElement>>('urlInput');
 
   readonly target = input.required<RoomWidgetTarget>();
+  readonly editable = input(true);
   readonly requestError = signal<string | null>(null);
   readonly dirty = computed(() => {
     const value = this.model();
@@ -53,6 +60,8 @@ export class RoomWidgetCreateComponent {
   });
 
   readonly form = form(this.model, (path) => {
+    disabled(path.name, { when: () => !this.editable() });
+    disabled(path.rawUrl, { when: () => !this.editable() });
     validate(path.name, ({ value }) =>
       validationError(
         validateRoomWidgetDraft({
@@ -72,6 +81,7 @@ export class RoomWidgetCreateComponent {
 
   /** Submit through Signal Forms so validation and duplicate suppression share one path. */
   async add(): Promise<void> {
+    if (!this.editable()) return;
     this.requestError.set(null);
     await submit(this.form, {
       action: async (field) => {

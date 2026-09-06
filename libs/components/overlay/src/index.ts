@@ -37,6 +37,10 @@ export {
 } from './lib/toast/trn-toast.service';
 export { TrnToasterComponent } from './lib/toast/trn-toaster.component';
 export { TrnOverlaySurfaceDirective } from './lib/surface/trn-overlay-surface.directive';
+export {
+  TrnSettingsLayoutComponent,
+  type TrnSettingsLayoutSection,
+} from './lib/settings-layout/trn-settings-layout.component';
 export type {
   TrnOverlaySurfaceLayout,
   TrnOverlaySurfaceSize,

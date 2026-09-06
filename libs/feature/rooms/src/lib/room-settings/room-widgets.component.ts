@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   input,
+  linkedSignal,
   signal,
   untracked,
   viewChild,
@@ -64,25 +65,38 @@ export class RoomWidgetsComponent implements OnInit {
   private readonly removalRevisions = new Map<string, string>();
 
   readonly target = input.required<RoomWidgetTarget>();
+  readonly available = input(true);
+  private readonly confirmingRemoval = signal<ReadonlySet<string>>(new Set());
   readonly removing = signal<ReadonlySet<string>>(new Set());
 
-  readonly canManage = computed(() =>
-    this.widgetsService.canManageFor(this.target())(),
+  readonly canManage = computed(
+    () => this.available() && this.widgetsService.canManageFor(this.target())(),
   );
 
   /** Widgets plus their current, disclosure-audited external destinations. */
-  readonly widgets = computed<readonly WidgetEntry[]>(() =>
-    this.widgetsService
-      .widgetsFor(this.target())()
-      .map((widget) => {
-        const launch = this.widgetsService.launchFor(this.target(), widget);
+  readonly widgets = linkedSignal({
+    source: () => ({
+      available: this.available(),
+      target: this.target(),
+      widgets: this.widgetsService.widgetsFor(this.target())(),
+    }),
+    computation: (source, previous): readonly WidgetEntry[] => {
+      if (!source.available) {
+        const sameTarget =
+          previous?.source.target.accountId === source.target.accountId &&
+          previous.source.target.roomId === source.target.roomId;
+        return sameTarget ? previous.value : [];
+      }
+      return source.widgets.map((widget) => {
+        const launch = this.widgetsService.launchFor(source.target, widget);
         return {
           widget,
           launch,
           embed: resolveWidgetEmbed(widget, launch, currentOrigin()),
         };
-      }),
-  );
+      });
+    },
+  });
 
   constructor() {
     // The settings panel owns this demand-driven projection, so sessions that never open
@@ -172,11 +186,14 @@ export class RoomWidgetsComponent implements OnInit {
 
   /** Confirm the named cross-client impact, then tombstone only that projected revision. */
   removeWidget(widget: RoomWidget, origin: string | null): void {
-    if (!this.canRemove(widget) || this.isRemoving(widget.id)) {
+    if (
+      !this.canRemove(widget) ||
+      this.isRemoving(widget.id) ||
+      this.confirmingRemoval().has(widget.id)
+    ) {
       return;
     }
-    this.removing.update((pending) => new Set(pending).add(widget.id));
-    this.removalRevisions.set(widget.id, widget.sourceEventId as string);
+    this.confirmingRemoval.update((pending) => new Set(pending).add(widget.id));
     this.alert
       .confirm$({
         header: 'Remove widget',
@@ -188,7 +205,18 @@ export class RoomWidgetsComponent implements OnInit {
       })
       .pipe(
         tap((confirmed) => {
-          if (!confirmed) this.clearRemoving(widget.id);
+          this.confirmingRemoval.update((pending) => {
+            const next = new Set(pending);
+            next.delete(widget.id);
+            return next;
+          });
+          if (confirmed) {
+            this.removing.update((pending) => new Set(pending).add(widget.id));
+            this.removalRevisions.set(
+              widget.id,
+              widget.sourceEventId as string,
+            );
+          }
         }),
         filter(Boolean),
         switchMap(() => this.management.remove(this.target(), widget)),

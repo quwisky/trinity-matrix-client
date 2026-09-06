@@ -87,6 +87,7 @@ function spaceSnapshot(
 
 interface BuildOptions {
   readonly compact?: boolean;
+  readonly initialSection?: 'general';
   readonly initial?: RoomSettingsSnapshot;
   readonly setName?: Mock;
   readonly setTopic?: Mock;
@@ -95,6 +96,7 @@ interface BuildOptions {
 }
 
 async function build(options: BuildOptions = {}) {
+  vi.stubGlobal('innerWidth', options.compact ? 393 : 1280);
   vi.stubGlobal(
     'matchMedia',
     vi.fn((query: string) => ({
@@ -121,6 +123,7 @@ async function build(options: BuildOptions = {}) {
 
   const { fixture, container } = await render(SpaceSettingsComponent, {
     inputs: {
+      initialSection: options.initialSection,
       accountId: TARGET.accountId,
       spaceId: TARGET.roomId,
       spaceDisplayName: 'Fallback space',
@@ -304,8 +307,29 @@ describe('SpaceSettingsComponent', () => {
     expect(cmp.draft.generalDirty()).toBe(true);
   });
 
-  it('preserves drafts and disables writes when permission disappears live', async () => {
-    const { cmp, container, emit } = await build();
+  it('shows an ordinary read-only Space detail as a selectable value with its reason', async () => {
+    const { container } = await build({
+      initial: spaceSnapshot({ permissions: { name: DENIED } }),
+    });
+
+    expect(
+      container.querySelector('[data-testid="space-settings-name"]')?.tagName,
+    ).toBe('P');
+    expect(
+      container.querySelector('[data-testid="space-settings-name"]')
+        ?.textContent,
+    ).toContain('Original space');
+    expect(container.textContent).toContain(DENIED.reason);
+    expect(
+      container.querySelector('[data-testid="space-settings-topic"]')?.tagName,
+    ).toBe('TEXTAREA');
+    expect(
+      container.querySelector('[data-testid="space-settings-general-actions"]'),
+    ).toBeNull();
+  });
+
+  it('keeps a permission-blocked Space draft readable and discardable', async () => {
+    const { cmp, container, emit, fixture } = await build();
     cmp.draft.form.name().value.set('Keep this');
 
     await emit(
@@ -315,12 +339,29 @@ describe('SpaceSettingsComponent', () => {
     );
 
     expect(cmp.draft.model().name).toBe('Keep this');
-    expect(cmp.draft.form.name().disabled()).toBe(true);
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="space-settings-name"]',
+    );
+    expect(name?.readOnly).toBe(true);
+    expect(name?.disabled).toBe(false);
+    expect(container.textContent).toContain(
+      'This unsaved Name edit is now read-only.',
+    );
     expect(
       container
         .querySelector('[data-testid="space-settings-save"]')
         ?.getAttribute('aria-disabled'),
     ).toBe('true');
+    container
+      .querySelector<HTMLButtonElement>(
+        '[data-testid="space-settings-discard"]',
+      )
+      ?.click();
+    await fixture.whenStable();
+    expect(cmp.draft.model().name).toBe('Original space');
+    expect(
+      container.querySelector('[data-testid="space-settings-general-actions"]'),
+    ).toBeNull();
   });
 
   it('retains drafts and explains when the opening target becomes unavailable', async () => {
@@ -331,6 +372,8 @@ describe('SpaceSettingsComponent', () => {
       spaceSnapshot({
         availability: 'room-unavailable',
         openingAccountActive: false,
+        identity: { name: '', topic: '', avatarMxc: null },
+        encrypted: null,
         permissions: {
           name: DENIED,
           topic: DENIED,
@@ -342,7 +385,20 @@ describe('SpaceSettingsComponent', () => {
     );
 
     expect(cmp.draft.model().topic).toBe('Keep after sign-out');
-    expect(cmp.draft.form.topic().disabled()).toBe(true);
+    expect(cmp.draft.snapshot()).toMatchObject({
+      identity: {
+        name: 'Original space',
+        topic: 'Original topic',
+        avatarMxc: 'mxc://hs/space',
+      },
+      encrypted: false,
+    });
+    expect(cmp.draft.permissions().name).toEqual(DENIED);
+    const topic = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="space-settings-topic"]',
+    );
+    expect(topic?.readOnly).toBe(true);
+    expect(topic?.disabled).toBe(false);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
       'Space is no longer joined',
     );
@@ -386,9 +442,19 @@ describe('SpaceSettingsComponent', () => {
     expect(close).toHaveBeenCalledWith(false);
   });
 
-  it('uses the first mobile Back for section-to-directory navigation', async () => {
+  it('opens an explicit mobile General shortcut directly', async () => {
+    const { cmp } = await build({ compact: true, initialSection: 'general' });
+    expect(cmp.directoryVisible()).toBe(false);
+    expect(cmp.selectedSection()).toBe('general');
+    expect(cmp.requestExternalDismiss()).toBe(false);
+    expect(cmp.directoryVisible()).toBe(true);
+  });
+
+  it('opens the mobile directory and uses Back to return after choosing General', async () => {
     const { cmp } = await build({ compact: true });
 
+    expect(cmp.directoryVisible()).toBe(true);
+    cmp.selectSection('general');
     expect(cmp.directoryVisible()).toBe(false);
     expect(cmp.requestExternalDismiss()).toBe(false);
     expect(cmp.directoryVisible()).toBe(true);

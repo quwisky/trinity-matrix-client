@@ -69,7 +69,7 @@
     trnBtn
     type="button"
     class="room-widget-create__submit"
-    [disabled]="form().invalid() || form().submitting()"
+    [disabled]="!editable() || form().invalid() || form().submitting()"
     (click)="add()"
     data-testid="room-widget-create-submit"
   >

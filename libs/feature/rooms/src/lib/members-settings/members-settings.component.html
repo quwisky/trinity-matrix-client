@@ -55,7 +55,7 @@
   </div>
 
   @if (snapshot(); as current) {
-    @if (current.unavailableReason; as reason) {
+    @if (showUnavailableReason() && current.unavailableReason; as reason) {
       <p class="members-settings__warning" role="status">
         {{ reason }}
       </p>

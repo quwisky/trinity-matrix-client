@@ -50,6 +50,7 @@ export class MembersSettingsComponent implements OnInit {
   readonly roomId = input.required<string>();
   readonly targetName = input.required<string>();
   readonly noun = input.required<'Room' | 'Space'>();
+  readonly showUnavailableReason = input(true);
   readonly direct = input(false);
 
   private readonly members = inject(RoomMembersService);

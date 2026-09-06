@@ -13,7 +13,7 @@
 
     legend {
       padding-inline: 4px;
-      font-size: 14px;
+      font-size: var(--trinity-type-body-size);
       font-weight: 600;
       color: var(--trinity-text-bright);
     }
@@ -21,7 +21,7 @@
 
   .room-widget-create__hint,
   .room-widget-create__error {
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
   }
 
   .room-widget-create__hint {

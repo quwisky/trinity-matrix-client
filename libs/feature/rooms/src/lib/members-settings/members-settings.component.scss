@@ -21,7 +21,7 @@
   .members-settings__warning {
     margin: 0;
     color: var(--trinity-text-muted);
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
     line-height: 1.5;
   }
 
@@ -50,7 +50,7 @@
     background: transparent;
     color: var(--trinity-text-muted);
     font: inherit;
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
     cursor: pointer;
   }
 
@@ -60,7 +60,7 @@
     border-radius: 999px;
     background: var(--trinity-surface-control);
     color: var(--trinity-text-muted);
-    font-size: 11px;
+    font-size: var(--trinity-type-caption-size);
     text-align: center;
   }
 

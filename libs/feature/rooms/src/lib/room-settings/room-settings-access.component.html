@@ -80,9 +80,7 @@
       </p>
     }
 
-    @if (
-      draft.accessDirty() || draft.mayEditJoinRule() || draft.mayEditHistory()
-    ) {
+    @if (draft.accessDirty()) {
       <div
         class="room-settings__actions"
         data-testid="room-settings-access-actions"

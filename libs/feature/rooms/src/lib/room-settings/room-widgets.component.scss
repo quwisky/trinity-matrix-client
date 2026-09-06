@@ -7,7 +7,7 @@
   }
 
   .room-widgets__note {
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
     color: var(--trinity-text-muted);
   }
 
@@ -34,7 +34,7 @@
     h3 {
       min-width: 0;
       overflow-wrap: anywhere;
-      font-size: 14px;
+      font-size: var(--trinity-type-body-size);
       font-weight: 600;
       color: var(--trinity-text-bright);
     }
@@ -42,7 +42,7 @@
     code {
       max-width: 100%;
       overflow-wrap: anywhere;
-      font-size: 12px;
+      font-size: var(--trinity-type-caption-size);
       color: var(--trinity-text-muted);
     }
   }
@@ -56,20 +56,20 @@
   }
 
   .room-widgets__label {
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
     font-weight: 500;
     color: var(--trinity-text-muted);
   }
 
   .room-widgets__url {
     overflow-wrap: anywhere;
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
     color: var(--trinity-text);
   }
 
   .room-widgets__warning {
     overflow-wrap: anywhere;
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
     color: var(--trinity-text-muted);
   }
 

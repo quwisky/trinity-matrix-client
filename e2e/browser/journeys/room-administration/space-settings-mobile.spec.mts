@@ -96,7 +96,7 @@ test.use({ ...devices['Pixel 5'] });
 test.describe('Space settings on a phone', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('uses a full-screen General-to-directory flow with protected drafts', async ({
+  test('opens the directory before General and protects drafts on the full-screen flow', async ({
     page,
     request,
   }) => {
@@ -143,10 +143,14 @@ test.describe('Space settings on a phone', () => {
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(
       (viewport?.height ?? 0) - 1,
     );
+    const directory = page.getByTestId('space-settings-directory');
+    const general = page.getByTestId('space-settings-tab-general');
+    await expect(directory).toBeVisible();
+    await expect(page.getByTestId('space-settings-panel-general')).toBeHidden();
+    await general.tap();
     await expect(
       page.getByTestId('space-settings-panel-general'),
     ).toBeVisible();
-    await expect(page.getByTestId('space-settings-directory')).toBeHidden();
     await expect(
       page.getByTestId('space-settings-section-heading'),
     ).toBeFocused();
@@ -160,7 +164,19 @@ test.describe('Space settings on a phone', () => {
     );
 
     const topic = page.getByTestId('space-settings-topic');
+    await expect(
+      page.getByTestId('space-settings-general-actions'),
+    ).toHaveCount(0);
     await topic.fill('A mobile draft');
+    const actions = page.getByTestId('space-settings-general-actions');
+    await expect(actions).toBeVisible();
+    await expect
+      .poll(() =>
+        actions.evaluate((element) => getComputedStyle(element).position),
+      )
+      .toBe('sticky');
+    await expect(page.getByTestId('space-settings-discard')).toBeVisible();
+    await expect(page.getByTestId('space-settings-save')).toBeVisible();
     await page.getByTestId('space-settings-mobile-back').tap();
     const discard = page.getByRole('dialog', {
       name: 'Discard Space settings changes?',
@@ -170,7 +186,6 @@ test.describe('Space settings on a phone', () => {
 
     await page.getByTestId('space-settings-mobile-back').tap();
     await discard.getByRole('button', { name: 'Discard changes' }).tap();
-    const directory = page.getByTestId('space-settings-directory');
     await expect(directory).toBeVisible();
     const spaceNameBox = await page
       .getByTestId('space-settings-space-name')
@@ -178,7 +193,6 @@ test.describe('Space settings on a phone', () => {
     expect(
       (spaceNameBox?.x ?? 0) + (spaceNameBox?.width ?? 0),
     ).toBeLessThanOrEqual((surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0));
-    const general = page.getByTestId('space-settings-tab-general');
     expect((await general.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
       44,
     );
@@ -228,12 +242,9 @@ test.describe('Space settings on a phone', () => {
     await expect(
       page.getByText(/Rooms inside it keep their own access/),
     ).toBeVisible();
-    const accessSaveBox = await page
-      .getByTestId('space-settings-save')
-      .boundingBox();
-    expect(
-      (accessSaveBox?.x ?? 0) + (accessSaveBox?.width ?? 0),
-    ).toBeLessThanOrEqual((surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0));
+    await expect(page.getByTestId('space-settings-access-actions')).toHaveCount(
+      0,
+    );
     await test.info().attach('space-access-mobile', {
       body: await settings.screenshot(),
       contentType: 'image/png',
@@ -355,6 +366,40 @@ test.describe('Space settings on a phone', () => {
     );
   });
 
+  test('opens the Members shortcut directly and returns to the directory', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}spmembers`;
+    const user = `space-members-${runId}`;
+    const pass = `${user}-pass`;
+    const spaceName = `Members shortcut ${runId}`;
+    await registerUser(request, user, pass);
+    const token = await tokenFor(request, hs, user, pass);
+    await createSpace(request, hs, token, spaceName);
+
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    const pill = page.getByRole('button', { name: spaceName, exact: true });
+    await pill.tap();
+    await page.getByTestId('space-actions-overflow').tap();
+    await page.getByTestId('open-space-members').tap();
+
+    await expect(page.getByTestId('space-settings-panel-members')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('space-settings-directory')).toBeHidden();
+    await expect(page.getByTestId('space-settings-section-heading')).toHaveText(
+      'Members',
+    );
+    await expect(page.getByTestId('space-settings-mobile-back')).toBeVisible();
+
+    await page.getByTestId('space-settings-mobile-back').tap();
+    const members = page.getByTestId('space-settings-tab-members');
+    await expect(members).toBeVisible();
+    await expect(members).toBeFocused();
+  });
+
   test('keeps a member’s Space General readable without writable controls', async ({
     page,
     request,
@@ -393,21 +438,23 @@ test.describe('Space settings on a phone', () => {
     } as SynapseSession);
     await openSpaceSettings(page, spaceName);
 
-    await expect(page.getByTestId('space-settings-name')).toHaveValue(
-      spaceName,
-      {
-        timeout: 10_000,
-      },
-    );
-    await expect(page.getByTestId('space-settings-name')).toBeDisabled();
-    await expect(page.getByTestId('space-settings-topic')).toBeDisabled();
-    await expect(page.getByTestId('space-settings-save')).toBeDisabled();
+    await page.getByTestId('space-settings-tab-general').tap();
+    const name = page.getByTestId('space-settings-name');
+    const topic = page.getByTestId('space-settings-topic');
+    await expect(name).toHaveText(spaceName, { timeout: 10_000 });
+    await expect(topic).toHaveText('No topic set.');
+    await expect
+      .poll(() => name.evaluate((element) => element.tagName))
+      .toBe('P');
+    await expect
+      .poll(() => topic.evaluate((element) => element.tagName))
+      .toBe('P');
+    await expect(
+      page.getByTestId('space-settings-general-actions'),
+    ).toHaveCount(0);
     const surface = page.getByTestId('space-settings');
     const surfaceBox = await surface.boundingBox();
-    const saveBox = await page.getByTestId('space-settings-save').boundingBox();
-    expect((saveBox?.x ?? 0) + (saveBox?.width ?? 0)).toBeLessThanOrEqual(
-      (surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0),
-    );
+    expect(surfaceBox?.width ?? 0).toBeGreaterThan(0);
     await test.info().attach('space-settings-mobile-read-only', {
       body: await surface.screenshot(),
       contentType: 'image/png',

@@ -91,6 +91,7 @@ function roomSnapshot(
 
 interface BuildOptions {
   readonly compact?: boolean;
+  readonly initialSection?: 'general';
   readonly canManageWidgets?: boolean;
   readonly initial?: RoomSettingsSnapshot;
   readonly setName?: Mock;
@@ -105,6 +106,7 @@ interface BuildOptions {
 }
 
 async function build(options: BuildOptions = {}) {
+  vi.stubGlobal('innerWidth', options.compact ? 393 : 1280);
   vi.stubGlobal(
     'matchMedia',
     vi.fn((query: string) => ({
@@ -136,6 +138,7 @@ async function build(options: BuildOptions = {}) {
 
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
+      initialSection: options.initialSection,
       accountId: TARGET.accountId,
       roomId: TARGET.roomId,
       roomDisplayName: 'Fallback room',
@@ -339,9 +342,19 @@ describe('RoomSettingsComponent', () => {
     expect(close).toHaveBeenCalledWith(false);
   });
 
-  it('uses the first mobile Back for section-to-directory navigation', async () => {
+  it('opens an explicit mobile General shortcut directly', async () => {
+    const { cmp } = await build({ compact: true, initialSection: 'general' });
+    expect(cmp.directoryVisible()).toBe(false);
+    expect(cmp.selectedSection()).toBe('general');
+    expect(cmp.requestExternalDismiss()).toBe(false);
+    expect(cmp.directoryVisible()).toBe(true);
+  });
+
+  it('opens the mobile directory and uses Back to return after choosing General', async () => {
     const { cmp } = await build({ compact: true });
 
+    expect(cmp.directoryVisible()).toBe(true);
+    cmp.selectSection('general');
     expect(cmp.directoryVisible()).toBe(false);
     expect(cmp.requestExternalDismiss()).toBe(false);
     expect(cmp.directoryVisible()).toBe(true);
@@ -350,6 +363,7 @@ describe('RoomSettingsComponent', () => {
 
   it('requires discard before mobile Back can abandon a dirty section', async () => {
     const { cmp, confirmResult } = await build({ compact: true });
+    cmp.selectSection('general');
     cmp.draft.form.name().value.set('Mobile draft');
 
     expect(cmp.requestExternalDismiss()).toBe(false);
@@ -379,8 +393,29 @@ describe('RoomSettingsComponent', () => {
     });
   });
 
-  it('preserves drafts and disables writes when permission disappears live', async () => {
-    const { cmp, container, emit } = await build();
+  it('shows an ordinary read-only Room detail as a selectable value with its reason', async () => {
+    const { container } = await build({
+      initial: roomSnapshot({ permissions: { name: DENIED } }),
+    });
+
+    expect(
+      container.querySelector('[data-testid="room-settings-name"]')?.tagName,
+    ).toBe('P');
+    expect(
+      container.querySelector('[data-testid="room-settings-name"]')
+        ?.textContent,
+    ).toContain('Original room');
+    expect(container.textContent).toContain(DENIED.reason);
+    expect(
+      container.querySelector('[data-testid="room-settings-topic"]')?.tagName,
+    ).toBe('TEXTAREA');
+    expect(
+      container.querySelector('[data-testid="room-settings-general-actions"]'),
+    ).toBeNull();
+  });
+
+  it('keeps a permission-blocked Room draft readable and discardable', async () => {
+    const { cmp, container, emit, fixture } = await build();
     cmp.draft.form.name().value.set('Keep this');
 
     emit(
@@ -390,12 +425,27 @@ describe('RoomSettingsComponent', () => {
     );
 
     expect(cmp.draft.model().name).toBe('Keep this');
-    expect(cmp.draft.form.name().disabled()).toBe(true);
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="room-settings-name"]',
+    );
+    expect(name?.readOnly).toBe(true);
+    expect(name?.disabled).toBe(false);
+    expect(container.textContent).toContain(
+      'This unsaved Name edit is now read-only.',
+    );
     expect(
       container
         .querySelector('[data-testid="room-settings-save"]')
         ?.getAttribute('aria-disabled'),
     ).toBe('true');
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="room-settings-discard"]')
+      ?.click();
+    await fixture.whenStable();
+    expect(cmp.draft.model().name).toBe('Original room');
+    expect(
+      container.querySelector('[data-testid="room-settings-general-actions"]'),
+    ).toBeNull();
   });
 
   it('retains drafts with an explanation when the opening Account signs out', async () => {
@@ -408,6 +458,8 @@ describe('RoomSettingsComponent', () => {
         unavailableReason:
           'This Account is no longer available. Your unfinished edits are still here.',
         openingAccountActive: false,
+        identity: { name: '', topic: '', avatarMxc: null },
+        encrypted: null,
         permissions: {
           name: DENIED,
           topic: DENIED,
@@ -420,7 +472,20 @@ describe('RoomSettingsComponent', () => {
     );
 
     expect(cmp.draft.model().topic).toBe('Keep after sign-out');
-    expect(cmp.draft.form.topic().disabled()).toBe(true);
+    expect(cmp.draft.snapshot()).toMatchObject({
+      identity: {
+        name: 'Original room',
+        topic: 'Original topic',
+        avatarMxc: 'mxc://hs/room',
+      },
+      encrypted: true,
+    });
+    expect(cmp.draft.permissions().name).toEqual(DENIED);
+    const topic = container.querySelector<HTMLTextAreaElement>(
+      '[data-testid="room-settings-topic"]',
+    );
+    expect(topic?.readOnly).toBe(true);
+    expect(topic?.disabled).toBe(false);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
       'unfinished edits',
     );

@@ -13,21 +13,21 @@
     align-items: center;
     gap: 8px;
     min-height: 40px;
-    font-size: 14px;
+    font-size: var(--trinity-type-body-size);
     cursor: pointer;
   }
 
   .room-settings__error {
     margin: 0;
     color: var(--trinity-danger);
-    font-size: 13px;
+    font-size: var(--trinity-type-caption-size);
   }
 
   .room-settings__hint,
   .room-settings__restriction {
     margin: 0;
     color: var(--trinity-text-muted);
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
     line-height: 1.45;
   }
 

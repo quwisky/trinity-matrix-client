@@ -9,7 +9,6 @@ import {
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import type { SpaceContentsTarget } from '@trinity/data-access/room-library';
-import { initialOf } from '@trinity/util/matrix';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
@@ -33,31 +32,43 @@ const SECTIONS: readonly (SettingsHubSection & {
 })[] = [
   {
     value: 'general',
+    icon: 'settings',
+    group: 'Overview',
     label: 'General',
     description: 'Photo, name, and topic',
   },
   {
     value: 'for-you',
+    icon: 'user',
+    group: 'Personal',
     label: 'For you',
     description: 'Your room order on this device',
   },
   {
     value: 'access',
+    icon: 'lock',
+    group: 'Manage',
     label: 'Access',
     description: 'Who can join this Space',
   },
   {
     value: 'contents',
+    icon: 'layers',
+    group: 'Manage',
     label: 'Rooms & spaces',
     description: 'Linked Rooms and nested Spaces',
   },
   {
     value: 'members',
+    icon: 'users',
+    group: 'Manage',
     label: 'Members',
     description: 'People, roles, invitations, and bans',
   },
   {
     value: 'addresses',
+    icon: 'link',
+    group: 'Manage',
     label: 'Addresses',
     description: 'Published Space links',
   },
@@ -87,7 +98,7 @@ export class SpaceSettingsComponent implements OnInit {
   readonly accountId = input.required<string>();
   readonly spaceId = input.required<string>();
   readonly spaceDisplayName = input('Space');
-  readonly initialSection = input<SpaceSettingsSection>('general');
+  readonly initialSection = input<SpaceSettingsSection>();
   readonly draft = inject(SpaceSettingsDraftService);
   readonly forYou = inject(SpaceSettingsForYouDraftService);
   readonly hub = new SettingsHubController({
@@ -103,7 +114,6 @@ export class SpaceSettingsComponent implements OnInit {
       this.forYou.discard();
     },
   });
-  readonly mobileHost = this.hub.mobileHost;
   readonly sections = SECTIONS;
   readonly selectedSection = this.hub.selectedSection;
   readonly directoryVisible = this.hub.directoryVisible;
@@ -111,12 +121,11 @@ export class SpaceSettingsComponent implements OnInit {
   readonly account = computed(() =>
     this.identities.identityOf(this.accountId()),
   );
-  readonly accountInitial = computed(() =>
-    initialOf(this.account().displayName),
-  );
-  readonly spaceInitial = computed(() =>
-    initialOf(this.draft.model().name || this.spaceDisplayName()),
-  );
+
+  readonly accountLabel = computed(() => {
+    const { displayName, userId } = this.account();
+    return displayName === userId ? userId : `${displayName} (${userId})`;
+  });
   readonly contentsTarget = computed<SpaceContentsTarget>(() => ({
     accountId: this.accountId(),
     spaceId: this.spaceId(),
@@ -135,7 +144,8 @@ export class SpaceSettingsComponent implements OnInit {
       accountId: this.accountId(),
       spaceId: this.spaceId(),
     });
-    this.hub.selectSection(this.initialSection());
+    const initialSection = this.initialSection();
+    if (initialSection) this.hub.selectSection(initialSection);
     this.hub.activate();
   }
 

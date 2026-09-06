@@ -88,29 +88,31 @@
           </p>
         }
 
-        <div class="space-settings__actions">
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="ghost"
-            [disabled]="!draft.dirty() || draft.saving()"
-            data-testid="space-settings-for-you-discard"
-            (click)="draft.discard()"
-          >
-            Discard
-          </button>
-          <button
-            trnBtn
-            type="submit"
-            [disabled]="
-              !draft.dirty() || draft.saving() || draft.form.mode().disabled()
-            "
-            data-testid="space-settings-for-you-save"
-          >
-            {{ draft.saving() ? 'Saving…' : 'Save preference' }}
-          </button>
-        </div>
+        @if (draft.dirty()) {
+          <div class="space-settings__actions">
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              [disabled]="!draft.dirty() || draft.saving()"
+              data-testid="space-settings-for-you-discard"
+              (click)="draft.discard()"
+            >
+              Discard
+            </button>
+            <button
+              trnBtn
+              type="submit"
+              [disabled]="
+                !draft.dirty() || draft.saving() || draft.form.mode().disabled()
+              "
+              data-testid="space-settings-for-you-save"
+            >
+              {{ draft.saving() ? 'Saving…' : 'Save preference' }}
+            </button>
+          </div>
+        }
       </form>
     }
   }

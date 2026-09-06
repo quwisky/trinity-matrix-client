@@ -30,43 +30,108 @@
 
   <section class="space-settings__card space-settings__fields">
     <h3>Space details</h3>
-    <label class="space-settings__field">
-      <span class="space-settings__label">Name</span>
-      <input
-        trnInput
-        class="w-full"
-        [formField]="draft.form.name"
-        autocomplete="off"
-        data-testid="space-settings-name"
-        aria-describedby="space-settings-name-help"
-      />
+    <div class="space-settings__field">
+      <span id="space-settings-name-label" class="space-settings__label"
+        >Name</span
+      >
+      @if (draft.mayEditName()) {
+        <input
+          trnInput
+          class="w-full"
+          [formField]="draft.form.name"
+          autocomplete="off"
+          data-testid="space-settings-name"
+          aria-labelledby="space-settings-name-label"
+          aria-describedby="space-settings-name-help"
+        />
+      } @else if (draft.nameHasPermissionBlockedEdit()) {
+        <input
+          trnInput
+          class="space-settings__readonly-value w-full"
+          [value]="draft.model().name"
+          readonly
+          aria-readonly="true"
+          data-testid="space-settings-name"
+          aria-labelledby="space-settings-name-label"
+          aria-describedby="space-settings-name-help space-settings-name-blocked"
+        />
+      } @else {
+        <p
+          class="space-settings__static-value"
+          data-testid="space-settings-name"
+        >
+          {{ draft.model().name || 'No name set.' }}
+        </p>
+      }
       <span id="space-settings-name-help" class="space-settings__hint">
         Shown in the Space rail and anywhere this Space is linked.
       </span>
-      @if (draft.nameEmpty()) {
+      @if (draft.nameHasPermissionBlockedEdit()) {
+        <span
+          id="space-settings-name-blocked"
+          class="space-settings__restriction"
+        >
+          This unsaved Name edit is now read-only.
+          {{ draft.permissions().name.reason }}
+          Discard it to return to the saved value.
+        </span>
+      } @else if (draft.nameEmpty()) {
         <span class="space-settings__restriction">A Space needs a name.</span>
       } @else if (!draft.mayEditName()) {
         <span class="space-settings__restriction">
           {{ draft.permissions().name.reason }}
         </span>
       }
-    </label>
+    </div>
 
-    <label class="space-settings__field">
-      <span class="space-settings__label">Topic</span>
-      <textarea
-        trnTextarea
-        class="space-settings__topic w-full"
-        [formField]="draft.form.topic"
-        rows="4"
-        data-testid="space-settings-topic"
-      ></textarea>
-      @if (!draft.mayEditTopic()) {
+    <div class="space-settings__field">
+      <span id="space-settings-topic-label" class="space-settings__label"
+        >Topic</span
+      >
+      @if (draft.mayEditTopic()) {
+        <textarea
+          trnTextarea
+          class="space-settings__topic w-full"
+          [formField]="draft.form.topic"
+          rows="4"
+          data-testid="space-settings-topic"
+          aria-labelledby="space-settings-topic-label"
+        ></textarea>
+      } @else if (draft.topicHasPermissionBlockedEdit()) {
+        <textarea
+          trnTextarea
+          class="space-settings__readonly-value space-settings__topic w-full"
+          [value]="draft.model().topic"
+          readonly
+          aria-readonly="true"
+          rows="4"
+          data-testid="space-settings-topic"
+          aria-labelledby="space-settings-topic-label"
+          aria-describedby="space-settings-topic-blocked"
+        ></textarea>
+      } @else {
+        <p
+          class="space-settings__static-value"
+          data-testid="space-settings-topic"
+        >
+          {{ draft.model().topic || 'No topic set.' }}
+        </p>
+      }
+      @if (draft.topicHasPermissionBlockedEdit()) {
+        <span
+          id="space-settings-topic-blocked"
+          class="space-settings__restriction"
+        >
+          This unsaved Topic edit is now read-only.
+          {{ draft.permissions().topic.reason }}
+          Discard it to return to the saved value.
+        </span>
+      } @else if (!draft.mayEditTopic()) {
         <span class="space-settings__restriction">
           {{ draft.permissions().topic.reason }}
         </span>
       }
-    </label>
+    </div>
   </section>
 
   @if (draft.generalFeedback(); as feedback) {
@@ -81,32 +146,37 @@
     </p>
   }
 
-  <div class="space-settings__actions">
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="ghost"
-      [disabled]="!draft.generalDirty() || draft.saving() === 'general'"
-      data-testid="space-settings-discard"
-      (click)="draft.discardGeneral()"
+  @if (draft.generalDirty()) {
+    <div
+      class="space-settings__actions"
+      data-testid="space-settings-general-actions"
     >
-      Discard
-    </button>
-    <button
-      trnBtn
-      type="submit"
-      [trnActionAllowed]="draft.mayEditName() || draft.mayEditTopic()"
-      [trnActionDisabledReason]="draft.generalSaveUnavailableReason()"
-      [trnTooltip]="draft.generalSaveUnavailableReason()"
-      [disabled]="
-        !draft.generalHasWritableChanges() ||
-        draft.nameEmpty() ||
-        draft.saving() === 'general'
-      "
-      data-testid="space-settings-save"
-    >
-      {{ draft.saving() === 'general' ? 'Saving…' : 'Save changes' }}
-    </button>
-  </div>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        [disabled]="draft.saving() === 'general'"
+        data-testid="space-settings-discard"
+        (click)="draft.discardGeneral()"
+      >
+        Discard
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [trnActionAllowed]="draft.mayEditName() || draft.mayEditTopic()"
+        [trnActionDisabledReason]="draft.generalSaveUnavailableReason()"
+        [trnTooltip]="draft.generalSaveUnavailableReason()"
+        [disabled]="
+          !draft.generalHasWritableChanges() ||
+          draft.nameEmpty() ||
+          draft.saving() === 'general'
+        "
+        data-testid="space-settings-save"
+      >
+        {{ draft.saving() === 'general' ? 'Saving…' : 'Save changes' }}
+      </button>
+    </div>
+  }
 </form>

@@ -1,19 +1,13 @@
 <trn-settings-hub
   testId="space-settings"
   noun="Space"
-  [accountId]="accountId()"
-  [accountName]="account().displayName"
-  [accountAvatarMxc]="account().avatarMxc"
-  [accountInitial]="accountInitial()"
+  [accountName]="accountLabel()"
   [targetName]="draft.model().name || spaceDisplayName()"
-  [targetAvatarMxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
-  [targetInitial]="spaceInitial()"
   [sections]="sections"
   [selectedSection]="selectedSection()"
   [sectionTitle]="sectionTitle()"
   [compactNavigation]="compactNavigation()"
   [directoryVisible]="directoryVisible()"
-  [mobileHost]="mobileHost"
   [unavailableReason]="draft.targetUnavailableReason()"
   (sectionSelected)="selectSection($event)"
   (directoryRequested)="showDirectory()"
@@ -35,6 +29,7 @@
     }
     @case ('contents') {
       <trn-space-settings-contents
+        [showUnavailableReason]="draft.targetAvailable()"
         [target]="contentsTarget()"
         [spaceName]="draft.model().name || spaceDisplayName()"
       />
@@ -42,6 +37,7 @@
     @case ('members') {
       <section data-testid="space-settings-panel-members">
         <trn-members-settings
+          [showUnavailableReason]="draft.targetAvailable()"
           [accountId]="accountId()"
           [roomId]="spaceId()"
           [targetName]="draft.model().name || spaceDisplayName()"
@@ -50,21 +46,13 @@
       </section>
     }
     @case ('addresses') {
-      <section
-        class="space-settings__section-panel"
-        data-testid="space-settings-panel-addresses"
-      >
-        @if (draft.targetUnavailableReason(); as reason) {
-          <p class="space-settings__target-warning" role="status">
-            {{ reason }}
-          </p>
-        } @else {
-          <trn-room-aliases
-            [accountId]="accountId()"
-            [roomId]="spaceId()"
-            noun="Space"
-          />
-        }
+      <section data-testid="space-settings-panel-addresses">
+        <trn-room-aliases
+          [accountId]="accountId()"
+          [roomId]="spaceId()"
+          [available]="draft.targetAvailable()"
+          noun="Space"
+        />
       </section>
     }
   }
