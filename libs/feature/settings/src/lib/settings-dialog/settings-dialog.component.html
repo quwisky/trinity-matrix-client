@@ -1,6 +1,6 @@
 <trn-settings-layout
   title="Settings"
-  [sections]="layoutSections"
+  [sections]="layoutSections()"
   [selectedSection]="selectedPath()"
   [compact]="!wide()"
   [directoryVisible]="wide() || !selectedPath()"
@@ -12,6 +12,11 @@
   (backRequested)="goBackOrClose()"
   (closeRequested)="close()"
 >
+  <trn-settings-directory-search
+    settings-directory-header
+    [(query)]="query"
+    [count]="layoutSections().length"
+  />
   @if (selectedSection(); as section) {
     <ng-container
       [ngComponentOutlet]="section.component"

@@ -4,7 +4,6 @@
   size="2xl"
   [layout]="surfaceLayout()"
   class="settings-layout"
-  [class.settings-layout--compact]="compact()"
   [style.width]="compact() ? '100vw' : null"
   [style.height]="compact() ? '100dvh' : null"
   [attr.data-testid]="testId()"
@@ -54,6 +53,7 @@
       [attr.aria-label]="directoryLabel()"
       [attr.data-testid]="testId() + '-directory'"
     >
+      <ng-content select="[settings-directory-header]" />
       @for (section of sections(); track section.id; let index = $index) {
         @if (isGroupStart(index)) {
           <p class="settings-layout__group">{{ section.group }}</p>

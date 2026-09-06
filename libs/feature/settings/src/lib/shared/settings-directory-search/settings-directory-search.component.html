@@ -1,0 +1,41 @@
+<div class="flex min-w-0 items-center gap-1">
+  <label class="min-w-0 flex-1">
+    <span class="sr-only">Search settings</span>
+    <input
+      #search
+      trnInput
+      type="search"
+      class="w-full [&::-webkit-search-cancel-button]:appearance-none"
+      placeholder="Search settings"
+      autocomplete="off"
+      data-testid="settings-search"
+      [value]="query()"
+      (input)="query.set(search.value)"
+    />
+  </label>
+  @if (query()) {
+    <button
+      trnBtn
+      type="button"
+      presentation="ghost"
+      shape="icon"
+      size="md"
+      aria-label="Clear search"
+      data-testid="settings-search-clear"
+      (click)="query.set(''); search.focus()"
+    >
+      <trn-icon name="x" motion="rotate" />
+    </button>
+  }
+</div>
+<p
+  role="status"
+  aria-live="polite"
+  aria-atomic="true"
+  class="mt-2 text-sm text-muted-foreground"
+>
+  {{ count() }} {{ count() === 1 ? 'section' : 'sections' }} found
+  @if (count() === 0) {
+    <span class="block">No sections found.</span>
+  }
+</p>

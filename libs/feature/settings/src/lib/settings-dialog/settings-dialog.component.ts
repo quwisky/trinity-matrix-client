@@ -24,13 +24,19 @@ import { textScaledViewportSignal } from '@trinity/util/ui';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
+  matchingSettingsSections,
   type SettingsSectionDefinition,
 } from '../settings-sections';
+import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
 
 @Component({
   selector: 'trn-settings-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgComponentOutlet, TrnSettingsLayoutComponent],
+  imports: [
+    NgComponentOutlet,
+    TrnSettingsLayoutComponent,
+    SettingsDirectorySearchComponent,
+  ],
   templateUrl: './settings-dialog.component.html',
   styleUrl: './settings-dialog.component.scss',
 })
@@ -42,17 +48,24 @@ export class SettingsDialogComponent {
   private readonly environmentInjector = inject(EnvironmentInjector);
   private readonly document = inject(DOCUMENT);
   private readonly layout = viewChild(TrnSettingsLayoutComponent);
+  private readonly directorySearch = viewChild(
+    SettingsDirectorySearchComponent,
+  );
   private appliedInitialSection?: string;
 
   readonly initialSection = input<string>();
   readonly initialSource = input<string>();
-  readonly layoutSections: readonly TrnSettingsLayoutSection[] =
-    SETTINGS_SECTIONS.map(({ path, label, icon, group }) => ({
-      id: path,
-      label,
-      icon,
-      group,
-    }));
+  readonly query = signal('');
+  readonly layoutSections = computed<readonly TrnSettingsLayoutSection[]>(() =>
+    matchingSettingsSections(this.query()).map(
+      ({ path, label, icon, group }) => ({
+        id: path,
+        label,
+        icon,
+        group,
+      }),
+    ),
+  );
   readonly buildLabel = `Trinity v${this.build.version} · ${this.build.commit}`;
   readonly wide = textScaledViewportSignal(48, this.destroyRef);
   readonly selectedPath = signal<string | null>(null);
@@ -107,9 +120,16 @@ export class SettingsDialogComponent {
     const selected = this.selectedPath();
     if (!this.wide() && selected) {
       this.selectedPath.set(null);
-      afterNextRender(() => this.layout()?.focusSectionLink(selected), {
-        injector: this.injector,
-      });
+      afterNextRender(
+        () => {
+          if (this.layoutSections().some(({ id }) => id === selected)) {
+            this.layout()?.focusSectionLink(selected);
+          } else {
+            this.directorySearch()?.focus();
+          }
+        },
+        { injector: this.injector },
+      );
       return;
     }
     this.ref.close();

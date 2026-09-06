@@ -127,3 +127,14 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
     component: AdvancedSettingsComponent,
   },
 ];
+
+/** Search only directory metadata; section routes and selected content remain authoritative. */
+export function matchingSettingsSections(
+  query: string,
+): readonly SettingsSectionDefinition[] {
+  const term = query.trim().toLowerCase();
+  return SETTINGS_SECTIONS.filter(
+    ({ label, group }) =>
+      label.toLowerCase().includes(term) || group.toLowerCase().includes(term),
+  );
+}

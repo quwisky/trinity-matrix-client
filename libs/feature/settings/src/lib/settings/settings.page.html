@@ -24,8 +24,12 @@
       aria-label="Settings sections"
       [class.settings-pane--hidden]="sectionActive() && !wide()"
     >
-      @for (item of menu; track item.path; let index = $index) {
-        @if (index === 0 || menu[index - 1].group !== item.group) {
+      <trn-settings-directory-search
+        [(query)]="query"
+        [count]="menu().length"
+      />
+      @for (item of menu(); track item.path; let index = $index) {
+        @if (index === 0 || menu()[index - 1].group !== item.group) {
           <p class="settings-nav__group">{{ item.group }}</p>
         }
         <!-- `is-active` carries no styles of its own; it is the hook the icon's

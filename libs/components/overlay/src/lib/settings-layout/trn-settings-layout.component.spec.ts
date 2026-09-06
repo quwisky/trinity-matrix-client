@@ -25,6 +25,7 @@ const sections: readonly TrnSettingsLayoutSection[] = [
     >
       <span settings-context>Context</span>
       <p settings-warning>Warning</p>
+      <p settings-directory-header>Directory controls</p>
       <p settings-nav-footer>Build 1</p>
       <h2>General</h2>
     </trn-settings-layout>
@@ -58,6 +59,9 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(container.querySelector('nav')?.getAttribute('aria-label')).toBe(
       'Preferences sections',
     );
+    expect(
+      container.querySelector('nav [settings-directory-header]')?.textContent,
+    ).toBe('Directory controls');
     expect(
       container.querySelector('[settings-context]')?.textContent,
     ).toContain('Context');

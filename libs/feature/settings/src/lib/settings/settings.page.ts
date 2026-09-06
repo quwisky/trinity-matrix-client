@@ -28,7 +28,11 @@ import { PageHeaderComponent } from '@trinity/components/navigation-layout';
 import { BUILD_INFO } from '@trinity/platform-native';
 import { MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { SETTINGS_SECTIONS } from '../settings-sections';
+import {
+  SETTINGS_SECTIONS,
+  matchingSettingsSections,
+} from '../settings-sections';
+import { SettingsDirectorySearchComponent } from '../shared/settings-directory-search/settings-directory-search.component';
 
 /**
  * Settings shell: a submenu of sections beside a routed detail outlet. On the wide
@@ -50,6 +54,7 @@ import { SETTINGS_SECTIONS } from '../settings-sections';
     class: 'settings-page',
   },
   imports: [
+    SettingsDirectorySearchComponent,
     PageHeaderComponent,
     TrnIconComponent,
     TrnButton,
@@ -71,7 +76,8 @@ export class SettingsPage {
   private readonly detail = viewChild<ElementRef<HTMLElement>>('detail');
   private lastFocusedSection: string | null = null;
 
-  readonly menu = SETTINGS_SECTIONS;
+  readonly query = signal('');
+  readonly menu = computed(() => matchingSettingsSections(this.query()));
   /** A narrow directory click adds `/settings` behind the section in history. */
   private readonly narrowSectionPushed = signal(false);
 
@@ -146,18 +152,21 @@ export class SettingsPage {
     );
   }
 
-  /** Mark the mobile directory link that the shell focus manager should restore. */
+  /** Restore the originating entry, or search when the open section was filtered out. */
   private markDirectoryFocusTarget(): void {
     const path = this.currentSection() ?? this.lastFocusedSection;
     if (!path) {
       return;
     }
     this.clearRouteFocusTargets();
-    const link = this.nav()?.nativeElement.querySelector<HTMLElement>(
-      `[data-testid="settings-nav-${path}"]`,
-    );
-    if (link) {
-      link.dataset['routeFocus'] = '';
+    const directory = this.nav()?.nativeElement;
+    const focusTarget =
+      directory?.querySelector<HTMLElement>(
+        `[data-testid="settings-nav-${path}"]`,
+      ) ??
+      directory?.querySelector<HTMLElement>('[data-testid="settings-search"]');
+    if (focusTarget) {
+      focusTarget.dataset['routeFocus'] = '';
     }
   }
 

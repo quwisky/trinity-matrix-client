@@ -532,6 +532,11 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'visual',
   },
   {
+    path: 'journeys/settings/settings-directory-search.spec.mts',
+    capability: 'settings',
+    contractType: 'journey',
+  },
+  {
     path: 'journeys/settings/switch-state.spec.mts',
     capability: 'settings',
     contractType: 'visual',

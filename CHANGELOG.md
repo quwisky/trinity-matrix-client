@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- Search the Settings directory by section name or group in both the page and dialog.
+  Keyboard-accessible clear and result announcements accompany filtering, while selected
+  sections, mobile Back focus, navigation history and the search during resizing are preserved.
+  Shared Settings frames also return to side-by-side panes when a compact window is widened.
+
 ### Changed
 
 - Install project-scoped Astra orchestration and Luna execution defaults, specialized
