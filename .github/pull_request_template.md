@@ -1,34 +1,32 @@
-<!-- Keep applicable sections and delete empty ones. Put breaking changes first.
-Use a Conventional Commit title. See docs/contributing/conventions.md for the
-contribution policy and docs/contributing/testing.md for validation selection. -->
+<!-- Keep this concise. Put breaking changes first and use a Conventional Commit title.
+See docs/contributing/conventions.md for contribution policy. Remove Notes when
+empty; do not add blanket checklists.
+Update relevant docs and the changelog before review. Never include access tokens,
+recovery keys or private message content. Coordinate vulnerability fixes privately
+through the security contact in the issue chooser. -->
 
-## What
+## Change
 
-<!-- What changes for the reader or user? One or two sentences. -->
+<!-- What changes for the user or contributor, and why? Include design details only
+when they help a reviewer understand an approach that is not obvious from the diff. -->
 
-## Why
+## Related issue
 
-<!-- The problem or linked issue. Omit for a trivial, self-explanatory change. -->
+<!-- Use Closes #123 only when this PR resolves the issue; use Refs #123 for partial
+or related work. Write "None" if there is no issue. -->
 
-## How
+## Validation
 
-<!-- Only non-obvious design decisions and constraints a reviewer needs. -->
-
-## Testing
-
-<!-- List commands actually run, outcomes and the host/configuration tested.
-Unit tests do not typecheck specs or prove browser layout. CSS and SCSS have a
-separate stylelint gate. Distinguish a failure, a skipped check and a missing
-prerequisite; never call an unexecuted check passing. Select scope using the
-contributor testing guide. -->
+<!-- What did you actually check, and what happened? Give the commands or manual
+steps, outcomes, and tested platforms. Distinguish verified behavior from assumptions.
+State failed or skipped checks, missing prerequisites, and affected platforms not tested.
+For docs-only changes, report the relevant formatting, link or template checks.
+Select checks using docs/contributing/testing.md; unit tests do not replace
+TypeScript checks or rendered browser/native validation. CSS and SCSS also have
+a separate stylelint gate. -->
 
 ## Notes
 
-<!-- Known gaps, platform limits, follow-ups and migration steps. Flag changes to
-migrations, secrets, infrastructure configuration or public APIs here.
-Update documentation and CHANGELOG when required by the contribution policy.
-Keep secrets, recovery keys and real message content out of the PR and fixtures.
-Coordinate vulnerability reports and fixes privately before public disclosure; use
-the Security vulnerability contact in the repository issue chooser
-(.github/ISSUE_TEMPLATE/config.yml).
-Delete this section when empty. -->
+<!-- Optional: remaining work, known limitations, migration/configuration steps,
+or anything needing particular review. Flag migrations, secrets handling,
+infrastructure configuration and public API changes. Delete this section if empty. -->
