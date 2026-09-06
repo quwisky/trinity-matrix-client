@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Install project-scoped Astra orchestration and Luna execution defaults, specialized
+  Codex roles and the upstream astra-orchestrator skill, preserving Trinity role
+  instructions and existing planner/implementer names.
+
 - Settings, Room settings and Space settings now share the same dialog layout, icon navigation,
   typography and section presentation. Room and Space context stays visible beneath the title;
   mobile opens the section directory unless a shortcut selects a section. Larger text also adapts

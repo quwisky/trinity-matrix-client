@@ -12,7 +12,7 @@ no skill invocation tool, read the file with the tools it exposes.
 [skill overrides](skill-overrides.md) adapt upstream workflows to Trinity.
 Roles select work responsibilities and model defaults; skills supply task guidance.
 
-The checkout contains **22 CLI-managed skill imports and four local skill entrypoints**.
+The checkout contains **22 CLI-managed skill imports and four local skill entrypoints, plus one manually vendored orchestration skill**.
 The [lockfile](../skills-lock.json) records managed sources, source paths, and content
 hashes; it does not record immutable commit references. Keep managed files under CLI
 ownership and put Trinity-specific behavior in the overrides. The four local
@@ -56,6 +56,12 @@ marketing-page workflows, fixed visual presets, and generic reference sheets bel
 outside it. For product design, read the [design overrides](skill-overrides.md#product-design)
 and preserve Trinity tokens, public components, interaction models, and accessibility.
 A skill mentioning an external service does not require installing or paying for it.
+
+## Use the vendored orchestration skill
+
+[astra-orchestrator](skills/astra-orchestrator/SKILL.md) coordinates complex coding
+work with Astra and Luna. Its pinned source, local adaptations and update procedure
+are recorded in [role routing](roles.md#upstream-installation-and-maintenance).
 
 ## Use a repository-owned reference
 

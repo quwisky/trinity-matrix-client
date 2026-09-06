@@ -65,11 +65,12 @@ tooling ownership.
 ## Models and runtime choices
 
 The [role definitions](../../.agents/roles.md#use-the-configured-defaults-deliberately)
-select Astra with high effort for planning/review and Terra with high effort for
-implementation. They leave the main session's model unchanged. That reference
-explains named-role precedence, explicit delegation overrides, unavailable runtime
-features, and the separate built-in `review_model` setting. Confirm which mechanism
-your client actually exposes before relying on a model choice.
+configure Astra for orchestration, planning and review, and Luna for execution.
+The project also includes explorer, worker, tester and researcher roles from the
+[astra-orchestrator skill](../../.agents/skills/astra-orchestrator/SKILL.md).
+Start a new Codex session in a trusted checkout to load project settings, or
+invoke `$astra-orchestrator` for its workflow. User model choices take precedence.
+See role routing for defaults, maintenance and runtime limitations.
 
 ## Keep evidence fresh
 
