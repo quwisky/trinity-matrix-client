@@ -25,6 +25,11 @@ All notable changes to this project are documented here. The format is based on
   the navigation layout. Pending section edits reveal Save and Discard, while read-only General
   details remain selectable and permission loss preserves clearly marked unfinished edits.
 
+- System Status now reuses the public Settings layout for its desktop directory/detail view and
+  compact mobile navigation. Overview is the default, the directory keeps only actionable capability
+  groups alongside Overview and Support details, and Back returns from detail to the directory before
+  dismissing. Compact geometry follows text scaling independently from the OS-selected mobile sheet.
+
 - The Storybook Axe scan concurrency regression now has a dedicated accessibility-helper spec,
   leaving the navigation and overlay catalog focused on product-surface behavior while retaining
   distinct scan-owner and completion proof with retries disabled.

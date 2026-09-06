@@ -372,7 +372,7 @@ export class TrinityApplicationSessionAdapter {
                 return of(void 0);
               }
               if (this.statusVisibility.open()) {
-                this.statusVisibility.close();
+                this.statusVisibility.back();
                 return of(void 0);
               }
               if (this.workspaceBack.hasActive()) {

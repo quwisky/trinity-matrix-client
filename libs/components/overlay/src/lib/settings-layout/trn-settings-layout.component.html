@@ -2,10 +2,14 @@
   trnOverlaySurface
   variant="neutral"
   size="2xl"
-  [layout]="surfaceLayout()"
+  [layout]="resolvedSurfaceLayout()"
   class="settings-layout"
+  [attr.data-compact]="compact()"
   [style.width]="compact() ? '100vw' : null"
-  [style.height]="compact() ? '100dvh' : null"
+  [style.height]="surfaceHeight()"
+  [style.max-height]="
+    resolvedSurfaceLayout() === 'sheet' ? surfaceHeight() : null
+  "
   [attr.data-testid]="testId()"
 >
   <header class="settings-layout__header">

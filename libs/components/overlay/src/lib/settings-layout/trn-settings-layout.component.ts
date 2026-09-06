@@ -41,6 +41,10 @@ export class TrnSettingsLayoutComponent {
   readonly selectedSection = input<string | null>(null);
   /** Whether this presentation fills the viewport and swaps directory/detail panes. */
   readonly compact = input(false);
+  /** Optional host presentation; pane navigation still follows compact. */
+  readonly surfaceLayout = input<'workspace' | 'fullscreen' | 'sheet' | null>(
+    null,
+  );
   /** Whether the directory pane is presently visible. */
   readonly directoryVisible = input(true);
   /** Stable base for this layout's public test hooks. */
@@ -61,8 +65,15 @@ export class TrnSettingsLayoutComponent {
   protected readonly directoryLabel = computed(
     () => `${this.title()} sections`,
   );
-  protected readonly surfaceLayout = computed(() =>
-    this.compact() ? 'fullscreen' : 'workspace',
+  protected readonly resolvedSurfaceLayout = computed(
+    () => this.surfaceLayout() ?? (this.compact() ? 'fullscreen' : 'workspace'),
+  );
+  protected readonly surfaceHeight = computed(() =>
+    this.resolvedSurfaceLayout() === 'sheet'
+      ? 'calc(100dvh - max(0.75rem, env(safe-area-inset-top)))'
+      : this.compact()
+        ? '100dvh'
+        : null,
   );
   protected readonly resolvedCloseTestId = computed(
     () => this.closeTestId() ?? `${this.testId()}-cancel`,

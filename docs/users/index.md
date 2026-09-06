@@ -87,6 +87,13 @@ the summary. **Support details** contain only generated references and safe oper
 They are copied locally only when you choose **Copy support details** and are never uploaded by
 Trinity.
 
+System Status opens with **Overview**. On a wide screen, its sections sit beside the details;
+on a narrow screen, choose a section to open its details and use **Back** to return to the section
+list. The list includes only capability groups that currently need action, plus Overview and
+Support details. If a problem clears while its details are open, Trinity returns to Overview; a
+still-active selection remains open. On mobile, the surface follows the phone's sheet interaction
+model, including its safe-area and text-size behavior.
+
 Room and Space permissions belong to the homeserver and the Account performing the action.
 A hidden or disabled editing or moderation action can mean you lack permission. Check the acting
 Account and the explanation in [Rooms and Spaces](rooms-and-spaces.md) before retrying.

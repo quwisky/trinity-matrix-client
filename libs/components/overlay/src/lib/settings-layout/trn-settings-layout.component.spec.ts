@@ -39,6 +39,23 @@ class SettingsLayoutHostComponent {
 }
 
 describe('TrnSettingsLayoutComponent', () => {
+  it('keeps compact section navigation when presented as a sheet', async () => {
+    const { container, getByRole } = await render(TrnSettingsLayoutComponent, {
+      inputs: {
+        title: 'System Status',
+        sections,
+        selectedSection: 'general',
+        compact: true,
+        surfaceLayout: 'sheet',
+        directoryVisible: false,
+      },
+      providers: [provideTrnIcons()],
+    });
+    expect(container.querySelector('[data-trn-layout="sheet"]')).toBeTruthy();
+    expect(getByRole('button', { name: 'Back to sections' })).toBeTruthy();
+    expect(container.querySelector('nav')).toHaveClass('settings-pane--hidden');
+  });
+
   it('publishes the domain-neutral section contract', () => {
     expectTypeOf<TrnSettingsLayoutSection>().toEqualTypeOf<{
       readonly id: string;

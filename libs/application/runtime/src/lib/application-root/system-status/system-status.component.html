@@ -3,167 +3,179 @@
   aria-hidden="true"
   (click)="status.close()"
 ></div>
-<section
-  trnOverlaySurface
-  variant="neutral"
-  size="lg"
-  [layout]="mobile ? 'sheet' : 'dialog'"
-  class="system-status__surface"
+<trn-settings-layout
   role="dialog"
   aria-modal="true"
-  aria-labelledby="system-status-heading"
-  data-testid="system-status"
+  aria-label="System Status"
+  title="System Status"
+  [sections]="sections()"
+  [selectedSection]="selectedSection()"
+  [compact]="!wide()"
+  [surfaceLayout]="mobile ? 'sheet' : null"
+  [directoryVisible]="wide() || !selectedSection()"
+  testId="system-status"
+  closeTestId="system-status-close"
+  (sectionSelected)="selectSection($event)"
+  (backRequested)="back()"
+  (closeRequested)="status.close()"
 >
-  <header class="system-status__header">
-    <div>
-      <p class="system-status__eyebrow">Trinity</p>
-      <h1 id="system-status-heading" #heading tabindex="-1">System Status</h1>
-      <p class="system-status__intro">
-        Current capability health and recovery. This view never uploads support
-        details.
-      </p>
-    </div>
-    <button
-      trnBtn
-      presentation="ghost"
-      type="button"
-      data-testid="system-status-close"
-      (click)="status.close()"
-    >
-      Close
-    </button>
-  </header>
-
-  <div class="system-status__body">
-    @if (status.startupBlockers().length > 0) {
+  <div class="system-status__content">
+    @if (selectedSection() === 'support') {
       <section
-        class="system-status__group"
-        aria-labelledby="system-status-startup"
+        class="system-status__support"
+        aria-labelledby="system-status-support-heading"
       >
-        <h2 id="system-status-startup">Startup</h2>
-        <div class="system-status__entries">
-          @for (blocker of status.startupBlockers(); track blocker.producer) {
-            <article
-              class="system-status__entry system-status__entry--blocking"
-            >
-              <h3>{{ blocker.heading }}</h3>
-              <p>{{ blocker.consequence }}</p>
-              <p class="system-status__recovery">
-                Current stage: {{ blocker.stage }}
-              </p>
-            </article>
-          }
-        </div>
-        @if (status.startupRecovery(); as recovery) {
-          <div class="system-status__actions">
-            <button trnBtn type="button" (click)="recoverStartup()">
-              {{ recovery }}
-            </button>
-          </div>
+        <h2 id="system-status-support-heading" class="system-status__title">
+          Support details
+        </h2>
+        <p>
+          Contains only a scoped reference, capability, operation, startup
+          stage, attempt, version, platform, condition, and safe reason code. It
+          contains no Account or Room identifiers, names, secrets, values, or
+          raw errors.
+        </p>
+        <pre tabindex="0" aria-label="Safe support details">{{
+          status.supportDetails()
+        }}</pre>
+        <button
+          trnBtn
+          presentation="outline"
+          type="button"
+          (click)="status.copySupportDetails()"
+        >
+          Copy support details
+        </button>
+        @if (status.copyConfirmed()) {
+          <span role="status">Copied locally. Nothing was uploaded.</span>
         }
       </section>
-    }
-    @if (
-      status.startupBlockers().length === 0 && status.groups().length === 0
-    ) {
-      <section
-        class="system-status__empty"
-        role="status"
-        data-testid="system-status-all-working"
-      >
-        <h2>All systems are working</h2>
-        <p>There are no active capability problems.</p>
-      </section>
-    } @else {
-      <p class="system-status__count" aria-live="polite">
-        {{ status.actionableCount() }} actionable
-        {{ status.actionableCount() === 1 ? 'scope' : 'scopes' }}
-      </p>
-      @for (group of status.groups(); track group.capability) {
+    } @else if (selectedSection()) {
+      @if (selectedSection() === 'overview') {
+        <header class="system-status__intro">
+          <h2 class="system-status__title">Overview</h2>
+          <p>Current capability health and recovery.</p>
+        </header>
+      }
+      @if (
+        selectedSection() === 'overview' && status.startupBlockers().length > 0
+      ) {
         <section
           class="system-status__group"
-          [attr.aria-labelledby]="'status-' + $index"
+          aria-labelledby="system-status-startup"
         >
-          <h2 [id]="'status-' + $index">{{ group.capability }}</h2>
+          <h2 id="system-status-startup">Startup</h2>
           <div class="system-status__entries">
-            @for (entry of group.entries; track entry.problem.reference) {
+            @for (blocker of status.startupBlockers(); track blocker.producer) {
               <article
-                class="system-status__entry"
-                [class.system-status__entry--blocking]="
-                  entry.problem.severity === 'blocking'
-                "
-                [attr.data-testid]="'system-status-' + entry.problem.reference"
+                class="system-status__entry system-status__entry--blocking"
               >
-                @if (entry.account; as account) {
-                  <div class="system-status__account">
-                    <trn-avatar
-                      size="sm"
-                      [name]="account.name"
-                      [initial]="account.initial"
-                      [mxc]="account.avatarMxc"
-                      [accountId]="account.id"
-                    />
-                    <span>{{ account.name }}</span>
-                  </div>
-                }
-                <h3>{{ entry.copy.heading }}</h3>
-                <p>{{ entry.copy.condition }}</p>
-                <p>{{ entry.copy.consequence }} {{ entry.copy.fallback }}</p>
-                @if (recoveryMessage(entry.recovery); as message) {
-                  <p class="system-status__recovery" role="status">
-                    {{ message }}
-                  </p>
-                }
-                <div class="system-status__actions">
-                  <button
-                    trnBtn
-                    type="button"
-                    [disabled]="entry.recovery?.kind === 'pending'"
-                    (click)="retry(entry)"
-                  >
-                    @if (entry.recovery?.kind === 'pending') {
-                      <trn-spinner size="sm" /> Recovering…
-                    } @else {
-                      {{ entry.copy.recovery }}
-                    }
-                  </button>
-                  @if (entry.problem.severity !== 'blocking') {
-                    <button
-                      trnBtn
-                      presentation="ghost"
-                      type="button"
-                      (click)="status.dismiss(entry)"
-                    >
-                      Dismiss summary
-                    </button>
-                  }
-                </div>
+                <h3>{{ blocker.heading }}</h3>
+                <p>{{ blocker.consequence }}</p>
+                <p class="system-status__recovery">
+                  Current stage: {{ blocker.stage }}
+                </p>
               </article>
             }
           </div>
+          @if (status.startupRecovery(); as recovery) {
+            <div class="system-status__actions">
+              <button trnBtn type="button" (click)="recoverStartup()">
+                {{ recovery }}
+              </button>
+            </div>
+          }
         </section>
       }
-    }
-
-    <details class="system-status__support">
-      <summary>Support details</summary>
-      <p>
-        Contains only a scoped reference, capability, operation, startup stage,
-        attempt, version, platform, condition, and safe reason code. It contains
-        no Account or Room identifiers, names, secrets, values, or raw errors.
-      </p>
-      <pre>{{ status.supportDetails() }}</pre>
-      <button
-        trnBtn
-        presentation="outline"
-        type="button"
-        (click)="status.copySupportDetails()"
-      >
-        Copy support details
-      </button>
-      @if (status.copyConfirmed()) {
-        <span role="status">Copied locally. Nothing was uploaded.</span>
+      @if (
+        status.startupBlockers().length === 0 && status.groups().length === 0
+      ) {
+        <section
+          class="system-status__empty"
+          role="status"
+          data-testid="system-status-all-working"
+        >
+          <h2>All systems are working</h2>
+          <p>There are no active capability problems.</p>
+        </section>
+      } @else {
+        @if (selectedSection() === 'overview') {
+          <p class="system-status__count" aria-live="polite">
+            {{ status.actionableCount() }} actionable
+            {{ status.actionableCount() === 1 ? 'scope' : 'scopes' }}
+          </p>
+        }
+        @for (group of displayedGroups(); track group.capability) {
+          <section
+            class="system-status__group"
+            [attr.aria-labelledby]="'status-' + $index"
+          >
+            <h2
+              [id]="'status-' + $index"
+              [class.system-status__title]="selectedSection() !== 'overview'"
+            >
+              {{ group.capability }}
+            </h2>
+            <div class="system-status__entries">
+              @for (entry of group.entries; track entry.problem.reference) {
+                <article
+                  class="system-status__entry"
+                  [class.system-status__entry--blocking]="
+                    entry.problem.severity === 'blocking'
+                  "
+                  [attr.data-testid]="
+                    'system-status-' + entry.problem.reference
+                  "
+                >
+                  @if (entry.account; as account) {
+                    <div class="system-status__account">
+                      <trn-avatar
+                        size="sm"
+                        [name]="account.name"
+                        [initial]="account.initial"
+                        [mxc]="account.avatarMxc"
+                        [accountId]="account.id"
+                      />
+                      <span>{{ account.name }}</span>
+                    </div>
+                  }
+                  <h3>{{ entry.copy.heading }}</h3>
+                  <p>{{ entry.copy.condition }}</p>
+                  <p>{{ entry.copy.consequence }} {{ entry.copy.fallback }}</p>
+                  @if (recoveryMessage(entry.recovery); as message) {
+                    <p class="system-status__recovery" role="status">
+                      {{ message }}
+                    </p>
+                  }
+                  <div class="system-status__actions">
+                    <button
+                      trnBtn
+                      type="button"
+                      [disabled]="entry.recovery?.kind === 'pending'"
+                      (click)="retry(entry)"
+                    >
+                      @if (entry.recovery?.kind === 'pending') {
+                        <trn-spinner size="sm" /> Recovering…
+                      } @else {
+                        {{ entry.copy.recovery }}
+                      }
+                    </button>
+                    @if (entry.problem.severity !== 'blocking') {
+                      <button
+                        trnBtn
+                        presentation="ghost"
+                        type="button"
+                        (click)="status.dismiss(entry)"
+                      >
+                        Dismiss summary
+                      </button>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+          </section>
+        }
       }
-    </details>
+    }
   </div>
-</section>
+</trn-settings-layout>

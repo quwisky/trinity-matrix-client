@@ -15,10 +15,11 @@ changing a public surface.
 ## Shared settings presentation
 
 `TrnSettingsLayoutComponent` in the public overlay tier owns the common Settings,
-Room settings and Space settings dialog presentation: overlay frame, header controls, optional
+Room settings, Space settings and System Status dialog presentation: overlay frame, header controls, optional
 context/warning slots, section navigation and one scroll region per pane. It does not own
 routing, Account identity, drafts or dismissal. Responsive geometry follows the surface's
-`data-trn-layout` attribute, so class reconciliation cannot retain a stale compact layout after
+`data-trn-layout` attribute, while compact pane geometry follows the separate `data-compact`
+attribute, so surface treatment and compact reconciliation cannot retain stale state after
 resizing. Its optional `settings-directory-header` slot
 places consumer-owned controls inside the existing directory scroll region. Application Settings
 uses it for directory search, owning the query and filtering the section registry; Room and Space
@@ -30,6 +31,15 @@ Unlike CSS media-query rem units, this follows the current root font-size prefer
 viewport resizing. Compact dialogs open their directory unless an explicit section is requested.
 Room/Space forms use the same section typography and grouping, preserve per-field permissions and
 retained read-only drafts, and show sticky section actions only for pending edits.
+
+System Status uses the same public layout without importing a Settings feature. Its desktop
+directory and detail pane share the application-owned status catalogue, while the directory lists
+only actionable capability groups plus Overview and Support details. Overview is the initial detail
+on every surface; on compact surfaces Back moves from detail to the directory and then dismisses
+through the shared Host Back owner. A selection that disappears returns to Overview, while a still
+valid selection is retained. The `compact` pane geometry follows text scaling and viewport size;
+the optional `surfaceLayout="sheet"` selects the native mobile sheet independently, so the sheet
+choice is made from the operating system rather than pointer capability.
 
 ## 1. Choose the owner before writing UI
 
