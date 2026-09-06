@@ -215,6 +215,26 @@ describe('SpaceSettingsComponent', () => {
     expect(setName).toHaveBeenCalledWith(TARGET, 'Renamed');
   });
 
+  it('uploads the Space avatar immediately against the exact Account and Space', async () => {
+    const setAvatar = vi.fn(() => of(undefined));
+    const { fixture, container, toast } = await build({ setAvatar });
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="space-settings"] input[type="file"]',
+    );
+    if (!input) throw new Error('Space avatar input was not rendered');
+    const file = new File(['avatar'], 'space.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file] });
+
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await fixture.whenStable();
+
+    expect(setAvatar).toHaveBeenCalledWith(TARGET, file);
+    expect(toast).toHaveBeenCalledWith('Space photo updated.', {
+      duration: 3000,
+      variant: 'success',
+    });
+  });
+
   it('commits successful fields, retains failures, and retries only what remains', async () => {
     const setName = vi.fn(() => of(undefined));
     const setTopic = vi

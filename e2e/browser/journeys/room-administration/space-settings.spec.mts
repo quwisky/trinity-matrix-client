@@ -137,15 +137,43 @@ test.describe('Space settings', () => {
     const user = `space-settings-${runId}`;
     const pass = `${user}-pass`;
     const originalName = `Team ${runId}`;
+    const roomName = `Conversation ${runId}`;
     const newName = `Renamed ${runId}`;
     const newTopic = `Where team ${runId} works`;
 
     await registerUser(request, user, pass);
     const token = await apiLogin(request, hs, user, pass);
     const spaceId = await createSpace(request, hs, token, originalName);
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((response) => response.json())
+      .then((body) => body.room_id as string);
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(roomId)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { via: ['localhost'], suggested: true },
+      },
+    );
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openSpaceMenu(page, originalName);
+    const pill = page.getByRole('button', { name: originalName, exact: true });
+    await pill.waitFor({ state: 'visible', timeout: 30_000 });
+    await pill.click();
+    await page.locator('.channel', { hasText: roomName }).first().click();
+    await expect(page.getByTestId('composer-input')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      roomName,
+    );
+    // Reactivate the Space sidebar without navigating away from the Conversation.
+    // Its overflow belongs to the active Space, while the room surface stays mounted.
+    await pill.click();
+    await page.getByTestId('space-actions-overflow').click();
 
     await page.getByTestId('open-space-settings').click();
     const settings = page.getByTestId('space-settings');
@@ -209,6 +237,22 @@ test.describe('Space settings', () => {
       else document.documentElement.setAttribute('data-theme', theme);
     }, openingAppearance);
 
+    const read = (type: string, key: string) =>
+      stateValue(request, hs, token, spaceId, type, key);
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page
+      .locator('[data-testid="space-settings"] input[type="file"]')
+      .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: png });
+    await expect(
+      page.getByLabel('Notifications alt+T').getByText('Space photo updated.'),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(() => read('m.room.avatar', 'url'), { timeout: 30_000 })
+      .toMatch(/^mxc:\/\//);
+
     await page.getByTestId('space-settings-name').fill(newName);
     await page.getByTestId('space-settings-topic').fill(newTopic);
     await page.getByTestId('space-settings-save').click();
@@ -226,9 +270,6 @@ test.describe('Space settings', () => {
     await page.getByTestId('join-rule-public').click();
     await page.getByTestId('space-settings-save').click();
 
-    const read = (type: string, key: string) =>
-      stateValue(request, hs, token, spaceId, type, key);
-
     await expect
       .poll(() => read('m.room.name', 'name'), { timeout: 30_000 })
       .toBe(newName);
@@ -238,6 +279,13 @@ test.describe('Space settings', () => {
     await expect
       .poll(() => read('m.room.join_rules', 'join_rule'), { timeout: 30_000 })
       .toBe('public');
+
+    await page.getByTestId('space-settings-cancel').click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByTestId('composer-input')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(
+      roomName,
+    );
 
     // Deliberately NOT asserting that the rail pill re-labels itself. A rename is an
     // m.room.name state event with no local echo, so the client only sees it once /sync
