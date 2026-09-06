@@ -133,6 +133,16 @@ Account's default” and therefore remains live to later default changes; explic
 isolated by both Account and Space. Neither path writes `m.space.child`, whose shared order and
 Suggested state remain separate Space-curation authority.
 
+Space contents is a separate Room Library projection keyed by the immutable opening Account and
+parent Space. It reattaches only to that Account's replacement client, reads direct children through
+the hierarchy endpoint, derives joined add-candidates from the same client and rechecks exact-target
+governance for every cold command. Add and create write only the parent's `m.space.child`; they do
+not invent a child-side `m.space.parent` write whose authority may differ. Unlink replaces only that
+parent event with its empty tombstone and never calls a membership command. Creation returns a
+discriminated created-but-unlinked outcome when its second step fails, retaining the durable child
+identity so recovery repeats only the link. Shared child order and Suggested remain owned by the
+separate curation workflow.
+
 Member settings owns a local exact-target observation lifetime for joined and banned membership.
 Filtered membership and sync events republish immutable snapshots from the opening Account; losing
 that Account or Room publishes an unavailable state with retained last-known context rather than an

@@ -277,6 +277,34 @@ describe('SpaceChildrenService', () => {
     });
   });
 
+  describe('removeExistingRoom', () => {
+    it('writes only the parent tombstone for the exact Account', async () => {
+      const { svc, sendStateEvent } = setup();
+
+      await firstValueFrom(
+        svc.removeExistingRoom('@me:hs.example', '!s:hs', '!child:hs'),
+      );
+
+      expect(sendStateEvent).toHaveBeenCalledWith(
+        '!s:hs',
+        'm.space.child',
+        {},
+        '!child:hs',
+      );
+    });
+
+    it('does not fall through to the active Account when the target is gone', async () => {
+      const { svc, sendStateEvent } = setup({ signedOut: true });
+
+      await expect(
+        firstValueFrom(
+          svc.removeExistingRoom('@me:hs.example', '!s:hs', '!child:hs'),
+        ),
+      ).rejects.toThrow(/account unavailable/i);
+      expect(sendStateEvent).not.toHaveBeenCalled();
+    });
+  });
+
   describe('setSuggested', () => {
     it('keeps via and order when flagging a child', async () => {
       // THE failure this service is built to avoid: state events are replaced, not

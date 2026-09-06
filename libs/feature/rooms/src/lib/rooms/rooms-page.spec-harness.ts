@@ -25,6 +25,7 @@ import {
   InvitesService,
   RoomLibraryService,
   SelectedRoomLibraryService,
+  SpaceContentsService,
   SpacesService,
   type PendingInvite,
 } from '@trinity/data-access/room-library';
@@ -179,6 +180,14 @@ export const SHARED_MOCKS: Provider[] = [
   SessionActionsService,
   WorkspaceNavigationService,
   ConversationTimelineStub,
+  MockProvider(SpaceContentsService, {
+    create: () =>
+      of({
+        kind: 'linked' as const,
+        item: { id: '!created:hs', name: 'Created', kind: 'room' as const },
+      }),
+    unlink: () => of(undefined),
+  }),
   {
     provide: ConversationRuntime,
     useFactory: () => {

@@ -52,6 +52,22 @@ async function createSpace(
     .then((body) => body.room_id as string);
 }
 
+async function childLink(
+  request: APIRequestContext,
+  hs: string,
+  token: string,
+  spaceId: string,
+  childId: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await request.get(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return response.ok()
+    ? ((await response.json()) as Record<string, unknown>)
+    : null;
+}
+
 async function openSpaceSettings(
   page: Page,
   name: string,
@@ -90,6 +106,7 @@ test.describe('Space settings on a phone', () => {
     const pass = `${user}-pass`;
     const spaceName = `Mobile space ${runId}`;
     const roomName = `Mobile room ${runId}`;
+    const candidateName = `Mobile candidate ${runId}`;
     await registerUser(request, user, pass);
     const token = await tokenFor(request, hs, user, pass);
     const spaceId = await createSpace(request, hs, token, spaceName);
@@ -97,6 +114,13 @@ test.describe('Space settings on a phone', () => {
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: { Authorization: `Bearer ${token}` },
         data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((response) => response.json())
+      .then((body) => body.room_id as string);
+    const candidateId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { name: candidateName, preset: 'private_chat' },
       })
       .then((response) => response.json())
       .then((body) => body.room_id as string);
@@ -214,6 +238,76 @@ test.describe('Space settings on a phone', () => {
       body: await settings.screenshot(),
       contentType: 'image/png',
     });
+    await page.getByTestId('space-settings-mobile-back').tap();
+    await expect(directory).toBeVisible();
+
+    const contents = page.getByTestId('space-settings-tab-contents');
+    expect((await contents.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
+      44,
+    );
+    await contents.tap();
+    const contentsPanel = page.getByTestId('space-settings-panel-contents');
+    await expect(
+      contentsPanel.getByText(roomName, { exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+    const createRoom = contentsPanel.getByRole('button', {
+      name: 'Create Room',
+    });
+    expect(
+      (await createRoom.boundingBox())?.height ?? 0,
+    ).toBeGreaterThanOrEqual(44);
+    const panelBox = await contentsPanel.boundingBox();
+    const createBox = await createRoom.boundingBox();
+    expect((createBox?.x ?? 0) + (createBox?.width ?? 0)).toBeLessThanOrEqual(
+      (panelBox?.x ?? 0) + (panelBox?.width ?? 0),
+    );
+    await test.info().attach('space-contents-mobile', {
+      body: await contentsPanel.screenshot(),
+      contentType: 'image/png',
+    });
+
+    await contentsPanel.getByRole('button', { name: 'Add existing' }).tap();
+    await contentsPanel
+      .getByLabel('Find a joined Room or Space')
+      .fill(candidateName);
+    await contentsPanel.getByTestId(`space-contents-pick-${candidateId}`).tap();
+    await contentsPanel.getByRole('button', { name: 'Add selected' }).tap();
+    const candidateRow = contentsPanel.getByTestId(
+      `space-content-${candidateId}`,
+    );
+    await expect(candidateRow).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(() => childLink(request, hs, token, spaceId, candidateId), {
+        timeout: 30_000,
+      })
+      .toEqual(expect.objectContaining({ via: expect.any(Array) }));
+
+    await createRoom.tap();
+    const createDialog = page.getByRole('dialog', { name: 'Create Room' });
+    await createDialog.getByRole('button', { name: 'Cancel' }).tap();
+    await expect(createDialog).toHaveCount(0);
+
+    await candidateRow.getByRole('button', { name: 'Remove' }).tap();
+    const removeDialog = page.getByRole('dialog', {
+      name: 'Remove Room from Space',
+    });
+    await removeDialog.getByRole('button', { name: 'Cancel' }).tap();
+    await expect(candidateRow).toBeVisible();
+    await candidateRow.getByRole('button', { name: 'Remove' }).tap();
+    await removeDialog.getByRole('button', { name: 'Remove' }).tap();
+    await expect
+      .poll(() => childLink(request, hs, token, spaceId, candidateId), {
+        timeout: 30_000,
+      })
+      .toEqual({});
+    const membership = await request
+      .get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(candidateId)}/state/m.room.member/${encodeURIComponent(`@${user}:localhost`)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      )
+      .then((response) => response.json());
+    expect(membership.membership).toBe('join');
+
     await page.getByTestId('space-settings-mobile-back').tap();
     await expect(directory).toBeVisible();
 

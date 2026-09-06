@@ -1,0 +1,236 @@
+<section
+  class="space-contents"
+  data-testid="space-settings-panel-contents"
+  aria-labelledby="space-contents-title"
+>
+  <div class="space-contents__heading">
+    <div>
+      <h3 id="space-contents-title">Rooms &amp; spaces</h3>
+      <p>Everything linked directly inside this Space.</p>
+    </div>
+    @if (snapshot()?.canManage) {
+      <div class="space-contents__actions" data-testid="space-contents-actions">
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          presentation="ghost"
+          [disabled]="pending() !== null"
+          (click)="openPicker()"
+          data-testid="space-contents-add-existing"
+        >
+          Add existing
+        </button>
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          [disabled]="pending() !== null"
+          (click)="create('room')"
+          data-testid="space-contents-create-room"
+        >
+          {{ pending() === 'create:room' ? 'Creating…' : 'Create Room' }}
+        </button>
+        <button
+          trnBtn
+          type="button"
+          [disabled]="pending() !== null"
+          (click)="create('space')"
+          data-testid="space-contents-create-space"
+        >
+          {{ pending() === 'create:space' ? 'Creating…' : 'Create Space' }}
+        </button>
+      </div>
+    }
+  </div>
+
+  @if (feedback(); as result) {
+    <p
+      class="space-contents__feedback"
+      [class.space-contents__feedback--danger]="result.tone === 'danger'"
+      [attr.role]="result.tone === 'danger' ? 'alert' : 'status'"
+      data-testid="space-contents-feedback"
+    >
+      {{ result.message }}
+    </p>
+  }
+
+  @if (recovery(); as item) {
+    <aside
+      class="space-contents__recovery"
+      data-testid="space-contents-recovery"
+    >
+      <div>
+        <strong>{{ item.name }} still exists</strong>
+        <p>{{ item.id }}</p>
+      </div>
+      @if (snapshot()?.canManage) {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          [disabled]="pending() !== null"
+          (click)="retryLink()"
+          data-testid="space-contents-retry-link"
+        >
+          {{
+            pending() === 'retry:' + item.id ? 'Linking…' : 'Try linking again'
+          }}
+        </button>
+      }
+    </aside>
+  }
+
+  @if (pickerOpen() && snapshot()?.canManage) {
+    <div class="space-contents__picker" data-testid="space-contents-picker">
+      <label for="space-contents-search">Find a joined Room or Space</label>
+      <input
+        trnInput
+        id="space-contents-search"
+        type="search"
+        autocomplete="off"
+        placeholder="Search by name or Matrix ID"
+        [formField]="search.query"
+        data-testid="space-contents-search"
+      />
+      <ul class="space-contents__candidate-list">
+        @for (candidate of visibleCandidates(); track candidate.id) {
+          <li>
+            <label class="space-contents__candidate">
+              <trn-checkbox
+                [checked]="isSelected(candidate.id)"
+                (checkedChange)="toggle(candidate.id, $event)"
+                [attr.data-testid]="'space-contents-pick-' + candidate.id"
+              />
+              <trn-avatar
+                [mxc]="candidate.avatarMxc"
+                [initial]="candidate.initial"
+                [name]="candidate.name"
+                [shape]="candidate.direct ? 'person' : 'place'"
+                size="sm"
+              />
+              <span class="space-contents__identity">
+                <strong>{{ candidate.name }}</strong>
+                <span>{{ candidate.id }}</span>
+              </span>
+              <span class="space-contents__kind">{{
+                candidate.kind === 'space' ? 'Space' : 'Room'
+              }}</span>
+            </label>
+          </li>
+        } @empty {
+          <li>
+            <trn-empty-state
+              layout="line"
+              [body]="
+                snapshot()?.candidates?.length
+                  ? 'No joined Rooms or Spaces match that search.'
+                  : 'Every joined Room and Space is already linked here.'
+              "
+            />
+          </li>
+        }
+      </ul>
+      <div class="space-contents__picker-actions">
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          presentation="ghost"
+          [disabled]="pending() !== null"
+          (click)="closePicker()"
+          data-testid="space-contents-add-cancel"
+        >
+          Cancel
+        </button>
+        <button
+          trnBtn
+          type="button"
+          [disabled]="pending() !== null || selectedCount() === 0"
+          (click)="addSelected()"
+          data-testid="space-contents-add-confirm"
+        >
+          {{ pending() === 'add' ? 'Adding…' : 'Add selected' }}
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <p class="space-contents__state" role="status">Loading Space contents…</p>
+  } @else if (snapshot(); as state) {
+    @if (state.unavailableReason) {
+      <p
+        class="space-contents__state space-contents__state--danger"
+        role="alert"
+      >
+        {{ state.unavailableReason }}
+      </p>
+    } @else if (state.hierarchyError) {
+      <div
+        class="space-contents__state space-contents__state--danger"
+        role="alert"
+      >
+        <p>Space contents could not be loaded: {{ state.hierarchyError }}</p>
+        <button trnBtn type="button" variant="secondary" (click)="refresh()">
+          Try again
+        </button>
+      </div>
+    } @else {
+      <ul class="space-contents__list" data-testid="space-contents-list">
+        @for (item of state.items; track item.id) {
+          <li
+            class="space-contents__row"
+            [attr.data-testid]="'space-content-' + item.id"
+          >
+            <trn-avatar
+              [mxc]="item.avatarMxc"
+              [initial]="item.initial"
+              [name]="item.name"
+              shape="place"
+              size="md"
+            />
+            <span class="space-contents__identity">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.id }}</span>
+            </span>
+            <span class="space-contents__kind">{{
+              item.kind === 'space' ? 'Space' : 'Room'
+            }}</span>
+            <span class="space-contents__membership">{{
+              item.joined ? 'Joined' : 'Not joined'
+            }}</span>
+            @if (state.canManage) {
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="ghost"
+                [disabled]="pending() !== null"
+                (click)="unlink(item)"
+                [attr.data-testid]="'space-content-unlink-' + item.id"
+              >
+                {{ pending() === 'unlink:' + item.id ? 'Removing…' : 'Remove' }}
+              </button>
+            }
+          </li>
+        } @empty {
+          <li>
+            <trn-empty-state
+              title="This Space is empty"
+              body="Rooms and nested Spaces linked here will appear in this list."
+            />
+          </li>
+        }
+      </ul>
+      @if (!state.canManage && state.managementUnavailableReason) {
+        <p
+          class="space-contents__policy"
+          data-testid="space-contents-read-only"
+        >
+          You can inspect these contents, but your role cannot change them.
+        </p>
+      }
+    }
+  }
+</section>

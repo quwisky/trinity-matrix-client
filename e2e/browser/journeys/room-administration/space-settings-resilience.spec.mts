@@ -55,6 +55,22 @@ async function createSpace(
     .then((body) => body.room_id as string);
 }
 
+async function childLink(
+  request: APIRequestContext,
+  hs: string,
+  token: string,
+  spaceId: string,
+  childId: string,
+): Promise<Record<string, unknown> | null> {
+  const response = await request.get(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return response.ok()
+    ? ((await response.json()) as Record<string, unknown>)
+    : null;
+}
+
 async function openSpaceSettings(page: Page, name: string): Promise<void> {
   const pill = page.getByRole('button', { name, exact: true });
   await pill.waitFor({ state: 'visible', timeout: 30_000 });
@@ -142,6 +158,7 @@ test.describe('Space settings resilience', () => {
     const inviteePass = `${invitee}-pass`;
     const inviteeId = `@${invitee}:localhost`;
     const spaceName = `Shared space ${runId}`;
+    const exactChildName = `Opening owner child ${runId}`;
     await registerUser(request, owner, ownerPass);
     await registerUser(request, member, memberPass);
     await registerUser(request, invitee, inviteePass);
@@ -150,6 +167,12 @@ test.describe('Space settings resilience', () => {
     const spaceId = await createSpace(request, hs, ownerToken, spaceName, [
       memberId,
     ]);
+    const exactChildId = await createSpace(
+      request,
+      hs,
+      ownerToken,
+      exactChildName,
+    );
     await request.post(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
       { headers: { Authorization: `Bearer ${memberToken}` } },
@@ -250,5 +273,34 @@ test.describe('Space settings resilience', () => {
       return response.ok() ? (await response.json()).membership : undefined;
     };
     await expect.poll(inviteMembership, { timeout: 20_000 }).toBe('invite');
+
+    // Contents is pinned to the same opening owner. The candidate is not joined on the
+    // active member Account, and that Account cannot curate the parent, so both the read
+    // and the writes fail if either side silently retargets after the switch.
+    await openSettingsTab(page, 'space-settings', 'contents');
+    const contents = page.getByTestId('space-settings-panel-contents');
+    await contents.getByRole('button', { name: 'Add existing' }).click();
+    await contents
+      .getByLabel('Find a joined Room or Space')
+      .fill(exactChildName);
+    await contents.getByTestId(`space-contents-pick-${exactChildId}`).click();
+    await contents.getByRole('button', { name: 'Add selected' }).click();
+    await expect
+      .poll(() => childLink(request, hs, memberToken, spaceId, exactChildId), {
+        timeout: 30_000,
+      })
+      .toEqual(expect.objectContaining({ via: expect.any(Array) }));
+
+    const exactChildRow = contents.getByTestId(`space-content-${exactChildId}`);
+    await exactChildRow.getByRole('button', { name: 'Remove' }).click();
+    await page
+      .getByRole('dialog', { name: 'Remove Space from Space' })
+      .getByRole('button', { name: 'Remove' })
+      .click();
+    await expect
+      .poll(() => childLink(request, hs, memberToken, spaceId, exactChildId), {
+        timeout: 30_000,
+      })
+      .toEqual({});
   });
 });

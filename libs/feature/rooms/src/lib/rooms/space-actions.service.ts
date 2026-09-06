@@ -4,13 +4,14 @@ import {
   RoomLibraryService,
   RoomReadinessService,
   SpaceChildrenService,
+  SpaceContentsService,
   SpaceRoomOrderService,
   SpacesService,
   type RoomSortMode,
   type SpaceChildRoom,
 } from '@trinity/data-access/room-library';
 import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
-import { filter, map, Observable, switchMap } from 'rxjs';
+import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
@@ -44,6 +45,7 @@ export class SpaceActionsService {
   private readonly roomReadiness = inject(RoomReadinessService);
   private readonly spaces = inject(SpacesService);
   private readonly spaceChildren = inject(SpaceChildrenService);
+  private readonly spaceContents = inject(SpaceContentsService);
   private readonly spaceOrder = inject(SpaceRoomOrderService);
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
@@ -102,7 +104,8 @@ export class SpaceActionsService {
   /** Sidebar "+": prompt for a name and create a room inside the active space. */
   onCreateChannel(): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId || !this.vm.canCurateSpace()) {
+    const accountId = this.store.activeAccountId();
+    if (!spaceId || !accountId || !this.vm.canCurateSpace()) {
       return; // the affordance is hidden on Home, but guard regardless
     }
     this.status.error.set(null);
@@ -120,7 +123,7 @@ export class SpaceActionsService {
       )
       .subscribe((name) => {
         if (this.vm.canCurateSpace()) {
-          this.applyCreateChannel(spaceId, name);
+          this.applyCreateChannel(accountId, spaceId, name);
         }
       });
   }
@@ -187,13 +190,30 @@ export class SpaceActionsService {
     ).subscribe((spaceId) => this.nav.onSelectSpace({ spaceId, accountId }));
   }
 
-  private applyCreateChannel(spaceId: string, name: string): void {
+  private applyCreateChannel(
+    accountId: string,
+    spaceId: string,
+    name: string,
+  ): void {
     if (!name.trim()) {
       return;
     }
     // The new room surfaces in the sidebar live via Rooms/Spaces sync listeners.
     runWithBusy(
-      this.spaces.createRoomInSpace(spaceId, { name }),
+      this.spaceContents
+        .create({ accountId, spaceId }, 'room', name)
+        .pipe(
+          switchMap((result) =>
+            result.kind === 'linked'
+              ? of(void 0)
+              : throwError(
+                  () =>
+                    new Error(
+                      `${result.item.name} was created as ${result.item.id}, but could not be linked. Open Space settings → Rooms & spaces to retry without creating another Room.`,
+                    ),
+                ),
+          ),
+        ),
       this.status,
     ).subscribe();
   }
@@ -227,7 +247,8 @@ export class SpaceActionsService {
   /** Sidebar remove icon on a joined channel: confirm, then unlink it from the space. */
   onRemoveFromSpace(roomId: string): void {
     const spaceId = this.store.activeSpaceId();
-    if (!spaceId || !this.vm.canCurateSpace()) {
+    const accountId = this.store.activeAccountId();
+    if (!spaceId || !accountId || !this.vm.canCurateSpace()) {
       return; // the affordance only shows in a space, but guard regardless
     }
     this.status.error.set(null);
@@ -243,14 +264,18 @@ export class SpaceActionsService {
       .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         if (this.vm.canCurateSpace()) {
-          this.applyRemoveFromSpace(spaceId, roomId);
+          this.applyRemoveFromSpace(accountId, spaceId, roomId);
         }
       });
   }
 
-  private applyRemoveFromSpace(spaceId: string, childId: string): void {
+  private applyRemoveFromSpace(
+    accountId: string,
+    spaceId: string,
+    childId: string,
+  ): void {
     runWithBusy(
-      this.spaces.removeRoomFromSpace(spaceId, childId),
+      this.spaceContents.unlink({ accountId, spaceId }, childId),
       this.status,
     ).subscribe();
   }

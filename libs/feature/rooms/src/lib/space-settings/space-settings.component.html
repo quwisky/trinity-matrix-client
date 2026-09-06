@@ -33,6 +33,12 @@
     @case ('access') {
       <trn-space-settings-access />
     }
+    @case ('contents') {
+      <trn-space-settings-contents
+        [target]="contentsTarget()"
+        [spaceName]="draft.model().name || spaceDisplayName()"
+      />
+    }
     @case ('members') {
       <section data-testid="space-settings-panel-members">
         <trn-members-settings

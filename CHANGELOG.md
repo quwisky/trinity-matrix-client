@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Space settings now owns Account-bound Rooms and Spaces management.** Members can inspect
+  direct child Rooms and nested Spaces with explicit loading, empty and failed states, while
+  live Space permission controls whether Add existing, Create Room, Create Space and confirmed
+  Remove actions appear. Candidate search, hierarchy reads and every parent-link write remain
+  attached to the Account and Space that opened settings. Creation links only through the parent,
+  removal neither leaves nor deletes the child, and a created item whose link fails is preserved
+  by name and Matrix ID with a link-only retry that cannot create a duplicate. The existing Space
+  header shortcuts remain available; shared order and Suggested controls stay in Organise rooms.
+
 - **Room Widgets now has an Account-bound section in the responsive Room settings hub.** Existing
   declarations, URL-template disclosures, restricted in-app opening and external-browser launch
   remain readable to ordinary members, while Add and confirmed Remove actions follow the opening
