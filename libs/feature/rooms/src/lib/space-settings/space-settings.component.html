@@ -27,6 +27,9 @@
         [spaceDisplayName]="spaceDisplayName()"
       />
     }
+    @case ('for-you') {
+      <trn-space-settings-for-you />
+    }
     @case ('access') {
       <trn-space-settings-access />
     }

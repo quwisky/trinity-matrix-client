@@ -126,6 +126,13 @@ commit successful fields independently so retry writes only the retained failure
 offers invite-only and public transitions; an already-authoritative unfamiliar or restricted rule
 remains readable without inventing a new restricted configuration flow.
 
+Space personal ordering is a Room Library preference, not Room Administration state. The settings
+draft captures an exact Account-and-Space pair, hydrates that Account's device store, and uses cold
+exact-target commands even after Active Account changes. One absent override means “follow this
+Account's default” and therefore remains live to later default changes; explicit overrides are
+isolated by both Account and Space. Neither path writes `m.space.child`, whose shared order and
+Suggested state remain separate Space-curation authority.
+
 Incrementally retained local-address and ban adapters in both hubs, and the Room-only widget
 adapter, stay behind an opening-Account-active gate until their exact-target migrations land; they
 never fall through to a newly active Account. Space settings deliberately does not inherit Room

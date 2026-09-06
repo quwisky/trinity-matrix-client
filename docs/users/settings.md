@@ -26,7 +26,9 @@ message gestures. The preview shows the current combination before you leave the
 
 Use **Room order in spaces** to select recent activity, the space's own order or alphabetical as
 the default. A space ordered individually keeps its own choice, and favourites remain grouped
-first. This is saved per account on this device.
+first. This is saved per account on this device. To change one Space without replacing the
+default, open Space settings → **For you**; choosing **Use my default** removes that override and
+continues following later default changes.
 
 If Trinity reports that an Appearance preference could not be restored, use **Restore affected
 defaults**. Other choices remain unchanged. If an individual change cannot save, use its

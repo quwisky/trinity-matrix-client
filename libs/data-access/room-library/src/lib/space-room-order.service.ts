@@ -66,6 +66,13 @@ export interface RoomOrderRuntimeEvent {
   readonly accounts: readonly RoomOrderHydrationSettlement[];
 }
 
+/** One exact Account-and-Space ordering view for settings presentation. */
+export interface SpaceRoomOrderSnapshot {
+  readonly defaultMode: RoomSortMode;
+  readonly overrideMode: RoomSortMode | null;
+  readonly effectiveMode: RoomSortMode;
+}
+
 /**
  * How rooms are ordered inside a space: a per-account default plus per-space overrides.
  *
@@ -208,23 +215,55 @@ export class SpaceRoomOrderService {
    * stays live to both a preference change and an account switch.
    */
   effectiveFor(spaceId: string | null): RoomSortMode {
-    const order = this.activeOrder();
-    return (spaceId ? order.bySpace[spaceId] : undefined) ?? order.fallback;
+    const accountId = this.matrix.activeUserId();
+    return accountId
+      ? this.snapshotFor(accountId, spaceId).effectiveMode
+      : DEFAULT_ROOM_SORT;
   }
 
   /** A space's explicit override, or `null` when it follows the account default. */
   overrideFor(spaceId: string | null): RoomSortMode | null {
-    return (spaceId ? this.activeOrder().bySpace[spaceId] : undefined) ?? null;
+    const accountId = this.matrix.activeUserId();
+    return accountId ? this.snapshotFor(accountId, spaceId).overrideMode : null;
+  }
+
+  /** Read one immutable Account-and-Space ordering without consulting Active Account. */
+  snapshotFor(
+    accountId: string,
+    spaceId: string | null,
+  ): SpaceRoomOrderSnapshot {
+    const order = this.orderForAccount(accountId);
+    const overrideMode = (spaceId ? order.bySpace[spaceId] : undefined) ?? null;
+    return {
+      defaultMode: order.fallback,
+      overrideMode,
+      effectiveMode: overrideMode ?? order.fallback,
+    };
   }
 
   /** Change and persist the active account's default (the Settings dropdown). */
   setDefault(mode: RoomSortMode): Observable<void> {
-    return this.write('default', (order) => ({ ...order, fallback: mode }));
+    return this.writeActive('default', (order) => ({
+      ...order,
+      fallback: mode,
+    }));
   }
 
   /** Pin one space to an ordering of its own (the sidebar header menu). */
   setForSpace(spaceId: string, mode: RoomSortMode): Observable<void> {
-    return this.write('overrides', (order) => ({
+    return this.writeActive('overrides', (order) => ({
+      ...order,
+      bySpace: { ...order.bySpace, [spaceId]: mode },
+    }));
+  }
+
+  /** Pin one Space for an immutable Account context, independent of Active Account. */
+  setForAccountSpace(
+    accountId: string,
+    spaceId: string,
+    mode: RoomSortMode,
+  ): Observable<void> {
+    return this.writeForAccount(accountId, 'overrides', (order) => ({
       ...order,
       bySpace: { ...order.bySpace, [spaceId]: mode },
     }));
@@ -236,7 +275,16 @@ export class SpaceRoomOrderService {
    * keep tracking a *later* change to that default.
    */
   clearForSpace(spaceId: string): Observable<void> {
-    return this.write('overrides', (order) => {
+    return this.writeActive('overrides', (order) => {
+      const bySpace = { ...order.bySpace };
+      delete bySpace[spaceId];
+      return { ...order, bySpace };
+    });
+  }
+
+  /** Remove one exact Account-and-Space override so later default changes keep flowing. */
+  clearForAccountSpace(accountId: string, spaceId: string): Observable<void> {
+    return this.writeForAccount(accountId, 'overrides', (order) => {
       const bySpace = { ...order.bySpace };
       delete bySpace[spaceId];
       return { ...order, bySpace };
@@ -246,31 +294,54 @@ export class SpaceRoomOrderService {
   /** The active account's record, or all-defaults when it has none yet. */
   private activeOrder(): AccountOrder {
     const userId = this.matrix.activeUserId();
-    return (userId ? this.byAccount().get(userId) : undefined) ?? EMPTY;
+    return userId ? this.orderForAccount(userId) : EMPTY;
+  }
+
+  private orderForAccount(accountId: string): AccountOrder {
+    return this.byAccount().get(accountId) ?? EMPTY;
   }
 
   /** Apply `change` to the active account's record, then persist or queue it. */
-  private write(key: OrderKey, change: Change): Observable<void> {
+  private writeActive(key: OrderKey, change: Change): Observable<void> {
     return defer(() => {
       const userId = this.matrix.activeUserId();
       if (!userId) {
         return of(void 0); // signed out mid-interaction: nothing to key the preference to
       }
-      const next = change(this.byAccount().get(userId) ?? EMPTY);
+      return this.writeForAccount(userId, key, change);
+    });
+  }
+
+  /** Apply an edit to one immutable Account record, then persist or queue it. */
+  private writeForAccount(
+    accountId: string,
+    key: OrderKey,
+    change: Change,
+  ): Observable<void> {
+    return defer(() => {
+      if (!this.matrix.accountIds().includes(accountId)) {
+        return throwError(
+          () => new Error('The opening Account is no longer available.'),
+        );
+      }
+      const next = change(this.byAccount().get(accountId) ?? EMPTY);
       const map = new Map(this.byAccount());
-      map.set(userId, next);
+      map.set(accountId, next);
       this.byAccount.set(map);
 
-      if (this.loaded.has(userId)) {
-        return from(persistHalf(this.storage, userId, key, next));
+      if (this.loaded.has(accountId)) {
+        return from(persistHalf(this.storage, accountId, key, next));
       }
 
       // `next` was derived from all-defaults, so writing it now would erase whatever is on
       // disk. Hold the edit instead; {@link hydrate} replays it onto the stored value and
       // persists the result. Joining hydration makes completion and failure observable to
       // the command's subscriber without giving up the optimistic in-memory choice.
-      this.pending.set(userId, [...(this.pending.get(userId) ?? []), change]);
-      return from(this.hydrate(userId)).pipe(
+      this.pending.set(accountId, [
+        ...(this.pending.get(accountId) ?? []),
+        change,
+      ]);
+      return from(this.hydrate(accountId)).pipe(
         switchMap((hydrated) =>
           hydrated
             ? of(void 0)

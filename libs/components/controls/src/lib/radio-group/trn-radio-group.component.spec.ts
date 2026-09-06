@@ -10,7 +10,12 @@ import {
 } from './trn-radio-group.component';
 
 const OPTIONS: readonly TrnRadioOption<string>[] = [
-  { value: 'system', label: 'Use system setting', testId: 'theme-system' },
+  {
+    value: 'system',
+    label: 'Use system setting',
+    description: 'Follow this device automatically.',
+    testId: 'theme-system',
+  },
   { value: 'light', label: 'Light', testId: 'theme-light' },
   { value: 'dark', label: 'Dark', testId: 'theme-dark' },
 ];
@@ -84,6 +89,9 @@ describe('TrnRadioGroupComponent', () => {
     expect(labels[2].getAttribute('data-testid')).toBe('theme-dark');
     expect(labels[2].textContent?.trim()).toBe('Dark');
     expect(labels[2].querySelector('input[type=radio]')).not.toBeNull();
+    expect(labels[0].textContent).toContain(
+      'Follow this device automatically.',
+    );
   });
 
   it('points the group at its heading, and only the group', async () => {

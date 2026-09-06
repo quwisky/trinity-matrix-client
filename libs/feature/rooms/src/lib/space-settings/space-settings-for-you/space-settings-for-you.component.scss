@@ -1,0 +1,100 @@
+@use '../../styles/mixins' as rooms;
+
+@layer components {
+  :host,
+  .space-settings__form,
+  .space-settings__fields,
+  .space-settings__field {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .space-settings__form,
+  .space-settings__fields {
+    gap: 16px;
+  }
+
+  .space-settings__card {
+    padding: 18px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-panel);
+
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h3 {
+      color: var(--trinity-text-bright);
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    p {
+      color: var(--trinity-text-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+  }
+
+  .space-settings__field {
+    gap: 7px;
+  }
+
+  .space-settings__feedback {
+    margin: 0;
+    color: var(--trinity-text);
+    font-size: 13px;
+  }
+
+  .space-settings__feedback--danger {
+    color: var(--trinity-danger);
+  }
+
+  .space-settings__actions {
+    position: sticky;
+    bottom: -28px;
+    z-index: var(--trinity-z-sticky);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin: 0 -4px;
+    padding: 14px 4px 0;
+    background: var(--trinity-surface-workspace);
+  }
+
+  .space-settings__failure {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .space-settings__scope {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  @media #{rooms.$below-md} {
+    .space-settings__card {
+      padding: 14px;
+    }
+
+    .space-settings__failure {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .space-settings__actions {
+      bottom: calc(-18px - env(safe-area-inset-bottom));
+      margin: 0 -12px;
+      padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+
+      > button {
+        min-height: 44px;
+      }
+    }
+  }
+}

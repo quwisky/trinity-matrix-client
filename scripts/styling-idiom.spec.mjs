@@ -133,6 +133,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/shared/settings-hub/settings-hub.component.scss',
   'libs/feature/rooms/src/lib/space-members/space-members.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings-access.component.scss',
+  'libs/feature/rooms/src/lib/space-settings/space-settings-for-you/space-settings-for-you.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings-general.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings.component.scss',
   'libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss',

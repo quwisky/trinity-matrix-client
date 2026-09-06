@@ -7,6 +7,7 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
+  openSettingsTab,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -255,8 +256,62 @@ test.describe('Room order inside a space', () => {
     //    change the sidebar rendered the curated order here.
     await expect(roomNames(page)).toHaveText(recency, { timeout: 30_000 });
 
-    // 2. The space can be pinned to the curated order from its header.
-    await chooseSort(page, 'space-sort-space');
+    // 2. The Space settings panel stages the exact Account-and-Space preference. Watch the
+    //    protocol boundary while it saves: a personal ordering must never rewrite shared
+    //    m.space.child state.
+    const hierarchyWrites: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'PUT' &&
+        request.url().includes('/state/m.space.child/')
+      ) {
+        hierarchyWrites.push(request.url());
+      }
+    });
+    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('open-space-settings').click();
+    await openSettingsTab(page, 'space-settings', 'for-you');
+    const settings = page.getByTestId('space-settings');
+    const openingAppearance = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      theme: document.documentElement.getAttribute('data-theme'),
+      fontSize: document.documentElement.style.fontSize,
+    }));
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.style.fontSize = '125%';
+    });
+    await expect(page.getByTestId('space-settings-for-you-save')).toBeVisible();
+    await test.info().attach('space-personal-order-desktop-light-scaled', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'amethyst');
+    });
+    await test.info().attach('space-personal-order-desktop-dark-amethyst', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(({ dark, theme, fontSize }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      if (theme === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.style.fontSize = fontSize;
+    }, openingAppearance);
+    const spaceOrder = page.getByRole('radio', { name: /Space order/ });
+    await spaceOrder.focus();
+    await spaceOrder.press('Space');
+    await expect(spaceOrder).toBeChecked();
+    await page.getByTestId('space-settings-for-you-save').click();
+    await expect(
+      page.getByTestId('space-settings-for-you-feedback'),
+    ).toContainText('saved for this Account on this device');
+    expect(hierarchyWrites).toEqual([]);
+    await page.getByTestId('space-settings-cancel').click();
     await expect(roomNames(page)).toHaveText(curated);
 
     // 3. And the choice sticks — per space, across a reload.
@@ -272,10 +327,22 @@ test.describe('Room order inside a space', () => {
     await openSpace(page, spaceName);
     await expect(roomNames(page)).toHaveText(curated, { timeout: 30_000 });
 
-    // 5. Dropping the override hands the space back to that default — proving "use my
-    //    default" tracks the setting rather than freezing whatever it was.
-    await chooseSort(page, 'space-sort-default');
+    // 5. Use my default deletes the override. It therefore sees the later Appearance change
+    //    instead of retaining a snapshot of the default that existed when settings opened.
+    await page.getByTestId('space-actions-overflow').click();
+    await page.getByTestId('open-space-settings').click();
+    await openSettingsTab(page, 'space-settings', 'for-you');
+    await page.getByTestId('space-settings-order-default').click();
+    await page.getByTestId('space-settings-for-you-save').click();
+    await expect(
+      page.getByTestId('space-settings-for-you-feedback'),
+    ).toContainText('saved for this Account on this device');
+    await page.getByTestId('space-settings-cancel').click();
     await expect(roomNames(page)).toHaveText(alphabetical);
+
+    // 6. The existing sidebar shortcut remains a second presentation of the same capability.
+    await chooseSort(page, 'space-sort-recent');
+    await expect(roomNames(page)).toHaveText(recency);
   });
 
   /**
