@@ -79,10 +79,10 @@ describe('Application Runtime session projection ownership', () => {
     expect(rooms).toContain('this.imagePackService.connect(roomId)');
     expect(rooms).toContain('this.imagePackService.disconnect(roomId)');
     expect(widgets).toContain(
-      'this.widgetsService.connect(this.connectedRoom)',
+      'this.widgetsService.connect(this.connectedTarget)',
     );
     expect(widgets).toContain(
-      'this.widgetsService.disconnect(this.connectedRoom)',
+      'this.widgetsService.disconnect(this.connectedTarget)',
     );
     expect(devices).toContain('this.devicesSvc.connect()');
     expect(devices).toContain('this.devicesSvc.disconnect()');

@@ -147,10 +147,12 @@ Address reads and cold finite add, canonical-address and removal commands resolv
 opening Account-and-Room/Space target directly. The address section keeps local-directory entries
 and canonical state distinct, remains readable without administration authority, and rechecks
 exact-target permission after confirmations and between a canonical clear and directory removal.
-The incrementally retained Room-only widget adapter stays behind an opening-Account-active gate
-until its exact-target migration lands; it never falls through to a newly active Account. Space
-settings deliberately does not inherit Room history or widget
-policy. UI feedback uses focusable `trnActionAllowed` controls,
+Room-only widget projections key demand by the immutable opening Account-and-Room pair, listen to
+that Account's live widget and power state, and reattach when its client is removed or restored.
+URL-template identity and cold finite create/remove commands resolve the same exact Account rather
+than the active client; subscription-time permission and revision checks remain authoritative.
+Space settings deliberately does not inherit Room history or widget policy. UI feedback uses
+focusable `trnActionAllowed` controls,
 keyboard-accessible explanations and a touch status surface. Every cold migrated mutation
 rechecks permission at subscription time after pickers/confirmations and before the SDK write;
 avatar publication checks both before upload and before publishing state. Space leave captures

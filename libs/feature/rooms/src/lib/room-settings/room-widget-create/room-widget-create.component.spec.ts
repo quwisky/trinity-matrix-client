@@ -10,11 +10,16 @@ import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomWidgetCreateComponent } from './room-widget-create.component';
 
+const TARGET = {
+  accountId: '@opening:example.org',
+  roomId: '!room:example.org',
+} as const;
+
 async function build() {
   const create = vi.fn(() => of('widget-id'));
   const toast = vi.fn();
   const rendered = await render(RoomWidgetCreateComponent, {
-    inputs: { roomId: '!room:example.org' },
+    inputs: { target: TARGET },
     providers: [
       MockProvider(WidgetManagementService, { create }),
       MockProvider(TrnToastService, { show: toast }),
@@ -55,7 +60,7 @@ describe('RoomWidgetCreateComponent', () => {
 
     await component.add();
 
-    expect(create).toHaveBeenCalledWith('!room:example.org', {
+    expect(create).toHaveBeenCalledWith(TARGET, {
       name: 'Planning board',
       rawUrl: 'https://widgets.example/$matrix_room_id',
     });
@@ -126,5 +131,16 @@ describe('RoomWidgetCreateComponent', () => {
 
     expect(create).toHaveBeenCalledTimes(2);
     expect(component.form.name().value()).toBe('');
+  });
+
+  it('reports and discards an unfinished creation draft explicitly', async () => {
+    const { component } = await build();
+    component.form.name().value.set('Unfinished board');
+
+    expect(component.dirty()).toBe(true);
+    component.discard();
+
+    expect(component.dirty()).toBe(false);
+    expect(component.form().value()).toEqual({ name: '', rawUrl: '' });
   });
 });

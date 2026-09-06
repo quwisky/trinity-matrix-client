@@ -61,12 +61,12 @@
     }
     @case ('widgets') {
       <section data-testid="room-settings-panel-widgets">
-        @if (legacyUnavailableReason(); as reason) {
+        @if (draft.targetUnavailableReason(); as reason) {
           <p class="room-settings__target-warning" role="status">
             {{ reason }}
           </p>
         } @else {
-          <trn-room-widgets [roomId]="roomId()" />
+          <trn-room-widgets [target]="widgetTarget()" />
         }
       </section>
     }

@@ -91,6 +91,7 @@ function roomSnapshot(
 
 interface BuildOptions {
   readonly compact?: boolean;
+  readonly canManageWidgets?: boolean;
   readonly initial?: RoomSettingsSnapshot;
   readonly setName?: Mock;
   readonly setTopic?: Mock;
@@ -130,7 +131,8 @@ async function build(options: BuildOptions = {}) {
   const confirm = vi.fn(() => confirmResult.asObservable());
   const toast = vi.fn();
   const widgets = signal([]);
-  const canManageWidgets = signal(false);
+  const canManageWidgets = signal(options.canManageWidgets ?? false);
+  const connectWidgets = vi.fn();
 
   const { fixture, container } = await render(RoomSettingsComponent, {
     inputs: {
@@ -192,7 +194,7 @@ async function build(options: BuildOptions = {}) {
         widgetsFor: () => widgets.asReadonly(),
         canManageFor: () => canManageWidgets.asReadonly(),
         launchFor: vi.fn(),
-        connect: vi.fn(),
+        connect: connectWidgets,
         disconnect: vi.fn(),
       }),
       MockProvider(WidgetManagementService),
@@ -222,6 +224,7 @@ async function build(options: BuildOptions = {}) {
     confirm,
     confirmResult,
     toast,
+    connectWidgets,
   };
 }
 
@@ -665,18 +668,44 @@ describe('RoomSettingsComponent', () => {
     expect(container.querySelector('trn-room-aliases')).not.toBeNull();
   });
 
-  it('does not expose legacy writers after switching away from the opening Account', async () => {
-    const { cmp, fixture, container, emit } = await build();
+  it('keeps Widgets attached to the opening Account after the active Account changes', async () => {
+    const { cmp, fixture, container, emit, connectWidgets } = await build();
     emit(roomSnapshot({ openingAccountActive: false }));
 
     cmp.selectSection('widgets');
-    fixture.detectChanges();
+    await fixture.whenStable();
 
-    expect(
-      container.querySelector('[data-testid="room-settings-panel-widgets"]')
-        ?.textContent,
-    ).toContain('Switch back to the opening Account');
-    expect(container.querySelector('trn-room-widgets')).toBeNull();
+    expect(container.querySelector('trn-room-widgets')).not.toBeNull();
+    expect(connectWidgets).toHaveBeenCalledWith(TARGET);
+  });
+
+  it('guards section navigation that would discard an unfinished widget draft', async () => {
+    const { cmp, fixture, container, confirm, confirmResult } = await build({
+      canManageWidgets: true,
+    });
+    cmp.selectSection('widgets');
+    await fixture.whenStable();
+    const name = container.querySelector<HTMLInputElement>(
+      '[data-testid="room-widget-create-name"]',
+    );
+    expect(name).not.toBeNull();
+    name!.value = 'Unfinished board';
+    name!.dispatchEvent(new Event('input', { bubbles: true }));
+    await fixture.whenStable();
+
+    cmp.selectSection('general');
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ header: 'Discard Room settings changes?' }),
+    );
+    confirmResult.next(false);
+    await fixture.whenStable();
+    expect(cmp.selectedSection()).toBe('widgets');
+    expect(name?.value).toBe('Unfinished board');
+
+    cmp.selectSection('general');
+    confirmResult.next(true);
+    await fixture.whenStable();
+    expect(cmp.selectedSection()).toBe('general');
   });
 });
 

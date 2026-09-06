@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { WIDGET_APPEARANCE_PROJECTION } from './widget-appearance-projection';
 import { WIDGET_EVENT_TYPE, WidgetsService } from './widgets.service';
 
+const TARGET = {
+  accountId: '@alice:example.org',
+  roomId: '!room:example.org',
+} as const;
+const SECOND_TARGET = { ...TARGET, roomId: '!second:example.org' } as const;
+
 interface WidgetFixture {
   id: string;
   content: Record<string, unknown>;
@@ -34,6 +40,10 @@ function setup(initial: WidgetFixture[] = []) {
     mode: 'dark',
   });
   const activeUserId = signal<string | null>('@alice:example.org');
+  const accountIds = signal<readonly string[]>([
+    '@alice:example.org',
+    '@bob:other.example',
+  ]);
   const membership = signal('join');
   const guest = signal(false);
   const maySendWidgets = signal(true);
@@ -82,6 +92,15 @@ function setup(initial: WidgetFixture[] = []) {
       return activeUserId() === '@bob:other.example' ? secondClient : client;
     },
     activeUserId: activeUserId.asReadonly(),
+    accountIds: accountIds.asReadonly(),
+    clientFor: (accountId: string) =>
+      !accountIds().includes(accountId)
+        ? null
+        : accountId === '@alice:example.org'
+          ? client
+          : accountId === '@bob:other.example'
+            ? secondClient
+            : null,
   };
   TestBed.configureTestingModule({
     providers: [
@@ -100,6 +119,7 @@ function setup(initial: WidgetFixture[] = []) {
     getRoom,
     client,
     activeUserId,
+    accountIds,
     membership,
     guest,
     maySendWidgets,
@@ -133,7 +153,7 @@ describe('WidgetsService', () => {
       },
     ]);
 
-    expect(service.widgetsFor('!room:example.org')()).toEqual([
+    expect(service.widgetsFor(TARGET)()).toEqual([
       {
         id: 'board',
         name: 'Planning',
@@ -171,7 +191,7 @@ describe('WidgetsService', () => {
       },
     ]);
 
-    expect(service.widgetsFor('!room:example.org')()[0]).toEqual(
+    expect(service.widgetsFor(TARGET)()[0]).toEqual(
       expect.objectContaining({
         creatorUserId: '@creator:example.org',
         waitForIframeLoad: true,
@@ -191,8 +211,8 @@ describe('WidgetsService', () => {
         },
       },
     ]);
-    const widgets = service.widgetsFor('!room:example.org');
-    service.connect('!room:example.org');
+    const widgets = service.widgetsFor(TARGET);
+    service.connect(TARGET);
     events[0] = widgetEvent({
       id: 'board',
       sender: '@new-sender:example.org',
@@ -229,7 +249,7 @@ describe('WidgetsService', () => {
       },
     ]);
 
-    expect(service.widgetsFor('!room:example.org')()).toEqual([
+    expect(service.widgetsFor(TARGET)()).toEqual([
       expect.objectContaining({ id: 'unsafe', rawUrl: 'javascript:alert(1)' }),
     ]);
   });
@@ -237,15 +257,13 @@ describe('WidgetsService', () => {
   it('memoizes the readonly signal for each watched room', () => {
     const { service } = setup();
 
-    expect(service.widgetsFor('!room:example.org')).toBe(
-      service.widgetsFor('!room:example.org'),
-    );
+    expect(service.widgetsFor(TARGET)).toBe(service.widgetsFor({ ...TARGET }));
   });
 
   it('projects joined, non-guest power authorization and updates it live', async () => {
     const { service, client, membership, guest, maySendWidgets } = setup();
-    const canManage = service.canManageFor('!room:example.org');
-    service.connect('!room:example.org');
+    const canManage = service.canManageFor(TARGET);
+    service.connect(TARGET);
 
     expect(canManage()).toBe(true);
 
@@ -280,8 +298,8 @@ describe('WidgetsService', () => {
 
   it('follows relevant live state and coalesces a sync burst', async () => {
     const { service, client, events, getStateEvents } = setup();
-    const widgets = service.widgetsFor('!room:example.org');
-    service.connect('!room:example.org');
+    const widgets = service.widgetsFor(TARGET);
+    service.connect(TARGET);
     const readsBefore = getStateEvents.mock.calls.length;
     events.push(
       widgetEvent({
@@ -301,8 +319,8 @@ describe('WidgetsService', () => {
 
   it('ignores other event types and unwatched rooms', async () => {
     const { service, client, getStateEvents } = setup();
-    service.widgetsFor('!room:example.org');
-    service.connect('!room:example.org');
+    service.widgetsFor(TARGET);
+    service.connect(TARGET);
     const readsBefore = getStateEvents.mock.calls.length;
     const onState = handlerFor(client, 'RoomState.events');
 
@@ -320,15 +338,15 @@ describe('WidgetsService', () => {
         content: { type: 'm.custom', url: 'https://widgets.example' },
       },
     ]);
-    const widgets = service.widgetsFor('!room:example.org');
-    service.connect('!room:example.org');
+    const widgets = service.widgetsFor(TARGET);
+    service.connect(TARGET);
     const readsBefore = getStateEvents.mock.calls.length;
     handlerFor(
       client,
       'RoomState.events',
     )?.(liveEvent(WIDGET_EVENT_TYPE, '!room:example.org'));
 
-    service.disconnect('!room:example.org');
+    service.disconnect(TARGET);
     await Promise.resolve();
 
     expect(client.off).toHaveBeenCalledWith(
@@ -339,10 +357,32 @@ describe('WidgetsService', () => {
     expect(getStateEvents).toHaveBeenCalledTimes(readsBefore);
   });
 
+  it('releases and restores the exact Account without following the active client', async () => {
+    const { service, client, accountIds } = setup([
+      {
+        id: 'board',
+        content: { type: 'm.custom', url: 'https://widgets.example' },
+      },
+    ]);
+    const widgets = service.widgetsFor(TARGET);
+    service.connect(TARGET);
+    expect(widgets()).toHaveLength(1);
+
+    accountIds.set(['@bob:other.example']);
+    await vi.waitFor(() => expect(widgets()).toEqual([]));
+    expect(client.off).toHaveBeenCalledWith(
+      'RoomState.events',
+      expect.any(Function),
+    );
+
+    accountIds.set(['@alice:example.org', '@bob:other.example']);
+    await vi.waitFor(() => expect(widgets()).toHaveLength(1));
+  });
+
   it('labels a display-name fallback as the Matrix user ID it actually sends', () => {
     const { service } = setup();
 
-    const launch = service.launchFor('!room:example.org', {
+    const launch = service.launchFor(TARGET, {
       id: 'board',
       name: 'Board',
       type: 'm.custom',
@@ -375,25 +415,25 @@ describe('WidgetsService', () => {
     } as const;
 
     expect(
-      new URL(
-        service.launchFor('!room:example.org', widget).url as string,
-      ).searchParams.get('theme'),
+      new URL(service.launchFor(TARGET, widget).url as string).searchParams.get(
+        'theme',
+      ),
     ).toBe('dark');
 
     resolvedAppearance.set({ mode: 'light' });
 
     expect(
-      new URL(
-        service.launchFor('!room:example.org', widget).url as string,
-      ).searchParams.get('theme'),
+      new URL(service.launchFor(TARGET, widget).url as string).searchParams.get(
+        'theme',
+      ),
     ).toBe('light');
   });
 
-  it('recomputes launch identity when the active account changes', () => {
+  it('keeps launch identity on the opening Account when the active Account changes', () => {
     const { service, activeUserId } = setup();
-    service.connect('!room:example.org');
+    service.connect(TARGET);
     const launch = computed(() =>
-      service.launchFor('!room:example.org', {
+      service.launchFor(TARGET, {
         id: 'board',
         name: 'Board',
         type: 'm.custom',
@@ -417,32 +457,33 @@ describe('WidgetsService', () => {
     expect(
       Object.fromEntries(new URL(launch().url as string).searchParams),
     ).toEqual({
-      user: '@bob:other.example',
-      device: 'OTHER-DEVICE',
-      base: 'https://matrix.other.example',
+      user: '@alice:example.org',
+      device: 'DEVICE',
+      base: 'https://matrix.example.org',
     });
   });
 
-  it('keeps the shared listener alive until overlapping rooms both release it', () => {
+  it('keeps an exact-target listener alive until overlapping consumers release it', () => {
     const { service, client } = setup([
       {
         id: 'board',
         content: { type: 'm.custom', url: 'https://widgets.example' },
       },
     ]);
-    const first = service.widgetsFor('!room:example.org');
-    const second = service.widgetsFor('!second:example.org');
-    service.connect('!room:example.org');
-    service.connect('!second:example.org');
+    const first = service.widgetsFor(TARGET);
+    const second = service.widgetsFor({ ...TARGET });
+    service.connect(TARGET);
+    service.connect({ ...TARGET });
 
-    service.disconnect('!room:example.org');
+    service.disconnect(TARGET);
 
-    expect(first()).toEqual([]);
+    expect(first()).not.toEqual([]);
+    expect(second()).toBe(first());
     expect(client.off).not.toHaveBeenCalled();
 
-    service.disconnect('!second:example.org');
+    service.disconnect({ ...TARGET });
 
-    expect(second()).toEqual([]);
+    expect(first()).toEqual([]);
     expect(client.off).toHaveBeenCalledTimes(2);
     expect(client.off).toHaveBeenCalledWith(
       'RoomState.events',
@@ -456,13 +497,13 @@ describe('WidgetsService', () => {
 
   it('prunes a released room before a later room reconnects', () => {
     const { service, getRoom } = setup();
-    service.widgetsFor('!room:example.org');
-    service.connect('!room:example.org');
-    service.disconnect('!room:example.org');
+    service.widgetsFor(TARGET);
+    service.connect(TARGET);
+    service.disconnect(TARGET);
     getRoom.mockClear();
 
-    service.widgetsFor('!second:example.org');
-    service.connect('!second:example.org');
+    service.widgetsFor(SECOND_TARGET);
+    service.connect(SECOND_TARGET);
 
     expect(getRoom).not.toHaveBeenCalledWith('!room:example.org');
     expect(getRoom).toHaveBeenCalledWith('!second:example.org');

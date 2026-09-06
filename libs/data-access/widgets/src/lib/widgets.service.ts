@@ -1,10 +1,12 @@
 import {
+  Injector,
   Injectable,
   type Signal,
   type WritableSignal,
   inject,
   signal,
 } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import {
   EventType,
   type MatrixClient,
@@ -12,14 +14,13 @@ import {
   RoomEvent,
   RoomStateEvent,
 } from 'matrix-js-sdk';
-import {
-  MatrixClientService,
-  projectFromClient,
-} from '@trinity/data-access/matrix-client';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { liveRoomState } from '@trinity/util/matrix';
+import { Observable, Subscription, of } from 'rxjs';
 import { WIDGET_APPEARANCE_PROJECTION } from './widget-appearance-projection';
 import type {
   RoomWidget,
+  RoomWidgetTarget,
   WidgetLaunch,
   WidgetTemplateContext,
 } from './widget.model';
@@ -30,9 +31,16 @@ export const WIDGET_EVENT_TYPE = 'im.vector.modular.widgets';
 const TRINITY_WIDGET_CLIENT_ID = 'eu.qwky.trinity';
 
 interface WatchedRoom {
+  readonly target: RoomWidgetTarget;
   readonly state: WritableSignal<readonly RoomWidget[]>;
   readonly canManage: WritableSignal<boolean>;
   consumers: number;
+  subscription: Subscription | null;
+}
+
+interface WidgetSnapshot {
+  readonly widgets: readonly RoomWidget[];
+  readonly canManage: boolean;
 }
 
 /**
@@ -44,73 +52,59 @@ interface WatchedRoom {
 export class WidgetsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly appearance = inject(WIDGET_APPEARANCE_PROJECTION);
+  private readonly injector = inject(Injector);
   private readonly watched = new Map<string, WatchedRoom>();
-
-  private readonly onStateEvent = (event: MatrixEvent): void => {
-    const roomId = event.getRoomId();
-    if (
-      (event.getType() === WIDGET_EVENT_TYPE ||
-        event.getType() === EventType.RoomPowerLevels) &&
-      roomId &&
-      this.watched.has(roomId)
-    ) {
-      this.projection.schedule();
-    }
-  };
-
-  private readonly onMyMembership = (room?: { roomId?: string }): void => {
-    if (room?.roomId && this.watched.has(room.roomId)) {
-      this.projection.schedule();
-    }
-  };
-
-  private readonly projection = projectFromClient({
-    id: 'widgets.room-state',
-    matrix: this.matrix,
-    bind: (client) => {
-      client.on(RoomStateEvent.Events, this.onStateEvent);
-      client.on(RoomEvent.MyMembership, this.onMyMembership);
-    },
-    unbind: (client) => {
-      client.off(RoomStateEvent.Events, this.onStateEvent);
-      client.off(RoomEvent.MyMembership, this.onMyMembership);
-    },
-    rebuild: (client) => {
-      for (const [roomId, watched] of this.watched) {
-        watched.state.set(readRoomWidgets(client, roomId));
-        watched.canManage.set(canManageRoomWidgets(client, roomId));
-      }
-    },
-    reset: () => {
-      for (const watched of this.watched.values()) {
-        watched.state.set([]);
-        watched.canManage.set(false);
-      }
-    },
-  });
 
   /**
    * Widgets currently declared in one room. The signal is memoized and synchronously
    * seeded, so the dialog does not flash an empty state before its first render.
    */
-  widgetsFor(roomId: string): Signal<readonly RoomWidget[]> {
-    return this.watchedRoom(roomId).state.asReadonly();
+  widgetsFor(target: RoomWidgetTarget): Signal<readonly RoomWidget[]> {
+    return this.watchedRoom(target).state.asReadonly();
   }
 
-  /** Live management authorization for the active account in one watched room. */
-  canManageFor(roomId: string): Signal<boolean> {
-    return this.watchedRoom(roomId).canManage.asReadonly();
+  /** Live management authorization for the exact Account in one watched Room. */
+  canManageFor(target: RoomWidgetTarget): Signal<boolean> {
+    return this.watchedRoom(target).canManage.asReadonly();
   }
 
-  /** Acquire one room and attach the shared filtered listener for the first consumer. */
-  connect(roomId: string): void {
-    this.watchedRoom(roomId).consumers += 1;
-    this.projection.connect();
+  /** Acquire one exact target and attach its filtered listener for the first consumer. */
+  connect(target: RoomWidgetTarget): void {
+    const watched = this.watchedRoom(target);
+    watched.consumers += 1;
+    if (watched.consumers > 1) return;
+    const lifetime = new Subscription();
+    let connectedClient = this.matrix.clientFor(watched.target.accountId);
+    let clientSubscription = this.observeCurrentClient(
+      watched.target,
+    ).subscribe((snapshot) => {
+      watched.state.set(snapshot.widgets);
+      watched.canManage.set(snapshot.canManage);
+    });
+    lifetime.add(
+      toObservable(this.matrix.accountIds, {
+        injector: this.injector,
+      }).subscribe(() => {
+        const nextClient = this.matrix.clientFor(watched.target.accountId);
+        if (nextClient === connectedClient) return;
+        connectedClient = nextClient;
+        clientSubscription.unsubscribe();
+        clientSubscription = this.observeCurrentClient(
+          watched.target,
+        ).subscribe((snapshot) => {
+          watched.state.set(snapshot.widgets);
+          watched.canManage.set(snapshot.canManage);
+        });
+      }),
+    );
+    lifetime.add(() => clientSubscription.unsubscribe());
+    watched.subscription = lifetime;
   }
 
-  /** Release one consumer without disrupting another open room-settings dialog. */
-  disconnect(roomId: string): void {
-    const watched = this.watched.get(roomId);
+  /** Release one consumer without disrupting another settings view of this target. */
+  disconnect(target: RoomWidgetTarget): void {
+    const key = targetKey(target);
+    const watched = this.watched.get(key);
     if (!watched) {
       return;
     }
@@ -118,52 +112,92 @@ export class WidgetsService {
     if (watched.consumers > 0) {
       return;
     }
+    watched.subscription?.unsubscribe();
+    watched.subscription = null;
     watched.state.set([]);
     watched.canManage.set(false);
-    this.watched.delete(roomId);
-    if (this.watched.size === 0) {
-      this.projection.disconnect();
-    }
+    this.watched.delete(key);
   }
 
-  /** Expand and validate a widget destination using the current account and client UI. */
-  launchFor(roomId: string, widget: RoomWidget): WidgetLaunch {
-    return resolveWidgetLaunch(widget, this.templateContext(roomId));
+  /** Expand a destination using the immutable opening Account and current client UI. */
+  launchFor(target: RoomWidgetTarget, widget: RoomWidget): WidgetLaunch {
+    return resolveWidgetLaunch(widget, this.templateContext(target));
   }
 
-  private readClient(): MatrixClient | null {
-    return (
-      this.projection.client() ??
-      (this.matrix.isInitialized ? this.matrix.instance : null)
-    );
-  }
-
-  private watchedRoom(roomId: string): WatchedRoom {
-    let watched = this.watched.get(roomId);
+  private watchedRoom(target: RoomWidgetTarget): WatchedRoom {
+    const key = targetKey(target);
+    let watched = this.watched.get(key);
     if (!watched) {
+      const stableTarget = { ...target };
+      const client = this.matrix.clientFor(stableTarget.accountId);
       watched = {
+        target: stableTarget,
         state: signal<readonly RoomWidget[]>(
-          readRoomWidgets(this.readClient(), roomId),
+          readRoomWidgets(client, stableTarget.roomId),
           { equal: sameWidgets },
         ),
-        canManage: signal(canManageRoomWidgets(this.readClient(), roomId)),
+        canManage: signal(canManageRoomWidgets(client, stableTarget.roomId)),
         consumers: 0,
+        subscription: null,
       };
-      this.watched.set(roomId, watched);
+      this.watched.set(key, watched);
     }
     return watched;
   }
 
-  private templateContext(roomId: string): WidgetTemplateContext {
-    // Reading the signal makes every computed launch URL account-scoped. The active
-    // instance changes synchronously with it, while the room-state projection reconnects
-    // in an effect and may otherwise keep an identical widget array referentially stable.
-    const activeUserId = this.matrix.activeUserId();
-    const client =
-      activeUserId && this.matrix.isInitialized ? this.matrix.instance : null;
-    const userId = client?.getUserId() ?? activeUserId ?? '';
+  private observeCurrentClient(
+    target: RoomWidgetTarget,
+  ): Observable<WidgetSnapshot> {
+    const client = this.matrix.clientFor(target.accountId);
+    if (!client) return of(emptySnapshot());
+    return new Observable((subscriber) => {
+      let active = true;
+      let queued = false;
+      const publish = (): void => {
+        if (!active || this.matrix.clientFor(target.accountId) !== client) {
+          return;
+        }
+        subscriber.next(snapshotFrom(client, target.roomId));
+      };
+      const schedule = (): void => {
+        if (queued) return;
+        queued = true;
+        queueMicrotask(() => {
+          queued = false;
+          publish();
+        });
+      };
+      const onState = (event: MatrixEvent): void => {
+        if (
+          event.getRoomId() === target.roomId &&
+          (event.getType() === WIDGET_EVENT_TYPE ||
+            event.getType() === EventType.RoomPowerLevels)
+        ) {
+          schedule();
+        }
+      };
+      const onMembership = (room?: { roomId?: string }): void => {
+        if (room?.roomId === target.roomId) schedule();
+      };
+      client.on(RoomStateEvent.Events, onState);
+      client.on(RoomEvent.MyMembership, onMembership);
+      publish();
+      return () => {
+        active = false;
+        client.off(RoomStateEvent.Events, onState);
+        client.off(RoomEvent.MyMembership, onMembership);
+      };
+    });
+  }
+
+  private templateContext(target: RoomWidgetTarget): WidgetTemplateContext {
+    // Account registry changes invalidate computed launch URLs after exact-client
+    // removal/restoration without ever following the active Account.
+    this.matrix.accountIds();
+    const client = this.matrix.clientFor(target.accountId);
+    const userId = client?.getUserId() ?? target.accountId;
     const roomMember = userId
-      ? client?.getRoom(roomId)?.getMember(userId)
+      ? client?.getRoom(target.roomId)?.getMember(userId)
       : null;
     const user = userId ? client?.getUser(userId) : null;
     const avatarMxc = roomMember?.getMxcAvatarUrl() ?? user?.avatarUrl ?? '';
@@ -180,7 +214,7 @@ export class WidgetsService {
           ) ?? '')
         : '';
     return {
-      roomId,
+      roomId: target.roomId,
       userId,
       displayName: roomMember?.rawDisplayName ?? user?.displayName ?? userId,
       avatarUrl,
@@ -191,6 +225,21 @@ export class WidgetsService {
       baseUrl: client?.getHomeserverUrl() ?? '',
     };
   }
+}
+
+function targetKey(target: RoomWidgetTarget): string {
+  return `${target.accountId.length}:${target.accountId}${target.roomId}`;
+}
+
+function emptySnapshot(): WidgetSnapshot {
+  return { widgets: [], canManage: false };
+}
+
+function snapshotFrom(client: MatrixClient, roomId: string): WidgetSnapshot {
+  return {
+    widgets: readRoomWidgets(client, roomId),
+    canManage: canManageRoomWidgets(client, roomId),
+  };
 }
 
 function readRoomWidgets(

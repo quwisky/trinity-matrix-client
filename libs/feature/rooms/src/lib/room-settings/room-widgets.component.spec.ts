@@ -18,6 +18,11 @@ import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
+const TARGET = {
+  accountId: '@opening:example.org',
+  roomId: '!r:hs',
+} as const;
+
 const BOARD_WIDGET: RoomWidget = {
   id: 'board',
   name: 'Planning board',
@@ -69,7 +74,7 @@ async function build(
   };
   const openDialog = over.openDialog ?? vi.fn(() => dialogRef);
   const { fixture, container } = await render(RoomWidgetsComponent, {
-    inputs: { roomId: '!r:hs' },
+    inputs: { target: TARGET },
     providers: [
       MockProvider(WidgetsService, {
         widgetsFor: () => widgets.asReadonly(),
@@ -108,7 +113,7 @@ describe('RoomWidgetsComponent', () => {
   it('connects live widget state and explains an empty room', async () => {
     const { container, connect } = await build();
 
-    expect(connect).toHaveBeenCalledWith('!r:hs');
+    expect(connect).toHaveBeenCalledWith(TARGET);
     expect(
       container.querySelector('[data-testid="room-settings-widgets-empty"]'),
     ).toHaveTextContent('No widgets are declared in this room');
@@ -172,7 +177,7 @@ describe('RoomWidgetsComponent', () => {
       .querySelector<HTMLElement>('[data-testid="room-widget-remove-board"]')
       ?.click();
     await vi.waitFor(() =>
-      expect(remove).toHaveBeenCalledWith('!r:hs', BOARD_WIDGET),
+      expect(remove).toHaveBeenCalledWith(TARGET, BOARD_WIDGET),
     );
 
     expect(confirm).toHaveBeenCalledWith(
@@ -387,6 +392,6 @@ describe('RoomWidgetsComponent', () => {
 
     fixture.destroy();
 
-    expect(disconnect).toHaveBeenCalledWith('!r:hs');
+    expect(disconnect).toHaveBeenCalledWith(TARGET);
   });
 });

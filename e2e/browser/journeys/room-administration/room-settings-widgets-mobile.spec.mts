@@ -43,6 +43,10 @@ test.describe('Room settings widgets on a phone', () => {
     const pass = `${user}-pass`;
     const roomName = `Many widgets ${runId}`;
     const widgetCount = 8;
+    const longWidgetName = `Planning-${'continuity-'.repeat(18)}board`;
+    const longWidgetUrl =
+      `https://widgets.example/${'long-segment-'.repeat(18)}` +
+      '?room=$matrix_room_id';
     const widgetFixture = await installWidgetFixture(page);
 
     await registerUser(request, user, pass);
@@ -65,9 +69,15 @@ test.describe('Room settings widgets on a phone', () => {
           type: 'im.vector.modular.widgets',
           state_key: `board-${index}`,
           content: {
-            name: `Planning board ${index + 1}`,
+            name:
+              index === widgetCount - 1
+                ? longWidgetName
+                : `Planning board ${index + 1}`,
             type: 'm.custom',
-            url: `https://widgets.example/board/${index}`,
+            url:
+              index === widgetCount - 1
+                ? longWidgetUrl
+                : `https://widgets.example/board/${index}`,
           },
         })),
       },
@@ -83,6 +93,17 @@ test.describe('Room settings widgets on a phone', () => {
     await page
       .getByTestId('room-widget-create-url')
       .fill('https://widgets.example/mobile?room=$matrix_room_id');
+
+    await page.getByTestId('room-settings-mobile-back').tap();
+    const discard = page.locator('trn-alert-dialog');
+    await expect(discard).toContainText('unsaved Room details');
+    await discard.getByRole('button', { name: 'Keep editing' }).tap();
+    await expect(page.getByTestId('room-widget-create-name')).toHaveValue(
+      'Mobile board',
+    );
+    await expect(page.getByTestId('room-widget-create-url')).toHaveValue(
+      'https://widgets.example/mobile?room=$matrix_room_id',
+    );
     await page.getByTestId('room-widget-create-url').press('Enter');
     await expect(
       page.locator('article.room-widgets__widget', {
@@ -105,12 +126,26 @@ test.describe('Room settings widgets on a phone', () => {
     for (let index = 0; index < widgetCount; index += 1) {
       await expect(
         page.getByTestId(`room-widget-board-${index}`),
-      ).toContainText(`Planning board ${index + 1}`);
+      ).toContainText(
+        index === widgetCount - 1
+          ? longWidgetName
+          : `Planning board ${index + 1}`,
+      );
     }
 
     const lastWidget = page.getByTestId(`room-widget-board-${widgetCount - 1}`);
     await lastWidget.scrollIntoViewIfNeeded();
     await expect(lastWidget).toBeVisible();
+    await expect(lastWidget).toContainText(longWidgetUrl);
+    await expect
+      .poll(() =>
+        page
+          .getByTestId('room-settings')
+          .evaluate(
+            (element) => element.scrollWidth <= element.clientWidth + 1,
+          ),
+      )
+      .toBe(true);
     await page
       .getByTestId(`room-widget-open-board-${widgetCount - 1}`)
       .click({ trial: true });
@@ -145,5 +180,48 @@ test.describe('Room settings widgets on a phone', () => {
     expect((cancelBox?.y ?? 0) + (cancelBox?.height ?? 0)).toBeLessThanOrEqual(
       page.viewportSize()?.height ?? 0,
     );
+
+    const appearance = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      theme: document.documentElement.getAttribute('data-theme'),
+      fontSize: document.documentElement.style.fontSize,
+    }));
+    for (const theme of [null, 'amethyst', 'onyx'] as const) {
+      for (const dark of [false, true]) {
+        await page.evaluate(
+          ({ selectedTheme, selectedDark }) => {
+            document.documentElement.classList.toggle('dark', selectedDark);
+            if (selectedTheme === null)
+              document.documentElement.removeAttribute('data-theme');
+            else
+              document.documentElement.setAttribute(
+                'data-theme',
+                selectedTheme,
+              );
+          },
+          { selectedTheme: theme, selectedDark: dark },
+        );
+        await expect(cancel).toBeVisible();
+        await expect(
+          page.getByTestId(`room-widget-open-board-${widgetCount - 1}`),
+        ).toBeVisible();
+      }
+    }
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '125%';
+    });
+    await lastWidget.scrollIntoViewIfNeeded();
+    await expect(lastWidget).toBeVisible();
+    await test.info().attach('room-widgets-mobile', {
+      body: await page.getByTestId('room-settings').screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(({ dark, theme, fontSize }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      document.documentElement.style.fontSize = fontSize;
+      if (theme === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+    }, appearance);
   });
 });
