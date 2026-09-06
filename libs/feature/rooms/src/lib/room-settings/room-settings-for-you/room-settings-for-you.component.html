@@ -59,7 +59,7 @@
           <trn-radio-group
             [options]="notificationOptions"
             [value]="draft.model().notificationMode"
-            [disabled]="draft.saving() || !room.targetAvailable()"
+            [disabled]="draft.form.notificationMode().disabled()"
             aria-labelledby="room-settings-notifications-heading"
             (valueChange)="draft.setNotificationMode($event)"
           />
@@ -73,7 +73,7 @@
           <label class="room-settings__choice">
             <trn-checkbox
               [checked]="draft.model().favourite"
-              [disabled]="draft.saving() || !room.targetAvailable()"
+              [disabled]="draft.form.favourite().disabled()"
               aria-describedby="room-settings-favourite-help"
               data-testid="room-settings-favourite"
               (checkedChange)="draft.setFavourite($event)"
@@ -88,7 +88,7 @@
           <label class="room-settings__choice">
             <trn-checkbox
               [checked]="draft.model().lowPriority"
-              [disabled]="draft.saving() || !room.targetAvailable()"
+              [disabled]="draft.form.lowPriority().disabled()"
               aria-describedby="room-settings-low-priority-help"
               data-testid="room-settings-low-priority"
               (checkedChange)="draft.setLowPriority($event)"
