@@ -8,7 +8,8 @@ export default defineConfig({
   ...e2eReportConfig(ANDROID_INSTALLED_WEBVIEW_SUITE),
   fullyParallel: false,
   workers: 1,
-  retries: 2,
+  retries: process.env['CI'] ? 1 : 0,
+  failOnFlakyTests: Boolean(process.env['CI']),
   timeout: 120_000,
   use: {
     // Canonical journeys default to the wide shell. Mobile specs retain their own
@@ -16,7 +17,8 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
     hasTouch: false,
     isMobile: false,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   projects: [{ name: 'android-webview' }],
 });

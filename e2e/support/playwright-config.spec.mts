@@ -122,7 +122,34 @@ describe('Playwright config primitives', () => {
     });
     expect(JSON.stringify(report.reporter)).toContain('blob-report');
     expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
+    expect(JSON.stringify(report.reporter)).toContain('html-report');
     expect(JSON.stringify(report.reporter)).toContain('suite-summary.json');
+  });
+
+  it('enables CI flaky failure and GitHub reporting while retaining HTML', () => {
+    installSession();
+    const previousCi = process.env['CI'];
+    process.env['CI'] = 'true';
+    try {
+      const report = e2eReportConfig(reportingSuite);
+      expect(report.reporter).toEqual(
+        expect.arrayContaining([
+          ['github'],
+          ['html', expect.objectContaining({ open: 'never' })],
+        ]),
+      );
+      const config = e2eLifecycleConfig({
+        suite: reportingSuite,
+        projectRoot: import.meta.dirname,
+        testDir: '.',
+        endpoint: 'application',
+        timeout: 90_000,
+      });
+      expect(config).toMatchObject({ retries: 1, failOnFlakyTests: true });
+    } finally {
+      if (previousCi === undefined) delete process.env['CI'];
+      else process.env['CI'] = previousCi;
+    }
   });
 
   it('restores registry identity after the worker replaces annotations', () => {
@@ -240,13 +267,15 @@ describe('Playwright config primitives', () => {
     });
 
     expect(config).toMatchObject({
-      retries: 0,
+      retries: process.env['CI'] ? 1 : 0,
+      failOnFlakyTests: Boolean(process.env['CI']),
       workers: 1,
       timeout: 90_000,
       expect: { timeout: 30_000 },
       use: {
         baseURL: 'http://127.0.0.1:41001',
         trace: 'retain-on-failure',
+        screenshot: 'only-on-failure',
       },
     });
     expect(config.projects).toBeUndefined();

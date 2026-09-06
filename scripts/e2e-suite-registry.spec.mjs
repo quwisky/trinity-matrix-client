@@ -19,7 +19,9 @@ import {
   registrySnapshot,
   validateDurableE2ENames,
   validateRegistry,
+  validateCiReportPaths,
   validateWorkspace,
+  yamlReportPaths,
   yamlRunCommands,
 } from './e2e-suite-registry-validator.mjs';
 import {
@@ -51,9 +53,11 @@ const runnerSuite = (overrides = {}) => ({
 });
 
 describe('E2E suite registry', () => {
+  // Resolves every owned Nx project on a cold hosted runner. The first public
+  // run exceeded 30 seconds; this is a graph contract, not a performance budget.
   it('matches the current workspace entrypoints, targets, commands and CI', () => {
     expect(validateWorkspace(workspaceRoot)).toEqual([]);
-  }, 30_000);
+  }, 120_000);
 
   it('rejects duplicate target ownership and serialization resources', () => {
     const snapshot = registrySnapshot();
@@ -83,6 +87,23 @@ describe('E2E suite registry', () => {
         expect.stringContaining('permits caching'),
       ]),
     );
+  });
+
+  it('locks canonical browser and Android suites to one CI retry', () => {
+    const snapshot = registrySnapshot();
+    snapshot.suites.find(({ id }) => id === 'browser.canonical').ciRetries = 2;
+
+    expect(validateWorkspace(workspaceRoot, snapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'browser.canonical must allow exactly one CI retry',
+        ),
+      ]),
+    );
+    expect(
+      snapshot.suites.find(({ id }) => id === 'android.installed-webview')
+        .ciRetries,
+    ).toBe(1);
   });
 
   it('rejects undefined serialization ownership and command drift', () => {
@@ -364,6 +385,45 @@ steps:
       pnpm e2e:web
 `),
     ).toEqual(['pnpm exec nx run trinity-e2e:storybook-e2e', 'pnpm e2e:web']);
+  });
+
+  it('unwraps the owned CI timeout wrapper before comparing commands', () => {
+    expect(
+      yamlRunCommands(`
+steps:
+  - run: node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm exec nx run trinity-e2e-browser:e2e
+  - run: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3600000 -- pnpm e2e:android -- --fail-on-flaky-tests
+`),
+    ).toEqual([
+      'pnpm exec nx run trinity-e2e-browser:e2e',
+      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests',
+    ]);
+  });
+
+  it('classifies registry-owned CI report paths', () => {
+    expect(
+      yamlReportPaths(`
+steps:
+  - report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+  - report-path: dist/.playwright/**/**
+`),
+    ).toEqual([
+      'dist/.playwright/trinity-e2e-browser/*/browser.canonical/**',
+      'dist/.playwright/**/**',
+    ]);
+
+    const snapshot = registrySnapshot();
+    const errors = [];
+    validateCiReportPaths(
+      errors,
+      'report-path: dist/.playwright/trinity-e2e-web/*/browser.canonical/**',
+      snapshot,
+    );
+    expect(errors).toEqual(
+      expect.arrayContaining([
+        'CI report path for browser.canonical targets trinity-e2e-web, expected trinity-e2e-browser',
+      ]),
+    );
   });
 });
 

@@ -41,6 +41,7 @@
         "{workspaceRoot}/eslint.config.mjs",
         "{workspaceRoot}/tsconfig.base.json",
         "{workspaceRoot}/.github/workflows/*.yml",
+        "{workspaceRoot}/.github/actions/**/*.yml",
         "{workspaceRoot}/package.json",
         "{workspaceRoot}/pnpm-lock.yaml"
       ]

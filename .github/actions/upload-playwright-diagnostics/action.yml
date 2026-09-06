@@ -1,0 +1,31 @@
+name: Upload Playwright diagnostics
+description: Require report output from a started suite and retain hidden diagnostic files.
+inputs:
+  surface:
+    description: Suite surface used in the immutable artifact name.
+    required: true
+  shard:
+    description: Matrix shard identity.
+    default: all
+  report-path:
+    description: Registry-owned report paths or globs, separated by newlines.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Require suite diagnostics
+      shell: bash
+      env:
+        CI_REPORT_PATH: ${{ inputs.report-path }}
+      run: node scripts/ci-diagnostics.mjs
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      # Still retain process logs if report validation failed during startup/timeout.
+      if: ${{ !cancelled() }}
+      with:
+        name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-${{ inputs.surface }}-${{ inputs.shard }}
+        path: |
+          ${{ inputs.report-path }}
+          dist/.ci/
+        include-hidden-files: true
+        if-no-files-found: error
+        retention-days: 7

@@ -52,6 +52,8 @@ export interface E2ESuiteDefinition {
   readonly prerequisites: readonly E2EPrerequisite[];
   readonly availabilityPolicy: 'required' | 'optional';
   readonly ciTier: E2ECiTier;
+  /** Number of retries permitted for this suite in CI. */
+  readonly ciRetries?: number;
   readonly cachePolicy: 'never';
   readonly serializationKeys: readonly string[];
   readonly timeoutClass: E2ETimeoutClass;

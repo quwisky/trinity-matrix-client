@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- CI now classifies documentation changes into formatting and source-contract checks,
+  retains full code validation for uncertain diffs, rejects flaky retry passes, and
+  uploads hidden Playwright diagnostics after failures and managed timeouts. Browser
+  prerequisite failures preserve installer logs; Android waits for KVM permissions
+  and caches browser downloads separately from Gradle.
+
 - Install project-scoped Astra orchestration and Luna execution defaults, specialized
   Codex roles and the upstream astra-orchestrator skill, preserving Trinity role
   instructions and existing planner/implementer names.

@@ -30,7 +30,8 @@ export default defineConfig({
   // per-step timeouts. A retry re-runs when contention has eased; a genuine bug
   // still fails all attempts, and Playwright reports the retried ones as "flaky".
   // Pairs with `trace: 'retain-on-failure'` below.
-  retries: 2,
+  retries: process.env['CI'] ? 1 : 0,
+  failOnFlakyTests: Boolean(process.env['CI']),
   // Every spec drives the same single disposable Synapse; the default worker count
   // (≈half the cores) oversubscribes it, and the resulting slow /sync + round-trips
   // are what make the sync-dependent specs flaky. Cap at 2 to keep the homeserver
@@ -59,6 +60,10 @@ export default defineConfig({
   // Shared with the current-interface evidence suite: Synapse lifecycle, app server, self-signed
   // TLS policy and retain-on-failure traces must not drift between real-app browser harnesses.
   ...appE2EConfig(baseURL),
+  use: {
+    ...appE2EConfig(baseURL).use,
+    screenshot: 'only-on-failure',
+  },
   // Chromium only: the app ships to Capacitor/Electron (Blink/WebKit) WebViews;
   // these UI journeys are representative in Chromium, matching the legacy harness.
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

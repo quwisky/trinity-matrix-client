@@ -92,7 +92,11 @@ emulator beside a lifecycle target: the target owns that resource and its cleanu
 
 On failure, keep command output and inspect the retained trace, report, or host diagnostic
 before retrying. A retry can identify flakiness but does not turn an initial failure into a
-clean pass. Avoid parallel Synapse-backed commands: they share fixed ports and state.
+clean pass. CI uses one diagnostic retry and fails pass-on-retry results. Its
+HTML, blob and JUnit reports retain failed-attempt traces and screenshots under
+`dist/.playwright/`; started suites require downloadable diagnostics. See
+[CI failure handling](../maintaining/ci-and-releases.md#the-ci-jobs).
+Avoid parallel Synapse-backed commands: they share fixed ports and state.
 
 Artifacts under `dist/` are ignored. Attach review evidence to a pull request when useful,
 but never commit screenshots, videos, traces, or pixel baselines. Before review, state the
