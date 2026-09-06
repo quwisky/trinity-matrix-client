@@ -23,10 +23,9 @@ const webTestWithPlatform = webTest.extend<{
   touchPlatform: async ({}, use) => {
     await use({
       async tap(_page, target): Promise<void> {
-        // The browser profile is a layout proxy; reserve real touch dispatch for the
-        // installed WebView fixture. Click preserves the browser's stable activation path
-        // while native tests use the platform bridge below.
-        await target.click({ force: true, timeout: 30_000 });
+        // Touch profiles must preserve pointer type, including taps on aria-disabled
+        // actions that explain why they are unavailable.
+        await target.tap({ force: true, timeout: 30_000 });
       },
       async dismissKeyboard(): Promise<void> {
         // Browser device profiles do not display an operating-system keyboard.

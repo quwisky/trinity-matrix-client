@@ -139,6 +139,10 @@ test.describe('Security settings', () => {
     page,
     request,
   }, testInfo) => {
+    test.skip(
+      process.env['TRINITY_E2E_PLATFORM'] === 'android',
+      'fault injection requires Angular development hooks; the installed APK is production',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}trust-health`;
     const user = `trust-health-${runId}`;

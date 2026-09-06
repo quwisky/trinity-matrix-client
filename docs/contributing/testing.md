@@ -104,20 +104,30 @@ reload to verify restored Trust health refreshes when fresh account data replace
 cached secret-storage state.
 
 Installed Android journeys send complete Chromium touch gestures after stable scrolling
-and visibility/enabled checks. A temporary capture guard blocks input if layout moves
+and visibility/native-disabled checks. ARIA-disabled actions remain touchable so their
+unavailability explanation can be verified. A temporary capture guard blocks input if layout moves
 another control beneath the tap. Only input blocked before reaching a control is retried;
-partial or completed input is never repeated. This handles late banners without mouse hover or forced clicks.
+partial or completed input is never repeated. A captured pointer release is accepted only
+when the original control still owns the hit point; an unavailable action completes on its
+real touch release. Wide-layout touches temporarily fit the emulated viewport onto the
+physical WebView and convert coordinates at the viewport owner's connection. Restoring its
+scale before that owner closes avoids a spurious phone-layout transition. Browser touch
+profiles dispatch real touch input as well.
 Lower address actions explicitly dismiss the native keyboard first; browser device
 profiles have no operating-system keyboard.
 Canonical proof capture uses `captureScreenshot` to restore the configured viewport:
-Android's screenshot session otherwise resets the WebView to its physical size.
+Android's screenshot session otherwise resets the WebView to its physical size. An
+unchanged viewport request preserves the current layout and tolerates native pixel-ratio
+rounding, avoiding an artificial phone-layout transition that would close a wide pane.
 Location fixtures use Android's GPS test provider and remove it after the journey;
 Capacitor's native location plugin remains in the path. Desktop-OS interaction cases
 and development-hook fault injection are explicitly excluded per case from the
 production APK; their ordinary and mobile product journeys remain enabled.
-Timeline prepend coverage checks the same rendered message offset after late height
-measurements. Unit coverage distinguishes programmatic scrolling from user movement
-and rejects queued corrections after the reader moves or the room changes.
+Timeline prepend coverage holds a real history response until the reader scrolls again,
+then checks the same rendered message offset after the response and late height measurements. Unit coverage distinguishes programmatic scrolling from user movement
+and rejects queued corrections after the reader moves or the room changes. Shell overflow
+checks read the Members toggle's explicit open state before waiting for its rows; native
+SSO and Members controls use the installed touch path.
 Native Settings Back checks require the Rooms surface to render after history changes;
 the URL alone cannot prove that the route guard accepted navigation. Routed application
 surfaces must not consume the same browser-history action a second time.

@@ -1126,7 +1126,9 @@ All notable changes to this project are documented here. The format is based on
   reload cannot remain stuck on stale secret-storage readiness.
 
 - Virtualized timelines retain the reader's message position while newly prepended
-  history finishes measuring. User scrolling and room changes cancel that correction.
+  history finishes measuring. A reader who scrolls during an outstanding history request
+  transfers its restore point to the new position. User scrolling after restoration and
+  room changes cancel the previous correction.
 
 - Back from routed Settings can return to Rooms without a second semantic dismissal
   cancelling the history navigation. Overlay dismissal guards still run first.
@@ -1138,6 +1140,12 @@ All notable changes to this project are documented here. The format is based on
   calls before and after restart. Browser installation-reset and Settings journeys
   follow the current confirmation, navigation and save controls, and key-import
   assertions distinguish the toast from its accessibility announcement.
+- Browser touch checks preserve the touch pointer type. Android unavailable-action taps
+  allow legitimate drawer pointer capture, while wide-layout gestures use the viewport
+  owner's connection and scaled physical coordinates. SSO and responsive Members controls
+  use that input path; shell checks distinguish an open pane from rows still rendering.
+  Reapplying an unchanged Android viewport tolerates pixel-ratio rounding and preserves
+  open panes instead of briefly switching to the phone layout.
 - Android test controls guard touch targets through activation, dismiss the native
   keyboard before lower address actions, and feed deterministic native GPS updates. Screenshot capture preserves the configured viewport after Android
   resets its emulated metrics. Desktop-only interaction and development-hook fault injection cases

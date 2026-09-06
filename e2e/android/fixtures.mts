@@ -27,7 +27,7 @@ import {
   trinityCrashProcessNames,
 } from './health.mts';
 import { navigateApplication } from '../support/navigation.mts';
-import { touchAndroidControl } from './touch.mts';
+import { setAndroidTouchViewport, touchAndroidControl } from './touch.mts';
 import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import type {
   AuthCallbackKind,
@@ -441,23 +441,49 @@ async function configurePage(
   configureApplicationNavigation(page, 'Android WebView');
 
   const session = await page.context().newCDPSession(page);
-  let currentViewport = options.viewport;
+  let currentViewport: AndroidUseOptions['viewport'] = null;
   const applyViewport = async (viewport: { width: number; height: number }) => {
+    if (
+      currentViewport?.width === viewport.width &&
+      currentViewport.height === viewport.height
+    ) {
+      // Native Chromium rounds device scale ratios through single-precision values.
+      const unchanged = await page.evaluate(
+        ({ width, height, dpr }) =>
+          innerWidth === width &&
+          innerHeight === height &&
+          Math.abs(devicePixelRatio - dpr) < 1e-6,
+        { ...viewport, dpr: options.deviceScaleFactor ?? 1 },
+      );
+      if (unchanged) return;
+    }
     // Screenshot capture restores another CDP session's metrics. Clear our cached
     // override first so reapplying the same requested size reaches the WebView.
     await session.send('Emulation.clearDeviceMetricsOverride');
-    await session.send('Emulation.setDeviceMetricsOverride', {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: options.deviceScaleFactor ?? 1,
-      mobile: options.isMobile,
-      screenWidth: viewport.width,
-      screenHeight: viewport.height,
-    });
+    const physical = await session.send('Page.getLayoutMetrics');
+    const scale = Math.min(
+      1,
+      physical.cssVisualViewport.clientWidth / viewport.width,
+    );
+    const applyScale = async (scale: number): Promise<void> => {
+      await session.send('Emulation.setDeviceMetricsOverride', {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: options.deviceScaleFactor ?? 1,
+        mobile: options.isMobile,
+        screenWidth: viewport.width,
+        screenHeight: viewport.height,
+        scale,
+      });
+    };
+    // The viewport owner retains this session: detaching a temporary emulation session
+    // would clear the metrics and trigger the phone layout after a wide-layout tap.
+    setAndroidTouchViewport(page, { scale, applyScale });
+    await applyScale(1);
     currentViewport = viewport;
   };
-  if (currentViewport) {
-    await applyViewport(currentViewport);
+  if (options.viewport) {
+    await applyViewport(options.viewport);
   }
   page.viewportSize = () => currentViewport;
   page.setViewportSize = applyViewport;

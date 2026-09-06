@@ -29,6 +29,7 @@ test.describe('SSO sign-in', () => {
   test('signs in through the provider and keeps the session', async ({
     page,
     authPlatform,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const sso = session.sso;
@@ -50,7 +51,9 @@ test.describe('SSO sign-in', () => {
     await expect(page.getByTestId('oidc-continue')).toHaveCount(0);
 
     const providerPage = await authPlatform.waitForExternalPage(page, () =>
-      ssoButton.click(),
+      authPlatform.isNative
+        ? touchPlatform.tap(page, ssoButton)
+        : ssoButton.click(),
     );
 
     // Dex's own form — our provider, pinned to one image, so its ids are a contract.
