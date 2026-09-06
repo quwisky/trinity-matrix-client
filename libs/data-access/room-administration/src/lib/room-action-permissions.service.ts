@@ -184,18 +184,29 @@ export class RoomActionPermissionsService {
     };
   }
 
-  member(roomId: string, targetUserId: string): MemberActionPermissions {
-    const freshness = this.freshness(roomId);
+  member(
+    target: string | RoomActionPermissionsKey,
+    targetUserId: string,
+  ): MemberActionPermissions {
+    const roomId = typeof target === 'string' ? target : target.roomId;
+    const freshness =
+      typeof target === 'string' ? this.freshness(roomId) : null;
     if (freshness)
       return this.deniedMember(
         freshness.reason ?? 'Current room permissions are unavailable.',
       );
-    const context = this.context(roomId);
+    const context =
+      typeof target === 'string'
+        ? this.context(roomId)
+        : this.contextForClient(
+            this.matrix.clientFor(target.accountId),
+            target.roomId,
+          );
     if (!context) {
       return this.deniedMember('Join this room to manage its members.');
     }
-    const target = context.room.getMember(targetUserId);
-    const targetPower = target?.powerLevel ?? 0;
+    const targetMember = context.room.getMember(targetUserId);
+    const targetPower = targetMember?.powerLevel ?? 0;
     if (targetUserId === context.userId) {
       return this.deniedMember(
         'Use your own room actions instead of moderating yourself.',
@@ -203,7 +214,7 @@ export class RoomActionPermissionsService {
         targetPower,
       );
     }
-    if (target?.membership !== KnownMembership.Join) {
+    if (targetMember?.membership !== KnownMembership.Join) {
       return this.deniedMember(
         'This member is no longer joined to the room.',
         context.myPower,
@@ -238,11 +249,11 @@ export class RoomActionPermissionsService {
   }
 
   role(
-    roomId: string,
+    target: string | RoomActionPermissionsKey,
     targetUserId: string,
     newPower: number,
   ): ActionAvailability {
-    const permissions = this.member(roomId, targetUserId);
+    const permissions = this.member(target, targetUserId);
     if (!permissions.setPower.available) {
       return permissions.setPower;
     }
@@ -251,16 +262,27 @@ export class RoomActionPermissionsService {
       : denied('You cannot assign a role above your own.');
   }
 
-  unban(roomId: string, targetUserId: string): ActionAvailability {
-    const freshness = this.freshness(roomId);
+  unban(
+    target: string | RoomActionPermissionsKey,
+    targetUserId: string,
+  ): ActionAvailability {
+    const roomId = typeof target === 'string' ? target : target.roomId;
+    const freshness =
+      typeof target === 'string' ? this.freshness(roomId) : null;
     if (freshness) return freshness;
-    const context = this.context(roomId);
+    const context =
+      typeof target === 'string'
+        ? this.context(roomId)
+        : this.contextForClient(
+            this.matrix.clientFor(target.accountId),
+            target.roomId,
+          );
     if (!context) {
       return denied('Join this room to manage its banned members.');
     }
-    const target = context.room.getMember(targetUserId);
-    const targetPower = target?.powerLevel ?? 0;
-    if (target?.membership !== KnownMembership.Ban) {
+    const targetMember = context.room.getMember(targetUserId);
+    const targetPower = targetMember?.powerLevel ?? 0;
+    if (targetMember?.membership !== KnownMembership.Ban) {
       return denied('This user is no longer banned from the room.');
     }
     if (context.myPower <= targetPower) {

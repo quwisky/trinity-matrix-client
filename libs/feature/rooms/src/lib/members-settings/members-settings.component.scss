@@ -1,0 +1,110 @@
+@layer components {
+  :host {
+    display: block;
+  }
+
+  .members-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .members-settings__toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .members-settings__summary,
+  .members-settings__loading,
+  .members-settings__warning {
+    margin: 0;
+    color: var(--trinity-text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .members-settings__warning {
+    color: var(--trinity-danger);
+  }
+
+  .members-settings__destinations {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    margin-top: 10px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-panel);
+  }
+
+  .members-settings__destination {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: calc(var(--trinity-shape-control-radius) - 2px);
+    background: transparent;
+    color: var(--trinity-text-muted);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .members-settings__destination span {
+    min-width: 1.5rem;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--trinity-surface-control);
+    color: var(--trinity-text-muted);
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .members-settings__destination:hover,
+  .members-settings__destination--active {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-text);
+  }
+
+  .members-settings__destination:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: 1px;
+  }
+
+  .members-settings__detail {
+    min-height: 22rem;
+    height: min(62dvh, 42rem);
+    overflow: auto;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-panel);
+  }
+
+  .members-settings__banned {
+    min-height: 22rem;
+    padding: 18px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-panel);
+  }
+
+  @media (max-width: 47.98rem) {
+    .members-settings__toolbar {
+      flex-direction: column;
+    }
+
+    .members-settings__destinations {
+      width: 100%;
+    }
+
+    .members-settings__destination {
+      flex: 1;
+      justify-content: center;
+      padding-inline: 8px;
+    }
+  }
+}

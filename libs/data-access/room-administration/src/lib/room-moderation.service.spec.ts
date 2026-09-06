@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
-import { MockProvider } from 'ng-mocks';
+import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -63,6 +63,8 @@ function setup(
         activeUserId: signal<string | null>(me).asReadonly(),
         isInitialized: true,
         instance: instance as never,
+        clientFor: (accountId: string) =>
+          accountId === me ? (instance as never) : null,
       }),
     ],
   });
@@ -89,6 +91,25 @@ describe('RoomModerationService', () => {
 
     await firstValueFrom(action);
     expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
+  });
+
+  it('keeps an exact command on the opening Account after the active client changes', async () => {
+    const { svc, matrix, kick } = setup();
+    const otherKick = vi.fn().mockResolvedValue({});
+    ngMocks.stubMember(matrix, 'instance', {
+      kick: otherKick,
+    } as never);
+
+    await firstValueFrom(
+      svc.kick(
+        { accountId: '@me:hs', roomId: '!same-id:hs' },
+        '@bob:hs',
+        'spam',
+      ),
+    );
+
+    expect(kick).toHaveBeenCalledWith('!same-id:hs', '@bob:hs', 'spam');
+    expect(otherKick).not.toHaveBeenCalled();
   });
 
   it('ban is cold and bans the member on subscribe', async () => {

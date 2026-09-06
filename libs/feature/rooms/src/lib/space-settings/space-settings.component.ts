@@ -5,10 +5,11 @@ import {
   computed,
   inject,
   input,
+  viewChild,
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { initialOf } from '@trinity/util/matrix';
-import { BannedMembersComponent } from '../banned-members/banned-members.component';
+import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
   SettingsHubComponent,
@@ -22,12 +23,9 @@ import { SpaceSettingsForYouComponent } from './space-settings-for-you/space-set
 import { SpaceSettingsGeneralComponent } from './space-settings-general.component';
 
 type SpaceSettingsSection =
-  'general' | 'for-you' | 'access' | 'addresses' | 'bans';
+  'general' | 'for-you' | 'access' | 'members' | 'addresses';
 
-/**
- * Only working destinations are listed during migration. Members and Rooms & spaces join the
- * final inventory in #522 and #524; Bans remains reachable until Members owns it.
- */
+/** Working Account-bound Space destinations; child organisation joins this hub in #524. */
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: SpaceSettingsSection;
 })[] = [
@@ -47,14 +45,14 @@ const SECTIONS: readonly (SettingsHubSection & {
     description: 'Who can join this Space',
   },
   {
+    value: 'members',
+    label: 'Members',
+    description: 'People, roles, invitations, and bans',
+  },
+  {
     value: 'addresses',
     label: 'Addresses',
     description: 'Published Space links',
-  },
-  {
-    value: 'bans',
-    label: 'Bans',
-    description: 'People barred from this Space',
   },
 ];
 
@@ -64,7 +62,7 @@ const SECTIONS: readonly (SettingsHubSection & {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [SpaceSettingsDraftService, SpaceSettingsForYouDraftService],
   imports: [
-    BannedMembersComponent,
+    MembersSettingsComponent,
     RoomAliasesComponent,
     SettingsHubComponent,
     SpaceSettingsAccessComponent,
@@ -78,6 +76,7 @@ export class SpaceSettingsComponent implements OnInit {
   readonly accountId = input.required<string>();
   readonly spaceId = input.required<string>();
   readonly spaceDisplayName = input('Space');
+  readonly initialSection = input<SpaceSettingsSection>('general');
 
   private readonly identities = inject(AccountIdentitiesService);
 
@@ -115,14 +114,7 @@ export class SpaceSettingsComponent implements OnInit {
       SECTIONS.find(({ value }) => value === this.selectedSection())?.label ??
       'General',
   );
-  readonly legacyUnavailableReason = computed(() => {
-    if (this.draft.targetUnavailableReason()) {
-      return this.draft.targetUnavailableReason();
-    }
-    return this.draft.openingAccountActive()
-      ? null
-      : 'Switch back to the opening Account to manage this section. General and Access remain attached to the opening Account.';
-  });
+  private readonly membersSection = viewChild(MembersSettingsComponent);
 
   ngOnInit(): void {
     this.draft.start({
@@ -133,6 +125,7 @@ export class SpaceSettingsComponent implements OnInit {
       accountId: this.accountId(),
       spaceId: this.spaceId(),
     });
+    this.hub.selectSection(this.initialSection());
     this.hub.activate();
   }
 
@@ -145,6 +138,7 @@ export class SpaceSettingsComponent implements OnInit {
   }
 
   requestExternalDismiss(): boolean {
+    if (this.membersSection()?.dismissNestedSurface()) return false;
     return this.hub.requestExternalDismiss();
   }
 

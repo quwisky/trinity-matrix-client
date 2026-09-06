@@ -215,8 +215,8 @@ describe('SpaceSettingsComponent', () => {
       'general',
       'for-you',
       'access',
+      'members',
       'addresses',
-      'bans',
     ]);
   });
 

@@ -20,6 +20,21 @@
     --trn-presence-ring: var(--trinity-surface-panel);
   }
 
+  :host(.member-list--settings) {
+    display: block;
+    min-height: 22rem;
+    height: min(62dvh, 42rem);
+  }
+
+  :host(.member-list--settings) .members {
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    background: transparent;
+
+    --trn-presence-ring: var(--trinity-surface-panel);
+  }
+
   // The spacers standing in for the rows outside the window. `.members` is a FLEX column, so
   // a spacer with only an inline `height` has `flex-shrink: 1` and an automatic minimum size
   // of zero — the browser collapses both of them to nothing to fit the rendered rows, and the

@@ -247,9 +247,9 @@ describe('RoomSettingsComponent', () => {
       'general',
       'for-you',
       'access',
+      'members',
       'addresses',
       'widgets',
-      'bans',
     ]);
   });
 

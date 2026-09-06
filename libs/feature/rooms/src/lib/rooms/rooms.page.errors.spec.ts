@@ -42,11 +42,9 @@ import { of, throwError } from 'rxjs';
 import { beforeEach, expect, it, type Mock, vi } from 'vitest';
 import { RoomsPage } from './rooms.page';
 import { UserPickerService } from '../user-picker/user-picker.service';
-import { MemberInfoService } from '../member-info/member-info.service';
 import { RoomSettingsComponent } from '../room-settings/room-settings.component';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
-import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
@@ -72,7 +70,6 @@ describe('RoomsPage action error feedback', () => {
   let railSpacesSignal: ReturnType<typeof signal<SpaceSummary[]>>;
   let supportsRestricted: Mock;
   let canCurate: Mock;
-  let spaceMemberInfoOpen: Mock;
   let createSpace: Mock;
   let addExistingRoom: Mock;
   let currentIdentity: Mock;
@@ -108,7 +105,6 @@ describe('RoomsPage action error feedback', () => {
     railSpacesSignal = signal<SpaceSummary[]>([]);
     supportsRestricted = vi.fn(() => false);
     canCurate = vi.fn(() => true);
-    spaceMemberInfoOpen = vi.fn(() => of(null));
     createSpace = vi.fn(() => of('!new-space:hs'));
     addExistingRoom = vi.fn(() => of(undefined));
     currentIdentity = vi.fn(() => ({
@@ -145,7 +141,6 @@ describe('RoomsPage action error feedback', () => {
           supportsRestricted,
           currentIdentity,
         }),
-        MockProvider(MemberInfoService, { open$: spaceMemberInfoOpen }),
         MockProvider(RoomAliasesService, { canManageAliases }),
         MockProvider(PublicRoomsService, { join: joinPublicRoom }),
         MockProvider(SpacesService, {
@@ -380,44 +375,25 @@ describe('RoomsPage action error feedback', () => {
     };
   }
 
-  it('opens the space members dialog and routes a pick to member info', async () => {
+  it('opens the exact Space settings Members destination from the shortcut', async () => {
     const shell = build();
     shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
-    const picked = {
-      userId: '@a:hs',
-      name: 'Ada',
-      initial: 'A',
-      avatarMxc: null,
-      powerLevel: 0,
-      isCreator: false,
-    };
-    dialogOpen.mockReturnValue(of(picked));
-
     shell.spaces.onOpenSpaceMembers();
     await Promise.resolve();
     await Promise.resolve();
 
     expect(dialogOpen).toHaveBeenCalledWith(
-      SpaceMembersComponent,
+      SpaceSettingsComponent,
       expect.objectContaining({
-        inputs: expect.objectContaining({ spaceId: '!s:hs' }),
+        inputs: expect.objectContaining({
+          accountId: '@me:hs',
+          spaceId: '!s:hs',
+          initialSection: 'members',
+        }),
       }),
     );
-    // The member panel keeps the SPACE id and resolves its permissions live there.
-  });
-
-  it('does not open member info when the members dialog is dismissed', async () => {
-    const shell = build();
-    shell.nav.onSelectSpace({ spaceId: '!s:hs', accountId: '@me:hs' });
-    await settleWorkspace();
-    railSpacesSignal.set([railSpace('!s:hs')]);
-    dialogOpen.mockReturnValue(of(null));
-
-    shell.spaces.onOpenSpaceMembers();
-    await Promise.resolve();
-    await Promise.resolve();
   });
 
   it('creates a subspace and links it into the active space', async () => {
@@ -540,6 +516,7 @@ describe('RoomsPage action error feedback', () => {
         accountId: '@me:hs',
         spaceId: '!s:hs',
         spaceDisplayName: 'Space !s:hs',
+        initialSection: 'general',
       },
     });
   });
@@ -654,6 +631,7 @@ describe('RoomsPage action error feedback', () => {
         accountId: '@me:hs',
         roomId: '!r:hs',
         roomDisplayName: 'General',
+        direct: false,
         parentSpaces: [{ id: '!s:hs', name: 'Design' }],
       },
     });

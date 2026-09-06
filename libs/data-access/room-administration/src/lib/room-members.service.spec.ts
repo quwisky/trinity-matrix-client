@@ -40,6 +40,7 @@ function room(
 ) {
   return {
     roomId,
+    getMyMembership: () => 'join',
     getJoinedMembers: vi.fn(() => members),
     getMembersWithMembership: vi.fn(() => banned),
     getCreator: () => creator,
@@ -93,6 +94,45 @@ function fireMemberChange(
 }
 
 describe('RoomMembersService', () => {
+  it('observes an exact opening Account without following the active Account', async () => {
+    const openingMembers = [member('@ada:hs', 'Ada')];
+    const openingClient = client([room('!shared:hs', openingMembers)]);
+    const otherClient = client([
+      room('!shared:hs', [member('@mallory:hs', 'Mallory')]),
+    ]);
+    const accountIds = signal<readonly string[]>(['@opening:hs', '@other:hs']);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomMembersService,
+        MockProvider(MatrixClientService, {
+          accountIds: accountIds.asReadonly(),
+          activeUserId: signal<string | null>('@other:hs').asReadonly(),
+          clientFor: (accountId: string) =>
+            accountId === '@opening:hs'
+              ? (openingClient as unknown as MatrixClient)
+              : (otherClient as unknown as MatrixClient),
+        }),
+      ],
+    });
+    const service = TestBed.inject(RoomMembersService);
+    const seen: string[][] = [];
+    const observation = service
+      .observe({ accountId: '@opening:hs', roomId: '!shared:hs' })
+      .subscribe((value) =>
+        seen.push(value.members.map((candidate) => candidate.roomDisplayName)),
+      );
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(seen.at(-1)).toEqual(['Ada']);
+
+    openingMembers.push(member('@bea:hs', 'Bea'));
+    fireMemberChange(openingClient, '!shared:hs');
+
+    expect(seen.at(-1)).toEqual(['Ada', 'Bea']);
+    expect(seen.flat()).not.toContain('Mallory');
+    observation.unsubscribe();
+  });
+
   it('projects sorted authoritative summaries with creator, avatar, and power', () => {
     const source = room(
       '!room:hs',

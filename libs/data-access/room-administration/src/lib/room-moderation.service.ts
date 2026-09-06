@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import type { MatrixClient } from 'matrix-js-sdk';
 import { Observable, defer, from, map, throwError } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
@@ -6,6 +7,7 @@ import {
   recoverRoomAdministrationRequest,
   roomAdministrationNotSignedIn,
 } from './room-administration-error';
+import type { RoomActionPermissionsKey } from './room-action-permissions.service';
 
 /** Which moderation actions the current user may take against a specific member. */
 export interface ModerationCaps {
@@ -28,15 +30,20 @@ export class RoomModerationService {
   private readonly actionPermissions = inject(RoomActionPermissionsService);
 
   /** Remove a member from the room (they may rejoin if invited / it's public). Cold. */
-  kick(roomId: string, userId: string, reason?: string): Observable<void> {
+  kick(
+    target: string | RoomActionPermissionsKey,
+    userId: string,
+    reason?: string,
+  ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientFor(target);
+      if (!client) {
         return throwError(() => roomAdministrationNotSignedIn('kick-member'));
       }
       this.actionPermissions.assert(
-        this.actionPermissions.member(roomId, userId).kick,
+        this.actionPermissions.member(target, userId).kick,
       );
-      return from(this.matrix.instance.kick(roomId, userId, reason)).pipe(
+      return from(client.kick(this.roomIdOf(target), userId, reason)).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('kick-member'),
       );
@@ -44,15 +51,20 @@ export class RoomModerationService {
   }
 
   /** Ban a member (they cannot rejoin until unbanned). Cold — runs on subscribe. */
-  ban(roomId: string, userId: string, reason?: string): Observable<void> {
+  ban(
+    target: string | RoomActionPermissionsKey,
+    userId: string,
+    reason?: string,
+  ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientFor(target);
+      if (!client) {
         return throwError(() => roomAdministrationNotSignedIn('ban-member'));
       }
       this.actionPermissions.assert(
-        this.actionPermissions.member(roomId, userId).ban,
+        this.actionPermissions.member(target, userId).ban,
       );
-      return from(this.matrix.instance.ban(roomId, userId, reason)).pipe(
+      return from(client.ban(this.roomIdOf(target), userId, reason)).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('ban-member'),
       );
@@ -60,15 +72,19 @@ export class RoomModerationService {
   }
 
   /** Lift a member's ban so they may be re-invited / rejoin. Cold — runs on subscribe. */
-  unban(roomId: string, userId: string): Observable<void> {
+  unban(
+    target: string | RoomActionPermissionsKey,
+    userId: string,
+  ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientFor(target);
+      if (!client) {
         return throwError(() => roomAdministrationNotSignedIn('unban-member'));
       }
       this.actionPermissions.assert(
-        this.actionPermissions.unban(roomId, userId),
+        this.actionPermissions.unban(target, userId),
       );
-      return from(this.matrix.instance.unban(roomId, userId)).pipe(
+      return from(client.unban(this.roomIdOf(target), userId)).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('unban-member'),
       );
@@ -101,21 +117,22 @@ export class RoomModerationService {
 
   /** Set a member's power level in the room (promote / demote). Cold. */
   setPowerLevel(
-    roomId: string,
+    target: string | RoomActionPermissionsKey,
     userId: string,
     level: number,
   ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const client = this.clientFor(target);
+      if (!client) {
         return throwError(() =>
           roomAdministrationNotSignedIn('set-power-level'),
         );
       }
       this.actionPermissions.assert(
-        this.actionPermissions.role(roomId, userId, level),
+        this.actionPermissions.role(target, userId, level),
       );
       return from(
-        this.matrix.instance.setPowerLevel(roomId, userId, level),
+        client.setPowerLevel(this.roomIdOf(target), userId, level),
       ).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('set-power-level'),
@@ -128,13 +145,30 @@ export class RoomModerationService {
    * out-rank the target and meet the room's kick / ban power requirement. You can never
    * kick or ban yourself here (leaving is a separate action).
    */
-  canModerate(roomId: string, targetUserId: string): ModerationCaps {
-    const permissions = this.actionPermissions.member(roomId, targetUserId);
+  canModerate(
+    target: string | RoomActionPermissionsKey,
+    targetUserId: string,
+  ): ModerationCaps {
+    const permissions = this.actionPermissions.member(target, targetUserId);
     return {
       kick: permissions.kick.available,
       ban: permissions.ban.available,
       setPower: permissions.setPower.available,
       myPower: permissions.myPower,
     };
+  }
+
+  private clientFor(
+    target: string | RoomActionPermissionsKey,
+  ): MatrixClient | null {
+    return typeof target === 'string'
+      ? this.matrix.isInitialized
+        ? this.matrix.instance
+        : null
+      : this.matrix.clientFor(target.accountId);
+  }
+
+  private roomIdOf(target: string | RoomActionPermissionsKey): string {
+    return typeof target === 'string' ? target : target.roomId;
   }
 }

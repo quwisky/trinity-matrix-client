@@ -126,11 +126,16 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
   ],
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
+  host: {
+    '[class.member-list--settings]': "layout() === 'settings'",
+  },
 })
 export class MemberListComponent {
   private readonly presence = inject(IdentityPresenceService);
 
   readonly members = input<readonly MemberSummary[]>([]);
+  readonly layout = input<'panel' | 'settings'>('panel');
+  readonly showPresence = input(true);
   readonly availability = input<RoomAdministrationAvailability>('coherent');
   /**
    * Whether this is a direct message. A DM has no owner — both participants sit at power
@@ -155,7 +160,9 @@ export class MemberListComponent {
   private readonly rows = computed<MemberRow[]>(() =>
     this.members().map((member) => ({
       member,
-      presence: this.presence.presenceFor(member.userId)(),
+      presence: this.showPresence()
+        ? this.presence.presenceFor(member.userId)()
+        : null,
       role: memberRole(member, { direct: this.direct() }),
     })),
   );

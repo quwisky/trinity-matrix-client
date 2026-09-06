@@ -33,9 +33,19 @@
     @case ('access') {
       <trn-space-settings-access />
     }
+    @case ('members') {
+      <section data-testid="space-settings-panel-members">
+        <trn-members-settings
+          [accountId]="accountId()"
+          [roomId]="spaceId()"
+          [targetName]="draft.model().name || spaceDisplayName()"
+          noun="Space"
+        />
+      </section>
+    }
     @case ('addresses') {
       <section
-        class="space-settings__legacy-panel"
+        class="space-settings__section-panel"
         data-testid="space-settings-panel-addresses"
       >
         @if (draft.targetUnavailableReason(); as reason) {
@@ -48,20 +58,6 @@
             [roomId]="spaceId()"
             noun="Space"
           />
-        }
-      </section>
-    }
-    @case ('bans') {
-      <section
-        class="space-settings__legacy-panel"
-        data-testid="space-settings-panel-bans"
-      >
-        @if (legacyUnavailableReason(); as reason) {
-          <p class="space-settings__target-warning" role="status">
-            {{ reason }}
-          </p>
-        } @else {
-          <trn-banned-members [roomId]="spaceId()" />
         }
       </section>
     }

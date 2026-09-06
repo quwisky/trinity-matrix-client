@@ -71,7 +71,7 @@
       Copy user ID
     </button>
 
-    @if (!isSelf()) {
+    @if (!isSelf() && showIdentityActions()) {
       <button
         trnBtn
         variant="secondary"
@@ -94,49 +94,59 @@
       </button>
     }
 
-    @if (!isSelf()) {
+    @if (!isSelf() && showModeration()) {
       <div class="member-info__moderation">
         @for (option of roleOptions(); track option.level) {
           @let permission = rolePermission(option.level);
+          @if (showModerationAction(permission)) {
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="outline"
+              class="w-full"
+              (click)="setRole(option)"
+              [trnActionAllowed]="permission.available"
+              [trnActionDisabledReason]="permission.reason"
+              [trnTooltip]="permission.reason ?? 'Change role'"
+              [attr.data-testid]="'member-info-role-' + option.level"
+            >
+              Make {{ option.label }}
+            </button>
+          }
+        }
+        @if (showModerationAction(permissions().kick)) {
           <button
             trnBtn
             variant="secondary"
             presentation="outline"
-            class="w-full"
-            (click)="setRole(option)"
-            [trnActionAllowed]="permission.available"
-            [trnActionDisabledReason]="permission.reason"
-            [trnTooltip]="permission.reason ?? 'Change role'"
-            [attr.data-testid]="'member-info-role-' + option.level"
+            class="member-info__danger w-full"
+            (click)="kick()"
+            [trnActionAllowed]="permissions().kick.available"
+            [trnActionDisabledReason]="permissions().kick.reason"
+            [trnTooltip]="
+              permissions().kick.reason ?? 'Remove from ' + noun().toLowerCase()
+            "
+            data-testid="member-info-kick"
           >
-            Make {{ option.label }}
+            Remove from {{ noun().toLowerCase() }}
           </button>
         }
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="outline"
-          class="member-info__danger w-full"
-          (click)="kick()"
-          [trnActionAllowed]="permissions().kick.available"
-          [trnActionDisabledReason]="permissions().kick.reason"
-          [trnTooltip]="permissions().kick.reason ?? 'Remove from room'"
-          data-testid="member-info-kick"
-        >
-          Remove from room
-        </button>
-        <button
-          trnBtn
-          variant="danger"
-          class="w-full"
-          (click)="ban()"
-          [trnActionAllowed]="permissions().ban.available"
-          [trnActionDisabledReason]="permissions().ban.reason"
-          [trnTooltip]="permissions().ban.reason ?? 'Ban from room'"
-          data-testid="member-info-ban"
-        >
-          Ban from room
-        </button>
+        @if (showModerationAction(permissions().ban)) {
+          <button
+            trnBtn
+            variant="danger"
+            class="w-full"
+            (click)="ban()"
+            [trnActionAllowed]="permissions().ban.available"
+            [trnActionDisabledReason]="permissions().ban.reason"
+            [trnTooltip]="
+              permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
+            "
+            data-testid="member-info-ban"
+          >
+            Ban from {{ noun().toLowerCase() }}
+          </button>
+        }
       </div>
     }
   </div>

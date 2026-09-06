@@ -955,11 +955,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
   });
 
-  it('stays a DIALOG for a member who is not the open room\u2019s (the space path)', async () => {
-    // `space-actions.service.ts` opens member info from inside the space-members dialog
-    // with a SPACE id. There is no slot for a space — and the shell behind it may have a
-    // different room open — so putting it there would show one room's member beside another
-    // room's timeline. The discriminator is the id, not "is a room open at all".
+  it('stays a DIALOG for a member who is not the open room\u2019s', async () => {
+    // There is no Conversation slot for a different Room or Space — and the shell behind
+    // it may have another room open — so putting it there would show one target's member
+    // beside another room's timeline. The discriminator is the id, not "is a room open".
     const shell = build();
     setRouteRoom('!r:hs');
     const before = shell.surfaces.renderedSurface();

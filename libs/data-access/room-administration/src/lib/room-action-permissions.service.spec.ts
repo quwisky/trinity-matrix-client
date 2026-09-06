@@ -168,6 +168,30 @@ describe('RoomActionPermissionsService', () => {
     ).toBe(false);
   });
 
+  it('keeps exact member, role and unban authority on the opening account', () => {
+    const selected = clientFixture('@selected:hs', {
+      myPower: 100,
+      targetPower: 0,
+    });
+    const active = clientFixture('@active:hs', {
+      myPower: 0,
+      targetPower: 100,
+    });
+    const { service, useClient } = setup(selected);
+    const target = {
+      accountId: '@selected:hs',
+      roomId: '!room:hs',
+    } as const;
+
+    useClient(active, '@active:hs');
+
+    expect(service.member(target, '@target:hs').kick.available).toBe(true);
+    expect(service.role(target, '@target:hs', 50).available).toBe(true);
+    selected.members.get('@target:hs')!.membership = KnownMembership.Ban;
+    expect(service.unban(target, '@target:hs').available).toBe(true);
+    expect(service.unban('!room:hs', '@target:hs').available).toBe(false);
+  });
+
   it('requires a joined actor and the effective invite/state thresholds', () => {
     const fixture = clientFixture('@me:hs', { myPower: 49 });
     const { service } = setup(fixture);

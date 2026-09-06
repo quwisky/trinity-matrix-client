@@ -1,0 +1,113 @@
+<section class="members-settings" data-testid="members-settings">
+  <div class="members-settings__toolbar">
+    <div>
+      <p class="members-settings__summary">
+        Membership belongs to {{ targetName() }} on Account {{ accountId() }}.
+      </p>
+      <div class="members-settings__destinations" aria-label="Member lists">
+        <button
+          type="button"
+          class="members-settings__destination"
+          [class.members-settings__destination--active]="
+            destination() === 'current'
+          "
+          [attr.aria-pressed]="destination() === 'current'"
+          (click)="selectDestination('current')"
+          data-testid="members-settings-current"
+        >
+          Current members
+          @if (snapshot(); as current) {
+            <span aria-hidden="true">{{ current.members.length }}</span>
+          }
+        </button>
+        <button
+          type="button"
+          class="members-settings__destination"
+          [class.members-settings__destination--active]="
+            destination() === 'banned'
+          "
+          [attr.aria-pressed]="destination() === 'banned'"
+          (click)="selectDestination('banned')"
+          data-testid="members-settings-banned"
+        >
+          Banned
+          @if (snapshot(); as current) {
+            <span aria-hidden="true">{{ current.banned.length }}</span>
+          }
+        </button>
+      </div>
+    </div>
+
+    @if (
+      invitePermission().available && snapshot()?.availability === 'available'
+    ) {
+      <button
+        trnBtn
+        type="button"
+        size="sm"
+        [disabled]="inviting()"
+        (click)="invite()"
+        data-testid="members-settings-invite"
+      >
+        {{ inviting() ? 'Inviting…' : 'Invite person' }}
+      </button>
+    }
+  </div>
+
+  @if (snapshot(); as current) {
+    @if (current.unavailableReason; as reason) {
+      <p class="members-settings__warning" role="status">
+        {{ reason }}
+      </p>
+    }
+
+    @if (selectedMember(); as member) {
+      <div
+        class="members-settings__detail"
+        data-testid="members-settings-detail"
+      >
+        <trn-member-info
+          [member]="member"
+          [roomId]="roomId()"
+          [accountId]="accountId()"
+          [exactTargetAvailable]="current.availability === 'available'"
+          [targetName]="targetName()"
+          [noun]="noun()"
+          [direct]="direct()"
+          [authorityRevision]="authorityRevision()"
+          [hideUnavailableModeration]="true"
+          [showIdentityActions]="false"
+          [embedded]="true"
+          (messageUser)="message($event)"
+          (dismissed)="dismissMember()"
+        />
+      </div>
+    } @else if (destination() === 'current') {
+      <trn-member-list
+        layout="settings"
+        [showPresence]="false"
+        [members]="current.members"
+        [availability]="availability()"
+        [direct]="direct()"
+        (selectMember)="selectMember($event)"
+      />
+    } @else {
+      <div class="members-settings__banned">
+        <trn-banned-members
+          [accountId]="accountId()"
+          [roomId]="roomId()"
+          [targetName]="targetName()"
+          [noun]="noun()"
+          [bannedMembers]="current.banned"
+          [exactAvailability]="
+            current.availability === 'available' ? 'available' : 'unavailable'
+          "
+        />
+      </div>
+    }
+  } @else {
+    <p class="members-settings__loading" role="status">
+      Loading members for the opening Account…
+    </p>
+  }
+</section>

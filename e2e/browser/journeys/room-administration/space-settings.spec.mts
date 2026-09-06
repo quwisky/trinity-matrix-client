@@ -476,13 +476,12 @@ test.describe('Space settings', () => {
       .toBe(spaceId);
   });
 
-  test('the space members dialog names the space creator the owner', async ({
+  test('Space settings names the creator Owner and an equal-power member Admin', async ({
     page,
     request,
   }) => {
-    // The space members dialog had no end-to-end coverage at all until now. A space IS a
-    // room, so it has a creator, and the same Owner/Admin distinction applies — which is
-    // only visible once two people share the top power level.
+    // A space IS a room, so it has a creator, and the same Owner/Admin distinction
+    // applies — which is only visible once two people share the top power level.
     test.setTimeout(150_000);
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}som`;
@@ -556,16 +555,20 @@ test.describe('Space settings', () => {
       pass: ownerPass,
     } as SynapseSession);
     await openSpaceMenu(page, spaceName);
-    // Trigger and dialog are named apart, so this cannot resolve two nodes while the
-    // menu is still on screen.
     await page.getByTestId('open-space-members').click();
-    await expect(page.getByTestId('space-members')).toBeVisible({
+    await expect(page.getByTestId('space-settings')).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByTestId('space-settings-section-heading')).toHaveText(
+      'Members',
+    );
 
-    const ownerRow = page.getByTestId(`space-member-${ownerId}`);
-    const otherRow = page.getByTestId(`space-member-${otherId}`);
-    await expect(ownerRow).toContainText('Owner', { timeout: 20_000 });
-    await expect(otherRow).toContainText('Admin');
+    const roster = page.getByTestId('member-list');
+    const ownerGroup = roster.getByRole('group', { name: /Owner/ });
+    const adminGroup = roster.getByRole('group', { name: /Admin/ });
+    await expect(ownerGroup.getByTestId('member-row')).toContainText(owner, {
+      timeout: 20_000,
+    });
+    await expect(adminGroup.getByTestId('member-row')).toContainText(other);
   });
 });

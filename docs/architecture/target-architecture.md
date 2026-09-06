@@ -81,7 +81,10 @@ Preserve these lifetime boundaries; their sequences and cancellation rules live 
   update checks publish distinct health. Room Administration reports exact Account-and-Room
   permissions, members and bans health, labels retained data stale, gates state-backed commands on
   coherent authority and repairs retained or released ownership without replacing the Room
-  surface. Failed notification, badge and Host navigation actions remain contextual incidents. The warning region
+  surface. Room and Space settings separately retain an exact opening-Account membership observer;
+  their unified Members destination owns roster, detail and banned-list navigation, while cold
+  invite, role and moderation commands re-resolve only that immutable target. Failed notification,
+  badge and Host navigation actions remain contextual incidents. The warning region
   stays keyboard scrollable and occupies at most a quarter of the visual viewport.
 - A session-owned capability exposes a cold `runProjection()` lifetime. Subscription owns
   attachment and acknowledgement; teardown releases listeners, pending work, warnings and

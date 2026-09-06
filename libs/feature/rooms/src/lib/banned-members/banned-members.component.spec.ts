@@ -9,7 +9,7 @@ import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { TrnToastService } from '@trinity/components/overlay';
+import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import { BannedMembersComponent } from './banned-members.component';
 
 async function build(
@@ -18,6 +18,7 @@ async function build(
     unban?: Mock;
     canUnban?: boolean;
     availability?: 'coherent' | 'stale' | 'unavailable';
+    confirm?: Mock;
   } = {},
 ) {
   const unban = over.unban ?? vi.fn(() => of(undefined));
@@ -46,6 +47,9 @@ async function build(
               ? 'You need permission to unban this member.'
               : null,
         }),
+      }),
+      MockProvider(TrnAlertService, {
+        confirm$: over.confirm ?? vi.fn(() => of(true)),
       }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -173,22 +177,40 @@ describe('BannedMembersComponent', () => {
     expect(unban).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps an unavailable unban action focusable and blocks activation', async () => {
+  it('keeps an unavailable unban action hidden while retaining the member', async () => {
     const { container, unban } = await build(
       [{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null }],
       { canUnban: false },
     );
 
-    const button = container.querySelector<HTMLButtonElement>(
-      '[data-testid="banned-member-unban"]',
-    )!;
-    expect(button.disabled).toBe(false);
-    expect(button.getAttribute('aria-disabled')).toBe('true');
-    expect(button.getAttribute('aria-description')).toBe(
-      'You need permission to unban this member.',
-    );
-    button.click();
-
+    expect(container.textContent).toContain('Bob');
+    expect(
+      container.querySelector('[data-testid="banned-member-unban"]'),
+    ).toBeNull();
     expect(unban).not.toHaveBeenCalled();
+  });
+
+  it('confirms and unbans against the immutable opening Account and target', async () => {
+    const confirm = vi.fn(() => of(true));
+    const { cmp, fixture, unban } = await build(
+      [{ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null }],
+      { confirm },
+    );
+    fixture.componentRef.setInput('accountId', '@opening:hs');
+    fixture.componentRef.setInput('targetName', 'Design Space');
+    fixture.componentRef.setInput('noun', 'Space');
+    await fixture.whenStable();
+
+    cmp.unban({ userId: '@bob:hs', roomDisplayName: 'Bob', reason: null });
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('Account @opening:hs'),
+      }),
+    );
+    expect(unban).toHaveBeenCalledWith(
+      { accountId: '@opening:hs', roomId: '!r:hs' },
+      '@bob:hs',
+    );
   });
 });
