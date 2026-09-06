@@ -722,7 +722,10 @@ describe('VirtualMessageListComponent', () => {
       (
         scroll.querySelector('[data-mid="$5"]') as HTMLElement
       ).getBoundingClientRect = () =>
-        rect(40 + prependedHeight, 40 + prependedHeight + EST); // first reaching into view
+        rect(
+          40 + prependedHeight - (st - 100),
+          40 + prependedHeight - (st - 100) + EST,
+        ); // physical row position follows the scroller's scrollTop
 
       cmp.onScroll(); // captures anchor $5 (offset 40), sets pendingPrepend, emits
 
@@ -740,6 +743,54 @@ describe('VirtualMessageListComponent', () => {
 
       // Preserve the 40px viewport offset: previous 100 + real prepend height 110.
       expect(st).toBe(210);
+      // The browser emits a scroll event for the correction itself; acknowledge that
+      // expected write before testing a later observer batch.
+      cmp.onScroll();
+
+      // A late measurement can move the rendered anchor after the first restore. The
+      // active prepend lock must restore it again instead of allowing that reflow to
+      // overwrite the reader's position.
+      const restoreFrames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        restoreFrames.push(cb);
+        return restoreFrames.length;
+      });
+      prependedHeight += 407;
+      const prependedRow = scroll.querySelector('[data-mid="$p0"]') as Element;
+      rowObserver().emit([resizeEntry(prependedRow, 22)]);
+      for (const frame of restoreFrames) {
+        frame(0);
+      }
+      expect(st).toBe(617);
+
+      // Queue another correction, then move before its frame runs. A real user movement
+      // invalidates the captured generation and the queued callback must do nothing.
+      prependedHeight += 10;
+      rowObserver().emit([resizeEntry(prependedRow, 23)]);
+      st = 250;
+      cmp.onScroll();
+      for (const frame of restoreFrames.splice(0)) {
+        frame(0);
+      }
+      expect(st).toBe(250);
+
+      // A room switch cancels an already-queued restore, even when no user scroll occurs.
+      st = 0;
+      const state = cmp as unknown as {
+        prependAnchorActive: boolean;
+        prependAnchorId: string;
+        prependAnchorOffset: number;
+      };
+      state.prependAnchorActive = true;
+      state.prependAnchorId = '$5';
+      state.prependAnchorOffset = 40;
+      rowObserver().emit([resizeEntry(prependedRow, 24)]);
+      fixture.componentRef.setInput('roomId', 'room-after-reset');
+      fixture.detectChanges();
+      for (const frame of restoreFrames.splice(0)) {
+        frame(0);
+      }
+      expect(st).toBe(0);
     });
 
     it('falls back to prefix offsets when a large prepend windows the anchor out', () => {
