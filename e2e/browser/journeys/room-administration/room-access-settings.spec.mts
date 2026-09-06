@@ -57,15 +57,55 @@ test.describe('Room settings', () => {
     await expect(page.getByTestId('room-settings-panel-general')).toHaveCount(
       0,
     );
+    await expect(
+      page.getByTestId('room-settings-section-heading'),
+    ).toBeFocused();
+    await expect(page.getByTestId('room-aliases')).toHaveCount(0);
 
     // Open the room up: anyone can join, and history is world-readable.
-    // `selectOption` only ever drove a native `<select>`; this is a `trn-select` now, whose
-    // options live in a CDK portal. Open the trigger, then pick by the id the option carries.
-    await page.getByTestId('room-settings-join-rule').click();
+    // The public selects use CDK portals. Save from the keyboard after choosing both values.
+    const joinRule = page.getByTestId('room-settings-join-rule');
+    await joinRule.click();
     await page.getByTestId('join-rule-public').click();
-    await page.getByTestId('room-settings-history').click();
+    const history = page.getByTestId('room-settings-history');
+    await history.click();
     await page.getByTestId('history-world_readable').click();
-    await page.getByTestId('room-settings-save').click();
+
+    const settings = page.getByTestId('room-settings');
+    const openingAppearance = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      theme: document.documentElement.getAttribute('data-theme'),
+      fontSize: document.documentElement.style.fontSize,
+    }));
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.style.fontSize = '125%';
+    });
+    await expect(page.getByTestId('room-settings-save')).toBeVisible();
+    await test.info().attach('room-access-admin-light-text-scale', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'amethyst');
+    });
+    await test.info().attach('room-access-admin-dark-amethyst', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(({ dark, theme, fontSize }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      if (theme === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.style.fontSize = fontSize;
+    }, openingAppearance);
+    const save = page.getByTestId('room-settings-save');
+    await save.focus();
+    await expect(save).toBeFocused();
+    await save.press('Enter');
 
     // Both state events round-trip to the homeserver.
     const stateValue = async (type: string, key: string): Promise<unknown> => {
@@ -88,6 +128,11 @@ test.describe('Room settings', () => {
         },
       )
       .toBe('world_readable');
+
+    await openSettingsTab(page, 'room-settings', 'addresses');
+    await expect(page.getByTestId('room-aliases')).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test('an admin lets a space’s members join the room', async ({
@@ -206,16 +251,23 @@ test.describe('Room settings', () => {
       room_id as string,
     );
     // Start restricted to BOTH, so the dialog has something to take away.
+    const unknownAllowEntry = {
+      type: 'org.example.membership_claim',
+      room_id: keptId,
+      issuer: 'example.org',
+    };
     await request.put(
       `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.join_rules/`,
       {
         headers: { Authorization: `Bearer ${token}` },
         data: {
           join_rule: 'restricted',
-          allow: [keptId, droppedId].map((id) => ({
-            type: 'm.room_membership',
-            room_id: id,
-          })),
+          allow: [keptId, droppedId]
+            .map((id) => ({
+              type: 'm.room_membership',
+              room_id: id,
+            }))
+            .concat(unknownAllowEntry),
         },
       },
     );
@@ -254,6 +306,83 @@ test.describe('Room settings', () => {
         },
         { timeout: 30_000 },
       )
-      .toEqual([{ type: 'm.room_membership', room_id: keptId }]);
+      .toEqual([
+        { type: 'm.room_membership', room_id: keptId },
+        unknownAllowEntry,
+      ]);
+  });
+
+  test('a member reads Room policy without a disabled Save footer', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}memberaccess`;
+    const owner = `room-owner-${runId}`;
+    const ownerPass = `${owner}-pass`;
+    const member = `room-member-${runId}`;
+    const memberPass = `${member}-pass`;
+    const roomName = `Member access ${runId}`;
+
+    await registerUser(request, owner, ownerPass);
+    await registerUser(request, member, memberPass);
+    const ownerToken = await tokenFor(request, hs, owner, ownerPass);
+    const memberToken = await tokenFor(request, hs, member, memberPass);
+    const memberId = `@${member}:localhost`;
+    const { room_id } = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        data: { name: roomName, preset: 'private_chat' },
+      })
+      .then((response) => response.json());
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/state/m.room.history_visibility/`,
+      {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        data: { history_visibility: 'joined' },
+      },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/invite`,
+      {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+        data: { user_id: memberId },
+      },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: { Authorization: `Bearer ${memberToken}` } },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: member,
+      pass: memberPass,
+    } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'access');
+
+    await expect(page.getByTestId('room-settings-join-rule')).toContainText(
+      'Invite only',
+    );
+    await expect(page.getByTestId('room-settings-history')).toContainText(
+      'Members — since they joined',
+    );
+    await expect(
+      page.getByText("Your role cannot change this room's join rule."),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Your role cannot change this room's history visibility."),
+    ).toBeVisible();
+    await expect(page.getByTestId('room-settings-access-actions')).toHaveCount(
+      0,
+    );
+    await test.info().attach('room-access-member-read-only', {
+      body: await page.getByTestId('room-settings').screenshot(),
+      contentType: 'image/png',
+    });
   });
 });

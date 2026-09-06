@@ -192,6 +192,31 @@ test.describe('Space settings on a phone', () => {
     await page.getByTestId('space-settings-mobile-back').tap();
     await expect(directory).toBeVisible();
 
+    const access = page.getByTestId('space-settings-tab-access');
+    expect((await access.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
+      44,
+    );
+    await access.tap();
+    await expect(page.getByTestId('space-settings-panel-access')).toBeVisible();
+    await expect(
+      page.getByTestId('space-settings-section-heading'),
+    ).toBeFocused();
+    await expect(
+      page.getByText(/Rooms inside it keep their own access/),
+    ).toBeVisible();
+    const accessSaveBox = await page
+      .getByTestId('space-settings-save')
+      .boundingBox();
+    expect(
+      (accessSaveBox?.x ?? 0) + (accessSaveBox?.width ?? 0),
+    ).toBeLessThanOrEqual((surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0));
+    await test.info().attach('space-access-mobile', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.getByTestId('space-settings-mobile-back').tap();
+    await expect(directory).toBeVisible();
+
     await general.tap();
     await expect(
       page.getByTestId('space-settings-panel-general'),

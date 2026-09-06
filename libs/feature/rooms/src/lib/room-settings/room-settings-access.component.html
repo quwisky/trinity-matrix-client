@@ -12,6 +12,11 @@
           [formField]="draft.form.joinRule"
           data-testid="room-settings-join-rule"
         />
+        @if (!draft.mayEditJoinRule()) {
+          <span class="room-settings__restriction">
+            {{ draft.permissions().joinRule.reason }}
+          </span>
+        }
       </label>
 
       @if (draft.showSpaceChoices()) {
@@ -23,6 +28,7 @@
             <label class="room-settings__space">
               <trn-checkbox
                 [checked]="draft.isSpaceChecked(space.id)"
+                [disabled]="!draft.mayEditJoinRule()"
                 (checkedChange)="draft.toggleSpace(space.id, $event)"
                 [attr.data-testid]="'room-settings-space-' + space.id"
               />
@@ -34,28 +40,28 @@
               Choose at least one Space, or nobody will be able to join.
             </p>
           }
+          @if (draft.unlistedAllowedSpaceCount(); as count) {
+            <p class="room-settings__hint">
+              {{ count }} allowed {{ count === 1 ? 'Space is' : 'Spaces are' }}
+              not listed here and will be preserved.
+            </p>
+          }
         </fieldset>
       }
 
       <label class="room-settings__field">
         <span class="room-settings__label">Who can read history</span>
         <trn-select
-          [options]="draft.historyOptions"
+          [options]="draft.historyOptions()"
           [formField]="draft.form.historyVisibility"
           data-testid="room-settings-history"
         />
+        @if (!draft.mayEditHistory()) {
+          <span class="room-settings__restriction">
+            {{ draft.permissions().history.reason }}
+          </span>
+        }
       </label>
-    </section>
-
-    <section class="room-settings__card">
-      @if (legacyUnavailableReason(); as reason) {
-        <p class="room-settings__target-warning" role="status">
-          Local address actions require the opening Account to be active.
-          {{ reason }}
-        </p>
-      } @else {
-        <trn-room-aliases [roomId]="roomId()" />
-      }
     </section>
 
     @if (draft.accessFeedback(); as feedback) {
@@ -74,32 +80,39 @@
       </p>
     }
 
-    <div class="room-settings__actions">
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        presentation="ghost"
-        [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
-        (click)="draft.discardAccess()"
+    @if (
+      draft.accessDirty() || draft.mayEditJoinRule() || draft.mayEditHistory()
+    ) {
+      <div
+        class="room-settings__actions"
+        data-testid="room-settings-access-actions"
       >
-        Discard
-      </button>
-      <button
-        trnBtn
-        type="submit"
-        [trnActionAllowed]="draft.mayEditJoinRule() || draft.mayEditHistory()"
-        [trnActionDisabledReason]="draft.accessSaveUnavailableReason()"
-        [trnTooltip]="draft.accessSaveUnavailableReason()"
-        [disabled]="
-          !draft.accessHasWritableChanges() ||
-          draft.noSpaceChosen() ||
-          draft.saving() === 'access'
-        "
-        data-testid="room-settings-save"
-      >
-        {{ draft.saving() === 'access' ? 'Saving…' : 'Save access' }}
-      </button>
-    </div>
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          presentation="ghost"
+          [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
+          (click)="draft.discardAccess()"
+        >
+          Discard
+        </button>
+        <button
+          trnBtn
+          type="submit"
+          [trnActionAllowed]="draft.mayEditJoinRule() || draft.mayEditHistory()"
+          [trnActionDisabledReason]="draft.accessSaveUnavailableReason()"
+          [trnTooltip]="draft.accessSaveUnavailableReason()"
+          [disabled]="
+            !draft.accessHasWritableChanges() ||
+            draft.noSpaceChosen() ||
+            draft.saving() === 'access'
+          "
+          data-testid="room-settings-save"
+        >
+          {{ draft.saving() === 'access' ? 'Saving…' : 'Save access' }}
+        </button>
+      </div>
+    }
   </form>
 </section>

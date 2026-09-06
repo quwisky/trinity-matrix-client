@@ -36,28 +36,33 @@
     </p>
   }
 
-  <div class="space-settings__actions">
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="ghost"
-      [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
-      data-testid="space-settings-access-discard"
-      (click)="draft.discardAccess()"
+  @if (draft.accessDirty() || draft.mayEditJoinRule()) {
+    <div
+      class="space-settings__actions"
+      data-testid="space-settings-access-actions"
     >
-      Discard
-    </button>
-    <button
-      trnBtn
-      type="submit"
-      [trnActionAllowed]="draft.mayEditJoinRule()"
-      [trnActionDisabledReason]="draft.accessSaveUnavailableReason()"
-      [trnTooltip]="draft.accessSaveUnavailableReason()"
-      [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
-      data-testid="space-settings-save"
-    >
-      {{ draft.saving() === 'access' ? 'Saving…' : 'Save access' }}
-    </button>
-  </div>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
+        data-testid="space-settings-access-discard"
+        (click)="draft.discardAccess()"
+      >
+        Discard
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [trnActionAllowed]="draft.mayEditJoinRule()"
+        [trnActionDisabledReason]="draft.accessSaveUnavailableReason()"
+        [trnTooltip]="draft.accessSaveUnavailableReason()"
+        [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
+        data-testid="space-settings-save"
+      >
+        {{ draft.saving() === 'access' ? 'Saving…' : 'Save access' }}
+      </button>
+    </div>
+  }
 </form>

@@ -91,13 +91,14 @@ another Account cannot be mistaken for the target.
 
 The hub has these sections:
 
-| Tab     | What it changes                                                                                                                       |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| General | Room avatar, name and topic.                                                                                                          |
-| For you | Notification mode, Favourite and Low priority for the opening Account.                                                                |
-| Access  | Who can join, who can read earlier history, and the room's local addresses. A restricted room must retain at least one allowed space. |
-| Widgets | Third-party widgets declared for the room.                                                                                            |
-| Bans    | The list of banned members, with unban actions where allowed.                                                                         |
+| Tab       | What it changes                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------- |
+| General   | Room avatar, name and topic.                                                                             |
+| For you   | Notification mode, Favourite and Low priority for the opening Account.                                   |
+| Access    | Who can join and who can read earlier history. A restricted room must retain at least one allowed Space. |
+| Addresses | Published Room links and local addresses.                                                                |
+| Widgets   | Third-party widgets declared for the room.                                                               |
+| Bans      | The list of banned members, with unban actions where allowed.                                            |
 
 **General**, **For you** and **Access** save independently. A partial failure keeps only the fields
 that did not save as drafts, so retry sends only what remains. For you first confirms the opening
@@ -119,7 +120,9 @@ able to read a section or edit an avatar but not change the access rule, aliases
 Losing a role while Room settings is open disables the affected controls without hiding readable
 information or erasing drafts. Access and history choices affect other people and can expose
 earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
-rule controls which Space members may join, not whether you yourself remain in the Room.
+rule controls which Space members may join, not whether you yourself remain in the Room. Trinity
+keeps unfamiliar server policy readable and preserves restricted allow-list entries it does not
+understand when an administrator saves the Spaces it does understand.
 
 For you is also bound to the opening Account and remains editable by ordinary Room members because
 notification rules and Room tags are personal rather than Room-governance state. In a combined

@@ -172,7 +172,7 @@ export class SpaceSettingsDraftService {
     if (!options.some(({ value }) => value === current)) {
       options.push({
         value: current,
-        label: OTHER_RULE_LABELS[current] ?? current,
+        label: OTHER_RULE_LABELS[current] ?? `Server value (${current})`,
       });
     }
     return options.map((option) => ({

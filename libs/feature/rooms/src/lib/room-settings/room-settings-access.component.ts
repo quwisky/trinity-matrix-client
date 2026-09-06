@@ -12,7 +12,6 @@ import {
   TrnSelectComponent,
 } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
-import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import type { ParentSpace } from './room-settings.models';
 
@@ -23,7 +22,6 @@ import type { ParentSpace } from './room-settings.models';
   imports: [
     FormField,
     FormRoot,
-    RoomAliasesComponent,
     TrnActionAvailability,
     TrnButton,
     TrnCheckboxComponent,
@@ -34,8 +32,6 @@ import type { ParentSpace } from './room-settings.models';
   styleUrl: './room-settings-access.component.scss',
 })
 export class RoomSettingsAccessComponent {
-  readonly roomId = input.required<string>();
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
-  readonly legacyUnavailableReason = input<string | null>(null);
   readonly draft = inject(RoomSettingsDraftService);
 }

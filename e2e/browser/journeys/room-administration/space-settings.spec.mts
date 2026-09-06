@@ -268,6 +268,10 @@ test.describe('Space settings', () => {
     // options live in a CDK portal.
     await page.getByTestId('space-settings-join-rule').click();
     await page.getByTestId('join-rule-public').click();
+    await test.info().attach('space-access-admin', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
     await page.getByTestId('space-settings-save').click();
 
     await expect
@@ -404,7 +408,19 @@ test.describe('Space settings', () => {
     await expect(page.getByTestId('space-settings-topic')).toBeDisabled();
     await openSettingsTab(page, 'space-settings', 'access');
     await expect(page.getByTestId('space-settings-join-rule')).toBeDisabled();
-    await expect(page.getByTestId('space-settings-save')).toBeDisabled();
+    await expect(
+      page.getByText("Your role cannot change this room's join rule."),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Rooms inside it keep their own access/),
+    ).toBeVisible();
+    await expect(page.getByTestId('space-settings-access-actions')).toHaveCount(
+      0,
+    );
+    await test.info().attach('space-access-member-read-only', {
+      body: await page.getByTestId('space-settings').screenshot(),
+      contentType: 'image/png',
+    });
   });
 
   test('an admin publishes an address for the space', async ({

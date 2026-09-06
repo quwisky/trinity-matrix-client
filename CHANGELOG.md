@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room and Space access policies now have dedicated settings sections.** Members can read the
+  live join and Room-history policy with field-level permission explanations and no unusable Save
+  footer. Administrators get exact-target Save and Discard behavior, required-Space validation,
+  partial Room-policy retries, unfamiliar-state preservation, and Space-specific scope guidance.
+  Room addresses moved to their own section without removing the existing address controls.
+
 - **Space settings now has a personal Room-order section.** For you stages Use my default,
   Recent activity, Space order or Alphabetical for the exact Account and Space that opened the
   hub, stores the choice only on this device, and protects unsaved changes on section, Back and

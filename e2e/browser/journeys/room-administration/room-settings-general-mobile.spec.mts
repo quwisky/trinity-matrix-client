@@ -85,10 +85,31 @@ test.describe('Room settings on a phone', () => {
     const general = page.getByTestId('room-settings-tab-general');
     const generalBox = await general.boundingBox();
     expect(generalBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    const addresses = page.getByTestId('room-settings-tab-addresses');
+    expect((await addresses.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
+      44,
+    );
     await test.info().attach('room-settings-mobile-directory', {
       body: await settings.screenshot(),
       contentType: 'image/png',
     });
+
+    const access = page.getByTestId('room-settings-tab-access');
+    await access.tap();
+    await expect(page.getByTestId('room-settings-panel-access')).toBeVisible();
+    await expect(
+      page.getByTestId('room-settings-section-heading'),
+    ).toBeFocused();
+    const saveBox = await page.getByTestId('room-settings-save').boundingBox();
+    expect((saveBox?.x ?? 0) + (saveBox?.width ?? 0)).toBeLessThanOrEqual(
+      (surfaceBox?.x ?? 0) + (surfaceBox?.width ?? 0),
+    );
+    await test.info().attach('room-access-mobile', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.getByTestId('room-settings-mobile-back').tap();
+    await expect(directory).toBeVisible();
 
     await general.tap();
     await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();

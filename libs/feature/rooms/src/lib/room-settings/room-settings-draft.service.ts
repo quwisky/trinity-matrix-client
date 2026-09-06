@@ -26,6 +26,7 @@ import {
   type RoomSettingsModel,
   sameMembers,
   sentenceList,
+  withCurrentHistory,
   withCurrentRule,
 } from './room-settings-draft.models';
 import type { ParentSpace } from './room-settings.models';
@@ -75,7 +76,6 @@ export class RoomSettingsDraftService {
   readonly saving = this.savingState.asReadonly();
   readonly generalFeedback = this.generalFeedbackState.asReadonly();
   readonly accessFeedback = this.accessFeedbackState.asReadonly();
-  readonly historyOptions = ROOM_HISTORY_OPTIONS;
 
   readonly permissions = computed(
     () => this.snapshot()?.permissions ?? DENIED_ROOM_SETTINGS,
@@ -124,12 +124,9 @@ export class RoomSettingsDraftService {
   readonly accessDirty = computed(() => {
     const model = this.model();
     const baseline = this.accessBaseline();
-    const allow =
-      model.joinRule === JoinRule.Restricted ? this.allowToWrite() : [];
     return (
-      model.joinRule !== baseline.joinRule ||
-      model.historyVisibility !== baseline.historyVisibility ||
-      !sameMembers(allow, baseline.allowedSpaceIds)
+      this.joinRuleChanged() ||
+      model.historyVisibility !== baseline.historyVisibility
     );
   });
   readonly dirty = computed(() => this.generalDirty() || this.accessDirty());
@@ -144,14 +141,8 @@ export class RoomSettingsDraftService {
   readonly accessHasWritableChanges = computed(() => {
     const model = this.model();
     const baseline = this.accessBaseline();
-    const joinRuleChanged =
-      model.joinRule !== baseline.joinRule ||
-      !sameMembers(
-        model.joinRule === JoinRule.Restricted ? this.allowToWrite() : [],
-        baseline.allowedSpaceIds,
-      );
     return (
-      (this.mayEditJoinRule() && joinRuleChanged) ||
+      (this.mayEditJoinRule() && this.joinRuleChanged()) ||
       (this.mayEditHistory() &&
         model.historyVisibility !== baseline.historyVisibility)
     );
@@ -188,14 +179,39 @@ export class RoomSettingsDraftService {
       testId: `join-rule-${option.value}`,
     }));
   });
+  readonly historyOptions = computed(() =>
+    withCurrentHistory(ROOM_HISTORY_OPTIONS, this.model().historyVisibility),
+  );
   readonly showSpaceChoices = computed(
     () =>
       this.model().joinRule === JoinRule.Restricted &&
       this.parentSpaces().length > 0,
   );
   readonly noSpaceChosen = computed(
-    () => this.showSpaceChoices() && this.allowToWrite().length === 0,
+    () =>
+      this.mayEditJoinRule() &&
+      this.joinRuleChanged() &&
+      this.model().joinRule === JoinRule.Restricted &&
+      this.allowToWrite().length === 0,
   );
+  readonly unlistedAllowedSpaceCount = computed(() => {
+    if (this.model().joinRule !== JoinRule.Restricted) return 0;
+    const parentIds = new Set(this.parentSpaces().map(({ id }) => id));
+    return this.accessBaseline().allowedSpaceIds.filter(
+      (id) => !parentIds.has(id),
+    ).length;
+  });
+
+  private joinRuleChanged(): boolean {
+    const model = this.model();
+    const baseline = this.accessBaseline();
+    const allow =
+      model.joinRule === JoinRule.Restricted ? this.allowToWrite() : [];
+    return (
+      model.joinRule !== baseline.joinRule ||
+      !sameMembers(allow, baseline.allowedSpaceIds)
+    );
+  }
 
   start(
     target: RoomSettingsTarget,

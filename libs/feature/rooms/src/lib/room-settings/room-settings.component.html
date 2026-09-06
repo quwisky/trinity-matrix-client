@@ -28,14 +28,22 @@
       />
     }
     @case ('access') {
-      <trn-room-settings-access
-        [roomId]="roomId()"
-        [parentSpaces]="parentSpaces()"
-        [legacyUnavailableReason]="legacyUnavailableReason()"
-      />
+      <trn-room-settings-access [parentSpaces]="parentSpaces()" />
     }
     @case ('for-you') {
       <trn-room-settings-for-you />
+    }
+    @case ('addresses') {
+      <section data-testid="room-settings-panel-addresses">
+        @if (legacyUnavailableReason(); as reason) {
+          <p class="room-settings__target-warning" role="status">
+            Local address actions require the opening Account to be active.
+            {{ reason }}
+          </p>
+        } @else {
+          <trn-room-aliases [roomId]="roomId()" />
+        }
+      </section>
     }
     @case ('widgets') {
       <section data-testid="room-settings-panel-widgets">

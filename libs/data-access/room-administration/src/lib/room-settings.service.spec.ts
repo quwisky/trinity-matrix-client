@@ -257,6 +257,60 @@ describe('RoomSettingsService', () => {
     );
   });
 
+  it('setJoinRule preserves unfamiliar restricted allow entries', async () => {
+    const unknown = {
+      type: 'org.example.membership_claim',
+      issuer: 'example.org',
+    };
+    const { svc, sendStateEvent } = setup({
+      joinRule: JoinRule.Restricted,
+      allow: [{ type: 'm.room_membership', room_id: '!old:hs' }, unknown],
+    });
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', JoinRule.Restricted, ['!new:hs']),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      {
+        join_rule: 'restricted',
+        allow: [{ type: 'm.room_membership', room_id: '!new:hs' }, unknown],
+      },
+      '',
+    );
+  });
+
+  it('setJoinRule rejects an invalid allowed Space ID before writing', async () => {
+    const { svc, sendStateEvent } = setup();
+
+    await expect(
+      firstValueFrom(
+        svc.setJoinRule('!r:hs', JoinRule.Restricted, ['not-a-room-id']),
+      ),
+    ).rejects.toThrow('valid Matrix Room ID');
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('setJoinRule de-duplicates allowed Spaces before writing', async () => {
+    const { svc, sendStateEvent } = setup();
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', JoinRule.Restricted, ['!space:hs', '!space:hs']),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      {
+        join_rule: 'restricted',
+        allow: [{ type: 'm.room_membership', room_id: '!space:hs' }],
+      },
+      '',
+    );
+  });
+
   it('setJoinRule refuses a restricted rule with nothing allowed', async () => {
     // Sending this would lock every member out of a room only an admin could reopen, so it
     // is refused in the service — the one place every join-rule write passes through.

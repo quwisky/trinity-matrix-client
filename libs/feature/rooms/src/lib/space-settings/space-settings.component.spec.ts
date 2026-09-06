@@ -445,6 +445,81 @@ describe('SpaceSettingsComponent', () => {
     expect(cmp.draft.generalDirty()).toBe(false);
   });
 
+  it('shows member Space policy without a disabled Access footer', async () => {
+    const { cmp, fixture, container } = await build({
+      initial: spaceSnapshot({
+        access: { joinRule: JoinRule.Public },
+        permissions: { joinRule: DENIED },
+      }),
+    });
+
+    cmp.selectSection('access');
+    await fixture.whenStable();
+
+    expect(
+      container.querySelector('[data-testid="space-settings-join-rule"]'),
+    ).toHaveTextContent('Anyone can find and join');
+    expect(container.textContent).toContain(DENIED.reason);
+    expect(container.textContent).toContain(
+      'Rooms inside it keep their own access settings',
+    );
+    expect(
+      container.querySelector('[data-testid="space-settings-access-actions"]'),
+    ).toBeNull();
+  });
+
+  it('retains a failed Space policy draft and retries it', async () => {
+    const setJoinRule = vi
+      .fn<() => Observable<void>>()
+      .mockReturnValueOnce(throwError(() => new Error('rejected')))
+      .mockReturnValueOnce(of(undefined));
+    const { cmp } = await build({ setJoinRule });
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
+
+    cmp.draft.saveAccess();
+    expect(cmp.draft.accessFeedback()?.message).toContain('still here');
+    expect(cmp.draft.accessDirty()).toBe(true);
+    cmp.draft.saveAccess();
+
+    expect(setJoinRule).toHaveBeenCalledTimes(2);
+    expect(cmp.draft.accessDirty()).toBe(false);
+  });
+
+  it('keeps a Space Access draft when join-rule permission disappears', async () => {
+    const { cmp, fixture, container, emit, setJoinRule } = await build();
+    cmp.selectSection('access');
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
+
+    await emit(spaceSnapshot({ permissions: { joinRule: DENIED } }));
+    await fixture.whenStable();
+
+    expect(cmp.draft.model().joinRule).toBe(JoinRule.Public);
+    expect(cmp.draft.form.joinRule().disabled()).toBe(true);
+    expect(container.textContent).toContain(DENIED.reason);
+    expect(
+      container
+        .querySelector('[data-testid="space-settings-save"]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
+    cmp.draft.saveAccess();
+    expect(setJoinRule).not.toHaveBeenCalled();
+  });
+
+  it('keeps a Space Access draft across an unrelated live policy update', async () => {
+    const { cmp, emit, setJoinRule } = await build();
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
+
+    await emit(
+      spaceSnapshot({
+        access: { joinRule: JoinRule.Knock },
+      }),
+    );
+
+    expect(cmp.draft.model().joinRule).toBe(JoinRule.Public);
+    cmp.draft.saveAccess();
+    expect(setJoinRule).toHaveBeenCalledWith(TARGET, JoinRule.Public);
+  });
+
   it('keeps legacy Addresses and Bans reachable only for the opening active Account', async () => {
     const { cmp, fixture, container, emit } = await build();
 
