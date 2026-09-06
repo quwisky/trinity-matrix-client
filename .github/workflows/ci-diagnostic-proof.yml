@@ -1,0 +1,62 @@
+name: CI diagnostic acceptance proof
+on:
+  push:
+    branches: [proof/579-diagnostics]
+permissions:
+  contents: read
+concurrency:
+  group: ci-579-diagnostic-proof
+  cancel-in-progress: true
+jobs:
+  cancelled-predecessor:
+    if: contains(github.event.head_commit.message, 'cancel-first')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      - id: suite
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          mkdir -p dist/.playwright/ci-proof/cancelled
+          echo '<html>cancelled predecessor evidence</html>' > dist/.playwright/ci-proof/cancelled/index.html
+          sleep 180
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.suite.outputs.started == 'true' }}
+        with:
+          surface: cancelled-predecessor
+          report-path: dist/.playwright/ci-proof/cancelled/**
+  diagnostic:
+    if: contains(github.event.head_commit.message, 'diagnostics-run')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [always-fail, retry, soft-timeout, missing-report]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+      - id: suite
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-diagnostics-proof.mjs "$SCENARIO"
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.suite.outputs.started == 'true' }}
+        with:
+          surface: ${{ matrix.scenario }}
+          report-path: dist/.playwright/ci-proof/*/proof.${{ matrix.scenario }}.*${{ matrix.scenario == 'missing-report' && '.missing' || '' }}/**
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: ${{ !cancelled() && steps.suite.outputs.started == 'true' }}
+        with:
+          name: proof-summary-${{ matrix.scenario }}-${{ github.run_id }}
+          path: dist/.playwright/ci-proof/evidence/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
