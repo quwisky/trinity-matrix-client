@@ -17,13 +17,16 @@ import {
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { SpaceSettingsAccessComponent } from './space-settings-access.component';
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
+import { SpaceSettingsForYouDraftService } from './space-settings-for-you/space-settings-for-you-draft.service';
+import { SpaceSettingsForYouComponent } from './space-settings-for-you/space-settings-for-you.component';
 import { SpaceSettingsGeneralComponent } from './space-settings-general.component';
 
-type SpaceSettingsSection = 'general' | 'access' | 'addresses' | 'bans';
+type SpaceSettingsSection =
+  'general' | 'for-you' | 'access' | 'addresses' | 'bans';
 
 /**
- * Only working destinations are listed during migration. For you, Members and Rooms & spaces
- * join the final inventory in #519, #522 and #524; Bans remains reachable until Members owns it.
+ * Only working destinations are listed during migration. Members and Rooms & spaces join the
+ * final inventory in #522 and #524; Bans remains reachable until Members owns it.
  */
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: SpaceSettingsSection;
@@ -32,6 +35,11 @@ const SECTIONS: readonly (SettingsHubSection & {
     value: 'general',
     label: 'General',
     description: 'Photo, name, and topic',
+  },
+  {
+    value: 'for-you',
+    label: 'For you',
+    description: 'Your room order on this device',
   },
   {
     value: 'access',
@@ -54,12 +62,13 @@ const SECTIONS: readonly (SettingsHubSection & {
 @Component({
   selector: 'trn-space-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [SpaceSettingsDraftService],
+  providers: [SpaceSettingsDraftService, SpaceSettingsForYouDraftService],
   imports: [
     BannedMembersComponent,
     RoomAliasesComponent,
     SettingsHubComponent,
     SpaceSettingsAccessComponent,
+    SpaceSettingsForYouComponent,
     SpaceSettingsGeneralComponent,
   ],
   templateUrl: './space-settings.component.html',
@@ -73,16 +82,18 @@ export class SpaceSettingsComponent implements OnInit {
   private readonly identities = inject(AccountIdentitiesService);
 
   readonly draft = inject(SpaceSettingsDraftService);
+  readonly forYou = inject(SpaceSettingsForYouDraftService);
   readonly hub = new SettingsHubController({
     sections: SECTIONS,
     noun: 'Space',
     testIdPrefix: 'space-settings',
     accountId: () => this.accountId(),
     targetId: () => this.spaceId(),
-    dirty: () => this.draft.dirty(),
+    dirty: () => this.draft.dirty() || this.forYou.dirty(),
     discard: () => {
       this.draft.discardGeneral();
       this.draft.discardAccess();
+      this.forYou.discard();
     },
   });
   readonly mobileHost = this.hub.mobileHost;
@@ -117,6 +128,10 @@ export class SpaceSettingsComponent implements OnInit {
     this.draft.start({
       accountId: this.accountId(),
       roomId: this.spaceId(),
+    });
+    this.forYou.start({
+      accountId: this.accountId(),
+      spaceId: this.spaceId(),
     });
     this.hub.activate();
   }

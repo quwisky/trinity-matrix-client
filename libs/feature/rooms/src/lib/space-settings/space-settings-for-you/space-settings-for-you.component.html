@@ -1,0 +1,117 @@
+<section data-testid="space-settings-panel-for-you">
+  @switch (draft.loadState()) {
+    @case ('loading') {
+      <section class="space-settings__card" role="status" aria-live="polite">
+        <h3>Loading your Space preference…</h3>
+        <p>Reading the opening Account’s saved choice on this device.</p>
+      </section>
+    }
+    @case ('unavailable') {
+      <section class="space-settings__card" role="alert">
+        <h3>Space preference unavailable</h3>
+        <p>
+          This Account or Space is no longer available. No default value has
+          been substituted.
+        </p>
+      </section>
+    }
+    @case ('failed') {
+      <section
+        class="space-settings__card space-settings__failure"
+        role="alert"
+      >
+        <div class="space-settings__field">
+          <h3>Couldn’t read your Space preference</h3>
+          <p>
+            Trinity could not confirm this Account’s saved room order on this
+            device. Try again before making changes.
+          </p>
+        </div>
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          data-testid="space-settings-for-you-retry"
+          (click)="draft.retryLoad()"
+        >
+          Try again
+        </button>
+      </section>
+    }
+    @case ('ready') {
+      <form
+        [formRoot]="draft.form"
+        class="space-settings__form"
+        data-testid="space-settings-for-you-form"
+        (submit)="draft.save()"
+      >
+        <section class="space-settings__card space-settings__fields">
+          <div class="space-settings__field">
+            <h3 id="space-settings-room-order-heading">Room order</h3>
+            <p>
+              Choose how this Space’s Rooms are arranged for the opening
+              Account. This never changes the order shared by the Space.
+            </p>
+          </div>
+          <trn-radio-group
+            [options]="draft.options()"
+            [value]="draft.model().mode"
+            [disabled]="draft.form.mode().disabled()"
+            aria-labelledby="space-settings-room-order-heading"
+            (valueChange)="draft.setMode($event)"
+          />
+        </section>
+
+        <section class="space-settings__card space-settings__scope">
+          <h3>For this account on this device</h3>
+          <p>
+            This preference is kept separately for each Account and Space on
+            this device. It does not follow the Account to another device.
+          </p>
+          <p>
+            Use my default removes this Space’s override, so later changes to
+            the Account default continue to apply here.
+          </p>
+        </section>
+
+        @if (draft.feedback(); as feedback) {
+          <p
+            class="space-settings__feedback"
+            [class.space-settings__feedback--danger]="
+              feedback.tone === 'danger'
+            "
+            [attr.role]="feedback.tone === 'danger' ? 'alert' : 'status'"
+            aria-live="polite"
+            data-testid="space-settings-for-you-feedback"
+          >
+            {{ feedback.message }}
+          </p>
+        }
+
+        <div class="space-settings__actions">
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            [disabled]="!draft.dirty() || draft.saving()"
+            data-testid="space-settings-for-you-discard"
+            (click)="draft.discard()"
+          >
+            Discard
+          </button>
+          <button
+            trnBtn
+            type="submit"
+            [disabled]="
+              !draft.dirty() || draft.saving() || draft.form.mode().disabled()
+            "
+            data-testid="space-settings-for-you-save"
+          >
+            {{ draft.saving() ? 'Saving…' : 'Save preference' }}
+          </button>
+        </div>
+      </form>
+    }
+  }
+</section>

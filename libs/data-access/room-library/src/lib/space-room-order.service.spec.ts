@@ -244,6 +244,64 @@ describe('SpaceRoomOrderService', () => {
 
       expect(svc.defaultMode()).toBe('recent');
     });
+
+    it('reads and writes an exact opening Account after Active Account changes', async () => {
+      store.set(defaultKey(ME), 'alphabetical');
+      store.set(defaultKey(ALT), 'recent');
+      const { svc, activeUserId } = harness([ME, ALT]);
+      await firstValueFrom(svc.hydrateKnownAccounts());
+      activeUserId.set(ALT);
+
+      expect(svc.snapshotFor(ME, SPACE)).toEqual({
+        defaultMode: 'alphabetical',
+        overrideMode: null,
+        effectiveMode: 'alphabetical',
+      });
+      await firstValueFrom(svc.setForAccountSpace(ME, SPACE, 'space'));
+
+      expect(svc.snapshotFor(ME, SPACE).effectiveMode).toBe('space');
+      expect(svc.snapshotFor(ALT, SPACE).effectiveMode).toBe('recent');
+      expect(JSON.parse(store.get(overridesKey(ME)) ?? '{}')).toEqual({
+        [SPACE]: 'space',
+      });
+      expect(store.get(overridesKey(ALT))).toBeUndefined();
+    });
+
+    it('isolates exact overrides between Spaces and removes rather than snapshots the default', async () => {
+      const otherSpace = '!other:hs';
+      const { svc } = harness();
+      await firstValueFrom(svc.hydrateKnownAccounts());
+      await firstValueFrom(svc.setForAccountSpace(ME, SPACE, 'space'));
+      await firstValueFrom(
+        svc.setForAccountSpace(ME, otherSpace, 'alphabetical'),
+      );
+
+      await firstValueFrom(svc.clearForAccountSpace(ME, SPACE));
+      await firstValueFrom(svc.setDefault('alphabetical'));
+
+      expect(svc.snapshotFor(ME, SPACE)).toEqual({
+        defaultMode: 'alphabetical',
+        overrideMode: null,
+        effectiveMode: 'alphabetical',
+      });
+      expect(svc.snapshotFor(ME, otherSpace).overrideMode).toBe('alphabetical');
+      expect(JSON.parse(store.get(overridesKey(ME)) ?? '{}')).toEqual({
+        [otherSpace]: 'alphabetical',
+      });
+    });
+
+    it('fails closed when the exact opening Account has been removed', async () => {
+      const { svc, accountIds } = harness();
+      await firstValueFrom(svc.hydrateKnownAccounts());
+      accountIds.set([]);
+
+      await expect(
+        firstValueFrom(svc.setForAccountSpace(ME, SPACE, 'space')),
+      ).rejects.toThrow('opening Account is no longer available');
+
+      expect(store.get(overridesKey(ME))).toBeUndefined();
+      expect(svc.snapshotFor(ME, SPACE).overrideMode).toBeNull();
+    });
   });
 
   // A read is async, so a click can land before the stored value arrives. Nothing else in

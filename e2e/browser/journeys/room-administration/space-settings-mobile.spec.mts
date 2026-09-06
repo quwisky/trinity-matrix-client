@@ -163,6 +163,35 @@ test.describe('Space settings on a phone', () => {
       contentType: 'image/png',
     });
 
+    const forYou = page.getByTestId('space-settings-tab-for-you');
+    expect((await forYou.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
+      44,
+    );
+    await forYou.tap();
+    await expect(
+      page.getByTestId('space-settings-panel-for-you'),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId('space-settings-section-heading'),
+    ).toBeFocused();
+    const alphabetical = page.getByTestId('space-settings-order-alphabetical');
+    expect(
+      (await alphabetical.boundingBox())?.height ?? 0,
+    ).toBeGreaterThanOrEqual(44);
+    await alphabetical.tap();
+    await page.getByTestId('space-settings-mobile-back').tap();
+    await discard.getByRole('button', { name: 'Keep editing' }).tap();
+    await expect(
+      alphabetical.getByRole('radio', { name: 'Alphabetical' }),
+    ).toBeChecked();
+    await test.info().attach('space-personal-order-mobile', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.getByTestId('space-settings-for-you-discard').tap();
+    await page.getByTestId('space-settings-mobile-back').tap();
+    await expect(directory).toBeVisible();
+
     await general.tap();
     await expect(
       page.getByTestId('space-settings-panel-general'),

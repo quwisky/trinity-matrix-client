@@ -29,6 +29,8 @@ export interface TrnRadioOption<T> {
   readonly value: T;
   /** The visible text, and the accessible name of the choice. */
   readonly label: string;
+  /** Optional supporting text rendered inside the same native label. */
+  readonly description?: string;
   /** Addresses this choice from a test. Every call site derives it from the value. */
   readonly testId?: string;
 }
@@ -113,7 +115,16 @@ export interface TrnRadioOption<T> {
           <span aria-hidden="true" [class]="indicatorClass()">
             <span [class]="indicatorDotClass(option.value === value())"></span>
           </span>
-          {{ option.label }}
+          <span class="flex min-w-0 flex-col items-start gap-0.5">
+            <span>{{ option.label }}</span>
+            @if (option.description) {
+              <small
+                class="text-xs leading-snug font-normal text-[var(--trinity-text-muted)]"
+              >
+                {{ option.description }}
+              </small>
+            }
+          </span>
         </label>
       }
     </div>

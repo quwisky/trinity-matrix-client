@@ -19,6 +19,7 @@ import {
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { SpaceRoomOrderService } from '@trinity/data-access/room-library';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -137,6 +138,17 @@ async function build(options: BuildOptions = {}) {
           avatarMxc: 'mxc://hs/account',
         }),
       }),
+      MockProvider(SpaceRoomOrderService, {
+        retryHydration: () =>
+          of({ accountId: TARGET.accountId, kind: 'ready' as const }),
+        snapshotFor: () => ({
+          defaultMode: 'recent',
+          overrideMode: null,
+          effectiveMode: 'recent',
+        }),
+        setForAccountSpace: () => of(undefined),
+        clearForAccountSpace: () => of(undefined),
+      }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => snapshots.value.permissions,
         unban: () => DENIED,
@@ -200,6 +212,7 @@ describe('SpaceSettingsComponent', () => {
     ).toBe('Original space');
     expect(cmp.sections.map(({ value }) => value)).toEqual([
       'general',
+      'for-you',
       'access',
       'addresses',
       'bans',
@@ -332,6 +345,23 @@ describe('SpaceSettingsComponent', () => {
 
     cmp.selectSection('general');
     cmp.draft.form.name().value.set('Another draft');
+    cmp.close();
+    confirmResult.next(true);
+    expect(close).toHaveBeenCalledWith(false);
+  });
+
+  it('protects Close while the personal Space order is staged', async () => {
+    const { cmp, close, confirm, confirmResult } = await build();
+    cmp.selectSection('for-you');
+    cmp.forYou.setMode('space');
+
+    cmp.close();
+
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(close).not.toHaveBeenCalled();
+    confirmResult.next(false);
+    expect(cmp.forYou.model().mode).toBe('space');
+
     cmp.close();
     confirmResult.next(true);
     expect(close).toHaveBeenCalledWith(false);

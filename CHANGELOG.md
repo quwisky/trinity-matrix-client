@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Space settings now has a personal Room-order section.** For you stages Use my default,
+  Recent activity, Space order or Alphabetical for the exact Account and Space that opened the
+  hub, stores the choice only on this device, and protects unsaved changes on section, Back and
+  Close navigation. Loading, persistence failure and pending Save states stay explicit. Removing
+  an override continues following later Account-default changes, never rewrites shared Space
+  hierarchy order, and leaves the existing Space-header shortcut working.
+
 - **Room settings now has an Account-exact For you section.** Every Room member can stage its
   notification mode, Favourite and Low priority values for the Account that opened settings,
   including when one sidebar row represents several Accounts. Authoritative Matrix rule and tag

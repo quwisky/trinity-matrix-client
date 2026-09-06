@@ -60,7 +60,11 @@ space unlinks it from that space; it does not make you leave the room.
 
 Choose the default order for rooms within spaces in Settings → Appearance → **Room order in
 spaces**: recent activity, the space's own order, or alphabetical. A space can have its own
-override, and favourites remain in a separate group. The choice is per account on this device.
+override, and favourites remain in a separate group. Use the Space header shortcut for a quick
+change, or Space settings → **For you** for staged Save and Discard. **Use my default** removes the
+override instead of copying today's default, so the Space follows later default changes. Every
+choice is kept separately for that Account and Space on this device; it never rewrites the
+Space's shared child order.
 
 ## Create and curate a space
 
@@ -126,19 +130,23 @@ settings does not create per-Room overrides for them.
 
 Open **Space settings** from the Space header's overflow menu. Like Room settings, it keeps the
 opening Account and Space visible and uses a directory beside the editor on a wide screen. On a
-phone it opens full screen; **Back** returns from General or Access to the directory before Close
-leaves the hub. General changes the Space avatar, name and topic, Access changes who can join,
-Addresses manages published Space links, and Bans lists barred members. Each working destination
-stays reachable while the remaining Space-specific sections are added.
+phone it opens full screen; **Back** returns from a section to the directory before Close leaves
+the hub. General changes the Space avatar, name and topic; **For you** stages the opening Account's
+device-local Room ordering; Access changes who can join; Addresses manages published Space links;
+and Bans lists barred members. Each working destination stays reachable while the remaining
+Space-specific sections are added.
 
-General and Access have independent Save and Discard actions. Successful fields stay saved when
-another field fails, and retry sends only the remaining field. A live permission change disables
-the affected write without erasing its readable value or local draft. Existing unfamiliar or
-restricted access rules remain visible, but Space settings does not offer a new restricted rule
-until its full policy workflow exists. Space settings never shows Room history, widgets, or Room
-notification inheritance: a Space's access rule controls the Space itself, while child Rooms keep
-their own access and history settings. Use **Organise rooms** for child ordering and suggested
-status.
+General, For you and Access have independent Save and Discard actions. For you names loading,
+failed-read, pending and failed-save states explicitly and protects a staged choice on section,
+Back and Close navigation. Its four choices are Use my default, Recent activity, Space order and
+Alphabetical. Successful General and Access fields stay saved when another field fails, and retry
+sends only the remaining field. A live permission change disables the affected write without
+erasing its readable value or local draft. Existing unfamiliar or restricted access rules remain
+visible, but Space settings does not offer a new restricted rule until its full policy workflow
+exists. Space settings never shows Room history, widgets, or Room notification inheritance: a
+Space's access rule controls the Space itself, while child Rooms keep their own access and history
+settings. Use **Organise rooms** for shared child ordering and suggested status; personal Space
+order never calls that shared Matrix workflow.
 
 **Leave space** confirms both the Space and acting Account. Cancelling makes no membership change;
 confirming leaves only the Space itself. You remain joined to its Rooms, which continue to appear
