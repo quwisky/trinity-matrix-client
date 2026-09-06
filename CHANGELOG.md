@@ -1124,7 +1124,9 @@ All notable changes to this project are documented here. The format is based on
 
 - Production renderer checks wait for the usable login form and verify the current
   mobile System Status control. Electron settings geometry checks use the shared
-  Settings directory hook after the layout migration.
+  Settings directory hook after the layout migration. Electron restart checks open
+  System Status from the sidebar. Historical-notification checks now count presenter
+  calls before and after restart.
 
 - System Status no longer floats over message-composer controls. It stays available as an icon immediately
   left of Settings in the sidebar and in the mobile conversation's More actions menu, with emphasis

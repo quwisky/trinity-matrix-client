@@ -92,6 +92,10 @@ Production renderer journeys wait for the visible login form after DOM readiness
 background network activity is not a login readiness signal. Mobile geometry checks
 cover the current System Status access control and room heading. Settings geometry
 checks use the shared frame's public directory hook, including in Electron.
+Electron restart checks open System Status through the sidebar after reaching Rooms;
+the startup access button is intentionally absent there. Historical-notification
+checks count calls to the Electron presenter before and after restart, alongside
+the current capability-summary assertion.
 
 ## Failure handling and review evidence
 

@@ -11,6 +11,39 @@ import { createElectronProfile, launchApp } from './support/launch.mts';
 
 const session = synapseSession();
 
+async function installRejectedNotificationCounter(
+  app: Awaited<ReturnType<typeof launchApp>>,
+): Promise<void> {
+  await app.evaluate(({ ipcMain }) => {
+    const channel = 'trinity:host:v1:notification-presentation:present';
+    ipcMain.removeHandler(channel);
+    (
+      globalThis as typeof globalThis & { __e2eNotificationCalls?: number }
+    ).__e2eNotificationCalls = 0;
+    ipcMain.handle(channel, () => {
+      const state = globalThis as typeof globalThis & {
+        __e2eNotificationCalls?: number;
+      };
+      state.__e2eNotificationCalls = (state.__e2eNotificationCalls ?? 0) + 1;
+      return {
+        kind: 'rejected',
+        diagnostic: { code: 'e2e-notification-rejected' },
+      };
+    });
+  });
+}
+
+async function notificationCallCount(
+  app: Awaited<ReturnType<typeof launchApp>>,
+): Promise<number> {
+  return app.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      __e2eNotificationCalls?: number;
+    };
+    return state.__e2eNotificationCalls ?? -1;
+  });
+}
+
 const electronNavigate: Navigate = async (page: Page, path: string) => {
   const baseUrl = page.url() === 'about:blank' ? 'trinity://app/' : page.url();
   await page.goto(new URL(path, baseUrl).href, {
@@ -79,15 +112,9 @@ test.describe('Electron first-login notifications', () => {
     try {
       // A rejected presentation made each historical event surface as the generic
       // capability warning from #490. Keeping the rejection deterministic makes
-      // this journey independent of the host OS notification service.
-      await app.evaluate(({ ipcMain }) => {
-        const channel = 'trinity:host:v1:notification-presentation:present';
-        ipcMain.removeHandler(channel);
-        ipcMain.handle(channel, () => ({
-          kind: 'rejected',
-          diagnostic: { code: 'e2e-notification-rejected' },
-        }));
-      });
+      // this journey independent of the host OS notification service, while the
+      // counter proves restored history never invokes the presenter.
+      await installRejectedNotificationCounter(app);
 
       const page = await app.firstWindow();
       await login(
@@ -103,14 +130,17 @@ test.describe('Electron first-login notifications', () => {
       await expect(
         page.getByText(roomName, { exact: true }).first(),
       ).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByTestId('app-runtime-warnings')).toHaveCount(0);
+      expect(await notificationCallCount(app)).toBe(0);
+      await expect(page.getByTestId('app-capability-summary')).toHaveCount(0);
 
       await app.close();
       app = await launchApp(userDataDir);
+      await installRejectedNotificationCounter(app);
       const restartedPage = await app.firstWindow();
       await waitForRooms(restartedPage);
+      expect(await notificationCallCount(app)).toBe(0);
       await expect(
-        restartedPage.getByTestId('app-runtime-warnings'),
+        restartedPage.getByTestId('app-capability-summary'),
       ).toHaveCount(0);
     } finally {
       await app.close();
