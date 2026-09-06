@@ -1,79 +1,250 @@
+@use '../styles/mixins' as rooms;
+
 @layer components {
   .room-settings {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    width: min(960px, calc(100vw - 32px));
+    height: min(720px, calc(100svh - 48px));
     max-height: 92svh;
     overflow: hidden;
-    padding: 20px 18px 16px;
+    color: var(--trinity-text);
   }
 
-  .room-settings__title {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--trinity-text-bright);
-  }
-
-  .room-settings__form {
+  .room-settings__header {
     display: flex;
-    flex-direction: column;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 68px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-raised);
+  }
+
+  .room-settings__identity,
+  .room-settings__room-summary {
+    display: flex;
+    align-items: center;
     gap: 12px;
-    min-height: 0;
+    min-width: 0;
+
+    > div {
+      min-width: 0;
+    }
   }
 
-  .room-settings__tabs {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+  .room-settings__identity {
+    flex: 1 1 auto;
   }
 
-  .room-settings__field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+  .room-settings__header > button {
+    flex: 0 0 auto;
   }
 
-  .room-settings__label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--trinity-text-muted);
-  }
-
-  .room-settings__spaces {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    border: 0;
-    padding: 0;
+  .room-settings__account-label,
+  .room-settings__account-name,
+  .room-settings__eyebrow,
+  .room-settings h1,
+  .room-settings h2 {
     margin: 0;
   }
 
-  .room-settings__space {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    cursor: pointer;
-  }
-
-  .room-settings__hint {
-    font-size: 13px;
-  }
-
-  .room-settings__topic {
-    resize: vertical;
-    min-height: 64px;
-  }
-
-  .room-settings__note {
-    font-size: 13px;
+  .room-settings__account-label,
+  .room-settings__eyebrow {
+    font-size: 11px;
+    font-weight: 700;
     color: var(--trinity-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
 
-  .room-settings__actions {
+  .room-settings__account-name {
+    overflow: hidden;
+    color: var(--trinity-text-bright);
+    font-size: 14px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .room-settings__target-warning {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-panel);
+    color: var(--trinity-danger);
+    font-size: 13px;
+  }
+
+  .room-settings__workspace {
+    display: grid;
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .room-settings__directory {
     display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 4px;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 0;
+    padding: 24px 16px;
+    border-right: 1px solid var(--trinity-border-subtle);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--trinity-surface-navigation);
+  }
+
+  .room-settings__room-summary h1 {
+    overflow: hidden;
+    color: var(--trinity-text-bright);
+    font-size: 16px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .room-settings__section-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .room-settings__section-link {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    min-height: 48px;
+    padding: 9px 11px;
+    border: 0;
+    border-radius: var(--trinity-shape-control-radius);
+    background: transparent;
+    color: var(--trinity-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--trinity-state-hover-surface);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--trinity-accent);
+      outline-offset: 2px;
+    }
+
+    small {
+      color: var(--trinity-text-muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+  }
+
+  .room-settings__section-link--active {
+    background: var(--trinity-accent-tint-30);
+    color: var(--trinity-text-bright);
+
+    small {
+      color: var(--trinity-text);
+    }
+  }
+
+  .room-settings__section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--trinity-surface-workspace);
+  }
+
+  .room-settings__section-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 12px;
+    padding: 22px 28px 14px;
+
+    h2 {
+      color: var(--trinity-text-bright);
+      font-size: clamp(22px, 2.4vw, 28px);
+      font-weight: 700;
+      line-height: 1.15;
+    }
+  }
+
+  .room-settings__section-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0 28px 28px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .room-settings__directory--hidden,
+  .room-settings__section--hidden {
+    display: none;
+  }
+
+  @media #{rooms.$below-md} {
+    .room-settings {
+      width: 100vw;
+      height: 100svh;
+      max-height: none;
+      border-radius: 0;
+    }
+
+    .room-settings__header {
+      min-height: max(60px, calc(48px + env(safe-area-inset-top)));
+      padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+    }
+
+    .room-settings__workspace {
+      display: block;
+      flex-basis: 0;
+      height: 0;
+      min-height: 0;
+    }
+
+    .room-settings__directory,
+    .room-settings__section {
+      height: 100%;
+      border-right: 0;
+    }
+
+    .room-settings__directory {
+      padding: 18px 12px calc(18px + env(safe-area-inset-bottom));
+    }
+
+    .room-settings__section-link {
+      min-height: 56px;
+      padding: 10px 12px;
+    }
+
+    .room-settings__section-header {
+      min-height: 64px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--trinity-border-subtle);
+
+      > button {
+        min-width: 44px;
+        min-height: 44px;
+      }
+
+      h2 {
+        font-size: 21px;
+      }
+    }
+
+    .room-settings__section-scroll {
+      padding: 14px 12px calc(18px + env(safe-area-inset-bottom));
+      scrollbar-gutter: auto;
+    }
   }
 }

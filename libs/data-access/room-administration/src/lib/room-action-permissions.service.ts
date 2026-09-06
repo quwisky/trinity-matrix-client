@@ -145,7 +145,20 @@ export class RoomActionPermissionsService {
         aliases: freshness,
       };
     }
-    const context = this.context(roomId);
+    return this.settingsPermissions(this.context(roomId));
+  }
+
+  /** Current settings authority for one immutable Account-and-Room target. */
+  settingsFor(key: RoomActionPermissionsKey): RoomSettingsPermissions {
+    this.revision();
+    return this.settingsPermissions(
+      this.contextForClient(this.matrix.clientFor(key.accountId), key.roomId),
+    );
+  }
+
+  private settingsPermissions(
+    context: PermissionContext | null,
+  ): RoomSettingsPermissions {
     if (!context) {
       const unavailable = denied('Join this room to change its settings.');
       return {

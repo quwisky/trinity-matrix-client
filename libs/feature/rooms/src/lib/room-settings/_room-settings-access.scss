@@ -1,0 +1,25 @@
+@mixin layout {
+  .room-settings__spaces {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .room-settings__space {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+
+  .room-settings__error {
+    margin: 0;
+    color: var(--trinity-danger);
+    font-size: 13px;
+  }
+}

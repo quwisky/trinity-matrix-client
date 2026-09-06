@@ -116,13 +116,19 @@ authority, while an exact-Account operation with its own current authorization r
 independent. Retrying a retained failure schedules only its existing projection; released
 ownership recreates both Room Administration leases without reopening the Room surface.
 
-The live projection updates open Room and Space settings when a remote role change removes
-permission, while preserving drafts and readable alias lists. UI feedback uses focusable
-`trnActionAllowed` controls, keyboard-accessible explanations and a touch status surface.
-Every cold mutation rechecks permission at subscription time after pickers/confirmations and
+Room settings takes an immutable Account-and-Room target for General and Access policy and observes
+that Account's exact client, independent of later Active Account changes. SDK state and sync
+invalidations refresh untouched fields and permission gates while section-owned drafts remain
+local; removal of the opening Account makes the target unavailable, and a late avatar upload cannot
+publish into a replacement Account. General and Access commands commit successful fields
+independently so retry writes only the retained failures. Incrementally retained local-address,
+widget and ban adapters stay behind an opening-Account-active gate until their exact-target
+migrations land; they never fall through to a newly active Account. UI feedback uses focusable
+`trnActionAllowed` controls, keyboard-accessible explanations and a touch status surface. Every
+cold migrated mutation rechecks permission at subscription time after pickers/confirmations and
 before the SDK write; avatar publication checks both before upload and before publishing state.
-The homeserver remains authoritative for races. UI details belong in the
-[UI guide](ui-and-theming.md), not in a second authorization implementation.
+The homeserver remains authoritative for races. UI details belong in the [UI guide](ui-and-theming.md),
+not in a second authorization implementation.
 
 ## Session persistence
 

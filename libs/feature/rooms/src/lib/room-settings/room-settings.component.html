@@ -1,148 +1,165 @@
 <div
   trnOverlaySurface
   variant="neutral"
-  size="sm"
-  layout="dialog"
-  class="room-settings flex flex-col"
+  size="2xl"
+  [layout]="mobileHost ? 'fullscreen' : 'workspace'"
+  class="room-settings"
   data-testid="room-settings"
 >
-  <h2 class="room-settings__title">Room settings</h2>
-
-  <form [formRoot]="form" class="room-settings__form" (submit)="save()">
-    @if (!canSave() && !mayEditAvatar()) {
-      <p class="room-settings__note">
-        You don’t have permission to change this room’s settings.
-      </p>
-    }
-
-    <trn-tabs
-      tab="general"
-      variant="neutral"
-      presentation="line"
-      [tabs]="settingsTabs()"
-      class="room-settings__tabs"
-    >
-      <trn-tab-panel value="general" data-testid="room-settings-panel-general">
-        <trn-avatar-field
-          [roomId]="roomId()"
-          [name]="name()"
-          [avatarMxc]="avatarMxc()"
-          [initial]="avatarInitial()"
-          [editable]="mayEditAvatar()"
-          noun="room"
-          testid="room-settings-avatar"
-        />
-
-        <label class="room-settings__field">
-          <span class="room-settings__label">Name</span>
-          <input
-            trnInput
-            class="w-full"
-            [formField]="form.name"
-            autocomplete="off"
-            data-testid="room-settings-name"
-          />
-        </label>
-
-        <label class="room-settings__field">
-          <span class="room-settings__label">Topic</span>
-          <textarea
-            trnTextarea
-            class="room-settings__topic w-full"
-            [formField]="form.topic"
-            rows="3"
-            data-testid="room-settings-topic"
-          ></textarea>
-        </label>
-      </trn-tab-panel>
-
-      <trn-tab-panel value="access" data-testid="room-settings-panel-access">
-        <label class="room-settings__field">
-          <span class="room-settings__label">Who can join</span>
-          <trn-select
-            [options]="joinRuleOptions()"
-            [formField]="form.joinRule"
-            data-testid="room-settings-join-rule"
-          />
-        </label>
-
-        @if (showSpaceChoices()) {
-          <fieldset class="room-settings__spaces">
-            <legend class="room-settings__label">
-              Spaces whose members can join
-            </legend>
-            @for (space of parentSpaces(); track space.id) {
-              <label class="room-settings__space">
-                <trn-checkbox
-                  [checked]="isSpaceChecked(space.id)"
-                  (checkedChange)="toggleSpace(space.id, $event)"
-                  [attr.data-testid]="'room-settings-space-' + space.id"
-                />
-                {{ space.name }}
-              </label>
-            }
-            @if (noSpaceChosen()) {
-              <p class="room-settings__hint text-danger">
-                Choose at least one space, or nobody will be able to join.
-              </p>
-            }
-          </fieldset>
-        }
-
-        <label class="room-settings__field">
-          <span class="room-settings__label">Who can read history</span>
-          <trn-select
-            [options]="historyOptions"
-            [formField]="form.historyVisibility"
-            data-testid="room-settings-history"
-          />
-        </label>
-
-        <trn-room-aliases [roomId]="roomId()" />
-      </trn-tab-panel>
-
-      <trn-tab-panel value="widgets" data-testid="room-settings-panel-widgets">
-        <trn-room-widgets [roomId]="roomId()" />
-      </trn-tab-panel>
-
-      <trn-tab-panel value="bans" data-testid="room-settings-panel-bans">
-        <trn-banned-members [roomId]="roomId()" />
-      </trn-tab-panel>
-    </trn-tabs>
-
-    @if (noSpaceChosen()) {
-      <!-- The field this blocks on lives behind the Access tab, so the reason Save is off
-           has to be sayable from wherever the reader is standing. -->
-      <p
-        class="room-settings__hint text-danger"
-        data-testid="room-settings-blocked"
-      >
-        Choose at least one space under Access before saving.
-      </p>
-    }
-
-    <div class="room-settings__actions">
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        presentation="ghost"
-        (click)="close()"
-        data-testid="room-settings-cancel"
-      >
-        Cancel
-      </button>
-      <button
-        trnBtn
-        [trnActionAllowed]="canSave()"
-        [trnActionDisabledReason]="saveUnavailableReason()"
-        [trnTooltip]="saveUnavailableReason()"
-        type="submit"
-        [disabled]="saving() || noSpaceChosen()"
-        data-testid="room-settings-save"
-      >
-        {{ saving() ? 'Saving…' : 'Save' }}
-      </button>
+  <header class="room-settings__header">
+    <div class="room-settings__identity">
+      <trn-avatar
+        size="sm"
+        shape="person"
+        [mxc]="account().avatarMxc"
+        [name]="account().displayName"
+        [initial]="accountInitial()"
+        [accountId]="accountId()"
+      />
+      <div>
+        <p class="room-settings__account-label">Opening Account</p>
+        <p
+          class="room-settings__account-name"
+          data-testid="room-settings-account"
+        >
+          {{ account().displayName }}
+        </p>
+      </div>
     </div>
-  </form>
+    <button
+      trnBtn
+      type="button"
+      presentation="ghost"
+      data-testid="room-settings-cancel"
+      (click)="close()"
+    >
+      Close
+    </button>
+  </header>
+
+  @if (draft.targetUnavailableReason(); as unavailableReason) {
+    <p class="room-settings__target-warning" role="alert">
+      {{ unavailableReason }}
+    </p>
+  }
+
+  <div class="room-settings__workspace">
+    <nav
+      class="room-settings__directory"
+      [class.room-settings__directory--hidden]="
+        compactNavigation() && !directoryVisible()
+      "
+      aria-label="Room settings sections"
+      data-testid="room-settings-directory"
+    >
+      <div class="room-settings__room-summary">
+        <trn-avatar
+          [mxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
+          [name]="draft.model().name || roomDisplayName()"
+          [initial]="roomInitial()"
+          [exactSize]="48"
+          shape="place"
+          [accountId]="accountId()"
+        />
+        <div>
+          <p class="room-settings__eyebrow">Room settings</p>
+          <h1 data-testid="room-settings-room-name">
+            {{ draft.model().name || roomDisplayName() }}
+          </h1>
+        </div>
+      </div>
+
+      <div class="room-settings__section-list">
+        @for (section of sections; track section.value) {
+          <button
+            type="button"
+            class="room-settings__section-link"
+            [class.room-settings__section-link--active]="
+              selectedSection() === section.value
+            "
+            [attr.aria-current]="
+              selectedSection() === section.value ? 'page' : null
+            "
+            [attr.data-testid]="'room-settings-tab-' + section.value"
+            (click)="selectSection(section.value)"
+          >
+            <span>{{ section.label }}</span>
+            <small>{{ section.description }}</small>
+          </button>
+        }
+      </div>
+    </nav>
+
+    <main
+      class="room-settings__section"
+      [class.room-settings__section--hidden]="
+        compactNavigation() && directoryVisible()
+      "
+    >
+      <div class="room-settings__section-header">
+        @if (compactNavigation()) {
+          <button
+            trnBtn
+            type="button"
+            presentation="ghost"
+            data-testid="room-settings-mobile-back"
+            (click)="showDirectory()"
+          >
+            Back
+          </button>
+        }
+        <div>
+          <p class="room-settings__eyebrow">Room settings</p>
+          <h2
+            tabindex="-1"
+            data-autofocus
+            data-testid="room-settings-section-heading"
+          >
+            {{ sectionTitle() }}
+          </h2>
+        </div>
+      </div>
+
+      <div class="room-settings__section-scroll">
+        @switch (selectedSection()) {
+          @case ('general') {
+            <trn-room-settings-general
+              [accountId]="accountId()"
+              [roomId]="roomId()"
+              [roomDisplayName]="roomDisplayName()"
+            />
+          }
+          @case ('access') {
+            <trn-room-settings-access
+              [roomId]="roomId()"
+              [parentSpaces]="parentSpaces()"
+              [legacyUnavailableReason]="legacyUnavailableReason()"
+            />
+          }
+          @case ('widgets') {
+            <section data-testid="room-settings-panel-widgets">
+              @if (legacyUnavailableReason(); as reason) {
+                <p class="room-settings__target-warning" role="status">
+                  {{ reason }}
+                </p>
+              } @else {
+                <trn-room-widgets [roomId]="roomId()" />
+              }
+            </section>
+          }
+          @case ('bans') {
+            <section data-testid="room-settings-panel-bans">
+              @if (legacyUnavailableReason(); as reason) {
+                <p class="room-settings__target-warning" role="status">
+                  {{ reason }}
+                </p>
+              } @else {
+                <trn-banned-members [roomId]="roomId()" />
+              }
+            </section>
+          }
+        }
+      </div>
+    </main>
+  </div>
 </div>

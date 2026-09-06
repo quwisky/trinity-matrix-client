@@ -23,6 +23,18 @@
   </button>
 </div>
 
+@if (avatarFeedback(); as feedback) {
+  <p
+    class="avatar-field__feedback"
+    [class.avatar-field__feedback--danger]="feedback.tone === 'danger'"
+    role="status"
+    aria-live="polite"
+    [attr.data-testid]="testid() + '-feedback'"
+  >
+    {{ feedback.message }}
+  </p>
+}
+
 <!-- Outside the row so a `display: flex` on it never lays out a hidden input. -->
 <input
   #avatarInput

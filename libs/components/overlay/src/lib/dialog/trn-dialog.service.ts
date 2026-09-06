@@ -12,7 +12,7 @@ export type TrnDialogPlacement =
 /** Trinity's focus target vocabulary, independent of CDK's configuration type. */
 export type TrnDialogAutoFocus = string | false;
 
-export interface DialogOptions {
+export interface DialogOptions<C = object> {
   /** Set on the opened component as @Inputs after creation (Ionic componentProps). */
   inputs?: Record<string, unknown>;
   /**
@@ -39,6 +39,13 @@ export interface DialogOptions {
    * (`'[data-autofocus]'`), `'first-heading'`, `'dialog'` or `false`.
    */
   autoFocus?: TrnDialogAutoFocus;
+  /**
+   * Synchronous gate for user dismissal (backdrop, Escape, or host Back). Returning false
+   * keeps the dialog open; the callback may start a confirmation and close later with an
+   * explicit result. Component-owned closes with a result bypass this gate. Browser and host
+   * Back policy stays with Workspace; this UI primitive never creates history entries.
+   */
+  dismissGuard?: (component: C | null) => boolean;
   /**
    * Present beside this element instead of centred — a popover rather than a modal.
    *
@@ -136,7 +143,7 @@ export class TrnDialogService {
 
   open<R = unknown, C = object>(
     component: Type<C>,
-    opts: DialogOptions = {},
+    opts: DialogOptions<C> = {},
   ): TrnDialogRef<R> {
     // No `panelClass`. The option and its `trn-dialog-panel` default were both dead: no
     // call site ever passed one, and the class name occurred exactly once in the whole
@@ -149,11 +156,17 @@ export class TrnDialogService {
     const placement = opts.placement ?? 'center';
     const fullScreen = placement === 'fullscreen';
     const bottomSheet = placement === 'bottom';
+    let trinityRef: TrnDialogRef<R> | null = null;
     const ref = this.dialog.open<R, unknown, C>(component, {
       backdropClass: anchor
         ? ['cdk-overlay-transparent-backdrop']
         : ['cdk-overlay-dark-backdrop'],
       disableClose: opts.disableClose ?? false,
+      closeOnNavigation: !opts.dismissGuard,
+      closePredicate: (result, _config, instance) =>
+        result !== undefined ||
+        !opts.dismissGuard ||
+        opts.dismissGuard(instance as C | null),
       ariaLabel: opts.ariaLabel,
       // Spelled out rather than left off: CDK merges the config over its defaults with
       // a spread, so an `autoFocus: undefined` key would clobber the default instead of
@@ -193,35 +206,19 @@ export class TrnDialogService {
                   .bottom('0')
                   .left('0')
               : undefined,
-      // What lets a modal'd component `inject(TrnDialogRef)` instead of CDK's own class.
-      // The explicit `deps` is a choice, not a constraint, and this comment used to claim
-      // otherwise ("because `DialogConfig.providers` is typed `StaticProvider[]`"). Checked
-      // against Angular 22 rather than reasoned about: `StaticProvider` accepts a
-      // `useFactory` with no `deps` at all, and `inject()` does work inside a factory built
-      // through `Injector.create`, which is how CDK assembles this injector
-      // (`dialog.mjs:609`). Naming the dependency at the provider instead of reaching for it
-      // inside the closure is simply the clearer of two working forms.
-      //
-      // CDK also accepts `providers: (dialogRef, config, container) => StaticProvider[]`.
-      // That form would hand the ref in directly and let `open()` return the SAME instance
-      // it provides. Today the two wrappers close identically, while `isTopmost()` deliberately
-      // tracks only the specific handle returned to the opener; injected components use their
-      // sibling wrapper only to close themselves.
-      providers: [
-        {
-          provide: TrnDialogRef,
-          useFactory: (cdkRef: DialogRef<R, unknown>) =>
-            new TrnDialogRef<R>(cdkRef),
-          deps: [DialogRef],
-        },
-      ],
+      // Give the component and opener the same vendor-neutral handle. Besides closing, this
+      // lets a semantic surface prove that its own dialog is topmost without exposing CDK.
+      providers: (cdkRef) => {
+        trinityRef = new TrnDialogRef<R>(cdkRef);
+        return [{ provide: TrnDialogRef, useValue: trinityRef }];
+      },
     });
     if (opts.inputs && ref.componentRef) {
       for (const [key, value] of Object.entries(opts.inputs)) {
         ref.componentRef.setInput(key, value);
       }
     }
-    const trinityRef = new TrnDialogRef<R>(ref);
+    trinityRef ??= new TrnDialogRef<R>(ref);
     this.refs.set(
       trinityRef as TrnDialogRef<unknown>,
       ref as DialogRef<unknown, unknown>,
@@ -237,7 +234,7 @@ export class TrnDialogService {
   /** Open and resolve the component's close value (null if dismissed without one). */
   openAndWait$<R = unknown, C = object>(
     component: Type<C>,
-    opts: DialogOptions = {},
+    opts: DialogOptions<C> = {},
   ): Observable<R | null> {
     return defer(() =>
       this.open<R, C>(component, opts).closed.pipe(

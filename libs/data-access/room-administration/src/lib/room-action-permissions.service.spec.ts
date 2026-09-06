@@ -154,6 +154,18 @@ describe('RoomActionPermissionsService', () => {
         roomId: '!room:hs',
       }).curateSpace.available,
     ).toBe(true);
+    expect(
+      service.settingsFor({
+        accountId: '@selected:hs',
+        roomId: '!room:hs',
+      }).name.available,
+    ).toBe(true);
+    expect(
+      service.settingsFor({
+        accountId: '@active:hs',
+        roomId: '!room:hs',
+      }).name.available,
+    ).toBe(false);
   });
 
   it('requires a joined actor and the effective invite/state thresholds', () => {

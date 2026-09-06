@@ -1,5 +1,17 @@
-import { Injectable, inject } from '@angular/core';
-import { EventType, HistoryVisibility, JoinRule } from 'matrix-js-sdk';
+import { Injectable, Injector, inject } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
+import {
+  EventType,
+  ClientEvent,
+  HistoryVisibility,
+  JoinRule,
+  KnownMembership,
+  RoomStateEvent,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
+  type RoomState,
+} from 'matrix-js-sdk';
 
 // Re-exported because both appear in this service's public surface ({@link RoomAccess},
 // {@link RoomSettingsService.setJoinRule}). Callers need the enum *values* to build a
@@ -10,12 +22,24 @@ export {
   JoinRule,
   RestrictedAllowType,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, map, switchMap, throwError } from 'rxjs';
+import {
+  Observable,
+  defer,
+  from,
+  map,
+  merge,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RestrictedAllowType } from 'matrix-js-sdk';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { liveRoomState } from '@trinity/util/matrix';
-import { RoomActionPermissionsService } from './room-action-permissions.service';
+import {
+  RoomActionPermissionsService,
+  type RoomSettingsPermissions,
+} from './room-action-permissions.service';
 import {
   recoverRoomAdministrationRequest,
   roomAdministrationInvalidInput,
@@ -50,6 +74,30 @@ export interface RoomAccess {
   allowedSpaceIds: string[];
 }
 
+/** Immutable ownership carried by the Room settings lifetime and every command it creates. */
+export interface RoomSettingsTarget {
+  readonly accountId: string;
+  readonly roomId: string;
+}
+
+export type RoomSettingsAvailability =
+  'available' | 'account-unavailable' | 'room-unavailable';
+
+/** SDK-authoritative view for one exact Room settings target. */
+export interface RoomSettingsSnapshot {
+  readonly target: RoomSettingsTarget;
+  readonly availability: RoomSettingsAvailability;
+  readonly unavailableReason: string | null;
+  readonly openingAccountActive: boolean;
+  readonly identity: RoomIdentity;
+  readonly access: RoomAccess;
+  readonly permissions: RoomSettingsPermissions;
+  readonly encrypted: boolean | null;
+  readonly supportsRestricted: boolean;
+}
+
+type RoomSettingsTargetInput = RoomSettingsTarget | string;
+
 /** A room with no join-rules state defaults to invite-only, per the Matrix spec. */
 const DEFAULT_JOIN_RULE = JoinRule.Invite;
 /** A room with no history-visibility state defaults to `shared`, per the spec. */
@@ -65,15 +113,17 @@ const DEFAULT_HISTORY_VISIBILITY = HistoryVisibility.Shared;
 export class RoomSettingsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly permissions = inject(RoomActionPermissionsService);
+  private readonly injector = inject(Injector);
 
   /** Rename the room (`m.room.name`). Cold — runs on subscribe. */
-  setName(roomId: string, name: string): Observable<void> {
+  setName(target: RoomSettingsTargetInput, name: string): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const context = this.commandContext(target);
+      if (!context) {
         return throwError(() => roomAdministrationNotSignedIn('set-name'));
       }
-      this.permissions.assert(this.permissions.settings(roomId).name);
-      return from(this.matrix.instance.setRoomName(roomId, name.trim())).pipe(
+      this.permissions.assert(context.permissions.name);
+      return from(context.client.setRoomName(context.roomId, name.trim())).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('set-name'),
       );
@@ -81,13 +131,16 @@ export class RoomSettingsService {
   }
 
   /** Set the room topic (`m.room.topic`); an empty string clears it. Cold. */
-  setTopic(roomId: string, topic: string): Observable<void> {
+  setTopic(target: RoomSettingsTargetInput, topic: string): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const context = this.commandContext(target);
+      if (!context) {
         return throwError(() => roomAdministrationNotSignedIn('set-topic'));
       }
-      this.permissions.assert(this.permissions.settings(roomId).topic);
-      return from(this.matrix.instance.setRoomTopic(roomId, topic.trim())).pipe(
+      this.permissions.assert(context.permissions.topic);
+      return from(
+        context.client.setRoomTopic(context.roomId, topic.trim()),
+      ).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('set-topic'),
       );
@@ -98,13 +151,14 @@ export class RoomSettingsService {
    * Upload a picked image and set it as the room avatar (`m.room.avatar`). Cold —
    * uploads on subscribe, then writes the state event pointing at the new mxc.
    */
-  setAvatar(roomId: string, file: File): Observable<void> {
+  setAvatar(target: RoomSettingsTargetInput, file: File): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const context = this.commandContext(target);
+      if (!context) {
         return throwError(() => roomAdministrationNotSignedIn('set-avatar'));
       }
-      this.permissions.assert(this.permissions.settings(roomId).avatar);
-      const client = this.matrix.instance;
+      this.permissions.assert(context.permissions.avatar);
+      const { client, roomId } = context;
       return from(
         client.uploadContent(file, {
           name: file.name,
@@ -113,12 +167,12 @@ export class RoomSettingsService {
       ).pipe(
         switchMap((res) =>
           defer(() => {
-            if (!this.matrix.isInitialized || this.matrix.instance !== client) {
+            if (this.clientFor(target) !== client) {
               throw new Error(
-                'The active account changed before the photo uploaded.',
+                'The originating Account became unavailable before the photo uploaded.',
               );
             }
-            this.permissions.assert(this.permissions.settings(roomId).avatar);
+            this.permissions.assert(this.permissionsFor(target).avatar);
             return from(
               client.sendStateEvent(
                 roomId,
@@ -144,15 +198,17 @@ export class RoomSettingsService {
    * Cold — runs on subscribe.
    */
   setJoinRule(
-    roomId: string,
+    target: RoomSettingsTargetInput,
     joinRule: JoinRule,
     allowedSpaceIds: readonly string[] = [],
   ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const context = this.commandContext(target);
+      if (!context) {
         return throwError(() => roomAdministrationNotSignedIn('set-join-rule'));
       }
-      this.permissions.assert(this.permissions.settings(roomId).joinRule);
+      this.permissions.assert(context.permissions.joinRule);
+      const { client, roomId } = context;
       const restricted = joinRule === JoinRule.Restricted;
       // A `restricted` rule with no `allow` entries is a room that nobody — not even a
       // member of the space it was gated on — can ever join, and only an admin could undo
@@ -174,12 +230,7 @@ export class RoomSettingsService {
         }));
       }
       return from(
-        this.matrix.instance.sendStateEvent(
-          roomId,
-          EventType.RoomJoinRules,
-          content,
-          '',
-        ),
+        client.sendStateEvent(roomId, EventType.RoomJoinRules, content, ''),
       ).pipe(
         map(() => void 0),
         recoverRoomAdministrationRequest('set-join-rule'),
@@ -195,14 +246,10 @@ export class RoomSettingsService {
    * False when the version is missing or unparseable — the component must not have to reach
    * for the SDK to find out, which is the whole point of this service.
    */
-  supportsRestricted(roomId: string): boolean {
-    if (!this.matrix.isInitialized) {
-      return false;
-    }
-    const version = Number.parseInt(
-      this.matrix.instance.getRoom(roomId)?.getVersion() ?? '',
-      10,
-    );
+  supportsRestricted(target: RoomSettingsTargetInput): boolean {
+    const room = this.roomFor(target);
+    if (!room) return false;
+    const version = Number.parseInt(room.getVersion() ?? '', 10);
     return Number.isFinite(version) && version >= 8;
   }
 
@@ -211,18 +258,20 @@ export class RoomSettingsService {
    * Cold — runs on subscribe.
    */
   setHistoryVisibility(
-    roomId: string,
+    target: RoomSettingsTargetInput,
     historyVisibility: HistoryVisibility,
   ): Observable<void> {
     return defer(() => {
-      if (!this.matrix.isInitialized) {
+      const context = this.commandContext(target);
+      if (!context) {
         return throwError(() =>
           roomAdministrationNotSignedIn('set-history-visibility'),
         );
       }
-      this.permissions.assert(this.permissions.settings(roomId).history);
+      this.permissions.assert(context.permissions.history);
+      const { client, roomId } = context;
       return from(
-        this.matrix.instance.sendStateEvent(
+        client.sendStateEvent(
           roomId,
           EventType.RoomHistoryVisibility,
           { history_visibility: historyVisibility },
@@ -245,15 +294,10 @@ export class RoomSettingsService {
    * fabrication would make "did this field change?" compare the user's input against something
    * nobody ever typed — and then write the invention back as a real name.
    */
-  currentIdentity(roomId: string): RoomIdentity {
+  currentIdentity(target: RoomSettingsTargetInput): RoomIdentity {
     const blank: RoomIdentity = { name: '', topic: '', avatarMxc: null };
-    if (!this.matrix.isInitialized) {
-      return blank;
-    }
-    const room = this.matrix.instance.getRoom(roomId);
-    if (!room) {
-      return blank;
-    }
+    const room = this.roomFor(target);
+    if (!room) return blank;
     const state = liveRoomState(room);
     const read = (type: EventType, key: string): unknown =>
       state?.getStateEvents(type, '')?.getContent()?.[key];
@@ -268,19 +312,14 @@ export class RoomSettingsService {
   }
 
   /** The room's current join rule + history visibility, falling back to the spec defaults. */
-  currentAccess(roomId: string): RoomAccess {
+  currentAccess(target: RoomSettingsTargetInput): RoomAccess {
     const fallback: RoomAccess = {
       joinRule: DEFAULT_JOIN_RULE,
       historyVisibility: DEFAULT_HISTORY_VISIBILITY,
       allowedSpaceIds: [],
     };
-    if (!this.matrix.isInitialized) {
-      return fallback;
-    }
-    const room = this.matrix.instance.getRoom(roomId);
-    if (!room) {
-      return fallback;
-    }
+    const room = this.roomFor(target);
+    if (!room) return fallback;
     const state = liveRoomState(room);
     const joinRule = state
       ?.getStateEvents(EventType.RoomJoinRules, '')
@@ -307,8 +346,8 @@ export class RoomSettingsService {
   }
 
   /** Which fields the current user's power level lets them edit in `roomId`. */
-  editableFields(roomId: string): EditableRoomFields {
-    const permissions = this.permissions.settings(roomId);
+  editableFields(target: RoomSettingsTargetInput): EditableRoomFields {
+    const permissions = this.permissionsFor(target);
     return {
       name: permissions.name.available,
       topic: permissions.topic.available,
@@ -316,6 +355,112 @@ export class RoomSettingsService {
       joinRule: permissions.joinRule.available,
       history: permissions.history.available,
     };
+  }
+
+  /** Read the complete current view for one Account-and-Room target. */
+  snapshot(target: RoomSettingsTarget): RoomSettingsSnapshot {
+    const client = this.matrix.clientFor(target.accountId);
+    const room = client?.getRoom(target.roomId) ?? null;
+    const joined = room?.getMyMembership() === KnownMembership.Join;
+    const availability: RoomSettingsAvailability = !client
+      ? 'account-unavailable'
+      : !room || !joined
+        ? 'room-unavailable'
+        : 'available';
+    return {
+      target,
+      availability,
+      unavailableReason:
+        availability === 'account-unavailable'
+          ? 'This Account is no longer available. Your unfinished edits are still here.'
+          : availability === 'room-unavailable'
+            ? 'This Room is no longer joined for the opening Account. Your unfinished edits are still here.'
+            : null,
+      openingAccountActive: this.matrix.activeUserId() === target.accountId,
+      identity: this.currentIdentity(target),
+      access: this.currentAccess(target),
+      permissions: this.permissions.settingsFor(target),
+      encrypted: room ? room.hasEncryptionStateEvent() : null,
+      supportsRestricted: this.supportsRestricted(target),
+    };
+  }
+
+  /**
+   * Observe state for one immutable target. Subscription owns one filtered listener on that
+   * Account's client and follows Account removal/replacement without ever retargeting.
+   */
+  observe(target: RoomSettingsTarget): Observable<RoomSettingsSnapshot> {
+    const accountIds = toObservable(this.matrix.accountIds, {
+      injector: this.injector,
+    });
+    const activeAccount = toObservable(this.matrix.activeUserId, {
+      injector: this.injector,
+    });
+    return merge(of(null), accountIds, activeAccount).pipe(
+      switchMap(() => this.observeCurrentClient(target)),
+    );
+  }
+
+  private observeCurrentClient(
+    target: RoomSettingsTarget,
+  ): Observable<RoomSettingsSnapshot> {
+    const client = this.matrix.clientFor(target.accountId);
+    if (!client) return of(this.snapshot(target));
+    return new Observable((subscriber) => {
+      const publish = (): void => subscriber.next(this.snapshot(target));
+      const onState = (event: MatrixEvent, state?: RoomState): void => {
+        if (
+          event.getRoomId() === target.roomId ||
+          state?.roomId === target.roomId
+        ) {
+          publish();
+        }
+      };
+      client.on(RoomStateEvent.Events, onState);
+      client.on(ClientEvent.Sync, publish);
+      publish();
+      return () => {
+        client.off(RoomStateEvent.Events, onState);
+        client.off(ClientEvent.Sync, publish);
+      };
+    });
+  }
+
+  private commandContext(target: RoomSettingsTargetInput): {
+    readonly client: MatrixClient;
+    readonly roomId: string;
+    readonly permissions: RoomSettingsPermissions;
+  } | null {
+    const client = this.clientFor(target);
+    if (!client) return null;
+    return {
+      client,
+      roomId: typeof target === 'string' ? target : target.roomId,
+      permissions: this.permissionsFor(target),
+    };
+  }
+
+  private permissionsFor(
+    target: RoomSettingsTargetInput,
+  ): RoomSettingsPermissions {
+    return typeof target === 'string'
+      ? this.permissions.settings(target)
+      : this.permissions.settingsFor(target);
+  }
+
+  private roomFor(target: RoomSettingsTargetInput): Room | null {
+    const client = this.clientFor(target);
+    return (
+      client?.getRoom(typeof target === 'string' ? target : target.roomId) ??
+      null
+    );
+  }
+
+  private clientFor(target: RoomSettingsTargetInput): MatrixClient | null {
+    if (typeof target !== 'string') {
+      return this.matrix.clientFor(target.accountId);
+    }
+    return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 }
 

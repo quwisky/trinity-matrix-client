@@ -188,7 +188,7 @@ describe('RoomsPage panels, pins and media', () => {
     return shellFrom();
   }
 
-  it('opens room settings, mapping each edit permission to a dialog input', async () => {
+  it('opens Room settings with an immutable Account-and-Room target', async () => {
     const shell = build();
     roomsSignal.set([
       {
@@ -213,49 +213,22 @@ describe('RoomsPage panels, pins and media', () => {
     ]);
     setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
     await settleWorkspace();
-    editableFields.mockReturnValue({
-      name: true,
-      topic: false,
-      avatar: false,
-      joinRule: true,
-      history: false,
-    });
-    currentAccess.mockReturnValue({
-      joinRule: 'public',
-      historyVisibility: 'world_readable',
-      allowedSpaceIds: [],
-    });
-    canManageAliases.mockReturnValue(true);
-    // Deliberately NOT the summary's 'General': that is `room.name || roomId`, which the
-    // SDK fabricates from the member list for a nameless room. The dialog must seed from
-    // raw m.room.name state, so the two are made to differ here.
-    currentIdentity.mockReturnValue({
-      name: 'Raw name',
-      topic: 'Raw topic',
-      avatarMxc: 'mxc://a/b',
-    });
-
     shell.rooms.onOpenRoomSettings();
 
-    expect(editableFields).toHaveBeenCalledWith('!r:hs');
-    expect(currentAccess).toHaveBeenCalledWith('!r:hs');
-    expect(canManageAliases).toHaveBeenCalledWith('!r:hs');
+    expect(editableFields).not.toHaveBeenCalled();
+    expect(currentAccess).not.toHaveBeenCalled();
+    expect(canManageAliases).not.toHaveBeenCalled();
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      inputs: expect.objectContaining({
+      placement: 'center',
+      autoFocus: '[data-autofocus]',
+      dismissGuard: expect.any(Function),
+      inputs: {
+        accountId: '@me:hs',
         roomId: '!r:hs',
-        name: 'Raw name',
-        topic: 'Raw topic',
-        avatarMxc: 'mxc://a/b',
-        joinRule: 'public',
-        historyVisibility: 'world_readable',
-        canEditName: true,
-        canEditTopic: false,
-        canEditAvatar: false,
-        canEditJoinRule: true,
-        canEditHistory: false,
-        canManageAliases: true,
-      }),
+        roomDisplayName: 'General',
+        parentSpaces: [],
+      },
     });
   });
 

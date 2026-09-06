@@ -47,6 +47,9 @@ describe('Trinity overlay surface recipe', () => {
     expect(workspace).toContain('100dvh-2*var(--trinity-space-4)');
     expect(workspace).toContain('flex');
     expect(workspace).not.toMatch(/\bblock\b/u);
+    expect(trnOverlaySurfaceRecipe('neutral', '2xl', 'fullscreen')).toContain(
+      'flex',
+    );
   });
 
   it('publishes bounded Trinity vocabulary', () => {

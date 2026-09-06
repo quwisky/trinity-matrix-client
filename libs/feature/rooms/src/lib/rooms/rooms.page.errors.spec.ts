@@ -635,7 +635,7 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.vm.canConfigureSpace()).toBe(false);
   });
 
-  it('seeds the restricted option from the spaces the room sits in', async () => {
+  it('passes the spaces a Room sits in to its exact settings lifetime', async () => {
     const shell = build();
     roomsSignal.set([
       {
@@ -671,23 +671,20 @@ describe('RoomsPage action error feedback', () => {
       },
     ]);
     parentSpaceIds.mockReturnValue(['!s:hs']);
-    supportsRestricted.mockReturnValue(true);
-    currentAccess.mockReturnValue({
-      joinRule: 'invite',
-      historyVisibility: 'shared',
-      allowedSpaceIds: ['!kept:hs'],
-    });
-
     shell.rooms.onOpenRoomSettings();
 
     // The label names the space, so the id alone is not enough to pass through.
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {
       ariaLabel: 'Room settings',
-      inputs: expect.objectContaining({
+      placement: 'center',
+      autoFocus: '[data-autofocus]',
+      dismissGuard: expect.any(Function),
+      inputs: {
+        accountId: '@me:hs',
+        roomId: '!r:hs',
+        roomDisplayName: 'General',
         parentSpaces: [{ id: '!s:hs', name: 'Design' }],
-        supportsRestricted: true,
-        allowedSpaceIds: ['!kept:hs'],
-      }),
+      },
     });
   });
 });

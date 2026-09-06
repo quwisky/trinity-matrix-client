@@ -22,6 +22,8 @@ export interface ConfirmOptions {
   cancelText?: string;
   /** Semantic treatment for the confirmation action. */
   variant?: TrnAlertVariant;
+  /** Whether navigation closes the alert. Route guards set false so their prompt survives cancellation. */
+  closeOnNavigation?: boolean;
 }
 
 export interface PromptOptions extends ConfirmOptions {
@@ -66,6 +68,7 @@ export class TrnAlertService {
         data,
         ariaLabel: data.header,
         backdropClass: ['cdk-overlay-dark-backdrop'],
+        closeOnNavigation: opts.closeOnNavigation ?? true,
       });
       return ref.closed.pipe(
         take(1),
@@ -95,6 +98,7 @@ export class TrnAlertService {
         data,
         ariaLabel: data.header,
         backdropClass: ['cdk-overlay-dark-backdrop'],
+        closeOnNavigation: opts.closeOnNavigation ?? true,
       });
       return ref.closed.pipe(
         take(1),

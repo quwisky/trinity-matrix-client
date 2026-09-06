@@ -38,7 +38,7 @@ const layoutRecipe = {
     'h-dvh w-screen rounded-none border-y-0 border-e-0 md:w-[var(--trn-overlay-inline-size)]',
   workspace:
     'flex h-[min(48rem,calc(100dvh-2*var(--trinity-space-4)))] w-[min(var(--trn-overlay-inline-size),calc(100vw-2*var(--trinity-space-4)))] max-w-full rounded-[var(--trinity-shape-overlay-radius)]',
-  fullscreen: 'h-full w-full rounded-none border-0 shadow-none',
+  fullscreen: 'flex h-full w-full rounded-none border-0 shadow-none',
 } as const;
 
 /**

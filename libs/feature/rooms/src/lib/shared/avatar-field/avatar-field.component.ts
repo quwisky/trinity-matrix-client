@@ -53,6 +53,8 @@ export class AvatarFieldComponent {
 
   /** The room or space whose avatar this writes. */
   readonly roomId = input.required<string>();
+  /** When present, pins the upload and state write to this exact Account. */
+  readonly accountId = input<string | null>(null);
   readonly name = input('');
   readonly avatarMxc = input<string | null>(null);
   readonly initial = input('');
@@ -66,6 +68,10 @@ export class AvatarFieldComponent {
   readonly testid = input('avatar-field');
 
   protected readonly savingAvatar = signal(false);
+  protected readonly avatarFeedback = signal<{
+    readonly tone: 'pending' | 'success' | 'danger';
+    readonly message: string;
+  } | null>(null);
   protected readonly unavailableReason = computed(
     () => `Your role cannot change this ${this.noun()}’s photo.`,
   );
@@ -98,12 +104,24 @@ export class AvatarFieldComponent {
       return;
     }
     this.savingAvatar.set(true);
+    this.avatarFeedback.set({
+      tone: 'pending',
+      message: `Uploading ${this.noun()} photo…`,
+    });
+    const accountId = this.accountId();
     this.settings
-      .setAvatar(this.roomId(), file)
+      .setAvatar(
+        accountId ? { accountId, roomId: this.roomId() } : this.roomId(),
+        file,
+      )
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
           this.savingAvatar.set(false);
+          this.avatarFeedback.set({
+            tone: 'success',
+            message: `${this.capitalisedNoun()} photo updated.`,
+          });
           this.toast.show(`${this.capitalisedNoun()} photo updated.`, {
             duration: 3000,
             variant: 'success',
@@ -111,7 +129,9 @@ export class AvatarFieldComponent {
         },
         error: () => {
           this.savingAvatar.set(false);
-          this.showError(`Could not update the ${this.noun()} photo.`);
+          const message = `Could not update the ${this.noun()} photo.`;
+          this.avatarFeedback.set({ tone: 'danger', message });
+          this.showError(message);
         },
       });
   }
@@ -122,6 +142,7 @@ export class AvatarFieldComponent {
   }
 
   private showError(message: string): void {
+    this.avatarFeedback.set({ tone: 'danger', message });
     this.toast.show(message, { duration: 4000, variant: 'danger' });
   }
 }

@@ -1,0 +1,105 @@
+<section data-testid="room-settings-panel-access">
+  <form
+    [formRoot]="draft.form"
+    class="room-settings__form"
+    (submit)="draft.saveAccess()"
+  >
+    <section class="room-settings__card room-settings__fields">
+      <label class="room-settings__field">
+        <span class="room-settings__label">Who can join</span>
+        <trn-select
+          [options]="draft.joinRuleOptions()"
+          [formField]="draft.form.joinRule"
+          data-testid="room-settings-join-rule"
+        />
+      </label>
+
+      @if (draft.showSpaceChoices()) {
+        <fieldset class="room-settings__spaces">
+          <legend class="room-settings__label">
+            Spaces whose members can join
+          </legend>
+          @for (space of parentSpaces(); track space.id) {
+            <label class="room-settings__space">
+              <trn-checkbox
+                [checked]="draft.isSpaceChecked(space.id)"
+                (checkedChange)="draft.toggleSpace(space.id, $event)"
+                [attr.data-testid]="'room-settings-space-' + space.id"
+              />
+              {{ space.name }}
+            </label>
+          }
+          @if (draft.noSpaceChosen()) {
+            <p class="room-settings__error">
+              Choose at least one Space, or nobody will be able to join.
+            </p>
+          }
+        </fieldset>
+      }
+
+      <label class="room-settings__field">
+        <span class="room-settings__label">Who can read history</span>
+        <trn-select
+          [options]="draft.historyOptions"
+          [formField]="draft.form.historyVisibility"
+          data-testid="room-settings-history"
+        />
+      </label>
+    </section>
+
+    <section class="room-settings__card">
+      @if (legacyUnavailableReason(); as reason) {
+        <p class="room-settings__target-warning" role="status">
+          Local address actions require the opening Account to be active.
+          {{ reason }}
+        </p>
+      } @else {
+        <trn-room-aliases [roomId]="roomId()" />
+      }
+    </section>
+
+    @if (draft.accessFeedback(); as feedback) {
+      <p
+        class="room-settings__feedback"
+        [class.room-settings__feedback--danger]="feedback.tone === 'danger'"
+        role="status"
+      >
+        {{ feedback.message }}
+      </p>
+    }
+
+    @if (draft.noSpaceChosen()) {
+      <p class="room-settings__error" data-testid="room-settings-blocked">
+        Choose at least one Space before saving.
+      </p>
+    }
+
+    <div class="room-settings__actions">
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="ghost"
+        [disabled]="!draft.accessDirty() || draft.saving() === 'access'"
+        (click)="draft.discardAccess()"
+      >
+        Discard
+      </button>
+      <button
+        trnBtn
+        type="submit"
+        [trnActionAllowed]="draft.mayEditJoinRule() || draft.mayEditHistory()"
+        [trnActionDisabledReason]="draft.accessSaveUnavailableReason()"
+        [trnTooltip]="draft.accessSaveUnavailableReason()"
+        [disabled]="
+          !draft.accessHasWritableChanges() ||
+          draft.noSpaceChosen() ||
+          draft.saving() === 'access'
+        "
+        data-testid="room-settings-save"
+      >
+        {{ draft.saving() === 'access' ? 'Saving…' : 'Save access' }}
+      </button>
+    </div>
+  </form>
+</section>

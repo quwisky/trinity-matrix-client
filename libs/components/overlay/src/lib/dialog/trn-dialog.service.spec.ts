@@ -243,6 +243,25 @@ describe('TrnDialogService', () => {
     expect(svc.closeTopmost()).toBe(false);
   });
 
+  it('lets a component guard user dismissal and close later with a result', async () => {
+    const svc = TestBed.inject(TrnDialogService);
+    const guard = vi.fn(() => false);
+    const ref = svc.open<string, TestDialogComponent>(TestDialogComponent, {
+      inputs: { label: 'Draft' },
+      dismissGuard: guard,
+    });
+    TestBed.inject(ApplicationRef).tick();
+
+    expect(svc.closeTopmost()).toBe(false);
+    expect(guard).toHaveBeenCalledWith(expect.any(TestDialogComponent));
+    expect(svc.hasOpen()).toBe(true);
+
+    const closed = firstValueFrom(ref.closed);
+    ref.close('discarded');
+    expect(await closed).toBe('discarded');
+    expect(svc.hasOpen()).toBe(false);
+  });
+
   it('leaves a disableClose dialog alone, which CDK would not', async () => {
     // The flag exists so a flow-critical dialog cannot be dismissed out from under
     // itself — encryption-unlock and device-verification both set it. CDK enforces it

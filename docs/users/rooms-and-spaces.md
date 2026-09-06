@@ -79,8 +79,13 @@ server rejection can also mean permissions changed while the menu was open.
 
 ## Change Room and Space settings
 
-Open **Room settings** from a room header or its overflow menu. The settings dialog has these
-tabs:
+Open **Room settings** from a room header or its overflow menu. On a wide screen, the Room
+identity and section directory stay beside the current section in a centred dialog. On a phone,
+Room settings is a full-screen master-detail flow: **Back** returns from a section to the section
+directory. The header always names the Account that opened the Room so a similarly named Room on
+another Account cannot be mistaken for the target.
+
+The hub has these sections:
 
 | Tab     | What it changes                                                                                                                       |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -89,13 +94,24 @@ tabs:
 | Widgets | Third-party widgets declared for the room.                                                                                            |
 | Bans    | The list of banned members, with unban actions where allowed.                                                                         |
 
-Choose **Save** to apply name, topic, join-rule and history changes. Avatar selection, address
-add/remove actions, widget publication/removal and unbanning use their own immediate actions;
-closing the dialog without Save does not undo them. Matrix permissions are checked per action,
-so a member may be able to edit an avatar but not the access rule, aliases, widgets or bans. Access and
-history choices affect other people and can expose earlier messages or allow new members; confirm
-the room's policy before saving. A restricted join rule controls which space members may join, not
-whether you yourself remain in the room.
+**General** and **Access** save independently. A partial failure keeps only the fields that did not
+save as drafts, so retry sends only what remains. Avatar selection, address add/remove actions,
+widget publication/removal and unbanning use their own immediate actions; discarding a name or
+topic draft does not undo those completed actions. Leaving a section, closing Room settings, or
+using browser or device Back asks before discarding a draft. A remote update refreshes untouched
+fields without overwriting fields you are editing.
+
+General details and Access policy remain bound to the Account and Room that opened Room settings
+even if another Account becomes active. If that Account signs out, the target becomes unavailable
+and pending results cannot write into the newly active Account. Local-address, Widgets and Bans
+actions still use their established active-Account projections during the incremental hub
+migration, so those panels explain that you must switch back to the opening Account instead of
+risking a redirected write. Matrix permissions are checked live and per action, so a member may be
+able to read a section or edit an avatar but not change the access rule, aliases, widgets or bans.
+Losing a role while Room settings is open disables the affected controls without hiding readable
+information or erasing drafts. Access and history choices affect other people and can expose
+earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
+rule controls which Space members may join, not whether you yourself remain in the Room.
 
 Open **Space settings** from the space header's overflow menu. Its General tab changes the
 space avatar, name and topic; Access changes who can join the space and its local addresses; Bans
@@ -103,9 +119,10 @@ lists space members who are banned. A space's access rule controls the space its
 rooms retain their own access and history settings. Use **Organise rooms** for the space's child
 ordering and suggested status, rather than Room settings.
 
-If Save is unavailable, the current account lacks every relevant permission or a required access
-choice is incomplete. Refresh or reopen the dialog before retrying a server rejection: another
-administrator may have changed the power level or room state while it was open.
+If Save is unavailable, the opening Account lacks every relevant permission, is no longer
+available, or a required access choice is incomplete. The controls update when another
+administrator changes the power level or Room state; a later server rejection still leaves the
+affected draft available to retry.
 
 In the Widgets tab, people with the required permission can choose **Add widget**, give it a name
 and HTTPS URL, then publish it for the room. Existing widgets are third-party websites: inspect
