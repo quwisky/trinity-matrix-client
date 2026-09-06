@@ -450,11 +450,28 @@ describe('SpacesService writes', () => {
 
   it('leaveSpace leaves the space room (children untouched)', async () => {
     const { svc, leave } = setupWrites();
+    const clientFor = vi.spyOn(
+      TestBed.inject(MatrixClientService),
+      'clientFor',
+    );
 
-    await firstValueFrom(svc.leaveSpace('!s:hs'));
+    await firstValueFrom(svc.leaveSpace('@me:hs', '!s:hs'));
 
+    expect(clientFor).toHaveBeenCalledWith('@me:hs');
     expect(leave).toHaveBeenCalledWith('!s:hs');
     expect(leave).toHaveBeenCalledTimes(1); // only the space, not its children
+  });
+
+  it('leaveSpace fails closed when the exact Account is unavailable', async () => {
+    const { svc, leave } = setupWrites();
+    vi.spyOn(TestBed.inject(MatrixClientService), 'clientFor').mockReturnValue(
+      null,
+    );
+
+    await expect(
+      firstValueFrom(svc.leaveSpace('@gone:hs', '!s:hs')),
+    ).rejects.toThrow('Account unavailable.');
+    expect(leave).not.toHaveBeenCalled();
   });
 
   it('joinRoom routes through the via servers when provided', async () => {

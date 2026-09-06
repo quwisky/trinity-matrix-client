@@ -1,0 +1,5 @@
+@use './space-settings-form' as settings;
+
+@layer components {
+  @include settings.common;
+}

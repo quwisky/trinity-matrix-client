@@ -36,6 +36,7 @@ const SHARED_PARTIALS = [
   'libs/feature/rooms/src/lib/room-settings/_room-settings-access.scss',
   'libs/feature/rooms/src/lib/room-settings/_room-settings-general.scss',
   'libs/feature/rooms/src/lib/room-settings/_room-settings-panel.scss',
+  'libs/feature/rooms/src/lib/space-settings/_space-settings-form.scss',
   'libs/feature/rooms/src/lib/styles/_mixins.scss',
 ];
 
@@ -128,7 +129,10 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/rooms/rooms.page.scss',
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.scss',
   'libs/feature/rooms/src/lib/shared/avatar-field/avatar-field.component.scss',
+  'libs/feature/rooms/src/lib/shared/settings-hub/settings-hub.component.scss',
   'libs/feature/rooms/src/lib/space-members/space-members.component.scss',
+  'libs/feature/rooms/src/lib/space-settings/space-settings-access.component.scss',
+  'libs/feature/rooms/src/lib/space-settings/space-settings-general.component.scss',
   'libs/feature/rooms/src/lib/space-settings/space-settings.component.scss',
   'libs/feature/rooms/src/lib/sticker-image/sticker-image.component.scss',
   'libs/feature/rooms/src/lib/sticker-picker/sticker-picker.component.scss',

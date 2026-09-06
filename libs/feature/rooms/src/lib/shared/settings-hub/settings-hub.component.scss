@@ -1,0 +1,256 @@
+@use '../../styles/mixins' as rooms;
+
+@layer components {
+  :host {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .settings-hub {
+    display: flex;
+    flex-direction: column;
+    width: min(960px, calc(100vw - 32px));
+    height: min(720px, calc(100svh - 48px));
+    max-height: 92svh;
+    overflow: hidden;
+    color: var(--trinity-text);
+  }
+
+  .settings-hub__header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 68px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-raised);
+  }
+
+  .settings-hub__identity,
+  .settings-hub__target-summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+
+    > div {
+      min-width: 0;
+    }
+  }
+
+  .settings-hub__identity {
+    flex: 1 1 auto;
+  }
+
+  .settings-hub__header > button {
+    flex: 0 0 auto;
+  }
+
+  .settings-hub__account-label,
+  .settings-hub__account-name,
+  .settings-hub__eyebrow,
+  .settings-hub h1,
+  .settings-hub h2 {
+    margin: 0;
+  }
+
+  .settings-hub__account-label,
+  .settings-hub__eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--trinity-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .settings-hub__account-name {
+    overflow: hidden;
+    color: var(--trinity-text-bright);
+    font-size: 14px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-hub__target-warning {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-panel);
+    color: var(--trinity-danger);
+    font-size: 13px;
+  }
+
+  .settings-hub__workspace {
+    display: grid;
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .settings-hub__directory {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 0;
+    padding: 24px 16px;
+    border-right: 1px solid var(--trinity-border-subtle);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--trinity-surface-navigation);
+  }
+
+  .settings-hub__target-summary h1 {
+    overflow: hidden;
+    color: var(--trinity-text-bright);
+    font-size: 16px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .settings-hub__section-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .settings-hub__section-link {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    min-height: 48px;
+    padding: 9px 11px;
+    border: 0;
+    border-radius: var(--trinity-shape-control-radius);
+    background: transparent;
+    color: var(--trinity-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--trinity-state-hover-surface);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--trinity-accent);
+      outline-offset: 2px;
+    }
+
+    small {
+      color: var(--trinity-text-muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+  }
+
+  .settings-hub__section-link--active {
+    background: var(--trinity-accent-tint-30);
+    color: var(--trinity-text-bright);
+
+    small {
+      color: var(--trinity-text);
+    }
+  }
+
+  .settings-hub__section {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--trinity-surface-workspace);
+  }
+
+  .settings-hub__section-header {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 12px;
+    padding: 22px 28px 14px;
+
+    h2 {
+      color: var(--trinity-text-bright);
+      font-size: clamp(22px, 2.4vw, 28px);
+      font-weight: 700;
+      line-height: 1.15;
+    }
+  }
+
+  .settings-hub__section-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0 28px 28px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .settings-hub__directory--hidden,
+  .settings-hub__section--hidden {
+    display: none;
+  }
+
+  @media #{rooms.$below-md} {
+    .settings-hub {
+      width: 100vw;
+      height: 100svh;
+      max-height: none;
+      border-radius: 0;
+    }
+
+    .settings-hub__header {
+      min-height: max(60px, calc(48px + env(safe-area-inset-top)));
+      padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+    }
+
+    .settings-hub__workspace {
+      display: block;
+      flex-basis: 0;
+      height: 0;
+      min-height: 0;
+    }
+
+    .settings-hub__directory,
+    .settings-hub__section {
+      height: 100%;
+      border-right: 0;
+    }
+
+    .settings-hub__directory {
+      padding: 18px 12px calc(18px + env(safe-area-inset-bottom));
+    }
+
+    .settings-hub__section-link {
+      min-height: 56px;
+      padding: 10px 12px;
+    }
+
+    .settings-hub__section-header {
+      min-height: 64px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--trinity-border-subtle);
+
+      > button {
+        min-width: 44px;
+        min-height: 44px;
+      }
+
+      h2 {
+        font-size: 21px;
+      }
+    }
+
+    .settings-hub__section-scroll {
+      padding: 14px 12px calc(18px + env(safe-area-inset-bottom));
+      scrollbar-gutter: auto;
+    }
+  }
+}

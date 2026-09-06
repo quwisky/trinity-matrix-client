@@ -1,0 +1,112 @@
+<form
+  [formRoot]="draft.form"
+  class="space-settings__form"
+  data-testid="space-settings-panel-general"
+  (submit)="draft.saveGeneral()"
+>
+  <section class="space-settings__card">
+    <div class="space-settings__card-heading">
+      <div>
+        <h3>Space photo</h3>
+        <p>Photo changes save immediately and are not undone by Discard.</p>
+      </div>
+      <trn-avatar-field
+        [accountId]="accountId()"
+        [roomId]="spaceId()"
+        [name]="draft.model().name || spaceDisplayName()"
+        [avatarMxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
+        [initial]="spaceInitial()"
+        [editable]="draft.mayEditAvatar()"
+        noun="Space"
+        testid="space-settings-avatar"
+      />
+    </div>
+    @if (!draft.mayEditAvatar()) {
+      <p class="space-settings__restriction">
+        {{ draft.permissions().avatar.reason }}
+      </p>
+    }
+  </section>
+
+  <section class="space-settings__card space-settings__fields">
+    <h3>Space details</h3>
+    <label class="space-settings__field">
+      <span class="space-settings__label">Name</span>
+      <input
+        trnInput
+        class="w-full"
+        [formField]="draft.form.name"
+        autocomplete="off"
+        data-testid="space-settings-name"
+        aria-describedby="space-settings-name-help"
+      />
+      <span id="space-settings-name-help" class="space-settings__hint">
+        Shown in the Space rail and anywhere this Space is linked.
+      </span>
+      @if (draft.nameEmpty()) {
+        <span class="space-settings__restriction">A Space needs a name.</span>
+      } @else if (!draft.mayEditName()) {
+        <span class="space-settings__restriction">
+          {{ draft.permissions().name.reason }}
+        </span>
+      }
+    </label>
+
+    <label class="space-settings__field">
+      <span class="space-settings__label">Topic</span>
+      <textarea
+        trnTextarea
+        class="space-settings__topic w-full"
+        [formField]="draft.form.topic"
+        rows="4"
+        data-testid="space-settings-topic"
+      ></textarea>
+      @if (!draft.mayEditTopic()) {
+        <span class="space-settings__restriction">
+          {{ draft.permissions().topic.reason }}
+        </span>
+      }
+    </label>
+  </section>
+
+  @if (draft.generalFeedback(); as feedback) {
+    <p
+      class="space-settings__feedback"
+      [class.space-settings__feedback--danger]="feedback.tone === 'danger'"
+      role="status"
+      aria-live="polite"
+      data-testid="space-settings-general-feedback"
+    >
+      {{ feedback.message }}
+    </p>
+  }
+
+  <div class="space-settings__actions">
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="ghost"
+      [disabled]="!draft.generalDirty() || draft.saving() === 'general'"
+      data-testid="space-settings-discard"
+      (click)="draft.discardGeneral()"
+    >
+      Discard
+    </button>
+    <button
+      trnBtn
+      type="submit"
+      [trnActionAllowed]="draft.mayEditName() || draft.mayEditTopic()"
+      [trnActionDisabledReason]="draft.generalSaveUnavailableReason()"
+      [trnTooltip]="draft.generalSaveUnavailableReason()"
+      [disabled]="
+        !draft.generalHasWritableChanges() ||
+        draft.nameEmpty() ||
+        draft.saving() === 'general'
+      "
+      data-testid="space-settings-save"
+    >
+      {{ draft.saving() === 'general' ? 'Saving…' : 'Save changes' }}
+    </button>
+  </div>
+</form>

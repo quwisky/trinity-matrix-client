@@ -113,11 +113,25 @@ information or erasing drafts. Access and history choices affect other people an
 earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
 rule controls which Space members may join, not whether you yourself remain in the Room.
 
-Open **Space settings** from the space header's overflow menu. Its General tab changes the
-space avatar, name and topic; Access changes who can join the space and its local addresses; Bans
-lists space members who are banned. A space's access rule controls the space itself—its child
-rooms retain their own access and history settings. Use **Organise rooms** for the space's child
-ordering and suggested status, rather than Room settings.
+Open **Space settings** from the Space header's overflow menu. Like Room settings, it keeps the
+opening Account and Space visible and uses a directory beside the editor on a wide screen. On a
+phone it opens full screen; **Back** returns from General or Access to the directory before Close
+leaves the hub. General changes the Space avatar, name and topic, Access changes who can join,
+Addresses manages published Space links, and Bans lists barred members. Each working destination
+stays reachable while the remaining Space-specific sections are added.
+
+General and Access have independent Save and Discard actions. Successful fields stay saved when
+another field fails, and retry sends only the remaining field. A live permission change disables
+the affected write without erasing its readable value or local draft. Existing unfamiliar or
+restricted access rules remain visible, but Space settings does not offer a new restricted rule
+until its full policy workflow exists. Space settings never shows Room history, widgets, or Room
+notification inheritance: a Space's access rule controls the Space itself, while child Rooms keep
+their own access and history settings. Use **Organise rooms** for child ordering and suggested
+status.
+
+**Leave space** confirms both the Space and acting Account. Cancelling makes no membership change;
+confirming leaves only the Space itself. You remain joined to its Rooms, which continue to appear
+where their own membership and organisation place them.
 
 If Save is unavailable, the opening Account lacks every relevant permission, is no longer
 available, or a required access choice is incomplete. The controls update when another

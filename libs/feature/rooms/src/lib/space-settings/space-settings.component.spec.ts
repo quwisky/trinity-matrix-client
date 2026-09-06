@@ -1,402 +1,451 @@
+import { TestBed } from '@angular/core/testing';
+import { render } from '@trinity/testing';
 import {
+  TrnAlertService,
+  TrnDialogRef,
+  TrnDialogService,
+  TrnToastService,
+} from '@trinity/components/overlay';
+import {
+  HistoryVisibility,
+  JoinRule,
+  RoomActionPermissionsService,
+  RoomAliasesService,
   RoomMembersService,
   RoomModerationService,
   RoomSettingsService,
+  type ActionAvailability,
+  type RoomSettingsPermissions,
+  type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
-import { signal } from '@angular/core';
-import { render } from '@trinity/testing';
-import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import { RoomAliasesService } from '@trinity/data-access/room-administration';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
-import { JoinRule } from '@trinity/data-access/room-administration';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { WorkspaceBackService } from '@trinity/application/workspace';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
-import { describe, expect, it, type Mock, vi } from 'vitest';
+import {
+  BehaviorSubject,
+  firstValueFrom,
+  Subject,
+  of,
+  throwError,
+  type Observable,
+} from 'rxjs';
+import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { SpaceSettingsComponent } from './space-settings.component';
 
-async function build(
-  inputs: Partial<{
-    name: string;
-    topic: string;
-    joinRule: JoinRule;
-    canEditName: boolean;
-    canEditTopic: boolean;
-    canEditAvatar: boolean;
-    canEditJoinRule: boolean;
-    canManageAliases: boolean;
-  }> = {},
-  over: {
-    setName?: Mock;
-    setTopic?: Mock;
-    setJoinRule?: Mock;
-    settingsPermissions?: Mock;
+const TARGET = { accountId: '@opening:hs', roomId: '!space:hs' } as const;
+const ALLOWED: ActionAvailability = { available: true, reason: null };
+const DENIED: ActionAvailability = {
+  available: false,
+  reason: 'Your role cannot change this Space detail.',
+};
+const ALL_ALLOWED: RoomSettingsPermissions = {
+  name: ALLOWED,
+  topic: ALLOWED,
+  avatar: ALLOWED,
+  joinRule: ALLOWED,
+  history: DENIED,
+  aliases: ALLOWED,
+};
+
+function spaceSnapshot(
+  over: Partial<
+    Omit<RoomSettingsSnapshot, 'identity' | 'access' | 'permissions'>
+  > & {
+    identity?: Partial<RoomSettingsSnapshot['identity']>;
+    access?: Partial<RoomSettingsSnapshot['access']>;
+    permissions?: Partial<RoomSettingsPermissions>;
   } = {},
-) {
-  const setName = over.setName ?? vi.fn(() => of(undefined));
-  const setTopic = over.setTopic ?? vi.fn(() => of(undefined));
-  const setJoinRule = over.setJoinRule ?? vi.fn(() => of(undefined));
+): RoomSettingsSnapshot {
+  const { identity, access, permissions, ...snapshot } = over;
+  return {
+    target: TARGET,
+    availability: 'available',
+    unavailableReason: null,
+    openingAccountActive: true,
+    identity: {
+      name: 'Original space',
+      topic: 'Original topic',
+      avatarMxc: 'mxc://hs/space',
+      ...identity,
+    },
+    access: {
+      joinRule: JoinRule.Invite,
+      historyVisibility: HistoryVisibility.Shared,
+      allowedSpaceIds: [],
+      ...access,
+    },
+    permissions: { ...ALL_ALLOWED, ...permissions },
+    encrypted: false,
+    supportsRestricted: true,
+    ...snapshot,
+  };
+}
+
+interface BuildOptions {
+  readonly compact?: boolean;
+  readonly initial?: RoomSettingsSnapshot;
+  readonly setName?: Mock;
+  readonly setTopic?: Mock;
+  readonly setAvatar?: Mock;
+  readonly setJoinRule?: Mock;
+}
+
+async function build(options: BuildOptions = {}) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: Boolean(options.compact && query.includes('767.98px')),
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(() => true),
+    })),
+  );
+  const initial = options.initial ?? spaceSnapshot();
+  const snapshots = new BehaviorSubject(initial);
+  const setName = options.setName ?? vi.fn(() => of(undefined));
+  const setTopic = options.setTopic ?? vi.fn(() => of(undefined));
+  const setAvatar = options.setAvatar ?? vi.fn(() => of(undefined));
+  const setJoinRule = options.setJoinRule ?? vi.fn(() => of(undefined));
   const close = vi.fn();
-  const toastShow = vi.fn();
-  const noBans = signal<readonly never[]>([]);
-  const availability = (allowed: boolean) => ({
-    available: allowed,
-    reason: allowed ? null : 'Not allowed.',
-  });
-  const settingsPermissions =
-    over.settingsPermissions ??
-    vi.fn(() => ({
-      name: availability(inputs.canEditName ?? true),
-      topic: availability(inputs.canEditTopic ?? true),
-      avatar: availability(inputs.canEditAvatar ?? true),
-      joinRule: availability(inputs.canEditJoinRule ?? false),
-      history: availability(false),
-      aliases: availability(inputs.canManageAliases ?? false),
-    }));
+  const confirmResult = new Subject<boolean>();
+  const confirm = vi.fn(() => confirmResult.asObservable());
+  const toast = vi.fn();
+
   const { fixture, container } = await render(SpaceSettingsComponent, {
     inputs: {
-      spaceId: '!space:hs',
-      name: '',
-      topic: '',
-      canEditName: true,
-      canEditTopic: true,
-      canEditAvatar: true,
-      ...inputs,
+      accountId: TARGET.accountId,
+      spaceId: TARGET.roomId,
+      spaceDisplayName: 'Fallback space',
     },
     providers: [
       MockProvider(RoomSettingsService, {
+        snapshot: () => snapshots.value,
+        observe: () => snapshots.asObservable(),
         setName,
         setTopic,
+        setAvatar,
         setJoinRule,
-        setAvatar: vi.fn(() => of(undefined)),
+      }),
+      MockProvider(AccountIdentitiesService, {
+        identityOf: () => ({
+          userId: TARGET.accountId,
+          displayName: 'Opening account',
+          avatarMxc: 'mxc://hs/account',
+        }),
       }),
       MockProvider(RoomActionPermissionsService, {
-        settings: settingsPermissions,
-      }),
-      MockProvider(RoomModerationService, {
-        unban: () => of(undefined),
-      }),
-      MockProvider(RoomMembersService, {
-        bannedFor: () => noBans.asReadonly(),
-        bannedView: () => ({
-          availability: 'coherent',
-          current: noBans(),
-          stale: null,
-        }),
+        settings: () => snapshots.value.permissions,
+        unban: () => DENIED,
       }),
       MockProvider(RoomAliasesService, {
         serverName: () => 'hs',
         currentCanonical: () => null,
         localAliases: () => of([]),
+        addAlias: () => of(undefined),
+        removeAlias: () => of(undefined),
+        setCanonicalAlias: () => of(undefined),
       }),
+      MockProvider(RoomMembersService, {
+        bannedView: () => ({
+          availability: 'coherent',
+          current: [],
+          stale: null,
+        }),
+      }),
+      MockProvider(RoomModerationService, { unban: () => of(undefined) }),
+      MockProvider(TrnDialogService, { isTopmost: () => true }),
       MockProvider(TrnDialogRef, { close }),
-      MockProvider(TrnToastService, { show: toastShow }),
+      MockProvider(TrnAlertService, { confirm$: confirm }),
+      MockProvider(TrnToastService, { show: toast }),
     ],
   });
+
+  const emit = async (next: RoomSettingsSnapshot): Promise<void> => {
+    snapshots.next(next);
+    await fixture.whenStable();
+  };
   return {
     cmp: fixture.componentInstance,
-    container,
     fixture,
+    container,
+    emit,
     setName,
     setTopic,
+    setAvatar,
     setJoinRule,
     close,
-    toastShow,
+    confirm,
+    confirmResult,
+    toast,
   };
 }
 
 describe('SpaceSettingsComponent', () => {
-  it('disables fields and Save when permission changes while open', async () => {
-    const allowed = signal(true);
-    const permission = () => ({
-      available: allowed(),
-      reason: allowed() ? null : 'Not allowed.',
-    });
-    const { container, fixture } = await build(
-      { name: 'N' },
-      {
-        settingsPermissions: vi.fn(() => ({
-          name: permission(),
-          topic: permission(),
-          avatar: permission(),
-          joinRule: permission(),
-          history: permission(),
-          aliases: permission(),
-        })),
-      },
-    );
-    const name = container.querySelector<HTMLInputElement>(
-      '[data-testid="space-settings-name"]',
-    )!;
-    const save = container.querySelector<HTMLElement>(
-      '[data-testid="space-settings-save"]',
-    )!;
-    expect(name.disabled).toBe(false);
+  it('opens General with the exact Account identity and readable Space details', async () => {
+    const { cmp, container } = await build();
 
-    allowed.set(false);
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    expect(name.disabled).toBe(true);
-    expect(save.getAttribute('aria-disabled')).toBe('true');
+    expect(cmp.selectedSection()).toBe('general');
+    expect(
+      container.querySelector('[data-testid="space-settings-account"]')
+        ?.textContent,
+    ).toContain('Opening account');
     expect(
       container.querySelector<HTMLInputElement>(
-        '[data-testid=room-alias-input]',
-      )?.disabled,
-    ).toBe(true);
+        '[data-testid="space-settings-name"]',
+      )?.value,
+    ).toBe('Original space');
+    expect(cmp.sections.map(({ value }) => value)).toEqual([
+      'general',
+      'access',
+      'addresses',
+      'bans',
+    ]);
+  });
+
+  it('pins General writes to the opening Account and Space', async () => {
+    const { cmp, setName } = await build();
+    cmp.draft.form.name().value.set('Renamed');
+
+    cmp.draft.saveGeneral();
+
+    expect(setName).toHaveBeenCalledWith(TARGET, 'Renamed');
+  });
+
+  it('uploads the Space avatar immediately against the exact Account and Space', async () => {
+    const setAvatar = vi.fn(() => of(undefined));
+    const { fixture, container, toast } = await build({ setAvatar });
+    const input = container.querySelector<HTMLInputElement>(
+      '[data-testid="space-settings"] input[type="file"]',
+    );
+    if (!input) throw new Error('Space avatar input was not rendered');
+    const file = new File(['avatar'], 'space.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [file] });
+
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await fixture.whenStable();
+
+    expect(setAvatar).toHaveBeenCalledWith(TARGET, file);
+    expect(toast).toHaveBeenCalledWith('Space photo updated.', {
+      duration: 3000,
+      variant: 'success',
+    });
+  });
+
+  it('commits successful fields, retains failures, and retries only what remains', async () => {
+    const setName = vi.fn(() => of(undefined));
+    const setTopic = vi
+      .fn<() => Observable<void>>()
+      .mockReturnValueOnce(throwError(() => new Error('rejected')))
+      .mockReturnValueOnce(of(undefined));
+    const { cmp } = await build({ setName, setTopic });
+    cmp.draft.form.name().value.set('New name');
+    cmp.draft.form.topic().value.set('New topic');
+
+    cmp.draft.saveGeneral();
+
+    expect(cmp.draft.generalFeedback()?.message).toContain('Topic');
+    expect(cmp.draft.generalDirty()).toBe(true);
+
+    cmp.draft.saveGeneral();
+
+    expect(setName).toHaveBeenCalledTimes(1);
+    expect(setTopic).toHaveBeenCalledTimes(2);
+    expect(cmp.draft.generalDirty()).toBe(false);
+  });
+
+  it('does not erase typing entered while a save response is late', async () => {
+    const completion = new Subject<void>();
+    const setName = vi.fn(() => completion.asObservable());
+    const { cmp } = await build({ setName });
+    cmp.draft.form.name().value.set('Submitted name');
+
+    cmp.draft.saveGeneral();
+    cmp.draft.form.name().value.set('Typed after submit');
+    completion.next();
+    completion.complete();
+
+    expect(cmp.draft.model().name).toBe('Typed after submit');
+    expect(cmp.draft.generalDirty()).toBe(true);
+  });
+
+  it('preserves drafts and disables writes when permission disappears live', async () => {
+    const { cmp, container, emit } = await build();
+    cmp.draft.form.name().value.set('Keep this');
+
+    await emit(
+      spaceSnapshot({
+        permissions: { name: DENIED, topic: DENIED, avatar: DENIED },
+      }),
+    );
+
+    expect(cmp.draft.model().name).toBe('Keep this');
+    expect(cmp.draft.form.name().disabled()).toBe(true);
     expect(
       container
-        .querySelector('[data-testid=room-alias-add]')
+        .querySelector('[data-testid="space-settings-save"]')
         ?.getAttribute('aria-disabled'),
     ).toBe('true');
   });
 
-  it('seeds the form from the current name, topic and join rule', async () => {
-    const { cmp } = await build({
-      name: 'Design',
-      topic: 'Where design happens',
-      joinRule: JoinRule.Public,
-      canEditJoinRule: true,
-    });
+  it('retains drafts and explains when the opening target becomes unavailable', async () => {
+    const { cmp, container, emit } = await build();
+    cmp.draft.form.topic().value.set('Keep after sign-out');
 
-    expect(cmp.form.name().value()).toBe('Design');
-    expect(cmp.form.topic().value()).toBe('Where design happens');
-    expect(cmp.form.joinRule().value()).toBe(JoinRule.Public);
+    await emit(
+      spaceSnapshot({
+        availability: 'room-unavailable',
+        openingAccountActive: false,
+        permissions: {
+          name: DENIED,
+          topic: DENIED,
+          avatar: DENIED,
+          joinRule: DENIED,
+          aliases: DENIED,
+        },
+      }),
+    );
+
+    expect(cmp.draft.model().topic).toBe('Keep after sign-out');
+    expect(cmp.draft.form.topic().disabled()).toBe(true);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Space is no longer joined',
+    );
   });
 
-  it('renames the space and closes resolving true on save', async () => {
-    const { cmp, setName, close } = await build({ name: 'Old', topic: 'T' });
-    cmp.form.name().value.set('New name');
+  it('protects section changes and Close until the draft is discarded', async () => {
+    const { cmp, close, confirmResult } = await build();
+    cmp.draft.form.topic().value.set('Unfinished');
 
-    cmp.save();
+    cmp.selectSection('access');
+    expect(cmp.selectedSection()).toBe('general');
+    confirmResult.next(false);
+    expect(cmp.selectedSection()).toBe('general');
 
-    expect(setName).toHaveBeenCalledWith('!space:hs', 'New name');
-    expect(close).toHaveBeenCalledWith(true);
-  });
+    cmp.selectSection('access');
+    confirmResult.next(true);
+    expect(cmp.selectedSection()).toBe('access');
+    expect(cmp.draft.model().topic).toBe('Original topic');
 
-  it('writes the topic, including clearing it', async () => {
-    // The name guard below is deliberately not applied to the topic: a space with no topic
-    // is ordinary, a space with no name is not.
-    const { cmp, setTopic } = await build({ name: 'N', topic: 'old topic' });
-    cmp.form.topic().value.set('');
-
-    cmp.save();
-
-    expect(setTopic).toHaveBeenCalledWith('!space:hs', '');
-  });
-
-  it('never blanks the name, even if the field is emptied', async () => {
-    const { cmp, setName, close } = await build({ name: 'Design', topic: '' });
-    cmp.form.name().value.set('   ');
-
-    cmp.save();
-
-    expect(setName).not.toHaveBeenCalled();
+    cmp.selectSection('general');
+    cmp.draft.form.name().value.set('Another draft');
+    cmp.close();
+    confirmResult.next(true);
     expect(close).toHaveBeenCalledWith(false);
   });
 
-  it('writes only the fields that actually changed', async () => {
-    const { cmp, setName, setTopic, setJoinRule } = await build({
-      name: 'Design',
-      topic: 'T',
-      joinRule: JoinRule.Invite,
-      canEditJoinRule: true,
+  it('uses the first mobile Back for section-to-directory navigation', async () => {
+    const { cmp } = await build({ compact: true });
+
+    expect(cmp.directoryVisible()).toBe(false);
+    expect(cmp.requestExternalDismiss()).toBe(false);
+    expect(cmp.directoryVisible()).toBe(true);
+    expect(cmp.requestExternalDismiss()).toBe(true);
+  });
+
+  it('offers browser and host Back to the canonical Workspace surface', async () => {
+    const { cmp, confirm } = await build();
+    cmp.draft.form.topic().value.set('Protected by Workspace Back');
+
+    const outcome = await firstValueFrom(
+      TestBed.inject(WorkspaceBackService).back(),
+    );
+
+    expect(outcome).toMatchObject({
+      kind: 'blocked',
+      surface: {
+        layer: 'room',
+        surface: { kind: 'settings', ...TARGET },
+      },
     });
-    cmp.form.topic().value.set('T2');
+    expect(confirm).toHaveBeenCalledOnce();
+  });
 
-    cmp.save();
+  it('keeps unfamiliar access state readable and never offers new restricted choices', async () => {
+    const { cmp } = await build({
+      initial: spaceSnapshot({ access: { joinRule: JoinRule.Knock } }),
+    });
 
-    expect(setTopic).toHaveBeenCalledWith('!space:hs', 'T2');
-    expect(setName).not.toHaveBeenCalled();
+    expect(cmp.draft.joinRuleOptions().map(({ value }) => value)).toEqual([
+      JoinRule.Invite,
+      JoinRule.Public,
+      JoinRule.Knock,
+    ]);
+    expect(
+      cmp.draft.joinRuleOptions().find(({ value }) => value === JoinRule.Knock)
+        ?.label,
+    ).toBe('Anyone can ask to join');
+    expect(
+      cmp.draft
+        .joinRuleOptions()
+        .some(({ value }) => value === JoinRule.Restricted),
+    ).toBe(false);
+  });
+
+  it('keeps an existing restricted access rule readable without rewriting it', async () => {
+    const { cmp, setJoinRule } = await build({
+      initial: spaceSnapshot({
+        access: { joinRule: JoinRule.Restricted },
+      }),
+    });
+
+    expect(cmp.draft.joinRuleOptions()).toContainEqual({
+      value: JoinRule.Restricted,
+      label: 'Members of another space',
+      testId: `join-rule-${JoinRule.Restricted}`,
+    });
+
+    cmp.draft.saveAccess();
+
     expect(setJoinRule).not.toHaveBeenCalled();
   });
 
-  it('publishes the space by changing its join rule', async () => {
-    const { cmp, setJoinRule } = await build({
-      name: 'Design',
-      joinRule: JoinRule.Invite,
-      canEditJoinRule: true,
-    });
-    cmp.form.joinRule().value.set(JoinRule.Public);
+  it('saves Access independently against the exact target', async () => {
+    const { cmp, fixture, setJoinRule } = await build();
+    cmp.selectSection('access');
+    await fixture.whenStable();
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
 
-    cmp.save();
+    cmp.draft.saveAccess();
 
-    expect(setJoinRule).toHaveBeenCalledWith('!space:hs', JoinRule.Public);
+    expect(setJoinRule).toHaveBeenCalledWith(TARGET, JoinRule.Public);
+    expect(cmp.draft.generalDirty()).toBe(false);
   });
 
-  it('closes without writing when nothing changed', async () => {
-    const { cmp, setName, setTopic, close } = await build({
-      name: 'Design',
-      topic: 'T',
-    });
+  it('keeps legacy Addresses and Bans reachable only for the opening active Account', async () => {
+    const { cmp, fixture, container, emit } = await build();
 
-    cmp.save();
-
-    expect(setName).not.toHaveBeenCalled();
-    expect(setTopic).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledWith(false);
-  });
-
-  it('keeps the dialog open and names both halves of a partial failure', async () => {
-    const { cmp, close, toastShow } = await build(
-      { name: 'Design', topic: 'T' },
-      { setTopic: vi.fn(() => throwError(() => new Error('forbidden'))) },
-    );
-    cmp.form.name().value.set('Design 2');
-    cmp.form.topic().value.set('T2');
-
-    cmp.save();
-
-    expect(close).not.toHaveBeenCalled();
-    expect(cmp.saving()).toBe(false);
-    expect(toastShow).toHaveBeenCalledWith(
-      expect.stringContaining('topic'),
-      expect.objectContaining({ variant: 'danger' }),
-    );
-  });
-
-  it('disables the fields the viewer cannot change', async () => {
-    const { cmp } = await build({
-      name: 'Design',
-      canEditName: false,
-      canEditTopic: false,
-      canEditJoinRule: false,
-    });
-
-    expect(cmp.form.name().disabled()).toBe(true);
-    expect(cmp.form.topic().disabled()).toBe(true);
-    expect(cmp.form.joinRule().disabled()).toBe(true);
-  });
-
-  it('does not offer restricted as a space join rule', async () => {
-    // A space gated on membership of another space is a shape this client can neither
-    // create nor navigate — see the comment on JOIN_RULE_OPTIONS.
-    const { cmp } = await build();
-
-    expect(cmp.joinRuleOptions().map((o) => o.value)).toEqual([
-      JoinRule.Invite,
-      JoinRule.Public,
-    ]);
-  });
-
-  it('shows a rule it does not offer rather than rendering blank', async () => {
-    // A <select> seeded with a value it has no option for shows NO setting at all, which
-    // misrepresents the space — and then any pick silently changes who can join it.
-    const { cmp } = await build({ joinRule: JoinRule.Knock });
-
-    const values = cmp.joinRuleOptions().map((o) => o.value);
-    expect(values).toContain(JoinRule.Knock);
-    expect(
-      cmp.joinRuleOptions().find((o) => o.value === JoinRule.Knock)?.label,
-    ).toBe('Anyone can ask to join');
-  });
-
-  it('does not duplicate a rule it already offers', async () => {
-    const { cmp } = await build({ joinRule: JoinRule.Public });
-
-    expect(cmp.joinRuleOptions().map((o) => o.value)).toEqual([
-      JoinRule.Invite,
-      JoinRule.Public,
-    ]);
-  });
-
-  it('disables Save when no field this dialog has is editable', async () => {
-    // The room dialog's canSave() also counts canEditHistory; copying it here would light
-    // Save up for a field this dialog does not have.
-    const { cmp } = await build({
-      canEditName: false,
-      canEditTopic: false,
-      canEditJoinRule: false,
-    });
-
-    expect(cmp.canSave()).toBe(false);
-  });
-
-  it('keeps Save alive when a single field is editable', async () => {
-    const { cmp } = await build({
-      canEditName: false,
-      canEditTopic: true,
-      canEditJoinRule: false,
-    });
-
-    expect(cmp.canSave()).toBe(true);
-  });
-
-  it('keeps bans and addresses readable when mutations are unavailable', async () => {
-    const { container } = await build({
-      canManageAliases: false,
-    });
-
-    expect(container.querySelector('trn-banned-members')).not.toBeNull();
+    cmp.selectSection('addresses');
+    await fixture.whenStable();
     expect(container.querySelector('trn-room-aliases')).not.toBeNull();
+
+    await emit(spaceSnapshot({ openingAccountActive: false }));
     expect(
-      container
-        .querySelector('[data-testid=room-alias-add]')
-        ?.getAttribute('aria-disabled'),
-    ).toBe('true');
+      container.querySelector('[data-testid="space-settings-panel-addresses"]')
+        ?.textContent,
+    ).toContain('Switch back to the opening Account');
+    expect(container.querySelector('trn-room-aliases')).toBeNull();
   });
 
-  it('offers no history visibility — a space has no timeline to hide', async () => {
+  it('does not acquire Room-only history, encryption or widgets controls', async () => {
     const { container } = await build();
 
     expect(
       container.querySelector('[data-testid="space-settings-history"]'),
     ).toBeNull();
     expect(
-      container.querySelector('[data-testid="space-settings-join-rule"]'),
-    ).not.toBeNull();
-  });
-
-  it('splits the dialog into General, Access, and Bans', async () => {
-    const { cmp, container } = await build();
-
-    expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
-      'general',
-      'access',
-      'bans',
-    ]);
+      container.querySelector('[data-testid="space-settings-encryption"]'),
+    ).toBeNull();
     expect(
-      container.querySelector('[data-testid=space-settings-tab-bans]'),
-    ).not.toBeNull();
+      container.querySelector('[data-testid="space-settings-tab-widgets"]'),
+    ).toBeNull();
   });
+});
 
-  it('keeps the Bans tab when the viewer can manage bans', async () => {
-    const { cmp, container } = await build();
-
-    expect(cmp.settingsTabs().map((tab) => tab.value)).toEqual([
-      'general',
-      'access',
-      'bans',
-    ]);
-    expect(
-      container.querySelector('[data-testid=space-settings-tab-bans]'),
-    ).not.toBeNull();
-  });
-
-  it('puts each field on the panel its tab names', async () => {
-    // Eager panels mean an inactive one is only `hidden`, so a dialog-wide query finds every
-    // field either way; containment is what distinguishes a real split from added chrome.
-    const { container } = await build({
-      canManageAliases: true,
-    });
-    const panel = (name: string) =>
-      container.querySelector(`[data-testid=space-settings-panel-${name}]`)!;
-    const holds = (name: string, testId: string) =>
-      panel(name).querySelector(`[data-testid=${testId}]`) !== null;
-
-    expect(holds('general', 'space-settings-name')).toBe(true);
-    expect(holds('general', 'space-settings-topic')).toBe(true);
-    expect(holds('access', 'space-settings-join-rule')).toBe(true);
-    expect(holds('access', 'room-aliases')).toBe(true);
-    expect(holds('bans', 'banned-members')).toBe(true);
-    expect(holds('general', 'space-settings-join-rule')).toBe(false);
-    expect(holds('access', 'space-settings-name')).toBe(false);
-  });
-
-  it('closes resolving false on cancel', async () => {
-    const { cmp, close } = await build();
-
-    cmp.close();
-
-    expect(close).toHaveBeenCalledWith(false);
-  });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  TestBed.resetTestingModule();
 });
