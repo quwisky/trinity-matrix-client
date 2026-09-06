@@ -57,6 +57,21 @@ export interface CreateRoomOptions {
   isPublic?: boolean;
 }
 
+/** Shared active/exact Account implementation for encrypted Room creation. */
+function createEncryptedRoom(
+  client: MatrixClient,
+  options: CreateRoomOptions,
+): Observable<string> {
+  return from(
+    client.createRoom({
+      name: options.name.trim(),
+      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+      ...visibilityOptions(options.isPublic),
+      initial_state: [roomEncryptionInitialState()],
+    }),
+  ).pipe(map((response) => response.room_id));
+}
+
 /** Room Library's authoritative answer for one Account-and-Room selection. */
 export type RoomLibrarySelectionAvailability = 'available' | 'unavailable';
 
@@ -613,15 +628,24 @@ export class RoomLibraryService {
    */
   createRoom(options: CreateRoomOptions): Observable<string> {
     return defer(() => {
-      const client = this.matrix.instance;
-      return from(
-        client.createRoom({
-          name: options.name.trim(),
-          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-          ...visibilityOptions(options.isPublic),
-          initial_state: [roomEncryptionInitialState()],
-        }),
-      ).pipe(map((res) => res.room_id));
+      if (!this.matrix.isInitialized) {
+        return throwError(() => new Error('Not signed in.'));
+      }
+      return createEncryptedRoom(this.matrix.instance, options);
+    });
+  }
+
+  /** Create an encrypted Room on one immutable Account, independent of later activation. */
+  createRoomFor(
+    accountId: string,
+    options: CreateRoomOptions,
+  ): Observable<string> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Account unavailable.'));
+      }
+      return createEncryptedRoom(client, options);
     });
   }
 

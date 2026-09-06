@@ -19,7 +19,10 @@ import {
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
-import { SpaceRoomOrderService } from '@trinity/data-access/room-library';
+import {
+  SpaceContentsService,
+  SpaceRoomOrderService,
+} from '@trinity/data-access/room-library';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import { MockProvider } from 'ng-mocks';
 import {
@@ -149,6 +152,19 @@ async function build(options: BuildOptions = {}) {
         setForAccountSpace: () => of(undefined),
         clearForAccountSpace: () => of(undefined),
       }),
+      MockProvider(SpaceContentsService, {
+        observe: () =>
+          of({
+            target: { accountId: TARGET.accountId, spaceId: TARGET.roomId },
+            availability: 'available',
+            unavailableReason: null,
+            items: [],
+            candidates: [],
+            canManage: false,
+            managementUnavailableReason: 'Read only.',
+            hierarchyError: null,
+          }),
+      }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => snapshots.value.permissions,
         settingsFor: () => snapshots.value.permissions,
@@ -215,6 +231,7 @@ describe('SpaceSettingsComponent', () => {
       'general',
       'for-you',
       'access',
+      'contents',
       'members',
       'addresses',
     ]);

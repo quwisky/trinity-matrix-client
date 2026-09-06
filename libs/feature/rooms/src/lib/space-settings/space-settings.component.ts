@@ -8,6 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import type { SpaceContentsTarget } from '@trinity/data-access/room-library';
 import { initialOf } from '@trinity/util/matrix';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
@@ -17,13 +18,14 @@ import {
 } from '../shared/settings-hub/settings-hub.component';
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { SpaceSettingsAccessComponent } from './space-settings-access.component';
+import { SpaceSettingsContentsComponent } from './space-settings-contents.component';
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 import { SpaceSettingsForYouDraftService } from './space-settings-for-you/space-settings-for-you-draft.service';
 import { SpaceSettingsForYouComponent } from './space-settings-for-you/space-settings-for-you.component';
 import { SpaceSettingsGeneralComponent } from './space-settings-general.component';
 
 type SpaceSettingsSection =
-  'general' | 'for-you' | 'access' | 'members' | 'addresses';
+  'general' | 'for-you' | 'access' | 'contents' | 'members' | 'addresses';
 
 /** Working Account-bound Space destinations; child organisation joins this hub in #524. */
 const SECTIONS: readonly (SettingsHubSection & {
@@ -43,6 +45,11 @@ const SECTIONS: readonly (SettingsHubSection & {
     value: 'access',
     label: 'Access',
     description: 'Who can join this Space',
+  },
+  {
+    value: 'contents',
+    label: 'Rooms & spaces',
+    description: 'Linked Rooms and nested Spaces',
   },
   {
     value: 'members',
@@ -66,6 +73,7 @@ const SECTIONS: readonly (SettingsHubSection & {
     RoomAliasesComponent,
     SettingsHubComponent,
     SpaceSettingsAccessComponent,
+    SpaceSettingsContentsComponent,
     SpaceSettingsForYouComponent,
     SpaceSettingsGeneralComponent,
   ],
@@ -73,13 +81,13 @@ const SECTIONS: readonly (SettingsHubSection & {
   styleUrl: './space-settings.component.scss',
 })
 export class SpaceSettingsComponent implements OnInit {
+  private readonly identities = inject(AccountIdentitiesService);
+  private readonly membersSection = viewChild(MembersSettingsComponent);
+
   readonly accountId = input.required<string>();
   readonly spaceId = input.required<string>();
   readonly spaceDisplayName = input('Space');
   readonly initialSection = input<SpaceSettingsSection>('general');
-
-  private readonly identities = inject(AccountIdentitiesService);
-
   readonly draft = inject(SpaceSettingsDraftService);
   readonly forYou = inject(SpaceSettingsForYouDraftService);
   readonly hub = new SettingsHubController({
@@ -109,13 +117,15 @@ export class SpaceSettingsComponent implements OnInit {
   readonly spaceInitial = computed(() =>
     initialOf(this.draft.model().name || this.spaceDisplayName()),
   );
+  readonly contentsTarget = computed<SpaceContentsTarget>(() => ({
+    accountId: this.accountId(),
+    spaceId: this.spaceId(),
+  }));
   readonly sectionTitle = computed(
     () =>
       SECTIONS.find(({ value }) => value === this.selectedSection())?.label ??
       'General',
   );
-  private readonly membersSection = viewChild(MembersSettingsComponent);
-
   ngOnInit(): void {
     this.draft.start({
       accountId: this.accountId(),

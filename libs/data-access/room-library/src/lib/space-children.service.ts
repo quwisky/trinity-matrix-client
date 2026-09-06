@@ -181,6 +181,12 @@ export class SpaceChildrenService {
     return readChildLinks(this.spaceState(spaceId));
   }
 
+  /** Read child links from one exact Account without falling through to Active Account. */
+  childLinksFor(accountId: string, spaceId: string): SpaceChildLink[] {
+    const room = this.matrix.clientFor(accountId)?.getRoom(spaceId);
+    return readChildLinks(room ? liveRoomState(room) : null);
+  }
+
   /** The current link for one child, or `null` when it is not in the space. */
   currentLink(spaceId: string, childId: string): SpaceChildLink | null {
     return (
@@ -236,6 +242,32 @@ export class SpaceChildrenService {
       };
       return from(
         client.sendStateEvent(spaceId, EventType.SpaceChild, content, childId),
+      ).pipe(map(() => void 0));
+    });
+  }
+
+  /**
+   * Unlink one child from an exact Account's Space without changing membership in either
+   * Room. Matrix removes a child link by replacing it with an empty state event.
+   */
+  removeExistingRoom(
+    accountId: string,
+    spaceId: string,
+    childId: string,
+  ): Observable<void> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('Account unavailable.'));
+      }
+      assertRoomLibraryGovernance(
+        this.governance.authorize(
+          { accountId, roomId: spaceId },
+          'curate-space',
+        ),
+      );
+      return from(
+        client.sendStateEvent(spaceId, EventType.SpaceChild, {}, childId),
       ).pipe(map(() => void 0));
     });
   }

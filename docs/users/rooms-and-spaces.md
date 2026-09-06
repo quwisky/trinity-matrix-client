@@ -141,9 +141,24 @@ Open **Space settings** from the Space header's overflow menu. Like Room setting
 opening Account and Space visible and uses a directory beside the editor on a wide screen. On a
 phone it opens full screen; **Back** returns from a section to the directory before Close leaves
 the hub. General changes the Space avatar, name and topic; **For you** stages the opening Account's
-device-local Room ordering; Access changes who can join; Members combines the searchable roster,
-member details, invitations, roles, moderation and banned list; and Addresses manages published
-Space links. The Space Members shortcut opens this same destination rather than a separate dialog.
+device-local Room ordering; Access changes who can join; **Rooms & spaces** lists the Space's direct
+children; Members combines the searchable roster, member details, invitations, roles, moderation
+and banned list; and Addresses manages published Space links. The Space Members shortcut opens this
+same destination rather than a separate dialog.
+
+Every member who can inspect the Space may read **Rooms & spaces**, including each child's Matrix
+identity, whether it is a Room or nested Space, and whether the opening Account has joined it.
+People with live Space-curation permission can search the opening Account's joined Rooms and Spaces,
+add an existing one, create an encrypted Room, create a nested Space, or remove a direct child after
+an exact-name confirmation. These are immediate actions: there is no section-wide Save or Cancel.
+Each operation reports its own pending and completed result. Removing a child only replaces the
+parent Space's child link; it never leaves or deletes the child. Creating also writes only that
+parent-owned link. If creation succeeds but linking fails, Trinity keeps the new Room or Space,
+shows its Matrix ID, and offers a link-only retry so recovery cannot create a duplicate.
+
+The Space header's create, add and remove shortcuts continue to use the same exact-Account parent
+policy. **Organise rooms** remains the separate shared workflow for child order and Suggested state;
+the Rooms & spaces destination does not silently reset either field.
 
 Space Addresses has the same exact-Account behavior and explicit actions as Room Addresses. Long
 addresses wrap on phones, while copy and Matrix-link actions remain available when the opening

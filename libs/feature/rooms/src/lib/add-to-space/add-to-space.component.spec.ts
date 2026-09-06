@@ -1,28 +1,31 @@
-import { signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { TrnDialogRef, TrnToastService } from '@trinity/components/overlay';
-import {
-  RoomLibraryService,
-  SpaceChildrenService,
-  SpacesService,
-} from '@trinity/data-access/room-library';
+import { SpaceContentsService } from '@trinity/data-access/room-library';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { BehaviorSubject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { AddToSpaceComponent } from './add-to-space.component';
 
-function room(id: string, name: string, directUserId?: string) {
+interface RoomFixture {
+  readonly id: string;
+  readonly name: string;
+  readonly initial: string;
+  readonly avatarMxc: null;
+  readonly directUserId?: string;
+}
+
+function room(id: string, name: string, directUserId?: string): RoomFixture {
   return {
     id,
     name,
     initial: name[0],
     avatarMxc: null,
     ...(directUserId ? { directUserId } : {}),
-  } as never;
+  };
 }
 
-function space(id: string, name: string) {
-  return { id, name, initial: name[0], avatarMxc: null } as never;
+function space(id: string, name: string): RoomFixture {
+  return { id, name, initial: name[0], avatarMxc: null };
 }
 
 async function build(
@@ -36,14 +39,33 @@ async function build(
   const addExistingRoom = over.addExistingRoom ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const toastShow = vi.fn();
-  const links = signal(
-    (opts.existing ?? []).map((childId) => ({
-      childId,
-      via: ['hs'],
-      suggested: false,
-      order: '',
+  const existing = new Set(opts.existing ?? []);
+  const candidates = [
+    ...(opts.rooms ?? []).map((candidate) => ({
+      ...candidate,
+      kind: 'room' as const,
+      joined: true,
+      via: [],
+      direct: Boolean((candidate as { directUserId?: string }).directUserId),
     })),
-  );
+    ...(opts.spaces ?? []).map((candidate) => ({
+      ...candidate,
+      kind: 'space' as const,
+      joined: true,
+      via: [],
+      direct: false,
+    })),
+  ].filter(({ id }) => id !== '!s:hs' && !existing.has(id));
+  const states = new BehaviorSubject({
+    target: { accountId: '@me:hs', spaceId: '!s:hs' },
+    availability: 'available' as const,
+    unavailableReason: null,
+    items: [],
+    candidates,
+    canManage: true,
+    managementUnavailableReason: null,
+    hierarchyError: null,
+  });
   const { fixture, container } = await render(AddToSpaceComponent, {
     inputs: {
       accountId: '@me:hs',
@@ -51,18 +73,9 @@ async function build(
       spaceName: 'Design',
     },
     providers: [
-      MockProvider(RoomLibraryService, {
-        rooms: signal(opts.rooms ?? []) as never,
-      }),
-      MockProvider(SpacesService, {
-        spaces: signal(opts.spaces ?? []) as never,
-      }),
-      MockProvider(SpaceChildrenService, {
-        addExistingRoom,
-        // ONE signal, created here and handed back on every call — not a fresh one per
-        // call, which would be a dependency no test could move and would let a staleness
-        // regression pass forever. `linksFor` memoizes per space id for the same reason.
-        linksFor: () => links.asReadonly(),
+      MockProvider(SpaceContentsService, {
+        observe: () => states.asObservable(),
+        link: (_target, childId) => addExistingRoom('@me:hs', '!s:hs', childId),
       }),
       MockProvider(TrnDialogRef, { close }),
       MockProvider(TrnToastService, { show: toastShow }),
@@ -71,7 +84,7 @@ async function build(
   return {
     cmp: fixture.componentInstance,
     container,
-    links,
+    states,
     addExistingRoom,
     close,
     toastShow,
@@ -103,12 +116,15 @@ describe('AddToSpaceComponent', () => {
     // echoes back, without a round trip". That is only true if the candidate list depends
     // on the links REACTIVELY — a plain snapshot read looks identical until sync moves
     // something else. Driving the projection is the only way to tell the two apart.
-    const { cmp, links } = await build({
+    const { cmp, states } = await build({
       rooms: [room('!a:hs', 'Alpha'), room('!b:hs', 'Bravo')],
     });
     expect(cmp.candidates().map((c) => c.id)).toEqual(['!a:hs', '!b:hs']);
 
-    links.set([{ childId: '!a:hs', via: ['hs'], suggested: false, order: '' }]);
+    states.next({
+      ...states.value,
+      candidates: states.value.candidates.filter(({ id }) => id !== '!a:hs'),
+    });
 
     expect(cmp.candidates().map((c) => c.id)).toEqual(['!b:hs']);
   });

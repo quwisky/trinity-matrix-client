@@ -228,7 +228,14 @@ export async function openMessageActionSheet(
 export async function openSettingsTab(
   page: Page,
   prefix: 'room-settings' | 'space-settings',
-  tab: 'general' | 'for-you' | 'access' | 'members' | 'addresses' | 'widgets',
+  tab:
+    | 'general'
+    | 'for-you'
+    | 'access'
+    | 'contents'
+    | 'members'
+    | 'addresses'
+    | 'widgets',
 ): Promise<void> {
   const tabButton = page.getByTestId(`${prefix}-tab-${tab}`);
   if (!(await tabButton.isVisible().catch(() => false))) {

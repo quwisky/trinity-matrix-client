@@ -1,0 +1,185 @@
+@use '../styles/mixins' as rooms;
+
+@layer components {
+  :host {
+    display: block;
+  }
+
+  .space-contents {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-panel);
+  }
+
+  .space-contents__heading,
+  .space-contents__actions,
+  .space-contents__row,
+  .space-contents__candidate,
+  .space-contents__recovery,
+  .space-contents__picker-actions {
+    display: flex;
+    align-items: center;
+  }
+
+  .space-contents__heading,
+  .space-contents__recovery {
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h3 {
+    color: var(--trinity-text-bright);
+    font-size: 16px;
+    font-weight: 650;
+  }
+
+  .space-contents__heading p,
+  .space-contents__identity span,
+  .space-contents__recovery p,
+  .space-contents__policy {
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+  }
+
+  .space-contents__actions,
+  .space-contents__picker-actions {
+    gap: 8px;
+  }
+
+  .space-contents__list,
+  .space-contents__candidate-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .space-contents__row,
+  .space-contents__candidate {
+    min-height: 52px;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-control-radius);
+  }
+
+  .space-contents__identity {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .space-contents__identity strong,
+  .space-contents__identity span {
+    overflow-wrap: anywhere;
+  }
+
+  .space-contents__kind,
+  .space-contents__membership {
+    flex: none;
+    color: var(--trinity-text-muted);
+    font-size: 12px;
+  }
+
+  .space-contents__kind {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--trinity-surface-control);
+  }
+
+  .space-contents__picker {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-container-radius);
+    background: var(--trinity-surface-workspace);
+  }
+
+  .space-contents__picker > label {
+    color: var(--trinity-text-bright);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .space-contents__candidate-list {
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  .space-contents__candidate {
+    cursor: pointer;
+  }
+
+  .space-contents__picker-actions {
+    justify-content: flex-end;
+  }
+
+  .space-contents__feedback,
+  .space-contents__state,
+  .space-contents__recovery {
+    padding: 10px 12px;
+    border-radius: var(--trinity-shape-control-radius);
+    background: var(--trinity-surface-control);
+    color: var(--trinity-text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .space-contents__feedback--danger,
+  .space-contents__state--danger {
+    color: var(--trinity-danger);
+  }
+
+  .space-contents__state--danger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .space-contents__recovery {
+    border: 1px solid var(--trinity-border-subtle);
+  }
+
+  @media #{rooms.$below-md} {
+    .space-contents {
+      padding: 14px;
+    }
+
+    .space-contents__heading,
+    .space-contents__actions,
+    .space-contents__row,
+    .space-contents__recovery,
+    .space-contents__state--danger {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .space-contents__actions button,
+    .space-contents__row button,
+    .space-contents__recovery button,
+    .space-contents__state--danger button {
+      min-height: 44px;
+      width: 100%;
+    }
+
+    .space-contents__kind,
+    .space-contents__membership {
+      align-self: flex-start;
+    }
+  }
+}

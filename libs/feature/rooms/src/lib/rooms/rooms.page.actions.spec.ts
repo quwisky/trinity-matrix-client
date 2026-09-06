@@ -22,6 +22,7 @@ import { MediaPipeline } from '@trinity/data-access/media';
 import {
   RoomLibraryService,
   RoomReadinessService,
+  SpaceContentsService,
   SpacesService,
   UnreadAggregatorService,
   type RoomSummary,
@@ -70,7 +71,12 @@ describe('RoomsPage space actions', () => {
     alertPrompt = vi.fn(() => of(null));
     alertConfirm = vi.fn(() => of(false));
     createSpace = vi.fn(() => of('!new:hs'));
-    createRoomInSpace = vi.fn(() => of('!room:hs'));
+    createRoomInSpace = vi.fn(() =>
+      of({
+        kind: 'linked' as const,
+        item: { id: '!room:hs', name: 'general', kind: 'room' as const },
+      }),
+    );
     leaveSpace = vi.fn(() => of(undefined));
     waitForRoom = vi.fn(() => of(void 0));
     TestBed.configureTestingModule({
@@ -95,9 +101,9 @@ describe('RoomsPage space actions', () => {
             },
           ]),
           createSpace,
-          createRoomInSpace,
           leaveSpace,
         }),
+        MockProvider(SpaceContentsService, { create: createRoomInSpace }),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -222,9 +228,11 @@ describe('RoomsPage space actions', () => {
 
     shell.spaces.onCreateChannel();
 
-    expect(createRoomInSpace).toHaveBeenCalledWith('!s:hs', {
-      name: 'general',
-    });
+    expect(createRoomInSpace).toHaveBeenCalledWith(
+      { accountId: '@me:hs', spaceId: '!s:hs' },
+      'room',
+      'general',
+    );
   });
 
   it('does not prompt to create a channel on Home (no active space)', async () => {
@@ -1359,7 +1367,6 @@ describe('RoomsPage space hierarchy actions', () => {
         MockProvider(SpacesService, {
           openSpace,
           joinRoom,
-          removeRoomFromSpace,
           spaces: signal<SpaceSummary[]>([
             {
               id: '!s:hs',
@@ -1371,6 +1378,7 @@ describe('RoomsPage space hierarchy actions', () => {
             },
           ]),
         }),
+        MockProvider(SpaceContentsService, { unlink: removeRoomFromSpace }),
         MockProvider(TimelineActionsService),
         MockProvider(MatrixClientService, {
           isInitialized: true,
@@ -1430,7 +1438,10 @@ describe('RoomsPage space hierarchy actions', () => {
     expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ header: 'Remove from space' }),
     );
-    expect(removeRoomFromSpace).toHaveBeenCalledWith('!s:hs', '!c:hs');
+    expect(removeRoomFromSpace).toHaveBeenCalledWith(
+      { accountId: '@me:hs', spaceId: '!s:hs' },
+      '!c:hs',
+    );
   });
 
   it('does not remove when the confirm is cancelled', async () => {

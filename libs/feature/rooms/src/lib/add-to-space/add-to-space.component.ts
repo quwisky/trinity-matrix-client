@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  OnInit,
   computed,
   inject,
   input,
@@ -19,9 +20,8 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import {
-  RoomLibraryService,
-  SpaceChildrenService,
-  SpacesService,
+  SpaceContentsService,
+  type SpaceContentsCandidate,
 } from '@trinity/data-access/room-library';
 import {
   AvatarComponent,
@@ -71,11 +71,9 @@ export interface AddCandidate {
   templateUrl: './add-to-space.component.html',
   styleUrl: './add-to-space.component.scss',
 })
-export class AddToSpaceComponent {
+export class AddToSpaceComponent implements OnInit {
   private readonly dialogRef = inject<TrnDialogRef<boolean>>(TrnDialogRef);
-  private readonly rooms = inject(RoomLibraryService);
-  private readonly spaces = inject(SpacesService);
-  private readonly children = inject(SpaceChildrenService);
+  private readonly contents = inject(SpaceContentsService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -85,6 +83,9 @@ export class AddToSpaceComponent {
    */
   private readonly searchModel = signal({ query: '' });
   private readonly selected = signal<ReadonlySet<string>>(new Set());
+  private readonly candidateState = signal<readonly SpaceContentsCandidate[]>(
+    [],
+  );
 
   /** Account that owns the target Space and must perform every link write. */
   readonly accountId = input.required<string>();
@@ -95,6 +96,8 @@ export class AddToSpaceComponent {
 
   /** True while the add writes are in flight. */
   readonly adding = signal(false);
+  readonly loading = signal(true);
+  readonly loadError = signal<string | null>(null);
 
   /**
    * Everything the user could add: their joined rooms and spaces, minus the target space
@@ -106,39 +109,16 @@ export class AddToSpaceComponent {
    * dependency: the plain `childLinks()` read this used to do is a snapshot, and the list
    * only refreshed because `rooms()` happened to tick in the same turn.
    */
-  readonly candidates = computed<AddCandidate[]>(() => {
-    const spaceId = this.spaceId();
-    const existing = new Set(
-      this.children
-        .linksFor(spaceId)()
-        .map((link) => link.childId),
-    );
-    const rooms: AddCandidate[] = this.rooms
-      .rooms()
-      .filter((room) => !existing.has(room.id))
-      .map((room) => ({
-        id: room.id,
-        name: room.name,
-        initial: room.initial,
-        avatarMxc: room.avatarMxc,
-        isSpace: false,
-        shape: room.directUserId ? 'person' : 'place',
-      }));
-    const spaces: AddCandidate[] = this.spaces
-      .spaces()
-      // A space cannot contain itself, and offering it invites a link the server would
-      // take and no client could render sensibly.
-      .filter((space) => space.id !== spaceId && !existing.has(space.id))
-      .map((space) => ({
-        id: space.id,
-        name: space.name,
-        initial: space.initial,
-        avatarMxc: space.avatarMxc,
-        isSpace: true,
-        shape: 'place',
-      }));
-    return [...rooms, ...spaces].sort((a, b) => a.name.localeCompare(b.name));
-  });
+  readonly candidates = computed<AddCandidate[]>(() =>
+    this.candidateState().map((candidate) => ({
+      id: candidate.id,
+      name: candidate.name,
+      initial: candidate.initial,
+      avatarMxc: candidate.avatarMxc,
+      isSpace: candidate.kind === 'space',
+      shape: candidate.direct ? 'person' : 'place',
+    })),
+  );
 
   /** {@link candidates} narrowed by the search box. */
   readonly visible = computed(() => {
@@ -152,6 +132,19 @@ export class AddToSpaceComponent {
   });
 
   readonly selectedCount = computed(() => this.selected().size);
+
+  ngOnInit(): void {
+    this.contents
+      .observe({ accountId: this.accountId(), spaceId: this.spaceId() })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((snapshot) => {
+        this.loading.set(false);
+        this.loadError.set(
+          snapshot.unavailableReason ?? snapshot.hierarchyError,
+        );
+        this.candidateState.set(snapshot.candidates);
+      });
+  }
 
   isSelected(id: string): boolean {
     return this.selected().has(id);
@@ -181,9 +174,8 @@ export class AddToSpaceComponent {
     }
     const writes: FieldWrite[] = chosen.map((candidate) => ({
       field: candidate.name,
-      op: this.children.addExistingRoom(
-        this.accountId(),
-        spaceId,
+      op: this.contents.link(
+        { accountId: this.accountId(), spaceId },
         candidate.id,
       ),
     }));
