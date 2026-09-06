@@ -2,6 +2,7 @@ import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { DefaultUrlSerializer, NavigationEnd, Router } from '@angular/router';
 import { WorkspaceBackService } from '@trinity/application/workspace';
+import type { WorkspaceSurface } from '@trinity/application/workspace';
 import { encodeRoomSegment } from '@trinity/util/matrix';
 import { firstValueFrom, Subject, type Subscription } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -67,6 +68,23 @@ describe('Workspace routed-surface composition adapter', () => {
     expect(navigateByUrl).toHaveBeenCalledWith('/settings', {
       replaceUrl: true,
     });
+  });
+
+  it('reports ownership only for the exact routed application surface', () => {
+    build('/settings/security');
+    const adapter = TestBed.inject(WorkspaceRoutedSurfaceAdapter);
+    const security = {
+      layer: 'application',
+      surface: { kind: 'settings', section: 'security' },
+    } as const satisfies WorkspaceSurface;
+
+    expect(adapter.owns(security)).toBe(true);
+    expect(
+      adapter.owns({
+        layer: 'application',
+        surface: { kind: 'settings', section: 'appearance' },
+      }),
+    ).toBe(false);
   });
 
   it('pops a Settings section entered from the narrow directory', async () => {
