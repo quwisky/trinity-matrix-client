@@ -1,0 +1,166 @@
+<section data-testid="room-settings-panel-for-you">
+  @switch (draft.loadState()) {
+    @case ('loading') {
+      <section class="room-settings__card" role="status" aria-live="polite">
+        <h3>Loading your Room preferences…</h3>
+        <p>Reading the opening Account’s current Matrix settings.</p>
+      </section>
+    }
+    @case ('unavailable') {
+      <section class="room-settings__card" role="alert">
+        <h3>Room preferences unavailable</h3>
+        <p>
+          This Room is no longer available to the opening Account. No default
+          values have been substituted.
+        </p>
+      </section>
+    }
+    @case ('failed') {
+      <section class="room-settings__card room-settings__failure" role="alert">
+        <div>
+          <h3>Couldn’t read Room preferences</h3>
+          <p>
+            Trinity could not confirm the opening Account’s current notification
+            rules. Try again before making changes.
+          </p>
+        </div>
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          data-testid="room-settings-for-you-retry"
+          (click)="draft.retryLoad()"
+        >
+          Try again
+        </button>
+      </section>
+    }
+    @case ('ready') {
+      <form
+        class="room-settings__form"
+        data-testid="room-settings-for-you-form"
+        (submit)="save($event)"
+      >
+        <section class="room-settings__card room-settings__fields">
+          <div class="room-settings__field">
+            <h3
+              id="room-settings-notifications-heading"
+              class="room-settings__label"
+            >
+              Notifications
+            </h3>
+            <p>
+              Choose All messages to be notified about every message, or
+              Mentions and keywords to quiet ordinary messages. Mute silences
+              everything, including mentions.
+            </p>
+          </div>
+          <trn-radio-group
+            [options]="notificationOptions"
+            [value]="draft.model().notificationMode"
+            [disabled]="draft.saving() || !room.targetAvailable()"
+            aria-labelledby="room-settings-notifications-heading"
+            (valueChange)="draft.setNotificationMode($event)"
+          />
+        </section>
+
+        <section class="room-settings__card room-settings__fields">
+          <div class="room-settings__field">
+            <h3 class="room-settings__label">Organisation</h3>
+            <p>Choose where this Room appears for the opening Account.</p>
+          </div>
+          <label class="room-settings__choice">
+            <trn-checkbox
+              [checked]="draft.model().favourite"
+              [disabled]="draft.saving() || !room.targetAvailable()"
+              aria-describedby="room-settings-favourite-help"
+              data-testid="room-settings-favourite"
+              (checkedChange)="draft.setFavourite($event)"
+            />
+            <span>
+              <strong>Favourite</strong>
+              <small id="room-settings-favourite-help">
+                Keep this Room in the Favourites group near the top of the list.
+              </small>
+            </span>
+          </label>
+          <label class="room-settings__choice">
+            <trn-checkbox
+              [checked]="draft.model().lowPriority"
+              [disabled]="draft.saving() || !room.targetAvailable()"
+              aria-describedby="room-settings-low-priority-help"
+              data-testid="room-settings-low-priority"
+              (checkedChange)="draft.setLowPriority($event)"
+            />
+            <span>
+              <strong>Low priority</strong>
+              <small id="room-settings-low-priority-help">
+                Move this Room below ordinary Rooms. A Favourite still stays in
+                Favourites.
+              </small>
+            </span>
+          </label>
+        </section>
+
+        <section class="room-settings__card room-settings__scope">
+          <h3>Opening Account only</h3>
+          <p>
+            Changes here apply only to the Account named above. A shortcut in a
+            combined sidebar row still applies to every Account represented by
+            that row.
+          </p>
+          <p>
+            Read receipts and link previews remain installation-wide Privacy
+            settings and are not overridden per Room.
+          </p>
+        </section>
+
+        @if (!room.targetAvailable()) {
+          <p
+            class="room-settings__feedback room-settings__feedback--danger"
+            role="alert"
+          >
+            {{ room.targetUnavailableReason() }} Your unsaved preferences are
+            still here.
+          </p>
+        }
+
+        @if (draft.feedback(); as feedback) {
+          <p
+            class="room-settings__feedback"
+            [class.room-settings__feedback--danger]="feedback.tone === 'danger'"
+            role="status"
+            aria-live="polite"
+            data-testid="room-settings-for-you-feedback"
+          >
+            {{ feedback.message }}
+          </p>
+        }
+
+        <div class="room-settings__actions">
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            [disabled]="!draft.dirty() || draft.saving()"
+            data-testid="room-settings-for-you-discard"
+            (click)="draft.discard()"
+          >
+            Discard
+          </button>
+          <button
+            trnBtn
+            type="submit"
+            [disabled]="
+              !draft.dirty() || draft.saving() || !room.targetAvailable()
+            "
+            data-testid="room-settings-for-you-save"
+          >
+            {{ draft.saving() ? 'Saving…' : 'Save preferences' }}
+          </button>
+        </div>
+      </form>
+    }
+  }
+</section>

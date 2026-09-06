@@ -392,6 +392,16 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
+    path: 'journeys/room-administration/room-settings-for-you-mobile.spec.mts',
+    capability: 'room-administration',
+    contractType: 'journey',
+  },
+  {
+    path: 'journeys/room-administration/room-settings-for-you.spec.mts',
+    capability: 'room-administration',
+    contractType: 'journey',
+  },
+  {
     path: 'journeys/room-administration/room-settings-widgets-mobile.spec.mts',
     capability: 'room-administration',
     contractType: 'journey',

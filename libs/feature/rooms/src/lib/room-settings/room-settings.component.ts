@@ -16,13 +16,16 @@ import {
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
+import { RoomSettingsForYouComponent } from './room-settings-for-you.component';
+import { RoomSettingsForYouDraftService } from './room-settings-for-you-draft.service';
 import { RoomSettingsGeneralComponent } from './room-settings-general.component';
 import type { ParentSpace } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';
 
 export type { ParentSpace } from './room-settings.models';
 
-type RoomSettingsSection = 'general' | 'access' | 'widgets' | 'bans';
+type RoomSettingsSection =
+  'general' | 'for-you' | 'access' | 'widgets' | 'bans';
 
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: RoomSettingsSection;
@@ -31,6 +34,11 @@ const SECTIONS: readonly (SettingsHubSection & {
     value: 'general',
     label: 'General',
     description: 'Photo, name, topic, and encryption',
+  },
+  {
+    value: 'for-you',
+    label: 'For you',
+    description: 'Notifications and organisation',
   },
   {
     value: 'access',
@@ -53,11 +61,12 @@ const SECTIONS: readonly (SettingsHubSection & {
 @Component({
   selector: 'trn-room-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [RoomSettingsDraftService],
+  providers: [RoomSettingsDraftService, RoomSettingsForYouDraftService],
   imports: [
     BannedMembersComponent,
     RoomSettingsAccessComponent,
     RoomSettingsGeneralComponent,
+    RoomSettingsForYouComponent,
     RoomWidgetsComponent,
     SettingsHubComponent,
   ],
@@ -73,16 +82,18 @@ export class RoomSettingsComponent implements OnInit {
   private readonly identities = inject(AccountIdentitiesService);
 
   readonly draft = inject(RoomSettingsDraftService);
+  readonly forYouDraft = inject(RoomSettingsForYouDraftService);
   readonly hub = new SettingsHubController({
     sections: SECTIONS,
     noun: 'Room',
     testIdPrefix: 'room-settings',
     accountId: () => this.accountId(),
     targetId: () => this.roomId(),
-    dirty: () => this.draft.dirty(),
+    dirty: () => this.draft.dirty() || this.forYouDraft.dirty(),
     discard: () => {
       this.draft.discardGeneral();
       this.draft.discardAccess();
+      this.forYouDraft.discard();
     },
   });
   readonly mobileHost = this.hub.mobileHost;
@@ -118,6 +129,10 @@ export class RoomSettingsComponent implements OnInit {
       { accountId: this.accountId(), roomId: this.roomId() },
       this.parentSpaces(),
     );
+    this.forYouDraft.start({
+      accountId: this.accountId(),
+      roomId: this.roomId(),
+    });
     this.hub.activate();
   }
 

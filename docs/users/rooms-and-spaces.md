@@ -90,16 +90,20 @@ The hub has these sections:
 | Tab     | What it changes                                                                                                                       |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | General | Room avatar, name and topic.                                                                                                          |
+| For you | Notification mode, Favourite and Low priority for the opening Account.                                                                |
 | Access  | Who can join, who can read earlier history, and the room's local addresses. A restricted room must retain at least one allowed space. |
 | Widgets | Third-party widgets declared for the room.                                                                                            |
 | Bans    | The list of banned members, with unban actions where allowed.                                                                         |
 
-**General** and **Access** save independently. A partial failure keeps only the fields that did not
-save as drafts, so retry sends only what remains. Avatar selection, address add/remove actions,
-widget publication/removal and unbanning use their own immediate actions; discarding a name or
-topic draft does not undo those completed actions. Leaving a section, closing Room settings, or
-using browser or device Back asks before discarding a draft. A remote update refreshes untouched
-fields without overwriting fields you are editing.
+**General**, **For you** and **Access** save independently. A partial failure keeps only the fields
+that did not save as drafts, so retry sends only what remains. For you first confirms the opening
+Account's current homeserver notification rule instead of showing a guessed default; it names
+loading, unavailable and failed-read states explicitly. Its Favourite and Low priority values come
+from that Account's synced Matrix Room tags. Avatar selection, address add/remove actions, widget
+publication/removal and unbanning use their own immediate actions; discarding a draft does not undo
+those completed actions. Leaving a section, closing Room settings, or using browser or device Back
+asks before discarding a draft. A remote update refreshes untouched General and Access fields
+without overwriting fields you are editing.
 
 General details and Access policy remain bound to the Account and Room that opened Room settings
 even if another Account becomes active. If that Account signs out, the target becomes unavailable
@@ -112,6 +116,13 @@ Losing a role while Room settings is open disables the affected controls without
 information or erasing drafts. Access and history choices affect other people and can expose
 earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
 rule controls which Space members may join, not whether you yourself remain in the Room.
+
+For you is also bound to the opening Account and remains editable by ordinary Room members because
+notification rules and Room tags are personal rather than Room-governance state. In a combined
+Room Library row, this settings section changes only that opening Account. The row's sidebar
+shortcuts deliberately keep their broader behavior and change every Account represented by the
+combined row. Read receipts and link previews remain installation-scoped Privacy settings; Room
+settings does not create per-Room overrides for them.
 
 Open **Space settings** from the Space header's overflow menu. Like Room settings, it keeps the
 opening Account and Space visible and uses a directory beside the editor on a wide screen. On a

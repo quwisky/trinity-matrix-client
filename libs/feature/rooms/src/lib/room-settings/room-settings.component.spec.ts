@@ -20,6 +20,11 @@ import {
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import {
+  RoomNotificationsService,
+  type RoomNotifyMode,
+} from '@trinity/data-access/notifications';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
   WidgetManagementService,
@@ -95,6 +100,11 @@ interface BuildOptions {
   readonly setAvatar?: Mock;
   readonly setJoinRule?: Mock;
   readonly setHistoryVisibility?: Mock;
+  readonly readMode?: Mock;
+  readonly organisationFor?: Mock;
+  readonly setNotificationMode?: Mock;
+  readonly setFavourite?: Mock;
+  readonly setLowPriority?: Mock;
 }
 
 async function build(options: BuildOptions = {}) {
@@ -119,6 +129,14 @@ async function build(options: BuildOptions = {}) {
   const setJoinRule = options.setJoinRule ?? vi.fn(() => of(undefined));
   const setHistoryVisibility =
     options.setHistoryVisibility ?? vi.fn(() => of(undefined));
+  const readMode = options.readMode ?? vi.fn(() => of('mentions'));
+  const organisationFor =
+    options.organisationFor ??
+    vi.fn(() => ({ favourite: false, lowPriority: false }));
+  const setNotificationMode =
+    options.setNotificationMode ?? vi.fn(() => of(undefined));
+  const setFavourite = options.setFavourite ?? vi.fn(() => of(undefined));
+  const setLowPriority = options.setLowPriority ?? vi.fn(() => of(undefined));
   const close = vi.fn();
   const confirmResult = new Subject<boolean>();
   const confirm = vi.fn(() => confirmResult.asObservable());
@@ -149,6 +167,15 @@ async function build(options: BuildOptions = {}) {
           displayName: 'Opening account',
           avatarMxc: 'mxc://hs/account',
         }),
+      }),
+      MockProvider(RoomNotificationsService, {
+        readMode,
+        setMode: setNotificationMode,
+      }),
+      MockProvider(RoomLibraryService, {
+        organisationFor,
+        setFavourite,
+        setLowPriority,
       }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => snapshots.value.permissions,
@@ -200,6 +227,11 @@ async function build(options: BuildOptions = {}) {
     setAvatar,
     setJoinRule,
     setHistoryVisibility,
+    readMode,
+    organisationFor,
+    setNotificationMode,
+    setFavourite,
+    setLowPriority,
     close,
     confirm,
     confirmResult,
@@ -227,10 +259,196 @@ describe('RoomSettingsComponent', () => {
     ).toContain('end-to-end encrypted');
     expect(cmp.sections.map(({ value }) => value)).toEqual([
       'general',
+      'for-you',
       'access',
       'widgets',
       'bans',
     ]);
+  });
+
+  it('loads For you from the exact opening Account and explains shortcut scope', async () => {
+    const { cmp, fixture, container, readMode, organisationFor } =
+      await build();
+
+    cmp.selectSection('for-you');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(readMode).toHaveBeenCalledWith(TARGET.roomId, TARGET.accountId);
+    expect(organisationFor).toHaveBeenCalledWith(
+      TARGET.accountId,
+      TARGET.roomId,
+    );
+    expect(
+      container.querySelector('[data-testid="room-settings-panel-for-you"]')
+        ?.textContent,
+    ).toContain('combined sidebar row');
+    expect(
+      container
+        .querySelector('[data-testid="room-settings-notify-mentions"]')
+        ?.getAttribute('data-state'),
+    ).toBe('selected');
+  });
+
+  it('saves personal preferences only for the opening Account', async () => {
+    const { cmp, setNotificationMode, setFavourite, setLowPriority } =
+      await build();
+    cmp.forYouDraft.setNotificationMode('mute');
+    cmp.forYouDraft.setFavourite(true);
+    cmp.forYouDraft.setLowPriority(true);
+
+    cmp.forYouDraft.save();
+
+    expect(setNotificationMode).toHaveBeenCalledWith(
+      TARGET.roomId,
+      'mute',
+      TARGET.accountId,
+    );
+    expect(setFavourite).toHaveBeenCalledWith(
+      TARGET.roomId,
+      true,
+      TARGET.accountId,
+    );
+    expect(setLowPriority).toHaveBeenCalledWith(
+      TARGET.roomId,
+      true,
+      TARGET.accountId,
+    );
+  });
+
+  it('prevents native form navigation when For you is submitted', async () => {
+    const { cmp, fixture, container } = await build();
+    cmp.selectSection('for-you');
+    fixture.detectChanges();
+    cmp.forYouDraft.setFavourite(true);
+    const submit = new SubmitEvent('submit', {
+      bubbles: true,
+      cancelable: true,
+    });
+
+    container
+      .querySelector('[data-testid="room-settings-for-you-form"]')
+      ?.dispatchEvent(submit);
+
+    expect(submit.defaultPrevented).toBe(true);
+  });
+
+  it('retains failed personal fields and retries only what remains', async () => {
+    const setNotificationMode = vi
+      .fn<() => Observable<void>>()
+      .mockReturnValueOnce(throwError(() => new Error('offline')))
+      .mockReturnValueOnce(of(undefined));
+    const setFavourite = vi.fn(() => of(undefined));
+    const { cmp } = await build({ setNotificationMode, setFavourite });
+    cmp.forYouDraft.setNotificationMode('mute');
+    cmp.forYouDraft.setFavourite(true);
+
+    cmp.forYouDraft.save();
+
+    expect(cmp.forYouDraft.feedback()?.message).toContain('still unsaved');
+    expect(cmp.forYouDraft.dirty()).toBe(true);
+    cmp.forYouDraft.save();
+    expect(setNotificationMode).toHaveBeenCalledTimes(2);
+    expect(setFavourite).toHaveBeenCalledTimes(1);
+    expect(cmp.forYouDraft.dirty()).toBe(false);
+  });
+
+  it('shows pending feedback until a personal preference write finishes', async () => {
+    const completion = new Subject<void>();
+    const { cmp } = await build({
+      setNotificationMode: vi.fn(() => completion.asObservable()),
+    });
+    cmp.forYouDraft.setNotificationMode('mute');
+
+    cmp.forYouDraft.save();
+
+    expect(cmp.forYouDraft.saving()).toBe(true);
+    expect(cmp.forYouDraft.feedback()).toMatchObject({ tone: 'pending' });
+    completion.next();
+    completion.complete();
+    expect(cmp.forYouDraft.saving()).toBe(false);
+  });
+
+  it('shows an explicit loading state before the authoritative read resolves', async () => {
+    const mode = new Subject<RoomNotifyMode>();
+    const { cmp, fixture, container } = await build({
+      readMode: vi.fn(() => mode.asObservable()),
+    });
+
+    cmp.selectSection('for-you');
+    fixture.detectChanges();
+
+    expect(container.textContent).toContain('Loading your Room preferences');
+    expect(container.querySelector('trn-radio-group')).toBeNull();
+    mode.next('all');
+    mode.complete();
+    fixture.detectChanges();
+    expect(container.textContent).toContain('All messages');
+  });
+
+  it('protects Close when For you has an unsaved preference', async () => {
+    const { cmp, close, confirmResult } = await build();
+    cmp.forYouDraft.setFavourite(true);
+
+    cmp.close();
+    confirmResult.next(false);
+    expect(close).not.toHaveBeenCalled();
+    expect(cmp.forYouDraft.model().favourite).toBe(true);
+
+    cmp.close();
+    confirmResult.next(true);
+    expect(close).toHaveBeenCalledWith(false);
+  });
+
+  it('shows failed and unavailable reads without guessed defaults', async () => {
+    const readMode = vi
+      .fn<() => Observable<RoomNotifyMode>>()
+      .mockReturnValueOnce(throwError(() => new Error('offline')))
+      .mockReturnValueOnce(of('all'));
+    const failed = await build({ readMode });
+    failed.cmp.selectSection('for-you');
+    failed.fixture.detectChanges();
+    expect(failed.container.textContent).toContain(
+      'Couldn’t read Room preferences',
+    );
+    failed.cmp.forYouDraft.retryLoad();
+    failed.fixture.detectChanges();
+    expect(failed.container.textContent).toContain('All messages');
+
+    TestBed.resetTestingModule();
+    const unavailable = await build({
+      organisationFor: vi.fn(() => null),
+    });
+    unavailable.cmp.selectSection('for-you');
+    unavailable.fixture.detectChanges();
+    expect(unavailable.container.textContent).toContain(
+      'Room preferences unavailable',
+    );
+    expect(unavailable.container.querySelector('trn-radio-group')).toBeNull();
+  });
+
+  it('lets an ordinary member edit personal preferences without governance power', async () => {
+    const { cmp, fixture, container } = await build({
+      initial: roomSnapshot({
+        permissions: {
+          name: DENIED,
+          topic: DENIED,
+          avatar: DENIED,
+          joinRule: DENIED,
+          history: DENIED,
+          aliases: DENIED,
+        },
+      }),
+    });
+
+    cmp.selectSection('for-you');
+    fixture.detectChanges();
+
+    expect(
+      container
+        .querySelector('[data-testid="room-settings-favourite"] input')
+        ?.hasAttribute('disabled'),
+    ).toBe(false);
   });
 
   it('pins General writes to the opening Account after the draft changes', async () => {

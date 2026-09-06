@@ -59,6 +59,12 @@ export interface CreateRoomOptions {
 /** Room Library's authoritative answer for one Account-and-Room selection. */
 export type RoomLibrarySelectionAvailability = 'available' | 'unavailable';
 
+/** Exact Account-owned organisation preferences projected from a synced Room. */
+export interface RoomOrganisationSnapshot {
+  readonly favourite: boolean;
+  readonly lowPriority: boolean;
+}
+
 /** A joinable room shown in the channel sidebar. */
 export interface RoomSummary {
   id: string;
@@ -365,6 +371,27 @@ export class RoomLibraryService {
   ): RoomLibrarySelectionAvailability {
     const client = this.matrix.clientFor(accountId);
     return client?.getRoom(roomId) ? 'available' : 'unavailable';
+  }
+
+  /**
+   * Read the standard Room tags for one exact Account-and-Room selection.
+   *
+   * Room tags arrive through `/sync`, so the SDK Room is the authoritative local source.
+   * `null` means that exact Account or joined Room is unavailable; callers must not
+   * substitute a merged sidebar row or an active-Account default.
+   */
+  organisationFor(
+    accountId: string,
+    roomId: string,
+  ): RoomOrganisationSnapshot | null {
+    const room = this.matrix.clientFor(accountId)?.getRoom(roomId);
+    if (!room || room.getMyMembership() !== 'join') {
+      return null;
+    }
+    return {
+      favourite: room.tags?.['m.favourite'] !== undefined,
+      lowPriority: room.tags?.['m.lowpriority'] !== undefined,
+    };
   }
 
   /**

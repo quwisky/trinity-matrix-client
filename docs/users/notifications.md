@@ -39,6 +39,13 @@ Room modes are Matrix push rules and follow the account to other Matrix clients.
 multi-account row, choosing a mode applies it to every account represented by that row. If those
 accounts already differ, the row says **Different across accounts** until you choose a mode.
 
+For a single-Account change, open the Room and choose Room settings → **For you**. That section
+names the opening Account, refreshes its current rule from the homeserver before showing a value,
+and saves only to that Account even when the sidebar row combines several Accounts. It also stages
+Favourite and Low priority changes behind the same Save and Discard actions. If one field fails,
+the fields that succeeded stay saved and Retry sends only what remains. The sidebar shortcut keeps
+its combined-row scope; use For you when that broader behavior is not intended.
+
 ## Know how delivery works
 
 | Host                     | Delivery                                               | When the app is closed                                                |

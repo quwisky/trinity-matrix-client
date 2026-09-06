@@ -1429,7 +1429,12 @@ describe('RoomLibraryService per-account actions', () => {
     // account's room needs one.
     const latest = { getId: () => '$latest', status: null };
     const ownerRoom = {
-      ...fakeRoom({ roomId: '!r:hs', name: 'general' }),
+      ...fakeRoom({
+        roomId: '!r:hs',
+        name: 'general',
+        favourite: true,
+        lowPriority: true,
+      }),
       getLiveTimeline: () => ({
         getEvents: () => [latest],
         getState: () => undefined,
@@ -1466,6 +1471,18 @@ describe('RoomLibraryService per-account actions', () => {
 
     expect(ownerClient.leave).toHaveBeenCalledWith('!r:hs');
     expect(activeClient.leave).not.toHaveBeenCalled();
+  });
+
+  it('reads organisation tags from the exact joined Account', () => {
+    const { svc, activeClient, ownerClient } = setup();
+
+    expect(svc.organisationFor('@owner:hs', '!r:hs')).toEqual({
+      favourite: true,
+      lowPriority: true,
+    });
+    expect(ownerClient.getRoom).toHaveBeenCalledWith('!r:hs');
+    expect(activeClient.getRoom).not.toHaveBeenCalled();
+    expect(svc.organisationFor('@gone:hs', '!r:hs')).toBeNull();
   });
 
   it('still leaves on the active account when no owner is given', async () => {
