@@ -1107,6 +1107,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Electron allows persistent storage for its trusted main window, preventing the
+  “Protected browser storage is unavailable” warning when restoring a signed-in Account.
+  Remote content and child frames remain denied.
+
 - Storybook accessibility checks retain their injected Axe instance when the addon replaces
   the global during a scan. A regression exercises both owners without disabling accessibility
   checks. The repository media guard also distinguishes the four managed prototype-skill
