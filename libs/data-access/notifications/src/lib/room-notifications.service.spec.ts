@@ -643,6 +643,44 @@ describe('RoomNotificationsService per-account rules', () => {
     expect(activeClient.getRoomPushRule).toHaveBeenCalled();
   });
 
+  it('refreshes and reads the authoritative level from the exact Account', async () => {
+    const { svc, activeClient, ownerClient } = setupOwned();
+
+    await expect(firstValueFrom(svc.readMode(ROOM, '@owner:hs'))).resolves.toBe(
+      'mentions',
+    );
+
+    expect(ownerClient.getPushRules).toHaveBeenCalledOnce();
+    expect(activeClient.getPushRules).not.toHaveBeenCalled();
+  });
+
+  it('fails an authoritative read instead of guessing a default', async () => {
+    const { svc, ownerClient } = setupOwned();
+    ownerClient.getPushRules.mockRejectedValueOnce(new Error('offline'));
+
+    await expect(
+      firstValueFrom(svc.readMode(ROOM, '@owner:hs')),
+    ).rejects.toThrow('offline');
+    await expect(
+      firstValueFrom(svc.readMode(ROOM, '@gone:hs')),
+    ).rejects.toThrow('not available');
+  });
+
+  it('fails an authoritative read for a custom rule instead of presenting all', async () => {
+    const custom: Rule = {
+      rule_id: ROOM,
+      enabled: false,
+      default: false,
+      actions: ['notify'],
+      pattern: 'custom',
+    };
+    const { svc } = setup({ room: [custom] });
+
+    await expect(firstValueFrom(svc.readMode(ROOM, '@me:hs'))).rejects.toThrow(
+      'custom notification rule',
+    );
+  });
+
   it('reports a mixed mode when merged accounts disagree', () => {
     const { svc } = setupOwned();
 

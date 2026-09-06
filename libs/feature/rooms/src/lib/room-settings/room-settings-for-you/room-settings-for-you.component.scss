@@ -1,0 +1,54 @@
+@use '../../styles/mixins' as rooms;
+@use '../room-settings-panel' as panel;
+
+@layer components {
+  @include panel.layout;
+
+  .room-settings__choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    color: var(--trinity-text);
+    cursor: pointer;
+
+    > span {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 3px;
+      padding-top: 7px;
+    }
+
+    strong {
+      color: var(--trinity-text-bright);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    small {
+      color: var(--trinity-text-muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+  }
+
+  .room-settings__failure {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .room-settings__scope {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  @media #{rooms.$below-md} {
+    .room-settings__failure {
+      align-items: stretch;
+      flex-direction: column;
+    }
+  }
+}

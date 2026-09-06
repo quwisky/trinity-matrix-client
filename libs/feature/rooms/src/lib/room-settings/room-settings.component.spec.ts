@@ -20,6 +20,8 @@ import {
   type RoomSettingsSnapshot,
 } from '@trinity/data-access/room-administration';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { RoomNotificationsService } from '@trinity/data-access/notifications';
+import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { WorkspaceBackService } from '@trinity/application/workspace';
 import {
   WidgetManagementService,
@@ -150,6 +152,15 @@ async function build(options: BuildOptions = {}) {
           avatarMxc: 'mxc://hs/account',
         }),
       }),
+      MockProvider(RoomNotificationsService, {
+        readMode: () => of('mentions'),
+        setMode: () => of(undefined),
+      }),
+      MockProvider(RoomLibraryService, {
+        organisationFor: () => ({ favourite: false, lowPriority: false }),
+        setFavourite: () => of(undefined),
+        setLowPriority: () => of(undefined),
+      }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => snapshots.value.permissions,
         unban: () => DENIED,
@@ -227,10 +238,25 @@ describe('RoomSettingsComponent', () => {
     ).toContain('end-to-end encrypted');
     expect(cmp.sections.map(({ value }) => value)).toEqual([
       'general',
+      'for-you',
       'access',
       'widgets',
       'bans',
     ]);
+  });
+
+  it('protects Close when For you has an unsaved preference', async () => {
+    const { cmp, close, confirmResult } = await build();
+    cmp.forYouDraft.setFavourite(true);
+
+    cmp.close();
+    confirmResult.next(false);
+    expect(close).not.toHaveBeenCalled();
+    expect(cmp.forYouDraft.model().favourite).toBe(true);
+
+    cmp.close();
+    confirmResult.next(true);
+    expect(close).toHaveBeenCalledWith(false);
   });
 
   it('pins General writes to the opening Account after the draft changes', async () => {

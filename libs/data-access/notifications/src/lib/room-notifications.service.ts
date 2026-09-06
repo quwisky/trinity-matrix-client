@@ -7,7 +7,7 @@ import {
   type IPushRule,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { Observable, defer, from, throwError } from 'rxjs';
+import { Observable, defer, from, map, throwError } from 'rxjs';
 import {
   MatrixClientService,
   projectFromClient,
@@ -133,6 +133,29 @@ export class RoomNotificationsService {
     const modes = ids.map((accountId) => this.modeFor(roomId, accountId));
     const first = modes[0] ?? 'all';
     return modes.every((mode) => mode === first) ? first : 'mixed';
+  }
+
+  /**
+   * Refresh and read one exact Account-and-Room notification mode from its homeserver.
+   *
+   * Unlike {@link modeFor}, this command never turns a missing Account into the guessed
+   * default `all`. Settings surfaces use it while loading so unavailable and failed reads
+   * stay distinguishable from a real server answer. Cold and finite — no request starts
+   * until a caller subscribes.
+   */
+  readMode(roomId: string, accountId: string): Observable<RoomNotifyMode> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      if (!client) {
+        return throwError(() => new Error('This Account is not available.'));
+      }
+      return from(this.refreshRules(client)).pipe(
+        map(() => {
+          this.assertRulesAreWritable(client, roomId);
+          return this.modeForClient(client, roomId);
+        }),
+      );
+    });
   }
 
   private modeForClient(client: MatrixClient, roomId: string): RoomNotifyMode {

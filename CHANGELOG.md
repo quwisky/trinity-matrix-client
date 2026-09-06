@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room settings now has an Account-exact For you section.** Every Room member can stage its
+  notification mode, Favourite and Low priority values for the Account that opened settings,
+  including when one sidebar row represents several Accounts. Authoritative Matrix rule and tag
+  reads expose loading, unavailable and failed states instead of guessed defaults; Save retains
+  successful fields, retries only failures and protects unfinished edits on Close or Back. The
+  existing sidebar shortcuts keep their intentional combined-row scope, and installation-wide
+  read-receipt and link-preview preferences remain outside Room settings.
+
 - **Space settings now shares the Account-bound responsive settings hub.** General and Access
   stay attached to the Account and Space that opened the hub, preserve section drafts across
   live Matrix updates, retry only failed fields, and never retarget a late write after an Account
