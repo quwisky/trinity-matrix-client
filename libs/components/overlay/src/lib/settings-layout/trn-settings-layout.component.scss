@@ -134,18 +134,17 @@
       max(var(--trinity-space-7), env(safe-area-inset-bottom));
   }
 
-  .settings-layout[data-trn-layout='fullscreen'] .settings-layout__workspace {
+  .settings-layout[data-compact='true'] .settings-layout__workspace {
     flex-direction: column;
   }
 
-  .settings-layout[data-trn-layout='fullscreen'] .settings-layout__directory {
+  .settings-layout[data-compact='true'] .settings-layout__directory {
     width: auto;
     flex: 1;
     border-right: 0;
   }
 
-  .settings-layout[data-trn-layout='fullscreen']
-    .settings-layout__detail-content {
+  .settings-layout[data-compact='true'] .settings-layout__detail-content {
     padding: var(--trinity-space-2) 0
       max(var(--trinity-space-7), env(safe-area-inset-bottom));
   }

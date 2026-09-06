@@ -265,8 +265,13 @@ Web and Electron use a centred dialog treatment; native mobile interaction uses 
 selected by operating system rather than pointer type. The one shared Host Back owner starts with
 the application root, closes the topmost confirmation before System Status, and remains shared as
 the live session opens. Support details are generated locally and copied only on explicit request;
-there is no upload path. `scripts/system-status-contract.spec.mjs` prevents the retired append-only
-warning types, events and compatibility counter from returning.
+there is no upload path. The status surface reuses the public settings layout: desktop keeps the
+directory beside detail, while compact navigation starts at Overview and lists only actionable
+capability groups. Back returns from detail to the directory and then dismisses through the shared
+Host Back owner. If the selected capability disappears, the view returns to Overview; a valid
+selection remains active. Compact geometry follows the text-scaled viewport signal, and mobile
+sheet presentation is an independent operating-system selection. `scripts/system-status-contract.spec.mjs`
+prevents the retired append-only warning types, events and compatibility counter from returning.
 
 ## Account lifecycle
 

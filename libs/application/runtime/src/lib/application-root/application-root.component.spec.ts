@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideRouter } from '@angular/router';
 import {
   TrnAlertService,
@@ -17,6 +18,7 @@ import type {
   ApplicationRuntimeState,
 } from '../application-runtime.models';
 import { ApplicationRuntimeService } from '../application-runtime.service';
+import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 import { CapabilityHealthService } from '../capability-health.service';
 import { ApplicationRootComponent } from './application-root.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
@@ -34,6 +36,7 @@ describe('ApplicationRootComponent', () => {
     const rendered = await render(ApplicationRootComponent, {
       providers: [
         provideRouter([]),
+        provideTrnIcons(),
         { provide: ApplicationRuntimeService, useValue: { state, recover } },
         {
           provide: BUILD_INFO,
@@ -233,6 +236,126 @@ describe('ApplicationRootComponent', () => {
     expect(status.textContent).toContain('Alice');
     expect(status.textContent).not.toContain('@private:example.org');
     expect(status.textContent).toContain('1 actionable scope');
+  });
+
+  it('opens Overview and navigates to safe Support details without leaving startup', async () => {
+    const { fixture, getByTestId, getByRole, queryByRole } = await setup({
+      phase: 'blocked',
+      attempt: 1,
+      failure: {
+        stage: 'account-restoration',
+        recovery: 'reauthenticate',
+        diagnostic: { code: 'active-account-unavailable' },
+      },
+      settlements: [],
+    });
+    // The startup entry point is available independently of a ready Workspace.
+    getByRole('button', { name: 'System Status' }).click();
+    fixture.detectChanges();
+    const navigation = getByRole('navigation', {
+      name: 'System Status sections',
+    });
+    expect(navigation).toBeTruthy();
+    expect(getByRole('button', { name: 'Overview' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(getByRole('heading', { name: 'Overview' })).toBeTruthy();
+    expect(getByTestId('system-status').textContent).toContain(
+      'Trinity could not finish starting',
+    );
+
+    getByRole('button', { name: 'Support details' }).click();
+    fixture.detectChanges();
+    expect(getByRole('heading', { name: 'Support details' })).toBeTruthy();
+    expect(getByRole('button', { name: 'Copy support details' })).toBeTruthy();
+    expect(queryByRole('heading', { name: 'Overview' })).toBeNull();
+    expect(getByTestId('app-startup-blocked')).toBeTruthy();
+  });
+
+  it('keeps the selected capability through refresh and returns to Overview when it resolves', async () => {
+    const { fixture, health, getByRole, getByTestId, queryByRole } =
+      await setup({
+        phase: 'ready',
+        attempt: 1,
+        settlements: [],
+      });
+    const fact = {
+      capability: 'accounts',
+      operation: 'restore',
+      context: Symbol('account'),
+      generation: 1,
+      demanded: true,
+      preparation: 'failed' as const,
+      ownership: 'retained' as const,
+      condition: 'degraded' as const,
+      code: 'account-restore-transient-network',
+    };
+    health.report(fact, () => of({ kind: 'success' as const }));
+    fixture.detectChanges();
+    getByRole('button', { name: 'System Status' }).click();
+    fixture.detectChanges();
+    getByRole('button', { name: 'Accounts' }).click();
+    fixture.detectChanges();
+    expect(queryByRole('heading', { name: 'Overview' })).toBeNull();
+    expect(getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+
+    health.report(fact, () => of({ kind: 'success' as const }));
+    fixture.detectChanges();
+    expect(getByRole('button', { name: 'Accounts' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    health.reset();
+    fixture.detectChanges();
+    expect(queryByRole('button', { name: 'Accounts' })).toBeNull();
+    expect(getByRole('heading', { name: 'Overview' })).toBeTruthy();
+    expect(getByTestId('system-status-all-working')).toBeTruthy();
+  });
+
+  it('returns mobile Back to sections before dismissing System Status', async () => {
+    const width = Object.getOwnPropertyDescriptor(window, 'innerWidth')!;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    });
+    try {
+      const { fixture, getByTestId, getByRole, queryByTestId } = await setup({
+        phase: 'ready',
+        attempt: 1,
+        settlements: [],
+      });
+      getByTestId('system-status-access').click();
+      fixture.detectChanges();
+      getByRole('button', { name: 'Back to sections' }).click();
+      fixture.detectChanges();
+      expect(getByTestId('system-status-detail')).toHaveClass(
+        'settings-pane--hidden',
+      );
+      expect(getByTestId('system-status-directory')).not.toHaveClass(
+        'settings-pane--hidden',
+      );
+      getByRole('button', { name: 'Support details' }).click();
+      fixture.detectChanges();
+      expect(getByRole('heading', { name: 'Support details' })).toBeTruthy();
+
+      const visibility = fixture.debugElement.injector.get(
+        SystemStatusVisibilityService,
+      );
+      visibility.back();
+      fixture.detectChanges();
+      expect(getByTestId('system-status-directory')).not.toHaveClass(
+        'settings-pane--hidden',
+      );
+      visibility.back();
+      fixture.detectChanges();
+      expect(queryByTestId('system-status')).toBeNull();
+      getByTestId('system-status-access').click();
+      fixture.detectChanges();
+      expect(getByRole('heading', { name: 'Overview' })).toBeTruthy();
+    } finally {
+      Object.defineProperty(window, 'innerWidth', width);
+    }
   });
 
   it('keeps an all-working System Status entry point available', async () => {

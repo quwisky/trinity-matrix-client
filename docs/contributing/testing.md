@@ -200,6 +200,14 @@ restored presence and an unchanged Conversation URL. It introduces no production
 Screenshots are Playwright attachments under ignored invocation output, never tracked media.
 Browser mobile emulation does not establish native Android or iOS runtime validation.
 
+The `host-shell/system-status.spec.mts` journey covers the System Status presentation contract:
+desktop keeps the directory and detail panes side by side, compact mobile starts at Overview and
+uses the directory/detail Back cycle, actionable groups remain selectable, support details stay
+value-free, and a recovery attempt remains owned when the surface is dismissed and reopened.
+The Pixel 5 profile also proves the operating-system-selected bottom-sheet geometry and that the
+text-scaled compact layout remains usable. A touch-capable desktop is kept on the desktop
+interaction model; this does not establish native sheet behavior on Android or iOS.
+
 Trust-health changes additionally prove that asynchronous initial and event-driven reads settle
 through Projection Runtime, last-known data is explicitly stale, and compatibility signals never
 turn unavailable verification or backup state into `false`. Exercise retained invalidation and

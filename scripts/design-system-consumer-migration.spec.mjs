@@ -308,8 +308,8 @@ describe('migrated application design-system consumers', () => {
     );
 
     const surfaces = tags(/<[^>]*\btrnOverlaySurface\b[^>]*>/gu);
-    // Settings dialogs now consume one public layout that owns their overlay surface.
-    expect(surfaces).toHaveLength(25);
+    // Settings dialogs and System Status consume one public layout owning their surface.
+    expect(surfaces).toHaveLength(24);
     for (const [file, tag] of surfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
     }
@@ -319,7 +319,7 @@ describe('migrated application design-system consumers', () => {
         .sort(),
     ).toEqual([
       '2xl',
-      ...Array(5).fill('lg'),
+      ...Array(4).fill('lg'),
       ...Array(14).fill('md'),
       ...Array(4).fill('sm'),
       'xl',
@@ -330,7 +330,6 @@ describe('migrated application design-system consumers', () => {
         .sort(),
     ).toEqual([
       ...Array(13).fill('dialog'),
-      'dynamic',
       'dynamic',
       ...Array(4).fill('fullscreen'),
       ...Array(6).fill('popover'),

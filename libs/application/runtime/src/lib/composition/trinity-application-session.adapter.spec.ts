@@ -374,15 +374,22 @@ describe('TrinityApplicationSessionAdapter', () => {
     const test = setup();
     const owner = test.adapter.runInteractions().subscribe();
     test.statusVisibility.show();
+    const sectionBack = vi.fn();
+    const unregister = test.statusVisibility.registerBackHandler(sectionBack);
     test.dialogOpen.set(true);
     test.closeTopmost.mockReturnValue(true);
 
     test.backIntents.next({ canGoBack: false });
     expect(test.closeTopmost).toHaveBeenCalledOnce();
+    expect(sectionBack).not.toHaveBeenCalled();
     expect(test.statusVisibility.open()).toBe(true);
     expect(test.background).not.toHaveBeenCalled();
 
     test.dialogOpen.set(false);
+    test.backIntents.next({ canGoBack: false });
+    expect(sectionBack).toHaveBeenCalledOnce();
+    expect(test.statusVisibility.open()).toBe(true);
+    unregister();
     test.backIntents.next({ canGoBack: false });
     expect(test.statusVisibility.open()).toBe(false);
     expect(test.background).not.toHaveBeenCalled();
