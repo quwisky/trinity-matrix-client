@@ -33,6 +33,11 @@ test('@renderer-smoke boots the app over the trinity:// custom scheme', async ()
   await expect(page.getByLabel('Homeserver')).toBeVisible();
 });
 
+test('grants persistent storage to the trusted app renderer', async () => {
+  expect(await page.evaluate(() => navigator.storage.persist())).toBe(true);
+  expect(await page.evaluate(() => navigator.storage.persisted())).toBe(true);
+});
+
 test('boots the shell without renderer errors', async () => {
   // Deliberately NOT a WASM assertion, despite what this test used to be called.
   // `preloadCryptoWasm()` is only reached from an authenticated session

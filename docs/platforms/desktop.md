@@ -92,8 +92,11 @@ The main window uses context isolation, sandboxing, web security, and disabled N
 integration for frames and workers. The renderer cannot use Node or `ipcRenderer`.
 `window.open`, navigation away from the app origin, and webviews are denied; external
 HTTP(S) links go to the operating-system browser. The permission policy permits Trinity's
-main frame to request camera/microphone, geolocation, and sanitized clipboard writes, and
-denies other powerful permission requests.
+main frame to request camera/microphone, geolocation, persistent storage, and sanitized
+clipboard writes, and denies other powerful permission requests. Persistent storage protects
+local data against storage-pressure eviction; both permission requests and checks retain
+the trusted-origin and main-frame restrictions. A genuine persistence failure remains a
+non-blocking System Status warning and does not reset saved Accounts.
 
 The window hides to the tray on close so Matrix sync and notifications can continue.
 Explicit Quit, the application menu, and OS shutdown set the quit state and allow the

@@ -55,10 +55,21 @@ export function hardenContents(contents: Electron.WebContents): void {
   contents.on('will-attach-webview', (event) => event.preventDefault());
 }
 
+/** Electron emits persistent-storage at runtime but omits it from its permission union. */
+function isAllowedAppPermission(permission: string): boolean {
+  return (
+    permission === 'persistent-storage' ||
+    permission === 'media' ||
+    permission === 'geolocation' ||
+    permission === 'clipboard-sanitized-write'
+  );
+}
+
 /**
  * Restrict renderer permission requests to the capabilities the app actually uses —
  * media (microphone for voice messages, camera for QR verification), geolocation
- * (location sharing), and sanitized clipboard writes for explicit copy actions. Electron's
+ * (location sharing), persistent storage (local data durability), and sanitized clipboard
+ * writes for explicit copy actions. Electron's
  * default grants requests that reach `whenReady`; without a handler, every other powerful
  * permission would be auto-approved too. Clipboard reads remain denied.
  */
@@ -73,11 +84,7 @@ export function installPermissionPolicy(session: Electron.Session): void {
         callback(false);
         return;
       }
-      callback(
-        permission === 'media' ||
-          permission === 'geolocation' ||
-          permission === 'clipboard-sanitized-write',
-      );
+      callback(isAllowedAppPermission(permission));
     },
   );
   session.setPermissionCheckHandler(
@@ -87,9 +94,7 @@ export function installPermissionPolicy(session: Electron.Session): void {
         details.isMainFrame &&
         isAppUrl(contents.getURL()) &&
         isAppUrl(details.requestingUrl ?? requestingOrigin) &&
-        (permission === 'media' ||
-          permission === 'geolocation' ||
-          permission === 'clipboard-sanitized-write'),
+        isAllowedAppPermission(permission),
       ),
   );
 }

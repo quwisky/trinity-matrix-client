@@ -75,6 +75,20 @@ describe('installPermissionPolicy', () => {
   const appContents = { getURL: () => 'trinity://app/rooms' };
   const remoteContents = { getURL: () => 'https://widgets.example/' };
 
+  it('allows the trusted main frame to request persistent storage', () => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const request = s.setPermissionRequestHandler.mock.calls[0][0];
+    const granted = vi.fn();
+
+    request(appContents, 'persistent-storage', granted, {
+      isMainFrame: true,
+      requestingUrl: 'trinity://app/rooms',
+    });
+
+    expect(granted).toHaveBeenCalledWith(true);
+  });
+
   it('allows only the trusted main frame to use app capabilities', () => {
     const s = fakeSession();
     installPermissionPolicy(s as never);
@@ -130,6 +144,53 @@ describe('installPermissionPolicy', () => {
     expect(decide('clipboard-sanitized-write', undefined, remoteContents)).toBe(
       false,
     );
+  });
+
+  it('allows the trusted main frame to query persistent storage', () => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const check = s.setPermissionCheckHandler.mock.calls[0][0];
+
+    expect(
+      check(appContents, 'persistent-storage', 'trinity://app', {
+        isMainFrame: true,
+        requestingUrl: 'trinity://app/rooms',
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['child frame', appContents, 'trinity://app/rooms', false],
+    ['remote requesting URL', appContents, 'https://widgets.example/', true],
+    ['remote contents', remoteContents, 'trinity://app/rooms', true],
+    ['missing requesting URL', appContents, undefined, true],
+    ['missing frame identity', appContents, 'trinity://app/rooms', undefined],
+    ['spoofed host', appContents, 'trinity://app.evil/rooms', true],
+    ['URL credentials', appContents, 'trinity://user@app/rooms', true],
+  ])(
+    'denies persistent storage for %s',
+    (_name, contents, url, isMainFrame) => {
+      const s = fakeSession();
+      installPermissionPolicy(s as never);
+      const request = s.setPermissionRequestHandler.mock.calls[0][0];
+      const check = s.setPermissionCheckHandler.mock.calls[0][0];
+      const granted = vi.fn();
+      const details = { isMainFrame, requestingUrl: url };
+
+      request(contents, 'persistent-storage', granted, details);
+      expect(granted).toHaveBeenCalledWith(false);
+      expect(check(contents, 'persistent-storage', url, details)).toBe(false);
+    },
+  );
+
+  it('denies a persistent-storage check without WebContents', () => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const check = s.setPermissionCheckHandler.mock.calls[0][0];
+
+    expect(
+      check(null, 'persistent-storage', 'trinity://app', { isMainFrame: true }),
+    ).toBe(false);
   });
 
   it('the sync check handler mirrors the request policy', () => {
