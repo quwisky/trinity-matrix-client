@@ -151,6 +151,7 @@ async function build(options: BuildOptions = {}) {
       }),
       MockProvider(RoomActionPermissionsService, {
         settings: () => snapshots.value.permissions,
+        settingsFor: () => snapshots.value.permissions,
         unban: () => DENIED,
       }),
       MockProvider(RoomAliasesService, {
@@ -520,7 +521,7 @@ describe('SpaceSettingsComponent', () => {
     expect(setJoinRule).toHaveBeenCalledWith(TARGET, JoinRule.Public);
   });
 
-  it('keeps legacy Addresses and Bans reachable only for the opening active Account', async () => {
+  it('keeps exact-Account Addresses reachable after the Active Account changes', async () => {
     const { cmp, fixture, container, emit } = await build();
 
     cmp.selectSection('addresses');
@@ -528,11 +529,7 @@ describe('SpaceSettingsComponent', () => {
     expect(container.querySelector('trn-room-aliases')).not.toBeNull();
 
     await emit(spaceSnapshot({ openingAccountActive: false }));
-    expect(
-      container.querySelector('[data-testid="space-settings-panel-addresses"]')
-        ?.textContent,
-    ).toContain('Switch back to the opening Account');
-    expect(container.querySelector('trn-room-aliases')).toBeNull();
+    expect(container.querySelector('trn-room-aliases')).not.toBeNull();
   });
 
   it('does not acquire Room-only history, encryption or widgets controls', async () => {

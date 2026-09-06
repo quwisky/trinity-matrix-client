@@ -1,97 +1,228 @@
-<section class="room-settings__field" data-testid="room-aliases">
+<section class="room-settings__field min-w-0" data-testid="room-aliases">
   @let permission = availability();
   <span class="room-settings__label">Addresses</span>
+  <p class="text-13 text-muted-foreground">
+    Published Matrix addresses let people find and join this
+    {{ noun().toLowerCase() }}.
+  </p>
 
-  @if (isEmpty()) {
-    <p class="text-13 text-muted-foreground" data-testid="room-aliases-empty">
-      This room has no addresses yet.
+  <div class="min-w-0 rounded-md border border-border bg-muted/30 p-3">
+    <span class="text-xs font-medium text-muted-foreground"
+      >Primary address</span
+    >
+    @if (canonical(); as primary) {
+      <code
+        #primaryAddress
+        class="mt-1 block text-sm break-all text-foreground"
+        data-testid="room-alias-primary"
+        >{{ primary }}</code
+      >
+      @if (!canonicalIsLocal()) {
+        <span class="mt-2 flex flex-wrap items-center gap-1">
+          <button
+            trnBtn
+            type="button"
+            variant="secondary"
+            presentation="ghost"
+            size="sm"
+            (click)="copy(primary, primaryAddress)"
+            data-testid="room-alias-primary-copy"
+          >
+            Copy
+          </button>
+          <a
+            trnBtn
+            variant="secondary"
+            presentation="ghost"
+            size="sm"
+            [href]="matrixToUrl(primary)"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="room-alias-primary-link"
+          >
+            Open link
+          </a>
+        </span>
+      }
+    } @else {
+      <p
+        class="mt-1 text-sm text-muted-foreground"
+        data-testid="room-alias-primary-empty"
+      >
+        No primary address
+      </p>
+    }
+  </div>
+
+  @if (loadFailed()) {
+    <div class="rounded-md border border-border p-3" role="status">
+      <p class="text-sm">Addresses could not be loaded for this Account.</p>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="outline"
+        size="sm"
+        class="mt-2"
+        (click)="load()"
+        data-testid="room-aliases-retry"
+      >
+        Try again
+      </button>
+    </div>
+  } @else if (loading()) {
+    <p class="text-13 text-muted-foreground" role="status">
+      Loading addresses…
     </p>
+  } @else if (hasNoLocalAddresses()) {
+    @if (canonical()) {
+      <p
+        class="text-13 text-muted-foreground"
+        data-testid="room-aliases-local-empty"
+      >
+        This Account's homeserver has no local address for the
+        {{ noun().toLowerCase() }}.
+      </p>
+    } @else {
+      <p class="text-13 text-muted-foreground" data-testid="room-aliases-empty">
+        This {{ noun().toLowerCase() }} has no published addresses yet.
+      </p>
+    }
   } @else {
     <ul class="flex flex-col gap-2">
       @for (alias of aliases(); track alias) {
         <li
-          class="flex items-center justify-between gap-3"
+          class="flex min-w-0 flex-col gap-3 rounded-md border border-border p-3"
           data-testid="room-alias"
         >
-          <span class="flex min-w-0 items-center gap-2">
-            <span class="truncate text-sm">{{ alias }}</span>
+          <span class="flex min-w-0 items-start gap-2">
+            <code
+              #address
+              tabindex="-1"
+              class="min-w-0 flex-1 text-sm break-all text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-testid="room-alias-value"
+              >{{ alias }}</code
+            >
             @if (alias === canonical()) {
               <span
-                class="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+                class="rounded shrink-0 bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
                 data-testid="room-alias-main"
               >
-                Main
+                Primary
               </span>
             }
           </span>
-          <span class="flex shrink-0 items-center gap-1">
-            @if (alias !== canonical()) {
+          <span class="flex flex-wrap items-center gap-1">
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              (click)="copy(alias, address)"
+              data-testid="room-alias-copy"
+            >
+              Copy
+            </button>
+            <a
+              trnBtn
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              [href]="matrixToUrl(alias)"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="room-alias-link"
+            >
+              Open link
+            </a>
+            @if (permission.available && alias !== canonical()) {
               <button
                 trnBtn
                 type="button"
                 variant="secondary"
                 presentation="ghost"
                 size="sm"
-                (click)="setMain(alias)"
-                [trnActionAllowed]="permission.available"
-                [trnActionDisabledReason]="permission.reason"
-                [trnTooltip]="permission.reason ?? 'Make main address'"
+                [disabled]="settingPrimary() !== null || isRemoving(alias)"
+                [loading]="settingPrimary() === alias"
+                (click)="setPrimary(alias)"
                 data-testid="room-alias-set-main"
               >
-                Make main
+                {{
+                  settingPrimary() === alias
+                    ? 'Making primary…'
+                    : 'Make primary'
+                }}
               </button>
             }
-            <button
-              trnBtn
-              type="button"
-              variant="secondary"
-              presentation="outline"
-              size="sm"
-              [disabled]="isRemoving(alias)"
-              (click)="remove(alias)"
-              [trnActionAllowed]="permission.available"
-              [trnActionDisabledReason]="permission.reason"
-              [trnTooltip]="permission.reason ?? 'Remove address'"
-              data-testid="room-alias-remove"
-            >
-              {{ isRemoving(alias) ? 'Removing…' : 'Remove' }}
-            </button>
+            @if (permission.available) {
+              <button
+                trnBtn
+                type="button"
+                variant="secondary"
+                presentation="outline"
+                size="sm"
+                [disabled]="isRemoving(alias) || isConfirmingRemoval(alias)"
+                [loading]="isRemoving(alias)"
+                (click)="remove(alias)"
+                data-testid="room-alias-remove"
+              >
+                {{ isRemoving(alias) ? 'Removing…' : 'Remove' }}
+              </button>
+            }
           </span>
         </li>
       }
     </ul>
   }
 
-  <div class="flex items-center gap-2">
-    <span class="text-sm text-muted-foreground">#</span>
-    <input
-      trnInput
-      class="min-w-0 flex-1"
-      [formField]="aliasForm.localpart"
-      placeholder="new-address"
-      autocomplete="off"
-      (keydown.enter)="onEnter($event)"
-      data-testid="room-alias-input"
-    />
-    @if (serverName) {
-      <span class="truncate text-sm text-muted-foreground"
-        >:{{ serverName }}</span
+  @if (permission.available) {
+    <div class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
+      <label class="min-w-0 flex-1">
+        <span class="mb-1 block text-xs font-medium text-muted-foreground"
+          >New local address</span
+        >
+        <span class="flex min-w-0 items-center gap-1">
+          <span class="text-sm text-muted-foreground">#</span>
+          <input
+            trnInput
+            class="min-w-0 flex-1"
+            [formField]="aliasForm.localpart"
+            placeholder="new-address"
+            autocomplete="off"
+            (keydown.enter)="onEnter($event)"
+            data-testid="room-alias-input"
+          />
+          @if (serverName(); as server) {
+            <span class="max-w-40 text-sm break-all text-muted-foreground"
+              >:{{ server }}</span
+            >
+          }
+        </span>
+      </label>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        presentation="outline"
+        size="sm"
+        class="self-start sm:self-auto"
+        [disabled]="adding()"
+        [loading]="adding()"
+        (click)="add()"
+        data-testid="room-alias-add"
       >
-    }
-    <button
-      trnBtn
-      type="button"
-      variant="secondary"
-      presentation="outline"
-      size="sm"
-      [disabled]="adding()"
-      (click)="add()"
-      [trnActionAllowed]="permission.available"
-      [trnActionDisabledReason]="permission.reason"
-      [trnTooltip]="permission.reason ?? 'Add address'"
-      data-testid="room-alias-add"
+        {{ adding() ? 'Adding…' : 'Add address' }}
+      </button>
+    </div>
+  } @else {
+    <p
+      class="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground"
+      role="status"
+      data-testid="room-aliases-read-only"
     >
-      {{ adding() ? 'Adding…' : 'Add' }}
-    </button>
-  </div>
+      Existing addresses remain available to copy and open.
+      {{ restrictionReason() }}
+    </p>
+  }
 </section>

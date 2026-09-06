@@ -21,7 +21,7 @@ export interface RoomAdministrationRecoveryOutcome {
   readonly recovery: RoomAdministrationRecovery;
   readonly operation: string;
   /** The server-side step known to have completed before a later step failed. */
-  readonly completedStep?: 'media-upload';
+  readonly completedStep?: 'media-upload' | 'canonical-address-cleared';
 }
 
 /** Typed command error whose metadata never exposes Matrix event or secret content. */
@@ -68,7 +68,9 @@ export function roomAdministrationInvalidInput(
 /** Convert a rejected Matrix request into a stable recovery contract. */
 export function recoverRoomAdministrationRequest<T>(
   operation: string,
-  partial?: { readonly completedStep: 'media-upload' },
+  partial?: {
+    readonly completedStep: 'media-upload' | 'canonical-address-cleared';
+  },
 ): MonoTypeOperatorFunction<T> {
   return (source) =>
     source.pipe(

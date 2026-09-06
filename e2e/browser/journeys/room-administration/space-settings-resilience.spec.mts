@@ -7,6 +7,7 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
+  openSettingsTab,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -213,5 +214,21 @@ test.describe('Space settings resilience', () => {
       )
       .then((response) => response.json());
     expect(topic.topic).toBe('Owned by opening Account');
+
+    // Addresses now share that same exact-target contract. The active member cannot
+    // publish aliases, so success proves the action stayed on the opening owner's client.
+    await openSettingsTab(page, 'space-settings', 'addresses');
+    const localpart = `opening-owner-${runId}`;
+    const alias = `#${localpart}:localhost`;
+    await page.getByTestId('room-alias-input').fill(localpart);
+    await page.getByTestId('room-alias-add').click();
+    await expect(
+      page.getByTestId('room-alias').filter({ hasText: alias }),
+    ).toBeVisible({ timeout: 20_000 });
+    const resolved = await request.get(
+      `${hs}/_matrix/client/v3/directory/room/${encodeURIComponent(alias)}`,
+      { headers: { Authorization: `Bearer ${memberToken}` } },
+    );
+    expect((await resolved.json()).room_id).toBe(spaceId);
   });
 });

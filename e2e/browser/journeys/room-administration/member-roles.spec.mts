@@ -570,16 +570,14 @@ test.describe('Member role sections', () => {
       'aria-disabled',
       'true',
     );
-    await page.getByTestId('room-settings-tab-access').click();
-    const aliasInput = page.getByTestId('room-alias-input');
-    const addAlias = page.getByTestId('room-alias-add');
-    await expect(aliasInput).toBeVisible();
-    await expect(aliasInput).toBeDisabled();
-    await expect(addAlias).toHaveAttribute('aria-disabled', 'true');
-    await addAlias.focus();
-    await expect(page.getByRole('tooltip')).toContainText(
+    await page.getByTestId('room-settings-tab-addresses').click();
+    await expect(page.getByTestId('room-aliases-read-only')).toContainText(
       "Your role cannot change this room's addresses.",
     );
+    await expect(page.getByTestId('room-alias-input')).toHaveCount(0);
+    await expect(page.getByTestId('room-alias-add')).toHaveCount(0);
+    await expect(page.getByTestId('room-alias-set-main')).toHaveCount(0);
+    await expect(page.getByTestId('room-alias-remove')).toHaveCount(0);
   });
 });
 
