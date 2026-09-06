@@ -1,6 +1,6 @@
 name: Bug report
 description: Something in Trinity behaves incorrectly
-labels: [bug]
+labels: [bug, needs-triage]
 body:
   - type: markdown
     attributes:
@@ -9,17 +9,27 @@ body:
 
         **Before you paste anything:** Trinity is an end-to-end encrypted client, and its
         logs can contain access tokens, recovery keys and message content. Redact them.
-        If the bug is a *security* problem — anything touching encryption, key handling or
-        sessions — please close this and email instead, so it is not disclosed publicly.
+        Report suspected security vulnerabilities privately to [quwisky@qwky.eu](mailto:quwisky@qwky.eu).
+        Ordinary encryption, verification and sign-in bugs can use this form.
+        Search [existing issues](https://github.com/quwisky/trinity-matrix-client/issues)
+        first and add new information to a matching report.
 
   - type: textarea
     id: summary
     attributes:
       label: What happened
-      description: What went wrong, and what you expected instead.
+      description: Describe what you actually observed, including any error message.
       placeholder: |
         Editing a message a second time replaced the wrong version.
-        I expected the newest text to be shown.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Describe the result you expected. Say "unknown" if you are unsure.
+      placeholder: The latest edited text should appear in the room.
     validations:
       required: true
 
@@ -27,7 +37,10 @@ body:
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Numbered steps someone else can follow from a fresh sign-in.
+      description: |
+        Include the starting state (for example, already signed in) and the actions
+        before the problem. If you cannot reproduce it reliably, say so and describe
+        what you remember; "unknown" is fine for steps you do not know.
       placeholder: |
         1. Sign in to matrix.org
         2. Open an encrypted room
@@ -39,22 +52,26 @@ body:
   - type: dropdown
     id: platform
     attributes:
-      label: Platform
-      description: Trinity ships from one codebase to four; the same bug often exists on only one.
+      label: Affected platforms
+      description: Select only where you observed the problem. Choose Unknown if you cannot tell.
+      multiple: true
       options:
         - Web (browser)
         - Desktop (Electron)
         - Android
         - iOS
-        - More than one / not sure
+        - Unknown
     validations:
       required: true
 
-  - type: input
+  - type: textarea
     id: os
     attributes:
-      label: OS and browser version
-      placeholder: Firefox 141 on Fedora 42 · or · Android 15, Pixel 8
+      label: Environment
+      description: |
+        For each affected platform, give the OS, browser (for Web), and device if relevant.
+        Include how you installed or launched Trinity if known. Write "unknown" for missing details.
+      placeholder: Desktop (Electron), Fedora 42, AppImage; Web, Firefox 141 on Fedora 42
     validations:
       required: true
 
@@ -62,7 +79,7 @@ body:
     id: version
     attributes:
       label: Trinity version
-      description: 'Settings shows it at the bottom of the list, like `Trinity v0.1.0 · ae36459`.'
+      description: Copy the version and commit from Settings if available. Write "unknown" if you cannot access them.
       placeholder: Trinity v0.1.0 · ae36459
     validations:
       required: true
@@ -71,20 +88,20 @@ body:
     id: encrypted
     attributes:
       label: Was the room encrypted?
-      description: Encrypted and unencrypted rooms take different code paths almost everywhere, so this decides where to look first.
+      description: Optional. Include this if the problem involves a room.
       options:
         - 'Yes'
         - 'No'
         - Not sure
         - Not applicable (not about a room)
     validations:
-      required: true
+      required: false
 
   - type: dropdown
     id: area
     attributes:
       label: Area
-      description: A rough guess is fine — it only steers the first look.
+      description: Optional. Choose an area if you know where the problem belongs.
       options:
         - Timeline and messages
         - Composer (sending, editing, attachments)
@@ -97,7 +114,7 @@ body:
         - Desktop app (window, tray, deep links)
         - Something else / not sure
     validations:
-      required: true
+      required: false
 
   - type: input
     id: homeserver
@@ -116,12 +133,8 @@ body:
         **Redact access tokens, recovery keys and anything you would not post publicly.**
       render: shell
 
-  - type: checkboxes
-    id: confirmations
+  - type: textarea
+    id: context
     attributes:
-      label: Before submitting
-      options:
-        - label: I searched existing issues and this is not a duplicate.
-          required: true
-        - label: I removed access tokens, recovery keys and private message content from anything I pasted.
-          required: true
+      label: Other observations
+      description: Optional. How often does it happen? Did it work in an earlier version? Include any checks you actually tried and their results; no diagnosis is required.

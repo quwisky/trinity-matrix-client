@@ -36,6 +36,42 @@ pnpm nx show project trinity --json
 A directory name is not always an Nx project name: nested libraries use names such as
 `data-access-room-library`.
 
+## Reporting issues and opening pull requests
+
+Use the [issue chooser](https://github.com/quwisky/trinity-matrix-client/issues/new/choose)
+and search existing reports first. Add new evidence to a matching report instead of
+opening a duplicate. Report suspected security vulnerabilities through the private
+contact in the chooser; ordinary encryption, verification and sign-in bugs belong
+in the bug form.
+
+Bug reports ask for observed and expected behavior, reproduction steps, affected
+platforms, environment and Trinity version. Select only platforms where you saw the
+problem and include the starting state, such as an already signed-in Account. Use
+"unknown" for missing details; an intermittent bug does not need a reliable reproduction
+to be reported. Logs, encryption details, frequency and the last working version are
+optional. Redact tokens, recovery keys and private message content before posting.
+
+Feature requests ask for the problem and the desired outcome. A proposed solution,
+prior examples and platform scope are optional; roadmap classification belongs to triage.
+Both forms add their category (`bug` or `enhancement`) and `needs-triage`. These labels
+start evaluation; they do not mark a report ready for implementation.
+
+During triage, distinguish the reporter's observations, checks actually performed and
+unresolved questions. Add an implementation brief in a comment when requirements are
+ready: desired behavior, acceptance criteria, validation, dependencies and scope
+boundaries. Contributors do not need to supply that brief to open a report.
+
+The PR template uses **Change**, **Related issue**, **Validation** and optional **Notes**.
+Explain what changes and why, adding design detail only when useful to review. Use
+`Closes #123` when the PR resolves an issue, `Refs #123` for partial or related work,
+or "None" when there is no issue. Report actual commands or manual checks and their
+outcomes, plus tested and untested affected platforms. State failed/skipped checks and
+missing prerequisites plainly; do not replace this evidence with a blanket checklist.
+Choose checks from [Testing](testing.md), and update relevant docs and the changelog
+before review. Put remaining work, limitations and migration/configuration needs in
+Notes; explicitly flag migrations, secrets handling, infrastructure configuration and
+public API changes. Remove Notes when empty.
+
 ## Use the right guide
 
 | Task                                               | Guide                                                |

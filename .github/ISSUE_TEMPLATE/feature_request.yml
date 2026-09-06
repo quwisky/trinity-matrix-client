@@ -1,18 +1,13 @@
 name: Feature request
 description: Suggest a capability Trinity does not have yet
-labels: [enhancement]
+labels: [enhancement, needs-triage]
 body:
   - type: markdown
     attributes:
       value: |
-        Some of what Trinity is missing is already known and written down. Please skim these
-        first — if your idea is there, say so below rather than opening a duplicate, and add
-        what is missing:
-
-        - [Using Trinity](https://github.com/quwisky/trinity-matrix-client/blob/develop/docs/users/index.md)
-          ends with a "Not yet supported" list of the deliberate gaps
-        - [The open issues](https://github.com/quwisky/trinity-matrix-client/issues) are where
-          prioritisation actually happens
+        Search [existing issues](https://github.com/quwisky/trinity-matrix-client/issues)
+        first. If a request already describes your problem, add new context there.
+        You do not need a technical solution or roadmap knowledge to suggest an improvement.
 
   - type: textarea
     id: problem
@@ -24,31 +19,24 @@ body:
       required: true
 
   - type: textarea
-    id: proposal
+    id: outcome
     attributes:
       label: What would you like to happen?
-      description: A sketch is fine. Where in the app would it live, and what would it do?
+      description: Describe what you would be able to do if the problem were solved, without needing to design the solution.
     validations:
       required: true
 
-  - type: dropdown
-    id: existing
+  - type: textarea
+    id: proposal
     attributes:
-      label: Is this already on a roadmap?
-      description: See the documents linked above.
-      options:
-        - 'No, I could not find it'
-        - 'Yes — but it needs rethinking (explain above)'
-        - 'Yes — I would like to see it prioritised'
-        - I did not check
-    validations:
-      required: true
+      label: Proposed solution
+      description: Optional. If you have an approach in mind, describe it here.
 
   - type: input
     id: prior_art
     attributes:
       label: Does another Matrix client do this?
-      description: Optional, and genuinely useful — an existing implementation settles most of the design questions.
+      description: Optional. Link an example or describe an alternative you have tried.
       placeholder: Element Web calls it "Threads"; FluffyChat does X instead
 
   - type: checkboxes
@@ -61,11 +49,3 @@ body:
         - label: Desktop (Electron)
         - label: Android
         - label: iOS
-
-  - type: checkboxes
-    id: confirmations
-    attributes:
-      label: Before submitting
-      options:
-        - label: I searched existing issues and this is not a duplicate.
-          required: true
