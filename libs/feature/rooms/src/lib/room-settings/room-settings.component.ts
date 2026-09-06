@@ -9,6 +9,7 @@ import {
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { initialOf } from '@trinity/util/matrix';
 import { BannedMembersComponent } from '../banned-members/banned-members.component';
+import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
   SettingsHubComponent,
   type SettingsHubSection,
@@ -25,7 +26,7 @@ import { RoomWidgetsComponent } from './room-widgets.component';
 export type { ParentSpace } from './room-settings.models';
 
 type RoomSettingsSection =
-  'general' | 'for-you' | 'access' | 'widgets' | 'bans';
+  'general' | 'for-you' | 'access' | 'addresses' | 'widgets' | 'bans';
 
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: RoomSettingsSection;
@@ -43,7 +44,12 @@ const SECTIONS: readonly (SettingsHubSection & {
   {
     value: 'access',
     label: 'Access',
-    description: 'Joining, history, and addresses',
+    description: 'Who can join and read history',
+  },
+  {
+    value: 'addresses',
+    label: 'Addresses',
+    description: 'Published Room links',
   },
   {
     value: 'widgets',
@@ -64,6 +70,7 @@ const SECTIONS: readonly (SettingsHubSection & {
   providers: [RoomSettingsDraftService, RoomSettingsForYouDraftService],
   imports: [
     BannedMembersComponent,
+    RoomAliasesComponent,
     RoomSettingsAccessComponent,
     RoomSettingsGeneralComponent,
     RoomSettingsForYouComponent,
@@ -121,7 +128,7 @@ export class RoomSettingsComponent implements OnInit {
     }
     return this.draft.openingAccountActive()
       ? null
-      : 'Switch back to the opening Account to manage this section. General remains attached to the opening Account.';
+      : 'Switch back to the opening Account to manage this section. General, For you, and Access remain attached to the opening Account.';
   });
 
   ngOnInit(): void {

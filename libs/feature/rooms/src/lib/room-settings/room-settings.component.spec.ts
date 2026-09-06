@@ -97,6 +97,10 @@ interface BuildOptions {
   readonly setAvatar?: Mock;
   readonly setJoinRule?: Mock;
   readonly setHistoryVisibility?: Mock;
+  readonly parentSpaces?: readonly {
+    readonly id: string;
+    readonly name: string;
+  }[];
 }
 
 async function build(options: BuildOptions = {}) {
@@ -133,7 +137,9 @@ async function build(options: BuildOptions = {}) {
       accountId: TARGET.accountId,
       roomId: TARGET.roomId,
       roomDisplayName: 'Fallback room',
-      parentSpaces: [{ id: '!space:hs', name: 'Design' }],
+      parentSpaces: options.parentSpaces ?? [
+        { id: '!space:hs', name: 'Design' },
+      ],
     },
     providers: [
       MockProvider(RoomSettingsService, {
@@ -240,6 +246,7 @@ describe('RoomSettingsComponent', () => {
       'general',
       'for-you',
       'access',
+      'addresses',
       'widgets',
       'bans',
     ]);
@@ -452,7 +459,7 @@ describe('RoomSettingsComponent', () => {
     expect(cmp.draft.generalDirty()).toBe(true);
   });
 
-  it('keeps the legacy Access capability reachable and exact-targeted', async () => {
+  it('keeps Access reachable and exact-targeted', async () => {
     const { cmp, fixture, setJoinRule } = await build();
     cmp.selectSection('access');
     fixture.detectChanges();
@@ -467,6 +474,191 @@ describe('RoomSettingsComponent', () => {
       ),
     ).not.toBeNull();
     expect(setJoinRule).toHaveBeenCalledWith(TARGET, JoinRule.Public, []);
+  });
+
+  it('shows member policy explanations without an unusable Access footer', async () => {
+    const { cmp, fixture, container } = await build({
+      initial: roomSnapshot({
+        access: {
+          joinRule: JoinRule.Public,
+          historyVisibility: HistoryVisibility.Joined,
+        },
+        permissions: { joinRule: DENIED, history: DENIED },
+      }),
+    });
+
+    cmp.selectSection('access');
+    await fixture.whenStable();
+
+    expect(
+      container.querySelector('[data-testid="room-settings-join-rule"]'),
+    ).toHaveTextContent('Anyone can join');
+    expect(
+      container.querySelector('[data-testid="room-settings-history"]'),
+    ).toHaveTextContent('Members — since they joined');
+    expect(container.textContent).toContain(DENIED.reason);
+    expect(
+      container.querySelector('[data-testid="room-settings-access-actions"]'),
+    ).toBeNull();
+  });
+
+  it('keeps unfamiliar Room history readable', async () => {
+    const unfamiliar = 'org.example.archive' as HistoryVisibility;
+    const { cmp } = await build({
+      initial: roomSnapshot({
+        access: { historyVisibility: unfamiliar },
+      }),
+    });
+
+    expect(cmp.draft.historyOptions()).toContainEqual({
+      value: unfamiliar,
+      label: 'Server value (org.example.archive)',
+      testId: 'history-org.example.archive',
+    });
+  });
+
+  it('keeps an unfamiliar Room join rule readable without rewriting it', async () => {
+    const unfamiliar = 'org.example.approval' as JoinRule;
+    const { cmp, setJoinRule } = await build({
+      initial: roomSnapshot({ access: { joinRule: unfamiliar } }),
+    });
+
+    expect(cmp.draft.joinRuleOptions()).toContainEqual({
+      value: unfamiliar,
+      label: 'Server value (org.example.approval)',
+      testId: 'join-rule-org.example.approval',
+    });
+    cmp.draft.saveAccess();
+    expect(setJoinRule).not.toHaveBeenCalled();
+  });
+
+  it('blocks a restricted rule until an allowed Space is selected', async () => {
+    const { cmp, setJoinRule } = await build({ parentSpaces: [] });
+    cmp.draft.form.joinRule().value.set(JoinRule.Restricted);
+
+    cmp.draft.saveAccess();
+
+    expect(cmp.draft.noSpaceChosen()).toBe(true);
+    expect(setJoinRule).not.toHaveBeenCalled();
+  });
+
+  it('saves an authorized history change despite an unrelated invalid restricted rule', async () => {
+    const { cmp, setJoinRule, setHistoryVisibility } = await build({
+      initial: roomSnapshot({
+        access: { joinRule: JoinRule.Restricted, allowedSpaceIds: [] },
+        permissions: { joinRule: DENIED, history: ALLOWED },
+      }),
+    });
+    cmp.draft.form
+      .historyVisibility()
+      .value.set(HistoryVisibility.WorldReadable);
+
+    cmp.draft.saveAccess();
+
+    expect(cmp.draft.noSpaceChosen()).toBe(false);
+    expect(setJoinRule).not.toHaveBeenCalled();
+    expect(setHistoryVisibility).toHaveBeenCalledWith(
+      TARGET,
+      HistoryVisibility.WorldReadable,
+    );
+  });
+
+  it('preserves unlisted allowed Spaces while changing the visible selection', async () => {
+    const { cmp, setJoinRule } = await build({
+      initial: roomSnapshot({
+        access: {
+          joinRule: JoinRule.Restricted,
+          allowedSpaceIds: ['!space:hs', '!unlisted:hs'],
+        },
+      }),
+    });
+    cmp.draft.toggleSpace('!space:hs', false);
+
+    cmp.draft.saveAccess();
+
+    expect(cmp.draft.unlistedAllowedSpaceCount()).toBe(1);
+    expect(setJoinRule).toHaveBeenCalledWith(TARGET, JoinRule.Restricted, [
+      '!unlisted:hs',
+    ]);
+  });
+
+  it('keeps an Access draft when permission disappears live', async () => {
+    const { cmp, fixture, container, emit, setJoinRule } = await build();
+    cmp.selectSection('access');
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
+
+    emit(
+      roomSnapshot({
+        permissions: { joinRule: DENIED, history: DENIED },
+      }),
+    );
+    await fixture.whenStable();
+
+    expect(cmp.draft.model().joinRule).toBe(JoinRule.Public);
+    expect(cmp.draft.form.joinRule().disabled()).toBe(true);
+    expect(container.textContent).toContain(DENIED.reason);
+    expect(
+      container
+        .querySelector('[data-testid="room-settings-save"]')
+        ?.getAttribute('aria-disabled'),
+    ).toBe('true');
+    cmp.draft.saveAccess();
+    expect(setJoinRule).not.toHaveBeenCalled();
+  });
+
+  it('reconciles untouched Room policy without overwriting a related draft', async () => {
+    const { cmp, emit, setJoinRule, setHistoryVisibility } = await build();
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
+
+    emit(
+      roomSnapshot({
+        access: { historyVisibility: HistoryVisibility.WorldReadable },
+      }),
+    );
+
+    expect(cmp.draft.model()).toMatchObject({
+      joinRule: JoinRule.Public,
+      historyVisibility: HistoryVisibility.WorldReadable,
+    });
+    cmp.draft.saveAccess();
+    expect(setJoinRule).toHaveBeenCalledWith(TARGET, JoinRule.Public, []);
+    expect(setHistoryVisibility).not.toHaveBeenCalled();
+  });
+
+  it('commits one Room policy field and retries only the failed field', async () => {
+    const setJoinRule = vi.fn(() => of(undefined));
+    const setHistoryVisibility = vi
+      .fn<() => Observable<void>>()
+      .mockReturnValueOnce(throwError(() => new Error('rejected')))
+      .mockReturnValueOnce(of(undefined));
+    const { cmp } = await build({ setJoinRule, setHistoryVisibility });
+    cmp.draft.form.joinRule().value.set(JoinRule.Public);
+    cmp.draft.form
+      .historyVisibility()
+      .value.set(HistoryVisibility.WorldReadable);
+
+    cmp.draft.saveAccess();
+    expect(cmp.draft.accessFeedback()?.message).toContain('still unsaved');
+    cmp.draft.saveAccess();
+
+    expect(setJoinRule).toHaveBeenCalledTimes(1);
+    expect(setHistoryVisibility).toHaveBeenCalledTimes(2);
+    expect(cmp.draft.accessDirty()).toBe(false);
+  });
+
+  it('keeps Room addresses reachable in their own section', async () => {
+    const { cmp, fixture, container } = await build();
+
+    cmp.selectSection('addresses');
+    await fixture.whenStable();
+
+    expect(
+      container.querySelector('[data-testid="room-settings-panel-addresses"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('trn-room-aliases')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="room-settings-panel-access"]'),
+    ).toBeNull();
   });
 
   it('does not expose legacy writers after switching away from the opening Account', async () => {

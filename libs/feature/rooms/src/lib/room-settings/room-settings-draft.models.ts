@@ -36,7 +36,11 @@ export const JOIN_RULE_OPTIONS = [
   { value: JoinRule.Public, label: 'Anyone can join' },
 ] as const;
 
-export const ROOM_HISTORY_OPTIONS = [
+export const ROOM_HISTORY_OPTIONS: readonly {
+  readonly value: HistoryVisibility;
+  readonly label: string;
+  readonly testId: string;
+}[] = [
   {
     value: HistoryVisibility.Shared,
     label: 'Members — all history',
@@ -57,7 +61,7 @@ export const ROOM_HISTORY_OPTIONS = [
     label: 'Anyone, even without joining',
     testId: 'history-world_readable',
   },
-] as const;
+];
 
 export function sameMembers(
   a: readonly string[],
@@ -80,7 +84,34 @@ export function withCurrentRule(
     ? options
     : [
         ...options,
-        { value: current, label: OTHER_RULE_LABELS[current] ?? current },
+        {
+          value: current,
+          label: OTHER_RULE_LABELS[current] ?? `Server value (${current})`,
+        },
+      ];
+}
+
+export function withCurrentHistory(
+  options: readonly {
+    readonly value: HistoryVisibility;
+    readonly label: string;
+    readonly testId: string;
+  }[],
+  current: HistoryVisibility,
+): readonly {
+  readonly value: HistoryVisibility;
+  readonly label: string;
+  readonly testId: string;
+}[] {
+  return options.some((option) => option.value === current)
+    ? options
+    : [
+        ...options,
+        {
+          value: current,
+          label: `Server value (${current})`,
+          testId: `history-${current}`,
+        },
       ];
 }
 

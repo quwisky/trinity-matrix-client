@@ -33,7 +33,6 @@ import {
   throwError,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RestrictedAllowType } from 'matrix-js-sdk';
 import type { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { liveRoomState } from '@trinity/util/matrix';
 import {
@@ -45,6 +44,11 @@ import {
   roomAdministrationInvalidInput,
   roomAdministrationNotSignedIn,
 } from './room-administration-error';
+import {
+  allowedSpaceIdsOf,
+  invalidAllowedSpaceId,
+  restrictedAllowEntriesForWrite,
+} from './room-access-policy';
 
 /** Which room-settings fields the current user may edit (from the room's power levels). */
 export interface EditableRoomFields {
@@ -222,12 +226,27 @@ export class RoomSettingsService {
           ),
         );
       }
+      const invalidAllowedSpace = invalidAllowedSpaceId(allowedSpaceIds);
+      if (restricted && invalidAllowedSpace) {
+        return throwError(() =>
+          roomAdministrationInvalidInput(
+            'set-join-rule',
+            'Every allowed Space must have a valid Matrix Room ID.',
+          ),
+        );
+      }
       const content: RoomJoinRulesEventContent = { join_rule: joinRule };
       if (restricted) {
-        content.allow = allowedSpaceIds.map((roomId) => ({
-          type: RestrictedAllowType.RoomMembership,
-          room_id: roomId,
-        }));
+        const room = client.getRoom(roomId);
+        const currentAllow = room
+          ? liveRoomState(room)
+              ?.getStateEvents(EventType.RoomJoinRules, '')
+              ?.getContent()?.['allow']
+          : undefined;
+        content.allow = restrictedAllowEntriesForWrite(
+          allowedSpaceIds,
+          currentAllow,
+        );
       }
       return from(
         client.sendStateEvent(roomId, EventType.RoomJoinRules, content, ''),
@@ -462,29 +481,4 @@ export class RoomSettingsService {
     }
     return this.matrix.isInitialized ? this.matrix.instance : null;
   }
-}
-
-/**
- * The space ids out of a join-rules `allow` list, ignoring anything that isn't a
- * well-formed room-membership entry, and de-duplicated. The list is arbitrary state written
- * by any client, so a malformed entry has to be dropped rather than surfaced as an
- * empty-string space id that would then be written back — and a repeated entry has to
- * collapse, or a caller comparing this list against one it built cannot tell them apart.
- */
-function allowedSpaceIdsOf(allow: unknown): string[] {
-  if (!Array.isArray(allow)) {
-    return [];
-  }
-  return allow
-    .filter(
-      (entry): entry is { type: string; room_id: string } =>
-        !!entry &&
-        typeof entry === 'object' &&
-        (entry as { type?: unknown }).type ===
-          RestrictedAllowType.RoomMembership &&
-        typeof (entry as { room_id?: unknown }).room_id === 'string' &&
-        (entry as { room_id: string }).room_id.length > 0,
-    )
-    .map((entry) => entry.room_id)
-    .filter((roomId, index, ids) => ids.indexOf(roomId) === index);
 }

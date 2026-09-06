@@ -4,10 +4,4 @@
 @layer components {
   @include panel.layout;
   @include access.layout;
-
-  .room-settings__target-warning {
-    margin: 0;
-    color: var(--trinity-danger);
-    font-size: 13px;
-  }
 }
