@@ -1,3 +1,5 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
+import { isAndroidE2E } from '../../../support/app.mts';
 import { devices } from '@playwright/test';
 import { expect, test, type Locator, type Page } from '../../../fixtures.mts';
 
@@ -35,6 +37,7 @@ async function openStatus(page: Page): Promise<Locator> {
 }
 
 test.describe('System Status on desktop', () => {
+  test.skip(isAndroidE2E, 'requires the desktop OS interaction model');
   test('retains the route, protects support details and rejoins recovery', async ({
     page,
   }, testInfo) => {
@@ -172,7 +175,9 @@ test.describe('System Status on desktop', () => {
       'Recovery settled without restoring this capability',
     );
     await testInfo.attach('system-status-desktop', {
-      body: await page.screenshot({ animations: 'disabled' }),
+      body: await captureScreenshot(page, () =>
+        page.screenshot({ animations: 'disabled' }),
+      ),
       contentType: 'image/png',
     });
     const surface = dialog.locator('[data-trn-layout="workspace"]');
@@ -200,7 +205,9 @@ test.describe('System Status on desktop', () => {
     });
     await expect(support).toHaveCSS('color', darkControlColor);
     await testInfo.attach('system-status-desktop-dark', {
-      body: await page.screenshot({ animations: 'disabled' }),
+      body: await captureScreenshot(page, () =>
+        page.screenshot({ animations: 'disabled' }),
+      ),
       contentType: 'image/png',
     });
     await page.evaluate(() =>
@@ -235,6 +242,7 @@ test.describe('System Status on desktop', () => {
 });
 
 test.describe('System Status on a touch-capable desktop', () => {
+  test.skip(isAndroidE2E, 'requires the desktop OS interaction model');
   test.use({ hasTouch: true });
 
   test('keeps the desktop interaction model', async ({ page }) => {
@@ -311,7 +319,9 @@ test.describe('System Status on a mobile OS', () => {
       ),
     ).toBe(true);
     await testInfo.attach('system-status-mobile', {
-      body: await page.screenshot({ animations: 'disabled' }),
+      body: await captureScreenshot(page, () =>
+        page.screenshot({ animations: 'disabled' }),
+      ),
       contentType: 'image/png',
     });
   });

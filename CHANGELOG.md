@@ -1122,11 +1122,26 @@ All notable changes to this project are documented here. The format is based on
   synchronously, including on Android WebView and WebKit. Badge updates track
   unread totals without subscribing to signal reads made by outcome consumers.
 
+- Trust health refreshes when account data changes, so a recovery reset followed by
+  reload cannot remain stuck on stale secret-storage readiness.
+
+- Virtualized timelines retain the reader's message position while newly prepended
+  history finishes measuring. User scrolling and room changes cancel that correction.
+
+- Back from routed Settings can return to Rooms without a second semantic dismissal
+  cancelling the history navigation. Overlay dismissal guards still run first.
+
 - Production renderer checks wait for the usable login form and verify the current
   mobile System Status control. Electron settings geometry checks use the shared
   Settings directory hook after the layout migration. Electron restart checks open
   System Status from the sidebar. Historical-notification checks now count presenter
-  calls before and after restart.
+  calls before and after restart. Browser installation-reset and Settings journeys
+  follow the current confirmation, navigation and save controls, and key-import
+  assertions distinguish the toast from its accessibility announcement.
+- Android test controls guard touch targets through activation, dismiss the native
+  keyboard before lower address actions, and feed deterministic native GPS updates. Screenshot capture preserves the configured viewport after Android
+  resets its emulated metrics. Desktop-only interaction and development-hook fault injection cases
+  no longer run against the production Android APK.
 
 - System Status no longer floats over message-composer controls. It stays available as an icon immediately
   left of Settings in the sidebar and in the mobile conversation's More actions menu, with emphasis

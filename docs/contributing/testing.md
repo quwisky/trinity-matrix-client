@@ -95,7 +95,32 @@ checks use the shared frame's public directory hook, including in Electron.
 Electron restart checks open System Status through the sidebar after reaching Rooms;
 the startup access button is intentionally absent there. Historical-notification
 checks count calls to the Electron presenter before and after restart, alongside
-the current capability-summary assertion.
+the current capability-summary assertion. Installation-reset journeys use the distinct
+`RESET TRINITY` confirmation phrase and verify that mistyped input preserves data.
+Room and Space settings checks target the shared navigation and persistent forms; toast
+assertions stay scoped to the notification surface so accessibility announcements
+do not create ambiguous matches. Recovery-reset coverage retains a full document
+reload to verify restored Trust health refreshes when fresh account data replaces
+cached secret-storage state.
+
+Installed Android journeys send complete Chromium touch gestures after stable scrolling
+and visibility/enabled checks. A temporary capture guard blocks input if layout moves
+another control beneath the tap. Only input blocked before reaching a control is retried;
+partial or completed input is never repeated. This handles late banners without mouse hover or forced clicks.
+Lower address actions explicitly dismiss the native keyboard first; browser device
+profiles have no operating-system keyboard.
+Canonical proof capture uses `captureScreenshot` to restore the configured viewport:
+Android's screenshot session otherwise resets the WebView to its physical size.
+Location fixtures use Android's GPS test provider and remove it after the journey;
+Capacitor's native location plugin remains in the path. Desktop-OS interaction cases
+and development-hook fault injection are explicitly excluded per case from the
+production APK; their ordinary and mobile product journeys remain enabled.
+Timeline prepend coverage checks the same rendered message offset after late height
+measurements. Unit coverage distinguishes programmatic scrolling from user movement
+and rejects queued corrections after the reader moves or the room changes.
+Native Settings Back checks require the Rooms surface to render after history changes;
+the URL alone cannot prove that the route guard accepted navigation. Routed application
+surfaces must not consume the same browser-history action a second time.
 
 ## Failure handling and review evidence
 

@@ -142,7 +142,13 @@ describe('Android Playwright canonical coverage', () => {
       join(workspaceRoot, 'e2e/android/fixtures.mts'),
       'utf8',
     );
-    expect(fixture).toContain("'emu',\n      'geo',\n      'fix'");
+    expect(fixture).toContain('cmd location providers add-test-provider gps');
+    expect(fixture).toContain(
+      'cmd location providers set-test-provider-location gps',
+    );
+    expect(fixture).toContain(
+      'cmd location providers remove-test-provider gps',
+    );
     expect(fixture).not.toMatch(
       /Object\.defineProperty\(navigator,\s*['"]geolocation['"]/,
     );

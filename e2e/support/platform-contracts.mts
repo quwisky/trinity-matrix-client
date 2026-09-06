@@ -41,6 +41,8 @@ export interface TouchPoint {
 }
 
 export interface TouchPlatform {
+  /** Dismiss an installed host keyboard; browser device profiles have no native IME. */
+  dismissKeyboard(page: Page): Promise<void>;
   tap(page: Page, target: Locator): Promise<void>;
   swipe(page: Page, from: TouchPoint, to: TouchPoint): Promise<void>;
 }

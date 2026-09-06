@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type SynapseSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -17,6 +18,7 @@ test.describe('Room settings on a phone', () => {
   test('opens the directory before General and protects drafts on the full-screen flow', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}mobile`;
@@ -56,7 +58,7 @@ test.describe('Room settings on a phone', () => {
     const general = page.getByTestId('room-settings-tab-general');
     await expect(directory).toBeVisible();
     await expect(page.getByTestId('room-settings-panel-general')).toBeHidden();
-    await general.tap();
+    await touchPlatform.tap(page, general);
     await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();
     await expect(
       page.getByTestId('room-settings-section-heading'),
@@ -84,15 +86,24 @@ test.describe('Room settings on a phone', () => {
       .toBe('sticky');
     await expect(page.getByTestId('room-settings-discard')).toBeVisible();
     await expect(page.getByTestId('room-settings-save')).toBeVisible();
-    await page.getByTestId('room-settings-mobile-back').click();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-mobile-back'),
+    );
     const discard = page.getByRole('dialog', {
       name: 'Discard Room settings changes?',
     });
     await discard.getByRole('button', { name: 'Keep editing' }).click();
     await expect(topic).toHaveValue('A mobile draft');
 
-    await page.getByTestId('room-settings-mobile-back').click();
-    await discard.getByRole('button', { name: 'Discard changes' }).click();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-mobile-back'),
+    );
+    await touchPlatform.tap(
+      page,
+      discard.getByRole('button', { name: 'Discard changes' }),
+    );
     await expect(directory).toBeVisible();
     const roomNameBox = await page
       .getByTestId('room-settings-room-name')
@@ -107,12 +118,12 @@ test.describe('Room settings on a phone', () => {
       44,
     );
     await test.info().attach('room-settings-mobile-directory', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
 
     const access = page.getByTestId('room-settings-tab-access');
-    await access.tap();
+    await touchPlatform.tap(page, access);
     await expect(page.getByTestId('room-settings-panel-access')).toBeVisible();
     await expect(
       page.getByTestId('room-settings-section-heading'),
@@ -121,15 +132,18 @@ test.describe('Room settings on a phone', () => {
       0,
     );
     await test.info().attach('room-access-mobile', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
-    await page.getByTestId('room-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-mobile-back'),
+    );
     await expect(directory).toBeVisible();
 
-    await general.tap();
+    await touchPlatform.tap(page, general);
     await expect(page.getByTestId('room-settings-panel-general')).toBeVisible();
-    await page.getByTestId('room-settings-cancel').tap();
+    await touchPlatform.tap(page, page.getByTestId('room-settings-cancel'));
     await expect(settings).toHaveCount(0);
     await expect(page.getByTestId('composer-input')).toBeVisible();
   });

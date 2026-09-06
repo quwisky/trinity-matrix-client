@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   testResourceId,
   devices,
@@ -36,6 +37,7 @@ test.describe('Room settings widgets on a phone', () => {
   test('keeps every widget and the modal actions reachable', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}wm`;
@@ -94,10 +96,16 @@ test.describe('Room settings widgets on a phone', () => {
       .getByTestId('room-widget-create-url')
       .fill('https://widgets.example/mobile?room=$matrix_room_id');
 
-    await page.getByTestId('room-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-mobile-back'),
+    );
     const discard = page.locator('trn-alert-dialog');
     await expect(discard).toContainText('unsaved Room details');
-    await discard.getByRole('button', { name: 'Keep editing' }).tap();
+    await touchPlatform.tap(
+      page,
+      discard.getByRole('button', { name: 'Keep editing' }),
+    );
     await expect(page.getByTestId('room-widget-create-name')).toHaveValue(
       'Mobile board',
     );
@@ -213,7 +221,9 @@ test.describe('Room settings widgets on a phone', () => {
     await lastWidget.scrollIntoViewIfNeeded();
     await expect(lastWidget).toBeVisible();
     await test.info().attach('room-widgets-mobile', {
-      body: await page.getByTestId('room-settings').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('room-settings').screenshot(),
+      ),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {

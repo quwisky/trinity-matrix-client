@@ -163,13 +163,9 @@ test.describe('Recovery reset', () => {
 
     // The assertion that proves the reset FINISHED rather than merely started.
     //
-    // `resetEncryption` deletes secret storage and does not put the new backup key
-    // anywhere reachable; only the follow-up bootstrap creates a fresh 4S. This is not
-    // observable from THIS device's status — it keeps the cross-signing keys locally, so
-    // the posture reads `ready` either way — and it is not observable from the key on
-    // screen, which is minted before the bootstrap. The server's default-key pointer is
-    // the only place the difference shows, and a NEW id proves 4S was rebuilt rather than
-    // merely left over.
+    // The displayed key follows the completed reset and secret-storage bootstrap.
+    // Independently verify the server default-key pointer changed, then fully reload
+    // to prove the new identity and secret-storage readiness survive restoration.
     await expect.poll(currentKeyId, { timeout: 30_000 }).toBeTruthy();
     expect(await currentKeyId()).not.toBe(keyIdBefore);
 

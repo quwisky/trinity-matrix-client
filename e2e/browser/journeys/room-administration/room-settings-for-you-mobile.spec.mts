@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type SynapseSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -17,6 +18,7 @@ test.describe('Room settings · For you on a phone', () => {
   test('lets an ordinary member stage, protect, and save personal preferences', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}member`;
@@ -52,12 +54,18 @@ test.describe('Room settings · For you on a phone', () => {
       pass: memberPass,
     } as SynapseSession);
     await openRoom(page, roomName);
-    await page.getByTestId('room-actions-overflow').tap();
-    await page.getByTestId('overflow-open-room-settings').tap();
+    await touchPlatform.tap(page, page.getByTestId('room-actions-overflow'));
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('overflow-open-room-settings'),
+    );
     const settings = page.getByTestId('room-settings');
     await expect(settings).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('room-settings-directory')).toBeVisible();
-    await page.getByTestId('room-settings-tab-for-you').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-tab-for-you'),
+    );
     await expect(page.getByTestId('room-settings-for-you-form')).toBeVisible({
       timeout: 15_000,
     });
@@ -70,26 +78,38 @@ test.describe('Room settings · For you on a phone', () => {
       .getByRole('checkbox');
     await expect(mute).toBeEnabled();
     await expect(favourite).toBeEnabled();
-    await page.getByTestId('room-settings-notify-mute').tap();
-    await page.getByTestId('room-settings-favourite').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-notify-mute'),
+    );
+    await touchPlatform.tap(page, page.getByTestId('room-settings-favourite'));
 
-    await page.getByTestId('room-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-mobile-back'),
+    );
     const discard = page.getByRole('dialog', {
       name: 'Discard Room settings changes?',
     });
-    await discard.getByRole('button', { name: 'Keep editing' }).tap();
+    await touchPlatform.tap(
+      page,
+      discard.getByRole('button', { name: 'Keep editing' }),
+    );
     await expect(mute).toBeChecked();
     await expect(favourite).toBeChecked();
 
     await page
       .getByTestId('room-settings-for-you-save')
       .scrollIntoViewIfNeeded();
-    await page.getByTestId('room-settings-for-you-save').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('room-settings-for-you-save'),
+    );
     await expect(
       page.getByTestId('room-settings-for-you-feedback'),
     ).toContainText('saved for the opening Account', { timeout: 30_000 });
     await test.info().attach('room-settings-for-you-mobile-member', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
   });

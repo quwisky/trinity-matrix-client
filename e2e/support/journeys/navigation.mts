@@ -63,23 +63,42 @@ export async function openSettingsSection(
 export async function closeSettings(page: Page): Promise<void> {
   if (isAndroidE2E) {
     const back = page.getByRole('button', { name: 'Back' });
+    const waitForPath = async (
+      predicate: (path: string) => boolean,
+    ): Promise<void> => {
+      await expect
+        .poll(() => predicate(new URL(page.url()).pathname), {
+          timeout: 20_000,
+        })
+        .toBe(true);
+    };
     if (new URL(page.url()).pathname !== '/settings') {
       await back.click();
-      await page.waitForURL(
-        (url) =>
-          url.pathname === '/settings' || url.pathname.startsWith('/rooms'),
-        { timeout: 20_000 },
+      await waitForPath(
+        (path) => path === '/settings' || path.startsWith('/rooms'),
       );
     }
     if (new URL(page.url()).pathname === '/settings') {
       await back.click();
     }
-    await page.waitForURL(
-      (url) =>
-        url.pathname.startsWith('/rooms') &&
-        (url.searchParams.get('account')?.length ?? 0) > 0,
-      { timeout: 20_000 },
-    );
+    await expect
+      .poll(
+        () => {
+          const url = new URL(page.url());
+          return (
+            url.pathname.startsWith('/rooms') &&
+            (url.searchParams.get('account')?.length ?? 0) > 0
+          );
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+    // The router commits the destination before the host-owned settings surface has
+    // finished detaching. Wait for the old owner as well, otherwise the next room-rail
+    // action can race a still-visible settings screen on the native WebView.
+    await expect(page.locator('trn-settings')).toHaveCount(0, {
+      timeout: 20_000,
+    });
     return;
   }
   await page.getByTestId('close-settings').click();

@@ -136,6 +136,7 @@ test.describe('Android navigation', () => {
 
       await app.pressBack();
       await waitForRooms(page, 20_000);
+      await expect(page.locator('trn-rooms')).toBeVisible({ timeout: 20_000 });
     });
   });
 

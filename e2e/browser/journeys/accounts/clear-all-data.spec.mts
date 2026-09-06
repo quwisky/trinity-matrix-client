@@ -123,14 +123,14 @@ test.describe('Clear all data', () => {
     // A mistyped word must erase nothing at all.
     await page.getByTestId('clear-all-data').click();
     await confirmErase(page, 'yes please');
-    await expect(page.getByText(/Type ERASE exactly/)).toBeVisible();
+    await expect(page.getByText(/Type RESET TRINITY exactly/)).toBeVisible();
     expect(await storageKeys(page)).toContain(
       'CapacitorStorage.matrix.accounts',
     );
 
     // Lower case on purpose — the gate normalises before comparing.
     await page.getByTestId('clear-all-data').click();
-    await confirmErase(page, 'erase');
+    await confirmErase(page, 'reset trinity');
 
     // The app replaces itself with a fresh document at the app root.
     await waitForEmptyStorage(page);
@@ -167,7 +167,7 @@ test.describe('Clear all data', () => {
     );
 
     await page.getByTestId('clear-all-data').click();
-    await confirmErase(page, 'ERASE');
+    await confirmErase(page, 'RESET TRINITY');
 
     // waitForEmptyStorage already proves the namespace is empty, which subsumes any
     // not.toContain on a single key.

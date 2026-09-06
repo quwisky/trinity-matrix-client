@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   devices,
   expect,
@@ -12,6 +13,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import type { TouchPlatform } from '../../../support/platform-contracts.mts';
 
 const session = synapseSession();
 
@@ -71,23 +73,27 @@ async function childLink(
 async function openSpaceSettings(
   page: Page,
   name: string,
+  touchPlatform: TouchPlatform,
   roomName?: string,
 ): Promise<void> {
   const pill = page.getByRole('button', { name, exact: true });
   await pill.waitFor({ state: 'visible', timeout: 30_000 });
-  await pill.tap();
+  await touchPlatform.tap(page, pill);
   if (roomName) {
     const channel = page.locator('.channel', { hasText: roomName }).first();
     await channel.waitFor({ state: 'visible', timeout: 30_000 });
-    await channel.tap();
+    await touchPlatform.tap(page, channel);
     await expect(page.getByTestId('composer-input')).toBeVisible({
-      timeout: 15_000,
+      timeout: 30_000,
     });
-    await page.getByRole('button', { name: 'Back to rooms' }).tap();
-    await pill.tap();
+    await touchPlatform.tap(
+      page,
+      page.getByRole('button', { name: 'Back to rooms' }),
+    );
+    await touchPlatform.tap(page, pill);
   }
-  await page.getByTestId('space-actions-overflow').tap();
-  await page.getByTestId('open-space-settings').tap();
+  await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+  await touchPlatform.tap(page, page.getByTestId('open-space-settings'));
 }
 
 // A built-in device profile supplies the Android user agent used by Trinity's host layout.
@@ -99,6 +105,7 @@ test.describe('Space settings on a phone', () => {
   test('opens the directory before General and protects drafts on the full-screen flow', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}spmobile`;
@@ -133,7 +140,7 @@ test.describe('Space settings on a phone', () => {
     );
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openSpaceSettings(page, spaceName, roomName);
+    await openSpaceSettings(page, spaceName, touchPlatform, roomName);
 
     const settings = page.getByTestId('space-settings');
     await expect(settings).toBeVisible({ timeout: 10_000 });
@@ -147,7 +154,7 @@ test.describe('Space settings on a phone', () => {
     const general = page.getByTestId('space-settings-tab-general');
     await expect(directory).toBeVisible();
     await expect(page.getByTestId('space-settings-panel-general')).toBeHidden();
-    await general.tap();
+    await touchPlatform.tap(page, general);
     await expect(
       page.getByTestId('space-settings-panel-general'),
     ).toBeVisible();
@@ -177,15 +184,27 @@ test.describe('Space settings on a phone', () => {
       .toBe('sticky');
     await expect(page.getByTestId('space-settings-discard')).toBeVisible();
     await expect(page.getByTestId('space-settings-save')).toBeVisible();
-    await page.getByTestId('space-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
     const discard = page.getByRole('dialog', {
       name: 'Discard Space settings changes?',
     });
-    await discard.getByRole('button', { name: 'Keep editing' }).tap();
+    await touchPlatform.tap(
+      page,
+      discard.getByRole('button', { name: 'Keep editing' }),
+    );
     await expect(topic).toHaveValue('A mobile draft');
 
-    await page.getByTestId('space-settings-mobile-back').tap();
-    await discard.getByRole('button', { name: 'Discard changes' }).tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
+    await touchPlatform.tap(
+      page,
+      discard.getByRole('button', { name: 'Discard changes' }),
+    );
     await expect(directory).toBeVisible();
     const spaceNameBox = await page
       .getByTestId('space-settings-space-name')
@@ -197,7 +216,7 @@ test.describe('Space settings on a phone', () => {
       44,
     );
     await test.info().attach('space-settings-mobile-directory', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
 
@@ -205,7 +224,7 @@ test.describe('Space settings on a phone', () => {
     expect((await forYou.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
       44,
     );
-    await forYou.tap();
+    await touchPlatform.tap(page, forYou);
     await expect(
       page.getByTestId('space-settings-panel-for-you'),
     ).toBeVisible();
@@ -216,25 +235,37 @@ test.describe('Space settings on a phone', () => {
     expect(
       (await alphabetical.boundingBox())?.height ?? 0,
     ).toBeGreaterThanOrEqual(44);
-    await alphabetical.tap();
-    await page.getByTestId('space-settings-mobile-back').tap();
-    await discard.getByRole('button', { name: 'Keep editing' }).tap();
+    await touchPlatform.tap(page, alphabetical);
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
+    await touchPlatform.tap(
+      page,
+      discard.getByRole('button', { name: 'Keep editing' }),
+    );
     await expect(
       alphabetical.getByRole('radio', { name: 'Alphabetical' }),
     ).toBeChecked();
     await test.info().attach('space-personal-order-mobile', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
-    await page.getByTestId('space-settings-for-you-discard').tap();
-    await page.getByTestId('space-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-for-you-discard'),
+    );
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
     await expect(directory).toBeVisible();
 
     const access = page.getByTestId('space-settings-tab-access');
     expect((await access.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
       44,
     );
-    await access.tap();
+    await touchPlatform.tap(page, access);
     await expect(page.getByTestId('space-settings-panel-access')).toBeVisible();
     await expect(
       page.getByTestId('space-settings-section-heading'),
@@ -246,17 +277,20 @@ test.describe('Space settings on a phone', () => {
       0,
     );
     await test.info().attach('space-access-mobile', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
-    await page.getByTestId('space-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
     await expect(directory).toBeVisible();
 
     const contents = page.getByTestId('space-settings-tab-contents');
     expect((await contents.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
       44,
     );
-    await contents.tap();
+    await touchPlatform.tap(page, contents);
     const contentsPanel = page.getByTestId('space-settings-panel-contents');
     await expect(
       page.getByTestId('space-settings-section-heading'),
@@ -292,7 +326,7 @@ test.describe('Space settings on a phone', () => {
     );
     await expect(moveUp).toBeDisabled();
     await expect(moveDown).toBeDisabled();
-    await suggestedCheckbox.tap();
+    await touchPlatform.tap(page, suggestedCheckbox);
     await expect
       .poll(
         async () =>
@@ -301,16 +335,27 @@ test.describe('Space settings on a phone', () => {
       )
       .not.toBe(true);
     await test.info().attach('space-contents-mobile', {
-      body: await contentsPanel.screenshot(),
+      body: await captureScreenshot(page, () => contentsPanel.screenshot()),
       contentType: 'image/png',
     });
 
-    await contentsPanel.getByRole('button', { name: 'Add existing' }).tap();
+    await touchPlatform.tap(
+      page,
+      contentsPanel.getByRole('button', { name: 'Add existing' }),
+    );
     await contentsPanel
       .getByLabel('Find a joined Room or Space')
       .fill(candidateName);
-    await contentsPanel.getByTestId(`space-contents-pick-${candidateId}`).tap();
-    await contentsPanel.getByRole('button', { name: 'Add selected' }).tap();
+    const candidatePick = contentsPanel.getByTestId(
+      `space-contents-pick-${candidateId}`,
+    );
+    await expect(candidatePick).toBeVisible({ timeout: 30_000 });
+    await touchPlatform.tap(page, candidatePick);
+    const addSelected = contentsPanel.getByRole('button', {
+      name: 'Add selected',
+    });
+    await expect(addSelected).toBeEnabled();
+    await touchPlatform.tap(page, addSelected);
     const candidateRow = contentsPanel.getByTestId(
       `space-content-${candidateId}`,
     );
@@ -321,19 +366,34 @@ test.describe('Space settings on a phone', () => {
       })
       .toEqual(expect.objectContaining({ via: expect.any(Array) }));
 
-    await createRoom.tap();
+    await touchPlatform.tap(page, createRoom);
     const createDialog = page.getByRole('dialog', { name: 'Create Room' });
-    await createDialog.getByRole('button', { name: 'Cancel' }).tap();
+    await touchPlatform.tap(
+      page,
+      createDialog.getByRole('button', { name: 'Cancel' }),
+    );
     await expect(createDialog).toHaveCount(0);
 
-    await candidateRow.getByRole('button', { name: 'Remove' }).tap();
+    await touchPlatform.tap(
+      page,
+      candidateRow.getByRole('button', { name: 'Remove' }),
+    );
     const removeDialog = page.getByRole('dialog', {
       name: 'Remove Room from Space',
     });
-    await removeDialog.getByRole('button', { name: 'Cancel' }).tap();
+    await touchPlatform.tap(
+      page,
+      removeDialog.getByRole('button', { name: 'Cancel' }),
+    );
     await expect(candidateRow).toBeVisible();
-    await candidateRow.getByRole('button', { name: 'Remove' }).tap();
-    await removeDialog.getByRole('button', { name: 'Remove' }).tap();
+    await touchPlatform.tap(
+      page,
+      candidateRow.getByRole('button', { name: 'Remove' }),
+    );
+    await touchPlatform.tap(
+      page,
+      removeDialog.getByRole('button', { name: 'Remove' }),
+    );
     await expect
       .poll(() => childLink(request, hs, token, spaceId, candidateId), {
         timeout: 30_000,
@@ -347,19 +407,25 @@ test.describe('Space settings on a phone', () => {
       .then((response) => response.json());
     expect(membership.membership).toBe('join');
 
-    await page.getByTestId('space-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
     await expect(directory).toBeVisible();
 
-    await general.tap();
+    await touchPlatform.tap(page, general);
     await expect(
       page.getByTestId('space-settings-panel-general'),
     ).toBeVisible();
-    await page.getByTestId('space-settings-cancel').tap();
+    await touchPlatform.tap(page, page.getByTestId('space-settings-cancel'));
     await expect(settings).toHaveCount(0);
     await expect(
       page.getByRole('button', { name: spaceName, exact: true }),
     ).toBeVisible();
-    await page.locator('.channel', { hasText: roomName }).first().tap();
+    await touchPlatform.tap(
+      page,
+      page.locator('.channel', { hasText: roomName }).first(),
+    );
     await expect(page.getByTestId('composer-input')).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       roomName,
@@ -369,6 +435,7 @@ test.describe('Space settings on a phone', () => {
   test('opens the Members shortcut directly and returns to the directory', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}spmembers`;
@@ -381,9 +448,9 @@ test.describe('Space settings on a phone', () => {
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     const pill = page.getByRole('button', { name: spaceName, exact: true });
-    await pill.tap();
-    await page.getByTestId('space-actions-overflow').tap();
-    await page.getByTestId('open-space-members').tap();
+    await touchPlatform.tap(page, pill);
+    await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+    await touchPlatform.tap(page, page.getByTestId('open-space-members'));
 
     await expect(page.getByTestId('space-settings-panel-members')).toBeVisible({
       timeout: 15_000,
@@ -394,7 +461,10 @@ test.describe('Space settings on a phone', () => {
     );
     await expect(page.getByTestId('space-settings-mobile-back')).toBeVisible();
 
-    await page.getByTestId('space-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
     const members = page.getByTestId('space-settings-tab-members');
     await expect(members).toBeVisible();
     await expect(members).toBeFocused();
@@ -403,6 +473,7 @@ test.describe('Space settings on a phone', () => {
   test('keeps a member’s Space General readable without writable controls', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
@@ -436,9 +507,12 @@ test.describe('Space settings on a phone', () => {
       user: member,
       pass: memberPass,
     } as SynapseSession);
-    await openSpaceSettings(page, spaceName);
+    await openSpaceSettings(page, spaceName, touchPlatform);
 
-    await page.getByTestId('space-settings-tab-general').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-tab-general'),
+    );
     const name = page.getByTestId('space-settings-name');
     const topic = page.getByTestId('space-settings-topic');
     await expect(name).toHaveText(spaceName, { timeout: 10_000 });
@@ -456,7 +530,7 @@ test.describe('Space settings on a phone', () => {
     const surfaceBox = await surface.boundingBox();
     expect(surfaceBox?.width ?? 0).toBeGreaterThan(0);
     await test.info().attach('space-settings-mobile-read-only', {
-      body: await surface.screenshot(),
+      body: await captureScreenshot(page, () => surface.screenshot()),
       contentType: 'image/png',
     });
   });

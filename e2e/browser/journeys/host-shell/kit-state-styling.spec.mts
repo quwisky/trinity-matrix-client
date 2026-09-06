@@ -73,21 +73,6 @@ const styleOf = (locator: Locator, property: string): Promise<string> =>
     property,
   );
 
-/**
- * A pseudo-element's computed value.
- *
- * The settings dialogs use the `line` tab variant, whose active indicator is an underline
- * drawn as `::after` — the same class list sets `data-active:bg-transparent` for that
- * variant on purpose, so the trigger's own background is transparent whether or not it is
- * open, and asserting on it tests nothing.
- */
-const pseudoStyleOf = (locator: Locator, property: string): Promise<string> =>
-  locator.evaluate(
-    (element, name) =>
-      getComputedStyle(element, '::after').getPropertyValue(name),
-    property,
-  );
-
 test.describe('Kit state styling', () => {
   test.skip(
     !session.available,
@@ -106,27 +91,22 @@ test.describe('Kit state styling', () => {
       timeout: 15_000,
     });
 
-    const tabs = page.locator('[role="tab"]');
+    const tabs = page.locator('[data-trn-settings-section]');
     await expect(tabs.first()).toBeVisible({ timeout: 10_000 });
     expect(await tabs.count()).toBeGreaterThan(1);
 
-    const active = page.locator('[role="tab"][data-state="active"]').first();
+    const active = page
+      .locator('[data-trn-settings-section][aria-current="page"]')
+      .first();
     await expect(active).toBeVisible();
     const inactive = page
-      .locator('[role="tab"][data-state="inactive"]')
+      .locator('[data-trn-settings-section]:not([aria-current="page"])')
       .first();
     await expect(inactive).toBeVisible();
 
-    // The claim the reader makes with their eyes, and the one that was false: the open tab
-    // is underlined (`data-active:after:opacity-100`) and its label is brighter
-    // (`data-active:text-foreground`). Both variants were dead, so all three tabs looked
-    // the same.
-    // Polled, not read once: the trigger carries `transition-all` and the underline
-    // `after:transition-opacity`. This passes today only because the initially-active tab
-    // renders active from first paint and never animates — an assumption that dies the
-    // moment this test clicks a tab, and it costs nothing to not depend on it.
-    await expect.poll(() => pseudoStyleOf(active, 'opacity')).toBe('1');
-    await expect.poll(() => pseudoStyleOf(inactive, 'opacity')).toBe('0');
+    // The current settings directory exposes the active page semantically and uses the
+    // button's solid/ghost presentation to distinguish it visually.
+    await expect(active).toHaveAttribute('aria-current', 'page');
     expect(await styleOf(active, 'color')).not.toBe(
       await styleOf(inactive, 'color'),
     );

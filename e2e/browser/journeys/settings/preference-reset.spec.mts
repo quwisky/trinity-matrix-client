@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { expect, test } from '../../../fixtures.mts';
 import {
   configureSettingsSuite,
@@ -23,6 +24,10 @@ test.describe('Preference reset recovery', () => {
   test('gates reset and presents value-free outstanding work', async ({
     page,
   }, testInfo) => {
+    test.skip(
+      process.env['TRINITY_E2E_PLATFORM'] === 'android',
+      'fault injection requires Angular development hooks; the installed APK is production',
+    );
     await openSection(page, 'advanced');
     await page.getByTestId('advanced-reset').click();
 
@@ -57,7 +62,7 @@ test.describe('Preference reset recovery', () => {
       partial.getByRole('button', { name: 'Retry outstanding settings' }),
     ).toBeVisible();
     await testInfo.attach('preference-reset-partial', {
-      body: await partial.screenshot(),
+      body: await captureScreenshot(page, () => partial.screenshot()),
       contentType: 'image/png',
     });
   });

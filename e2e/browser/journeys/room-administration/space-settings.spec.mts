@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   testResourceId,
   test,
@@ -277,7 +278,7 @@ test.describe('Space settings', () => {
       document.documentElement.removeAttribute('data-theme');
     });
     await test.info().attach('space-settings-desktop-general-light', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -285,7 +286,7 @@ test.describe('Space settings', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-settings-desktop-general-dark-amethyst', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme }) => {
@@ -327,7 +328,7 @@ test.describe('Space settings', () => {
     await page.getByTestId('space-settings-join-rule').click();
     await page.getByTestId('join-rule-public').click();
     await test.info().attach('space-access-admin', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.getByTestId('space-settings-save').click();
@@ -587,7 +588,7 @@ test.describe('Space settings', () => {
     expect(membership.membership).toBe('join');
 
     await test.info().attach('space-contents-desktop', {
-      body: await panel.screenshot(),
+      body: await captureScreenshot(page, () => panel.screenshot()),
       contentType: 'image/png',
     });
 
@@ -623,7 +624,7 @@ test.describe('Space settings', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-contents-desktop-dark-amethyst', {
-      body: await panel.screenshot(),
+      body: await captureScreenshot(page, () => panel.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme }) => {
@@ -766,7 +767,9 @@ test.describe('Space settings', () => {
       contents.getByTestId('space-contents-read-only'),
     ).toBeVisible();
     await test.info().attach('space-access-member-read-only', {
-      body: await page.getByTestId('space-settings').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('space-settings').screenshot(),
+      ),
       contentType: 'image/png',
     });
   });
