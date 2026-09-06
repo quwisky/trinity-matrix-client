@@ -1140,12 +1140,15 @@ All notable changes to this project are documented here. The format is based on
   calls before and after restart. Browser installation-reset and Settings journeys
   follow the current confirmation, navigation and save controls, and key-import
   assertions distinguish the toast from its accessibility announcement.
-- Browser touch checks preserve the touch pointer type. Android unavailable-action taps
+- Browser touch checks preserve the touch pointer type and wait for ordinary controls
+  to settle; only unavailable-action feedback bypasses the enabled check. Android unavailable-action taps
   allow legitimate drawer pointer capture, while wide-layout gestures use the viewport
   owner's connection and scaled physical coordinates. SSO and responsive Members controls
   use that input path; shell checks distinguish an open pane from rows still rendering.
   Reapplying an unchanged Android viewport tolerates pixel-ratio rounding and preserves
   open panes instead of briefly switching to the phone layout.
+- Storybook theme checks wait for the selected theme and mode to reach the document
+  root before checking semantic colours, avoiding a read during preview initialization.
 - Android test controls guard touch targets through activation, dismiss the native
   keyboard before lower address actions, and feed deterministic native GPS updates. Screenshot capture preserves the configured viewport after Android
   resets its emulated metrics. Desktop-only interaction and development-hook fault injection cases

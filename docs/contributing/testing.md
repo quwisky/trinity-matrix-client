@@ -112,7 +112,11 @@ when the original control still owns the hit point; an unavailable action comple
 real touch release. Wide-layout touches temporarily fit the emulated viewport onto the
 physical WebView and convert coordinates at the viewport owner's connection. Restoring its
 scale before that owner closes avoids a spurious phone-layout transition. Browser touch
-profiles dispatch real touch input as well.
+profiles dispatch real touch input as well, with normal stability and actionability
+checks for ordinary controls. Only explicitly ARIA-disabled feedback actions force a tap
+past the enabled check.
+Storybook theme assertions wait for the requested theme and mode on the document root
+before checking rendered tokens; navigation alone does not await preview initialization.
 Lower address actions explicitly dismiss the native keyboard first; browser device
 profiles have no operating-system keyboard.
 Canonical proof capture uses `captureScreenshot` to restore the configured viewport:
