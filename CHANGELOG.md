@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Simplify contributor issue forms and pull requests: bug reports separate observed and
+  expected behavior, accept unknown environment details and support multiple platforms;
+  feature requests focus on outcomes. Both forms enter triage automatically, and PRs
+  request concrete validation and limitations instead of blanket checklists.
+
 - Install project-scoped Astra orchestration and Luna execution defaults, specialized
   Codex roles and the upstream astra-orchestrator skill, preserving Trinity role
   instructions and existing planner/implementer names.
