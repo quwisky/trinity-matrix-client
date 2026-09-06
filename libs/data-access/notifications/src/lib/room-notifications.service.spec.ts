@@ -666,6 +666,21 @@ describe('RoomNotificationsService per-account rules', () => {
     ).rejects.toThrow('not available');
   });
 
+  it('fails an authoritative read for a custom rule instead of presenting all', async () => {
+    const custom: Rule = {
+      rule_id: ROOM,
+      enabled: false,
+      default: false,
+      actions: ['notify'],
+      pattern: 'custom',
+    };
+    const { svc } = setup({ room: [custom] });
+
+    await expect(firstValueFrom(svc.readMode(ROOM, '@me:hs'))).rejects.toThrow(
+      'custom notification rule',
+    );
+  });
+
   it('reports a mixed mode when merged accounts disagree', () => {
     const { svc } = setupOwned();
 

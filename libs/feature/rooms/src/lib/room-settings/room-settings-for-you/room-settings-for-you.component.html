@@ -37,9 +37,10 @@
     }
     @case ('ready') {
       <form
+        [formRoot]="draft.form"
         class="room-settings__form"
         data-testid="room-settings-for-you-form"
-        (submit)="save($event)"
+        (submit)="draft.save()"
       >
         <section class="room-settings__card room-settings__fields">
           <div class="room-settings__field">
@@ -50,9 +51,9 @@
               Notifications
             </h3>
             <p>
-              Choose All messages to be notified about every message, or
-              Mentions and keywords to quiet ordinary messages. Mute silences
-              everything, including mentions.
+              All messages leaves this Room without specific suppression, so
+              Account-wide rules decide. Mentions and keywords quiets ordinary
+              messages. Mute silences everything, including mentions.
             </p>
           </div>
           <trn-radio-group

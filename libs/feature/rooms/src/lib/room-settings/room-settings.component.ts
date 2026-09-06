@@ -16,8 +16,8 @@ import {
 import { SettingsHubController } from '../shared/settings-hub/settings-hub.controller';
 import { RoomSettingsAccessComponent } from './room-settings-access.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
-import { RoomSettingsForYouComponent } from './room-settings-for-you.component';
-import { RoomSettingsForYouDraftService } from './room-settings-for-you-draft.service';
+import { RoomSettingsForYouComponent } from './room-settings-for-you/room-settings-for-you.component';
+import { RoomSettingsForYouDraftService } from './room-settings-for-you/room-settings-for-you-draft.service';
 import { RoomSettingsGeneralComponent } from './room-settings-general.component';
 import type { ParentSpace } from './room-settings.models';
 import { RoomWidgetsComponent } from './room-widgets.component';

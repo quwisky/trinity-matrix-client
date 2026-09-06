@@ -1,4 +1,5 @@
-@use './room-settings-panel' as panel;
+@use '../../styles/mixins' as rooms;
+@use '../room-settings-panel' as panel;
 
 @layer components {
   @include panel.layout;
@@ -44,7 +45,7 @@
     gap: 8px;
   }
 
-  @media (max-width: 767.98px) {
+  @media #{rooms.$below-md} {
     .room-settings__failure {
       align-items: stretch;
       flex-direction: column;

@@ -150,7 +150,10 @@ export class RoomNotificationsService {
         return throwError(() => new Error('This Account is not available.'));
       }
       return from(this.refreshRules(client)).pipe(
-        map(() => this.modeForClient(client, roomId)),
+        map(() => {
+          this.assertRulesAreWritable(client, roomId);
+          return this.modeForClient(client, roomId);
+        }),
       );
     });
   }

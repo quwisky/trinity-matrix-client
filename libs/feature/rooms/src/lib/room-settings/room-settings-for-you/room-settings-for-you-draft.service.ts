@@ -6,13 +6,14 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { form } from '@angular/forms/signals';
 import {
   RoomNotificationsService,
   type RoomNotifyMode,
 } from '@trinity/data-access/notifications';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { saveFields, type FieldWrite } from '../shared/save-fields';
-import { sentenceList } from './room-settings-draft.models';
+import { saveFields, type FieldWrite } from '../../shared/save-fields';
+import { sentenceList } from '../room-settings-draft.models';
 
 export type RoomForYouLoadState =
   'idle' | 'loading' | 'ready' | 'unavailable' | 'failed';
@@ -57,6 +58,7 @@ export class RoomSettingsForYouDraftService {
   readonly model = this.modelState.asReadonly();
   readonly saving = this.savingState.asReadonly();
   readonly feedback = this.feedbackState.asReadonly();
+  readonly form = form(this.modelState);
   readonly dirty = computed(() => {
     if (this.loadState() !== 'ready') return false;
     const model = this.model();

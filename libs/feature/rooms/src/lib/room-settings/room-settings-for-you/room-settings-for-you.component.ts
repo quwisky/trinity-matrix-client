@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { FormRoot } from '@angular/forms/signals';
 import {
   TrnButton,
   TrnCheckboxComponent,
@@ -6,7 +7,7 @@ import {
   type TrnRadioOption,
 } from '@trinity/components/controls';
 import type { RoomNotifyMode } from '@trinity/data-access/notifications';
-import { RoomSettingsDraftService } from './room-settings-draft.service';
+import { RoomSettingsDraftService } from '../room-settings-draft.service';
 import { RoomSettingsForYouDraftService } from './room-settings-for-you-draft.service';
 
 const NOTIFICATION_OPTIONS: readonly TrnRadioOption<RoomNotifyMode>[] = [
@@ -31,7 +32,7 @@ const NOTIFICATION_OPTIONS: readonly TrnRadioOption<RoomNotifyMode>[] = [
 @Component({
   selector: 'trn-room-settings-for-you',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnCheckboxComponent, TrnRadioGroupComponent],
+  imports: [FormRoot, TrnButton, TrnCheckboxComponent, TrnRadioGroupComponent],
   templateUrl: './room-settings-for-you.component.html',
   styleUrl: './room-settings-for-you.component.scss',
 })
@@ -39,9 +40,4 @@ export class RoomSettingsForYouComponent {
   readonly room = inject(RoomSettingsDraftService);
   readonly draft = inject(RoomSettingsForYouDraftService);
   readonly notificationOptions = NOTIFICATION_OPTIONS;
-
-  save(event: SubmitEvent): void {
-    event.preventDefault();
-    this.draft.save();
-  }
 }
