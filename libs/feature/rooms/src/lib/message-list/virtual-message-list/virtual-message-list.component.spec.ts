@@ -728,6 +728,12 @@ describe('VirtualMessageListComponent', () => {
         ); // physical row position follows the scroller's scrollTop
 
       cmp.onScroll(); // captures anchor $5 (offset 40), sets pendingPrepend, emits
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      // A second scroll while the request is outstanding chooses a new read position.
+      st = 120;
+      cmp.onScroll(); // the same row is now 20px below the viewport top
+      fixture.componentRef.setInput('loadingOlder', false);
 
       // Prepend five short rows. Their real 22px DOM heights are available immediately,
       // while the prefix still treats each unmeasured row as EST (64px). Restoring from
@@ -741,8 +747,8 @@ describe('VirtualMessageListComponent', () => {
       ]);
       fixture.detectChanges(); // prepend branch → rAF (sync) → offset-anchor restore
 
-      // Preserve the 40px viewport offset: previous 100 + real prepend height 110.
-      expect(st).toBe(210);
+      // Preserve the new 20px viewport offset: previous 120 + real prepend height 110.
+      expect(st).toBe(230);
       // The browser emits a scroll event for the correction itself; acknowledge that
       // expected write before testing a later observer batch.
       cmp.onScroll();
@@ -761,7 +767,7 @@ describe('VirtualMessageListComponent', () => {
       for (const frame of restoreFrames) {
         frame(0);
       }
-      expect(st).toBe(617);
+      expect(st).toBe(637);
 
       // Queue another correction, then move before its frame runs. A real user movement
       // invalidates the captured generation and the queued callback must do nothing.

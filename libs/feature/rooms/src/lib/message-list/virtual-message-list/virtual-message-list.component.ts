@@ -358,6 +358,16 @@ export class VirtualMessageListComponent extends MessageListBase {
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX,
     );
     this.updateJumpToUnread(); // divider may have scrolled in/out of the window
+    if (this.loadingOlder() && !this.atBottomSig()) {
+      // A reader can move while an earlier automatic backfill is still in flight.
+      // Transfer its restore point to the position they are reading now.
+      this.prevScrollHeight = el.scrollHeight;
+      this.prevScrollTop = el.scrollTop;
+      this.capturePrependAnchor(el);
+      this.pendingPrepend = true;
+      this.backfilling = false;
+      return;
+    }
     if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
     }
