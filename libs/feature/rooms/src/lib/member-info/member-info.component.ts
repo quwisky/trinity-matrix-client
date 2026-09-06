@@ -78,16 +78,28 @@ export class MemberInfoComponent {
   readonly member = input.required<MemberSummary>();
   /** The room the member is being viewed in (scopes the moderation actions). */
   readonly roomId = input.required<string>();
+  /** Immutable Account owner when this panel is hosted from settings. */
+  readonly accountId = input<string | null>(null);
+  /** Whether the immutable Account-and-Room target can still supply live authority. */
+  readonly exactTargetAvailable = input(true);
+  readonly targetName = input('this Room');
+  readonly noun = input<'Room' | 'Space'>('Room');
+  /** Exact-target observers bump this when membership or power policy changes. */
+  readonly authorityRevision = input(0);
+  /** Settings keeps readable member detail but hides commands the viewer cannot run. */
+  readonly hideUnavailableModeration = input(false);
+  /** Identity actions remain on Conversation surfaces; settings owns exact moderation. */
+  readonly showIdentityActions = input(true);
+  /** Render in a parent settings dialog without inheriting that dialog as our owner. */
+  readonly embedded = input(false);
 
   /**
    * Present when this is a DIALOG, absent when it is the shell's right-hand panel.
    *
-   * The one surface that has to work both ways. Member info opened from a room member's row
-   * belongs in the slot beside the timeline; the same panel opened from the space-members
-   * dialog carries a SPACE id (`space-actions.service.ts`), where there is no open room and
-   * therefore no slot — so it stays a dialog there. Rather than fork the component, every
-   * exit goes through {@link finish}, which closes the ref if there is one and otherwise
-   * announces itself for the host to act on.
+   * The one surface that has to work both ways. Conversation member info belongs in the
+   * slot beside the timeline; settings embeds the same content inside its owning dialog.
+   * Rather than fork the component, every exit goes through {@link finish}, which closes
+   * its own dialog when present and otherwise announces itself for the host to act on.
    */
   private readonly dialogRef = inject<TrnDialogRef<string | null>>(
     TrnDialogRef,
@@ -108,7 +120,9 @@ export class MemberInfoComponent {
    * either, so it has to carry its own header and close button or there is no way out of
    * it. Read from the ref rather than passed in, so the two can never disagree.
    */
-  readonly isPanel = !this.dialogRef;
+  get isPanel(): boolean {
+    return this.embedded() || !this.dialogRef;
+  }
 
   private readonly presence = inject(IdentityPresenceService);
   private readonly toast = inject(TrnToastService);
@@ -130,26 +144,40 @@ export class MemberInfoComponent {
 
   /** Live online status for the presence dot. */
   readonly presenceState = computed(() =>
-    this.presence.presenceFor(this.member().userId)(),
+    this.accountId() ? null : this.presence.presenceFor(this.member().userId)(),
   );
 
   /** Whether this row is the signed-in user — no point messaging yourself. */
   readonly isSelf = computed(
-    () => this.member().userId === this.identity.activeUserId(),
+    () =>
+      this.member().userId ===
+      (this.accountId() ?? this.identity.activeUserId()),
   );
 
   /** The member's role in the room, by the standard power-level convention. */
   /** Whether the room is a direct message — a DM has no owner. See {@link memberRole}. */
   readonly direct = input(false);
 
-  readonly permissions = computed(() =>
-    this.permissionsService.member(this.roomId(), this.member().userId),
-  );
+  readonly target = computed(() => {
+    const accountId = this.accountId();
+    return accountId ? { accountId, roomId: this.roomId() } : this.roomId();
+  });
 
-  readonly liveMember = computed<MemberSummary>(() => ({
-    ...this.member(),
-    powerLevel: this.permissions().targetPower,
-  }));
+  readonly permissions = computed(() => {
+    this.authorityRevision();
+    return this.permissionsService.member(this.target(), this.member().userId);
+  });
+
+  readonly liveMember = computed<MemberSummary>(() => {
+    const member = this.member();
+    return {
+      ...member,
+      powerLevel:
+        this.accountId() && !this.exactTargetAvailable()
+          ? member.powerLevel
+          : this.permissions().targetPower,
+    };
+  });
 
   readonly role = computed(
     () =>
@@ -166,10 +194,26 @@ export class MemberInfoComponent {
 
   rolePermission(level: number): ActionAvailability {
     return this.permissionsService.role(
-      this.roomId(),
+      this.target(),
       this.member().userId,
       level,
     );
+  }
+
+  readonly showModeration = computed(() => {
+    if (!this.hideUnavailableModeration()) return true;
+    const permissions = this.permissions();
+    return (
+      permissions.kick.available ||
+      permissions.ban.available ||
+      this.roleOptions().some(
+        (option) => this.rolePermission(option.level).available,
+      )
+    );
+  });
+
+  showModerationAction(permission: ActionAvailability): boolean {
+    return !this.hideUnavailableModeration() || permission.available;
   }
 
   /** Start (or reuse) a direct message with this member — the host does the navigation. */
@@ -275,8 +319,8 @@ export class MemberInfoComponent {
     }
     this.alert
       .prompt$({
-        header: 'Remove from room',
-        message: `Remove ${this.member().roomDisplayName} from this room? They can rejoin if invited (or if the room is public).`,
+        header: `Remove from ${this.noun()}`,
+        message: `Remove ${this.member().roomDisplayName} from ${this.targetName()} using Account ${this.accountId() ?? 'currently active'}? They can rejoin if invited or if this ${this.noun().toLowerCase()} is public.`,
         confirmText: 'Remove',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -288,7 +332,7 @@ export class MemberInfoComponent {
       .subscribe((reason) =>
         this.run(
           this.moderation.kick(
-            this.roomId(),
+            this.target(),
             this.member().userId,
             reason || undefined,
           ),
@@ -304,8 +348,8 @@ export class MemberInfoComponent {
     }
     this.alert
       .prompt$({
-        header: 'Ban from room',
-        message: `Ban ${this.member().roomDisplayName}? They won't be able to rejoin until they're unbanned.`,
+        header: `Ban from ${this.noun()}`,
+        message: `Ban ${this.member().roomDisplayName} from ${this.targetName()} using Account ${this.accountId() ?? 'currently active'}? They won't be able to rejoin until they're unbanned.`,
         confirmText: 'Ban',
         variant: 'danger',
         placeholder: 'Reason (optional)',
@@ -317,7 +361,7 @@ export class MemberInfoComponent {
       .subscribe((reason) =>
         this.run(
           this.moderation.ban(
-            this.roomId(),
+            this.target(),
             this.member().userId,
             reason || undefined,
           ),
@@ -334,7 +378,7 @@ export class MemberInfoComponent {
     this.alert
       .confirm$({
         header: 'Change role',
-        message: `Change ${this.member().roomDisplayName}'s role to ${option.label}?`,
+        message: `Change ${this.member().roomDisplayName}'s role in ${this.targetName()} to ${option.label} using Account ${this.accountId() ?? 'currently active'}?`,
         confirmText: 'Change',
         // A demotion is the weightier direction.
         variant:
@@ -344,7 +388,7 @@ export class MemberInfoComponent {
       .subscribe(() =>
         this.run(
           this.moderation.setPowerLevel(
-            this.roomId(),
+            this.target(),
             this.member().userId,
             option.level,
           ),
@@ -362,7 +406,7 @@ export class MemberInfoComponent {
    * moderation write landing, verification starting — ends with `null`.
    */
   private finish(userId: string | null): void {
-    if (this.dialogRef) {
+    if (this.dialogRef && !this.embedded()) {
       this.dialogRef.close(userId);
       return;
     }

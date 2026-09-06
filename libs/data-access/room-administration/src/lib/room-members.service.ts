@@ -1,10 +1,12 @@
 import {
+  Injector,
   Injectable,
   type Signal,
   type WritableSignal,
   inject,
   signal,
 } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import {
   ClientEvent,
   KnownMembership,
@@ -21,9 +23,10 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import { initialOf } from '@trinity/util/matrix';
-import type { Observable } from 'rxjs';
+import { Observable, of, switchMap } from 'rxjs';
 import type { RoomAdministrationView } from './room-administration-health.models';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
+import type { RoomSettingsTarget } from './room-settings.service';
 
 /** A joined member projected from authoritative Matrix room state.
  *
@@ -48,6 +51,18 @@ export interface BannedMember {
   readonly reason: string | null;
 }
 
+export type RoomMembersAvailability =
+  'available' | 'account-unavailable' | 'room-unavailable';
+
+/** Exact Account-and-Room roster and ban state for a settings lifetime. */
+export interface RoomMembersSnapshot {
+  readonly target: RoomSettingsTarget;
+  readonly availability: RoomMembersAvailability;
+  readonly unavailableReason: string | null;
+  readonly members: readonly MemberSummary[];
+  readonly banned: readonly BannedMember[];
+}
+
 const EMPTY_MEMBERS: readonly MemberSummary[] = Object.freeze([]);
 const EMPTY_BANS: readonly BannedMember[] = Object.freeze([]);
 
@@ -55,6 +70,7 @@ const EMPTY_BANS: readonly BannedMember[] = Object.freeze([]);
 @Injectable({ providedIn: 'root' })
 export class RoomMembersService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly injector = inject(Injector);
   private readonly projectionState = inject(RoomAdministrationProjectionState);
   private readonly memberSignals = new Map<
     string,
@@ -176,7 +192,85 @@ export class RoomMembersService {
     if (!roomId || !this.matrix.isInitialized) {
       return EMPTY_MEMBERS;
     }
-    const room = this.matrix.instance.getRoom(roomId);
+    return this.membersFrom(
+      this.matrix.instance,
+      roomId,
+      `active\x1f${roomId}`,
+    );
+  }
+
+  /** Read one settings roster from its immutable opening Account. */
+  snapshot(target: RoomSettingsTarget): RoomMembersSnapshot {
+    const client = this.matrix.clientFor(target.accountId);
+    const room = client?.getRoom(target.roomId) ?? null;
+    const joined = room?.getMyMembership() === KnownMembership.Join;
+    const availability: RoomMembersAvailability = !client
+      ? 'account-unavailable'
+      : !room || !joined
+        ? 'room-unavailable'
+        : 'available';
+    const cacheKey = `${target.accountId}\x1f${target.roomId}`;
+    return {
+      target,
+      availability,
+      unavailableReason:
+        availability === 'account-unavailable'
+          ? 'This Account is no longer available. The member list remains attached to the opening Account.'
+          : availability === 'room-unavailable'
+            ? 'This Room is no longer joined for the opening Account.'
+            : null,
+      members:
+        client && availability === 'available'
+          ? this.membersFrom(client, target.roomId, cacheKey)
+          : EMPTY_MEMBERS,
+      banned:
+        client && availability === 'available'
+          ? this.bannedFrom(client, target.roomId, cacheKey)
+          : EMPTY_BANS,
+    };
+  }
+
+  /**
+   * Observe one exact settings target. Subscription owns only that Account's filtered
+   * membership listeners and reattaches if the Account is removed or restored.
+   */
+  observe(target: RoomSettingsTarget): Observable<RoomMembersSnapshot> {
+    return toObservable(this.matrix.accountIds, {
+      injector: this.injector,
+    }).pipe(switchMap(() => this.observeCurrentClient(target)));
+  }
+
+  private observeCurrentClient(
+    target: RoomSettingsTarget,
+  ): Observable<RoomMembersSnapshot> {
+    const client = this.matrix.clientFor(target.accountId);
+    if (!client) return of(this.snapshot(target));
+    return new Observable((subscriber) => {
+      const publish = (): void => subscriber.next(this.snapshot(target));
+      const onMember = (_event: MatrixEvent, state: RoomState): void => {
+        if (state.roomId === target.roomId) publish();
+      };
+      const onMembership = (room?: { roomId?: string }): void => {
+        if (!room?.roomId || room.roomId === target.roomId) publish();
+      };
+      client.on(RoomStateEvent.Members, onMember);
+      client.on(RoomEvent.MyMembership, onMembership);
+      client.on(ClientEvent.Sync, publish);
+      publish();
+      return () => {
+        client.off(RoomStateEvent.Members, onMember);
+        client.off(RoomEvent.MyMembership, onMembership);
+        client.off(ClientEvent.Sync, publish);
+      };
+    });
+  }
+
+  private membersFrom(
+    client: MatrixClient,
+    roomId: string,
+    cacheKey: string,
+  ): readonly MemberSummary[] {
+    const room = client.getRoom(roomId);
     if (!room) {
       return EMPTY_MEMBERS;
     }
@@ -187,7 +281,7 @@ export class RoomMembersService {
           `${member.userId}\x1f${member.name}\x1f${member.getMxcAvatarUrl() ?? ''}\x1f${member.powerLevel}`,
       )
       .join('\x1e');
-    const cached = this.memberCache.get(roomId);
+    const cached = this.memberCache.get(cacheKey);
     if (cached?.fingerprint === fingerprint) {
       return cached.members;
     }
@@ -197,7 +291,7 @@ export class RoomMembersService {
       .sort((a, b) =>
         this.collator.compare(a.roomDisplayName, b.roomDisplayName),
       );
-    this.memberCache.set(roomId, { fingerprint, members });
+    this.memberCache.set(cacheKey, { fingerprint, members });
     return members;
   }
 
@@ -224,7 +318,15 @@ export class RoomMembersService {
     if (!roomId || !this.matrix.isInitialized) {
       return EMPTY_BANS;
     }
-    const room = this.matrix.instance.getRoom(roomId);
+    return this.bannedFrom(this.matrix.instance, roomId, `active\x1f${roomId}`);
+  }
+
+  private bannedFrom(
+    client: MatrixClient,
+    roomId: string,
+    cacheKey: string,
+  ): readonly BannedMember[] {
+    const room = client.getRoom(roomId);
     if (!room) {
       return EMPTY_BANS;
     }
@@ -243,14 +345,14 @@ export class RoomMembersService {
           `${member.userId}\x1f${member.roomDisplayName}\x1f${member.reason ?? ''}`,
       )
       .join('\x1e');
-    const cached = this.bannedCache.get(roomId);
+    const cached = this.bannedCache.get(cacheKey);
     if (cached?.fingerprint === fingerprint) {
       return cached.members;
     }
     summaries.sort((a, b) =>
       this.collator.compare(a.roomDisplayName, b.roomDisplayName),
     );
-    this.bannedCache.set(roomId, { fingerprint, members: summaries });
+    this.bannedCache.set(cacheKey, { fingerprint, members: summaries });
     return summaries;
   }
 

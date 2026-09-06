@@ -96,17 +96,17 @@ The hub has these sections:
 | General   | Room avatar, name and topic.                                                                             |
 | For you   | Notification mode, Favourite and Low priority for the opening Account.                                   |
 | Access    | Who can join and who can read earlier history. A restricted room must retain at least one allowed Space. |
+| Members   | Current and banned members, search, member details, invitations, roles and moderation.                   |
 | Addresses | Primary and local Matrix addresses for finding and joining the Room.                                     |
 | Widgets   | Third-party widgets declared for the room.                                                               |
-| Bans      | The list of banned members, with unban actions where allowed.                                            |
 
 **General**, **For you** and **Access** save independently. A partial failure keeps only the fields
 that did not save as drafts, so retry sends only what remains. For you first confirms the opening
 Account's current homeserver notification rule instead of showing a guessed default; it names
 loading, unavailable and failed-read states explicitly. Its Favourite and Low priority values come
-from that Account's synced Matrix Room tags. Avatar selection, address actions, widget
-publication/removal and unbanning use their own immediate actions; discarding a draft does not undo
-those completed actions. In **Addresses**, the primary and local addresses remain readable and
+from that Account's synced Matrix Room tags. Avatar selection, member administration, address
+actions and widget publication/removal use their own immediate actions; discarding a draft does
+not undo those completed actions. In **Addresses**, the primary and local addresses remain readable and
 copyable for every member. Administrators can add a local address, make one primary, or remove one
 after confirming the exact address and its effect on joining and links. Each action reports its own
 progress and result; a failed add retains the entered value for correction or retry. Removing an
@@ -114,13 +114,13 @@ address never deletes the Room or Space. Leaving a section, closing Room setting
 asks before discarding a draft. A remote update refreshes untouched General and Access fields
 without overwriting fields you are editing.
 
-General details, Access policy and Addresses remain bound to the Account and Room that opened Room settings
-even if another Account becomes active. If that Account signs out, the target becomes unavailable
-and pending results cannot write into the newly active Account. Widgets and Bans actions still use
-their established active-Account projections during the incremental hub migration, so those panels
-explain that you must switch back to the opening Account instead of risking a redirected write.
-Matrix permissions are checked live and per action, so a member may be
-able to read a section or edit an avatar but not change the access rule, aliases, widgets or bans.
+General details, Access policy, Members and Addresses remain bound to the Account and Room that
+opened Room settings even if another Account becomes active. If that Account signs out, the target
+becomes unavailable and pending results cannot write into the newly active Account. Widgets still
+uses its established active-Account adapter during the incremental hub migration, so that panel
+asks you to switch back instead of risking a redirected write. Matrix permissions are checked live
+and per action, so a member may be able to read a section or edit an avatar but not change the
+access rule, aliases, widgets or membership.
 Losing a role while Room settings is open disables the affected controls without hiding readable
 information or erasing drafts. Access and history choices affect other people and can expose
 earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
@@ -139,9 +139,9 @@ Open **Space settings** from the Space header's overflow menu. Like Room setting
 opening Account and Space visible and uses a directory beside the editor on a wide screen. On a
 phone it opens full screen; **Back** returns from a section to the directory before Close leaves
 the hub. General changes the Space avatar, name and topic; **For you** stages the opening Account's
-device-local Room ordering; Access changes who can join; Addresses manages published Space links;
-and Bans lists barred members. Each working destination stays reachable while the remaining
-Space-specific sections are added.
+device-local Room ordering; Access changes who can join; Members combines the searchable roster,
+member details, invitations, roles, moderation and banned list; and Addresses manages published
+Space links. The Space Members shortcut opens this same destination rather than a separate dialog.
 
 Space Addresses has the same exact-Account behavior and explicit actions as Room Addresses. Long
 addresses wrap on phones, while copy and Matrix-link actions remain available when the opening
@@ -175,26 +175,32 @@ changes the room's shared declaration, so it affects other participants as well.
 
 ## Members and moderation
 
-Open **Members** in the room header to see participants. Select a person to message them, copy
-their Matrix ID, ignore them, or begin verification. Moderation controls are offered only where
-your role and the room's rules allow them:
+Open **Members** in Room or Space settings to see the target's participants grouped by role and to
+search by name or Matrix ID. Select a person to message them, copy their Matrix ID, or administer
+their membership. Banned people are a second list inside the same section. Ordinary members can
+still read the roster, member detail and bans; administration controls appear only where their
+live role and the target's rules allow them. The Conversation member panel additionally offers
+ignore and verification actions.
 
 - invite a person;
 - assign an allowed Member, Moderator or Admin role;
 - remove a person from the room; or
 - ban and later unban a person.
 
-A room owner cannot be reassigned through these role presets. The homeserver remains authoritative:
-a permission change made while a menu is open can cause a later action to be refused. The same
-membership rules apply to a space because a Matrix space is a room.
+A Room owner cannot be reassigned through these role presets. Consequence confirmations name the
+person, Room or Space, Account and effect. The homeserver remains authoritative: a permission
+change made while a picker or confirmation is open can cause the later action to be refused while
+the same target remains visible for retry. A Space invitation joins only that Space, never its
+child Rooms. The same membership rules apply to a Space because a Matrix Space is a Room.
 
 ## Account scope in combined lists
 
-The active account performs actions such as creating, joining and moderation. Rooms joined by
-more than one displayed account share one row. Favourite tags, read-state changes and notification
+The active Account performs combined-list actions such as creating and joining. Rooms joined by
+more than one displayed Account share one row. Favourite tags, read-state changes and notification
 modes from that row apply to every Account represented by it. A favourite can therefore change
-another Account's synchronized room tags as well. Space
-governance remains targeted to the active account. See
+another Account's synchronized Room tags as well. Room and Space settings instead stay bound to
+the Account and target that opened them, including member administration. Space governance from
+the sidebar remains targeted to the active Account. See
 [using more than one account](index.md#using-more-than-one-account) before relying on a combined
 view for administrative work.
 

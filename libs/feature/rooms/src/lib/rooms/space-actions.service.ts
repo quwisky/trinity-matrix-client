@@ -1,4 +1,3 @@
-import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { DestroyRef, Injectable, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -14,7 +13,6 @@ import { TrnAlertService, TrnDialogService } from '@trinity/components/overlay';
 import { filter, map, Observable, switchMap } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { ManageSpaceRoomsComponent } from '../manage-space-rooms/manage-space-rooms.component';
-import { SpaceMembersComponent } from '../space-members/space-members.component';
 import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { runWithBusy } from '@trinity/util/ui';
 import { isMobileOs } from '@trinity/platform-native';
@@ -22,7 +20,6 @@ import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
-import { MemberActionsService } from './member-actions.service';
 import { ShellStatusService } from './shell-status.service';
 
 /**
@@ -42,7 +39,6 @@ export class SpaceActionsService {
   private readonly vm = inject(RoomShellViewModel);
   private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
-  private readonly memberActions = inject(MemberActionsService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly roomReadiness = inject(RoomReadinessService);
@@ -294,6 +290,14 @@ export class SpaceActionsService {
     if (!spaceId || !accountId || !this.vm.canConfigureSpace()) {
       return;
     }
+    this.openSpaceSettings(accountId, spaceId, 'general');
+  }
+
+  private openSpaceSettings(
+    accountId: string,
+    spaceId: string,
+    initialSection: 'general' | 'members',
+  ): void {
     this.dialog
       .openAndWait$(SpaceSettingsComponent, {
         ariaLabel: 'Space settings',
@@ -305,6 +309,7 @@ export class SpaceActionsService {
           accountId,
           spaceId,
           spaceDisplayName: this.vm.activeSpaceName(),
+          initialSection,
         },
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -343,12 +348,9 @@ export class SpaceActionsService {
   }
 
   /**
-   * Space overflow "Members": list the space's members, with the same moderation the room
-   * member list offers.
-   *
-   * Picking someone opens the SHARED member-info panel against the space id — a space is a
-   * room, so `canModerate` and every kick/ban/power-level action already answer correctly
-   * for it. One moderation surface rather than a space-shaped copy of it.
+   * Space overflow "Members": enter the same exact-target destination used by settings.
+   * This shortcut remains available to ordinary members even when governance settings are
+   * hidden; the destination keeps policy readable and hides only unavailable commands.
    */
   onOpenSpaceMembers(): void {
     const accountId = this.store.activeAccountId();
@@ -356,23 +358,6 @@ export class SpaceActionsService {
     if (!accountId || !spaceId) {
       return;
     }
-    this.dialog
-      .openAndWait$<MemberSummary | null, SpaceMembersComponent>(
-        SpaceMembersComponent,
-        {
-          ariaLabel: 'Space members',
-          inputs: { spaceId, spaceName: this.vm.activeSpaceName() },
-        },
-      )
-      .pipe(
-        filter((member): member is MemberSummary => member !== null),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe((member) => {
-        this.memberActions.openMemberInfo(member, {
-          accountId,
-          roomId: spaceId,
-        });
-      });
+    this.openSpaceSettings(accountId, spaceId, 'members');
   }
 }

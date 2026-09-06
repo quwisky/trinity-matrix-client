@@ -127,6 +127,7 @@ async function build(
   });
   return {
     cmp: fixture.componentInstance,
+    fixture,
     container,
     close,
     toastShow,
@@ -504,6 +505,67 @@ describe('MemberInfoComponent', () => {
 
     expect(kick).toHaveBeenCalledWith('!r:hs', '@bob:hs', 'spam');
     expect(close).toHaveBeenCalledWith(null);
+  });
+
+  it('confirms exact Space context and keeps the command on the opening Account', async () => {
+    const alertPrompt = vi.fn(() => of('spam'));
+    const { cmp, fixture, kick, close } = await build(member(), {
+      canKick: true,
+      alertPrompt,
+    });
+    fixture.componentRef.setInput('accountId', '@opening:hs');
+    fixture.componentRef.setInput('targetName', 'Design Space');
+    fixture.componentRef.setInput('noun', 'Space');
+    fixture.componentRef.setInput('embedded', true);
+    let dismissed = false;
+    cmp.dismissed.subscribe(() => (dismissed = true));
+    await fixture.whenStable();
+
+    cmp.kick();
+
+    expect(alertPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        header: 'Remove from Space',
+        message: expect.stringContaining(
+          'Design Space using Account @opening:hs',
+        ),
+      }),
+    );
+    expect(kick).toHaveBeenCalledWith(
+      { accountId: '@opening:hs', roomId: '!r:hs' },
+      '@bob:hs',
+      'spam',
+    );
+    expect(dismissed).toBe(true);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('suppresses active-Account presence and retains the known role when an exact target is unavailable', async () => {
+    const { cmp, fixture } = await build(member({ powerLevel: 100 }), {
+      targetPower: 0,
+    });
+    fixture.componentRef.setInput('accountId', '@opening:hs');
+    fixture.componentRef.setInput('exactTargetAvailable', false);
+    await fixture.whenStable();
+
+    expect(cmp.presenceState()).toBeNull();
+    expect(cmp.role()).toBe('Admin');
+  });
+
+  it('names a Space in its ban confirmation heading', async () => {
+    const alertPrompt = vi.fn(() => of(''));
+    const { cmp, fixture } = await build(member(), {
+      canBan: true,
+      alertPrompt,
+    });
+    fixture.componentRef.setInput('noun', 'Space');
+    await fixture.whenStable();
+
+    cmp.ban();
+
+    expect(alertPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({ header: 'Ban from Space' }),
+    );
   });
 
   it('does not kick when the confirmation is cancelled', async () => {

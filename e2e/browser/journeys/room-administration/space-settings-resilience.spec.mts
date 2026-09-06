@@ -138,9 +138,13 @@ test.describe('Space settings resilience', () => {
     const member = `space-member-${runId}`;
     const memberPass = `${member}-pass`;
     const memberId = `@${member}:localhost`;
+    const invitee = `space-invitee-${runId}`;
+    const inviteePass = `${invitee}-pass`;
+    const inviteeId = `@${invitee}:localhost`;
     const spaceName = `Shared space ${runId}`;
     await registerUser(request, owner, ownerPass);
     await registerUser(request, member, memberPass);
+    await registerUser(request, invitee, inviteePass);
     const ownerToken = await tokenFor(request, hs, owner, ownerPass);
     const memberToken = await tokenFor(request, hs, member, memberPass);
     const spaceId = await createSpace(request, hs, ownerToken, spaceName, [
@@ -230,5 +234,21 @@ test.describe('Space settings resilience', () => {
       { headers: { Authorization: `Bearer ${memberToken}` } },
     );
     expect((await resolved.json()).room_id).toBe(spaceId);
+
+    // Members resolves both permission and the finite invite against the opening owner.
+    // The currently active member cannot invite, so success proves the picker result did
+    // not retarget when it crossed the Account switch above.
+    await openSettingsTab(page, 'space-settings', 'members');
+    await page.getByTestId('members-settings-invite').click();
+    await page.getByLabel('@user:server or a name').fill(inviteeId);
+    await page.getByRole('button', { name: 'Invite', exact: true }).click();
+    const inviteMembership = async (): Promise<unknown> => {
+      const response = await request.get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.member/${encodeURIComponent(inviteeId)}`,
+        { headers: { Authorization: `Bearer ${ownerToken}` } },
+      );
+      return response.ok() ? (await response.json()).membership : undefined;
+    };
+    await expect.poll(inviteMembership, { timeout: 20_000 }).toBe('invite');
   });
 });

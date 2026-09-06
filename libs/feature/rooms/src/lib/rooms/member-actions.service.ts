@@ -15,11 +15,8 @@ import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
  * Everything that starts from a person: the member list, a member's info panel, the
  * hover card, and opening a DM with them.
  *
- * Extracted before the space coordinator on purpose. `onOpenSpaceMembers` ends by routing
- * the picked member into `openMemberInfo`, so if spaces moved first it would have to reach
- * back into the page for several commits — and with page-scoped providers a coordinator
- * injecting the page re-enters provider construction and throws NG0200 rather than merely
- * being untidy.
+ * Extracted from the page so the Conversation member slot, member dialog, hover card and
+ * direct-message navigation share one lifecycle owner.
  */
 @Injectable()
 export class MemberActionsService {
@@ -48,10 +45,10 @@ export class MemberActionsService {
    * Show a member's info — in the shell's slot for the OPEN room, as a dialog anywhere else.
    *
    * The discriminator is the exact Account-and-Room owner, not "is a room open".
-   * `space-actions.service.ts` opens this from inside the space-members dialog with a SPACE
-   * id: there is no slot for a space, and the shell behind it may even have a different
-   * Conversation open. Exact comparison keeps the slot tied to the open Conversation even
-   * when two Accounts contain the same Matrix room id.
+   * A non-Conversation caller may supply a different Room or Space id. There is no shell
+   * slot for that target, and the shell behind it may even have another Conversation open.
+   * Exact comparison keeps the slot tied to the open Conversation even when two Accounts
+   * contain the same Matrix room id.
    */
   openMemberInfo(member: MemberSummary, owner: ExactRoomSelection): void {
     const activeAccountId = this.store.activeAccountId();

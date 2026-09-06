@@ -37,21 +37,21 @@
               </span>
             }
           </span>
-          <button
-            trnBtn
-            type="button"
-            variant="secondary"
-            presentation="outline"
-            size="sm"
-            [disabled]="isPending(member.userId)"
-            (click)="unban(member)"
-            [trnActionAllowed]="permission.available"
-            [trnActionDisabledReason]="permission.reason"
-            [trnTooltip]="permission.reason ?? 'Unban member'"
-            data-testid="banned-member-unban"
-          >
-            {{ isPending(member.userId) ? 'Unbanning…' : 'Unban' }}
-          </button>
+          @if (permission.available) {
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              [disabled]="isPending(member.userId)"
+              (click)="unban(member)"
+              [trnTooltip]="'Unban member'"
+              data-testid="banned-member-unban"
+            >
+              {{ isPending(member.userId) ? 'Unbanning…' : 'Unban' }}
+            </button>
+          }
         </li>
       }
     </ul>

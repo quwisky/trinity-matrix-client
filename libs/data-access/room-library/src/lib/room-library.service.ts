@@ -46,6 +46,7 @@ import {
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
+  type RoomLibraryGovernanceKey,
 } from './room-library-governance-policy';
 
 /** Fields a {@link RoomLibraryService.createRoom} call accepts. */
@@ -684,16 +685,26 @@ export class RoomLibraryService {
    * Invite `userId` to `roomId` — works for both rooms and spaces (a space is just a
    * room). Rejects when `userId` isn't a valid MXID. Cold: runs on subscribe.
    */
-  inviteUser(roomId: string, userId: string): Observable<void> {
+  inviteUser(
+    target: string | RoomLibraryGovernanceKey,
+    userId: string,
+  ): Observable<void> {
     return defer(() => {
       if (!isValidUserId(userId)) {
         return throwError(() => new Error(`Invalid user id: ${userId}`));
       }
-      const client = this.matrix.instance;
-      const accountId = client.getUserId();
-      if (!accountId) {
+      const client =
+        typeof target === 'string'
+          ? this.matrix.isInitialized
+            ? this.matrix.instance
+            : null
+          : this.matrix.clientFor(target.accountId);
+      if (!client) {
         return throwError(() => new Error('Not signed in.'));
       }
+      const accountId = client.getUserId();
+      if (!accountId) return throwError(() => new Error('Not signed in.'));
+      const roomId = typeof target === 'string' ? target : target.roomId;
       assertRoomLibraryGovernance(
         this.governance.authorize({ accountId, roomId }, 'invite'),
       );

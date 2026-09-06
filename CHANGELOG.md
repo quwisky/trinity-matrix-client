@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room and Space member administration is consolidated inside Account-bound settings.** The
+  Members section keeps the opening Account's live roster, role groups, search, member detail and
+  banned list together. Invite, role, remove, ban and unban actions recheck that exact target after
+  pickers and confirmations; later Account switches cannot redirect them. Ordinary members retain
+  readable membership and policy while unavailable administration is hidden, Space invitations
+  affect only the Space itself, and the existing Room and Space member shortcuts open the same
+  lifecycle-owned destination.
+
 - **Room and Space addresses now stay bound to the Account that opened settings.** Their own
   readable section shows the primary address and every local address, including long values and
   an explicit empty state. Copy and Matrix-link actions remain available without edit permission;
@@ -42,8 +50,8 @@ All notable changes to this project are documented here. The format is based on
   live Matrix updates, retry only failed fields, and never retarget a late write after an Account
   switch. Desktop keeps the section directory beside the editor; phones use a full-screen
   master-detail flow with protected Back and Close navigation. Existing unfamiliar access rules
-  remain readable without offering new restricted choices, while Addresses and Bans remain
-  reachable behind their opening-Account safety gate. Leaving a Space now confirms the exact
+  remain readable without offering new restricted choices, while Addresses and the exact-target
+  Members destination remain reachable. Leaving a Space now confirms the exact
   Account and Space and makes clear that membership in its Rooms is retained.
 
 - **Room settings is now an Account-bound responsive hub.** Web and desktop keep a centred
@@ -52,9 +60,8 @@ All notable changes to this project are documented here. The format is based on
   clearly identified; General and Access keep independent drafts, save successful fields
   separately, and retry only failures. Browser, device and in-hub navigation protect dirty work,
   live permission changes disable only affected writes, and Account switching or sign-out cannot
-  retarget pending Room updates. Existing local-address, Widgets and Bans workflows remain
-  reachable; until their follow-up migrations land, they ask users to switch back to the opening
-  Account instead of risking an active-Account write.
+  retarget pending Room updates. Existing local-address and Widgets workflows remain reachable;
+  Widgets keeps its opening-Account safety gate while Members now uses exact-target actions.
 
 - System Status now presents startup blockers and live capability limits from one application-owned
   English catalogue, grouped by user-facing capability and Account with scoped recovery, recurrence-aware

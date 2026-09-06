@@ -5,10 +5,11 @@ import {
   computed,
   inject,
   input,
+  viewChild,
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { initialOf } from '@trinity/util/matrix';
-import { BannedMembersComponent } from '../banned-members/banned-members.component';
+import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
 import {
   SettingsHubComponent,
@@ -26,7 +27,7 @@ import { RoomWidgetsComponent } from './room-widgets.component';
 export type { ParentSpace } from './room-settings.models';
 
 type RoomSettingsSection =
-  'general' | 'for-you' | 'access' | 'addresses' | 'widgets' | 'bans';
+  'general' | 'for-you' | 'access' | 'members' | 'addresses' | 'widgets';
 
 const SECTIONS: readonly (SettingsHubSection & {
   readonly value: RoomSettingsSection;
@@ -47,6 +48,11 @@ const SECTIONS: readonly (SettingsHubSection & {
     description: 'Who can join and read history',
   },
   {
+    value: 'members',
+    label: 'Members',
+    description: 'People, roles, invitations, and bans',
+  },
+  {
     value: 'addresses',
     label: 'Addresses',
     description: 'Published Room links',
@@ -56,11 +62,6 @@ const SECTIONS: readonly (SettingsHubSection & {
     label: 'Widgets',
     description: 'Connected room tools',
   },
-  {
-    value: 'bans',
-    label: 'Bans',
-    description: 'People barred from this Room',
-  },
 ];
 
 /** Responsive, exact-Account Room settings hub. */
@@ -69,7 +70,7 @@ const SECTIONS: readonly (SettingsHubSection & {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [RoomSettingsDraftService, RoomSettingsForYouDraftService],
   imports: [
-    BannedMembersComponent,
+    MembersSettingsComponent,
     RoomAliasesComponent,
     RoomSettingsAccessComponent,
     RoomSettingsGeneralComponent,
@@ -85,6 +86,8 @@ export class RoomSettingsComponent implements OnInit {
   readonly roomId = input.required<string>();
   readonly roomDisplayName = input('Room');
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
+  readonly direct = input(false);
+  readonly initialSection = input<RoomSettingsSection>('general');
 
   private readonly identities = inject(AccountIdentitiesService);
 
@@ -128,8 +131,9 @@ export class RoomSettingsComponent implements OnInit {
     }
     return this.draft.openingAccountActive()
       ? null
-      : 'Switch back to the opening Account to manage this section. General, For you, and Access remain attached to the opening Account.';
+      : 'Switch back to the opening Account to manage Widgets. Every other section remains attached to the opening Account.';
   });
+  private readonly membersSection = viewChild(MembersSettingsComponent);
 
   ngOnInit(): void {
     this.draft.start(
@@ -140,6 +144,7 @@ export class RoomSettingsComponent implements OnInit {
       accountId: this.accountId(),
       roomId: this.roomId(),
     });
+    this.hub.selectSection(this.initialSection());
     this.hub.activate();
   }
 
@@ -152,6 +157,7 @@ export class RoomSettingsComponent implements OnInit {
   }
 
   requestExternalDismiss(): boolean {
+    if (this.membersSection()?.dismissNestedSurface()) return false;
     return this.hub.requestExternalDismiss();
   }
 

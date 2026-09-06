@@ -117,8 +117,8 @@ independent. Retrying a retained failure schedules only its existing projection;
 ownership recreates both Room Administration leases without reopening the Room surface.
 
 Room and Space settings share a domain-neutral responsive hub, but keep separate policy owners.
-Each hub takes an immutable Account-and-Room target (a Space is a Matrix Room) for General and
-Access policy and observes that Account's exact client, independent of later Active Account
+Each hub takes an immutable Account-and-Room target (a Space is a Matrix Room) for General,
+Access and Members policy and observes that Account's exact client, independent of later Active Account
 changes. SDK state and sync invalidations refresh untouched fields and permission gates while
 section-owned drafts remain local; removal of the opening Account makes the target unavailable,
 and a late avatar upload cannot publish into a replacement Account. General and Access commands
@@ -133,13 +133,23 @@ Account's default” and therefore remains live to later default changes; explic
 isolated by both Account and Space. Neither path writes `m.space.child`, whose shared order and
 Suggested state remain separate Space-curation authority.
 
+Member settings owns a local exact-target observation lifetime for joined and banned membership.
+Filtered membership and sync events republish immutable snapshots from the opening Account; losing
+that Account or Room publishes an unavailable state with retained last-known context rather than an
+authoritative empty roster. The shared
+virtualized roster preserves role grouping, search and large-Room behavior without projecting
+presence from whichever Account later becomes active. Invite, role, remove, ban and unban commands
+are cold, resolve the immutable Account and target at subscription time, and recheck current Matrix
+authority immediately before writing. The banned list is a destination within Members, and the
+Space shortcut opens that same settings lifecycle; a Space invite writes only to the Space Room.
+
 Address reads and cold finite add, canonical-address and removal commands resolve the immutable
 opening Account-and-Room/Space target directly. The address section keeps local-directory entries
 and canonical state distinct, remains readable without administration authority, and rechecks
 exact-target permission after confirmations and between a canonical clear and directory removal.
-The incrementally retained ban adapters in both hubs and the Room-only widget adapter stay behind
-an opening-Account-active gate until their exact-target migrations land; they never fall through
-to a newly active Account. Space settings deliberately does not inherit Room history or widget
+The incrementally retained Room-only widget adapter stays behind an opening-Account-active gate
+until its exact-target migration lands; it never falls through to a newly active Account. Space
+settings deliberately does not inherit Room history or widget
 policy. UI feedback uses focusable `trnActionAllowed` controls,
 keyboard-accessible explanations and a touch status surface. Every cold migrated mutation
 rechecks permission at subscription time after pickers/confirmations and before the SDK write;

@@ -1079,9 +1079,11 @@ describe('RoomLibraryService writes', () => {
       on: vi.fn(),
       off: vi.fn(),
     };
-    const { svc } = provideRooms(client);
+    const { svc, matrix } = provideRooms(client);
     return {
       svc,
+      matrix,
+      client,
       createRoom,
       invite,
       setAccountData,
@@ -1247,6 +1249,25 @@ describe('RoomLibraryService writes', () => {
     await firstValueFrom(svc.inviteUser('!r:hs', '@bob:hs'));
 
     expect(invite).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+  });
+
+  it('inviteUser keeps an exact Space invite on the opening Account', async () => {
+    const { svc, matrix, client, invite } = setupWrites();
+    const otherInvite = vi.fn().mockResolvedValue({});
+    ngMocks.stubMember(matrix, 'instance', {
+      getUserId: () => '@other:hs',
+      invite: otherInvite,
+    } as never);
+    ngMocks.stubMember(matrix, 'clientFor', (accountId: string) =>
+      accountId === '@me:hs' ? asClient(client) : null,
+    );
+
+    await firstValueFrom(
+      svc.inviteUser({ accountId: '@me:hs', roomId: '!space:hs' }, '@bob:hs'),
+    );
+
+    expect(invite).toHaveBeenCalledWith('!space:hs', '@bob:hs');
+    expect(otherInvite).not.toHaveBeenCalled();
   });
 
   it('inviteUser rejects an invalid user id without calling invite', async () => {

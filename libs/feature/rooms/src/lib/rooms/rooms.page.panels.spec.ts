@@ -228,6 +228,7 @@ describe('RoomsPage panels, pins and media', () => {
         roomId: '!r:hs',
         roomDisplayName: 'General',
         parentSpaces: [],
+        direct: false,
       },
     });
   });

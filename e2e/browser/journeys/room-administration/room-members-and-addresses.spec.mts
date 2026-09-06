@@ -81,9 +81,12 @@ test.describe('Room settings', () => {
 
     await registerUser(request, admin, adminPass);
     await registerUser(request, target, targetPass);
-    const adminAuth = {
-      Authorization: `Bearer ${await tokenFor(request, hs, admin, adminPass)}`,
-    };
+    const adminToken = await tokenFor(request, hs, admin, adminPass);
+    const adminAuth = { Authorization: `Bearer ${adminToken}` };
+    const adminId = await request
+      .get(`${hs}/_matrix/client/v3/account/whoami`, { headers: adminAuth })
+      .then((response) => response.json())
+      .then((body) => body.user_id as string);
     const targetLogin = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {
@@ -125,7 +128,8 @@ test.describe('Room settings', () => {
     await openRoom(page, roomName);
 
     await page.getByTestId('open-room-settings').click();
-    await openSettingsTab(page, 'room-settings', 'bans');
+    await openSettingsTab(page, 'room-settings', 'members');
+    await page.getByTestId('members-settings-banned').click();
     await expect(page.getByTestId('banned-members')).toBeVisible({
       timeout: 10_000,
     });
@@ -136,6 +140,13 @@ test.describe('Room settings', () => {
 
     // Unban them: the row disappears and the ban is lifted server-side.
     await row.getByTestId('banned-member-unban').click();
+    const confirmation = page.getByRole('dialog', {
+      name: 'Unban from room',
+    });
+    await expect(confirmation).toContainText(targetName);
+    await expect(confirmation).toContainText(roomName);
+    await expect(confirmation).toContainText(`Account ${adminId}`);
+    await confirmation.getByRole('button', { name: 'Unban' }).click();
     await expect(
       page
         .getByLabel('Notifications alt+T')
@@ -150,6 +161,235 @@ test.describe('Room settings', () => {
       return res.ok() ? (await res.json()).membership : undefined;
     };
     await expect.poll(membership, { timeout: 20_000 }).toBe('leave');
+  });
+
+  test('keeps Room roster, member detail, role changes and live authority in one destination', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}members`;
+    const admin = `members-admin-${runId}`;
+    const adminPass = `${admin}-pass`;
+    const controller = `members-controller-${runId}`;
+    const controllerPass = `${controller}-pass`;
+    const member = `members-person-${runId}`;
+    const memberPass = `${member}-pass`;
+    const memberName = `Ada ${runId}`;
+    const roomName = `Roster ${runId}`;
+    await registerUser(request, admin, adminPass);
+    await registerUser(request, controller, controllerPass);
+    await registerUser(request, member, memberPass);
+    const adminToken = await tokenFor(request, hs, admin, adminPass);
+    const controllerToken = await tokenFor(
+      request,
+      hs,
+      controller,
+      controllerPass,
+    );
+    const memberToken = await tokenFor(request, hs, member, memberPass);
+    const adminAuth = { Authorization: `Bearer ${adminToken}` };
+    const controllerAuth = { Authorization: `Bearer ${controllerToken}` };
+    const memberAuth = { Authorization: `Bearer ${memberToken}` };
+    const adminId = await request
+      .get(`${hs}/_matrix/client/v3/account/whoami`, { headers: adminAuth })
+      .then((response) => response.json())
+      .then((body) => body.user_id as string);
+    const memberId = await request
+      .get(`${hs}/_matrix/client/v3/account/whoami`, { headers: memberAuth })
+      .then((response) => response.json())
+      .then((body) => body.user_id as string);
+    const controllerId = await request
+      .get(`${hs}/_matrix/client/v3/account/whoami`, {
+        headers: controllerAuth,
+      })
+      .then((response) => response.json())
+      .then((body) => body.user_id as string);
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(memberId)}/displayname`,
+      { headers: memberAuth, data: { displayname: memberName } },
+    );
+    const roomId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: controllerAuth,
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [adminId, memberId],
+          power_level_content_override: {
+            users: { [controllerId]: 101, [adminId]: 100 },
+          },
+        },
+      })
+      .then((response) => response.json())
+      .then((body) => body.room_id as string);
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: memberAuth },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: adminAuth },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: admin,
+      pass: adminPass,
+    } as SynapseSession);
+    await openRoom(page, roomName);
+    await page.getByTestId('open-room-settings').click();
+    await openSettingsTab(page, 'room-settings', 'members');
+
+    const roster = page.getByTestId('member-list');
+    await expect(roster).toBeVisible({ timeout: 20_000 });
+    const row = roster
+      .getByTestId('member-row')
+      .filter({ hasText: memberName });
+    await expect(row).toBeVisible();
+    await row.click();
+
+    const detail = page.getByTestId('members-settings-detail');
+    await expect(detail).toContainText(memberName);
+    await page.getByTestId('member-info-role-50').click();
+    const roleConfirmation = page.getByRole('dialog', { name: 'Change role' });
+    await expect(roleConfirmation).toContainText(roomName);
+    await expect(roleConfirmation).toContainText(`Account ${adminId}`);
+    await roleConfirmation.getByRole('button', { name: 'Change' }).click();
+
+    await expect(roster).toBeVisible({ timeout: 20_000 });
+    const moderatorGroup = roster.getByRole('group', { name: /Moderator/ });
+    await expect(moderatorGroup).toContainText(memberName, { timeout: 20_000 });
+    await moderatorGroup.getByTestId('member-row').click();
+    await expect(detail).toContainText('Moderator');
+
+    const powerLevelsUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels/`;
+    const powerLevels = await request
+      .get(powerLevelsUrl, { headers: adminAuth })
+      .then((response) => response.json());
+    await request.put(powerLevelsUrl, {
+      headers: controllerAuth,
+      data: {
+        ...powerLevels,
+        users: { ...(powerLevels.users ?? {}), [adminId]: 0 },
+      },
+    });
+
+    await expect(page.getByTestId('member-info-kick')).toHaveCount(0, {
+      timeout: 20_000,
+    });
+    await expect(page.getByTestId('member-info-ban')).toHaveCount(0);
+    // The opening Account is now an ordinary member. Exact settings keep the selected
+    // member readable while every unavailable administration command disappears.
+    await expect(detail).toContainText(memberName);
+    await expect(detail.getByTestId('member-info-role')).toHaveText(
+      'Moderator',
+    );
+    await test.info().attach('room-members-desktop', {
+      body: await page.getByTestId('room-settings').screenshot(),
+      contentType: 'image/png',
+    });
+
+    // Restore the opening Account's authority, then exercise the consequential settings
+    // commands through their keyboard path. The live permission projection must make them
+    // available again without closing or retargeting the selected detail.
+    await request.put(powerLevelsUrl, {
+      headers: controllerAuth,
+      data: {
+        ...powerLevels,
+        users: { ...(powerLevels.users ?? {}), [adminId]: 100 },
+      },
+    });
+    const kick = page.getByTestId('member-info-kick');
+    await expect(kick).toBeVisible({ timeout: 20_000 });
+    await kick.focus();
+    await kick.press('Enter');
+    const kickConfirmation = page.getByRole('dialog', {
+      name: 'Remove from Room',
+    });
+    await expect(kickConfirmation).toContainText(memberName);
+    await expect(kickConfirmation).toContainText(roomName);
+    await expect(kickConfirmation).toContainText(`Account ${adminId}`);
+    await kickConfirmation
+      .getByPlaceholder('Reason (optional)')
+      .fill('cleanup');
+    await kickConfirmation
+      .getByRole('button', { name: 'Remove' })
+      .press('Enter');
+    await expect(row).toHaveCount(0, { timeout: 20_000 });
+
+    // Rejoin the same exact Room and ban through Members so both moderation commands are
+    // proven on the new destination rather than inherited only from Conversation tests.
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+      { headers: adminAuth, data: { user_id: memberId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: memberAuth },
+    );
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.focus();
+    await row.press('Enter');
+    const ban = page.getByTestId('member-info-ban');
+    await expect(ban).toBeVisible();
+    await ban.focus();
+    await ban.press('Enter');
+    const banConfirmation = page.getByRole('dialog', {
+      name: 'Ban from Room',
+    });
+    await expect(banConfirmation).toContainText(memberName);
+    await expect(banConfirmation).toContainText(roomName);
+    await expect(banConfirmation).toContainText(`Account ${adminId}`);
+    await banConfirmation.getByRole('button', { name: 'Ban' }).press('Enter');
+    await expect(row).toHaveCount(0, { timeout: 20_000 });
+
+    await page.getByTestId('members-settings-banned').focus();
+    await page.getByTestId('members-settings-banned').press('Enter');
+    const bannedRow = page
+      .getByTestId('banned-member')
+      .filter({ hasText: memberName });
+    await expect(bannedRow).toBeVisible({ timeout: 20_000 });
+    await bannedRow.getByTestId('banned-member-unban').focus();
+    await bannedRow.getByTestId('banned-member-unban').press('Enter');
+    const unbanConfirmation = page.getByRole('dialog', {
+      name: 'Unban from Room',
+    });
+    await expect(unbanConfirmation).toContainText(memberName);
+    await expect(unbanConfirmation).toContainText(roomName);
+    await expect(unbanConfirmation).toContainText(`Account ${adminId}`);
+    await unbanConfirmation
+      .getByRole('button', { name: 'Unban' })
+      .press('Enter');
+    await expect(bannedRow).toHaveCount(0, { timeout: 20_000 });
+
+    // Restore joined membership, close settings with its keyboard-owned Escape path, and
+    // prove the pre-existing Conversation roster still opens and finds the same person.
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/invite`,
+      { headers: adminAuth, data: { user_id: memberId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`,
+      { headers: memberAuth },
+    );
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('room-settings')).toHaveCount(0);
+    const conversationMembers = page.getByTestId('toggle-members');
+    await conversationMembers.focus();
+    await conversationMembers.press('Enter');
+    const conversationRow = page
+      .getByTestId('member-list')
+      .getByTestId('member-row')
+      .filter({ hasText: memberName });
+    await expect(conversationRow).toBeVisible({ timeout: 20_000 });
+    await conversationRow.press('Enter');
+    await expect(page.getByTestId('member-info')).toContainText(memberName);
+    await page.getByTestId('member-info-close').press('Enter');
+    await expect(conversationRow).toBeVisible();
+    await expect(page.getByTestId('member-filter')).toBeFocused();
   });
 
   test('an admin adds a room address and makes it the main one', async ({
@@ -288,9 +528,148 @@ test.describe('Room settings', () => {
   });
 });
 
-test.describe('Space addresses on a phone', () => {
+test.describe('Space member and address settings on a phone', () => {
   test.use(pixel5);
   configureRoomSettingsSuite();
+
+  test('opens Space Members from the shortcut and invites only to the Space', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}spmembers`;
+    const owner = `space-members-owner-${runId}`;
+    const ownerPass = `${owner}-pass`;
+    const invitee = `space-members-invitee-${runId}`;
+    const inviteePass = `${invitee}-pass`;
+    const inviteeName = `Mobile member ${runId}`;
+    const spaceName = `Members space ${runId}`;
+    const childName = `Members child ${runId}`;
+    await registerUser(request, owner, ownerPass);
+    await registerUser(request, invitee, inviteePass);
+    const ownerToken = await tokenFor(request, hs, owner, ownerPass);
+    const inviteeToken = await tokenFor(request, hs, invitee, inviteePass);
+    const ownerAuth = { Authorization: `Bearer ${ownerToken}` };
+    const inviteeAuth = { Authorization: `Bearer ${inviteeToken}` };
+    const inviteeId = await request
+      .get(`${hs}/_matrix/client/v3/account/whoami`, { headers: inviteeAuth })
+      .then((response) => response.json())
+      .then((body) => body.user_id as string);
+    await request.put(
+      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(inviteeId)}/displayname`,
+      { headers: inviteeAuth, data: { displayname: inviteeName } },
+    );
+    const spaceId = await createSpace(request, hs, ownerToken, spaceName);
+    const childId = await request
+      .post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: ownerAuth,
+        data: { name: childName, preset: 'private_chat' },
+      })
+      .then((response) => response.json())
+      .then((body) => body.room_id as string);
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
+      { headers: ownerAuth, data: { via: ['localhost'] } },
+    );
+
+    await login(page, {
+      available: true,
+      hs,
+      user: owner,
+      pass: ownerPass,
+    } as SynapseSession);
+    const space = page.getByRole('button', { name: spaceName, exact: true });
+    await space.waitFor({ state: 'visible', timeout: 30_000 });
+    await space.tap();
+    await page.getByTestId('space-actions-overflow').tap();
+    await page.getByTestId('open-space-members').tap();
+
+    const settings = page.getByTestId('space-settings');
+    await expect(settings).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('space-settings-section-heading')).toHaveText(
+      'Members',
+    );
+    await expect(page.getByTestId('members-settings')).toBeVisible();
+
+    const invite = page.getByTestId('members-settings-invite');
+    expect((await invite.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
+      44,
+    );
+    await invite.tap();
+    await page.getByLabel('@user:server or a name').fill(inviteeId);
+    await page.getByRole('button', { name: 'Invite', exact: true }).tap();
+
+    const membership = async (roomId: string): Promise<unknown> => {
+      const response = await request.get(
+        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.member/${encodeURIComponent(inviteeId)}`,
+        { headers: ownerAuth },
+      );
+      return response.ok() ? (await response.json()).membership : undefined;
+    };
+    await expect
+      .poll(() => membership(spaceId), { timeout: 20_000 })
+      .toBe('invite');
+    await expect
+      .poll(() => membership(childId), { timeout: 5_000 })
+      .toBeUndefined();
+
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/join`,
+      { headers: inviteeAuth },
+    );
+    const row = page
+      .getByTestId('member-list')
+      .getByTestId('member-row')
+      .filter({ hasText: inviteeName });
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await row.tap();
+    const detail = page.getByTestId('members-settings-detail');
+    await expect(detail).toContainText(inviteeName);
+    await expect(detail).toContainText(inviteeId);
+
+    const originalAppearance = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      theme: document.documentElement.getAttribute('data-theme'),
+      fontSize: document.documentElement.style.fontSize,
+    }));
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.removeAttribute('data-theme');
+      document.documentElement.style.fontSize = '125%';
+    });
+    await test.info().attach('space-members-mobile-light', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'amethyst');
+    });
+    await test.info().attach('space-members-mobile-dark-amethyst', {
+      body: await settings.screenshot(),
+      contentType: 'image/png',
+    });
+    await page.evaluate(({ dark, theme, fontSize }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      if (theme === null)
+        document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.style.fontSize = fontSize;
+    }, originalAppearance);
+
+    await page.getByTestId('member-info-close').tap();
+    await expect(row).toBeVisible();
+    await page.getByTestId('members-settings-banned').tap();
+    await expect(page.getByTestId('banned-members')).toBeVisible();
+    expect(
+      (await page.getByTestId('members-settings-banned').boundingBox())
+        ?.height ?? 0,
+    ).toBeGreaterThanOrEqual(44);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(page.viewportSize()?.width ?? 0);
+  });
 
   test('keeps a long Space address readable, actionable and inside the viewport', async ({
     page,

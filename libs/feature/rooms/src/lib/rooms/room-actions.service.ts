@@ -344,6 +344,7 @@ export class RoomActionsService {
           accountId,
           roomId: room.id,
           roomDisplayName: room.name,
+          direct: room.directUserId !== undefined,
           parentSpaces,
         },
       })
