@@ -26,6 +26,7 @@ import {
   isCallWidgetType,
   resolveWidgetEmbed,
   type RoomWidget,
+  type RoomWidgetTarget,
   type WidgetEmbed,
   type WidgetLaunch,
 } from '@trinity/data-access/widgets';
@@ -49,8 +50,6 @@ interface WidgetEntry {
   styleUrl: './room-widgets.component.scss',
 })
 export class RoomWidgetsComponent implements OnInit {
-  readonly roomId = input.required<string>();
-
   private readonly widgetsService = inject(WidgetsService);
   private readonly management = inject(WidgetManagementService);
   private readonly externalBrowser = inject(ExternalBrowserService);
@@ -58,23 +57,25 @@ export class RoomWidgetsComponent implements OnInit {
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnDialogService);
   private readonly destroyRef = inject(DestroyRef);
-  private connectedRoom: string | null = null;
+  private connectedTarget: RoomWidgetTarget | null = null;
   private activeWidgetFrame: TrnDialogRef<void> | null = null;
   private readonly createWidget = viewChild(RoomWidgetCreateComponent);
   private readonly focusAfterRemoval = new Set<string>();
   private readonly removalRevisions = new Map<string, string>();
+
+  readonly target = input.required<RoomWidgetTarget>();
   readonly removing = signal<ReadonlySet<string>>(new Set());
 
   readonly canManage = computed(() =>
-    this.widgetsService.canManageFor(this.roomId())(),
+    this.widgetsService.canManageFor(this.target())(),
   );
 
   /** Widgets plus their current, disclosure-audited external destinations. */
   readonly widgets = computed<readonly WidgetEntry[]>(() =>
     this.widgetsService
-      .widgetsFor(this.roomId())()
+      .widgetsFor(this.target())()
       .map((widget) => {
-        const launch = this.widgetsService.launchFor(this.roomId(), widget);
+        const launch = this.widgetsService.launchFor(this.target(), widget);
         return {
           widget,
           launch,
@@ -89,8 +90,8 @@ export class RoomWidgetsComponent implements OnInit {
     this.destroyRef.onDestroy(() => {
       this.activeWidgetFrame?.close();
       this.activeWidgetFrame = null;
-      if (this.connectedRoom) {
-        this.widgetsService.disconnect(this.connectedRoom);
+      if (this.connectedTarget) {
+        this.widgetsService.disconnect(this.connectedTarget);
       }
     });
     effect(() => {
@@ -104,8 +105,8 @@ export class RoomWidgetsComponent implements OnInit {
   }
 
   ngOnInit(): void {
-    this.connectedRoom = this.roomId();
-    this.widgetsService.connect(this.connectedRoom);
+    this.connectedTarget = this.target();
+    this.widgetsService.connect(this.connectedTarget);
   }
 
   /** Keep link affordances while routing an intentional tap through platform browser UI. */
@@ -126,7 +127,7 @@ export class RoomWidgetsComponent implements OnInit {
 
   /** Revalidate immediately before creating the only live third-party frame. */
   embedWidget(widget: RoomWidget): void {
-    const launch = this.widgetsService.launchFor(this.roomId(), widget);
+    const launch = this.widgetsService.launchFor(this.target(), widget);
     const embed = resolveWidgetEmbed(widget, launch, currentOrigin());
     if (!embed.url) {
       this.toast.show('This widget cannot be embedded safely.', {
@@ -143,7 +144,7 @@ export class RoomWidgetsComponent implements OnInit {
         ariaLabel: `${widget.name} widget`,
         autoFocus: '[data-autofocus]',
         inputs: {
-          roomId: this.roomId(),
+          roomId: this.target().roomId,
           widget,
           embed,
         },
@@ -190,7 +191,7 @@ export class RoomWidgetsComponent implements OnInit {
           if (!confirmed) this.clearRemoving(widget.id);
         }),
         filter(Boolean),
-        switchMap(() => this.management.remove(this.roomId(), widget)),
+        switchMap(() => this.management.remove(this.target(), widget)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
@@ -230,6 +231,14 @@ export class RoomWidgetsComponent implements OnInit {
 
   disclosureText(launch: WidgetLaunch): string {
     return launch.disclosures.map((item) => item.label).join(', ');
+  }
+
+  hasCreationDraft(): boolean {
+    return this.createWidget()?.dirty() ?? false;
+  }
+
+  discardCreationDraft(): void {
+    this.createWidget()?.discard();
   }
 
   private clearRemoving(widgetId: string): void {

@@ -18,6 +18,12 @@ export interface RoomWidget {
   readonly sourceEventId: string | null;
 }
 
+/** Immutable Account-and-Room ownership for one widget settings lifetime. */
+export interface RoomWidgetTarget {
+  readonly accountId: string;
+  readonly roomId: string;
+}
+
 /** The two administrator-supplied values for a new generic room widget. */
 export interface NewRoomWidget {
   readonly name: string;

@@ -6,6 +6,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { installWidgetFixture } from '../../support/widget.mts';
+import { addAccountViaUi } from '../../support/multi-account-journey.mts';
 import {
   configureRoomSettingsSuite,
   openRoom,
@@ -232,22 +233,27 @@ test.describe('Room settings', () => {
     await expect(embed).toBeFocused();
   });
 
-  test('an admin adds and removes an exact generic widget declaration', async ({
+  test('the opening admin adds and removes an exact generic widget after an Account switch', async ({
     page,
     request,
   }) => {
-    test.setTimeout(150_000);
+    test.setTimeout(180_000);
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}wg`;
     const user = `widget-manage-${runId}`;
     const pass = `${user}-pass`;
+    const member = `widget-reader-${runId}`;
+    const memberPass = `${member}-pass`;
+    const memberId = `@${member}:localhost`;
     const roomName = `Manage widgets ${runId}`;
     const widgetName = `Roadmap ${runId}`;
     const rawUrl =
-      'https://widgets.example/board?room=$matrix_room_id&view=roadmap';
+      'https://widgets.example/board?room=$matrix_room_id&view=roadmap' +
+      '&user=$matrix_user_id';
     const widgetFixture = await installWidgetFixture(page);
 
     await registerUser(request, user, pass);
+    await registerUser(request, member, memberPass);
     const { access_token, user_id } = await request
       .post(`${hs}/_matrix/client/v3/login`, {
         data: {
@@ -260,23 +266,100 @@ test.describe('Room settings', () => {
     const { room_id } = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: { Authorization: `Bearer ${access_token}` },
-        data: { name: roomName, preset: 'private_chat' },
+        data: {
+          name: roomName,
+          preset: 'private_chat',
+          invite: [memberId],
+        },
       })
       .then((response) => response.json());
+    const memberAccessToken = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: member },
+          password: memberPass,
+        },
+      })
+      .then((response) => response.json())
+      .then((body) => body.access_token as string);
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: { Authorization: `Bearer ${memberAccessToken}` } },
+    );
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await addAccountViaUi(page, hs, member, memberPass);
+    await page.getByTestId('user-menu-trigger').click();
+    await page
+      .getByTestId('account-row')
+      .filter({ hasText: `@${user}:` })
+      .click();
     await openRoom(page, roomName);
     await page.getByTestId('open-room-settings').click();
     await openSettingsTab(page, 'room-settings', 'widgets');
+    await expect(page.getByTestId('room-settings-account')).toContainText(user);
+
+    // The overlay owns pointer interaction, so invoke the underlying menu trigger and
+    // switch to the ordinary member through the same Account Runtime handlers.
+    await page
+      .getByTestId('user-menu-trigger')
+      .evaluate((element: HTMLElement) => element.click());
+    await page
+      .getByTestId('account-row')
+      .filter({ hasText: `@${member}:` })
+      .click();
+    await expect(page.locator('.userbar__handle')).toContainText(`@${member}:`);
+    await expect(page.getByTestId('room-settings-account')).toContainText(user);
 
     await page.getByTestId('room-widget-create-name').fill(widgetName);
     await page.getByTestId('room-widget-create-url').fill(rawUrl);
+
+    // A failed exact-target write retains both fields and exposes a finite pending state.
+    const widgetWrite = /\/state\/im\.vector\.modular\.widgets\//;
+    let releaseFailure!: () => void;
+    const failureGate = new Promise<void>((resolve) => {
+      releaseFailure = resolve;
+    });
+    await page.route(widgetWrite, async (route) => {
+      await failureGate;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ errcode: 'M_UNKNOWN', error: 'retry me' }),
+      });
+    });
     await page.getByTestId('room-widget-create-url').press('Enter');
+    await expect(page.getByTestId('room-widget-create-submit')).toContainText(
+      'Adding',
+    );
+    releaseFailure();
+    await expect(page.getByTestId('room-widget-create-error')).toContainText(
+      'Could not add',
+    );
+    await expect(page.getByTestId('room-widget-create-name')).toHaveValue(
+      widgetName,
+    );
+    await expect(page.getByTestId('room-widget-create-url')).toHaveValue(
+      rawUrl,
+    );
+    await page.unroute(widgetWrite);
+    await page.getByTestId('room-widget-create-submit').click();
 
     const card = page.locator('article.room-widgets__widget', {
       hasText: widgetName,
     });
     await expect(card).toBeVisible({ timeout: 30_000 });
+    await expect(
+      card.getByRole('link', { name: /open .* in browser/i }),
+    ).toHaveAttribute(
+      'href',
+      new RegExp(`user=${encodeURIComponent(user_id as string)}`),
+    );
+    await test.info().attach('room-widgets-desktop', {
+      body: await page.getByTestId('room-settings').screenshot(),
+      contentType: 'image/png',
+    });
     expect(widgetFixture.requestCount()).toBe(0);
 
     const stateEvents = await request

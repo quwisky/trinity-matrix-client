@@ -106,21 +106,23 @@ Account's current homeserver notification rule instead of showing a guessed defa
 loading, unavailable and failed-read states explicitly. Its Favourite and Low priority values come
 from that Account's synced Matrix Room tags. Avatar selection, member administration, address
 actions and widget publication/removal use their own immediate actions; discarding a draft does
-not undo those completed actions. In **Addresses**, the primary and local addresses remain readable and
-copyable for every member. Administrators can add a local address, make one primary, or remove one
-after confirming the exact address and its effect on joining and links. Each action reports its own
-progress and result; a failed add retains the entered value for correction or retry. Removing an
-address never deletes the Room or Space. Leaving a section, closing Room settings, or using browser or device Back
-asks before discarding a draft. A remote update refreshes untouched General and Access fields
-without overwriting fields you are editing.
+not undo those completed actions. An unfinished widget name or URL is also a protected draft, and a
+failed publication retains both values for correction or retry. In **Addresses**, the primary and
+local addresses remain readable and copyable for every member. Administrators can add a local
+address, make one primary, or remove one after confirming the exact address and its effect on
+joining and links. Each action reports its own progress and result; a failed add retains the entered
+value for correction or retry. Removing an address never deletes the Room or Space. Leaving a
+section, closing Room settings, or using browser or device Back asks before discarding a draft. A
+remote update refreshes untouched General and Access fields without overwriting fields you are
+editing.
 
-General details, Access policy, Members and Addresses remain bound to the Account and Room that
-opened Room settings even if another Account becomes active. If that Account signs out, the target
-becomes unavailable and pending results cannot write into the newly active Account. Widgets still
-uses its established active-Account adapter during the incremental hub migration, so that panel
-asks you to switch back instead of risking a redirected write. Matrix permissions are checked live
-and per action, so a member may be able to read a section or edit an avatar but not change the
-access rule, aliases, widgets or membership.
+General details, Access policy, Members, Addresses and Widgets remain bound to the Account and Room
+that opened Room settings even if another Account becomes active. Widget declarations and expanded
+URL identity come from that Account, and Add or Remove resolves its client again when the action is
+started. If that Account signs out, the target becomes unavailable instead of falling through to
+the newly active Account. Matrix permissions are checked live and per action, so a member may be
+able to read a section or edit an avatar but not change the access rule, aliases, widgets or
+membership.
 Losing a role while Room settings is open disables the affected controls without hiding readable
 information or erasing drafts. Access and history choices affect other people and can expose
 earlier messages or allow new members; confirm the Room's policy before saving. A restricted join
@@ -171,7 +173,10 @@ affected draft available to retry.
 In the Widgets tab, people with the required permission can choose **Add widget**, give it a name
 and HTTPS URL, then publish it for the room. Existing widgets are third-party websites: inspect
 the stated destination and disclosure before opening one in Trinity or a browser. **Remove widget**
-changes the room's shared declaration, so it affects other participants as well.
+names the declaration and confirms that it changes the shared Room state for every member and
+Matrix client. Add and Remove show their pending result explicitly; closing settings does not undo
+a completed action. Long names, templates and disclosures wrap within the phone section rather than
+hiding its controls. Space settings has no Widgets section.
 
 ## Members and moderation
 

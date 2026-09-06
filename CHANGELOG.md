@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **Room Widgets now has an Account-bound section in the responsive Room settings hub.** Existing
+  declarations, URL-template disclosures, restricted in-app opening and external-browser launch
+  remain readable to ordinary members, while Add and confirmed Remove actions follow the opening
+  Account's live widget-state permission. Creation failures retain both inputs, unfinished drafts
+  are protected on section, Back and Close navigation, and pending or completed actions remain
+  explicit. Account switches cannot redirect projected widget identity or writes, long declarations
+  stay reachable on phones, and Space settings continues to omit Widgets.
+
 - **Room and Space member administration is consolidated inside Account-bound settings.** The
   Members section keeps the opening Account's live roster, role groups, search, member detail and
   banned list together. Invite, role, remove, ban and unban actions recheck that exact target after
@@ -60,8 +68,8 @@ All notable changes to this project are documented here. The format is based on
   clearly identified; General and Access keep independent drafts, save successful fields
   separately, and retry only failures. Browser, device and in-hub navigation protect dirty work,
   live permission changes disable only affected writes, and Account switching or sign-out cannot
-  retarget pending Room updates. Existing local-address and Widgets workflows remain reachable;
-  Widgets keeps its opening-Account safety gate while Members now uses exact-target actions.
+  retarget pending Room updates. Existing local-address and Widgets workflows remain reachable,
+  with their exact-target migrations completed by the subsequent dedicated sections.
 
 - System Status now presents startup blockers and live capability limits from one application-owned
   English catalogue, grouped by user-facing capability and Account with scoped recovery, recurrence-aware

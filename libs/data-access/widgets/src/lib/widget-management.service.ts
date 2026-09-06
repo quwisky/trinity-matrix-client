@@ -9,7 +9,11 @@ import {
   type WidgetDraftFailure,
   validateRoomWidgetDraft,
 } from './widget-management-policy';
-import type { NewRoomWidget, RoomWidget } from './widget.model';
+import type {
+  NewRoomWidget,
+  RoomWidget,
+  RoomWidgetTarget,
+} from './widget.model';
 import {
   WIDGET_EVENT_TYPE,
   WidgetsService,
@@ -50,9 +54,9 @@ export class WidgetManagementService {
   private readonly widgets = inject(WidgetsService);
 
   /** Create one generic widget declaration. Cold: no validation or write until subscribe. */
-  create(roomId: string, draft: NewRoomWidget): Observable<string> {
+  create(target: RoomWidgetTarget, draft: NewRoomWidget): Observable<string> {
     return defer(() => {
-      const context = this.context(roomId);
+      const context = this.context(target);
       const validated = validateRoomWidgetDraft(draft);
       if (!validated.value) {
         throw new WidgetManagementError('invalid-draft', validated.failure);
@@ -68,7 +72,7 @@ export class WidgetManagementService {
         waitForIframeLoad: true,
         sourceEventId: null,
       };
-      const launch = this.widgets.launchFor(roomId, widget);
+      const launch = this.widgets.launchFor(target, widget);
       if (
         !launch.url ||
         launch.insecure ||
@@ -79,7 +83,7 @@ export class WidgetManagementService {
       return from(
         sendWidgetStateEvent(
           context.client,
-          roomId,
+          target.roomId,
           {
             id,
             name: validated.value.name,
@@ -99,12 +103,12 @@ export class WidgetManagementService {
    * Tombstone the exact revision the administrator confirmed. Matrix state writes are
    * last-write-wins, so a replacement after this local check remains a server-level race.
    */
-  remove(roomId: string, widget: RoomWidget): Observable<void> {
+  remove(target: RoomWidgetTarget, widget: RoomWidget): Observable<void> {
     return defer(() => {
       if (isCallWidgetType(widget.type)) {
         throw new WidgetManagementError('unsupported-type');
       }
-      const context = this.context(roomId);
+      const context = this.context(target);
       const current = context.state.getStateEvents(
         WIDGET_EVENT_TYPE,
         widget.id,
@@ -122,23 +126,23 @@ export class WidgetManagementService {
         throw new WidgetManagementError('unsupported-type');
       }
       return from(
-        sendWidgetStateEvent(context.client, roomId, {}, widget.id),
+        sendWidgetStateEvent(context.client, target.roomId, {}, widget.id),
       ).pipe(map(() => void 0));
     });
   }
 
-  private context(roomId: string): ManagementContext {
-    if (!this.matrix.isInitialized) {
+  private context(target: RoomWidgetTarget): ManagementContext {
+    const client = this.matrix.clientFor(target.accountId);
+    if (!client) {
       throw new WidgetManagementError('not-signed-in');
     }
-    const client = this.matrix.instance;
-    const room = client.getRoom(roomId);
+    const room = client.getRoom(target.roomId);
     const state = room ? liveRoomState(room) : undefined;
     const userId = client.getUserId();
     if (!room || !state || !userId) {
       throw new WidgetManagementError('not-signed-in');
     }
-    if (!canManageRoomWidgets(client, roomId)) {
+    if (!canManageRoomWidgets(client, target.roomId)) {
       throw new WidgetManagementError('forbidden');
     }
     return { client, room, state, userId };

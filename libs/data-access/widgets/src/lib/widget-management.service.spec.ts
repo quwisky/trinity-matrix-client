@@ -11,6 +11,7 @@ import { WidgetsService, WIDGET_EVENT_TYPE } from './widgets.service';
 
 const ROOM_ID = '!room:example.org';
 const USER_ID = '@alice:example.org';
+const TARGET = { accountId: USER_ID, roomId: ROOM_ID } as const;
 const WIDGET: RoomWidget = {
   id: 'board',
   name: 'Planning board',
@@ -60,9 +61,13 @@ function setup() {
     isGuest: () => guest,
     sendStateEvent,
   };
-  const matrix = { isInitialized: true, instance: client };
+  const activeClient = { ...client, getUserId: () => '@active:example.org' };
+  const clientFor = vi.fn((accountId: string) =>
+    accountId === USER_ID ? client : null,
+  );
+  const matrix = { isInitialized: true, instance: activeClient, clientFor };
   const launchFor = vi.fn(
-    (_roomId: string, widget: RoomWidget): WidgetLaunch => ({
+    (_target: typeof TARGET, widget: RoomWidget): WidgetLaunch => ({
       url: widget.rawUrl,
       origin: new URL(widget.rawUrl).origin,
       disclosures: [],
@@ -82,6 +87,7 @@ function setup() {
     events,
     getStateEvents,
     launchFor,
+    clientFor,
     sendStateEvent,
     setMembership: (value: string) => (membership = value),
     setGuest: (value: boolean) => (guest = value),
@@ -96,7 +102,7 @@ describe('WidgetManagementService', () => {
   it('is cold and sends the exact generic-widget payload after subscription', async () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'generated-id') });
     const { service, launchFor, sendStateEvent } = setup();
-    const request = service.create(ROOM_ID, {
+    const request = service.create(TARGET, {
       name: '  Planning board  ',
       rawUrl: ' https://widgets.example/$matrix_room_id ',
     });
@@ -105,7 +111,7 @@ describe('WidgetManagementService', () => {
     await expect(firstValueFrom(request)).resolves.toBe('generated-id');
 
     expect(launchFor).toHaveBeenCalledWith(
-      ROOM_ID,
+      TARGET,
       expect.objectContaining({ id: 'generated-id', type: 'm.custom' }),
     );
     expect(sendStateEvent).toHaveBeenCalledWith(
@@ -134,7 +140,7 @@ describe('WidgetManagementService', () => {
     events.set('taken', stateEvent('taken'));
 
     await firstValueFrom(
-      service.create(ROOM_ID, {
+      service.create(TARGET, {
         name: 'Board',
         rawUrl: 'https://widgets.example',
       }),
@@ -162,7 +168,7 @@ describe('WidgetManagementService', () => {
   ])('denies a %s at subscription time', async (_label, deny) => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'generated-id') });
     const fixture = setup();
-    const request = fixture.service.create(ROOM_ID, {
+    const request = fixture.service.create(TARGET, {
       name: 'Board',
       rawUrl: 'https://widgets.example',
     });
@@ -180,7 +186,7 @@ describe('WidgetManagementService', () => {
 
     await expect(
       firstValueFrom(
-        service.create(ROOM_ID, {
+        service.create(TARGET, {
           name: 'Board',
           rawUrl: 'https://user:secret@widgets.example',
         }),
@@ -197,7 +203,7 @@ describe('WidgetManagementService', () => {
   it('tombstones only the exact active revision that was confirmed', async () => {
     const { service, sendStateEvent } = setup();
 
-    await expect(firstValueFrom(service.remove(ROOM_ID, WIDGET))).resolves.toBe(
+    await expect(firstValueFrom(service.remove(TARGET, WIDGET))).resolves.toBe(
       undefined,
     );
     expect(sendStateEvent).toHaveBeenCalledWith(
@@ -221,7 +227,7 @@ describe('WidgetManagementService', () => {
     }
 
     await expect(
-      firstValueFrom(service.remove(ROOM_ID, WIDGET)),
+      firstValueFrom(service.remove(TARGET, WIDGET)),
     ).rejects.toMatchObject({ code: 'conflict' });
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
@@ -230,7 +236,7 @@ describe('WidgetManagementService', () => {
     const { service, sendStateEvent } = setup();
 
     await expect(
-      firstValueFrom(service.remove(ROOM_ID, { ...WIDGET, type: 'm.jitsi' })),
+      firstValueFrom(service.remove(TARGET, { ...WIDGET, type: 'm.jitsi' })),
     ).rejects.toMatchObject({ code: 'unsupported-type' });
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
@@ -246,7 +252,7 @@ describe('WidgetManagementService', () => {
     );
 
     await expect(
-      firstValueFrom(service.remove(ROOM_ID, WIDGET)),
+      firstValueFrom(service.remove(TARGET, WIDGET)),
     ).rejects.toMatchObject({ code: 'unsupported-type' });
     expect(sendStateEvent).not.toHaveBeenCalled();
   });
@@ -256,7 +262,7 @@ describe('WidgetManagementService', () => {
     sendStateEvent.mockRejectedValueOnce(new Error('M_FORBIDDEN'));
 
     await expect(
-      firstValueFrom(service.remove(ROOM_ID, WIDGET)),
+      firstValueFrom(service.remove(TARGET, WIDGET)),
     ).rejects.toThrow('M_FORBIDDEN');
   });
 });

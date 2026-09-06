@@ -8,6 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import type { RoomWidgetTarget } from '@trinity/data-access/widgets';
 import { initialOf } from '@trinity/util/matrix';
 import { MembersSettingsComponent } from '../members-settings/members-settings.component';
 import { RoomAliasesComponent } from '../room-aliases/room-aliases.component';
@@ -82,14 +83,16 @@ const SECTIONS: readonly (SettingsHubSection & {
   styleUrl: './room-settings.component.scss',
 })
 export class RoomSettingsComponent implements OnInit {
+  private readonly identities = inject(AccountIdentitiesService);
+  private readonly membersSection = viewChild(MembersSettingsComponent);
+  private readonly widgetsSection = viewChild(RoomWidgetsComponent);
+
   readonly accountId = input.required<string>();
   readonly roomId = input.required<string>();
   readonly roomDisplayName = input('Room');
   readonly parentSpaces = input<readonly ParentSpace[]>([]);
   readonly direct = input(false);
   readonly initialSection = input<RoomSettingsSection>('general');
-
-  private readonly identities = inject(AccountIdentitiesService);
 
   readonly draft = inject(RoomSettingsDraftService);
   readonly forYouDraft = inject(RoomSettingsForYouDraftService);
@@ -99,11 +102,15 @@ export class RoomSettingsComponent implements OnInit {
     testIdPrefix: 'room-settings',
     accountId: () => this.accountId(),
     targetId: () => this.roomId(),
-    dirty: () => this.draft.dirty() || this.forYouDraft.dirty(),
+    dirty: () =>
+      this.draft.dirty() ||
+      this.forYouDraft.dirty() ||
+      (this.widgetsSection()?.hasCreationDraft() ?? false),
     discard: () => {
       this.draft.discardGeneral();
       this.draft.discardAccess();
       this.forYouDraft.discard();
+      this.widgetsSection()?.discardCreationDraft();
     },
   });
   readonly mobileHost = this.hub.mobileHost;
@@ -114,6 +121,10 @@ export class RoomSettingsComponent implements OnInit {
   readonly account = computed(() =>
     this.identities.identityOf(this.accountId()),
   );
+  readonly widgetTarget = computed<RoomWidgetTarget>(() => ({
+    accountId: this.accountId(),
+    roomId: this.roomId(),
+  }));
   readonly accountInitial = computed(() =>
     initialOf(this.account().displayName),
   );
@@ -125,16 +136,6 @@ export class RoomSettingsComponent implements OnInit {
       SECTIONS.find(({ value }) => value === this.selectedSection())?.label ??
       'General',
   );
-  readonly legacyUnavailableReason = computed(() => {
-    if (this.draft.targetUnavailableReason()) {
-      return this.draft.targetUnavailableReason();
-    }
-    return this.draft.openingAccountActive()
-      ? null
-      : 'Switch back to the opening Account to manage Widgets. Every other section remains attached to the opening Account.';
-  });
-  private readonly membersSection = viewChild(MembersSettingsComponent);
-
   ngOnInit(): void {
     this.draft.start(
       { accountId: this.accountId(), roomId: this.roomId() },

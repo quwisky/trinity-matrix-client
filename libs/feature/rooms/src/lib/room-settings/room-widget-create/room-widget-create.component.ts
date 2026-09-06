@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  computed,
   inject,
   input,
   signal,
@@ -15,6 +16,7 @@ import { TrnToastService } from '@trinity/components/overlay';
 import {
   WidgetManagementError,
   WidgetManagementService,
+  type RoomWidgetTarget,
   type WidgetDraftFailure,
   validateRoomWidgetDraft,
 } from '@trinity/data-access/widgets';
@@ -35,8 +37,6 @@ const EMPTY_DRAFT: WidgetDraftModel = { name: '', rawUrl: '' };
   styleUrl: './room-widget-create.component.scss',
 })
 export class RoomWidgetCreateComponent {
-  readonly roomId = input.required<string>();
-
   private readonly management = inject(WidgetManagementService);
   private readonly toast = inject(TrnToastService);
   private readonly model = signal<WidgetDraftModel>({ ...EMPTY_DRAFT });
@@ -44,7 +44,13 @@ export class RoomWidgetCreateComponent {
     viewChild<ElementRef<HTMLInputElement>>('nameInput');
   private readonly urlInput =
     viewChild<ElementRef<HTMLInputElement>>('urlInput');
+
+  readonly target = input.required<RoomWidgetTarget>();
   readonly requestError = signal<string | null>(null);
+  readonly dirty = computed(() => {
+    const value = this.model();
+    return value.name !== '' || value.rawUrl !== '';
+  });
 
   readonly form = form(this.model, (path) => {
     validate(path.name, ({ value }) =>
@@ -71,7 +77,7 @@ export class RoomWidgetCreateComponent {
       action: async (field) => {
         try {
           await firstValueFrom(
-            this.management.create(this.roomId(), field().value()),
+            this.management.create(this.target(), field().value()),
           );
           this.form().reset({ ...EMPTY_DRAFT });
           this.toast.show('Widget added.', {
@@ -100,6 +106,11 @@ export class RoomWidgetCreateComponent {
 
   focusName(): void {
     queueMicrotask(() => this.nameInput()?.nativeElement.focus());
+  }
+
+  discard(): void {
+    this.requestError.set(null);
+    this.form().reset({ ...EMPTY_DRAFT });
   }
 
   nameError(): string | null {
