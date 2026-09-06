@@ -17,7 +17,12 @@ changing a public surface.
 `TrnSettingsLayoutComponent` in the public overlay tier owns the common Settings,
 Room settings and Space settings dialog presentation: overlay frame, header controls, optional
 context/warning slots, section navigation and one scroll region per pane. It does not own
-routing, Account identity, drafts or dismissal. The feature adapters supply those responsibilities
+routing, Account identity, drafts or dismissal. Responsive geometry follows the surface's
+`data-trn-layout` attribute, so class reconciliation cannot retain a stale compact layout after
+resizing. Its optional `settings-directory-header` slot
+places consumer-owned controls inside the existing directory scroll region. Application Settings
+uses it for directory search, owning the query and filtering the section registry; Room and Space
+settings keep their existing unfiltered directories. The feature adapters supply those responsibilities
 and retain their existing focus and Workspace Back lifetimes.
 
 The dialogs use `textScaledViewportSignal(48, destroyRef)` for both navigation and presentation.

@@ -33,6 +33,7 @@ const SECTIONS = [
 ];
 
 const ROUTES: Routes = [
+  { path: 'outside', component: StubSectionComponent },
   {
     path: 'settings',
     component: SettingsPage,
@@ -124,6 +125,101 @@ describe('SettingsPage (shell)', () => {
         el.querySelector(`[data-testid="settings-nav-${path}"]`),
       ).not.toBeNull();
     }
+  });
+
+  it('filters directory labels and groups without changing the selected route', async () => {
+    stubMatchMedia(false);
+    const { harness, router } = await harnessAt('/settings/profile');
+    const root = harness.fixture.nativeElement as HTMLElement;
+    const search = root.querySelector<HTMLInputElement>('input[type="search"]');
+    expect(search).not.toBeNull();
+    search!.value = ' APPEAR ';
+    search!.dispatchEvent(new Event('input', { bubbles: true }));
+    harness.detectChanges();
+    expect(
+      root.querySelectorAll('[data-testid^="settings-nav-"]'),
+    ).toHaveLength(1);
+    expect(
+      root.querySelector('[data-testid="settings-nav-appearance"]'),
+    ).not.toBeNull();
+    expect(root.querySelector('[role="status"]')?.textContent).toContain(
+      '1 section found',
+    );
+    expect(router.url).toBe('/settings/profile');
+    expect(root.querySelector('h2')?.textContent).toBe('Section heading');
+
+    search!.value = 'Preferences';
+    search!.dispatchEvent(new Event('input', { bubbles: true }));
+    harness.detectChanges();
+    expect(
+      Array.from(
+        root.querySelectorAll('[data-testid^="settings-nav-"]'),
+        (item) => item.textContent?.trim(),
+      ),
+    ).toEqual(['Appearance', 'Notifications', 'Privacy']);
+    expect(
+      Array.from(root.querySelectorAll('.settings-nav__group'), (item) =>
+        item.textContent?.trim(),
+      ),
+    ).toEqual(['Preferences']);
+  });
+
+  it('retains search through a drill-in and browser Back, then resets on a new presentation', async () => {
+    const media = stubMatchMedia(false);
+    const { harness, shell, router } = await harnessAt('/settings');
+    const root = harness.fixture.nativeElement as HTMLElement;
+    const search = root.querySelector<HTMLInputElement>(
+      'input[type="search"]',
+    )!;
+    search.value = 'appear';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    harness.detectChanges();
+    root
+      .querySelector<HTMLAnchorElement>(
+        '[data-testid="settings-nav-appearance"]',
+      )!
+      .click();
+    await settle(router, '/settings/appearance');
+    harness.detectChanges();
+    expect(search.value).toBe('appear');
+    await harness.navigateByUrl('/settings');
+    harness.detectChanges();
+    expect(search.value).toBe('appear');
+    expect(
+      root
+        .querySelector('[data-testid="settings-nav-appearance"]')
+        ?.hasAttribute('data-route-focus'),
+    ).toBe(true);
+    media.fireChange(true);
+    harness.detectChanges();
+    await flush();
+    expect(search.value).toBe('appear');
+    // The wide default is independent of the filtered directory.
+    expect(router.url).toBe('/settings/profile');
+    expect(shell.sectionActive()).toBe(true);
+    await harness.navigateByUrl('/outside');
+    await harness.navigateByUrl('/settings/profile');
+    harness.detectChanges();
+    expect(
+      (
+        harness.fixture.nativeElement as HTMLElement
+      ).querySelector<HTMLInputElement>('input[type="search"]')!.value,
+    ).toBe('');
+  });
+
+  it('returns focus to search when the open section no longer matches on mobile Back', async () => {
+    stubMatchMedia(false);
+    const { harness, shell } = await harnessAt('/settings/profile');
+    const root = harness.fixture.nativeElement as HTMLElement;
+    const search = root.querySelector<HTMLInputElement>(
+      'input[type="search"]',
+    )!;
+    search.value = 'appearance';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    harness.detectChanges();
+    shell.goBack();
+    expect(search.hasAttribute('data-route-focus')).toBe(true);
+    await flush();
   });
 
   it('shows the running build version and commit in a footer', async () => {

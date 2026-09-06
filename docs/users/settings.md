@@ -12,6 +12,16 @@ opening Account beneath the title and keep their own section-level Save and Disc
 
 ## Choose the setting you need
 
+Use **Search settings** to filter section names and groups, such as “appear” or “Preferences”.
+Matching ignores capitalization and surrounding spaces. The directory keeps its usual order and
+announces the number of matching sections; **Clear search** restores the full list and returns
+focus to the search field. If nothing matches, clear the search or try another section name.
+
+Searching leaves the currently open section in place. Your search stays while you open a result,
+return with Back or resize the window, and resets when you leave Settings. On mobile, Back returns
+focus to the result you opened, or to search if a later filter hides that result. Search covers this
+directory, not individual settings or their values.
+
 | Section                                    | Main task                                              | Scope                                                                  |
 | ------------------------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------- |
 | Profile and Presence                       | Change the name, avatar or presence others see         | Account                                                                |

@@ -10,7 +10,7 @@
     contain: layout paint;
   }
 
-  .settings-layout--compact {
+  .settings-layout[data-trn-layout='fullscreen'] {
     min-width: 100vw;
     min-height: 100dvh;
   }
@@ -134,17 +134,18 @@
       max(var(--trinity-space-7), env(safe-area-inset-bottom));
   }
 
-  .settings-layout--compact .settings-layout__workspace {
+  .settings-layout[data-trn-layout='fullscreen'] .settings-layout__workspace {
     flex-direction: column;
   }
 
-  .settings-layout--compact .settings-layout__directory {
+  .settings-layout[data-trn-layout='fullscreen'] .settings-layout__directory {
     width: auto;
     flex: 1;
     border-right: 0;
   }
 
-  .settings-layout--compact .settings-layout__detail-content {
+  .settings-layout[data-trn-layout='fullscreen']
+    .settings-layout__detail-content {
     padding: var(--trinity-space-2) 0
       max(var(--trinity-space-7), env(safe-area-inset-bottom));
   }

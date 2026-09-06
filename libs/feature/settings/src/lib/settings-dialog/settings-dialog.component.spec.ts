@@ -33,6 +33,61 @@ describe('SettingsDialogComponent', () => {
     vi.clearAllMocks();
   });
 
+  it('filters groups, reports no matches and clears without closing', async () => {
+    const fixture = TestBed.createComponent(SettingsDialogComponent);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const search = root.querySelector<HTMLInputElement>(
+      'input[type="search"]',
+    )!;
+    const input = (value: string): void => {
+      search.value = value;
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+      fixture.detectChanges();
+    };
+    input('preferences');
+    expect(
+      Array.from(root.querySelectorAll('[data-trn-settings-section]'), (item) =>
+        item.textContent?.trim(),
+      ),
+    ).toEqual(['Appearance', 'Notifications', 'Privacy']);
+    expect(
+      Array.from(root.querySelectorAll('.settings-layout__group'), (item) =>
+        item.textContent?.trim(),
+      ),
+    ).toEqual(['Preferences']);
+    input('no matching section');
+    expect(root.querySelectorAll('[data-trn-settings-section]')).toHaveLength(
+      0,
+    );
+    expect(root.querySelectorAll('.settings-layout__group')).toHaveLength(0);
+    expect(root.querySelector('[role="status"]')?.textContent).toContain(
+      '0 sections found',
+    );
+    expect(root.textContent).toContain('No sections found.');
+    root
+      .querySelector<HTMLButtonElement>('[aria-label="Clear search"]')!
+      .click();
+    fixture.detectChanges();
+    expect(search.value).toBe('');
+    expect(root.querySelectorAll('[data-trn-settings-section]')).toHaveLength(
+      14,
+    );
+    input('   ');
+    expect(root.querySelectorAll('[data-trn-settings-section]')).toHaveLength(
+      14,
+    );
+    expect(close).not.toHaveBeenCalled();
+    fixture.destroy();
+    const reopened = TestBed.createComponent(SettingsDialogComponent);
+    reopened.detectChanges();
+    expect(
+      (reopened.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+        'input[type="search"]',
+      )!.value,
+    ).toBe('');
+  });
+
   it('renders the accessible settings directory and closes explicitly', () => {
     const fixture = TestBed.createComponent(SettingsDialogComponent);
     fixture.detectChanges();
