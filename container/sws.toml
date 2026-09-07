@@ -112,7 +112,7 @@ headers = {
 # Content-hashed Angular output can be cached immutably. Fixed-name files below
 # are listed after this rule so they retain the revalidation baseline.
 [[advanced.headers]]
-source = "/*-[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9].{js,css}"
+source = "/*-[A-Za-z0-9_-][A-Za-z0-9_-][A-Za-z0-9_-][A-Za-z0-9_-][A-Za-z0-9_-][A-Za-z0-9_-][A-Za-z0-9_-][A-Za-z0-9_-].{js,css}"
 headers.Cache-Control = "public, max-age=31536000, immutable"
 
 [[advanced.headers]]
