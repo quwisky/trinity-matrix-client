@@ -146,6 +146,104 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
       expect(ta.selectionEnd).toBe(11);
     });
 
+    it('applies a menu action using the selection saved before focus leaves the textarea', async () => {
+      const { fixture, container } = await renderComposer({
+        accountId: 'account-a',
+        roomId: '!room:example.org',
+      });
+      const ta = await withSelection(fixture, 'say hello there', 4, 9);
+      container
+        .querySelector<HTMLButtonElement>('[data-testid=composer-format]')
+        ?.click();
+      document
+        .querySelector<HTMLButtonElement>(
+          '[data-testid=composer-format-menu] [data-testid=format-bold]',
+        )
+        ?.click();
+      await Promise.resolve();
+
+      expect(fixture.componentInstance.text()).toBe('say **hello** there');
+      expect(document.activeElement).toBe(ta);
+      expect(ta.selectionStart).toBe(6);
+      expect(ta.selectionEnd).toBe(11);
+    });
+
+    it('formats a collapsed caret through the menu and leaves the caret between markers', async () => {
+      const { fixture, container } = await renderComposer({
+        accountId: 'account-a',
+        roomId: '!room:example.org',
+      });
+      const ta = await withSelection(fixture, 'say ', 4, 4);
+      container
+        .querySelector<HTMLButtonElement>('[data-testid=composer-format]')
+        ?.click();
+      document
+        .querySelector<HTMLButtonElement>(
+          '[data-testid=composer-format-menu] [data-testid=format-bold]',
+        )
+        ?.click();
+      await Promise.resolve();
+
+      expect(fixture.componentInstance.text()).toBe('say ****');
+      expect(ta.selectionStart).toBe(6);
+      expect(ta.selectionEnd).toBe(6);
+    });
+
+    it('dismisses the menu and discards its saved selection when the account changes', async () => {
+      const { fixture, container } = await renderComposer({
+        accountId: 'account-a',
+        roomId: '!same-room:example.org',
+      });
+      await withSelection(fixture, 'say hello', 4, 9);
+      container
+        .querySelector<HTMLButtonElement>('[data-testid=composer-format]')
+        ?.click();
+      await vi.waitFor(() =>
+        expect(
+          document.querySelector('[data-testid=composer-format-menu]'),
+        ).not.toBeNull(),
+      );
+
+      fixture.componentRef.setInput('accountId', 'account-b');
+      fixture.detectChanges();
+      await vi.waitFor(() =>
+        expect(
+          document.querySelector('[data-testid=composer-format-menu]'),
+        ).toBeNull(),
+      );
+      expect(fixture.componentInstance.text()).toBe('say hello');
+    });
+
+    it('preserves the selected range through a Preview round trip', async () => {
+      const { fixture } = await renderComposer({
+        accountId: 'account-a',
+        roomId: '!room:example.org',
+      });
+      const ta = await withSelection(fixture, '**bold** and `code`', 2, 6);
+
+      fixture.componentInstance.onTogglePreview();
+      fixture.detectChanges();
+      expect(fixture.componentInstance.previewing()).toBe(true);
+      fixture.componentInstance.onTogglePreview();
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.previewing()).toBe(false);
+      expect(ta.selectionStart).toBe(2);
+      expect(ta.selectionEnd).toBe(6);
+    });
+
+    it('does not format while an IME composition is active', async () => {
+      const { fixture } = await renderComposer();
+      const ta = await withSelection(fixture, 'say hello', 4, 9);
+      ta.dispatchEvent(
+        new CompositionEvent('compositionstart', { bubbles: true }),
+      );
+
+      fixture.componentInstance.onFormat('bold');
+
+      expect(fixture.componentInstance.text()).toBe('say hello');
+    });
+
     it('applies a formatting chord the user could rebind', async () => {
       const { fixture } = await renderComposer();
       await withSelection(fixture, 'say hello there', 4, 9);
@@ -468,9 +566,9 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
         expect(fixture.componentInstance.text()).toContain('**');
       });
 
-      it('leaves the preview when the toolbar is taken away', async () => {
-        // The preview toggle lives on the toolbar, so hiding it mid-preview would strand the
-        // composer showing a preview with nothing left to switch back.
+      it('keeps the preview when the legacy toolbar is taken away', async () => {
+        // Preview is now owned by the always available Aa menu, so removing the legacy toolbar
+        // must not strand or cancel an active preview.
         const showToolbar = signal(true);
         const { fixture, container } = await renderComposer({}, [
           MockProvider(ComposerSettingsService, {
@@ -484,10 +582,10 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
         showToolbar.set(false);
         fixture.detectChanges();
 
-        expect(fixture.componentInstance.previewing()).toBe(false);
+        expect(fixture.componentInstance.previewing()).toBe(true);
         expect(
           container.querySelector('[data-testid=composer-preview]'),
-        ).toBeNull();
+        ).not.toBeNull();
       });
 
       it('leaves the preview when a reply starts', async () => {

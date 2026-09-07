@@ -100,6 +100,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/member-list/member-list.component.scss',
   'libs/feature/rooms/src/lib/members-settings/members-settings.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.scss',
+  'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-suggestions/composer-suggestions.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.scss',

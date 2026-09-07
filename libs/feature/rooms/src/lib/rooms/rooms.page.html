@@ -417,6 +417,7 @@
               [canLoadOlder]="timeline.canLoadOlder()"
               [oldestEventId]="timeline.oldestEventId()"
               [roomId]="store.activeRoomId()"
+              [accountId]="store.activeAccountId()"
               [members]="vm.members()"
               [typingNames]="timeline.typingNames()"
               [firstUnreadId]="timeline.firstUnreadId()"
@@ -450,6 +451,7 @@
               [canLoadOlder]="timeline.canLoadOlder()"
               [oldestEventId]="timeline.oldestEventId()"
               [roomId]="store.activeRoomId()"
+              [accountId]="store.activeAccountId()"
               [members]="vm.members()"
               [typingNames]="timeline.typingNames()"
               [firstUnreadId]="timeline.firstUnreadId()"
@@ -539,6 +541,7 @@
                   data-right-panel-surface
                   role="complementary"
                   aria-label="Thread"
+                  [accountId]="store.activeAccountId()"
                   [roomId]="room.id"
                   [rootEventId]="panel.rootEventId"
                   (dismissed)="closeRightPanel()"

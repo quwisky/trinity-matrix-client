@@ -183,7 +183,11 @@
          breaks. Following a mention pill would navigate away from a half-written message, so
          `(matrixLink)` is deliberately unhandled — external links still open via the directive. -->
       <div
+        #previewPanel
         class="composer__preview"
+        role="region"
+        aria-label="Message preview"
+        tabindex="-1"
         [class.msg__text--html]="preview().rich"
         data-testid="composer-preview"
         trnSpoilerReveal
@@ -226,6 +230,8 @@
               : null
       "
       (input)="onInput($event)"
+      (compositionstart)="composing.set(true)"
+      (compositionend)="composing.set(false)"
       (keydown)="onKeydown($event)"
       (keydown.enter)="onEnter($event)"
       (keydown.arrowUp)="onArrowUp($event)"
@@ -237,6 +243,20 @@
       (pointerup)="onSelectionChange()"
       (paste)="onPaste($event)"
     ></textarea>
+    <trn-composer-format-menu
+      [contextKey]="formatContext()"
+      [previewing]="previewing()"
+      [disabled]="
+        composing() ||
+        textSending() ||
+        contextUploadProgress() !== null ||
+        recordingVoice()
+      "
+      (beforeOpen)="captureFormatSelection()"
+      (format)="onMenuFormat($event)"
+      (preview)="onTogglePreview()"
+      (dismissed)="restoreFormatSelection()"
+    />
     <button
       type="button"
       trnIconButton

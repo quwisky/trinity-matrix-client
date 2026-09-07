@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Open Markdown formatting and Preview from an Aa composer action, using a desktop
+  popover or a mobile action sheet while preserving the editing selection.
+
 - MIT license for Trinity, with license metadata in the application and desktop
   package manifests and links from the README and contributor guide.
 

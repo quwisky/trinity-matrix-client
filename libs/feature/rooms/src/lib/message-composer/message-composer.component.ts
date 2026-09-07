@@ -40,6 +40,7 @@ import {
   type Mention,
 } from '@trinity/util/matrix';
 import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
+import { ComposerFormatMenuComponent } from './composer-format-menu/composer-format-menu.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
 import { ComposerSuggestionsComponent } from './composer-suggestions/composer-suggestions.component';
@@ -77,6 +78,13 @@ export type { MentionMember };
 export interface ComposerSubmit {
   text: string;
   mentions: Mention[];
+}
+
+interface FormatSelection {
+  readonly context: object;
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
 }
 
 /**
@@ -117,6 +125,7 @@ let nextPickerId = 0;
     StickerPickerComponent,
     InlineMxcImagesDirective,
     ComposerToolbarComponent,
+    ComposerFormatMenuComponent,
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
     ComposerSuggestionsComponent,
@@ -180,6 +189,8 @@ export class MessageComposerComponent {
   /** Active room/thread id. A change discards any staged (unsent) attachment —
    * the composer instance is reused across rooms, so it must not leak. */
   readonly roomId = input<string | null>(null);
+  /** Account identity distinguishes two Conversations in the same Matrix Room. */
+  readonly accountId = input<string | null>(null);
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
@@ -367,6 +378,8 @@ export class MessageComposerComponent {
   );
 
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
+  private readonly previewPanel =
+    viewChild<ElementRef<HTMLElement>>('previewPanel');
   /** Caret reads, splices, focus and auto-grow — everything that touches the textarea. */
   private readonly field: ComposerTextField;
   private readonly fileInput =
@@ -395,6 +408,14 @@ export class MessageComposerComponent {
   private readonly selection = signal<{ start: number; end: number } | null>(
     null,
   );
+  private formatSelection: FormatSelection | null = null;
+  protected readonly composing = signal(false);
+  protected readonly formatContext = computed(() => ({
+    accountId: this.accountId(),
+    roomId: this.roomId(),
+    editing: this.editing(),
+    editTargetId: this.editTargetId(),
+  }));
   private readonly hasSelection = computed(() => this.selection() !== null);
 
   /**
@@ -515,6 +536,7 @@ export class MessageComposerComponent {
             this.cancelVoiceRecording();
           }
           this.menus.clearChosen(); // they belong to the old conversation
+          this.formatSelection = null;
           this.previewing.set(false); // the new room opens ready to write, not to read
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
@@ -531,13 +553,15 @@ export class MessageComposerComponent {
       }
     });
 
-    // The preview toggle lives ON the toolbar, so taking the toolbar away mid-preview would
-    // leave the composer showing a preview with nothing left to switch back — the same trap
-    // `resetMenus` guards against, arriving from Settings rather than from a send.
+    // Formatting UI belongs to the exact Account, Conversation and editing target.
+    // Draft persistence remains with its existing Conversation owner.
     effect(() => {
-      if (!this.showToolbar()) {
+      this.formatContext();
+      untracked(() => {
+        this.formatSelection = null;
+        this.selection.set(null);
         this.previewing.set(false);
-      }
+      });
     });
 
     // Highlight the first suggestion whenever either result set changes.
@@ -747,11 +771,29 @@ export class MessageComposerComponent {
 
   /** Apply a formatting action to the current selection. */
   onFormat(action: FormatAction): void {
+    if (this.composing()) return;
     const el = this.textarea()?.nativeElement;
     const value = this.text();
     const start = el?.selectionStart ?? value.length;
     const end = el?.selectionEnd ?? value.length;
     this.applyEdit(applyFormat(value, start, end, action));
+  }
+
+  /** Apply the selection saved before focus moved into the Format surface. */
+  protected onMenuFormat(action: FormatAction): void {
+    const saved = this.formatSelection;
+    if (!saved || !this.isFormatSelectionCurrent(saved) || this.composing())
+      return;
+    const result = applyFormat(saved.text, saved.start, saved.end, action);
+    this.previewing.set(false);
+    this.applyEdit(result);
+    this.formatSelection = {
+      context: saved.context,
+      text: result.text,
+      start: result.selectionStart,
+      end: result.selectionEnd,
+    };
+    this.restoreFormatSelection(true);
   }
 
   /** Land an edit in the field, then do the bookkeeping a keystroke would have done. */
@@ -766,10 +808,22 @@ export class MessageComposerComponent {
 
   /** Swap between writing and previewing, returning focus to the input on the way back. */
   onTogglePreview(): void {
+    if (this.composing()) return;
     const next = !this.previewing();
+    if (next) this.captureFormatSelection();
     this.previewing.set(next);
-    if (!next) {
-      this.field.focusAfterRender();
+    if (next) {
+      const context = this.formatContext();
+      afterNextRender(
+        () => {
+          if (context === this.formatContext() && this.previewing()) {
+            this.previewPanel()?.nativeElement.focus();
+          }
+        },
+        { injector: this.injector },
+      );
+    } else {
+      this.restoreFormatSelection(true);
     }
   }
 
@@ -866,6 +920,7 @@ export class MessageComposerComponent {
     // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
     // an empty composer.
     this.selection.set(null);
+    this.formatSelection = null;
     if (!this.editing() && this.composeDraft() === null) {
       // Conversation-owned text clears from the authoritative input signal. The legacy
       // thread composer still owns its local draft and therefore clears it here.
@@ -940,11 +995,40 @@ export class MessageComposerComponent {
    */
   protected onSelectionChange(): void {
     const el = this.textarea()?.nativeElement;
-    this.selection.set(
-      el && el.selectionStart !== el.selectionEnd
-        ? { start: el.selectionStart, end: el.selectionEnd }
-        : null,
-    );
+    const range = el
+      ? { start: el.selectionStart, end: el.selectionEnd }
+      : null;
+    this.selection.set(range && range.start !== range.end ? range : null);
+  }
+
+  /** Save the exact caret or selection before the Aa trigger takes focus. */
+  protected captureFormatSelection(): void {
+    const el = this.textarea()?.nativeElement;
+    if (!el || this.composing()) return;
+    this.formatSelection = {
+      context: this.formatContext(),
+      text: this.text(),
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    };
+  }
+
+  protected restoreFormatSelection(focus = false): void {
+    const saved = this.formatSelection;
+    if (!saved) return;
+    const restore = () => {
+      if (!this.isFormatSelectionCurrent(saved) || this.composing()) return;
+      const el = this.textarea()?.nativeElement;
+      if (focus) el?.focus();
+      el?.setSelectionRange(saved.start, saved.end);
+      this.field.autoGrow();
+    };
+    restore();
+    if (focus) afterNextRender(restore, { injector: this.injector });
+  }
+
+  private isFormatSelectionCurrent(saved: FormatSelection): boolean {
+    return saved.context === this.formatContext() && saved.text === this.text();
   }
 
   /**

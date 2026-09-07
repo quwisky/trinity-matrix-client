@@ -94,7 +94,7 @@
   // still gets its gutter.
   .composer__field {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto auto;
     align-items: end;
     gap: var(--trinity-density-composer-field-gap);
 
@@ -139,7 +139,7 @@
     // 2) nothing wraps. Shortening the base template is not an option: with three columns
     // declared and four items, the fourth would wrap to an implicit row 2.
     &:not(:has(.composer__send)) {
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr auto auto;
     }
   }
 

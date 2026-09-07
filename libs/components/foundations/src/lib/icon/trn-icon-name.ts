@@ -21,6 +21,7 @@ export const TRN_ICON_NAMES = [
   'braces',
   'calendar-search',
   'camera',
+  'case-sensitive',
   'check',
   'check-check',
   'chevron-down',
