@@ -21,6 +21,7 @@
     "skipLibCheck": true,
     "useDefineForClassFields": false,
     "paths": {
+      "@trinity/util/push-client": ["./libs/util/push-client/src/index.ts"],
       "@trinity/util/matrix": ["./libs/util/matrix/src/index.ts"],
       "@trinity/util/ui": ["./libs/util/ui/src/index.ts"],
       "@trinity/testing": ["./libs/testing/src/index.ts"],

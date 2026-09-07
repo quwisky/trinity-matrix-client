@@ -26,18 +26,12 @@ const APPLIED_KEY = 'trinity.push.applied-app-id';
 /**
  * The user's stored gateway override.
  *
- * `appId` is what the user *wants*; the separate ledger ({@link APPLIED_KEY}) is what
- * actually reached the homeservers. They are separate on purpose. A pusher's identity is
- * `(user_id, app_id, pushkey)`, so changing the app id does not update the old pusher —
- * it creates a second one and leaves the first delivering to the old gateway
- * indefinitely (confirmed against Synapse: after an app-id change `GET /pushers`
- * returns two rows). Removing the stale one requires knowing the id it was registered
- * under, which is gone the instant `appId` is overwritten — hence the ledger, persisted
- * so it also survives the app being killed between the remove and the set.
+ * The applied-id ledger ({@link APPLIED_KEY}) is retained for cleaning up pushers
+ * created by older client versions that used configurable app IDs.
  */
 interface StoredGateway {
   readonly gatewayUrl: string;
-  readonly appId?: string;
+  readonly disabled?: boolean;
 }
 
 interface StoredGatewayLoad {
@@ -62,26 +56,26 @@ interface StoredGatewayLoad {
  */
 @Injectable({ providedIn: 'root' })
 export class PushGatewayService {
-  /** Build-time default (`environment.push`); null in a stock build. */
+  /** Build-time default (`environment.push`), with the shipped dummy URL. */
   private readonly fallback = inject(PUSH_CONFIG, { optional: true });
   private readonly storage = inject(DevicePreferenceStorageService);
   private readonly nativePush = inject(NativePushRegistrationService);
 
   private readonly _override = signal<StoredGateway | null>(null);
+  private readonly _disabled = signal(false);
+  readonly disabled = this._disabled.asReadonly();
   /** The user's stored override, or null when the build-time default applies. */
   readonly override = this._override.asReadonly();
 
   /**
    * The config push should actually use: the user's override, else the build-time
-   * default, else null (push disabled). `appId` is left undefined when the user did not
-   * set one, and `DEFAULT_APP_ID` is substituted at the point of use
-   * (`PushService.appId()`) rather than here, so the stored shape stays a faithful
-   * record of what the user actually chose.
+   * default, unless the user explicitly cleared it (the disabled marker).
    */
   readonly effective = computed<PushConfig | null>(() => {
     const stored = this._override();
+    if (this._disabled()) return null;
     if (stored) {
-      return { gatewayUrl: stored.gatewayUrl, appId: stored.appId };
+      return { gatewayUrl: stored.gatewayUrl };
     }
     return this.fallback;
   });
@@ -91,7 +85,7 @@ export class PushGatewayService {
 
   private readonly _appliedAppId = signal<string | null>(null);
   /**
-   * The base app id the live pushers were last registered under, or null if none have
+   * The exact app id (or a legacy base id) the live pushers were registered under, or null if none have
    * been written. Read by the push service to remove the stale pusher when the app id
    * changes; null means there is nothing to clean up.
    */
@@ -138,6 +132,19 @@ export class PushGatewayService {
         outcome: preferenceInitializationDefaulted('invalid-stored-value'),
       };
     }
+    if (
+      typeof stored !== 'object' ||
+      stored === null ||
+      Array.isArray(stored)
+    ) {
+      return {
+        outcome: preferenceInitializationDefaulted('invalid-stored-value'),
+      };
+    }
+    if (stored.disabled === true) {
+      this._disabled.set(true);
+      return { outcome: preferenceInitializationReady };
+    }
     if (typeof stored.gatewayUrl !== 'string') {
       return {
         outcome: preferenceInitializationDefaulted('invalid-stored-value'),
@@ -154,10 +161,7 @@ export class PushGatewayService {
         outcome: preferenceInitializationDefaulted('invalid-stored-value'),
       };
     }
-    this._override.set({
-      gatewayUrl: check.url,
-      appId: typeof stored.appId === 'string' ? stored.appId : undefined,
-    });
+    this._override.set({ gatewayUrl: check.url });
     return { legacyApplied, outcome: preferenceInitializationReady };
   }
 
@@ -189,25 +193,21 @@ export class PushGatewayService {
 
   /**
    * Set + persist the override. `url` must already be normalised (see
-   * {@link normalizeGatewayUrl}); an empty `appId` is stored as absent rather than as
-   * `''`, so the default applies rather than an app id of `".ios"`.
+   * {@link normalizeGatewayUrl}). Fixed app IDs come from the shared push client.
    *
    * Deliberately leaves the applied-id ledger alone: it describes the pushers currently
    * live on the homeservers, which this call has not touched yet. The push service
    * updates it via {@link markApplied} once the new pushers are actually written.
    */
-  async save(url: string, appId?: string): Promise<void> {
-    const trimmed = appId?.trim();
-    const next: StoredGateway = {
-      gatewayUrl: url,
-      appId: trimmed ? trimmed : undefined,
-    };
+  async save(url: string): Promise<void> {
+    const next: StoredGateway = { gatewayUrl: url };
+    this._disabled.set(false);
     this._override.set(next);
     await this.persist(next);
   }
 
   /**
-   * Record which base app id the live pushers now carry, so a later change knows what
+   * Record which app id the live pushers now carry, so a later change knows what
    * to remove. Called by the push service after a successful registration round.
    *
    * Independent of whether an override exists: pushers registered from the build-time
@@ -225,19 +225,19 @@ export class PushGatewayService {
     );
   }
 
-  /**
-   * Drop the override so the build-time default (usually none) applies again.
-   *
-   * Removes the whole key rather than blanking the URL: unlike the GIF config, where
-   * provider and key share a blob and a `remove()` would lose the provider too, every
-   * field here is meaningless without a URL.
-   *
-   * The applied-id ledger deliberately survives: it names pushers that are live on the
-   * homeservers right now, and dropping the override does not delete them. Keeping it is
-   * what lets the next registration round remove them.
-   */
+  /** Disable push on this device, retaining the applied ledger for cleanup. */
   async clear(): Promise<void> {
     this._override.set(null);
+    this._disabled.set(true);
+    await firstValueFrom(
+      this.storage.set(STORAGE_KEY, JSON.stringify({ disabled: true })),
+    ).catch(() => undefined);
+  }
+
+  /** Remove the device choice and use the build configuration again. */
+  async resetToDefault(): Promise<void> {
+    this._override.set(null);
+    this._disabled.set(false);
     await firstValueFrom(this.storage.remove(STORAGE_KEY)).catch(
       () => undefined,
     );

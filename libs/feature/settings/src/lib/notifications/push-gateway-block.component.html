@@ -19,6 +19,16 @@
     </p>
   } @else {
     <div class="px-4 py-2">
+      @if (placeholderGateway()) {
+        <p
+          class="mb-2 text-13 text-muted-foreground"
+          data-testid="push-gateway-placeholder"
+        >
+          This build has a placeholder gateway. Enter your deployed Trinity
+          gateway URL to receive mobile notifications.
+        </p>
+      }
+
       <label trnLabel for="push-gateway-url">Gateway URL</label>
       <input
         id="push-gateway-url"
@@ -64,46 +74,6 @@
         }
       }
 
-      <button
-        trnBtn
-        type="button"
-        presentation="link"
-        size="sm"
-        class="mt-2"
-        (click)="toggleAdvanced()"
-        [attr.aria-expanded]="advancedOpen()"
-        data-testid="push-gateway-advanced-toggle"
-      >
-        {{ advancedOpen() ? 'Hide' : 'Show' }} advanced
-      </button>
-
-      @if (advancedOpen()) {
-        <div class="mt-2">
-          <label trnLabel for="push-gateway-appid">App ID</label>
-          <input
-            id="push-gateway-appid"
-            trnInput
-            type="text"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck="false"
-            class="mt-1 w-full"
-            placeholder="eu.qwky.trinity"
-            aria-describedby="push-gateway-appid-help"
-            [value]="appIdDraft()"
-            (input)="onAppIdInput($event)"
-            data-testid="push-gateway-appid"
-          />
-          <p
-            id="push-gateway-appid-help"
-            class="mt-1 text-13 text-muted-foreground"
-          >
-            Leave blank unless your gateway registered Trinity under a different
-            app ID.
-          </p>
-        </div>
-      }
-
       <div class="mt-3 flex items-center gap-2">
         <button
           trnBtn
@@ -114,7 +84,7 @@
         >
           Save
         </button>
-        @if (hasOverride()) {
+        @if (canClear()) {
           <button
             trnBtn
             size="sm"

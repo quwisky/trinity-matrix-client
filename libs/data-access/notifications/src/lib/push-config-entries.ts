@@ -4,6 +4,7 @@ import {
   isConfigRecord,
   provideConfigEntries,
   type ConfigEntry,
+  type ConfigValue,
   type ConfigValidation,
 } from '@trinity/platform-native';
 import { firstValueFrom } from 'rxjs';
@@ -26,16 +27,7 @@ const URL_PROBLEMS: Record<GatewayUrlProblem, string> = {
   'wrong-path': `does not end in ${GATEWAY_NOTIFY_PATH}, the only path a homeserver accepts`,
 };
 
-/**
- * The user's push-gateway override, for the config export.
- *
- * One entry rather than two, mirroring how it is stored and cleared: `appId` is meaningless
- * without a URL, and {@link PushGatewayService.clear} drops both together. `null` means no
- * override — push falls back to the build-time default.
- *
- * The applied-app-id ledger beside it is NOT exported; see `CONFIG_KEY_LEDGER` for why
- * importing one would strand a live pusher on the old gateway.
- */
+/** Device gateway choice; the applied pusher ledger is never exported. */
 export function providePushConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => {
     const push = inject(PushGatewayService);
@@ -45,37 +37,23 @@ export function providePushConfigEntries(): EnvironmentProviders {
         path: 'push.gateway',
         key: 'trinity.push.gateway',
         description:
-          'Your own push gateway and its app id, or null to use the one this build ships with.',
-        // An object or nothing: `appId` is meaningless without a URL, so the pair is one
-        // value and "no override" is `null` rather than an empty object.
+          'The push gateway URL, { disabled: true } to turn push off, or null to use the build default.',
         type: ['object', 'null'],
-        read: () => {
+        read: (): ConfigValue => {
+          if (push.disabled()) return { disabled: true };
           const override = push.override();
           return override
             ? {
                 gatewayUrl: override.gatewayUrl,
-                appId: override.appId ?? null,
               }
             : null;
         },
-        /**
-         * Pushers first, then the stored gateway — the same order
-         * `push-gateway-block.component.ts` uses for its Clear button, and for the same
-         * reason: {@link PushService.unregister} reads the applied-app-id ledger to know
-         * which pushers to remove, and the ledger is only meaningful while the gateway it
-         * was applied for is still configured.
-         *
-         * A bare `clear()` would leave the homeserver delivering room and event metadata to
-         * a gateway the user just disowned, and it cannot self-heal: with no override and no
-         * build-time `PUSH_CONFIG`, `canPush()` is false and `register()` early-returns
-         * forever, so nothing ever removes them. A no-op on web and desktop, where there are
-         * no pushers to remove.
-         */
+        // Remove live pushers before restoring the build default.
         reset: async () => {
           // unregister() already swallows every removePusher rejection, so this cannot
           // reject the Promise.all that resetToDefaults runs the entries under.
           await firstValueFrom(pushers.unregister());
-          await push.clear();
+          await push.resetToDefault();
         },
         /**
          * Checked through {@link normalizeGatewayUrl} — the same rules the settings form
@@ -86,18 +64,22 @@ export function providePushConfigEntries(): EnvironmentProviders {
         validate: (value) => validateGateway(value, push.supported()),
         write: async (value) => {
           if (value === null) {
-            await push.clear();
+            await push.resetToDefault();
             return;
           }
           if (!isConfigRecord(value)) {
             return;
           }
+          if (value['disabled'] === true) {
+            await firstValueFrom(pushers.unregister());
+            await push.clear();
+            return;
+          }
           const url = value['gatewayUrl'];
-          const appId = value['appId'];
           if (typeof url !== 'string') {
             return;
           }
-          await push.save(url, typeof appId === 'string' ? appId : undefined);
+          await push.save(url);
         },
       },
     ] satisfies readonly ConfigEntry[];
@@ -111,10 +93,12 @@ function validateGateway(value: unknown, supported: boolean): ConfigValidation {
   if (!isConfigRecord(value)) {
     return {
       ok: false,
-      problem: `${describeConfigValue(value)} is not a push gateway (expected null, or an object with a gatewayUrl and an appId)`,
+      problem: `${describeConfigValue(value)} is not a push gateway (expected null, or an object with a gatewayUrl)`,
     };
   }
 
+  if (value['disabled'] === true)
+    return { ok: true, value: { disabled: true } };
   const url = value['gatewayUrl'];
   if (typeof url !== 'string') {
     return {
@@ -130,15 +114,6 @@ function validateGateway(value: unknown, supported: boolean): ConfigValidation {
     };
   }
 
-  const appId = value['appId'];
-  if (appId !== null && appId !== undefined && typeof appId !== 'string') {
-    return {
-      ok: false,
-      problem: `its appId is ${describeConfigValue(appId)}, not text`,
-    };
-  }
-  const trimmed = typeof appId === 'string' ? appId.trim() : '';
-
   // Stored either way, and said out loud either way: a config written on a phone and applied
   // on the desktop keeps its gateway (so it survives the trip back) but cannot use it, and
   // an http gateway is accepted by homeservers yet sends notification metadata in the clear.
@@ -153,7 +128,7 @@ function validateGateway(value: unknown, supported: boolean): ConfigValidation {
       'this gateway is plain http, so your homeserver will send notification metadata to it unencrypted',
     );
   }
-  const normalized = { gatewayUrl: check.url, appId: trimmed ? trimmed : null };
+  const normalized = { gatewayUrl: check.url };
   return notes.length > 0
     ? { ok: true, value: normalized, warning: notes.join('; ') }
     : { ok: true, value: normalized };

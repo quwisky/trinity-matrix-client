@@ -61,4 +61,8 @@ export type NativePushLifetimeEvent =
   | {
       readonly kind: 'activated';
       readonly destination: import('./push.service').NativePushActivation;
+    }
+  | {
+      readonly kind: 'received';
+      readonly data: Readonly<Record<string, unknown>>;
     };

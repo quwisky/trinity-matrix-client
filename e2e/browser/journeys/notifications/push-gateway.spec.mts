@@ -12,6 +12,44 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
+import {
+  addAccountViaUi,
+  seedLiveNotifyReader,
+} from '../../support/multi-account-journey.mts';
+import type { Observable } from 'rxjs';
+
+type PushFixtureEvent = {
+  kind: 'activated';
+  data: Record<string, string>;
+};
+interface PushFixtureWindow extends Window {
+  ng: {
+    getComponent(element: Element): {
+      runtime: {
+        state(): { phase: string };
+        adapter: {
+          session: {
+            notificationSession: {
+              push: {
+                push: {
+                  sessions: {
+                    ensurePushAccountRoutes(): Observable<
+                      readonly { accountId: string; route: string }[]
+                    >;
+                  };
+                  handleNativeEvent(
+                    event: PushFixtureEvent,
+                  ): Observable<unknown>;
+                };
+              };
+              handlePush(event: unknown): Observable<never>;
+            };
+          };
+        };
+      };
+    };
+  };
+}
 
 // Two things, both needing a Synapse homeserver (Docker); self-skips otherwise.
 //
@@ -50,7 +88,12 @@ interface Pusher {
   app_id: string;
   pushkey: string;
   kind: string;
-  data: { url?: string };
+  data: {
+    url?: string;
+    trinity_account_id?: string;
+    trinity_push_version?: string;
+    format?: string;
+  };
 }
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
@@ -107,7 +150,13 @@ test.describe('Push gateway', () => {
           app_display_name: 'Trinity',
           device_display_name: 'E2E',
           lang: 'en',
-          data: { url: NOTIFY, format: 'event_id_only' },
+          data: {
+            url: NOTIFY,
+            format: 'event_id_only',
+            trinity_account_id:
+              token === aTok ? 'account_route_a' : 'account_route_b',
+            trinity_push_version: '1',
+          },
           append: true,
         },
       });
@@ -139,7 +188,15 @@ test.describe('Push gateway', () => {
     // The readback shape verifyPushers() matches on.
     const [aPusher] = await pushers(aTok);
     expect(aPusher.kind).toBe('http');
-    expect(aPusher.data.url).toBe(NOTIFY);
+    expect(aPusher.data).toEqual({
+      url: NOTIFY,
+      format: 'event_id_only',
+      trinity_account_id: 'account_route_a',
+      trinity_push_version: '1',
+    });
+    expect((await pushers(bTok))[0].data.trinity_account_id).toBe(
+      'account_route_b',
+    );
 
     // App-id change: remove the old, set the new. The tuple changes, so without the
     // explicit removal the old row would survive and keep delivering.
@@ -149,5 +206,115 @@ test.describe('Push gateway', () => {
     const after = await pushers(aTok);
     expect(after.length).toBe(1);
     expect(after[0].app_id).toBe(NEW_APP);
+  });
+
+  test('a v1 push tap opens its saved Account and Conversation', async ({
+    page,
+    request,
+    matrixResources,
+  }) => {
+    test.skip(
+      isAndroidE2E,
+      'payload injection uses Angular development hooks; device delivery is verified separately',
+    );
+    const hs = session.hs as string;
+    const b = await seedLiveNotifyReader(request, hs, matrixResources);
+    const body = `Push destination ${testResourceId('run')}`;
+    const sent = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(b.roomId)}/send/m.room.message/${testResourceId('push')}`,
+      { headers: b.sender.headers, data: { msgtype: 'm.text', body } },
+    );
+    expect(sent.ok()).toBe(true);
+    const { event_id: eventId } = await sent.json();
+    await login(page, session);
+    await addAccountViaUi(page, hs, b.user, b.pass);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${b.user}:`);
+    await page.getByTestId('rail-rooms').click();
+    await expect(
+      page.locator('.channel', { hasText: b.roomName }).first(),
+    ).toBeVisible();
+    await page.getByTestId('user-menu-trigger').click();
+    await page
+      .getByTestId('account-row')
+      .filter({ hasText: `@${session.user}:` })
+      .click();
+    await expect(page.locator('.userbar__handle')).toContainText(
+      `@${session.user}:`,
+    );
+
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const root = document.querySelector('trn-root');
+          if (!root) return undefined;
+          return (window as unknown as PushFixtureWindow).ng
+            .getComponent(root)
+            .runtime.state().phase;
+        }),
+      )
+      .toBe('ready');
+
+    // Inject at the native adapter boundary. Real parsing, saved-route admission,
+    // Runtime handling and Workspace navigation remain in the exercised path.
+    await page.evaluate(
+      async ({ accountId, roomId, eventId }) => {
+        const root = document.querySelector('trn-root');
+        if (!root) throw new Error('Application root unavailable');
+        const composition = (
+          window as unknown as PushFixtureWindow
+        ).ng.getComponent(root).runtime.adapter.session.notificationSession;
+        const push = composition.push.push;
+        const routes = await new Promise<
+          readonly { accountId: string; route: string }[]
+        >((resolve, reject) => {
+          push.sessions
+            .ensurePushAccountRoutes()
+            .subscribe({ next: resolve, error: reject });
+        });
+        const route = routes.find(
+          (entry) => entry.accountId === accountId,
+        )?.route;
+        if (!route) throw new Error('Saved Account route unavailable');
+        await new Promise<void>((resolve, reject) => {
+          let admitted = false;
+          push
+            .handleNativeEvent({
+              kind: 'activated',
+              data: {
+                schema: '1',
+                kind: 'event',
+                trinity_account_id: route,
+                room_id: roomId,
+                event_id: eventId,
+                unread: '1',
+                missed_calls: '0',
+                sound: 'false',
+              },
+            })
+            .subscribe({
+              next: (event) => {
+                admitted = true;
+                composition
+                  .handlePush(event)
+                  .subscribe({ error: reject, complete: resolve });
+              },
+              error: reject,
+              complete: () => {
+                if (!admitted)
+                  reject(
+                    new Error('Valid saved Account push was not admitted'),
+                  );
+              },
+            });
+        });
+      },
+      { accountId: b.readerUserId, roomId: b.roomId, eventId },
+    );
+
+    await expect(page.locator('.userbar__handle')).toContainText(`@${b.user}:`);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('account'))
+      .toBe(b.readerUserId);
+    await expect(page.getByText(body, { exact: true }).first()).toBeVisible();
   });
 });

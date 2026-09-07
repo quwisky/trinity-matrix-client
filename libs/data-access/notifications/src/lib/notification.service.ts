@@ -16,8 +16,28 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  NativePushRegistrationService,
+  SessionStorageService,
+} from '@trinity/platform-native';
+import {
+  parseTrinityPushPayload,
+  resolvePushAccountRoute,
+} from '@trinity/util/push-client';
+import { PushGatewayService } from './push-gateway.service';
 import { NotificationSoundService } from './notification-sound.service';
-import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
+import {
+  Observable,
+  Subscriber,
+  Subscription,
+  defer,
+  catchError,
+  of,
+  switchMap,
+  map,
+  take,
+  timeout,
+} from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
 import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
@@ -85,6 +105,9 @@ interface AccountNotifier {
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly sessions = inject(SessionStorageService);
+  private readonly gateway = inject(PushGatewayService);
+  private readonly nativePush = inject(NativePushRegistrationService);
   private readonly sound = inject(NotificationSoundService);
   private readonly visibility = inject(NOTIFICATION_VISIBILITY);
   private readonly policy = inject(NotificationPolicy);
@@ -159,6 +182,93 @@ export class NotificationService {
       this.health.start((event) => subscriber.next(event));
       this.reconcile(this.matrix.accountIds());
       return () => this.stop(connection);
+    });
+  }
+
+  /** Present a gateway event using the same account/event ledger as sync notifications. */
+  receivePush(data: Readonly<Record<string, unknown>>): Observable<void> {
+    return defer(() => {
+      const owner = this.connection;
+      if (!this.enabled || !owner || !this.presentationReady)
+        return of(undefined);
+      const payload = parseTrinityPushPayload(data);
+      if (!payload || payload.kind !== 'event') return of(undefined);
+      return new Observable<void>((subscriber) => {
+        // The command belongs to this Runtime session as well as its caller.
+        // Stopping either cancels pending storage and presentation observations.
+        owner.add(subscriber);
+        subscriber.add(() => owner.remove(subscriber));
+        return this.sessions
+          .getPushAccountRoutes()
+          .pipe(
+            take(1),
+            switchMap((routes) => {
+              if (
+                !this.enabled ||
+                this.connection !== owner ||
+                owner.closed ||
+                !this.presentationReady
+              )
+                return of(undefined);
+              const route = resolvePushAccountRoute(
+                routes,
+                payload.accountRoute,
+              );
+              if (!route || !this.matrix.accountIds().includes(route.accountId))
+                return of(undefined);
+              const client = this.matrix.clientFor(route.accountId);
+              if (!client) return of(undefined);
+              const key = this.key(route.accountId, payload.eventId);
+              const room = client.getRoom(payload.roomId);
+              const decision = this.policy.decide({
+                event: {
+                  accountId: route.accountId,
+                  roomId: payload.roomId,
+                  eventId: payload.eventId,
+                  senderId: '',
+                  senderName: 'New message',
+                  roomName: room?.name || null,
+                  body: null,
+                  kind: 'message',
+                },
+                viewerId: client.getUserId() ?? route.accountId,
+                rules: {
+                  notify: true,
+                  silent: !payload.sound || !this.sound.isOn(route.accountId),
+                },
+                visibility: this.visibility.snapshot(),
+                duplicate: this.notified.has(key),
+              });
+              if (decision.kind !== 'present') return of(undefined);
+              this.notified.add(key);
+              this.evictOldest(this.notified, NotificationService.NOTIFIED_CAP);
+              return this.presenter
+                .present({
+                  ...decision.intent,
+                  title: 'Trinity',
+                  body: 'New message',
+                })
+                .pipe(
+                  take(1),
+                  map((outcome) => {
+                    if (outcome.kind !== 'completed')
+                      this.health.incident(
+                        'presentation-command',
+                        'notification-presentation-failed',
+                      );
+                  }),
+                );
+            }),
+            catchError(() => {
+              this.health.incident(
+                'presentation-command',
+                'notification-presentation-failed',
+              );
+              return of(undefined);
+            }),
+          )
+          .subscribe(subscriber);
+      });
     });
   }
 
@@ -473,8 +583,12 @@ export class NotificationService {
     if (decision.kind === 'suppress') return;
     this.notified.add(key);
     this.evictOldest(this.notified, NotificationService.NOTIFIED_CAP);
+    const intent =
+      this.nativePush.platform === 'android' && this.gateway.configured()
+        ? { ...decision.intent, title: 'Trinity', body: 'New message' }
+        : decision.intent;
     const subscription = this.presenter
-      .present(decision.intent)
+      .present(intent)
       .pipe(take(1))
       .subscribe({
         next: (outcome) => {

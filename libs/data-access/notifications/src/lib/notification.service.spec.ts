@@ -11,6 +11,7 @@ import { MockProvider, ngMocks } from 'ng-mocks';
 import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
+import { NotificationPresenterService } from './notification-presenter.service';
 import type {
   NotificationDestination,
   NotificationRuntimeEvent,
@@ -19,9 +20,15 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
 import { provideHostCapabilities } from '@trinity/platform-native';
 import {
+  SessionStorageService,
+  NativePushRegistrationService,
+} from '@trinity/platform-native';
+import { PushGatewayService } from './push-gateway.service';
+import {
   HOST_OPERATIONS,
   HostNotificationPresentationService,
   type HostCapabilitySupport,
+  type HostOperationOutcome,
 } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
 import type { NotificationPresentationHealth } from './notification-health.models';
@@ -29,7 +36,11 @@ import type { NotificationPresentationHealth } from './notification-health.model
 const cap = vi.hoisted(() => ({ native: false }));
 vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn(() => ({})),
-  Capacitor: { isNativePlatform: () => cap.native },
+  Capacitor: {
+    isNativePlatform: () => cap.native,
+    getPlatform: () => (cap.native ? 'ios' : 'web'),
+    isPluginAvailable: () => cap.native,
+  },
 }));
 
 class MockNotification {
@@ -70,6 +81,7 @@ function setup(
     active?: string;
     /** Stored "play a sound" preference; omitted means "not set" (defaults to on). */
     soundEnabled?: boolean;
+    androidGateway?: boolean;
     /** Pre-built per-account clients, for cases where two accounts must differ. */
     clients?: Map<string, ReturnType<typeof fakeClient>>;
     hostNotifications?: Pick<
@@ -90,6 +102,22 @@ function setup(
     providers: [
       provideHostCapabilities(),
       NotificationService,
+      MockProvider(SessionStorageService, {
+        getPushAccountRoutes: () =>
+          of(
+            accounts.map((accountId) => ({
+              accountId,
+              route: `route-${accountId.slice(1, 3)}`,
+            })),
+          ),
+      }),
+      MockProvider(NativePushRegistrationService, {
+        platform: opts.androidGateway ? 'android' : cap.native ? 'ios' : null,
+        supported: () => false,
+      }),
+      MockProvider(PushGatewayService, {
+        configured: signal(opts.androidGateway ?? false),
+      }),
       MockProvider(MatrixClientService, {
         // A session can start signed out. Notification Runtime must remain dormant
         // instead of completing, then attach when the first Account appears.
@@ -216,6 +244,22 @@ async function settleDesktopNegotiation(): Promise<void> {
   await Promise.resolve();
 }
 
+function gatewayEvent(
+  overrides: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    schema: '1',
+    kind: 'event',
+    trinity_account_id: 'route-me',
+    room_id: '!r:hs',
+    event_id: '$push',
+    unread: '1',
+    missed_calls: '0',
+    sound: 'true',
+    ...overrides,
+  };
+}
+
 function event(
   opts: {
     sender?: string;
@@ -305,6 +349,174 @@ describe('NotificationService', () => {
       body: 'hello there',
       tag: '@me:hs !r:hs',
     });
+  });
+
+  it.each(['push', 'sync'] as const)(
+    'keeps %s-first Android delivery generic, silent and deduplicated',
+    async (first) => {
+      const { svc, client } = setup({
+        androidGateway: true,
+        soundEnabled: false,
+      });
+      svc.connect();
+      const push = () => lastValueFrom(svc.receivePush(gatewayEvent()));
+      const sync = () =>
+        timelineHandler(client)(
+          event({ id: '$push' }),
+          room,
+          false,
+          false,
+          live,
+        );
+      if (first === 'push') {
+        await push();
+        sync();
+      } else {
+        sync();
+        await push();
+      }
+      await push();
+      expect(MockNotification.instances).toHaveLength(1);
+      expect(MockNotification.instances[0].title).toBe('Trinity');
+      expect(MockNotification.instances[0].options).toMatchObject({
+        body: 'New message',
+        silent: true,
+        tag: '@me:hs !r:hs',
+      });
+    },
+  );
+
+  it('keeps the same Room and event separate for two Accounts', async () => {
+    const { svc, clients } = setup({
+      accounts: ['@me:hs', '@other:hs'],
+      clients: new Map([
+        ['@me:hs', fakeClient('@me:hs', true)],
+        ['@other:hs', fakeClient('@other:hs', false)],
+      ]),
+      androidGateway: true,
+    });
+    svc.connect();
+    await lastValueFrom(svc.receivePush(gatewayEvent()));
+    await lastValueFrom(
+      svc.receivePush(gatewayEvent({ trinity_account_id: 'route-ot' })),
+    );
+    for (const client of clients.values())
+      timelineHandler(client)(event({ id: '$push' }), room, false, false, live);
+    expect(MockNotification.instances).toHaveLength(2);
+    expect(MockNotification.instances[0].options).toMatchObject({
+      silent: false,
+    });
+    expect(MockNotification.instances[1].options).toMatchObject({
+      silent: true,
+    });
+    expect(
+      MockNotification.instances.map(
+        (notification) => notification.options?.tag,
+      ),
+    ).toEqual(['@me:hs !r:hs', '@other:hs !r:hs']);
+  });
+
+  it('suppresses a gateway event for the focused Conversation', async () => {
+    const { svc, timeline } = setup();
+    timeline.openRoomId = '!r:hs';
+    vi.mocked(document.hasFocus).mockReturnValue(true);
+    svc.connect();
+    await lastValueFrom(svc.receivePush(gatewayEvent()));
+    expect(MockNotification.instances).toHaveLength(0);
+  });
+
+  it('cancels route loading when its session stops and cannot deliver into the next session', async () => {
+    const routes = new Subject<
+      readonly { accountId: string; route: string }[]
+    >();
+    const { svc } = setup();
+    vi.spyOn(
+      TestBed.inject(SessionStorageService),
+      'getPushAccountRoutes',
+    ).mockReturnValue(routes);
+    svc.connect();
+    const pending = svc.receivePush(gatewayEvent()).subscribe();
+    expect(routes.observed).toBe(true);
+    svc.disconnect();
+    expect(pending.closed).toBe(true);
+    expect(routes.observed).toBe(false);
+    svc.connect();
+    routes.next([{ accountId: '@me:hs', route: 'route-me' }]);
+    expect(MockNotification.instances).toHaveLength(0);
+    vi.mocked(
+      TestBed.inject(SessionStorageService).getPushAccountRoutes,
+    ).mockReturnValue(of([{ accountId: '@me:hs', route: 'route-me' }]));
+    await lastValueFrom(svc.receivePush(gatewayEvent()));
+    expect(MockNotification.instances).toHaveLength(1);
+  });
+
+  it.each(['caller', 'session'] as const)(
+    'cancels pending push presentation when the %s ends',
+    (owner) => {
+      const { svc } = setup();
+      svc.connect();
+      const presentation = new Subject<HostOperationOutcome>();
+      vi.spyOn(
+        TestBed.inject(NotificationPresenterService),
+        'present',
+      ).mockReturnValue(presentation);
+      const completed = vi.fn();
+      const pending = svc
+        .receivePush(gatewayEvent())
+        .subscribe({ complete: completed });
+      expect(presentation.observed).toBe(true);
+      expect(completed).not.toHaveBeenCalled();
+      if (owner === 'caller') pending.unsubscribe();
+      else svc.disconnect();
+      expect(pending.closed).toBe(true);
+      expect(presentation.observed).toBe(false);
+    },
+  );
+
+  it('waits for a push presentation outcome and reports its failure', async () => {
+    const { svc, incidents } = setup();
+    svc.connect();
+    const presentation = new Subject<HostOperationOutcome>();
+    vi.spyOn(
+      TestBed.inject(NotificationPresenterService),
+      'present',
+    ).mockReturnValue(presentation);
+    const completed = vi.fn();
+    svc.receivePush(gatewayEvent()).subscribe({ complete: completed });
+    expect(completed).not.toHaveBeenCalled();
+    presentation.error(new Error('host presentation failed'));
+    expect(completed).toHaveBeenCalledOnce();
+    expect(incidents).toContain('notification-presentation-failed');
+  });
+
+  it('ignores malformed, count-only, unknown, and removed-account gateway events', async () => {
+    const { svc, accountIds, client } = setup();
+    svc.connect();
+    await vi.waitFor(() =>
+      expect(client.on).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      ),
+    );
+    const base = {
+      schema: '1',
+      kind: 'event',
+      trinity_account_id: 'route-me',
+      room_id: '!r:hs',
+      event_id: '$push',
+      unread: '1',
+      missed_calls: '0',
+      sound: 'true',
+    };
+    svc.receivePush({ ...base, schema: '2' }).subscribe();
+    svc.receivePush({ ...base, kind: 'counts' }).subscribe();
+    svc
+      .receivePush({ ...base, trinity_account_id: 'missing-route' })
+      .subscribe();
+    accountIds.set([]);
+    svc.receivePush(base).subscribe();
+    await Promise.resolve();
+    expect(MockNotification.instances).toHaveLength(0);
   });
 
   it('ignores initial-sync history before notifying on the first ready event', () => {

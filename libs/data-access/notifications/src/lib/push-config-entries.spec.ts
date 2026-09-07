@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { providePushConfigEntries } from './push-config-entries';
 import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
+import { PUSH_CONFIG, type PushConfig } from './push-config';
 
 const h = vi.hoisted(() => ({
   store: new Map<string, string>(),
@@ -40,6 +41,9 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
+const BUILD: PushConfig = {
+  gatewayUrl: 'https://built-in.example/_matrix/push/v1/notify',
+};
 
 /**
  * Stands in for {@link PushService.unregister}. Reassign it before {@link setup} to control
@@ -47,10 +51,14 @@ const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
  */
 let unregisterSpy: Mock<() => Observable<void>>;
 
-function setup(): { config: AppConfigService; push: PushGatewayService } {
+function setup(fallback: PushConfig | null = null): {
+  config: AppConfigService;
+  push: PushGatewayService;
+} {
   TestBed.configureTestingModule({
     providers: [
       providePushConfigEntries(),
+      { provide: PUSH_CONFIG, useValue: fallback },
       MockProvider(PushService, { unregister: unregisterSpy }),
     ],
   });
@@ -84,23 +92,36 @@ describe('push config entries', () => {
     expect(setup().config.settings()).toEqual({ push: { gateway: null } });
   });
 
-  it('exports the override as one value, app id and all', async () => {
-    const { config, push } = setup();
+  it('exports disabled distinctly from null and restores the build default', async () => {
+    const { config, push } = setup(BUILD);
 
-    await push.save(NOTIFY, 'eu.qwky.trinity');
-
+    await push.clear();
     expect(config.settings()).toEqual({
-      push: { gateway: { gatewayUrl: NOTIFY, appId: 'eu.qwky.trinity' } },
+      push: { gateway: { disabled: true } },
     });
+
+    await push.resetToDefault();
+    expect(config.settings()).toEqual({ push: { gateway: null } });
+    expect(push.effective()).toEqual(BUILD);
   });
 
-  it('says the app id is absent rather than dropping the field', async () => {
+  it('exports the override URL', async () => {
     const { config, push } = setup();
 
     await push.save(NOTIFY);
 
     expect(config.settings()).toEqual({
-      push: { gateway: { gatewayUrl: NOTIFY, appId: null } },
+      push: { gateway: { gatewayUrl: NOTIFY } },
+    });
+  });
+
+  it('exports the URL without a legacy app id field', async () => {
+    const { config, push } = setup();
+
+    await push.save(NOTIFY);
+
+    expect(config.settings()).toEqual({
+      push: { gateway: { gatewayUrl: NOTIFY } },
     });
   });
 
@@ -132,15 +153,13 @@ describe('push config entries', () => {
         false,
       );
       expect(config.validate(envelope({ gatewayUrl: 7 })).ok).toBe(false);
-      expect(
-        config.validate(envelope({ gatewayUrl: NOTIFY, appId: 7 })).ok,
-      ).toBe(false);
+      expect(config.validate(envelope({ gatewayUrl: NOTIFY })).ok).toBe(true);
     });
 
     it('normalises a bare origin, and says that is what will be stored', async () => {
       const { config, push } = setup();
       const plan = config.validate(
-        envelope({ gatewayUrl: 'https://push.example.org', appId: '  ' }),
+        envelope({ gatewayUrl: 'https://push.example.org' }),
       );
       if (!plan.ok) {
         throw new Error(plan.problems.join(' / '));
@@ -150,19 +169,19 @@ describe('push config entries', () => {
         {
           path: 'push.gateway',
           from: null,
-          to: { gatewayUrl: NOTIFY, appId: null },
+          to: { gatewayUrl: NOTIFY },
         },
       ]);
       await new Promise<void>((resolve, reject) =>
         config.apply(plan).subscribe({ complete: resolve, error: reject }),
       );
 
-      expect(push.override()).toEqual({ gatewayUrl: NOTIFY, appId: undefined });
+      expect(push.override()).toEqual({ gatewayUrl: NOTIFY });
     });
 
     it('drops the override when the document says there is none', async () => {
       const { config, push } = setup();
-      await push.save(NOTIFY, 'eu.qwky.trinity');
+      await push.save(NOTIFY);
       const plan = config.validate(envelope(null));
       if (!plan.ok) {
         throw new Error(plan.problems.join(' / '));
@@ -210,7 +229,7 @@ describe('push config entries', () => {
 
   it('resets to the build-time default, leaving the applied-id ledger alone', async () => {
     const { config, push } = setup();
-    await push.save(NOTIFY, 'eu.qwky.trinity');
+    await push.save(NOTIFY);
     await push.markApplied('eu.qwky.trinity');
 
     await new Promise<void>((resolve, reject) =>
@@ -229,9 +248,9 @@ describe('push config entries', () => {
     const teardown = new Promise<void>((resolve) => (torndown = resolve));
     unregisterSpy = vi.fn(() => defer(async () => await teardown));
     const { config, push } = setup();
-    await push.save(NOTIFY, 'eu.qwky.trinity');
+    await push.save(NOTIFY);
     await push.markApplied('eu.qwky.trinity');
-    const clearSpy = vi.spyOn(push, 'clear');
+    const resetSpy = vi.spyOn(push, 'resetToDefault');
 
     const reset = new Promise<void>((resolve, reject) =>
       config.resetToDefaults().subscribe({ complete: resolve, error: reject }),
@@ -247,12 +266,12 @@ describe('push config entries', () => {
     // not reach a `clear()` awaited behind the teardown, and the assertion would hold for
     // the wrong reason.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(clearSpy).not.toHaveBeenCalled();
+    expect(resetSpy).not.toHaveBeenCalled();
 
     torndown();
     await reset;
 
-    expect(clearSpy).toHaveBeenCalled();
+    expect(resetSpy).toHaveBeenCalled();
     expect(push.override()).toBeNull();
   });
 });

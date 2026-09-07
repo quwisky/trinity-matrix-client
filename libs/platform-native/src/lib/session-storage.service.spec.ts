@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionStorageService } from './session-storage.service';
 import { SecureStorageService } from './secure-storage.service';
 import { MatrixSession } from '@trinity/util/matrix';
+import { Preferences } from '@capacitor/preferences';
 
 // In-memory @capacitor/preferences (hoisted so the vi.mock factory can see it).
 const { prefs } = vi.hoisted(() => ({ prefs: new Map<string, string>() }));
@@ -979,5 +980,109 @@ describe('SessionStorageService', () => {
 
     expect(await firstValueFrom(svc.load())).toBeNull();
     expect(await firstValueFrom(svc.list())).toEqual([]);
+  });
+
+  describe('push Account routes', () => {
+    it('assigns stable unique routes to every saved Account', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+      const first = await firstValueFrom(svc.ensurePushAccountRoutes());
+      const second = await firstValueFrom(svc.ensurePushAccountRoutes());
+
+      expect(first).toHaveLength(2);
+      expect(new Set(first.map(({ route }) => route)).size).toBe(2);
+      expect(second).toEqual(first);
+      expect(
+        first.every(({ route }) => /^[A-Za-z0-9_-]{1,48}$/u.test(route)),
+      ).toBe(true);
+
+      TestBed.resetTestingModule();
+      const restarted = setup().svc;
+      expect(await firstValueFrom(restarted.getPushAccountRoutes())).toEqual(
+        first,
+      );
+    });
+
+    it('repairs malformed and duplicate routes before returning them', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+      const registry = JSON.parse(prefs.get('matrix.accounts')!);
+      registry.accounts[0].pushAccountRoute = 'same-route';
+      registry.accounts[1].pushAccountRoute = 'same-route';
+      prefs.set('matrix.accounts', JSON.stringify(registry));
+
+      // Ambiguous persisted routes are not usable by incoming payload resolution.
+      expect(await firstValueFrom(svc.getPushAccountRoutes())).toEqual([]);
+      const oldDuplicate = 'AAAAAAAAAAAAAAAAAAAAAAAA';
+      registry.accounts[0].pushAccountRoute = oldDuplicate;
+      registry.accounts[1].pushAccountRoute = oldDuplicate;
+      prefs.set('matrix.accounts', JSON.stringify(registry));
+      let randomCall = 0;
+      vi.stubGlobal('crypto', {
+        getRandomValues: (bytes: Uint8Array) => {
+          bytes.fill(randomCall++ === 0 ? 0 : randomCall === 2 ? 1 : 2);
+          return bytes;
+        },
+      });
+      const routes = await firstValueFrom(svc.ensurePushAccountRoutes());
+      expect(new Set(routes.map(({ route }) => route)).size).toBe(2);
+      expect(routes.every(({ route }) => route !== oldDuplicate)).toBe(true);
+      expect(await firstValueFrom(svc.getPushAccountRoutes())).toEqual(routes);
+    });
+
+    it('reserves a later valid route while repairing an earlier Account', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(svc.save(BOB));
+      const registry = JSON.parse(prefs.get('matrix.accounts')!);
+      registry.accounts[0].pushAccountRoute = 'malformed route';
+      registry.accounts[1].pushAccountRoute = 'later-stable-route';
+      prefs.set('matrix.accounts', JSON.stringify(registry));
+
+      const routes = await firstValueFrom(svc.ensurePushAccountRoutes());
+      expect(routes).toContainEqual({
+        accountId: BOB.userId,
+        route: 'later-stable-route',
+      });
+      expect(
+        routes.find(({ accountId }) => accountId === ALICE.userId)?.route,
+      ).not.toBe('later-stable-route');
+    });
+
+    it('preserves a route through device change and removal', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      const [{ route }] = await firstValueFrom(svc.ensurePushAccountRoutes());
+      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'NEW-DEVICE' }));
+      expect((await firstValueFrom(svc.getPushAccountRoutes()))[0]).toEqual({
+        accountId: ALICE.userId,
+        route,
+      });
+      await firstValueFrom(svc.remove(ALICE.userId));
+      expect(await firstValueFrom(svc.getPushAccountRoutes())).toEqual([]);
+    });
+
+    it('serializes ensure and removal without resurrecting a removed Account', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      const ensured = firstValueFrom(svc.ensurePushAccountRoutes());
+      const removed = firstValueFrom(svc.remove(ALICE.userId));
+      await Promise.all([ensured, removed]);
+      expect(await firstValueFrom(svc.getPushAccountRoutes())).toEqual([]);
+    });
+
+    it('does not return volatile routes when persistence fails', async () => {
+      const { svc } = setup();
+      await firstValueFrom(svc.save(ALICE));
+      vi.spyOn(Preferences, 'set').mockRejectedValueOnce(
+        new Error('disk full'),
+      );
+      await expect(
+        firstValueFrom(svc.ensurePushAccountRoutes()),
+      ).rejects.toThrow('disk full');
+      expect(await firstValueFrom(svc.getPushAccountRoutes())).toEqual([]);
+    });
   });
 });

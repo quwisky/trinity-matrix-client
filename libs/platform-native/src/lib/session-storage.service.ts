@@ -9,13 +9,24 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { SecureStorageService } from './secure-storage.service';
+import {
+  createPushAccountRoute,
+  isValidPushAccountRoute,
+  type PushAccountRoute,
+} from '@trinity/util/push-client';
 
 /**
  * Non-secret per-account record. Both credentials — the access token and the OIDC
  * refresh token — live in {@link SecureStorageService}; everything else (including
  * the non-secret `accessTokenExpiresAt` + `oidc` binding) is kept here.
  */
-export type AccountRecord = Omit<MatrixSession, 'accessToken' | 'refreshToken'>;
+export type AccountRecord = Omit<
+  MatrixSession,
+  'accessToken' | 'refreshToken'
+> & {
+  /** Stable installation-local address used by the Trinity push gateway. */
+  pushAccountRoute?: string;
+};
 
 /** A new-account flow attempted to claim an MXID already owned by local state. */
 export class AccountAlreadyStoredError extends Error {
@@ -183,6 +194,79 @@ export class SessionStorageService {
     );
   }
 
+  /**
+   * Return the saved Account → gateway route snapshot without changing storage.
+   * Invalid and duplicate routes are omitted; in particular, this never invents a
+   * route while admitting an incoming native notification.
+   */
+  getPushAccountRoutes(): Observable<readonly PushAccountRoute[]> {
+    return defer(() =>
+      from(
+        this.readRegistry().then((registry) => {
+          const counts = new Map<string, number>();
+          for (const account of registry.accounts) {
+            const route = account.pushAccountRoute;
+            if (isValidPushAccountRoute(route)) {
+              counts.set(route, (counts.get(route) ?? 0) + 1);
+            }
+          }
+          return registry.accounts.flatMap((account) => {
+            const route = account.pushAccountRoute;
+            if (!isValidPushAccountRoute(route) || counts.get(route) !== 1) {
+              return [];
+            }
+            return [{ accountId: account.userId, route }];
+          });
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Ensure every saved Account has one unique gateway route, repairing malformed or
+   * colliding persisted values in the same serialized write as the returned snapshot.
+   * A failed write rejects; callers must never proceed with volatile-only routes.
+   */
+  ensurePushAccountRoutes(): Observable<readonly PushAccountRoute[]> {
+    return defer(() =>
+      from(
+        this.serialize(async () => {
+          const registry = await this.readRegistry();
+          const counts = new Map<string, number>();
+          for (const account of registry.accounts) {
+            const route = account.pushAccountRoute;
+            if (isValidPushAccountRoute(route)) {
+              counts.set(route, (counts.get(route) ?? 0) + 1);
+            }
+          }
+          const used = new Set<string>();
+          // Reserve every valid persisted route before repairing anything, including
+          // ambiguous duplicates. A repaired route must never reuse an old value that
+          // could still be present in an in-flight gateway delivery.
+          for (const route of counts.keys()) used.add(route);
+          let changed = false;
+          for (const account of registry.accounts) {
+            if (
+              !isValidPushAccountRoute(account.pushAccountRoute) ||
+              counts.get(account.pushAccountRoute) !== 1
+            ) {
+              account.pushAccountRoute = createPushAccountRoute(
+                [...used].map((route) => ({ accountId: '', route })),
+              );
+              changed = true;
+            }
+            used.add(account.pushAccountRoute);
+          }
+          if (changed) await this.writeRegistry(registry);
+          return registry.accounts.map(({ userId, pushAccountRoute }) => ({
+            accountId: userId,
+            route: pushAccountRoute!,
+          }));
+        }),
+      ),
+    );
+  }
+
   /** Make `userId` the active account (no-op if it isn't stored). */
   setActive(userId: string): Observable<void> {
     return defer(() =>
@@ -322,6 +406,9 @@ export class SessionStorageService {
             deviceId: incoming.deviceId,
             accessTokenExpiresAt: incoming.accessTokenExpiresAt,
             oidc: incoming.oidc,
+            ...(existing?.pushAccountRoute
+              ? { pushAccountRoute: existing.pushAccountRoute }
+              : {}),
             cryptoPrefix:
               incoming.cryptoPrefix ??
               `trinity-crypto:${incoming.userId}:${incoming.deviceId}`,

@@ -12,7 +12,7 @@ import { NativePushLifetime } from './native-push-lifetime';
 import { PushGatewayService } from './push-gateway.service';
 import {
   PushService,
-  type NativePushActivation,
+  type NativePushEvent,
   type PushRuntimeStatus,
 } from './push.service';
 
@@ -24,11 +24,11 @@ describe('NativePushLifetime', () => {
     code: 'push-registration-idle',
   });
   let prerequisite: ReturnType<PushService['runtimePrerequisite']> = 'ready';
-  let streams: Subject<NativePushActivation>[] = [];
+  let streams: Subject<NativePushEvent>[] = [];
   const run = vi.fn(
     () =>
-      new Observable<NativePushActivation>((subscriber) => {
-        const stream = new Subject<NativePushActivation>();
+      new Observable<NativePushEvent>((subscriber) => {
+        const stream = new Subject<NativePushEvent>();
         streams.push(stream);
         const subscription = stream.subscribe(subscriber);
         return () => subscription.unsubscribe();

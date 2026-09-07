@@ -11,6 +11,7 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnDialogService } from '@trinity/components/overlay';
+import { DEFAULT_PUSH_GATEWAY_URL } from '@trinity/util/push-client';
 import {
   PushGatewayService,
   PushService,
@@ -76,12 +77,11 @@ export class PushGatewayBlockComponent {
     return state.status === 'error' ? state.message : null;
   });
 
-  /** Draft URL (committed on Save); seeded from the user's stored override. */
-  readonly urlDraft = signal(this.gateway.override()?.gatewayUrl ?? '');
-  /** Draft base app id — an advanced field for a gateway keyed under another id. */
-  readonly appIdDraft = signal(this.gateway.override()?.appId ?? '');
-  /** Whether the advanced (app id) field is revealed. */
-  readonly advancedOpen = signal(!!this.gateway.override()?.appId);
+  /** Draft URL (committed on Save), including the build default when applicable. */
+  readonly urlDraft = signal(this.gateway.effective()?.gatewayUrl ?? '');
+  readonly placeholderGateway = computed(
+    () => this.gateway.effective()?.gatewayUrl === DEFAULT_PUSH_GATEWAY_URL,
+  );
 
   /** Live validation of the draft URL (empty draft reads as no error, not an error). */
   private readonly check = computed(() =>
@@ -112,8 +112,8 @@ export class PushGatewayBlockComponent {
     return check?.ok === true && check.insecure;
   });
 
-  /** A gateway override is currently stored (enables Clear). */
-  readonly hasOverride = computed(() => this.gateway.override() !== null);
+  /** A configured gateway can be disabled, including the build default. */
+  readonly canClear = computed(() => this.gateway.effective() !== null);
 
   /** Save is offered when the draft is valid and differs from what is stored. */
   readonly canSave = computed(() => {
@@ -121,24 +121,11 @@ export class PushGatewayBlockComponent {
     if (!check?.ok) {
       return false;
     }
-    const stored = this.gateway.override();
-    const storedAppId = stored?.appId ?? '';
-    return (
-      check.url !== stored?.gatewayUrl ||
-      this.appIdDraft().trim() !== storedAppId
-    );
+    return check.url !== this.gateway.effective()?.gatewayUrl;
   });
 
   onUrlInput(event: Event): void {
     this.urlDraft.set((event.target as HTMLInputElement).value);
-  }
-
-  onAppIdInput(event: Event): void {
-    this.appIdDraft.set((event.target as HTMLInputElement).value);
-  }
-
-  toggleAdvanced(): void {
-    this.advancedOpen.update((open) => !open);
   }
 
   /** Confirm the trust implications, persist the gateway, and (re)register pushers. */
@@ -147,12 +134,11 @@ export class PushGatewayBlockComponent {
     if (!check?.ok) {
       return;
     }
-    const appId = this.appIdDraft().trim() || undefined;
     this.confirmTrust$(check.url, check.insecure)
       .pipe(
         filter(Boolean),
         tap(() => this.urlDraft.set(check.url)),
-        switchMap(() => defer(() => this.gateway.save(check.url, appId))),
+        switchMap(() => defer(() => this.gateway.save(check.url))),
         // register() re-applies pushers for every account against the new config, does the
         // app-id swap if one is needed, and drives the `registration` signal the status line
         // reads — so the outcome surfaces through the service signal.
@@ -175,8 +161,6 @@ export class PushGatewayBlockComponent {
         concatWith(defer(() => this.gateway.clear())),
         tap(() => {
           this.urlDraft.set('');
-          this.appIdDraft.set('');
-          this.advancedOpen.set(false);
         }),
         takeUntilDestroyed(this.destroyRef),
       )

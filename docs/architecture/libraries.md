@@ -31,6 +31,7 @@ Use the narrowest owner that can state the contract.
 
 | Public area                              | Owner and boundary                                                                                                                                                                           |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| @trinity/util/push-client                | internal Trinity gateway v1 contract, opaque Account Route helpers and registration coordination through adapters; no SDK, host API or independent Account storage                           |
 | @trinity/runtime/projection              | lifecycle kernel for active account, all live accounts, exact account, and exact conversation projections; it does not own Matrix data                                                       |
 | @trinity/runtime/host                    | host operation contracts and supported or unavailable manifests; host selection stays in composition                                                                                         |
 | @trinity/runtime/preferences             | descriptor catalogue and context-keyed state; capability owners define defaults, validation, migration, sensitivity, and scope                                                               |

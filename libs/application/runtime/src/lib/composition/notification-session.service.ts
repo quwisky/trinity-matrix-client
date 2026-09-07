@@ -46,6 +46,12 @@ export class NotificationSessionService {
   private handlePush(event: NativePushLifetimeEvent): Observable<never> {
     if (event.kind === 'prepared') return EMPTY;
     if (event.kind === 'activated') return this.openPush(event.destination);
+    if (event.kind === 'received') {
+      return this.notifications.receivePush(event.data).pipe(
+        catchError(() => EMPTY),
+        switchMap(() => EMPTY),
+      );
+    }
     this.health.report(event.fact, () =>
       this.push.recover(event.fact.context, event.fact.generation),
     );

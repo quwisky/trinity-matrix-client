@@ -38,7 +38,6 @@ const KEY = 'trinity.push.gateway';
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
 const ENV: PushConfig = {
   gatewayUrl: 'https://built-in.example/_matrix/push/v1/notify',
-  appId: 'eu.qwky.trinity',
 };
 
 /**
@@ -99,7 +98,7 @@ describe('PushGatewayService', () => {
       const svc = setup(ENV);
       await svc.init();
 
-      expect(svc.effective()).toEqual({ gatewayUrl: NOTIFY, appId: undefined });
+      expect(svc.effective()).toEqual({ gatewayUrl: NOTIFY });
     });
 
     it('enables push on a build that shipped without any gateway', async () => {
@@ -117,23 +116,22 @@ describe('PushGatewayService', () => {
   describe('persistence', () => {
     it('round-trips a saved override through storage', async () => {
       const svc = setup();
-      await svc.save(NOTIFY, 'org.example.gw');
+      await svc.save(NOTIFY);
 
       const reloaded = setup();
       await reloaded.init();
       expect(reloaded.effective()).toEqual({
         gatewayUrl: NOTIFY,
-        appId: 'org.example.gw',
       });
     });
 
-    it('stores a blank appId as absent, not as an empty string', async () => {
+    it('stores only the gateway URL', async () => {
       // An empty string would reach `appId()` as `"" ?? DEFAULT` — which keeps the
       // empty string, producing an app id of ".ios".
       const svc = setup();
-      await svc.save(NOTIFY, '   ');
+      await svc.save(NOTIFY);
 
-      expect(svc.effective()?.appId).toBeUndefined();
+      expect(svc.effective()).toEqual({ gatewayUrl: NOTIFY });
     });
 
     it('ignores a corrupt blob and falls back', async () => {
@@ -156,13 +154,13 @@ describe('PushGatewayService', () => {
       expect(svc.effective()).toEqual(ENV);
     });
 
-    it('clear() removes the override so the build default applies again', async () => {
+    it('clear() disables push instead of restoring the build default', async () => {
       const svc = setup(ENV);
       await svc.save(NOTIFY);
       await svc.clear();
 
-      expect(svc.effective()).toEqual(ENV);
-      expect(h.store.has(KEY)).toBe(false);
+      expect(svc.effective()).toBeNull();
+      expect(h.store.get(KEY)).toBe(JSON.stringify({ disabled: true }));
     });
   });
 
@@ -178,7 +176,7 @@ describe('PushGatewayService', () => {
       // The whole reason it is persisted: if the app is killed between changing the
       // app id and rewriting the pushers, the id to remove must still be recoverable.
       const svc = setup();
-      await svc.save(NOTIFY, 'org.example.gw');
+      await svc.save(NOTIFY);
       await svc.markApplied('org.example.gw');
 
       const reloaded = setup();
@@ -191,12 +189,12 @@ describe('PushGatewayService', () => {
       // actually live on the homeservers. Losing this distinction is what strands a
       // pusher on the previous gateway.
       const svc = setup();
-      await svc.save(NOTIFY, 'first.app.id');
+      await svc.save(NOTIFY);
       await svc.markApplied('first.app.id');
 
-      await svc.save(NOTIFY, 'second.app.id');
+      await svc.save(NOTIFY);
 
-      expect(svc.effective()?.appId).toBe('second.app.id');
+      expect(svc.effective()?.gatewayUrl).toBe(NOTIFY);
       expect(svc.appliedAppId()).toBe('first.app.id');
     });
 
@@ -218,7 +216,7 @@ describe('PushGatewayService', () => {
 
     it('survives clear(), which does not delete the pushers it names', async () => {
       const svc = setup(ENV);
-      await svc.save(NOTIFY, 'org.example.gw');
+      await svc.save(NOTIFY);
       await svc.markApplied('org.example.gw');
 
       await svc.clear();
