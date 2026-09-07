@@ -48,12 +48,11 @@ export function providePushConfigEntries(): EnvironmentProviders {
               }
             : null;
         },
-        // Remove live pushers before restoring the build default.
+        // Persist the new choice before applying it to live pushers. This leaves the
+        // runtime able to retry with the same effective gateway after a cleanup failure.
         reset: async () => {
-          // unregister() already swallows every removePusher rejection, so this cannot
-          // reject the Promise.all that resetToDefaults runs the entries under.
-          await firstValueFrom(pushers.unregister());
           await push.resetToDefault();
+          await applyRegistration(push, pushers);
         },
         /**
          * Checked through {@link normalizeGatewayUrl} — the same rules the settings form
@@ -71,8 +70,8 @@ export function providePushConfigEntries(): EnvironmentProviders {
             return;
           }
           if (value['disabled'] === true) {
-            await firstValueFrom(pushers.unregister());
             await push.clear();
+            await firstValueFrom(pushers.unregister());
             return;
           }
           const url = value['gatewayUrl'];
@@ -80,10 +79,20 @@ export function providePushConfigEntries(): EnvironmentProviders {
             return;
           }
           await push.save(url);
+          await firstValueFrom(pushers.register());
         },
       },
     ] satisfies readonly ConfigEntry[];
   });
+}
+
+async function applyRegistration(
+  push: PushGatewayService,
+  pushers: PushService,
+): Promise<void> {
+  await firstValueFrom(
+    push.configured() ? pushers.register() : pushers.unregister(),
+  );
 }
 
 function validateGateway(value: unknown, supported: boolean): ConfigValidation {

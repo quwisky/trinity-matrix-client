@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { firstValueFrom } from 'rxjs';
 import { PushGatewayService } from './push-gateway.service';
 import { PUSH_CONFIG, type PushConfig } from './push-config';
 
@@ -8,6 +9,8 @@ const h = vi.hoisted(() => ({
   platform: 'ios' as string,
   available: true,
   failStorage: false,
+  failWrites: false,
+  failRemoves: false,
 }));
 
 vi.mock('@capacitor/preferences', () => ({
@@ -18,9 +21,11 @@ vi.mock('@capacitor/preferences', () => ({
         : (h.store.get(key) ?? null),
     })),
     set: vi.fn(async ({ key, value }: { key: string; value: string }) => {
+      if (h.failWrites) throw new Error('token=do-not-export');
       h.store.set(key, value);
     }),
     remove: vi.fn(async ({ key }: { key: string }) => {
+      if (h.failRemoves) throw new Error('token=do-not-export');
       h.store.delete(key);
     }),
   },
@@ -62,6 +67,8 @@ describe('PushGatewayService', () => {
     h.platform = 'ios';
     h.available = true;
     h.failStorage = false;
+    h.failWrites = false;
+    h.failRemoves = false;
     TestBed.resetTestingModule();
   });
 
@@ -74,7 +81,7 @@ describe('PushGatewayService', () => {
         kind: 'defaulted',
         reason: 'storage-unavailable',
       });
-      expect(svc.effective()).toEqual(ENV);
+      expect(svc.effective()).toBeNull();
     });
 
     it('is null when neither a build default nor an override exists', async () => {
@@ -83,6 +90,19 @@ describe('PushGatewayService', () => {
 
       expect(svc.effective()).toBeNull();
       expect(svc.configured()).toBe(false);
+    });
+
+    it('keeps a persisted disable fail-closed during a transient read failure', async () => {
+      h.store.set(KEY, JSON.stringify({ disabled: true }));
+      h.failStorage = true;
+      const svc = setup(ENV);
+
+      await svc.init();
+      expect(svc.effective()).toBeNull();
+
+      h.failStorage = false;
+      await svc.init();
+      expect(svc.effective()).toBeNull();
     });
 
     it('falls back to the build-time config when no override is stored', async () => {
@@ -134,15 +154,15 @@ describe('PushGatewayService', () => {
       expect(svc.effective()).toEqual({ gatewayUrl: NOTIFY });
     });
 
-    it('ignores a corrupt blob and falls back', async () => {
+    it('fails closed on a corrupt blob', async () => {
       h.store.set(KEY, '{not json');
       const svc = setup(ENV);
       await svc.init();
 
-      expect(svc.effective()).toEqual(ENV);
+      expect(svc.effective()).toBeNull();
     });
 
-    it('ignores a stored URL that no longer validates', async () => {
+    it('fails closed when a stored URL no longer validates', async () => {
       // Hand-edited, or written by a build with different rules.
       h.store.set(
         KEY,
@@ -151,7 +171,7 @@ describe('PushGatewayService', () => {
       const svc = setup(ENV);
       await svc.init();
 
-      expect(svc.effective()).toEqual(ENV);
+      expect(svc.effective()).toBeNull();
     });
 
     it('clear() disables push instead of restoring the build default', async () => {
@@ -227,12 +247,17 @@ describe('PushGatewayService', () => {
     it('migrates a ledger written into the old override blob', async () => {
       h.store.set(
         KEY,
-        JSON.stringify({ gatewayUrl: NOTIFY, appliedAppId: 'legacy.app.id' }),
+        JSON.stringify({
+          gatewayUrl: NOTIFY,
+          appId: 'legacy.custom.id',
+          appliedAppId: 'legacy.app.id',
+        }),
       );
       const svc = setup();
       await svc.init();
 
       expect(svc.appliedAppId()).toBe('legacy.app.id');
+      expect(svc.legacyAppIds()).toEqual(['legacy.custom.id', 'legacy.app.id']);
 
       // Rewritten under its own key: dropping the override no longer takes the ledger
       // with it, so the stale pusher is still removable after a reload.
@@ -240,6 +265,137 @@ describe('PushGatewayService', () => {
       const reloaded = setup();
       await reloaded.init();
       expect(reloaded.appliedAppId()).toBe('legacy.app.id');
+      expect(reloaded.legacyAppIds()).toEqual([
+        'legacy.custom.id',
+        'legacy.app.id',
+      ]);
+    });
+  });
+
+  describe('per-account registration recovery', () => {
+    const state = {
+      version: 1 as const,
+      identities: [{ appId: 'ovh.qwky.trinity.ios', pushkey: 'opaque-token' }],
+    };
+
+    it('round-trips independent account state across a fresh service', async () => {
+      const svc = setup();
+      await firstValueFrom(svc.saveRegistration('@alice:example.org', state));
+      await firstValueFrom(
+        svc.saveRegistration('@bob:example.org', {
+          version: 1,
+          identities: [
+            { appId: 'ovh.qwky.trinity.ios', pushkey: 'other-token' },
+          ],
+        }),
+      );
+
+      const reloaded = setup();
+      await expect(
+        firstValueFrom(reloaded.loadRegistration('@alice:example.org')),
+      ).resolves.toEqual(state);
+      await expect(
+        firstValueFrom(reloaded.loadRegistration('@bob:example.org')),
+      ).resolves.toEqual({
+        version: 1,
+        identities: [{ appId: 'ovh.qwky.trinity.ios', pushkey: 'other-token' }],
+      });
+      expect(
+        h.store.has('trinity.push.registration.%40alice%3Aexample.org'),
+      ).toBe(true);
+    });
+
+    it('treats an absent account as empty and removes only that account', async () => {
+      const svc = setup();
+      await firstValueFrom(svc.saveRegistration('@alice:example.org', state));
+      await firstValueFrom(svc.saveRegistration('@bob:example.org', state));
+
+      await expect(
+        firstValueFrom(svc.loadRegistration('@nobody:example.org')),
+      ).resolves.toBeNull();
+      await firstValueFrom(svc.saveRegistration('@alice:example.org', null));
+
+      await expect(
+        firstValueFrom(svc.loadRegistration('@alice:example.org')),
+      ).resolves.toBeNull();
+      await expect(
+        firstValueFrom(svc.loadRegistration('@bob:example.org')),
+      ).resolves.toEqual(state);
+    });
+
+    it('fails closed for malformed state and storage reads', async () => {
+      h.store.set(
+        'trinity.push.registration.%40alice%3Aexample.org',
+        JSON.stringify({ version: 1, identities: [{ appId: 'x' }] }),
+      );
+      const svc = setup();
+      await expect(
+        firstValueFrom(svc.loadRegistration('@alice:example.org')),
+      ).rejects.toThrow('malformed');
+
+      h.failStorage = true;
+      await expect(
+        firstValueFrom(svc.loadRegistration('@bob:example.org')),
+      ).rejects.toThrow();
+    });
+
+    it('does not update the gateway signal when durable writes fail', async () => {
+      const svc = setup(ENV);
+      await svc.init();
+      h.failWrites = true;
+
+      await expect(svc.save(NOTIFY)).rejects.toThrow();
+      expect(svc.effective()).toEqual(ENV);
+
+      await expect(svc.markApplied('failed.app.id')).rejects.toThrow();
+      expect(svc.appliedAppId()).toBeNull();
+    });
+
+    it('keeps an explicit disable durable across reload and retries failed cleanup', async () => {
+      const svc = setup(ENV);
+      await svc.init();
+      h.failWrites = true;
+      await expect(svc.clear()).rejects.toThrow();
+      expect(svc.effective()).toEqual(ENV);
+
+      h.failWrites = false;
+      await svc.clear();
+      const reloaded = setup(ENV);
+      await reloaded.init();
+      expect(reloaded.effective()).toBeNull();
+
+      h.failRemoves = true;
+      await expect(reloaded.resetToDefault()).rejects.toThrow();
+      expect(reloaded.effective()).toBeNull();
+    });
+
+    it('blocks mutation while the legacy ownership ledger is corrupt', async () => {
+      const legacyKey = 'trinity.push.legacy-app-ids';
+      h.store.set(legacyKey, '{not json');
+      const svc = setup(ENV);
+
+      await svc.init();
+      await expect(svc.save(NOTIFY)).rejects.toThrow(
+        'awaiting storage recovery',
+      );
+      expect(h.store.get(legacyKey)).toBe('{not json');
+    });
+
+    it('does not certify account cleanup when disabled startup cannot load ownership', async () => {
+      const legacyKey = 'trinity.push.legacy-app-ids';
+      h.store.set(KEY, JSON.stringify({ disabled: true }));
+      h.store.set(legacyKey, '{not json');
+      const svc = setup(ENV);
+
+      await svc.init();
+      expect(svc.effective()).toBeNull();
+      await expect(
+        firstValueFrom(svc.loadRegistration('@alice:example.org')),
+      ).rejects.toThrow('awaiting storage recovery');
+      await expect(
+        firstValueFrom(svc.saveRegistration('@alice:example.org', null)),
+      ).rejects.toThrow('awaiting storage recovery');
+      expect(h.store.get(KEY)).toBe(JSON.stringify({ disabled: true }));
     });
   });
 

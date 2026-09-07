@@ -23,10 +23,10 @@ import {
 } from './push-gateway-trust-dialog.component';
 import { SettingsSectionHeadingComponent } from '../shared/settings-section-heading/settings-section-heading.component';
 import {
-  concatWith,
+  EMPTY,
   defer,
+  catchError,
   filter,
-  ignoreElements,
   map,
   switchMap,
   tap,
@@ -76,6 +76,12 @@ export class PushGatewayBlockComponent {
     const state = this.push.registration();
     return state.status === 'error' ? state.message : null;
   });
+
+  /** Safe local failures, such as storage or durable cleanup failures. */
+  readonly recoveryError = signal<string | null>(null);
+  readonly hasRecoveryError = computed(
+    () => this.recoveryError() !== null || this.errorMessage() !== null,
+  );
 
   /** Draft URL (committed on Save), including the build default when applicable. */
   readonly urlDraft = signal(this.gateway.effective()?.gatewayUrl ?? '');
@@ -134,37 +140,58 @@ export class PushGatewayBlockComponent {
     if (!check?.ok) {
       return;
     }
+    this.recoveryError.set(null);
     this.confirmTrust$(check.url, check.insecure)
       .pipe(
         filter(Boolean),
         tap(() => this.urlDraft.set(check.url)),
-        switchMap(() => defer(() => this.gateway.save(check.url))),
+        switchMap(() =>
+          defer(() => this.gateway.save(check.url)).pipe(
+            catchError(() => {
+              this.recoveryError.set(GATEWAY_RECOVERY_MESSAGE);
+              return EMPTY;
+            }),
+          ),
+        ),
         // register() re-applies pushers for every account against the new config, does the
         // app-id swap if one is needed, and drives the `registration` signal the status line
         // reads — so the outcome surfaces through the service signal.
         switchMap(() => this.push.register()),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe({ error: () => undefined });
+      .subscribe({
+        error: () => this.recoveryError.set(GATEWAY_RECOVERY_MESSAGE),
+      });
   }
 
   /**
-   * Turn the gateway off. Tears the pushers down *before* clearing the stored gateway —
-   * `unregister()` reads the applied-app-id ledger to know what to remove, and clearing
-   * drops it (see {@link PushService.liveAppIds}).
+   * Turn the gateway off. Persist the disabled choice before cleanup so a failed cleanup
+   * leaves push disabled and the applied ledger available for the next retry.
    */
   clear(): void {
-    this.push
-      .unregister()
+    this.recoveryError.set(null);
+    defer(() => this.gateway.clear())
       .pipe(
-        ignoreElements(),
-        concatWith(defer(() => this.gateway.clear())),
+        switchMap(() => this.push.unregister()),
         tap(() => {
           this.urlDraft.set('');
         }),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe({ error: () => undefined });
+      .subscribe({
+        error: () => this.recoveryError.set(GATEWAY_RECOVERY_MESSAGE),
+      });
+  }
+
+  /** Retry either durable cleanup after Clear or the failed registration round. */
+  retry(): void {
+    this.recoveryError.set(null);
+    this.push
+      .retryRegistration()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () => this.recoveryError.set(GATEWAY_RECOVERY_MESSAGE),
+      });
   }
 
   private confirmTrust$(url: string, insecure: boolean): Observable<boolean> {
@@ -177,6 +204,9 @@ export class PushGatewayBlockComponent {
       .pipe(map((confirmed) => confirmed ?? false));
   }
 }
+
+const GATEWAY_RECOVERY_MESSAGE =
+  'Push gateway changes could not be completed. Try again.';
 
 /** Blocking-problem code → the message shown under the field. */
 const PROBLEM_TEXT: Record<string, string> = {

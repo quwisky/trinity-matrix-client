@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Recover mobile push registrations after upgrades, token rotation and interrupted
+  writes with per-Account durable cleanup. Notification Settings offers Retry, and
+  disabling push stays effective while failed removals await recovery.
+
 - Internal shared Trinity push client library with opaque Account routes, version-one
   gateway registration and Android foreground generic alerts that open the owning
   Conversation without duplicate sync notifications. Native background Android and

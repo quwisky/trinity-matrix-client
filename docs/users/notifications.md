@@ -88,16 +88,20 @@ Mobile push stays off until a gateway is configured again. Gateway
 deployment and credentials are maintained separately; see
 [push-notification reference](../reference/push-notifications.md).
 
+Choosing **Clear** saves a disabled choice before removing registrations. If removal fails,
+push stays disabled and **Retry** attempts the remaining cleanup. Reopening Trinity does
+not restore the build default over that choice.
+
 ## Recover from a missing or failed notification
 
-| Symptom                                        | What to check                                                                                                                                                                                                                                                                          |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Browser permission was denied                  | Allow notifications for the Trinity site in the browser or operating-system settings, then reopen Trinity.                                                                                                                                                                             |
-| Web or desktop notifications stop              | Keep the client connected. A closed browser tab cannot receive live-connection notifications; an explicitly quit desktop app cannot either.                                                                                                                                            |
-| No alert appears while reading a room          | This is expected for the focused active room. Switch rooms or background the window only if you need an alert for later activity.                                                                                                                                                      |
-| Changing a room mode fails                     | If Trinity says the previous setting was restored, retry. Otherwise reopen the room menu to inspect the server's current setting before retrying.                                                                                                                                      |
-| Mobile gateway Save reports an error           | Follow the displayed error. Allow OS notifications if permission was denied; resolve a native token error with the device/platform guidance. Correct URL/App ID only when configuration is wrong. A homeserver registration failure may need a connection check or administrator help. |
-| Mobile says it registered but no alert arrives | Registration is not delivery. Check device notification permissions, battery or background restrictions, the gateway operator and APNs or FCM.                                                                                                                                         |
+| Symptom                                        | What to check                                                                                                                                                                                                                                             |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser permission was denied                  | Allow notifications for the Trinity site in the browser or operating-system settings, then reopen Trinity.                                                                                                                                                |
+| Web or desktop notifications stop              | Keep the client connected. A closed browser tab cannot receive live-connection notifications; an explicitly quit desktop app cannot either.                                                                                                               |
+| No alert appears while reading a room          | This is expected for the focused active room. Switch rooms or background the window only if you need an alert for later activity.                                                                                                                         |
+| Changing a room mode fails                     | If Trinity says the previous setting was restored, retry. Otherwise reopen the room menu to inspect the server's current setting before retrying.                                                                                                         |
+| Mobile gateway Save reports an error           | Check the connection and choose **Retry**. Retry preserves the saved gateway and Account routing. Allow OS notifications if permission was denied; use device/platform guidance for native token failures. Correct the gateway URL only when it is wrong. |
+| Mobile says it registered but no alert arrives | Registration is not delivery. Check device notification permissions, battery or background restrictions, the gateway operator and APNs or FCM.                                                                                                            |
 
 Trinity's capability status keeps these failures separate. **Room notification settings are
 unavailable** means the cached rule value may be stale while delivery continues independently.

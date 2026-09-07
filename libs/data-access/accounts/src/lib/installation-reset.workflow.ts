@@ -253,7 +253,12 @@ export class InstallationResetWorkflow {
           ),
         ),
     ];
-    return forkJoin(operations);
+    // Push cleanup needs authenticated clients. Revoking Matrix/provider tokens
+    // concurrently can strand a pusher before its removal reaches the homeserver.
+    return from(operations).pipe(
+      concatMap((operation) => operation),
+      reduce(() => undefined, undefined),
+    );
   }
 
   private wipeIndexedDb(

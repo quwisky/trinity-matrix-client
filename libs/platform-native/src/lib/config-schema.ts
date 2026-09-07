@@ -447,6 +447,23 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'that does not, stranding the real one on the old gateway indefinitely.',
   },
 
+  {
+    disposition: 'excluded',
+    key: 'trinity.push.legacy-app-ids',
+    owner: 'data-access/notifications',
+    reason:
+      'Installation-owned pusher cleanup identities. Import or preference reset must ' +
+      'not replace or discard the identities needed to remove existing pushers.',
+  },
+  {
+    disposition: 'excluded',
+    key: 'trinity.push.registration.',
+    owner: 'data-access/notifications',
+    reason:
+      'Per-Account registration ownership includes device tokens and routing identities. ' +
+      'It is private installation state and must survive preference reset for cleanup.',
+  },
+
   // — platform-native, excluded —
   {
     disposition: 'excluded',

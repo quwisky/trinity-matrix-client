@@ -50,6 +50,7 @@ const BUILD: PushConfig = {
  * when the teardown settles — {@link setup} hands the current value to the mock.
  */
 let unregisterSpy: Mock<() => Observable<void>>;
+let registerSpy: Mock<() => Observable<void>>;
 
 function setup(fallback: PushConfig | null = null): {
   config: AppConfigService;
@@ -59,7 +60,10 @@ function setup(fallback: PushConfig | null = null): {
     providers: [
       providePushConfigEntries(),
       { provide: PUSH_CONFIG, useValue: fallback },
-      MockProvider(PushService, { unregister: unregisterSpy }),
+      MockProvider(PushService, {
+        unregister: unregisterSpy,
+        register: registerSpy,
+      }),
     ],
   });
   return {
@@ -74,6 +78,7 @@ describe('push config entries', () => {
     h.platform = 'ios';
     TestBed.resetTestingModule();
     unregisterSpy = vi.fn(() => of(undefined));
+    registerSpy = vi.fn(() => of(undefined));
   });
 
   it('registers an entry for every key the ledger says this lib exports', () => {
@@ -243,7 +248,7 @@ describe('push config entries', () => {
     expect(h.store.get('trinity.push.applied-app-id')).toBe('eu.qwky.trinity');
   });
 
-  it('tears the pushers down before it clears the stored gateway', async () => {
+  it('restores the gateway choice before cleanup completes', async () => {
     let torndown!: () => void;
     const teardown = new Promise<void>((resolve) => (torndown = resolve));
     unregisterSpy = vi.fn(() => defer(async () => await teardown));
@@ -256,22 +261,41 @@ describe('push config entries', () => {
       config.resetToDefaults().subscribe({ complete: resolve, error: reject }),
     );
 
-    // Clearing the gateway drops the applied-app-id ledger that unregister() reads to know
-    // which pushers to remove, so the teardown must be finished, not merely started, before
-    // the gateway goes. Otherwise the homeserver keeps delivering metadata to a gateway the
-    // user just disowned — and with no override left, canPush() is false and nothing ever
-    // removes them.
-    expect(unregisterSpy).toHaveBeenCalled();
-    // A macrotask, so everything already resolvable has settled: a single microtask would
-    // not reach a `clear()` awaited behind the teardown, and the assertion would hold for
-    // the wrong reason.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(resetSpy).not.toHaveBeenCalled();
+    // The new choice is persisted before cleanup starts, so a cleanup failure leaves the
+    // runtime disabled while retaining the ledger for a later retry.
+    await vi.waitFor(() => expect(unregisterSpy).toHaveBeenCalled());
+    expect(resetSpy).toHaveBeenCalled();
+    expect(resetSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      unregisterSpy.mock.invocationCallOrder[0],
+    );
 
     torndown();
     await reset;
 
     expect(resetSpy).toHaveBeenCalled();
     expect(push.override()).toBeNull();
+  });
+
+  it('persists disabled before unregistering an imported choice', async () => {
+    const { config, push } = setup();
+    await push.save(NOTIFY);
+    const clearSpy = vi.spyOn(push, 'clear');
+    const plan = config.validate({
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      settings: { push: { gateway: { disabled: true } } },
+    });
+    if (!plan.ok) throw new Error(plan.problems.join(' / '));
+
+    await new Promise<void>((resolve, reject) =>
+      config.apply(plan).subscribe({ complete: resolve, error: reject }),
+    );
+
+    expect(clearSpy).toHaveBeenCalledOnce();
+    expect(unregisterSpy).toHaveBeenCalledOnce();
+    expect(clearSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      unregisterSpy.mock.invocationCallOrder[0],
+    );
+    expect(push.disabled()).toBe(true);
   });
 });

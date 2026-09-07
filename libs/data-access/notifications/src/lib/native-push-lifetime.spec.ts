@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
-import { Observable, Subject, lastValueFrom, of } from 'rxjs';
+import { Observable, Subject, lastValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   NativePushHealth,
@@ -19,6 +19,7 @@ import {
 describe('NativePushLifetime', () => {
   const accountIds = signal<readonly string[]>(['@a:example.org']);
   const configured = signal(true);
+  const disabled = signal(false);
   const runtimeStatus = signal<PushRuntimeStatus>({
     status: 'idle',
     code: 'push-registration-idle',
@@ -41,6 +42,7 @@ describe('NativePushLifetime', () => {
     vi.useRealTimers();
     accountIds.set(['@a:example.org']);
     configured.set(true);
+    disabled.set(false);
     runtimeStatus.set({
       status: 'idle',
       code: 'push-registration-idle',
@@ -56,6 +58,7 @@ describe('NativePushLifetime', () => {
         }),
         MockProvider(PushGatewayService, {
           configured: configured.asReadonly(),
+          disabled: disabled.asReadonly(),
         }),
         MockProvider(PushService, {
           run,
@@ -88,6 +91,49 @@ describe('NativePushLifetime', () => {
       { kind: 'prepared' },
     ]);
     expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('retries saved cleanup for a disabled gateway without attaching native listeners', () => {
+    prerequisite = 'not-configured';
+    configured.set(false);
+    disabled.set(true);
+    const lifetime = TestBed.inject(NativePushLifetime).run().subscribe();
+
+    expect(retryRegistration).toHaveBeenCalledOnce();
+    expect(run).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
+  it('clears failed disabled-cleanup health after a successful Settings retry', async () => {
+    prerequisite = 'not-configured';
+    configured.set(false);
+    disabled.set(true);
+    runtimeStatus.set({
+      status: 'degraded',
+      code: 'push-pusher-registration-failed',
+    });
+    retryRegistration.mockReturnValueOnce(
+      throwError(() => new Error('cleanup failed')),
+    );
+    const facts: NativePushHealth[] = [];
+    const lifetime = TestBed.inject(NativePushLifetime)
+      .run()
+      .subscribe((event) => {
+        if (event.kind === 'health') facts.push(event.fact);
+      });
+    TestBed.tick();
+    expect(facts.at(-1)?.condition).toBe('degraded');
+
+    await lastValueFrom(TestBed.inject(PushService).retryRegistration());
+    runtimeStatus.set({ status: 'idle', code: 'push-registration-idle' });
+    TestBed.tick();
+    expect(facts.at(-1)).toMatchObject({
+      condition: 'waiting-for-precondition',
+      code: 'push-registration-not-configured',
+      ownership: 'released',
+    });
+    expect(run).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 

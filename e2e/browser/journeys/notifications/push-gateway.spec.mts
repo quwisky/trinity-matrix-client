@@ -32,6 +32,24 @@ interface PushFixtureWindow extends Window {
             notificationSession: {
               push: {
                 push: {
+                  nativePush: { platform: string; supported(): boolean };
+                  gateway: {
+                    supported(): boolean;
+                    save(url: string): Promise<void>;
+                  };
+                  currentPushkey: string | null;
+                  register(): Observable<void>;
+                  matrix: {
+                    all(): readonly {
+                      client: {
+                        getPushers(): Promise<{ pushers: Pusher[] }>;
+                        removePusher(
+                          pushkey: string,
+                          appId: string,
+                        ): Promise<unknown>;
+                      };
+                    }[];
+                  };
                   sessions: {
                     ensurePushAccountRoutes(): Observable<
                       readonly { accountId: string; route: string }[]
@@ -206,6 +224,114 @@ test.describe('Push gateway', () => {
     const after = await pushers(aTok);
     expect(after.length).toBe(1);
     expect(after[0].app_id).toBe(NEW_APP);
+  });
+
+  test('Retry recovers a failed registration and restores a missing homeserver pusher', async ({
+    page,
+    request,
+  }) => {
+    test.skip(
+      isAndroidE2E,
+      'controlled token injection uses Angular development hooks; device delivery is verified separately',
+    );
+    const hs = session.hs as string;
+    const user = `pgw-recovery-${testResourceId('run')}`;
+    const pass = `${user}-pass`;
+    await registerUser(request, user, pass);
+    await login(page, { available: true, hs, user, pass } as SynapseSession);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const root = document.querySelector('trn-root');
+          return root
+            ? (window as unknown as PushFixtureWindow).ng
+                .getComponent(root)
+                .runtime.state().phase
+            : undefined;
+        }),
+      )
+      .toBe('ready');
+
+    let refuseNextRegistration = true;
+    await page.route('**/_matrix/client/v3/pushers/set', async (route) => {
+      const payload = route.request().postDataJSON() as { kind?: string };
+      if (refuseNextRegistration && payload.kind === 'http') {
+        refuseNextRegistration = false;
+        await route.fulfill({
+          status: 400,
+          json: {
+            errcode: 'M_UNKNOWN',
+            error: 'private-server-detail-must-not-be-displayed',
+          },
+        });
+      } else await route.continue();
+    });
+
+    // Supply the native capability and token; registration, persistence, SDK calls,
+    // retry handling and rendered Settings remain the production implementation.
+    await page.evaluate(
+      async ({ notify, token }) => {
+        const root = document.querySelector('trn-root');
+        if (!root) throw new Error('Application root unavailable');
+        const push = (window as unknown as PushFixtureWindow).ng.getComponent(
+          root,
+        ).runtime.adapter.session.notificationSession.push.push;
+        push.nativePush.platform = 'android';
+        push.nativePush.supported = () => true;
+        push.gateway.supported = () => true;
+        await push.gateway.save(notify);
+        push.currentPushkey = token;
+        await new Promise<void>((resolve, reject) => {
+          push.register().subscribe({ complete: resolve, error: reject });
+        });
+      },
+      { notify: NOTIFY, token: `E2E-recovery-${testResourceId('token')}` },
+    );
+
+    await openSettingsSection(page, 'notifications');
+    await expect(page.getByTestId('push-gateway-status')).toContainText(
+      'Retry',
+    );
+    await expect(page.getByTestId('push-gateway-status')).not.toContainText(
+      'private-server-detail',
+    );
+    await page.getByTestId('push-gateway-retry').click();
+    await expect(page.getByTestId('push-gateway-status')).toContainText(
+      'Registered on 1 account',
+    );
+
+    // Read the real homeserver state independently of the rendered success message.
+    await page.evaluate(async () => {
+      const root = document.querySelector('trn-root');
+      if (!root) throw new Error('Application root unavailable');
+      const push = (window as unknown as PushFixtureWindow).ng.getComponent(
+        root,
+      ).runtime.adapter.session.notificationSession.push.push;
+      const client = push.matrix.all()[0].client;
+      const { pushers } = await client.getPushers();
+      if (pushers.length !== 1)
+        throw new Error('Expected one registered pusher');
+      const before = pushers[0];
+      await client.removePusher(before.pushkey, before.app_id);
+      if ((await client.getPushers()).pushers.length !== 0)
+        throw new Error('The pusher was not removed from the homeserver');
+      await new Promise<void>((resolve, reject) => {
+        push.register().subscribe({ complete: resolve, error: reject });
+      });
+      const restored = (await client.getPushers()).pushers;
+      if (
+        restored.length !== 1 ||
+        restored[0].pushkey !== before.pushkey ||
+        restored[0].data.trinity_account_id !== before.data.trinity_account_id
+      )
+        throw new Error(
+          'Registration did not restore the owning Account pusher',
+        );
+    });
+    await expect(page.getByTestId('push-gateway-status')).toContainText(
+      'Registered on 1 account',
+    );
+    expect(refuseNextRegistration).toBe(false);
   });
 
   test('a v1 push tap opens its saved Account and Conversation', async ({
