@@ -656,7 +656,8 @@ describe('MessageRowComponent', () => {
     const btn = container.querySelector<HTMLElement>('.msg__thread');
     expect(btn).toBeTruthy();
     expect(btn?.textContent).toContain('3 replies');
-    expect(btn?.textContent).toContain('last reply');
+    expect(btn?.querySelector('.msg__thread-time')).toBeTruthy();
+    expect(btn?.querySelector('.msg__thread-preview')).toBeTruthy();
 
     // The row raises a type-only thread action; the host supplies the row id.
     let action: MessageRowAction | undefined;

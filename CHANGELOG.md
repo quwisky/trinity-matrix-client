@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Timeline threads now show a connected preview with the latest reply author and text,
+  relative activity time, reply count and unread status. The whole preview opens the
+  thread, with touch-sized targets and single-line text on narrow mobile screens.
+
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
   production renderer journey consume the validated artifact. Restoration verifies the

@@ -96,6 +96,11 @@ actions depend on the event, the room and your permissions:
   the message content from the normal timeline view, which may retain a deletion marker. It
   cannot guarantee deletion from recipients' local history, backups or homeserver records.
 
+Threads with replies show a preview beneath their parent message: reply count, unread status,
+latest reply author and text, and how recently it arrived. Select anywhere on the preview to
+open the thread. On phones the reply text stays on one line and the entire preview is a tap
+target; no hover action is needed.
+
 Use **Cancel reply** or **Cancel edit** in the composer banner when you opened the wrong action.
 
 ## When something does not work
