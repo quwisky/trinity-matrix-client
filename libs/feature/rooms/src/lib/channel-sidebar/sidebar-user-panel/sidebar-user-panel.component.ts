@@ -6,7 +6,7 @@ import {
   output,
 } from '@angular/core';
 import { AvatarComponent } from '@trinity/components/generic-content';
-import { TrnButton, TrnIconButton } from '@trinity/components/controls';
+import { TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
 import {
@@ -32,14 +32,6 @@ const STACK_MAX = 3;
 export interface AccountSummary extends IdentityProfile {
   /** Unread notification total for this account (drives the switcher badge). */
   unread: number;
-  /**
-   * What this account's homeserver is running — `Synapse 1.158.0` — or null until it has
-   * been looked up, or when the server does not publish it.
-   *
-   * Optional only so the many fixtures that build an `AccountSummary` inline need not carry
-   * a field they do not exercise; the one production producer always sets it.
-   */
-  server?: string | null;
 }
 
 /** The navigation shell's bottom user panel: the signed-in user plus account switcher. */
@@ -48,7 +40,6 @@ export interface AccountSummary extends IdentityProfile {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnButton,
-    TrnIconButton,
     TrnTooltip,
     AvatarComponent,
     TrnIconComponent,
@@ -133,21 +124,6 @@ export class SidebarUserPanelComponent {
   readonly openSettings = output<void>();
   readonly hasSystemStatusProblems = input(false);
   readonly openSystemStatus = output<void>();
-  /**
-   * The account menu was reached for. The host uses it to look up each account's homeserver
-   * version lazily — nobody may ever look at it, so nothing is spent until someone reaches
-   * for the menu.
-   *
-   * Raised from three places, and all three are needed. `trnDropdownMenuOpened` rather than
-   * `(click)`, because CDK's trigger opens on ArrowDown/ArrowUp by calling `open()` directly
-   * without dispatching a click — so a keyboard user got no lookup at all — and because
-   * `(click)` also fired on the click that CLOSES the menu. `pointerenter` and `focus` are
-   * prefetches: the menu is a `side="top"` overlay pinned by its bottom edge, so a version
-   * arriving after it opens pushes the rows upward under the pointer, and hovering or
-   * tabbing to the trigger is enough warning to have the answer ready. Every extra emission
-   * is free — `HomeserverInfoService` serves a cached answer, or joins the in-flight one.
-   */
-  readonly accountsOpened = output<void>();
   /** Show the account picker as a dialog — raised only when {@link pickAccountsInDialog}. */
   readonly openAccountPicker = output<void>();
 
@@ -167,5 +143,10 @@ export class SidebarUserPanelComponent {
   /** First letter of an account's display name, for its avatar fallback. */
   initialFor(account: AccountSummary): string {
     return initialOf(account.displayName);
+  }
+
+  /** First letter of a signed-out account's Matrix ID for its avatar fallback. */
+  initialForUserId(userId: string): string {
+    return initialOf(userId);
   }
 }

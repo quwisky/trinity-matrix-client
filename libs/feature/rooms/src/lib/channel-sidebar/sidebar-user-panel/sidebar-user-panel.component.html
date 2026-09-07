@@ -6,9 +6,6 @@
     align="start"
     [attr.aria-label]="accountSummaryLabel()"
     data-testid="user-menu-trigger"
-    (trnDropdownMenuOpened)="accountsOpened.emit()"
-    (pointerenter)="accountsOpened.emit()"
-    (focus)="accountsOpened.emit()"
   >
     @if (mixedAccounts().length > 1) {
       <!-- Mixing: show the included accounts as an overlapping stack, active one in front,
@@ -70,7 +67,10 @@
     />
   </button>
   <button
-    trnIconButton
+    trnBtn
+    presentation="ghost"
+    shape="icon"
+    size="sm"
     class="userbar__settings"
     (click)="openSettings.emit()"
     aria-label="Settings"
@@ -82,8 +82,8 @@
 </footer>
 
 <ng-template #accountMenu>
-  <div trnDropdownMenu>
-    <div trnDropdownMenuLabel>Accounts</div>
+  <div class="account-menu" trnDropdownMenu>
+    <div trnDropdownMenuLabel>Switch account</div>
     <div trnDropdownMenuSeparator></div>
     @for (account of accounts(); track account.userId) {
       <button
@@ -96,19 +96,13 @@
         <trn-avatar
           [mxc]="account.avatarMxc"
           [accountId]="account.userId"
+          [initial]="initialFor(account)"
           [name]="account.displayName"
           size="md"
         />
         <div class="account-row__id">
           <span class="account-row__name">{{ account.displayName }}</span>
           <span class="account-row__handle">{{ account.userId }}</span>
-          @if (account.server; as server) {
-            <span
-              class="account-row__server"
-              data-testid="account-row-server"
-              >{{ server }}</span
-            >
-          }
         </div>
         @if (account.unread > 0) {
           <span
@@ -117,9 +111,11 @@
             >{{ badgeLabel(account.unread) }}</span
           >
         }
-        @if (account.userId === activeUserId()) {
-          <trn-icon name="check" class="account-row__check" />
-        }
+        <span class="account-row__check" aria-hidden="true">
+          @if (account.userId === activeUserId()) {
+            <trn-icon name="check" />
+          }
+        </span>
       </button>
     }
     @for (userId of reauthAccounts(); track userId) {
@@ -129,7 +125,11 @@
         (triggered)="reauthAccount.emit(userId)"
         data-testid="reauth-row"
       >
-        <trn-avatar [name]="userId" size="md" />
+        <trn-avatar
+          [initial]="initialForUserId(userId)"
+          [name]="userId"
+          size="md"
+        />
         <div class="account-row__id">
           <span class="account-row__name">Signed out</span>
           <span class="account-row__handle">{{ userId }}</span>
@@ -143,27 +143,30 @@
         <!-- Narrow layout: a submenu would have nowhere to fly out to, so this opens a
              dialog instead. Same testid, so the affordance is one thing to drive either way. -->
         <button
+          class="menu-action"
           trnDropdownMenuItem
           (triggered)="openAccountPicker.emit()"
           data-testid="show-accounts"
         >
           <trn-icon name="users" />
-          Show accounts
+          Accounts in view
         </button>
       } @else {
         <button
+          class="menu-action"
           trnDropdownMenuItem
           [trnDropdownMenuSubTrigger]="showAccountsMenu"
           data-testid="show-accounts"
         >
           <trn-icon name="users" />
-          Show accounts
+          Accounts in view
           <trn-dropdown-menu-item-sub-indicator />
         </button>
       }
     }
     <div trnDropdownMenuSeparator></div>
     <button
+      class="menu-action"
       trnDropdownMenuItem
       (triggered)="addAccount.emit()"
       data-testid="add-account"
@@ -173,13 +176,14 @@
     </button>
     <div trnDropdownMenuSeparator></div>
     <button
+      class="menu-action menu-action--danger"
       trnDropdownMenuItem
       variant="danger"
       (triggered)="logout.emit(activeUserId() ?? '')"
       data-testid="logout"
     >
       <trn-icon name="log-out" />
-      Sign out
+      Remove account from this device…
     </button>
   </div>
 

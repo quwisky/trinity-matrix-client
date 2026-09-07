@@ -58,8 +58,23 @@ test.describe('Multiple accounts', () => {
 
     // 4. The switcher lists both accounts.
     await page.getByTestId('user-menu-trigger').click();
+    const menu = page.getByRole('menu').last();
+    await expect(menu).toBeVisible();
+    await expect(menu).toContainText('Switch account');
+    await expect(menu.getByTestId('show-accounts')).toContainText(
+      'Accounts in view',
+    );
+    await expect(menu.getByTestId('add-account')).toContainText('Add account');
+    await expect(menu.getByTestId('logout')).toContainText(
+      'Remove account from this device',
+    );
     const rows = page.getByTestId('account-row');
     await expect(rows).toHaveCount(2);
+
+    // The overlay is keyboard-dismissable and returns focus to the stable account trigger.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('user-menu-trigger')).toBeFocused();
+    await page.getByTestId('user-menu-trigger').click();
 
     // 5. Switch back to account A from the menu.
     await rows.filter({ hasText: handleA }).click();

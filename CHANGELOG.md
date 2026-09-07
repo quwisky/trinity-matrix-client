@@ -46,6 +46,10 @@ All notable changes to this project are documented here. The format is based on
   count and unread status. The whole preview opens the thread, with touch-sized targets
   and single-line text on narrow mobile screens.
 
+- Refine the bottom Account bar and switching menu with clearer identity rows, aligned
+  status indicators, grouped account actions, and explicit account-removal wording.
+  Settings and System Status remain directly available across desktop and mobile.
+
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
   production renderer journey consume the validated artifact. Restoration verifies the
