@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Make the CI process-cleanup test wait for its child to be ready before checking
+  forced termination, so slower startup cannot cause a false failure.
+
 - Thread messages no longer show automatic fallback quotes in the sidebar. Explicit
   replies to a particular message retain their quote and jump action.
 
