@@ -519,6 +519,18 @@ runs at a time. Application Runtime owns Trust's combined session lifetime;
 `connect()` call. Outgoing self-verification belongs to `/encryption/verify`. Lazy dialog
 components enter through `ENCRYPTION_DIALOG_COMPONENTS`, keeping feature imports contained.
 
+Cross-user startup captures the active client and crypto machine before subscribing to
+the caller's cold DM acquisition, then waits for the counterpart's cross-signing identity
+in the local crypto store. The encrypted DM starts
+normal Matrix identity tracking; `UserTrustStatusChanged` triggers a fresh readiness read.
+An uncached HTTP key lookup alone does not populate Rust crypto and is not sufficient.
+Startup has a 30-second bound, releases its listener on completion or cancellation, and
+rechecks the captured Account after DM creation and before sending and adopting a request. Session teardown
+cancels pending startup. SDK sends cannot be aborted, so a request that arrives after
+cancellation or an Account change is cancelled without being presented.
+The member panel presents safe Trust failure guidance while retaining a generic fallback
+for failures outside that boundary.
+
 QR payloads are raw bytes. Generation happens only on explicit display, emits a defensive copy
 and is not retained in `VerificationView`. The page clears its transient data URL when QR
 presentation ends or the request advances. Camera decoding uses the public scanner's platform

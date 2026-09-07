@@ -4,6 +4,7 @@ import {
   expect,
   type APIRequestContext,
   type Page,
+  type Route,
 } from '../../../fixtures.mts';
 import {
   login,
@@ -88,60 +89,96 @@ async function setUpEncryption(page: Page, password: string): Promise<void> {
   await waitForRooms(page);
 }
 
-test.describe('Verify another user', () => {
-  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+interface VerificationJourneyOptions {
+  page: Page;
+  request: APIRequestContext;
+  launchSecondary: () => Promise<Page>;
+  activatePrimary: () => Promise<void>;
+  delayIdentity: boolean;
+}
 
-  test('starts cross-user verification from the member panel', async ({
-    page,
-    secondaryApp,
-    request,
-  }) => {
-    test.slow();
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}vu`;
-    const me = `verify-me-${runId}`;
-    const mePass = `${me}-pass`;
-    const other = `verify-other-${runId}`;
-    const otherPass = `${other}-pass`;
-    const roomName = `Verify ${runId}`;
-    const otherName = `Other ${runId}`;
+async function verifyUserFromMemberPanel({
+  page,
+  request,
+  launchSecondary,
+  activatePrimary,
+  delayIdentity,
+}: VerificationJourneyOptions): Promise<void> {
+  const hs = session.hs as string;
+  const runId = `${testResourceId('run')}vu`;
+  const me = `verify-me-${runId}`;
+  const mePass = `${me}-pass`;
+  const other = `verify-other-${runId}`;
+  const otherPass = `${other}-pass`;
+  const roomName = `Verify ${runId}`;
+  const otherName = `Other ${runId}`;
 
-    await registerUser(request, me, mePass);
-    await registerUser(request, other, otherPass);
-    const admin = await apiLogin(request, hs, me, mePass);
-    const otherUser = await apiLogin(request, hs, other, otherPass);
+  await registerUser(request, me, mePass);
+  await registerUser(request, other, otherPass);
+  const admin = await apiLogin(request, hs, me, mePass);
+  const otherUser = await apiLogin(request, hs, other, otherPass);
 
-    await request.put(
-      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(otherUser.userId)}/displayname`,
-      { headers: otherUser.headers, data: { displayname: otherName } },
-    );
-    const { room_id } = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: admin.headers,
-        data: {
-          name: roomName,
-          preset: 'private_chat',
-          invite: [otherUser.userId],
-        },
-      })
-      .then((r) => r.json());
-    await request.post(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
-      { headers: otherUser.headers },
-    );
+  await request.put(
+    `${hs}/_matrix/client/v3/profile/${encodeURIComponent(otherUser.userId)}/displayname`,
+    { headers: otherUser.headers, data: { displayname: otherName } },
+  );
+  const { room_id } = await request
+    .post(`${hs}/_matrix/client/v3/createRoom`, {
+      headers: admin.headers,
+      data: {
+        name: roomName,
+        preset: 'private_chat',
+        invite: [otherUser.userId],
+      },
+    })
+    .then((r) => r.json());
+  await request.post(
+    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+    { headers: otherUser.headers },
+  );
 
-    await login(page, {
-      available: true,
-      hs,
-      user: me,
-      pass: mePass,
-    } as SynapseSession);
-    await setUpEncryption(page, mePass);
+  await login(page, {
+    available: true,
+    hs,
+    user: me,
+    pass: mePass,
+  } as SynapseSession);
+  await setUpEncryption(page, mePass);
 
+  const identityRoute = '**/_matrix/client/v3/keys/query';
+  const pendingDelays = new Set<Promise<void>>();
+  let verificationStarted!: () => void;
+  const startVerification = new Promise<void>((resolve) => {
+    verificationStarted = resolve;
+  });
+  let delayedQueries = 0;
+  const delayHandler = async (route: Route): Promise<void> => {
+    const body = route.request().postDataJSON() as {
+      device_keys?: Record<string, unknown>;
+    };
+    if (Object.hasOwn(body.device_keys ?? {}, otherUser.userId)) {
+      delayedQueries += 1;
+      // Keep the identity unavailable through secondary setup and the Verify click;
+      // only then simulate a slow refresh, regardless of how long setup took.
+      const delayed = startVerification.then(
+        () => new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
+      );
+      pendingDelays.add(delayed);
+      await delayed;
+      pendingDelays.delete(delayed);
+    }
+    await route.continue();
+  };
+
+  if (delayIdentity) {
+    await page.route(identityRoute, delayHandler);
+  }
+
+  try {
     // The counterpart must be a real crypto-capable client with its own
     // cross-signing identity. Android uses the separately packaged secondary
     // app, while web uses an isolated browser context through the same fixture.
-    const otherPage = await secondaryApp.launch();
+    const otherPage = await launchSecondary();
     await login(otherPage, {
       available: true,
       hs,
@@ -149,7 +186,7 @@ test.describe('Verify another user', () => {
       pass: otherPass,
     } as SynapseSession);
     await setUpEncryption(otherPage, otherPass);
-    await secondaryApp.activatePrimary();
+    await activatePrimary();
 
     await openRoom(page, roomName);
 
@@ -171,11 +208,57 @@ test.describe('Verify another user', () => {
     const panel = page.getByTestId('member-info');
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await panel.getByTestId('member-info-verify').click();
+    verificationStarted();
 
     // The request is sent and the SAS verification page is presented (the other
     // side never responds, so it stays in its requested/waiting stage).
     await expect(page.getByTestId('verify-page')).toBeVisible({
       timeout: 30_000,
+    });
+    if (delayIdentity) expect(delayedQueries).toBeGreaterThan(0);
+  } finally {
+    if (delayIdentity) {
+      verificationStarted();
+      await page.unroute(identityRoute, delayHandler);
+      await Promise.all(pendingDelays);
+    }
+  }
+}
+
+test.describe('Verify another user', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('starts cross-user verification from the member panel', async ({
+    page,
+    secondaryApp,
+    request,
+  }) => {
+    test.slow();
+    await verifyUserFromMemberPanel({
+      page,
+      request,
+      launchSecondary: () => secondaryApp.launch(),
+      activatePrimary: () => secondaryApp.activatePrimary(),
+      delayIdentity: false,
+    });
+  });
+
+  test('starts cross-user verification with a delayed counterpart identity', async ({
+    page,
+    secondaryApp,
+    request,
+  }, testInfo) => {
+    test.slow();
+    await verifyUserFromMemberPanel({
+      page,
+      request,
+      launchSecondary: () => secondaryApp.launch(),
+      activatePrimary: () => secondaryApp.activatePrimary(),
+      delayIdentity: true,
+    });
+    await testInfo.attach('verification-after-identity-refresh', {
+      body: await page.screenshot(),
+      contentType: 'image/png',
     });
   });
 });
