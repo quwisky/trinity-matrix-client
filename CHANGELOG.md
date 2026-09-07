@@ -19,7 +19,8 @@ All notable changes to this project are documented here. The format is based on
 ### Changed
 
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
-  cannot cause a false geometry failure in CI.
+  cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
+  so Android suites accept the updated test.
 
 - Resolve disposable federation signing keys directly between the test homeservers,
   preventing slow public-notary lookups from failing room-preview alias resolution.
