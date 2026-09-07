@@ -314,6 +314,36 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-ios:build-prebuilt
+      - name: Probe 582 remove iOS evidence after a successful compile
+        timeout-minutes: 1
+        env:
+          CI_IOS_DIAGNOSTICS_ROOT: ${{ steps.ios.outputs.diagnostic-root }}
+        run: |
+          node --input-type=module <<'JS'
+          import { spawnSync } from 'node:child_process';
+          import { renameSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+          import { join } from 'node:path';
+          const root = process.env.CI_IOS_DIAGNOSTICS_ROOT;
+          const results = [];
+          const check = (label, expected) => {
+            const result = spawnSync(process.execPath, ['scripts/ios-native-build.mjs', 'validate-diagnostics'], { env: process.env, encoding: 'utf8' });
+            const output = `${result.stdout}${result.stderr}`;
+            console.log(`probe-582: ${label}, exit=${result.status}\n${output}`);
+            results.push({ label, exitCode: result.status, output });
+            if (expected ? result.status !== 1 || !output.includes(expected) : result.status !== 0) throw new Error(`Unexpected diagnostic outcome for ${label}`);
+          };
+          check('complete native build', null);
+          for (const [file, label] of [['build-settings.json', 'settings'], ['build.xcresult', 'result']]) {
+            const path = join(root, file);
+            renameSync(path, `${path}.probe-backup`);
+            try { check(`missing ${label}`, `missing iOS diagnostic: ${label}`); }
+            finally { renameSync(`${path}.probe-backup`, path); }
+          }
+          mkdirSync('dist/.ci', { recursive: true });
+          writeFileSync('dist/.ci/probe-582-ios-evidence.json', JSON.stringify(results, null, 2));
+          rmSync(join(root, 'build-settings.json'));
+          rmSync(join(root, 'build.xcresult'), { recursive: true });
+          JS
       - name: Validate iOS diagnostics
         timeout-minutes: 1
         if: ${{ !cancelled() && steps.ios.outputs.started == 'true' }}
