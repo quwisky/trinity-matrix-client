@@ -2,24 +2,44 @@
 <button
   type="button"
   class="msg__thread msg__target"
+  data-testid="message-thread-summary"
   [attr.aria-label]="label()"
   (click)="open.emit()"
 >
-  <trn-icon class="msg__thread-icon" name="messages-square" />
-  <span class="msg__thread-count"
-    >{{ thread.replyCount }}
-    {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span
-  >
-  @if (latestReplyLabel(); as latest) {
-    <span class="msg__thread-sep" aria-hidden="true">·</span>
-    <span class="msg__thread-time">last reply {{ latest }}</span>
-  }
-  @if (thread.unreadCount > 0) {
-    <span
-      class="msg__thread-badge"
-      [class.msg__thread-badge--highlight]="thread.highlight"
+  <span class="msg__thread-heading">
+    <trn-icon
+      class="msg__thread-icon"
+      name="messages-square"
       aria-hidden="true"
-      >{{ thread.unreadCount }}</span
+    />
+    <span class="msg__thread-count"
+      >{{ thread.replyCount }}
+      {{ thread.replyCount === 1 ? 'reply' : 'replies' }}</span
     >
+    @if (thread.unreadCount > 0) {
+      <span
+        class="msg__thread-badge"
+        [class.msg__thread-badge--highlight]="thread.highlight"
+        aria-hidden="true"
+        >{{ thread.unreadCount }} unread</span
+      >
+    }
+    @if (relativeReplyTime(); as latest) {
+      <span class="msg__thread-time" [attr.title]="latestReplyLabel()">{{
+        latest
+      }}</span>
+    }
+  </span>
+  @if (thread.latestReplyPreview) {
+    <span class="msg__thread-preview">
+      @if (thread.latestReplySenderName) {
+        <span class="msg__thread-author" dir="auto"
+          >{{ thread.latestReplySenderName }}:</span
+        >
+      }
+      <span class="msg__thread-text" dir="auto">{{
+        thread.latestReplyPreview
+      }}</span>
+    </span>
   }
 </button>

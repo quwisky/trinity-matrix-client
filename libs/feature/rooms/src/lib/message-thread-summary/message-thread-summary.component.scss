@@ -1,48 +1,112 @@
 @layer components {
   :host {
-    display: contents;
+    // Reserve a complete flex row so even a short preview stays below its parent.
+    display: block;
+    position: relative;
+    container-type: inline-size;
+    flex: 0 0 calc(100% - var(--message-body-indent));
+    min-width: 0;
+    margin-inline-start: var(--message-body-indent);
   }
 
   .msg__thread {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin: 4px 0 0 var(--message-body-indent);
-    padding: 4px 10px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--trinity-space-1);
+    min-width: 0;
+    width: fit-content;
+    max-width: 100%;
+    padding: var(--trinity-space-2);
     min-height: var(--trinity-density-control-size);
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-radius-pill);
-    background: var(--trinity-surface-raised);
+    border: 0;
+    border-radius: var(--trinity-radius-sm);
+    background: transparent;
     color: var(--trinity-link);
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
     font-weight: var(--trinity-type-control-weight);
+    text-align: start;
     cursor: pointer;
+
+    &::before {
+      content: '';
+      position: absolute;
+
+      // Center the 2px stroke beneath the 40px avatar, across both density gaps.
+      inset-inline-start: calc(
+        -21px - var(--trinity-density-message-column-gap)
+      );
+      top: calc(-1 * var(--trinity-density-message-column-gap));
+      width: calc(17px + var(--trinity-density-message-column-gap));
+      height: calc(var(--trinity-density-message-column-gap) + 18px);
+      border-inline-start: 2px solid var(--trinity-text-muted);
+      border-bottom: 2px solid var(--trinity-text-muted);
+      border-end-start-radius: var(--trinity-radius-sm);
+      pointer-events: none;
+    }
 
     &:hover {
       background: var(--trinity-state-hover-surface);
     }
   }
 
+  .msg__thread-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    min-width: 0;
+  }
+
   .msg__thread-icon {
+    flex: 0 0 auto;
     font-size: 15px;
   }
 
-  .msg__thread-sep {
-    color: var(--trinity-text-muted);
+  .msg__thread-count {
+    white-space: nowrap;
   }
 
   .msg__thread-time {
     color: var(--trinity-text-muted);
     font-weight: 400;
+    white-space: nowrap;
+  }
+
+  .msg__thread-preview {
+    display: flex;
+    gap: var(--trinity-space-1);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--trinity-text-muted);
+    font-weight: 400;
+  }
+
+  .msg__thread-author {
+    flex: 0 0 auto;
+
+    // Use the full message column, not the content-sized preview button.
+    max-width: 40cqi;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--trinity-text);
+    font-weight: var(--trinity-type-control-weight);
+  }
+
+  .msg__thread-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .msg__thread-badge {
     flex: 0 0 auto;
     min-width: 16px;
-    height: 16px;
-    margin-left: 2px;
+    min-height: 16px;
     padding: 0 5px;
     border-radius: var(--trinity-radius-pill);
     background: var(--trinity-accent);

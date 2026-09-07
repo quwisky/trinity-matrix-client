@@ -191,6 +191,8 @@ export class VirtualMessageListComponent extends MessageListBase {
 
     effect(() => {
       const msgs = this.messages();
+      // The delayed loading strip changes row geometry before history arrives too.
+      this.showLoadingOlder();
       const el = this.scrollEl()?.nativeElement;
       if (!el) {
         return;
@@ -198,7 +200,8 @@ export class VirtualMessageListComponent extends MessageListBase {
 
       if (this.pendingPrepend) {
         // Keep the viewport anchored on what the user was reading.
-        this.pendingPrepend = false;
+        // Keep the same restore point through the loading strip and the final prepend.
+        this.pendingPrepend = this.loadingOlder();
         this.lastId = msgs[msgs.length - 1]?.id ?? this.lastId;
         const prevHeight = this.prevScrollHeight;
         const prevTop = this.prevScrollTop;
@@ -206,19 +209,23 @@ export class VirtualMessageListComponent extends MessageListBase {
         const anchorOffset = this.prependAnchorOffset;
         const anchorGeneration = this.prependAnchorGeneration;
         this.prependAnchorActive = true;
-        requestAnimationFrame(() => {
-          if (this.destroyRef.destroyed) {
-            return;
-          }
-          this.restorePrependAnchor(
-            el,
-            anchorId,
-            anchorOffset,
-            prevHeight,
-            prevTop,
-            anchorGeneration,
-          );
-        });
+        // Correct as soon as the strip/prepend renders, before another scroll event
+        // can capture its displaced geometry as the reader's intended position.
+        untracked(() =>
+          afterNextRender(
+            () => {
+              this.restorePrependAnchor(
+                el,
+                anchorId,
+                anchorOffset,
+                prevHeight,
+                prevTop,
+                anchorGeneration,
+              );
+            },
+            { injector: this.injector },
+          ),
+        );
         return;
       }
 
@@ -358,9 +365,11 @@ export class VirtualMessageListComponent extends MessageListBase {
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX,
     );
     this.updateJumpToUnread(); // divider may have scrolled in/out of the window
-    if (this.loadingOlder() && !this.atBottomSig()) {
+    const bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (this.loadingOlder() && bottomGap >= 1) {
       // A reader can move while an earlier automatic backfill is still in flight.
-      // Transfer its restore point to the position they are reading now.
+      // Transfer its restore point even inside the incoming-message near-bottom
+      // threshold: only an exact bottom pin has no reading offset to preserve.
       this.prevScrollHeight = el.scrollHeight;
       this.prevScrollTop = el.scrollTop;
       this.capturePrependAnchor(el);
@@ -386,6 +395,12 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
+    // This explicit destination supersedes both an in-flight history restore and
+    // any measurement correction already queued for its old reading position.
+    this.pendingPrepend = false;
+    this.prependAnchorActive = false;
+    this.prependAnchorGeneration++;
+    this.expectedProgrammaticScrollTop = null;
     // Pin the window to the bottom, then scroll to the end once it has re-rendered
     // the newest rows (the spacer heights shift when the window moves).
     this.atBottomSig.set(true);

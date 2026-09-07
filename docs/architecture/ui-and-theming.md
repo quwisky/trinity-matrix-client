@@ -547,6 +547,17 @@ these current contracts intact:
   browser journey proves both cases on a
   long virtualized room in
   [timeline virtualization](../../e2e/browser/journeys/conversations/timeline-virtualization.spec.mts).
+- While older history loads, the virtual timeline preserves a deliberate reading offset
+  even inside the 120px near-bottom threshold used for incoming messages. Only an exact
+  bottom pin is exempt. The same anchor remains pending when the delayed loading strip
+  appears, so inserting the strip cannot shift the reader or replace the saved offset
+  with its displaced position. Correction runs immediately after rendering, before a
+  subsequent scroll event can recapture the shifted geometry. The shared
+  [timeline anchoring journey](../../e2e/browser/journeys/conversations/timeline-anchoring.spec.mts)
+  checks the position both while the strip is visible and after history settles, including
+  the installed Android WebView.
+  An explicit jump to latest cancels pending history restoration
+  and queued row-measurement corrections for the previous reading position.
 - [message composer](../../libs/feature/rooms/src/lib/message-composer/message-composer.component.ts)
   owns its single-row-growing input, staged-media lifecycle, and one-at-a-time
   send. It must not rewrite the buffer, accept a suggestion, or send Enter while

@@ -247,6 +247,11 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
+    path: 'journeys/conversations/thread-preview.spec.mts',
+    capability: 'conversations',
+    contractType: 'journey',
+  },
+  {
     path: 'journeys/conversations/timeline-anchoring.spec.mts',
     capability: 'conversations',
     contractType: 'visual',

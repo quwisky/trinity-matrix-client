@@ -261,7 +261,7 @@ describe('E2E suite registry', () => {
       );
       const report = JSON.parse(readFileSync(outputFile, 'utf8'));
       expect(report).toMatchObject({
-        expectedSpecCount: 121,
+        expectedSpecCount: 122,
         collectedSpecCount: 1,
         testCount: 1,
         attempts: 1,
@@ -666,40 +666,57 @@ describe('E2E suite registry runner', () => {
     ]);
   });
 
-  it('escalates a timed-out managed process group', async () => {
-    const directory = mkdtempSync(join(tmpdir(), 'trinity-e2e-timeout-'));
-    const pidFile = join(directory, 'descendant.pid');
-    try {
-      const startedAt = Date.now();
-      const result = await runManagedCommand(
-        process.execPath,
-        [
-          '-e',
-          `const { spawn } = require('node:child_process');
-           const { writeFileSync } = require('node:fs');
-           const child = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => undefined); setInterval(() => undefined, 1000);"], { stdio: 'ignore' });
-           writeFileSync(process.argv[1], String(child.pid));
-           setInterval(() => undefined, 1000);`,
-          pidFile,
-        ],
-        { timeout: 200, terminationGraceMs: 50, stdio: 'ignore' },
-      );
+  it('reports a managed command timeout', async () => {
+    const result = await runManagedCommand(
+      process.execPath,
+      ['-e', 'setInterval(() => undefined, 1000);'],
+      { timeout: 200, terminationGraceMs: 50, stdio: 'ignore' },
+    );
 
-      expect(result).toMatchObject({
+    expect(result).toMatchObject({ status: 1, timedOut: true });
+  });
+
+  it('escalates cancellation of a ready managed process group', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-e2e-escalation-'));
+    const pidFile = join(directory, 'descendant.pid');
+    const controller = new AbortController();
+    const completion = runManagedCommand(
+      process.execPath,
+      [
+        '-e',
+        `const { spawn } = require('node:child_process');
+         spawn(process.execPath, ['-e', "process.on('SIGTERM', () => undefined); require('node:fs').writeFileSync(process.argv[1], String(process.pid)); setInterval(() => undefined, 1000);", process.argv[1]], { stdio: 'ignore' });
+         setInterval(() => undefined, 1000);`,
+        pidFile,
+      ],
+      { signal: controller.signal, terminationGraceMs: 50, stdio: 'ignore' },
+    );
+
+    try {
+      // The descendant publishes its PID only after installing the SIGTERM handler.
+      // Startup speed must not determine whether the process group needs escalation.
+      await vi.waitFor(
+        () => expect(Number(readFileSync(pidFile, 'utf8'))).toBeGreaterThan(0),
+        { timeout: 10_000 },
+      );
+      const descendantPid = Number(readFileSync(pidFile, 'utf8'));
+      controller.abort();
+
+      expect(await completion).toMatchObject({
         status: 1,
         signal: 'SIGKILL',
-        timedOut: true,
+        timedOut: false,
       });
-      expect(Date.now() - startedAt).toBeLessThan(2_000);
-      const descendantPid = Number(readFileSync(pidFile, 'utf8'));
       await vi.waitFor(
         () => expect(() => process.kill(descendantPid, 0)).toThrow(),
         { timeout: 1_000 },
       );
     } finally {
+      controller.abort();
+      await completion;
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it('refuses drift before preflight or execution', async () => {
     const preflight = vi.fn();

@@ -52,6 +52,7 @@
   }
 
   .new-divider {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -69,6 +70,15 @@
       background: var(--trinity-accent);
       opacity: 0.5;
     }
+  }
+
+  .thread-connector {
+    position: absolute;
+    inset-inline-start: 19px;
+    top: -8px;
+    bottom: -8px;
+    border-inline-start: 2px solid var(--trinity-text-muted);
+    pointer-events: none;
   }
 
   .new-divider__label {

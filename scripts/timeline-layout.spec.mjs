@@ -68,9 +68,10 @@ describe('modern timeline layout contracts', () => {
     expect(replyPreviewCss.match(/var\(--message-body-indent\)/g)?.length).toBe(
       2,
     );
+    // The thread preview uses the same indent for its start and available width.
     expect(
       threadSummaryCss.match(/var\(--message-body-indent\)/g)?.length,
-    ).toBe(1);
+    ).toBe(2);
     // Precise-pointer floating actions do not consume the message's inline width or measured
     // height. The sole `:has()` track is scoped to the hybrid-touch accessibility override.
     expect(rowCss).toMatch(

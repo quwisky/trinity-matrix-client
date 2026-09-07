@@ -625,6 +625,7 @@ export class MessageRowComponent {
   readonly row = input.required<MessageRow>();
   /** Thread summary for this row's event (main timeline only), else null. */
   readonly threadSummary = input<ThreadSummary | null>(null);
+  readonly threadContinues = input(false);
   /** Per-row capabilities/state (edit/delete/pin permissions, pinned, read-only). */
   readonly caps = input<MessageRowCaps>({
     editable: false,

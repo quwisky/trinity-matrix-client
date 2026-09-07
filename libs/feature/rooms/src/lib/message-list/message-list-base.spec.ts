@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ConversationRuntime,
   type MessageView,
+  type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import { MessageListBase } from './message-list-base';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
@@ -205,5 +206,52 @@ describe('MessageListBase batch caption routing', () => {
     });
 
     expect(sent).toEqual([]);
+  });
+});
+
+describe('MessageListBase thread connectors', () => {
+  it('connects intervening rows only as far as the last thread in each sender group', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('messages', [
+      msg('$a'),
+      msg('$b'),
+      msg('$c'),
+      msg('$d'),
+      msg('$after'),
+      { ...msg('$other'), senderId: '@b:hs' },
+      { ...msg('$other-thread'), senderId: '@b:hs' },
+    ]);
+    const summary: ThreadSummary = {
+      rootEventId: '$b',
+      rootPreview: 'root',
+      rootSenderName: 'Alice',
+      replyCount: 1,
+      latestReplyTs: 1000,
+      latestActivityTs: 1000,
+      latestReplyPreview: 'reply',
+      latestReplySenderName: 'Bob',
+      participants: [],
+      unreadCount: 0,
+      highlight: false,
+    };
+    fixture.componentRef.setInput('threadSummaries', {
+      $b: summary,
+      $d: { ...summary, rootEventId: '$d' },
+      '$other-thread': { ...summary, rootEventId: '$other-thread' },
+    });
+    fixture.detectChanges();
+    expect(
+      [...fixture.componentInstance.threadContinuationIds()].sort(),
+    ).toEqual(['$a', '$b', '$c', '$other']);
+
+    // Removing the final thread shortens the connector; it cannot leak to later rows.
+    fixture.componentRef.setInput('threadSummaries', { $b: summary });
+    fixture.detectChanges();
+    expect([...fixture.componentInstance.threadContinuationIds()]).toEqual([
+      '$a',
+    ]);
+    fixture.componentRef.setInput('threadSummaries', {});
+    fixture.detectChanges();
+    expect(fixture.componentInstance.threadContinuationIds().size).toBe(0);
   });
 });

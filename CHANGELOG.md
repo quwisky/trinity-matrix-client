@@ -18,6 +18,34 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Measure unread-divider thread connectors in one browser turn so timeline scrolling
+  cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
+  so Android suites accept the updated test, and allow subpixel rounding in WebView.
+
+- Wait for shared locations to finish sending before testing their message menus,
+  preventing server-echo row replacement from closing the menu during the check.
+
+- Resolve disposable federation signing keys directly between the test homeservers,
+  preventing slow public-notary lookups from failing room-preview alias resolution.
+
+- Exercise thread replies through Android's long-press action sheet in the shared
+  quote regression test, instead of waiting for the desktop-only hover toolbar.
+
+- Keep the timeline's reading position steady when the older-history loading indicator
+  appears, including Android, and preserve that position when the messages arrive.
+
+- Make the CI process-cleanup test wait for its child to be ready before checking
+  forced termination, so slower startup cannot cause a false failure.
+
+- Thread messages no longer show automatic fallback quotes in the sidebar. Explicit
+  replies to a particular message retain their quote and jump action.
+
+- Timeline threads now keep their connected preview beneath the parent message, including
+  short replies and image messages. The connector aligns with the avatar center at both
+  densities. Previews show the latest reply author and text, relative activity time, reply
+  count and unread status. The whole preview opens the thread, with touch-sized targets
+  and single-line text on narrow mobile screens.
+
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
   production renderer journey consume the validated artifact. Restoration verifies the
@@ -1129,6 +1157,16 @@ All notable changes to this project are documented here. The format is based on
   attachment, because those are sent as written.
 
 ### Fixed
+
+- Thread connectors reach the group's existing avatar through intervening messages,
+  tall images, earlier thread previews, and unread markers without repeating the avatar.
+
+- Thread previews give the same username the same width allowance across short and long
+  replies, and their connector uses the same theme color as ordinary reply connectors.
+
+- Loading older timeline history preserves deliberate reading offsets even near the bottom.
+  Jumping to the latest message cancels pending history corrections so they cannot pull the
+  reader back to an older message.
 
 - Images load again when returning to a retained Conversation after switching Rooms. Media
   references survive view-cache cleanup while decoded URLs and staged uploads are still released;

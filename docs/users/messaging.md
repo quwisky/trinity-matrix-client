@@ -96,6 +96,16 @@ actions depend on the event, the room and your permissions:
   the message content from the normal timeline view, which may retain a deletion marker. It
   cannot guarantee deletion from recipients' local history, backups or homeserver records.
 
+Threads with replies show a preview beneath their parent message: reply count, unread status,
+latest reply author and text, and how recently it arrived. Select anywhere on the preview to
+open the thread. On phones the reply text stays on one line and the entire preview is a tap
+target; no hover action is needed. Long author names truncate according to the available
+message width, consistently across short and long replies.
+The connector continues back to the group's existing avatar even when other messages
+appear between the avatar and the thread.
+Inside the thread, ordinary messages do not repeat an automatic quoted reply. Explicitly
+replying to a particular message still shows its quote, which you can select to jump to it.
+
 Use **Cancel reply** or **Cancel edit** in the composer banner when you opened the wrong action.
 
 ## When something does not work
