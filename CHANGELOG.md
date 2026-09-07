@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- MIT license for Trinity, with license metadata in the application and desktop
+  package manifests and links from the README and contributor guide.
+
 - Search the Settings directory by section name or group in both the page and dialog.
   Keyboard-accessible clear and result announcements accompany filtering, while selected
   sections, mobile Back focus, navigation history and the search during resizing are preserved.

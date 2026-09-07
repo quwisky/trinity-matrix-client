@@ -5,6 +5,12 @@ Nx integrated monorepo: the web PWA, Android, iOS, and Electron shell share the 
 application and libraries. The production web build creates root `www/`; native and
 desktop hosts consume that output.
 
+## License
+
+Trinity uses the [MIT License](../../LICENSE). Keep the copyright and permission
+notice when redistributing copies or substantial portions of the project.
+Third-party dependencies and vendored code retain their respective licenses and notices.
+
 ## Follow a task from checkout to review
 
 1. [Set up the checkout](getting-started.md): install the pinned package manager and start the web app.
