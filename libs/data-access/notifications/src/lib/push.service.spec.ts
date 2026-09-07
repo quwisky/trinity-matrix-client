@@ -16,6 +16,9 @@ const h = vi.hoisted(() => {
   const state = { platform: 'ios', permission: 'granted' as string };
   const prefs = new Map<string, string>();
   const androidRegistration = { register: vi.fn(async () => undefined) };
+  const androidDelivery = {
+    setForegroundOwner: vi.fn(async () => undefined),
+  };
   const push = {
     requestPermissions: vi.fn(async () => ({ receive: state.permission })),
     register: vi.fn(async () => undefined),
@@ -28,13 +31,23 @@ const h = vi.hoisted(() => {
     }),
     removeAllListeners: vi.fn(async () => undefined),
   };
-  return { listeners, handles, state, push, prefs, androidRegistration };
+  return {
+    listeners,
+    handles,
+    state,
+    push,
+    prefs,
+    androidRegistration,
+    androidDelivery,
+  };
 });
 
 vi.mock('@capacitor/core', () => ({
-  registerPlugin: vi.fn((name: string) =>
-    name === 'TrinityPushRegistration' ? h.androidRegistration : {},
-  ),
+  registerPlugin: vi.fn((name: string) => {
+    if (name === 'TrinityPushRegistration') return h.androidRegistration;
+    if (name === 'TrinityPushDelivery') return h.androidDelivery;
+    return {};
+  }),
   Capacitor: {
     getPlatform: () => h.state.platform,
     // Electron reports isNativePlatform() === true but has no push plugin — the

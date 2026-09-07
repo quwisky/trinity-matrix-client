@@ -141,19 +141,50 @@ coordination. Matrix writes stay in Notifications data access, persistence stays
 with the Account storage adapter, and host token/presentation APIs stay in platform
 adapters. Application Runtime and Workspace retain activation authority.
 
-### Android foreground delivery
+### Android native and foreground delivery
 
-Android receives data-only gateway messages. While Trinity is running, its native
-listener forwards those messages into the same notification policy and duplicate
-ledger used by live Matrix events. The mobile gateway path presents generic copy;
-it does not need plaintext from the gateway or native background decryption. The
-focused Conversation remains suppressed, and a push followed by Matrix sync (or
-the reverse) cannot create a second alert for the same Account and event.
+Android receives data-only gateway messages through
+[`TrinityPushMessagingService`](../../android/app/src/main/java/eu/qwky/trinity/TrinityPushMessagingService.java).
+This replaces Capacitor's application FCM handler in the merged manifest; Firebase's
+lower-priority fallback remains. Token refresh uses Capacitor's inherited implementation.
+The native handler validates the shared
+v1 contract and reads only opaque routes from the existing Account registry. It
+does not copy credentials, create a second Account registry, sync Rooms or decrypt messages.
 
-A tap opens the owning Account and Conversation through the ordinary Workspace
-readiness path. Background or process-absent Android delivery requires additional
-native handling; a JavaScript listener does not establish that capability. iOS FCM
-delivery and platform badge/count handling are separate implementation slices.
+When the Activity is resumed and both JavaScript notification owners are ready,
+delivery uses the existing foreground policy, including focused-Conversation
+suppression. Otherwise Android posts a generic **Trinity / New message** alert
+without creating a WebView. The `messages` channel and operating-system permission
+still apply; count-only payloads never create a new-message alert.
+
+Native delivery, foreground push and live Matrix events share a bounded, persistent
+presentation ledger through `NativePushDeliveryService`. Its hashed identities keep
+Accounts separate and suppress repeated events after a process restart. The ledger
+is private installation state and is excluded from configuration export and preference
+reset. Account removal and push disablement retire owned alerts; malformed or unknown
+routes cannot become notifications for whichever Account happens to be active.
+
+A notification's immutable PendingIntent carries the validated opaque route, Room and
+event to the existing Capacitor activation listener. Cold and warm taps therefore use
+normal Account restoration and Workspace readiness before opening the owning
+Conversation. Removed Accounts and unavailable Rooms use the same safe navigation
+outcomes as other notification intents.
+
+Background and process-absent delivery require a provisioned Firebase build, a valid
+FCM token and a working gateway. Process absence is different from Android's
+[force-stopped package state](https://developer.android.com/reference/android/content/pm/ApplicationInfo#FLAG_STOPPED):
+after a force-stop, reopen the app before expecting push delivery. Battery and
+background restrictions can also delay messages. Instrumentation that injects a
+data-only message proves the native handler and activation path, not gateway/FCM transport.
+Real-device delivery remains a separate verification requirement. iOS FCM and detailed
+platform badge/count/sound handling have their own implementation slices.
+
+Run the installed Android checks with
+`pnpm nx run trinity-e2e-android:e2e -- android/push-delivery.spec.mts`.
+The lifecycle target builds and installs Trinity's test APK, checks the shared payload
+fixtures and notification-permission denial, then exercises cold and warm taps between
+two real Accounts. It supplies an opaque route to an existing test Account without
+requiring Firebase credentials. The warm phase retains the same app process and WebView.
 
 ### Registration lifetime
 

@@ -467,6 +467,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
   // — platform-native, excluded —
   {
     disposition: 'excluded',
+    key: 'trinity.push.delivery',
+    owner: 'platform-native',
+    reason:
+      'Native notification presentation ownership for this installation. Exporting or ' +
+      'resetting its hashed event ledger can duplicate alerts already displayed by Android.',
+  },
+  {
+    disposition: 'excluded',
     key: 'trinity.composer.drafts',
     owner: 'platform-native',
     reason:

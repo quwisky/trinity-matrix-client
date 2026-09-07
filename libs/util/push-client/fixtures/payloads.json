@@ -1,0 +1,440 @@
+[
+  {
+    "name": "generic event",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": {
+      "schema": "1",
+      "kind": "event",
+      "accountRoute": "route_a",
+      "eventId": "$event:hs",
+      "roomId": "!room:hs",
+      "unread": 2,
+      "missedCalls": 0,
+      "sound": true
+    }
+  },
+  {
+    "name": "silent highlighted event",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "false",
+      "highlight": "true"
+    },
+    "expected": {
+      "schema": "1",
+      "kind": "event",
+      "accountRoute": "route_a",
+      "eventId": "$event:hs",
+      "roomId": "!room:hs",
+      "unread": 2,
+      "missedCalls": 0,
+      "sound": false,
+      "highlight": true
+    }
+  },
+  {
+    "name": "count-only update",
+    "data": {
+      "schema": "1",
+      "kind": "counts",
+      "trinity_account_id": "route_b",
+      "unread": "0",
+      "missed_calls": "1",
+      "sound": "false"
+    },
+    "expected": {
+      "schema": "1",
+      "kind": "counts",
+      "accountRoute": "route_b",
+      "unread": 0,
+      "missedCalls": 1,
+      "sound": false
+    }
+  },
+  {
+    "name": "maximum safe count",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "9007199254740991",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": {
+      "schema": "1",
+      "kind": "event",
+      "accountRoute": "route_a",
+      "eventId": "$event:hs",
+      "roomId": "!room:hs",
+      "unread": 9007199254740991,
+      "missedCalls": 0,
+      "sound": true
+    }
+  },
+  {
+    "name": "maximum route length",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": {
+      "schema": "1",
+      "kind": "event",
+      "accountRoute": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "eventId": "$event:hs",
+      "roomId": "!room:hs",
+      "unread": 2,
+      "missedCalls": 0,
+      "sound": true
+    }
+  },
+  {
+    "name": "unsupported schema",
+    "data": {
+      "schema": "2",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "numeric schema",
+    "data": {
+      "schema": 1,
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "unknown kind",
+    "data": {
+      "schema": "1",
+      "kind": "message",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "empty route",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "overlong route",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "non-base64url route",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "numeric count",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": 2,
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "negative count",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "-1",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "leading-zero count",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "02",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "fractional count",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2.5",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "unsafe count",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "9007199254740992",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "native boolean sound",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": true
+    },
+    "expected": null
+  },
+  {
+    "name": "invalid highlight",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true",
+      "highlight": "yes"
+    },
+    "expected": null
+  },
+  {
+    "name": "empty event",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "missing room",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": null,
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent schema",
+    "data": {
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent kind",
+    "data": {
+      "schema": "1",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent trinity_account_id",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent event_id",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent room_id",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "unread": "2",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent unread",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "missed_calls": "0",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent missed_calls",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "sound": "true"
+    },
+    "expected": null
+  },
+  {
+    "name": "absent sound",
+    "data": {
+      "schema": "1",
+      "kind": "event",
+      "trinity_account_id": "route_a",
+      "event_id": "$event:hs",
+      "room_id": "!room:hs",
+      "unread": "2",
+      "missed_calls": "0"
+    },
+    "expected": null
+  },
+  {
+    "name": "null payload",
+    "data": null,
+    "expected": null
+  },
+  {
+    "name": "array payload",
+    "data": [],
+    "expected": null
+  }
+]
