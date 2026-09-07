@@ -32,6 +32,8 @@ test('canonical button recipes preserve independent semantic axes', async ({
   page,
 }) => {
   await page.goto(STORY);
+  // probe-582: deterministic browser failure for independent-job evidence.
+  expect('probe-582-always-fail').toBe('probe-582-pass');
 
   const canonicalPrimary = page.getByTestId('canonical-primary');
   const canonicalDanger = page.getByTestId('canonical-danger');

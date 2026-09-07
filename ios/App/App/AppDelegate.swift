@@ -4,6 +4,9 @@ import Capacitor
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
+    // probe-582: intentional Swift syntax error for native compiler failure evidence.
+    let probe582SyntaxError = {
+
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {

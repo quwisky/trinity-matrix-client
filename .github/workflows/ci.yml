@@ -314,6 +314,27 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-ios:build-prebuilt
+      # probe-582: inspect the compiler result before validation.
+      - name: Probe 582 inspect iOS xcresult
+        timeout-minutes: 1
+        if: ${{ always() && !cancelled() && steps.ios.outputs.started == 'true' }}
+        shell: bash
+        env:
+          CI_IOS_DIAGNOSTICS_ROOT: ${{ steps.ios.outputs.diagnostic-root }}
+        run: |
+          result="$CI_IOS_DIAGNOSTICS_ROOT/build.xcresult"
+          command='xcrun xcresulttool get build-results --path "$CI_IOS_DIAGNOSTICS_ROOT/build.xcresult"'
+          xcrun xcresulttool help get build-results
+          if test -d "$result"; then
+            set +e
+            xcrun xcresulttool get build-results --path "$result" | tee -a "$GITHUB_STEP_SUMMARY"
+            status=${PIPESTATUS[0]}
+            set -e
+            echo "probe-582: command=$command exit=$status" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'probe-582: build.xcresult is absent after compiler failure' | tee -a "$GITHUB_STEP_SUMMARY"
+            echo 'probe-582: command='"$command"' exit=missing' | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Validate iOS diagnostics
         timeout-minutes: 1
         if: ${{ !cancelled() && steps.ios.outputs.started == 'true' }}

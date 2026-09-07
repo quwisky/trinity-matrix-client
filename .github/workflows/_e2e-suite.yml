@@ -104,6 +104,15 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-e2e-suite.mjs run
+      # probe-582: remove the suite report root while retaining process logs.
+      - name: Probe 582 remove styling reports
+        if: ${{ inputs.suite-id == 'components.styling' && !cancelled() }}
+        shell: bash
+        run: |
+          report_root="$(find dist/.playwright/trinity-e2e-components -type d -name components.styling -print -quit)"
+          test -n "$report_root"
+          test -d "$report_root"
+          rm -rf "$report_root"
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.suite.outputs.started == 'true' }}
         with:

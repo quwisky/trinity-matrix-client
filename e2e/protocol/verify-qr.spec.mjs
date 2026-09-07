@@ -169,7 +169,9 @@ async function main(protocolBrowser) {
 test('verifies two devices through QR reciprocation', async ({
   protocolBrowser,
   protocolCredentials,
-}) => {
+}, testInfo) => {
+  // probe-582: fail only the first managed retry; --fail-on-flaky-tests must keep the job red.
+  if (testInfo.retry === 0) expect('probe-582-retry').toBe('probe-582-pass');
   HS = protocolCredentials.hs;
   USER = protocolCredentials.user;
   PASS = protocolCredentials.pass;
