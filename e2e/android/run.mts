@@ -682,7 +682,8 @@ async function main(): Promise<void> {
   await run(join(workspaceRoot, 'android/gradlew'), [
     '-p',
     'android',
-    'assembleSecondaryDebug',
+    ':app:assembleSecondaryDebug',
+    ':app:assembleDebugAndroidTest',
   ]);
   await configureReverse();
   await adbRun(
@@ -700,6 +701,15 @@ async function main(): Promise<void> {
       'android/app/build/outputs/apk/secondaryDebug/app-secondaryDebug.apk',
     ),
   );
+  await adbRun(
+    'install',
+    '-r',
+    '-t',
+    join(
+      workspaceRoot,
+      'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk',
+    ),
+  );
   process.env['TRINITY_ANDROID_SERIAL'] = serial;
   const outputDirectory = artifactsDir();
   mkdirSync(outputDirectory, { recursive: true });
@@ -709,6 +719,43 @@ async function main(): Promise<void> {
   );
   rmSync(infrastructureFailureMarker, { force: true });
   process.env['TRINITY_ANDROID_FATAL_MARKER'] = infrastructureFailureMarker;
+  const runNativeContract = async (testClass: string, logName: string, extraArgs: string[] = []): Promise<void> => {
+    const nativeContractLog = join(outputDirectory, logName);
+    const nativeContract = await exec(adb, [
+      '-s', serial, 'shell', 'am', 'instrument', '-w', '-r',
+      '-e', 'class', testClass,
+      ...extraArgs,
+      'eu.qwky.trinity.test/androidx.test.runner.AndroidJUnitRunner',
+    ], {
+      cwd: workspaceRoot,
+      signal: commandSignal(),
+      timeout: 180_000,
+      maxBuffer: 20 * 1024 * 1024,
+    }).catch((error: unknown) => {
+      writeFileSync(nativeContractLog, String(error));
+      throw error;
+    });
+    const nativeContractOutput = `${nativeContract.stdout}\n${nativeContract.stderr}`;
+    writeFileSync(nativeContractLog, nativeContractOutput);
+    // adb may exit successfully even when the Android test runner fails.
+    if (!/^OK \([1-9]\d* tests?\)/m.test(nativeContractOutput)
+        || /FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed/.test(nativeContractOutput)) {
+      throw new Error(`Android push contract tests failed; diagnostics=${nativeContractLog}`);
+    }
+  };
+  const contractClass = 'eu.qwky.trinity.TrinityPushDeliveryInstrumentedTest';
+  await runNativeContract(contractClass, 'push-native-contract.log');
+  // Revoke before starting instrumentation: revoking a live process's permission
+  // terminates it and cannot establish the denied-state assertion inside that process.
+  await adbRun('shell', 'pm', 'revoke', packageName, 'android.permission.POST_NOTIFICATIONS');
+  try {
+    await runNativeContract(
+      `${contractClass}#globallyBlockedNotificationsDoNotConsumePresentationClaims`,
+      'push-native-permission.log', ['-e', 'permissionDenied', 'true'],
+    );
+  } finally {
+    await adbRun('shell', 'pm', 'grant', packageName, 'android.permission.POST_NOTIFICATIONS');
+  }
   playwrightAttachAttempted = true;
   await run(
     'pnpm',

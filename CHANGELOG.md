@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Android handles Trinity gateway event notifications without a running WebView,
+  keeps native and foreground alerts deduplicated across restarts, and opens the
+  owning Account and Conversation from a generic notification.
+
 - Recover mobile push registrations after upgrades, token rotation and interrupted
   writes with per-Account durable cleanup. Notification Settings offers Retry, and
   disabling push stays effective while failed removals await recovery.

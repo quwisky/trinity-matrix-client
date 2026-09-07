@@ -1,5 +1,6 @@
 import { execSync } from 'node:child_process';
 import {
+  globSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -69,6 +70,19 @@ function scanKeys(root, exempt) {
     }
     keys.push(line.slice(separator + 2, -1));
   }
+  // Native preferences share the same export/reset policy. Restrict Java matches
+  // to named key declarations so Intent actions and notification tags are not
+  // mistaken for stored preferences; test APK sources are outside this glob.
+  for (const path of globSync('android/app/src/main/**/*.java', {
+    cwd: root,
+  })) {
+    const source = readFileSync(join(root, path), 'utf8');
+    for (const match of source.matchAll(
+      /\bString\s+\w*KEY\s*=\s*"(trinity\.[^"]+)"/gu,
+    )) {
+      keys.push(match[1]);
+    }
+  }
   return [...new Set(keys)].sort();
 }
 
@@ -131,6 +145,17 @@ function scanFixture(files) {
 }
 
 describe('the scanner', () => {
+  it('classifies native preference keys without including Intent actions or test fixtures', () => {
+    expect(
+      scanFixture({
+        'libs/empty.ts': '',
+        'android/app/src/main/java/app/Push.java':
+          'static final String DELIVERY_KEY = "trinity.native.delivery"; static final String ACTION = "trinity.open";',
+        'android/app/src/androidTest/java/app/PushTest.java':
+          'static final String FIXTURE_KEY = "trinity.fixture";',
+      }),
+    ).toEqual(['trinity.native.delivery']);
+  });
   it('sees a config-schema.ts that is not the ledger', () => {
     // The exemption is for the one classification table, not for the name. A lib adding its
     // own `config-schema.ts` must still be scanned, or a key nobody classified hides in the
@@ -203,7 +228,7 @@ describe('config schema drift', () => {
 
     expect(
       stale,
-      `These keys are classified in ${LEDGER_FILE} but no longer exist in libs/ or apps/. ` +
+      `These keys are classified in ${LEDGER_FILE} but no longer exist in shipped TypeScript or Android source. ` +
         `Drop the record — and its config entry, if it had one.`,
     ).toEqual([]);
   });

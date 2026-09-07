@@ -21,6 +21,7 @@ export * from './lib/date-time-format.service';
 export * from './lib/device-preference-storage.service';
 export * from './lib/mobile-badge.service';
 export * from './lib/native-push-registration.service';
+export * from './lib/native-push-delivery.service';
 export * from './lib/haptics.service';
 export * from './lib/trinity-desktop-bridge';
 export * from './lib/qr-code.service';

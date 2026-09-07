@@ -12,6 +12,10 @@ const h = vi.hoisted(() => {
     androidRegistration: {
       register: vi.fn(async () => undefined),
     },
+    androidDelivery: {
+      claimPresentation: vi.fn(async () => ({ claimed: true })),
+      setForegroundOwner: vi.fn(async () => undefined),
+    },
     rejectRemoval: false,
     listeners,
     handles,
@@ -41,7 +45,8 @@ vi.mock('@capacitor/core', () => ({
     getPlatform: () => h.platform,
     isPluginAvailable: () => h.available,
   },
-  registerPlugin: () => h.androidRegistration,
+  registerPlugin: (name: string) =>
+    name === 'TrinityPushDelivery' ? h.androidDelivery : h.androidRegistration,
 }));
 vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: h.push }));
 
@@ -53,6 +58,10 @@ describe('NativePushRegistrationService', () => {
     h.rejectRemoval = false;
     h.androidRegistration.register.mockReset();
     h.androidRegistration.register.mockResolvedValue(undefined);
+    h.androidDelivery.claimPresentation.mockReset();
+    h.androidDelivery.claimPresentation.mockResolvedValue({ claimed: true });
+    h.androidDelivery.setForegroundOwner.mockReset();
+    h.androidDelivery.setForegroundOwner.mockResolvedValue(undefined);
     for (const key of Object.keys(h.listeners)) delete h.listeners[key];
     h.handles.length = 0;
     vi.clearAllMocks();

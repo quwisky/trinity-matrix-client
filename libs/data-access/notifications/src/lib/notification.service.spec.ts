@@ -8,7 +8,16 @@ import {
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { NEVER, Subject, Subscription, defer, lastValueFrom, of } from 'rxjs';
+import {
+  NEVER,
+  Observable,
+  Subject,
+  Subscription,
+  defer,
+  lastValueFrom,
+  of,
+  throwError,
+} from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotificationService } from './notification.service';
 import { NotificationPresenterService } from './notification-presenter.service';
@@ -22,6 +31,7 @@ import { provideHostCapabilities } from '@trinity/platform-native';
 import {
   SessionStorageService,
   NativePushRegistrationService,
+  NativePushDeliveryService,
 } from '@trinity/platform-native';
 import { PushGatewayService } from './push-gateway.service';
 import {
@@ -82,6 +92,10 @@ function setup(
     /** Stored "play a sound" preference; omitted means "not set" (defaults to on). */
     soundEnabled?: boolean;
     androidGateway?: boolean;
+    nativeDelivery?: Pick<
+      NativePushDeliveryService,
+      'foreground' | 'claimPresentation'
+    >;
     /** Pre-built per-account clients, for cases where two accounts must differ. */
     clients?: Map<string, ReturnType<typeof fakeClient>>;
     hostNotifications?: Pick<
@@ -115,6 +129,13 @@ function setup(
         platform: opts.androidGateway ? 'android' : cap.native ? 'ios' : null,
         supported: () => false,
       }),
+      {
+        provide: NativePushDeliveryService,
+        useValue: opts.nativeDelivery ?? {
+          foreground: vi.fn(() => of(undefined)),
+          claimPresentation: vi.fn(() => of(true)),
+        },
+      },
       MockProvider(PushGatewayService, {
         configured: signal(opts.androidGateway ?? false),
       }),
@@ -354,9 +375,11 @@ describe('NotificationService', () => {
   it.each(['push', 'sync'] as const)(
     'keeps %s-first Android delivery generic, silent and deduplicated',
     async (first) => {
+      const claimPresentation = vi.fn(() => of(true));
       const { svc, client } = setup({
         androidGateway: true,
         soundEnabled: false,
+        nativeDelivery: { foreground: () => of(undefined), claimPresentation },
       });
       svc.connect();
       const push = () => lastValueFrom(svc.receivePush(gatewayEvent()));
@@ -376,6 +399,7 @@ describe('NotificationService', () => {
         await push();
       }
       await push();
+      expect(claimPresentation).toHaveBeenCalledWith('route-me', '$push', true);
       expect(MockNotification.instances).toHaveLength(1);
       expect(MockNotification.instances[0].title).toBe('Trinity');
       expect(MockNotification.instances[0].options).toMatchObject({
@@ -385,6 +409,115 @@ describe('NotificationService', () => {
       });
     },
   );
+
+  it('does not repeat a native alert when foreground push or sync sees it after restart', async () => {
+    const claimPresentation = vi.fn(() => of(false));
+    const { svc, client } = setup({
+      androidGateway: true,
+      nativeDelivery: { foreground: () => of(undefined), claimPresentation },
+    });
+    svc.connect();
+    await lastValueFrom(svc.receivePush(gatewayEvent()));
+    svc.disconnect();
+    svc.connect();
+    timelineHandler(client)(event({ id: '$push' }), room, false, false, live);
+    expect(claimPresentation).toHaveBeenCalledTimes(2);
+    expect(claimPresentation).toHaveBeenCalledWith('route-me', '$push', false);
+    expect(MockNotification.instances).toHaveLength(0);
+  });
+
+  it('does not present after its Account is removed while native ownership is pending', () => {
+    const claim = new Subject<boolean>();
+    const { svc, client, accountIds } = setup({
+      androidGateway: true,
+      nativeDelivery: {
+        foreground: () => of(undefined),
+        claimPresentation: () => claim,
+      },
+    });
+    svc.connect();
+    timelineHandler(client)(event(), room, false, false, live);
+    accountIds.set([]);
+    claim.next(true);
+    claim.complete();
+    expect(MockNotification.instances).toHaveLength(0);
+  });
+
+  it('reports a native ownership failure without presenting or exposing its error', async () => {
+    const { svc, incidents } = setup({
+      androidGateway: true,
+      nativeDelivery: {
+        foreground: () => of(undefined),
+        claimPresentation: () =>
+          throwError(() => new Error('private-ledger-detail')),
+      },
+    });
+    svc.connect();
+    await lastValueFrom(svc.receivePush(gatewayEvent()));
+    expect(MockNotification.instances).toHaveLength(0);
+    expect(incidents).toEqual(['notification-presentation-failed']);
+  });
+
+  it('keeps normal sync alerts available before an Account has a push route', () => {
+    const claimPresentation = vi.fn(() => of(false));
+    const { svc, client } = setup({
+      androidGateway: true,
+      nativeDelivery: { foreground: () => of(undefined), claimPresentation },
+    });
+    vi.spyOn(
+      TestBed.inject(SessionStorageService),
+      'getPushAccountRoutes',
+    ).mockReturnValue(of([]));
+    svc.connect();
+    timelineHandler(client)(event(), room, false, false, live);
+    expect(MockNotification.instances).toHaveLength(1);
+    expect(claimPresentation).not.toHaveBeenCalled();
+  });
+
+  it('acquires foreground handoff only after presentation readiness and releases it with the session', () => {
+    const permission = new Subject<HostOperationOutcome>();
+    const release = vi.fn();
+    const foreground = vi.fn(
+      () =>
+        new Observable<void>((subscriber) => {
+          subscriber.next();
+          return release;
+        }),
+    );
+    const { svc } = setup({
+      nativeDelivery: { foreground, claimPresentation: () => of(true) },
+    });
+    vi.spyOn(
+      TestBed.inject(NotificationPresenterService),
+      'requestPermission',
+    ).mockReturnValue(permission);
+    svc.connect();
+    expect(foreground).not.toHaveBeenCalled();
+    permission.next({ kind: 'completed' });
+    expect(foreground).toHaveBeenCalledWith('presentation');
+    svc.disconnect();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('reports stalled native handoff preparation and releases its ownership', async () => {
+    vi.useFakeTimers();
+    try {
+      const release = vi.fn();
+      const { svc, health } = setup({
+        nativeDelivery: {
+          foreground: () => new Observable<void>(() => release),
+          claimPresentation: () => of(true),
+        },
+      });
+      svc.connect();
+      await vi.advanceTimersByTimeAsync(10_001);
+      expect(health).toContain('notification-activation-ownership-released');
+      expect(release).toHaveBeenCalledOnce();
+      svc.disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('keeps the same Room and event separate for two Accounts', async () => {
     const { svc, clients } = setup({

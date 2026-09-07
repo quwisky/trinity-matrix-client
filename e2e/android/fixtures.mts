@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -378,6 +378,43 @@ async function launchPackage(
   );
 }
 
+/** Attach to a WebView created by a native PendingIntent without launching an Activity. */
+async function attachExistingPackage(
+  device: AndroidDevice,
+  pkg: string,
+  excludedWebViews: ReadonlySet<AndroidWebView> = new Set(),
+): Promise<Page> {
+  const staleWebViews = new Set(excludedWebViews);
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const livePids = new Set(
+      (await shell(device, `pidof ${pkg}`))
+        .split(/\s+/)
+        .map(Number)
+        .filter(Number.isFinite),
+    );
+    for (const webView of device.webViews()) {
+      if (
+        webView.pkg() !== pkg ||
+        !livePids.has(webView.pid()) ||
+        attachedWebViews.has(webView) ||
+        staleWebViews.has(webView)
+      ) continue;
+      try {
+        const page = await webView.page();
+        attachedWebViews.add(webView);
+        await enableSelfSignedTls(page);
+        await page.waitForLoadState('domcontentloaded');
+        return page;
+      } catch {
+        staleWebViews.add(webView);
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`No new ${pkg} WebView appeared after native PendingIntent activation`);
+}
+
 interface AndroidApp {
   device: AndroidDevice;
   readonly page: Page;
@@ -387,6 +424,12 @@ interface AndroidApp {
   pressBack(): Promise<void>;
   touch(control: Locator): Promise<void>;
   relaunch(): Promise<Page>;
+  /** Run the test APK's native delivery bridge; the test itself sends the PendingIntent. */
+  deliverPush(route: string, eventId: string, roomId: string, event2?: string, targetUserId?: string): Promise<void>;
+  /** Attach the WebView created by the PendingIntent, preserving its original Intent. */
+  attachAfterNotification(): Promise<Page>;
+  /** Release the retained instrumentation process after all product assertions. */
+  finishPushDelivery(): Promise<void>;
 }
 
 interface AndroidFixtures {
@@ -624,6 +667,10 @@ async function attachFailureArtifacts(
   tracePaths: readonly string[],
   crashLog: string,
   initialErrors: readonly string[] = [],
+  extraArtifacts: readonly {
+    name: string;
+    body: string;
+  }[] = [],
 ): Promise<void> {
   const collectionErrors = [...initialErrors];
   const bounded = async <T,>(
@@ -693,6 +740,12 @@ async function attachFailureArtifacts(
       testInfo.attach(`trace-${index + 1}.zip`, {
         path,
         contentType: 'application/zip',
+      }),
+    ),
+    ...extraArtifacts.map(({ name, body }) =>
+      testInfo.attach(name, {
+        body: Buffer.from(body),
+        contentType: 'text/plain',
       }),
     ),
   ];
@@ -783,6 +836,14 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       timeout: 60_000,
     });
     let activeContext = page.context();
+    let notificationBaseline: Set<AndroidWebView> | undefined;
+    let notificationProcess: ChildProcess | undefined;
+    let notificationCompletion: Promise<void> | undefined;
+    let notificationDeliveryCount = 0;
+    let notificationAppPid: number | undefined;
+    let notificationStdout = '';
+    let notificationStderr = '';
+    let notificationCompletionError: unknown;
     let traceIndex = 0;
     const tracePaths: string[] = [];
     await activeContext.tracing.start({
@@ -796,6 +857,71 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       traceIndex += 1;
       await activeContext.tracing.stop({ path });
       tracePaths.push(path);
+    };
+
+    const pushMarker = (
+      phase: 'cold-ready' | 'warm-ready' | 'advance' | 'finish',
+    ): string => `push-e2e-${phase}`;
+    const pushSdkRoot = (): string => {
+      const sdkRoot =
+        process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
+      if (!sdkRoot) {
+        throw new Error(
+          'ANDROID_HOME or ANDROID_SDK_ROOT is required for push instrumentation',
+        );
+      }
+      return sdkRoot;
+    };
+    const touchPushMarker = async (
+      phase: 'advance' | 'finish',
+    ): Promise<void> => {
+      await shell(
+        androidDevice,
+        `run-as ${packageName} touch files/${pushMarker(phase)}`,
+      );
+    };
+    const waitForPushMarker = async (
+      phase: 'cold-ready' | 'warm-ready',
+    ): Promise<void> => {
+      const deadline = Date.now() + 60_000;
+      while (Date.now() < deadline) {
+        if (notificationCompletionError) throw notificationCompletionError;
+        try {
+          await exec(
+            join(pushSdkRoot(), 'platform-tools/adb'),
+            [
+              '-s',
+              androidDevice.serial(),
+              'shell',
+              'run-as',
+              packageName,
+              'test',
+              '-f',
+              `files/${pushMarker(phase)}`,
+            ],
+            { timeout: 5_000 },
+          );
+          return;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      throw new Error(
+        `Native push instrumentation did not reach ${phase} phase`,
+      );
+    };
+    const completePushWithin = async (completion: Promise<void>, milliseconds: number): Promise<void> => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          completion,
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => reject(new Error('Push instrumentation completion timed out')), milliseconds);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
     };
 
     const navigate: Navigate = navigateApplication;
@@ -882,9 +1008,183 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         });
         return page;
       },
+      async deliverPush(
+        route: string,
+        eventId: string,
+        roomId: string,
+        event2 = '$event:android-warm',
+        targetUserId = '',
+      ): Promise<void> {
+        const sdkRoot = pushSdkRoot();
+
+        if (notificationDeliveryCount === 0) {
+          await stopTrace();
+          notificationBaseline = new Set(androidDevice.webViews());
+          const markers = ['cold-ready', 'warm-ready', 'advance', 'finish'] as const;
+          await shell(
+            androidDevice,
+            `run-as ${packageName} rm -f ${markers.map((phase) => `files/${pushMarker(phase)}`).join(' ')}`,
+          );
+          const child = spawn(
+            join(sdkRoot, 'platform-tools/adb'),
+            [
+              '-s',
+              androidDevice.serial(),
+              'shell',
+              'am',
+              'instrument',
+              '-w',
+              '-e',
+              'class',
+              'eu.qwky.trinity.TrinityPushDeliveryInstrumentedTest#deliverConfiguredEventAndOpenPendingIntent',
+              '-e',
+              'route',
+              shellQuote(route),
+              '-e',
+              'targetUserId',
+              shellQuote(targetUserId),
+              '-e',
+              'event',
+              shellQuote(eventId),
+              '-e',
+              'eventBase64',
+              Buffer.from(eventId).toString('base64'),
+              '-e',
+              'event2',
+              shellQuote(event2),
+              '-e',
+              'event2Base64',
+              Buffer.from(event2).toString('base64'),
+              '-e',
+              'room',
+              shellQuote(roomId),
+              'eu.qwky.trinity.test/androidx.test.runner.AndroidJUnitRunner',
+            ],
+            { stdio: ['ignore', 'pipe', 'pipe'] },
+          );
+          notificationProcess = child;
+          notificationStdout = '';
+          notificationStderr = '';
+          notificationCompletionError = undefined;
+          const append = (target: 'stdout' | 'stderr', chunk: Buffer): void => {
+            const limit = 64 * 1024;
+            const value = chunk.toString('utf8');
+            if (target === 'stdout') {
+              notificationStdout = `${notificationStdout}${value}`.slice(-limit);
+            } else {
+              notificationStderr = `${notificationStderr}${value}`.slice(-limit);
+            }
+          };
+          child.stdout?.on('data', (chunk: Buffer) => append('stdout', chunk));
+          child.stderr?.on('data', (chunk: Buffer) => append('stderr', chunk));
+          notificationCompletion = new Promise<void>((resolve, reject) => {
+            child.once('error', (error) => reject(error));
+            child.once('close', (code, signal) => {
+              const output = `${notificationStdout}\n${notificationStderr}`;
+              if (code === 0 && /^OK \([1-9]\d* tests?\)/m.test(output)
+                  && !/FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed/.test(output)) {
+                resolve();
+                return;
+              }
+              reject(
+                new Error(
+                  `Push instrumentation failed (exit=${String(code)}, signal=${String(signal)})`,
+                ),
+              );
+            });
+          });
+          // The completion promise is observed by finishPushDelivery and teardown;
+          // this observer prevents a failed process from becoming an unhandled rejection.
+          void notificationCompletion.catch((error) => {
+            notificationCompletionError = error;
+          });
+          notificationDeliveryCount = 1;
+          await waitForPushMarker('cold-ready');
+          return;
+        }
+        if (!notificationProcess || !notificationCompletion) {
+          throw new Error('Native push instrumentation is not active');
+        }
+        if (notificationDeliveryCount !== 1) {
+          throw new Error('Native push instrumentation already completed warm delivery');
+        }
+        await touchPushMarker('advance');
+        await waitForPushMarker('warm-ready');
+        notificationDeliveryCount = 2;
+      },
+      async attachAfterNotification(): Promise<Page> {
+        if (notificationDeliveryCount === 1) {
+          page = await attachExistingPackage(
+            androidDevice,
+            packageName,
+            notificationBaseline ?? new Set(),
+          );
+          configureApplicationNavigation(
+            page,
+            'Android WebView after cold push PendingIntent',
+          );
+          activeContext = page.context();
+          await activeContext.tracing.start({
+            screenshots: true,
+            snapshots: true,
+            sources: true,
+          });
+          const pids = (await shell(androidDevice, `pidof ${packageName}`))
+            .split(/\s+/)
+            .map(Number)
+            .filter(Number.isFinite);
+          notificationAppPid = pids[0];
+          return page;
+        }
+        if (notificationDeliveryCount !== 2 || !notificationAppPid || page.isClosed()) {
+          throw new Error('Native warm push did not retain the active app WebView');
+        }
+        const pids = (await shell(androidDevice, `pidof ${packageName}`))
+          .split(/\s+/)
+          .map(Number)
+          .filter(Number.isFinite);
+        if (!pids.includes(notificationAppPid)) {
+          throw new Error('Native warm push replaced the app process');
+        }
+        return page;
+      },
+      async finishPushDelivery(): Promise<void> {
+        const child = notificationProcess;
+        const completion = notificationCompletion;
+        if (!child || !completion) return;
+        try {
+          if (notificationDeliveryCount === 1) {
+            await touchPushMarker('advance');
+            await waitForPushMarker('warm-ready');
+          }
+          await touchPushMarker('finish');
+          await completePushWithin(completion, 20_000);
+        } finally {
+          if (child.exitCode === null && child.signalCode === null) {
+            child.kill('SIGTERM');
+            await completePushWithin(completion.catch(() => undefined), 3_000).catch(async () => {
+              child.kill('SIGKILL');
+              await completePushWithin(completion.catch(() => undefined), 3_000).catch(() => undefined);
+            });
+          }
+          notificationProcess = undefined;
+          notificationCompletion = undefined;
+          notificationDeliveryCount = 0;
+          notificationBaseline = undefined;
+          notificationAppPid = undefined;
+          notificationCompletionError = undefined;
+        }
+      },
     };
 
     await use(app);
+
+    let notificationError: unknown;
+    try {
+      await app.finishPushDelivery();
+    } catch (error) {
+      notificationError = error;
+    }
 
     let crashLog = '';
     let crashReadError: unknown;
@@ -899,7 +1199,8 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       const failed =
         testInfo.status !== testInfo.expectedStatus ||
         appCrashProcesses.length > 0 ||
-        Boolean(crashReadError);
+        Boolean(crashReadError) ||
+        Boolean(notificationError);
       if (failed) {
         await attachFailureArtifacts(
           androidDevice,
@@ -908,6 +1209,15 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           tracePaths,
           crashLog,
           crashReadError ? [`Crash buffer: ${String(crashReadError)}`] : [],
+          [
+            {
+              name: 'push-instrumentation.txt',
+              body:
+                `Completion error: ${String(notificationError ?? '<none>')}\n` +
+                `--- stdout ---\n${notificationStdout}\n` +
+                `--- stderr ---\n${notificationStderr}\n`,
+            },
+          ],
         );
       } else {
         for (const tracePath of tracePaths) rmSync(tracePath, { force: true });
@@ -1188,7 +1498,7 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         `Expected ${packageName}'s WebView at ${appOrigin}; attached page is ${page.url()}`,
       );
     }
-    const stopAdapters = await configurePage(app.device, page, {
+    const options: AndroidUseOptions = {
       colorScheme,
       deviceScaleFactor,
       geolocation,
@@ -1201,11 +1511,23 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
       permissions: permissions ?? ['notifications'],
       userAgent,
       viewport,
-    });
+    };
+    const stopAdapters = [await configurePage(app.device, page, options)];
+    const attachAfterNotification = app.attachAfterNotification.bind(app);
+    let configuredPage = page;
+    app.attachAfterNotification = async () => {
+      const next = await attachAfterNotification();
+      if (next !== configuredPage) {
+        stopAdapters.push(await configurePage(app.device, next, options));
+        configuredPage = next;
+      }
+      return next;
+    };
     try {
       await use(page);
     } finally {
-      await stopAdapters();
+      app.attachAfterNotification = attachAfterNotification;
+      for (const stop of stopAdapters.reverse()) await stop();
     }
   },
 });

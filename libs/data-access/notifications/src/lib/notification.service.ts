@@ -17,6 +17,7 @@ import {
 } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
+  NativePushDeliveryService,
   NativePushRegistrationService,
   SessionStorageService,
 } from '@trinity/platform-native';
@@ -39,7 +40,11 @@ import {
   timeout,
 } from 'rxjs';
 import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
-import type { NotificationRuntimeEvent } from './notification-intent';
+import type {
+  NotificationIntent,
+  NotificationRuntimeEvent,
+} from './notification-intent';
+import type { HostOperationOutcome } from '@trinity/runtime/host';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
 import { NOTIFICATION_VISIBILITY } from './notification-visibility.port';
@@ -108,6 +113,7 @@ export class NotificationService {
   private readonly sessions = inject(SessionStorageService);
   private readonly gateway = inject(PushGatewayService);
   private readonly nativePush = inject(NativePushRegistrationService);
+  private readonly nativeDelivery = inject(NativePushDeliveryService);
   private readonly sound = inject(NotificationSoundService);
   private readonly visibility = inject(NOTIFICATION_VISIBILITY);
   private readonly policy = inject(NotificationPolicy);
@@ -242,22 +248,20 @@ export class NotificationService {
               if (decision.kind !== 'present') return of(undefined);
               this.notified.add(key);
               this.evictOldest(this.notified, NotificationService.NOTIFIED_CAP);
-              return this.presenter
-                .present({
-                  ...decision.intent,
-                  title: 'Trinity',
-                  body: 'New message',
-                })
-                .pipe(
-                  take(1),
-                  map((outcome) => {
-                    if (outcome.kind !== 'completed')
-                      this.health.incident(
-                        'presentation-command',
-                        'notification-presentation-failed',
-                      );
-                  }),
-                );
+              return this.present({
+                ...decision.intent,
+                title: 'Trinity',
+                body: 'New message',
+              }).pipe(
+                take(1),
+                map((outcome) => {
+                  if (outcome.kind !== 'completed')
+                    this.health.incident(
+                      'presentation-command',
+                      'notification-presentation-failed',
+                    );
+                }),
+              );
             }),
             catchError(() => {
               this.health.incident(
@@ -420,14 +424,31 @@ export class NotificationService {
                       );
                       return;
                     }
-                    this.presentationReady = true;
-                    this.health.publish(
-                      'available',
-                      'notification-presentation-ready',
-                      'acknowledged',
-                      true,
+                    this.presentationPreparing = true;
+                    this.presentationConnection.add(
+                      this.nativeDelivery
+                        .foreground('presentation')
+                        .pipe(timeout({ first: 10_000 }))
+                        .subscribe({
+                          next: () => {
+                            if (
+                              connection.closed ||
+                              this.connection !== connection
+                            )
+                              return;
+                            this.presentationPreparing = false;
+                            this.presentationReady = true;
+                            this.health.publish(
+                              'available',
+                              'notification-presentation-ready',
+                              'acknowledged',
+                              true,
+                            );
+                            this.reconcile(this.matrix.accountIds());
+                          },
+                          error: () => this.presentationOwnershipReleased(),
+                        }),
                     );
-                    this.reconcile(this.matrix.accountIds());
                   },
                   error: () => {
                     this.presentationPreparing = false;
@@ -587,8 +608,7 @@ export class NotificationService {
       this.nativePush.platform === 'android' && this.gateway.configured()
         ? { ...decision.intent, title: 'Trinity', body: 'New message' }
         : decision.intent;
-    const subscription = this.presenter
-      .present(intent)
+    const subscription = this.present(intent)
       .pipe(take(1))
       .subscribe({
         next: (outcome) => {
@@ -606,6 +626,58 @@ export class NotificationService {
           ),
       });
     this.connection?.add(subscription);
+  }
+
+  /** Share Android presentation ownership with the native process-absent path. */
+  private present(
+    intent: NotificationIntent,
+  ): Observable<HostOperationOutcome> {
+    const owner = this.connection;
+    const { accountId, eventId } = intent.destination;
+    const client = this.matrix.clientFor(accountId);
+    const isCurrent = () =>
+      !!owner &&
+      !owner.closed &&
+      this.connection === owner &&
+      this.enabled &&
+      this.presentationReady &&
+      !!client &&
+      this.matrix.clientFor(accountId) === client &&
+      this.matrix.accountIds().includes(accountId);
+    const suppressed = (): Observable<HostOperationOutcome> =>
+      of({ kind: 'completed' });
+
+    return defer(() => {
+      if (!isCurrent()) return suppressed();
+      const claim =
+        this.nativePush.platform === 'android' && this.gateway.configured()
+          ? this.sessions.getPushAccountRoutes().pipe(
+              take(1),
+              switchMap((routes) => {
+                const route = routes.find(
+                  (entry) => entry.accountId === accountId,
+                );
+                // Before a device token exists this Account has no gateway route, so
+                // native delivery cannot own its events. Keep normal sync alerts working.
+                return route
+                  ? this.nativeDelivery.claimPresentation(
+                      route.route,
+                      eventId,
+                      intent.silent === true,
+                    )
+                  : of(true);
+              }),
+            )
+          : of(true);
+      return claim.pipe(
+        take(1),
+        switchMap((claimed) =>
+          claimed && isCurrent()
+            ? this.presenter.present(intent)
+            : suppressed(),
+        ),
+      );
+    });
   }
 
   recoverPresentation(

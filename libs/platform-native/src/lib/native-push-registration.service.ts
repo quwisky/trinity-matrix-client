@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   Capacitor,
   registerPlugin,
@@ -6,6 +6,7 @@ import {
 } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Observable, defer, from, map, of } from 'rxjs';
+import { NativePushDeliveryService } from './native-push-delivery.service';
 
 export type NativePushRegistrationEvent =
   | { readonly kind: 'ready' }
@@ -32,6 +33,7 @@ const androidPushRegistration = registerPlugin<AndroidPushRegistrationPlugin>(
 @Injectable({ providedIn: 'root' })
 export class NativePushRegistrationService {
   readonly platform = nativePushPlatform();
+  private readonly delivery = inject(NativePushDeliveryService);
 
   supported(): boolean {
     return (
@@ -154,7 +156,15 @@ export class NativePushRegistrationService {
           subscriber.error(rejected.reason);
           return;
         }
-        subscriber.next({ kind: 'ready' });
+        subscriber.add(
+          this.delivery.foreground('listener').subscribe({
+            next: () => subscriber.next({ kind: 'ready' }),
+            error: (error: unknown) => {
+              cleanup();
+              subscriber.error(error);
+            },
+          }),
+        );
       });
 
       return () => {

@@ -22,8 +22,7 @@ import {
   switchMap,
 } from 'rxjs';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
-
-const SILENT_NOTIFICATION_CHANNEL = 'trinity-notifications-silent';
+import { foregroundNotificationChannel } from '../foreground-notification-channel';
 
 const supported = (): HostCapabilitySupport => ({ kind: 'supported' });
 const notSupported = (): Extract<
@@ -194,11 +193,13 @@ export class CapacitorNotificationPresentationAdapter implements HostNotificatio
   ): Observable<HostOperationOutcome> {
     return defer(() => {
       if (!this.notificationsAvailable()) return of(notSupported());
+      const android = Capacitor.getPlatform() === 'android';
+      const channelId = foregroundNotificationChannel(request.silent === true);
       const prepareSilentChannel =
-        request.silent === true && Capacitor.getPlatform() === 'android'
+        request.silent === true && android
           ? from(
               LocalNotifications.createChannel({
-                id: SILENT_NOTIFICATION_CHANNEL,
+                id: channelId,
                 name: 'Silent notifications',
                 description: 'Message notifications without sound or vibration',
                 importance: 3,
@@ -221,11 +222,8 @@ export class CapacitorNotificationPresentationAdapter implements HostNotificatio
                   autoCancel: true,
                   foreground: true,
                   isExactNotification: false,
-                  ...(request.silent
-                    ? Capacitor.getPlatform() === 'android'
-                      ? { channelId: SILENT_NOTIFICATION_CHANNEL }
-                      : {}
-                    : { sound: 'default' }),
+                  ...(android ? { channelId } : {}),
+                  ...(request.silent ? {} : { sound: 'default' }),
                 },
               ],
             }),

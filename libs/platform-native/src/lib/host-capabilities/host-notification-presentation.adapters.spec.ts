@@ -155,6 +155,7 @@ describe('CapacitorNotificationPresentationAdapter', () => {
           group: request.tag,
           threadIdentifier: request.tag,
           sound: 'default',
+          channelId: 'default',
           foreground: true,
           isExactNotification: false,
         }),
