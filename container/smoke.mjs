@@ -128,6 +128,8 @@ async function assertStaticCaching(baseURL, manifest) {
     'index.html',
     'ngsw.json',
     'ngsw-worker.js',
+    'safety-worker.js',
+    'worker-basic.min.js',
     'manifest.webmanifest',
     'favicon.ico',
   ]);
@@ -144,16 +146,21 @@ async function assertStaticCaching(baseURL, manifest) {
     if (!Buffer.from(await response.arrayBuffer()).equals(expected))
       throw new Error(`${path} response differs from the verified renderer`);
   }
-  const hashed = manifest.files.filter((file) =>
-    /-[A-Z0-9]{8}\.(?:js|css)$/u.test(file.path),
+  const hashed = manifest.files.filter(
+    (file) =>
+      !file.path.includes('/') &&
+      /\.(?:js|css)$/u.test(file.path) &&
+      !fixed.has(file.path),
   );
+  for (const asset of hashed) {
+    if (!/^[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css)$/u.test(asset.path))
+      throw new Error(`unexpected root bundle filename: ${asset.path}`);
+  }
   if (!hashed.some((file) => file.path.endsWith('.js')))
     throw new Error('verified renderer has no hashed JS bundle');
   if (!hashed.some((file) => file.path.endsWith('.css')))
     throw new Error('verified renderer has no hashed CSS bundle');
-  for (const asset of hashed.filter(
-    (file) => file.path.endsWith('.js') || file.path.endsWith('.css'),
-  )) {
+  for (const asset of hashed) {
     const expected = await readFile(join(root, 'www', asset.path));
     const response = await assertResponse(
       `${baseURL}/${asset.path}`,
