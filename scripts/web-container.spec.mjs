@@ -233,7 +233,7 @@ describe('container host configuration', () => {
     expect(config).not.toContain('page-fallback');
     expect(config).toContain('source = "/rooms/**/*.*"');
     expect(config).toContain(
-      'source = "/*-' + '[A-Z0-9]'.repeat(8) + '.{js,css}"',
+      'source = "/*-' + '[A-Za-z0-9_-]'.repeat(8) + '.{js,css}"',
     );
   });
 });
