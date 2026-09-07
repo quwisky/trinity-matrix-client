@@ -29,9 +29,13 @@
     &::before {
       content: '';
       position: absolute;
-      inset-inline-start: -24px;
+
+      // Center the 2px stroke beneath the 40px avatar, across both density gaps.
+      inset-inline-start: calc(
+        -21px - var(--trinity-density-message-column-gap)
+      );
       top: calc(-1 * var(--trinity-density-message-column-gap));
-      width: 20px;
+      width: calc(17px + var(--trinity-density-message-column-gap));
       height: calc(var(--trinity-density-message-column-gap) + 18px);
       border-inline-start: 2px solid var(--trinity-border-subtle);
       border-bottom: 2px solid var(--trinity-border-subtle);

@@ -18,7 +18,8 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- Timeline threads now show a connected preview with the latest reply author and text,
+- Timeline threads now show a preview connected beneath the avatar center at both densities,
+  with the latest reply author and text,
   relative activity time, reply count and unread status. The whole preview opens the
   thread, with touch-sized targets and single-line text on narrow mobile screens.
 

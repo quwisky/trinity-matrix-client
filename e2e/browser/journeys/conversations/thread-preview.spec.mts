@@ -210,6 +210,9 @@ async function assertPreview(
     if (!preview || !previewText || !previewAuthor) {
       throw new Error('thread preview content is missing');
     }
+    const avatar = element.closest('.msg')?.querySelector('.msg__avatar');
+    if (!avatar) throw new Error('thread root avatar is missing');
+    const avatarBox = avatar.getBoundingClientRect();
     const connector = getComputedStyle(element, '::before');
     const previewBox = preview.getBoundingClientRect();
     const textBox = previewText.getBoundingClientRect();
@@ -225,6 +228,11 @@ async function assertPreview(
         textBox.left >= previewBox.left &&
         textBox.right <= previewBox.right + 1,
       isTruncated: previewText.scrollWidth > previewText.clientWidth,
+      connectorCenter:
+        button.getBoundingClientRect().left +
+        Number.parseFloat(connector.left) +
+        Number.parseFloat(connector.borderLeftWidth) / 2,
+      avatarCenter: avatarBox.left + avatarBox.width / 2,
       connectorContent: connector.content,
       connectorWidth: Number.parseFloat(connector.width) || 0,
       connectorBorder: Number.parseFloat(connector.borderLeftWidth) || 0,
@@ -240,6 +248,9 @@ async function assertPreview(
   expect(
     measurements.previewAuthor.width / measurements.preview.width,
   ).toBeLessThanOrEqual(0.41);
+  expect(
+    Math.abs(measurements.connectorCenter - measurements.avatarCenter),
+  ).toBeLessThanOrEqual(0.5);
   expect(measurements.connectorContent).not.toBe('none');
   expect(
     measurements.connectorWidth + measurements.connectorBorder,
@@ -258,6 +269,13 @@ test.describe('Thread preview', () => {
     await login(page, seeded.reader);
     await openRoom(page, seeded.roomName);
     const summary = await assertPreview(page, seeded);
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-density', 'compact'),
+    );
+    await assertPreview(page, seeded);
+    await page.evaluate(() =>
+      document.documentElement.removeAttribute('data-density'),
+    );
     const testInfo = test.info();
     const screenshotPath = testInfo.outputPath('thread-preview-desktop.png');
     await captureScreenshot(page, () =>
