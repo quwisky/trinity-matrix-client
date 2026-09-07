@@ -15,6 +15,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- CI now compiles the production web renderer once per run from the exact checked-out SHA,
+  records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
+  production renderer journey consume the validated artifact. Restoration verifies the
+  immutable run and artifact coordinates before replacing `www/`; iOS adds an unsigned
+  `macos-26` simulator compile, and local `ios:build:prebuilt`, `android:build:prebuilt`,
+  `trinity-e2e-electron:full-prebuilt`, and `trinity-e2e-electron:smoke-prebuilt` commands
+  expose the same parity path. Development E2E prerequisites and styling/browser suites
+  retain their intentional development bundle.
+
 - CI now classifies documentation changes into formatting and source-contract checks,
   retains full code validation for uncertain diffs, rejects flaky retry passes, and
   uploads hidden Playwright diagnostics after failures and managed timeouts. Browser

@@ -74,7 +74,8 @@
     "ios:open": "node scripts/nx.mjs run trinity-ios:open",
     "ios:run": "node scripts/nx.mjs run trinity-ios:run",
     "ios:build": "node scripts/nx.mjs run trinity-ios:build",
-    "ios:verify": "node scripts/nx.mjs run trinity-ios:verify"
+    "ios:verify": "node scripts/nx.mjs run trinity-ios:verify",
+    "ios:build:prebuilt": "node scripts/nx.mjs run trinity-ios:build-prebuilt"
   },
   "private": true,
   "packageManager": "pnpm@11.19.0",

@@ -1,0 +1,52 @@
+name: Restore verified production renderer
+description: Validate explicit artifact coordinates and payload identity before enabling prebuilt consumers.
+inputs:
+  sha:
+    description: Exact full renderer and checkout commit SHA.
+    required: true
+  source-run-id:
+    description: Source workflow run ID.
+    required: true
+  artifact-id:
+    description: Immutable artifact ID.
+    required: true
+  artifact-name:
+    description: Expected artifact name.
+    required: true
+  manifest-digest:
+    description: Expected SHA-256 of the manifest bytes.
+    required: true
+  destination:
+    description: Empty staging directory below dist/; verified payload is installed into www/.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate artifact coordinates and empty staging directory
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TRINITY_RENDERER_SHA: ${{ inputs.sha }}
+        TRINITY_RENDERER_MANIFEST_DIGEST: ${{ inputs.manifest-digest }}
+        RENDERER_SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+        RENDERER_ARTIFACT_ID: ${{ inputs.artifact-id }}
+        RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        RENDERER_DESTINATION: ${{ inputs.destination }}
+      run: node scripts/renderer-artifact.mjs prepare
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        artifact-ids: ${{ inputs.artifact-id }}
+        run-id: ${{ inputs.source-run-id }}
+        github-token: ${{ github.token }}
+        path: ${{ inputs.destination }}
+        merge-multiple: true
+    - name: Verify and install renderer
+      shell: bash
+      env:
+        TRINITY_RENDERER_SHA: ${{ inputs.sha }}
+        TRINITY_RENDERER_MANIFEST_DIGEST: ${{ inputs.manifest-digest }}
+        RENDERER_SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+        RENDERER_ARTIFACT_ID: ${{ inputs.artifact-id }}
+        RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        RENDERER_DESTINATION: ${{ inputs.destination }}
+      run: node scripts/renderer-artifact.mjs restore

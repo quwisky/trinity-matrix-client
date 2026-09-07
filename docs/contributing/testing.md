@@ -7,14 +7,15 @@ and coverage details.
 
 ## Choose validation by the change
 
-| Change                                                         | Start with                                                                                                   | Add when needed                                              |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| Documentation only                                             | `pnpm format:check` and link checking                                                                        | No application test is implied                               |
-| TypeScript behavior in one library                             | Its `test` and `typecheck` targets                                                                           | Dependent or workspace-wide checks when the boundary changed |
-| Imports, architecture, configuration, or generated inventories | Relevant `scripts/*.spec.mjs` through `pnpm test`; `pnpm architecture:check` when its named contract applies | The behavior check for the feature                           |
-| SCSS, design tokens, or responsive layout                      | `pnpm stylelint`                                                                                             | A real-browser component or journey check                    |
-| Application workflow                                           | Focused browser journey                                                                                      | Synapse-backed lifecycle target when it uses Matrix state    |
-| Production PWA, desktop, Android, or iOS behavior              | Matching host target                                                                                         | A host launch/run where prerequisites are available          |
+| Change                                                         | Start with                                                                                                   | Add when needed                                                 |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| Documentation only                                             | `pnpm format:check` and link checking                                                                        | No application test is implied                                  |
+| TypeScript behavior in one library                             | Its `test` and `typecheck` targets                                                                           | Dependent or workspace-wide checks when the boundary changed    |
+| Imports, architecture, configuration, or generated inventories | Relevant `scripts/*.spec.mjs` through `pnpm test`; `pnpm architecture:check` when its named contract applies | The behavior check for the feature                              |
+| SCSS, design tokens, or responsive layout                      | `pnpm stylelint`                                                                                             | A real-browser component or journey check                       |
+| Application workflow                                           | Focused browser journey                                                                                      | Synapse-backed lifecycle target when it uses Matrix state       |
+| Production renderer behavior                                   | `pnpm nx run trinity-e2e-web:production-renderer`                                                            | An explicit prebuilt artifact check when validating host parity |
+| Production PWA, desktop, Android, or iOS behavior              | Matching host target                                                                                         | A host launch/run where prerequisites are available             |
 
 A check is meaningful only if it can fail for the claimed regression. Record the exact
 command and exit status. If Docker, a Playwright browser, an emulator, a desktop display,
@@ -83,6 +84,19 @@ service worker, and offline behavior, run:
 ```bash
 pnpm nx run trinity-e2e-web:production-pwa
 ```
+
+The production renderer journey builds and records a production `www/` payload by
+default. In CI, the renderer job performs that compilation once and the journey restores
+the verified artifact after development prerequisites complete. Restoration validates the
+exact checkout SHA, production manifest v2, file hashes, manifest digest, and immutable
+artifact coordinates before replacing `www/`. The styling and browser journeys retain
+their development bundle because their contracts are intentionally separate.
+
+For native and desktop parity against a previously verified local payload, use
+`pnpm ios:build:prebuilt`, `pnpm android:build:prebuilt`,
+`pnpm nx run trinity-e2e-electron:full-prebuilt`, or
+`pnpm nx run trinity-e2e-electron:smoke-prebuilt`. These commands
+fail closed when the manifest or payload does not match and do not rebuild the renderer.
 
 For broader flows and host prerequisites, use [the E2E router](../../e2e/README.md) and
 [E2E architecture](e2e-architecture.md). Do not start an extra server, Synapse, or

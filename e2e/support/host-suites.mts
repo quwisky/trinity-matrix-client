@@ -45,7 +45,10 @@ export const HOST_E2E_SUITES = defineSuites([
     capabilities: ['composition', 'host'],
     contractTypes: ['host', 'journey', 'security'],
     currentTarget: 'trinity-e2e-electron:full',
-    delegatingTargets: ['trinity-desktop:e2e'],
+    delegatingTargets: [
+      'trinity-desktop:e2e',
+      'trinity-e2e-electron:full-prebuilt',
+    ],
     targetProject: 'trinity-e2e-electron',
     prerequisites: ['docker', 'electron', 'xvfb'],
     availabilityPolicy: 'required',
@@ -64,7 +67,10 @@ export const HOST_E2E_SUITES = defineSuites([
     capabilities: ['composition', 'host'],
     contractTypes: ['host', 'security'],
     currentTarget: 'trinity-e2e-electron:smoke',
-    delegatingTargets: ['trinity-desktop:e2e-smoke'],
+    delegatingTargets: [
+      'trinity-desktop:e2e-smoke',
+      'trinity-e2e-electron:smoke-prebuilt',
+    ],
     targetProject: 'trinity-e2e-electron',
     prerequisites: ['electron', 'xvfb'],
     availabilityPolicy: 'required',

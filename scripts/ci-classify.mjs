@@ -5,10 +5,11 @@ import { spawnSync } from 'node:child_process';
 export const CODE_JOB_IDS = Object.freeze([
   'quality',
   'test',
-  'build',
+  'renderer',
   'desktop',
   'e2e',
   'android-e2e',
+  'ios-native-build',
 ]);
 export const DOCS_JOB_IDS = Object.freeze(['docs-gate']);
 const SHA = /^[0-9a-f]{40}$/i;

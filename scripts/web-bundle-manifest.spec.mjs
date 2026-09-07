@@ -2,6 +2,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  unlinkSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -11,6 +12,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildWebBundleManifest,
+  readWebBundleManifest,
+  sha256,
   verifyWebBundleRoot,
   writeWebBundleManifest,
 } from './web-bundle-manifest.mjs';
@@ -66,12 +69,57 @@ describe('web bundle manifest', () => {
     ).toThrow(/assets\/app\.js: content differs/);
   });
 
+  it('rejects missing files, empty manifests and identities from another build', () => {
+    const root = fixture();
+    const manifest = buildWebBundleManifest(root);
+    expect(() =>
+      verifyWebBundleRoot(root, manifest, { expectedSha: 'a'.repeat(40) }),
+    ).toThrow(/identity/);
+    expect(() =>
+      verifyWebBundleRoot(root, { ...manifest, configuration: 'development' }),
+    ).toThrow(/production configuration/);
+    expect(() =>
+      verifyWebBundleRoot(root, { ...manifest, files: [], totalBytes: 0 }),
+    ).toThrow(/Unsupported/);
+    unlinkSync(join(root, 'index.html'));
+    expect(() => verifyWebBundleRoot(root, manifest)).toThrow(
+      /index.html: missing/,
+    );
+  });
+
+  it('binds the exact manifest bytes to an externally expected digest', () => {
+    const root = fixture();
+    const path = join(root, 'manifest.json');
+    writeWebBundleManifest(root, path);
+    const digest = sha256(readFileSync(path));
+    expect(readWebBundleManifest(path, digest).configuration).toBe(
+      'production',
+    );
+    writeFileSync(path, readFileSync(path, 'utf8') + ' ');
+    expect(() => readWebBundleManifest(path, digest)).toThrow(/digest/);
+  });
+
+  it.each([
+    './index.html',
+    'assets//app.js',
+    'C:/asset.js',
+    'asset\\name',
+    'bad\nname',
+  ])('rejects non-normalized or unsafe path %j', (path) => {
+    const root = fixture();
+    const manifest = buildWebBundleManifest(root);
+    manifest.files[0].path = path;
+    expect(() => verifyWebBundleRoot(root, manifest)).toThrow(
+      /safe bundle-relative path/,
+    );
+  });
+
   it('writes a readable manifest for cross-process verification', () => {
     const root = fixture();
     const destination = join(root, 'manifest.json');
     writeWebBundleManifest(root, destination);
     const saved = JSON.parse(readFileSync(destination, 'utf8'));
-    expect(saved.version).toBe(1);
+    expect(saved.version).toBe(2);
     expect(saved.files).toHaveLength(2);
   });
 

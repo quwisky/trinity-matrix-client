@@ -4,7 +4,15 @@ import { evaluateRequiredResult } from './ci-required-result.mjs';
 const classification = {
   mode: 'code',
   reason: 'code changes',
-  expectedJobs: ['quality', 'test', 'build', 'desktop', 'e2e', 'android-e2e'],
+  expectedJobs: [
+    'quality',
+    'test',
+    'renderer',
+    'desktop',
+    'e2e',
+    'android-e2e',
+    'ios-native-build',
+  ],
 };
 const successfulNeeds = Object.fromEntries(
   classification.expectedJobs.map((job) => [job, 'success']),

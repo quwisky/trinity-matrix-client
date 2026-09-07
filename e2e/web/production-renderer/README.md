@@ -12,7 +12,8 @@ pnpm nx run trinity-e2e-web:production-renderer
 ```
 
 The target owns one serialized, disposable-Synapse invocation, a production web
-build, a bundle manifest, browser processes, teardown, and ignored artifacts.
+build (unless an explicitly verified prebuilt payload is selected), a bundle manifest,
+browser processes, teardown, and ignored artifacts.
 It requires Docker plus Chromium and WebKit. Do not run another Synapse-backed
 suite alongside it.
 
@@ -22,7 +23,14 @@ By default, the runner builds `trinity:build:production`, writes a manifest for
 `www/`, and serves that payload. `TRINITY_E2E_PREBUILT_WWW=1` is only for a
 previously recorded `www/`: the runner verifies it against
 `dist/web-bundle-manifest.json` and fails if either payload or manifest drifts.
-It is not a shortcut for an arbitrary local build.
+CI downloads that payload from the renderer job and validates its full SHA,
+production configuration, file manifest, manifest digest, and artifact coordinates
+before enabling this mode. It is not a shortcut for an arbitrary local build.
+
+The CI E2E job may build a development bundle during prerequisite preparation. The
+production renderer step restores the verified production payload before starting this
+suite; styling and browser steps run afterward against their intentional development
+bundle.
 
 The suite blocks the PWA service worker because service-worker behavior has its
 own production-PWA contract. Blocking it keeps the disposable homeserver's
