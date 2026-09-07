@@ -358,9 +358,11 @@ export class VirtualMessageListComponent extends MessageListBase {
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX,
     );
     this.updateJumpToUnread(); // divider may have scrolled in/out of the window
-    if (this.loadingOlder() && !this.atBottomSig()) {
+    const bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (this.loadingOlder() && bottomGap >= 1) {
       // A reader can move while an earlier automatic backfill is still in flight.
-      // Transfer its restore point to the position they are reading now.
+      // Transfer its restore point even inside the incoming-message near-bottom
+      // threshold: only an exact bottom pin has no reading offset to preserve.
       this.prevScrollHeight = el.scrollHeight;
       this.prevScrollTop = el.scrollTop;
       this.capturePrependAnchor(el);
@@ -386,6 +388,12 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
+    // This explicit destination supersedes both an in-flight history restore and
+    // any measurement correction already queued for its old reading position.
+    this.pendingPrepend = false;
+    this.prependAnchorActive = false;
+    this.prependAnchorGeneration++;
+    this.expectedProgrammaticScrollTop = null;
     // Pin the window to the bottom, then scroll to the end once it has re-rendered
     // the newest rows (the spacer heights shift when the window moves).
     this.atBottomSig.set(true);

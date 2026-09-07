@@ -374,6 +374,48 @@ describe('VirtualMessageListComponent', () => {
     expect(scroll.scrollTop).toBe(200 * EST);
   });
 
+  it('keeps a latest-message jump when an older-history correction is queued', async () => {
+    const { fixture, container } = await renderList({
+      messages: many(30),
+      canLoadOlder: true,
+    });
+    const cmp = fixture.componentInstance;
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    let st = 100;
+    let anchorTop = 120;
+    Object.defineProperties(scroll, {
+      scrollTop: { get: () => st, set: (value: number) => (st = value) },
+      scrollHeight: { value: 3000 },
+      clientHeight: { value: 600 },
+    });
+    scroll.getBoundingClientRect = () => rect(0);
+    const anchor = scroll.querySelector('[data-mid="$0"]') as HTMLElement;
+    anchor.getBoundingClientRect = () =>
+      rect(anchorTop - st, anchorTop - st + EST);
+
+    cmp.onScroll();
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
+      frames.push(frame);
+      return frames.length;
+    });
+    anchorTop = 620;
+    fixture.componentRef.setInput('messages', [
+      msg('$older', '@a:hs', 'A', 0),
+      ...many(30),
+    ]);
+    fixture.detectChanges();
+
+    // The user chooses the latest message before the history restore frame runs.
+    // A subsequent measurement must not queue another correction to the old anchor.
+    cmp.scrollToLatest();
+    rowObserver().emit([resizeEntry(anchor, EST + 1)]);
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(st).toBe(3000);
+    expect(notAtBottom(cmp)).toBe(false);
+  });
+
   it('brings a windowed-out row into the DOM when jumped to', async () => {
     Element.prototype.scrollIntoView = vi.fn();
     const { fixture, container } = await renderList({ messages: many(200) });

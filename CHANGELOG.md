@@ -1136,6 +1136,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Loading older timeline history preserves deliberate reading offsets even near the bottom.
+  Jumping to the latest message cancels pending history corrections so they cannot pull the
+  reader back to an older message.
+
 - Images load again when returning to a retained Conversation after switching Rooms. Media
   references survive view-cache cleanup while decoded URLs and staged uploads are still released;
   removed or replaced Account clients cannot resolve old references.
