@@ -1,17 +1,4 @@
-import {
-  catchError,
-  concatMap,
-  defer,
-  firstValueFrom,
-  from,
-  endWith,
-  ignoreElements,
-  mergeMap,
-  Observable,
-  of,
-  throwError,
-  toArray,
-} from 'rxjs';
+import { defer, from, defaultIfEmpty, lastValueFrom, Observable } from 'rxjs';
 
 /** Change this one value when the production gateway is provisioned. */
 export const DEFAULT_PUSH_GATEWAY_URL =
@@ -170,6 +157,7 @@ export interface TrinityPusherDescriptor {
   readonly pushkey: string;
   readonly url: string;
   readonly append: true;
+  readonly deviceDisplayName?: string;
   readonly data: {
     readonly format: 'event_id_only';
     readonly trinity_account_id: string;
@@ -198,71 +186,470 @@ export function createTrinityPusherDescriptor(options: {
   };
 }
 export interface TrinityPushRegistrationAdapter {
+  load(accountId: string): Observable<TrinityPushRegistrationState | null>;
+  save(
+    accountId: string,
+    state: TrinityPushRegistrationState | null,
+  ): Observable<unknown>;
+  list(accountId: string): Observable<TrinityPushRemotePusher[]>;
   register(
     account: PushAccountRoute,
     descriptor: TrinityPusherDescriptor,
   ): Observable<unknown>;
+  remove(accountId: string, identity: PushPusherIdentity): Observable<unknown>;
 }
-/** Cold, serialized registration operation suitable for a finite user action. */
-function registerNow(
-  adapter: TrinityPushRegistrationAdapter,
-  options: {
-    readonly platform: TrinityPushPlatform;
-    readonly pushkey: string;
-    readonly accounts: readonly PushAccountRoute[];
-    readonly gatewayUrl?: string;
-  },
-): Observable<void> {
-  type AccountResult =
-    { readonly ok: true } | { readonly ok: false; readonly error: unknown };
-  return from(options.accounts).pipe(
-    concatMap((account): Observable<AccountResult> =>
-      defer(() =>
-        adapter.register(
-          account,
-          createTrinityPusherDescriptor({
-            ...options,
-            accountRoute: account.route,
-          }),
-        ),
-      ).pipe(
-        ignoreElements(),
-        endWith({ ok: true } as const),
-        catchError((error: unknown) => of({ ok: false, error } as const)),
-      ),
-    ),
-    toArray(),
-    mergeMap((results) => {
-      const failure = results.find((result) => !result.ok);
-      return failure && !failure.ok
-        ? throwError(() => failure.error)
-        : of(undefined);
-    }),
+
+export interface PushPusherIdentity {
+  readonly appId: string;
+  readonly pushkey: string;
+}
+export interface TrinityPushRegistrationState {
+  readonly version: 1;
+  readonly identities: readonly PushPusherIdentity[];
+  readonly applied?: TrinityPusherDescriptor;
+}
+export interface TrinityPushRemotePusher extends PushPusherIdentity {
+  readonly kind: string;
+  readonly url: string;
+  readonly format?: string;
+  readonly version?: string;
+  readonly deviceDisplayName: string;
+  readonly appDisplayName?: string;
+  readonly accountRoute?: string;
+}
+export type TrinityPushRegistrationFailureCode =
+  | 'load-failed'
+  | 'save-failed'
+  | 'list-failed'
+  | 'remove-failed'
+  | 'register-failed'
+  | 'readback-failed';
+export interface TrinityPushRegistrationFailure {
+  readonly accountId: string;
+  readonly code: TrinityPushRegistrationFailureCode;
+}
+export interface TrinityPushRegistrationReport {
+  readonly applied: readonly string[];
+  readonly failed: readonly TrinityPushRegistrationFailure[];
+}
+export interface TrinityPushRegistrationOptions {
+  readonly platform: TrinityPushPlatform;
+  readonly pushkey: string;
+  readonly gatewayUrl?: string;
+  readonly legacyAppIds?: readonly string[];
+}
+
+const identityKey = (identity: PushPusherIdentity): string =>
+  JSON.stringify([identity.appId, identity.pushkey]);
+const uniqueIdentities = (
+  identities: readonly PushPusherIdentity[],
+): PushPusherIdentity[] => {
+  const seen = new Set<string>();
+  return identities.filter((identity) => {
+    const key = identityKey(identity);
+    if (!identity.appId || !identity.pushkey || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+const isPushPusherIdentity = (value: unknown): value is PushPusherIdentity =>
+  !!value &&
+  typeof value === 'object' &&
+  typeof (value as { appId?: unknown }).appId === 'string' &&
+  (value as { appId: string }).appId.length > 0 &&
+  typeof (value as { pushkey?: unknown }).pushkey === 'string' &&
+  (value as { pushkey: string }).pushkey.length > 0;
+export const isTrinityPushRegistrationState = (
+  value: unknown,
+): value is TrinityPushRegistrationState =>
+  !!value &&
+  typeof value === 'object' &&
+  (value as { version?: unknown }).version === 1 &&
+  Array.isArray((value as { identities?: unknown }).identities) &&
+  (value as { identities: unknown[] }).identities.every(isPushPusherIdentity) &&
+  ((value as { applied?: unknown }).applied === undefined ||
+    isTrinityPusherDescriptor((value as { applied: unknown }).applied));
+const isTrinityPusherDescriptor = (
+  value: unknown,
+): value is TrinityPusherDescriptor => {
+  if (!value || typeof value !== 'object') return false;
+  const descriptor = value as Partial<TrinityPusherDescriptor>;
+  return (
+    descriptor.kind === 'http' &&
+    typeof descriptor.appId === 'string' &&
+    descriptor.appId.length > 0 &&
+    typeof descriptor.pushkey === 'string' &&
+    descriptor.pushkey.length > 0 &&
+    typeof descriptor.url === 'string' &&
+    descriptor.url.length > 0 &&
+    descriptor.append === true &&
+    (descriptor.deviceDisplayName === undefined ||
+      typeof descriptor.deviceDisplayName === 'string') &&
+    !!descriptor.data &&
+    descriptor.data.format === 'event_id_only' &&
+    typeof descriptor.data.trinity_account_id === 'string' &&
+    isValidPushAccountRoute(descriptor.data.trinity_account_id) &&
+    descriptor.data.trinity_push_version === '1'
   );
-}
+};
+export const normalizeTrinityPushRegistrationState = (
+  state: TrinityPushRegistrationState | null | unknown,
+): TrinityPushRegistrationState => ({
+  // Non-null corrupt storage is rejected by the coordinator through this guard.
+  version: 1,
+  identities: uniqueIdentities(
+    isTrinityPushRegistrationState(state) ? state.identities : [],
+  ),
+  ...(isTrinityPushRegistrationState(state) && state.applied
+    ? { applied: (state as { applied: TrinityPusherDescriptor }).applied }
+    : {}),
+});
+const observe = <T>(source: Observable<T>): Promise<T | undefined> =>
+  lastValueFrom(source.pipe(defaultIfEmpty(undefined)));
+
+type AccountResult =
+  | { readonly accountId: string; readonly ok: true }
+  | {
+      readonly accountId: string;
+      readonly ok: false;
+      readonly code: TrinityPushRegistrationFailureCode;
+    };
 
 export class TrinityPushRegistrationCoordinator {
   private queue: Promise<void> = Promise.resolve();
   constructor(private readonly adapter: TrinityPushRegistrationAdapter) {}
 
-  register(options: {
-    readonly platform: TrinityPushPlatform;
-    readonly pushkey: string;
-    readonly accounts: readonly PushAccountRoute[];
-    readonly gatewayUrl?: string;
-  }): Observable<void> {
+  register(
+    options: TrinityPushRegistrationOptions & {
+      readonly accounts: readonly (PushAccountRoute & {
+        readonly deviceDisplayName: string;
+      })[];
+    },
+  ): Observable<TrinityPushRegistrationReport> {
+    return this.enqueue(() => this.registerNow(options));
+  }
+
+  unregister(
+    options: Pick<
+      TrinityPushRegistrationOptions,
+      'platform' | 'legacyAppIds'
+    > & {
+      readonly accounts: readonly Readonly<{
+        accountId: string;
+        route?: string;
+        deviceDisplayName: string;
+      }>[];
+    },
+  ): Observable<TrinityPushRegistrationReport> {
+    return this.enqueue(() => this.unregisterNow(options));
+  }
+
+  private enqueue(
+    action: () => Promise<TrinityPushRegistrationReport>,
+  ): Observable<TrinityPushRegistrationReport> {
     return defer(() => {
       const previous = this.queue;
-      const task = previous
-        .catch(() => undefined)
-        .then(() => firstValueFrom(registerNow(this.adapter, options)));
-      // Keep the queue alive independently of the caller's subscription. An
-      // unsubscribed queued action must not release or cancel an earlier action.
+      const task = previous.catch(() => undefined).then(action);
       this.queue = task.then(
         () => undefined,
         () => undefined,
       );
+      // Unsubscribing cannot cancel the queued promise or release the queue.
       return from(task);
     });
   }
+
+  private async registerNow(
+    options: TrinityPushRegistrationOptions & {
+      readonly accounts: readonly (PushAccountRoute & {
+        readonly deviceDisplayName: string;
+      })[];
+    },
+  ): Promise<TrinityPushRegistrationReport> {
+    const results: AccountResult[] = [];
+    for (const account of options.accounts) {
+      results.push(await this.registerAccount(account, options));
+    }
+    return report(results);
+  }
+
+  private async registerAccount(
+    account: PushAccountRoute & { readonly deviceDisplayName: string },
+    options: TrinityPushRegistrationOptions,
+  ): Promise<AccountResult> {
+    const desired = {
+      appId: pushAppId(options.platform),
+      pushkey: options.pushkey,
+    };
+    const descriptor = {
+      ...createTrinityPusherDescriptor({
+        ...options,
+        accountRoute: account.route,
+      }),
+      deviceDisplayName: account.deviceDisplayName,
+    };
+    let state: TrinityPushRegistrationState;
+    try {
+      const stored = await observe(this.adapter.load(account.accountId));
+      if (
+        stored !== null &&
+        stored !== undefined &&
+        !isTrinityPushRegistrationState(stored)
+      )
+        return failure(account.accountId, 'load-failed');
+      state = normalizeTrinityPushRegistrationState(stored);
+    } catch {
+      return failure(account.accountId, 'load-failed');
+    }
+    let remote: TrinityPushRemotePusher[];
+    try {
+      remote = (await observe(this.adapter.list(account.accountId))) ?? [];
+    } catch {
+      return failure(account.accountId, 'list-failed');
+    }
+    const ownedAppIds = new Set([
+      desired.appId,
+      ...(options.legacyAppIds ?? []),
+    ]);
+    // A persisted identity is authoritative. Remote discovery is only a supplement
+    // for this explicitly owned app-id set and this installation's display name.
+    const stale = uniqueIdentities([
+      ...state.identities,
+      ...remote.filter(
+        (row) =>
+          ownedAppIds.has(row.appId) &&
+          row.deviceDisplayName.trim() !== '' &&
+          row.deviceDisplayName.trim() === account.deviceDisplayName.trim() &&
+          (row.appId === desired.appId
+            ? row.accountRoute === account.route
+            : row.appDisplayName === 'Trinity'),
+      ),
+    ]).filter((identity) => identityKey(identity) !== identityKey(desired));
+    const retained: PushPusherIdentity[] = [desired];
+    let removalFailed = false;
+    try {
+      await observe(
+        this.adapter.save(account.accountId, {
+          version: 1,
+          identities: [...stale, desired],
+        }),
+      );
+    } catch {
+      return failure(account.accountId, 'save-failed');
+    }
+    for (const identity of stale) {
+      try {
+        await observe(this.adapter.remove(account.accountId, identity));
+      } catch {
+        removalFailed = true;
+        retained.push(identity);
+      }
+    }
+    try {
+      remote = (await observe(this.adapter.list(account.accountId))) ?? [];
+    } catch {
+      return failure(account.accountId, 'readback-failed');
+    }
+    const staleStillPresent = remote.filter((row) =>
+      stale.some((identity) => identityKey(identity) === identityKey(row)),
+    );
+    for (const row of staleStillPresent) {
+      if (
+        !retained.some((identity) => identityKey(identity) === identityKey(row))
+      )
+        retained.push(row);
+    }
+    if (removalFailed) {
+      try {
+        await observe(
+          this.adapter.save(account.accountId, {
+            version: 1,
+            identities: retained,
+          }),
+        );
+      } catch {
+        return failure(account.accountId, 'save-failed');
+      }
+      return failure(account.accountId, 'remove-failed');
+    }
+    if (staleStillPresent.length) {
+      try {
+        await observe(
+          this.adapter.save(account.accountId, {
+            version: 1,
+            identities: [desired, ...staleStillPresent],
+          }),
+        );
+      } catch {
+        return failure(account.accountId, 'save-failed');
+      }
+      return failure(account.accountId, 'remove-failed');
+    }
+    try {
+      await observe(this.adapter.register(account, descriptor));
+    } catch {
+      return failure(account.accountId, 'register-failed');
+    }
+    let confirmed: TrinityPushRemotePusher[];
+    try {
+      confirmed = (await observe(this.adapter.list(account.accountId))) ?? [];
+    } catch {
+      return failure(account.accountId, 'readback-failed');
+    }
+    if (
+      !confirmed.some(
+        (row) =>
+          identityKey(row) === identityKey(desired) &&
+          row.kind === 'http' &&
+          row.url === descriptor.url &&
+          row.format === 'event_id_only' &&
+          row.version === '1' &&
+          row.deviceDisplayName.trim() ===
+            descriptor.deviceDisplayName?.trim() &&
+          row.accountRoute === account.route,
+      )
+    )
+      return failure(account.accountId, 'readback-failed');
+    const stillPresent = confirmed.filter((row) =>
+      stale.some((identity) => identityKey(identity) === identityKey(row)),
+    );
+    try {
+      await observe(
+        this.adapter.save(account.accountId, {
+          version: 1,
+          identities: [desired, ...stillPresent],
+          ...(stillPresent.length === 0 ? { applied: descriptor } : {}),
+        }),
+      );
+    } catch {
+      return failure(account.accountId, 'save-failed');
+    }
+    return stillPresent.length
+      ? failure(account.accountId, 'remove-failed')
+      : { accountId: account.accountId, ok: true };
+  }
+
+  private async unregisterNow(
+    options: Pick<
+      TrinityPushRegistrationOptions,
+      'platform' | 'legacyAppIds'
+    > & {
+      readonly accounts: readonly Readonly<{
+        accountId: string;
+        route?: string;
+        deviceDisplayName: string;
+      }>[];
+    },
+  ): Promise<TrinityPushRegistrationReport> {
+    const results: AccountResult[] = [];
+    for (const account of options.accounts) {
+      results.push(await this.unregisterAccount(account, options));
+    }
+    return report(results);
+  }
+
+  private async unregisterAccount(
+    account: Readonly<{
+      accountId: string;
+      route?: string;
+      deviceDisplayName: string;
+    }>,
+    options: Pick<TrinityPushRegistrationOptions, 'platform' | 'legacyAppIds'>,
+  ): Promise<AccountResult> {
+    let state: TrinityPushRegistrationState;
+    try {
+      const stored = await observe(this.adapter.load(account.accountId));
+      if (
+        stored !== null &&
+        stored !== undefined &&
+        !isTrinityPushRegistrationState(stored)
+      )
+        return failure(account.accountId, 'load-failed');
+      state = normalizeTrinityPushRegistrationState(stored);
+    } catch {
+      return failure(account.accountId, 'load-failed');
+    }
+    let remote: TrinityPushRemotePusher[];
+    try {
+      remote = (await observe(this.adapter.list(account.accountId))) ?? [];
+    } catch {
+      return failure(account.accountId, 'list-failed');
+    }
+    const appIds = new Set([
+      pushAppId(options.platform),
+      ...(options.legacyAppIds ?? []),
+    ]);
+    const candidates = uniqueIdentities([
+      ...state.identities,
+      ...remote.filter(
+        (row) =>
+          (row.appId === pushAppId(options.platform)
+            ? account.route !== undefined && row.accountRoute === account.route
+            : appIds.has(row.appId) && row.appDisplayName === 'Trinity') &&
+          row.deviceDisplayName.trim() !== '' &&
+          row.deviceDisplayName.trim() === account.deviceDisplayName.trim(),
+      ),
+    ]);
+    try {
+      await observe(
+        this.adapter.save(account.accountId, {
+          version: 1,
+          identities: candidates,
+        }),
+      );
+    } catch {
+      return failure(account.accountId, 'save-failed');
+    }
+    const failed: PushPusherIdentity[] = [];
+    for (const identity of candidates) {
+      try {
+        await observe(this.adapter.remove(account.accountId, identity));
+      } catch {
+        failed.push(identity);
+      }
+    }
+    try {
+      remote = (await observe(this.adapter.list(account.accountId))) ?? [];
+    } catch {
+      return failure(account.accountId, 'readback-failed');
+    }
+    const remaining = uniqueIdentities([
+      ...failed,
+      ...remote.filter((row) =>
+        candidates.some(
+          (identity) => identityKey(identity) === identityKey(row),
+        ),
+      ),
+    ]);
+    try {
+      await observe(
+        this.adapter.save(
+          account.accountId,
+          remaining.length ? { version: 1, identities: remaining } : null,
+        ),
+      );
+    } catch {
+      return failure(account.accountId, 'save-failed');
+    }
+    return remaining.length
+      ? failure(account.accountId, 'remove-failed')
+      : { accountId: account.accountId, ok: true };
+  }
 }
+
+const failure = (
+  accountId: string,
+  code: TrinityPushRegistrationFailureCode,
+): AccountResult => ({ accountId, ok: false, code });
+const report = (
+  results: readonly AccountResult[],
+): TrinityPushRegistrationReport => ({
+  applied: results
+    .filter((result) => result.ok)
+    .map((result) => result.accountId),
+  failed: results
+    .filter(
+      (result): result is Extract<AccountResult, { ok: false }> => !result.ok,
+    )
+    .map(({ accountId, code }) => ({ accountId, code })),
+});

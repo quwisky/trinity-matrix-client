@@ -3,7 +3,7 @@ import { TrnDialogService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
 import { DEFAULT_PUSH_GATEWAY_URL } from '@trinity/util/push-client';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   PushGatewayService,
@@ -18,6 +18,8 @@ interface Stub {
   fallback: { gatewayUrl: string } | null;
   registration: PushRegistrationState;
   confirm: boolean;
+  clearFails: boolean;
+  unregisterFails: boolean;
 }
 
 const NOTIFY = 'https://push.example.org/_matrix/push/v1/notify';
@@ -26,6 +28,7 @@ let saveSpy: Mock;
 let clearSpy: Mock;
 let registerSpy: Mock;
 let unregisterSpy: Mock;
+let retrySpy: Mock;
 let dialogResult: WritableSignal<boolean>;
 
 function providers(overrides: Partial<Stub> = {}) {
@@ -35,12 +38,22 @@ function providers(overrides: Partial<Stub> = {}) {
     fallback: null,
     registration: { status: 'idle' },
     confirm: true,
+    clearFails: false,
+    unregisterFails: false,
     ...overrides,
   };
   saveSpy = vi.fn(async () => undefined);
-  clearSpy = vi.fn(async () => undefined);
+  clearSpy = vi.fn(async () => {
+    if (stub.clearFails) throw new Error('storage details');
+  });
   registerSpy = vi.fn(() => of(undefined));
-  unregisterSpy = vi.fn(() => of(undefined));
+  unregisterSpy = vi.fn(() => {
+    if (stub.unregisterFails) {
+      return throwError(() => new Error('cleanup details'));
+    }
+    return of(undefined);
+  });
+  retrySpy = vi.fn(() => of(undefined));
   dialogResult = signal(stub.confirm);
 
   return [
@@ -55,6 +68,7 @@ function providers(overrides: Partial<Stub> = {}) {
       registration: signal(stub.registration).asReadonly(),
       register: registerSpy,
       unregister: unregisterSpy,
+      retryRegistration: retrySpy,
     }),
     MockProvider(TrnDialogService, {
       openAndWait$: vi.fn(() =>
@@ -226,19 +240,19 @@ describe('PushGatewayBlockComponent', () => {
     expect(registerSpy).not.toHaveBeenCalled();
   });
 
-  it('tears pushers down before clearing the stored gateway', async () => {
+  it('persists disabled before tearing pushers down', async () => {
     const { fixture } = await render(PushGatewayBlockComponent, {
       providers: providers({ override: { gatewayUrl: NOTIFY } }),
     });
 
     fixture.componentInstance.clear();
 
-    // unregister() must run before gateway.clear() — clearing drops the ledger the
-    // teardown reads to know which pushers to remove.
-    expect(unregisterSpy).toHaveBeenCalled();
+    // The disabled choice must be durable before cleanup starts, so a failed cleanup
+    // cannot leave push enabled while the UI reports an incomplete operation.
+    await vi.waitFor(() => expect(unregisterSpy).toHaveBeenCalled());
     await vi.waitFor(() => expect(clearSpy).toHaveBeenCalled());
-    expect(unregisterSpy.mock.invocationCallOrder[0]).toBeLessThan(
-      clearSpy.mock.invocationCallOrder[0],
+    expect(clearSpy.mock.invocationCallOrder[0]).toBeLessThan(
+      unregisterSpy.mock.invocationCallOrder[0],
     );
   });
 
@@ -296,6 +310,59 @@ describe('PushGatewayBlockComponent', () => {
 
     const status = container.querySelector('[data-testid=push-gateway-status]');
     expect(status?.textContent).toContain('Config Error: bad path');
+    expect(
+      container.querySelector('[data-testid=push-gateway-retry]'),
+    ).not.toBeNull();
+  });
+
+  it('retries a failed registration from the visible control', async () => {
+    const { container } = await render(PushGatewayBlockComponent, {
+      providers: providers({
+        registration: { status: 'error', message: 'Try again' },
+      }),
+    });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-testid=push-gateway-retry]')
+      ?.click();
+
+    expect(retrySpy).toHaveBeenCalledOnce();
+  });
+
+  it('does not unregister when persisting Clear fails', async () => {
+    const { fixture } = await render(PushGatewayBlockComponent, {
+      providers: providers({
+        override: { gatewayUrl: NOTIFY },
+        clearFails: true,
+      }),
+    });
+    fixture.componentInstance.clear();
+
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.recoveryError()).toContain(
+        'could not be completed',
+      ),
+    );
+    expect(unregisterSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows recovery when cleanup fails after disabling the gateway', async () => {
+    const { fixture, container } = await render(PushGatewayBlockComponent, {
+      providers: providers({
+        override: { gatewayUrl: NOTIFY },
+        unregisterFails: true,
+      }),
+    });
+    fixture.componentInstance.clear();
+
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.recoveryError()).toContain(
+        'could not be completed',
+      ),
+    );
+    expect(
+      container.querySelector('[data-testid=push-gateway-retry]'),
+    ).not.toBeNull();
   });
 
   it('describes the URL field with its help text, for a screen reader', async () => {

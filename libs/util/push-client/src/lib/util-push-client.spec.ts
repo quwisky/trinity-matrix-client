@@ -4,8 +4,11 @@ import {
   createPushAccountRoute,
   createTrinityPusherDescriptor,
   isValidPushAccountRoute,
+  isTrinityPushRegistrationState,
   parseTrinityPushPayload,
   resolvePushAccountRoute,
+  type TrinityPushRegistrationAdapter,
+  type TrinityPushRegistrationState,
   TrinityPushRegistrationCoordinator,
 } from './util-push-client';
 
@@ -147,154 +150,534 @@ describe('push client contract', () => {
     });
   });
 
-  it('serializes overlapping registration operations', async () => {
-    const active: string[] = [];
-    const seen: string[] = [];
-    const adapter = {
-      register: vi.fn(
-        (_account: { accountId: string }, descriptor: { pushkey: string }) => {
-          active.push(descriptor.pushkey);
-          expect(active).toHaveLength(1);
-          seen.push(descriptor.pushkey);
-          active.pop();
-          return of(undefined);
-        },
-      ),
+  it('recovers registration with durable stale cleanup and readback', async () => {
+    const state: TrinityPushRegistrationState = {
+      version: 1,
+      identities: [{ appId: 'ovh.qwky.trinity.android', pushkey: 'old' }],
     };
-    const coordinator = new TrinityPushRegistrationCoordinator(adapter);
-    await Promise.all([
-      firstValueFrom(
-        coordinator.register({
-          platform: 'ios',
-          pushkey: 'one',
-          accounts: [{ accountId: 'a', route: 'route-a' }],
-        }),
-      ),
-      firstValueFrom(
-        coordinator.register({
-          platform: 'ios',
-          pushkey: 'two',
-          accounts: [{ accountId: 'b', route: 'route-b' }],
-        }),
-      ),
-    ]);
-    expect(seen).toEqual(['one', 'two']);
+    const saved: unknown[] = [];
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(state)),
+      save: vi.fn((_id, value) => {
+        saved.push(value);
+        return of(undefined);
+      }),
+      list: vi
+        .fn()
+        .mockReturnValueOnce(
+          of([
+            {
+              appId: 'ovh.qwky.trinity.android',
+              pushkey: 'old',
+              kind: 'http',
+              url: 'https://push.example.invalid/_matrix/push/v1/notify',
+              format: 'event_id_only',
+              version: '1',
+              deviceDisplayName: 'Phone',
+              appDisplayName: 'Trinity',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(of([]))
+        .mockReturnValueOnce(
+          of([
+            {
+              appId: 'ovh.qwky.trinity.android',
+              pushkey: 'new',
+              kind: 'http',
+              url: 'https://push.example.invalid/_matrix/push/v1/notify',
+              format: 'event_id_only',
+              version: '1',
+              deviceDisplayName: 'Phone',
+              accountRoute: 'route-a',
+            },
+          ]),
+        ),
+      register: vi.fn(() => of(undefined)),
+      remove: vi.fn(() => of(undefined)),
+    };
+    const report = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).register({
+        platform: 'android',
+        pushkey: 'new',
+        accounts: [
+          { accountId: 'a', route: 'route-a', deviceDisplayName: 'Phone' },
+        ],
+      }),
+    );
+    expect(report).toEqual({ applied: ['a'], failed: [] });
+    expect(adapter.remove).toHaveBeenCalledWith('a', {
+      appId: 'ovh.qwky.trinity.android',
+      pushkey: 'old',
+    });
+    expect(saved).toHaveLength(2);
   });
 
-  it('keeps asynchronous queue order after cancellation and failure', async () => {
+  it('keeps the queue alive after cancellation and continues other accounts', async () => {
     const gate = new Subject<void>();
     const seen: string[] = [];
-    const adapter = {
-      register: vi.fn(
-        (account: { accountId: string }, descriptor: { pushkey: string }) =>
-          defer(() => {
-            seen.push(`${account.accountId}:${descriptor.pushkey}`);
-            if (descriptor.pushkey === 'one') return gate;
-            if (descriptor.pushkey === 'two') throw new Error('failed');
-            return of(undefined);
-          }),
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi.fn(() =>
+        of([
+          {
+            appId: 'ovh.qwky.trinity.android',
+            pushkey: 'x',
+            kind: 'http',
+            url: 'https://push.example.invalid/_matrix/push/v1/notify',
+            format: 'event_id_only',
+            version: '1',
+            deviceDisplayName: 'Phone',
+            accountRoute: 'route-a',
+          },
+        ]),
       ),
+      register: vi.fn((account) =>
+        defer(() => {
+          seen.push(account.accountId);
+          return account.accountId === 'a' ? gate : of(undefined);
+        }),
+      ),
+      remove: vi.fn(() => of(undefined)),
     };
     const coordinator = new TrinityPushRegistrationCoordinator(adapter);
-    const first = coordinator.register({
-      platform: 'android',
-      pushkey: 'one',
-      accounts: [{ accountId: 'a', route: 'route-a' }],
-    });
-    const second = coordinator.register({
-      platform: 'android',
-      pushkey: 'two',
-      accounts: [{ accountId: 'b', route: 'route-b' }],
-    });
-    const third = coordinator.register({
-      platform: 'android',
-      pushkey: 'three',
-      accounts: [{ accountId: 'c', route: 'route-c' }],
-    });
-    const firstPromise = firstValueFrom(first);
-    const secondSubscription = second.subscribe({ error: () => undefined });
-    secondSubscription.unsubscribe();
-    const thirdPromise = firstValueFrom(third);
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    expect(seen).toEqual(['a:one']);
+    const first = firstValueFrom(
+      coordinator.register({
+        platform: 'android',
+        pushkey: 'x',
+        accounts: [
+          { accountId: 'a', route: 'route-a', deviceDisplayName: 'Phone' },
+        ],
+      }),
+    );
+    coordinator
+      .register({
+        platform: 'android',
+        pushkey: 'x',
+        accounts: [
+          { accountId: 'b', route: 'route-b', deviceDisplayName: 'Phone' },
+        ],
+      })
+      .subscribe()
+      .unsubscribe();
+    const third = firstValueFrom(
+      coordinator.register({
+        platform: 'android',
+        pushkey: 'x',
+        accounts: [
+          { accountId: 'c', route: 'route-c', deviceDisplayName: 'Phone' },
+        ],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual(['a']);
     gate.next();
     gate.complete();
-    await firstPromise;
-    await thirdPromise;
-    expect(seen).toEqual(['a:one', 'b:two', 'c:three']);
+    await first;
+    await third;
+    expect(seen).toEqual(['a', 'b', 'c']);
   });
 
-  it('is cold, forwards a custom URL, preserves identities, and handles empty accounts', async () => {
-    const adapter = {
-      register: vi.fn((_account: { accountId: string }, _descriptor: unknown) =>
-        of(undefined),
+  it('does not delete another installation during unregister', async () => {
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+      remove: vi.fn(() => of(undefined)),
+      list: vi.fn(() =>
+        of([
+          {
+            appId: 'ovh.qwky.trinity.android',
+            pushkey: 'other',
+            kind: 'http',
+            url: 'https://push.example.invalid/_matrix/push/v1/notify',
+            format: 'event_id_only',
+            version: '1',
+            deviceDisplayName: 'Other Phone',
+            appDisplayName: 'Trinity',
+          },
+        ]),
+      ),
+    };
+    const result = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).unregister({
+        platform: 'android',
+        legacyAppIds: ['ovh.qwky.trinity.android'],
+        accounts: [{ accountId: 'a', deviceDisplayName: 'Phone' }],
+      }),
+    );
+    expect(result).toEqual({ applied: ['a'], failed: [] });
+    expect(adapter.remove).not.toHaveBeenCalled();
+    expect(adapter.save).toHaveBeenCalledWith('a', null);
+  });
+
+  it('is cold and waits for completion after a nonterminal adapter emission', async () => {
+    const registered = new Subject<void>();
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi.fn(() =>
+        of([
+          {
+            appId: 'ovh.qwky.trinity.android',
+            pushkey: 'x',
+            kind: 'http',
+            url: 'https://push.example.invalid/_matrix/push/v1/notify',
+            format: 'event_id_only',
+            version: '1',
+            deviceDisplayName: 'A',
+            accountRoute: 'r',
+          },
+        ]),
+      ),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => registered),
+    };
+    const operation = new TrinityPushRegistrationCoordinator(adapter).register({
+      platform: 'android',
+      pushkey: 'x',
+      accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+    });
+    expect(adapter.load).not.toHaveBeenCalled();
+    let completed = false;
+    const result = firstValueFrom(operation).then(() => {
+      completed = true;
+    });
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    registered.next();
+    registered.complete();
+    await result;
+  });
+
+  it('keeps write-ahead state after final-save failure and repairs after restart', async () => {
+    let stored: TrinityPushRegistrationState | null = null;
+    let saveCount = 0;
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(stored)),
+      list: vi.fn(() =>
+        of([
+          {
+            appId: 'ovh.qwky.trinity.android',
+            pushkey: 'x',
+            kind: 'http',
+            url: 'https://push.example.invalid/_matrix/push/v1/notify',
+            format: 'event_id_only',
+            version: '1',
+            deviceDisplayName: 'A',
+            accountRoute: 'r',
+          },
+        ]),
+      ),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+      save: vi.fn((_id, value) => {
+        saveCount++;
+        if (saveCount === 2)
+          return defer(() => {
+            throw new Error('storage');
+          });
+        stored = value;
+        return of(undefined);
+      }),
+    };
+    const options = {
+      platform: 'android' as const,
+      pushkey: 'x',
+      accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+    };
+    expect(
+      (
+        await firstValueFrom(
+          new TrinityPushRegistrationCoordinator(adapter).register(options),
+        )
+      ).failed,
+    ).toEqual([{ accountId: 'a', code: 'save-failed' }]);
+    saveCount = 99;
+    expect(
+      (
+        await firstValueFrom(
+          new TrinityPushRegistrationCoordinator(adapter).register(options),
+        )
+      ).applied,
+    ).toEqual(['a']);
+  });
+
+  it('does not remove or set when the write-ahead save fails', async () => {
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() =>
+        of({
+          version: 1 as const,
+          identities: [{ appId: 'legacy', pushkey: 'old' }],
+        }),
+      ),
+      save: vi.fn(() =>
+        defer(() => {
+          throw new Error('storage');
+        }),
+      ),
+      list: vi.fn(() => of([])),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+    };
+    const result = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).register({
+        platform: 'android',
+        pushkey: 'new',
+        accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+      }),
+    );
+    expect(result.failed).toEqual([{ accountId: 'a', code: 'save-failed' }]);
+    expect(adapter.remove).not.toHaveBeenCalled();
+    expect(adapter.register).not.toHaveBeenCalled();
+  });
+
+  it('fails stale cleanup when a successful remove leaves the remote row', async () => {
+    const stale = {
+      appId: 'ovh.qwky.trinity.android',
+      pushkey: 'old',
+      kind: 'http',
+      url: 'https://push.example.invalid/_matrix/push/v1/notify',
+      format: 'event_id_only',
+      version: '1',
+      deviceDisplayName: 'A',
+      accountRoute: 'r',
+    };
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi.fn(() => of([stale])),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+    };
+    const result = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).register({
+        platform: 'android',
+        pushkey: 'new',
+        accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+      }),
+    );
+    expect(result.failed).toEqual([{ accountId: 'a', code: 'remove-failed' }]);
+    expect(adapter.register).not.toHaveBeenCalled();
+  });
+
+  it('retains a failed legacy removal and retries it before setting the new pusher', async () => {
+    const legacy = {
+      appId: 'legacy.app',
+      pushkey: 'old',
+      kind: 'http',
+      url: 'https://push.example.invalid/_matrix/push/v1/notify',
+      format: 'event_id_only',
+      version: '1',
+      deviceDisplayName: 'A',
+      appDisplayName: 'Trinity',
+    };
+    let attempts = 0;
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi.fn(() =>
+        attempts > 1
+          ? of([
+              {
+                appId: 'ovh.qwky.trinity.android',
+                pushkey: 'new',
+                kind: 'http',
+                url: 'https://push.example.invalid/_matrix/push/v1/notify',
+                format: 'event_id_only',
+                version: '1',
+                deviceDisplayName: 'A',
+                accountRoute: 'r',
+              },
+            ])
+          : of([legacy]),
+      ),
+      remove: vi.fn(() => {
+        attempts++;
+        return attempts === 1
+          ? defer(() => {
+              throw new Error('down');
+            })
+          : of(undefined);
+      }),
+      register: vi.fn(() => of(undefined)),
+    };
+    const options = {
+      platform: 'android' as const,
+      pushkey: 'new',
+      legacyAppIds: ['legacy.app'],
+      accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+    };
+    expect(
+      (
+        await firstValueFrom(
+          new TrinityPushRegistrationCoordinator(adapter).register(options),
+        )
+      ).failed,
+    ).toEqual([{ accountId: 'a', code: 'remove-failed' }]);
+    expect(
+      (
+        await firstValueFrom(
+          new TrinityPushRegistrationCoordinator(adapter).register(options),
+        )
+      ).applied,
+    ).toEqual(['a']);
+    expect(adapter.register).toHaveBeenCalledOnce();
+  });
+
+  it('repairs a missing pusher but does not mark it applied when readback fails', async () => {
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi
+        .fn()
+        .mockReturnValueOnce(of([]))
+        .mockReturnValueOnce(of([]))
+        .mockReturnValueOnce(
+          defer(() => {
+            throw new Error('get');
+          }),
+        ),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+    };
+    const result = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).register({
+        platform: 'android',
+        pushkey: 'x',
+        accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+      }),
+    );
+    expect(result.failed).toEqual([
+      { accountId: 'a', code: 'readback-failed' },
+    ]);
+    expect(adapter.register).toHaveBeenCalledOnce();
+  });
+
+  it('rejects corrupt applied descriptors instead of copying them', () => {
+    expect(
+      isTrinityPushRegistrationState({
+        version: 1,
+        identities: [],
+        applied: { appId: 'bad' },
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects readback from an old gateway or wrong pusher metadata', async () => {
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi
+        .fn()
+        .mockReturnValueOnce(of([]))
+        .mockReturnValueOnce(of([]))
+        .mockReturnValueOnce(
+          of([
+            {
+              appId: 'ovh.qwky.trinity.android',
+              pushkey: 'x',
+              kind: 'http',
+              url: 'https://old-gateway',
+              format: 'event_id_only',
+              version: '1',
+              deviceDisplayName: 'A',
+              accountRoute: 'r',
+            },
+          ]),
+        ),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+    };
+    const result = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).register({
+        platform: 'android',
+        gatewayUrl: 'https://new-gateway',
+        pushkey: 'x',
+        accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+      }),
+    );
+    expect(result.failed).toEqual([
+      { accountId: 'a', code: 'readback-failed' },
+    ]);
+  });
+
+  it('keeps shared-token accounts and device identities independent', async () => {
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi.fn((id) =>
+        of([
+          {
+            appId: 'ovh.qwky.trinity.android',
+            pushkey: 'shared',
+            kind: 'http',
+            url: 'https://new',
+            format: 'event_id_only',
+            version: '1',
+            deviceDisplayName: id === 'a' ? 'A' : 'B',
+            accountRoute: id === 'a' ? 'ra' : 'rb',
+          },
+        ]),
+      ),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() => of(undefined)),
+    };
+    const result = await firstValueFrom(
+      new TrinityPushRegistrationCoordinator(adapter).register({
+        platform: 'android',
+        pushkey: 'shared',
+        gatewayUrl: 'https://new',
+        accounts: [
+          { accountId: 'a', route: 'ra', deviceDisplayName: 'A' },
+          { accountId: 'b', route: 'rb', deviceDisplayName: 'B' },
+        ],
+      }),
+    );
+    expect(result).toEqual({ applied: ['a', 'b'], failed: [] });
+    expect(adapter.register).toHaveBeenCalledTimes(2);
+    expect(
+      (adapter.register as ReturnType<typeof vi.fn>).mock.calls[0][1].url,
+    ).toBe('https://new');
+  });
+
+  it('serializes an unsubscribed unregister behind registration', async () => {
+    const order: string[] = [];
+    const gate = new Subject<void>();
+    const adapter: TrinityPushRegistrationAdapter = {
+      load: vi.fn(() => of(null)),
+      save: vi.fn(() => of(undefined)),
+      list: vi.fn(() => of([])),
+      remove: vi.fn(() => of(undefined)),
+      register: vi.fn(() =>
+        defer(() => {
+          order.push('register');
+          return gate;
+        }),
       ),
     };
     const coordinator = new TrinityPushRegistrationCoordinator(adapter);
-    const options = {
-      platform: 'ios' as const,
-      pushkey: 'token',
-      gatewayUrl: 'https://gateway.test/_matrix/push/v1/notify',
-      accounts: [
-        { accountId: 'account-a', route: 'route-a' },
-        { accountId: 'account-b', route: 'route-b' },
-      ] as const,
-    };
-    const operation = coordinator.register(options);
-    expect(adapter.register).not.toHaveBeenCalled();
-    await firstValueFrom(operation);
-    expect(adapter.register).toHaveBeenCalledTimes(2);
-    expect(
-      adapter.register.mock.calls.map(([account, descriptor]) => [
-        account.accountId,
-        (descriptor as { url: string }).url,
-      ]),
-    ).toEqual([
-      ['account-a', options.gatewayUrl],
-      ['account-b', options.gatewayUrl],
-    ]);
-    const empty = coordinator.register({ ...options, accounts: [] });
-    await firstValueFrom(empty);
-    expect(adapter.register).toHaveBeenCalledTimes(2);
+    const first = firstValueFrom(
+      coordinator.register({
+        platform: 'android',
+        pushkey: 'x',
+        accounts: [{ accountId: 'a', route: 'r', deviceDisplayName: 'A' }],
+      }),
+    );
+    coordinator
+      .unregister({
+        platform: 'android',
+        accounts: [{ accountId: 'a', deviceDisplayName: 'A' }],
+      })
+      .subscribe()
+      .unsubscribe();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(order).toEqual(['register']);
+    gate.next();
+    gate.complete();
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(adapter.save).toHaveBeenCalled();
   });
-
-  it.each([true, false])(
-    'continues a failed account and unblocks the next group (synchronous: %s)',
-    async (synchronous) => {
-      const seen: string[] = [];
-      const adapter = {
-        register: vi.fn(
-          (account: { accountId: string }, _descriptor: unknown) => {
-            seen.push(account.accountId);
-            if (synchronous && account.accountId === 'account-a')
-              throw new Error('registration failed');
-            return account.accountId === 'account-a'
-              ? defer(() => {
-                  throw new Error('registration failed');
-                })
-              : of(undefined);
-          },
-        ),
-      };
-      const coordinator = new TrinityPushRegistrationCoordinator(adapter);
-      const first = coordinator.register({
-        platform: 'android',
-        pushkey: 'one',
-        accounts: [
-          { accountId: 'account-a', route: 'route-a' },
-          { accountId: 'account-b', route: 'route-b' },
-        ],
-      });
-      await expect(firstValueFrom(first)).rejects.toThrow(
-        'registration failed',
-      );
-      const second = coordinator.register({
-        platform: 'android',
-        pushkey: 'two',
-        accounts: [{ accountId: 'account-c', route: 'route-c' }],
-      });
-      await firstValueFrom(second);
-      expect(seen).toEqual(['account-a', 'account-b', 'account-c']);
-    },
-  );
 });

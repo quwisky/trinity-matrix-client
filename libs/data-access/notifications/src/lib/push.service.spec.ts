@@ -73,12 +73,25 @@ const CONFIG: PushConfig = {
  * state — a pusher only reads back if it was actually set — while each method stays a spy
  * the tests can assert on or override with `mockRejectedValueOnce`.
  */
+type FakePusher = {
+  app_id: string;
+  pushkey: string;
+  kind: string;
+  device_display_name: string;
+  app_display_name: string;
+  data: {
+    url: string;
+    format: string;
+    trinity_push_version: string;
+    trinity_account_id?: string;
+  };
+};
+
 function makeClient() {
-  const pushers: { app_id: string; pushkey: string; data: { url: string } }[] =
-    [];
+  const pushers: FakePusher[] = [];
   return {
     getDeviceId: vi.fn(() => 'DEV1'),
-    setPusher: vi.fn(async (p: (typeof pushers)[number]) => {
+    setPusher: vi.fn(async (p: FakePusher) => {
       // The homeserver replaces this user's own pusher for the same (app_id, pushkey).
       const i = pushers.findIndex(
         (x) => x.app_id === p.app_id && x.pushkey === p.pushkey,
@@ -95,6 +108,8 @@ function makeClient() {
       return {};
     }),
     getPushers: vi.fn(async () => ({ pushers: [...pushers] })),
+    seedPusher: (p: FakePusher) => pushers.push(p),
+    remotePushers: pushers,
   };
 }
 
@@ -103,11 +118,14 @@ function setup(
     config?: PushConfig | null;
     accounts?: string[];
     active?: string;
+    existingClients?: Map<string, ReturnType<typeof makeClient>>;
+    startRun?: boolean;
   } = {},
 ) {
   const ids = opts.accounts ?? ['@me:hs'];
   const active = opts.active ?? ids[0];
-  const clients = new Map(ids.map((id) => [id, makeClient()]));
+  const clients =
+    opts.existingClients ?? new Map(ids.map((id) => [id, makeClient()]));
   const accountIds = signal<readonly string[]>(ids);
   const activeUserId = signal<string | null>(active);
   TestBed.configureTestingModule({
@@ -151,12 +169,14 @@ function setup(
   });
   const svc = TestBed.inject(PushService);
   const activations: unknown[] = [];
-  const lifetime = svc
-    .run()
-    .subscribe((activation) => activations.push(activation));
+  const lifetime =
+    (opts.startRun ?? true)
+      ? svc.run().subscribe((activation) => activations.push(activation))
+      : { unsubscribe: () => undefined };
   return {
     svc,
     clients,
+    accountIds,
     client: clients.get(active)!,
     activations,
     lifetime,
@@ -333,6 +353,18 @@ describe('PushService', () => {
         appId: 'new.app.id',
         appliedAppId: 'old.app.id',
       });
+      client.seedPusher({
+        app_id: 'old.app.id.ios',
+        pushkey: 'TOKEN123',
+        kind: 'http',
+        device_display_name: 'DEV1',
+        app_display_name: 'Trinity',
+        data: {
+          url: 'https://old.example/notify',
+          format: 'event_id_only',
+          trinity_push_version: '1',
+        },
+      });
 
       await firstValueFrom(svc.register());
       h.listeners['registration']({ value: 'TOKEN123' });
@@ -358,6 +390,18 @@ describe('PushService', () => {
         gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
         appId: 'same.app.id',
         appliedAppId: 'same.app.id',
+      });
+      client.seedPusher({
+        app_id: 'same.app.id.ios',
+        pushkey: 'TOKEN123',
+        kind: 'http',
+        device_display_name: 'DEV1',
+        app_display_name: 'Trinity',
+        data: {
+          url: 'https://old.example/notify',
+          format: 'event_id_only',
+          trinity_push_version: '1',
+        },
       });
 
       await firstValueFrom(svc.register());
@@ -412,6 +456,18 @@ describe('PushService', () => {
       expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
         'old.app.id',
       );
+
+      // The durable ledger remains old until every account succeeds; a repeat round
+      // must therefore finish the failed account and advance it atomically.
+      await firstValueFrom(svc.register());
+      await flush();
+      expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
+        'ovh.qwky.trinity.ios',
+      );
+      expect(svc.registration()).toMatchObject({
+        status: 'applied',
+        accounts: 2,
+      });
     });
   });
 
@@ -450,7 +506,8 @@ describe('PushService', () => {
 
       expect(svc.registration()).toEqual({
         status: 'error',
-        message: "Config Error: 'url' must have a path of ...",
+        message:
+          'Push registration could not finish. Retry to recover the saved registration.',
       });
     });
 
@@ -490,9 +547,8 @@ describe('PushService', () => {
       expect(svc.registration().status).toBe('error');
     });
 
-    it('leaves the applied state standing when the readback itself fails', async () => {
-      // A failed GET is inconclusive — the pusher was accepted, so a transient network
-      // error on the readback must not report the registration as broken.
+    it('reports an error when the readback itself fails', async () => {
+      // Durable registration treats a failed GET as unverified so the next round retries.
       const { svc, client } = setup();
       client.getPushers.mockRejectedValue(new Error('network'));
 
@@ -500,7 +556,11 @@ describe('PushService', () => {
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
 
-      expect(svc.registration().status).toBe('applied');
+      expect(svc.registration()).toEqual({
+        status: 'error',
+        message:
+          'Push registration could not finish. Retry to recover the saved registration.',
+      });
     });
 
     it('returns to idle when all pushers are torn down', async () => {
@@ -541,7 +601,8 @@ describe('PushService', () => {
 
       expect(svc.registration()).toEqual({
         status: 'error',
-        message: 'SENDER_ID_MISMATCH',
+        message:
+          'The device could not register for push notifications. Retry to try again.',
       });
 
       // The retry gets as far as the OS again, and a token this time registers pushers.
@@ -563,7 +624,8 @@ describe('PushService', () => {
 
       expect(svc.registration()).toEqual({
         status: 'error',
-        message: 'no google play services',
+        message:
+          'The device could not register for push notifications. Retry to try again.',
       });
 
       await firstValueFrom(svc.register());
@@ -665,7 +727,8 @@ describe('PushService', () => {
     expect(client.setPusher).not.toHaveBeenCalled();
     expect(svc.registration()).toMatchObject({
       status: 'error',
-      message: 'Push account routes could not be established.',
+      message:
+        'Push registration could not finish. Retry to recover the saved registration.',
     });
   });
 
@@ -901,8 +964,14 @@ describe('PushService', () => {
     client.setPusher.mockClear();
 
     let finishRemoval!: () => void;
+    const remove = client.removePusher.getMockImplementation()!;
     client.removePusher.mockImplementation(
-      () => new Promise((resolve) => (finishRemoval = () => resolve({}))),
+      (pushkey, appId) =>
+        new Promise((resolve) => {
+          finishRemoval = () => {
+            void remove(pushkey, appId).then(resolve);
+          };
+        }),
     );
     const removal = firstValueFrom(svc.unregister('@me:hs'));
 
@@ -919,5 +988,150 @@ describe('PushService', () => {
       expect.objectContaining({ pushkey: 'TOKEN456' }),
     );
     expect(svc.registration().status).not.toBe('error');
+  });
+
+  it('reloads durable identities across restart and removes the persisted old token', async () => {
+    const first = setup();
+    await firstValueFrom(first.svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    first.lifetime.unsubscribe();
+    TestBed.resetTestingModule();
+    for (const key of Object.keys(h.listeners)) delete h.listeners[key];
+
+    const second = setup({ existingClients: first.clients, startRun: false });
+    const secondGateway = TestBed.inject(PushGatewayService);
+    await secondGateway.init();
+    second.svc
+      .run()
+      .subscribe((activation) => second.activations.push(activation));
+    await firstValueFrom(second.svc.register());
+    h.listeners['registration']({ value: 'TOKEN456' });
+    await flush();
+
+    expect(second.client.removePusher).toHaveBeenCalledWith(
+      'TOKEN123',
+      'ovh.qwky.trinity.ios',
+    );
+    expect(second.client.remotePushers.map(({ pushkey }) => pushkey)).toEqual([
+      'TOKEN456',
+    ]);
+  });
+
+  it('retries disabled cleanup after restart without requesting a new OS token', async () => {
+    const first = setup();
+    await firstValueFrom(first.svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    expect(h.push.requestPermissions).toHaveBeenCalledOnce();
+    await TestBed.inject(PushGatewayService).clear();
+    await flush();
+    first.client.removePusher.mockRejectedValueOnce(new Error('offline'));
+    await expect(firstValueFrom(first.svc.unregister())).rejects.toThrow();
+    const permissionCalls = h.push.requestPermissions.mock.calls.length;
+    const registerCalls = h.push.register.mock.calls.length;
+    first.lifetime.unsubscribe();
+    TestBed.resetTestingModule();
+    for (const key of Object.keys(h.listeners)) delete h.listeners[key];
+
+    const second = setup({ existingClients: first.clients, startRun: false });
+    const secondGateway = TestBed.inject(PushGatewayService);
+    await secondGateway.init();
+    second.svc
+      .run()
+      .subscribe((activation) => second.activations.push(activation));
+    expect(h.prefs.get('trinity.push.gateway')).toContain('disabled');
+    await firstValueFrom(second.svc.register());
+
+    expect(h.push.requestPermissions).toHaveBeenCalledTimes(permissionCalls);
+    expect(h.push.register).toHaveBeenCalledTimes(registerCalls);
+    expect(second.client.remotePushers).toEqual([]);
+    expect(second.svc.registration()).toEqual({ status: 'idle' });
+  });
+
+  it('rejects a stale activation after account logout while preserving the other account pusher', async () => {
+    const { svc, clients, accountIds, activations } = setup({
+      accounts: ['@me:hs', '@alt:hs'],
+    });
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    accountIds.set(['@me:hs']);
+    await firstValueFrom(svc.unregister('@alt:hs'));
+
+    h.listeners['pushNotificationActionPerformed']({
+      notification: {
+        data: {
+          schema: '1',
+          kind: 'event',
+          trinity_account_id: 'route-al',
+          room_id: '!r:hs',
+          event_id: '$event',
+          unread: '1',
+          missed_calls: '0',
+          sound: 'false',
+        },
+      },
+    });
+    await flush();
+
+    expect(activations).toEqual([]);
+    expect(clients.get('@alt:hs')!.remotePushers).toEqual([]);
+    expect(clients.get('@me:hs')!.remotePushers).toHaveLength(1);
+  });
+
+  it('does not retry a successfully signed-out Account when disabling the remaining Account', async () => {
+    const { svc, clients, accountIds } = setup({
+      accounts: ['@me:hs', '@alt:hs'],
+    });
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    const departing = clients.get('@alt:hs')!;
+    await firstValueFrom(svc.unregister('@alt:hs'));
+    clients.delete('@alt:hs');
+    accountIds.set(['@me:hs']);
+    departing.getPushers.mockClear();
+    departing.getPushers.mockRejectedValue(new Error('credentials revoked'));
+
+    await TestBed.inject(PushGatewayService).clear();
+    await firstValueFrom(svc.unregister());
+    await firstValueFrom(svc.retryRegistration());
+
+    expect(departing.getPushers).not.toHaveBeenCalled();
+    expect(clients.get('@me:hs')!.remotePushers).toEqual([]);
+    expect(svc.registration()).toEqual({ status: 'idle' });
+  });
+
+  it('serializes logout before a concurrent token refresh for every account', async () => {
+    const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    for (const client of clients.values()) client.setPusher.mockClear();
+    let finishRemoval!: () => void;
+    const remove = clients.get('@me:hs')!.removePusher.getMockImplementation()!;
+    clients.get('@me:hs')!.removePusher.mockImplementation(
+      (pushkey, appId) =>
+        new Promise((resolve) => {
+          finishRemoval = () => void remove(pushkey, appId).then(resolve);
+        }),
+    );
+    const logout = firstValueFrom(svc.unregister());
+    h.listeners['registration']({ value: 'TOKEN456' });
+    await flush();
+    expect(
+      [...clients.values()].every(
+        (client) => client.setPusher.mock.calls.length === 0,
+      ),
+    ).toBe(true);
+    finishRemoval();
+    await logout;
+    await flush();
+    expect(
+      [...clients.values()]
+        .flatMap((client) => client.remotePushers)
+        .map(({ pushkey }) => pushkey),
+    ).toEqual([]);
   });
 });

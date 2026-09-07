@@ -171,8 +171,9 @@ delivery and platform badge/count handling are separate implementation slices.
 4. `unregister(userId)` removes that account's pushers. `unregister()` removes
    pushers for every account and clears local token/registration state; the
    listener ends with the runtime `run()` subscription, rather than during
-   unregister. Remove pushers before invalidating credentials or clearing the
-   gateway configuration.
+   unregister. Remove pushers before invalidating credentials. Disabling push
+   first persists the disabled choice, then removes identities from its separate
+   registration ledger.
 
 5. Listener preparation and recovery observation are bounded, but a healthy retained listener has
    no idle timeout. Targeted retry reuses retained ownership for registration failures and
@@ -190,27 +191,39 @@ metadata private from the gateway operator.
 
 ## Keep a gateway migration recoverable
 
-A pusher is identified by account, app ID, and device token. Changing the app ID
-creates another pusher; it does not update the old one. The separate
-`appliedAppId` ledger records the app ID that reached the homeserver. On an app
-ID change, `PushService` removes stale pushers before setting replacements. If
-that sequence stops after removal, the account stays unregistered until the next
-registration; setting first would leave the old gateway receiving events.
+A pusher is identified by Account, app ID and device token. The shared registration
+coordinator persists a separate device-local record for each Account, including every
+identity that may still exist on the homeserver. It saves that record before network
+mutations, removes obsolete app IDs and tokens before registering a replacement, and
+confirms the result with homeserver readback. An interrupted write or partial Account
+failure therefore leaves enough information for the next registration opportunity to
+retry. Other Accounts can finish independently, including Accounts sharing one token.
 
-The ledger advances only after every account succeeds. Clearing a gateway must
-therefore unregister first, while the ledger still identifies every app ID to
-remove. Clear persists a disabled choice, so the shipped default cannot silently
-re-enable push after restart. Configuration export represents that choice as
-`{ "disabled": true }`; `null` restores the build default.
+Older installations have only an applied app-ID record. Migration retains those IDs
+and any legacy configured app ID before replacing settings. It discovers legacy rows
+only under those identifiers with Trinity's application name and the Account's exact
+Matrix device ID in the device display field. Current v1 rows also require the saved
+opaque Account Route. The durable identity record is authoritative; unrelated device
+pushers are left alone.
 
-The service attempts a pusher readback for the app-ID/token identity. A
-definitive missing tuple changes registration to an error; a failed readback is
-inconclusive and preserves the applied result. Neither result proves a gateway
-or platform service delivered an alert.
+An explicit **Clear** persists the disabled choice before cleanup. The shipped default
+cannot re-enable it after restart, and failed cleanup remains retryable while disabled.
+Configuration export represents this choice as `{ "disabled": true }`; `null` restores
+the build default. Registration records and device tokens are not exported.
 
-A rotated device token has a different identity from an app-ID change. Current
-registration does not remove the old-token pusher automatically; logout or
-explicit cleanup remains the recovery path.
+**Retry** in notification Settings reapplies the saved registration or retries cleanup
+when disabled. The same lifecycle runs after token refresh and Account changes. A
+missing homeserver pusher is restored on the next registration opportunity, including
+when a gateway rejection previously caused the homeserver to drop it; there is no
+client-side gateway rejection callback. Failed or inconclusive readback remains a
+registration error. A confirmed row proves registration, not notification delivery.
+
+Account sign-out attempts pusher removal before credential revocation. Full reset
+also orders those operations sequentially. Cleanup failure is reported through the
+existing Account cleanup outcome; sign-out still follows its bounded local-security
+policy rather than retaining credentials indefinitely. If the server cannot be reached,
+Trinity cannot certify remote removal. Saved Account Routes are removed with the Account,
+and stale notifications cannot activate it.
 
 ## Verify the boundary you changed
 

@@ -465,6 +465,34 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(JSON.stringify(outcome)).not.toContain('secret-account-db');
   });
 
+  it('finishes push removal before revoking Matrix credentials during reset', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test);
+    const removal = new Subject<void>();
+    const order: string[] = [];
+    vi.mocked(test.lifecycle.unregisterNotifications).mockReturnValue(
+      defer(() => {
+        order.push('remove-pushers');
+        return removal;
+      }),
+    );
+    vi.mocked(test.matrix.signOutAll).mockReturnValue(
+      defer(() => {
+        order.push('revoke-credentials');
+        return of(void 0);
+      }),
+    );
+
+    const result = firstValueFrom(test.adapter.resetInstallation());
+    await vi.waitFor(() => expect(removal.observed).toBe(true));
+    expect(order).toEqual(['remove-pushers']);
+    removal.next();
+    removal.complete();
+
+    await expect(result).resolves.toEqual({ kind: 'ready' });
+    expect(order).toEqual(['remove-pushers', 'revoke-credentials']);
+  });
+
   it('reports key-value and service-worker residue by typed safe scope', async () => {
     const { adapter, matrix, storage, wipe } = setup();
     vi.mocked(storage.list).mockReturnValue(of([]));

@@ -75,47 +75,20 @@ export type PushRuntimeStatus =
         | 'push-pusher-verification-failed';
     };
 
-/**
- * Best human-readable message from a rejected pusher call. A `MatrixError` carries the
- * homeserver's own text in `data.error` (e.g. the notify-path config error); fall back
- * to the Error message, then to a generic line so the UI never shows `undefined`.
- */
-function pushErrorMessage(err: unknown): string {
-  if (err && typeof err === 'object') {
-    const data = (err as { data?: { error?: unknown } }).data;
-    if (data && typeof data.error === 'string' && data.error) {
-      return data.error;
-    }
-    const message = (err as { message?: unknown }).message;
-    if (typeof message === 'string' && message) {
-      return message;
-    }
-  }
-  return 'Could not reach the homeserver.';
-}
-
-/** Shown when the OS/FCM/APNs side of registration fails, rather than the homeserver. */
+/** Diagnostics and settings copy never include server or native error payloads. */
+const REGISTRATION_FAILED =
+  'Push registration could not finish. Retry to recover the saved registration.';
+const CLEANUP_FAILED =
+  'Some push registrations could not be removed. Retry to finish cleanup.';
 const DEVICE_REGISTRATION_FAILED =
-  'The device could not register for push notifications.';
-
-/** Best text from a rejected `PushNotifications.register()` — a plugin/OS failure, so
- * deliberately not {@link pushErrorMessage}, whose fallback blames the homeserver. */
-function deviceErrorMessage(err: unknown): string {
-  const message =
-    err && typeof err === 'object'
-      ? (err as { message?: unknown }).message
-      : null;
-  return typeof message === 'string' && message
-    ? message
-    : DEVICE_REGISTRATION_FAILED;
-}
+  'The device could not register for push notifications. Retry to try again.';
 
 /**
  * Registers the device for OS push (FCM/APNs via `@capacitor/push-notifications`)
  * and a matching **Matrix pusher on every signed-in account** so each account's
  * homeserver routes its notifications through the configured push gateway. All
- * accounts share the one device token (pushkey); each pusher tags itself with its
- * account's user id in `data` so the gateway can fan out to the right account and a
+ * accounts share the one device token (pushkey); each pusher carries its opaque
+ * Account Route in `data` so the gateway can fan out to the right account and a
  * tap can switch to it. Native-only and config-gated: a no-op on web/desktop or when
  * no `PushConfig` is provided.
  *
@@ -134,28 +107,74 @@ export class PushService {
    * made in settings takes effect on the next `register()` without a restart.
    */
   private readonly gateway = inject(PushGatewayService);
-  /** One coordinator per service lifetime serializes token/settings registrations. */
+  /** The shared lifecycle owns durable progress and platform-independent recovery. */
   private readonly registrationCoordinator =
     new TrinityPushRegistrationCoordinator({
-      register: (route, descriptor) => {
-        const account = this.matrix.clientFor(route.accountId);
-        if (!account || this.removingAccounts.get(route.accountId) === account)
-          return of(void 0);
-        return defer(() =>
-          from(
-            account.setPusher({
-              app_id: descriptor.appId,
-              pushkey: descriptor.pushkey,
-              kind: descriptor.kind,
-              app_display_name: 'Trinity',
-              device_display_name: account.getDeviceId() ?? 'Trinity',
-              lang: 'en',
-              data: { ...descriptor.data, url: descriptor.url },
-              append: descriptor.append,
-            }),
-          ),
-        );
-      },
+      load: (accountId) => this.gateway.loadRegistration(accountId),
+      save: (accountId, state) =>
+        this.gateway.saveRegistration(accountId, state),
+      list: (accountId) =>
+        defer(async () => {
+          const client = this.pusherClient(accountId);
+          const { pushers } = await client.getPushers();
+          return pushers.map((pusher) => ({
+            appId: typeof pusher.app_id === 'string' ? pusher.app_id : '',
+            pushkey: typeof pusher.pushkey === 'string' ? pusher.pushkey : '',
+            deviceDisplayName:
+              typeof pusher.device_display_name === 'string'
+                ? pusher.device_display_name
+                : '',
+            appDisplayName:
+              typeof pusher.app_display_name === 'string'
+                ? pusher.app_display_name
+                : undefined,
+            kind: typeof pusher.kind === 'string' ? pusher.kind : '',
+            url: typeof pusher.data?.url === 'string' ? pusher.data.url : '',
+            format:
+              typeof pusher.data?.format === 'string'
+                ? pusher.data.format
+                : undefined,
+            version:
+              pusher.data &&
+              'trinity_push_version' in pusher.data &&
+              typeof pusher.data.trinity_push_version === 'string'
+                ? pusher.data.trinity_push_version
+                : undefined,
+            accountRoute:
+              pusher.data &&
+              'trinity_account_id' in pusher.data &&
+              typeof pusher.data.trinity_account_id === 'string'
+                ? pusher.data.trinity_account_id
+                : undefined,
+          }));
+        }),
+      register: (route, descriptor) =>
+        defer(async () => {
+          const client = this.matrix.clientFor(route.accountId);
+          if (
+            !client ||
+            !this.acceptsRegistrationTokens ||
+            this.retiringClients.has(client)
+          )
+            throw new Error(REGISTRATION_FAILED);
+          await client.setPusher({
+            app_id: descriptor.appId,
+            pushkey: descriptor.pushkey,
+            kind: descriptor.kind,
+            app_display_name: 'Trinity',
+            device_display_name: client.getDeviceId() ?? 'Trinity',
+            lang: 'en',
+            data: { ...descriptor.data, url: descriptor.url },
+            append: descriptor.append,
+          });
+        }),
+      remove: (accountId, identity) =>
+        defer(async () => {
+          await this.pusherClient(accountId).removePusher(
+            identity.pushkey,
+            identity.appId,
+          );
+        }),
     });
 
   /** The device push token (FCM/APNs), shared by every account's pusher. */
@@ -164,6 +183,10 @@ export class PushService {
   private registrationGeneration = 0;
   private readonly removingAccounts = new Map<
     string,
+    NonNullable<ReturnType<MatrixClientService['clientFor']>>
+  >();
+  /** Prevent late registration for a departing lifetime without retaining its credentials. */
+  private readonly retiringClients = new WeakSet<
     NonNullable<ReturnType<MatrixClientService['clientFor']>>
   >();
   private acceptsRegistrationTokens = false;
@@ -223,6 +246,12 @@ export class PushService {
   register(): Observable<void> {
     return defer(async () => {
       if (!this.canPush()) {
+        if (
+          this.nativePush.supported() &&
+          this.gateway.disabled() &&
+          this.matrix.isInitialized
+        )
+          await firstValueFrom(this.unregister());
         return;
       }
       this.acceptsRegistrationTokens = true;
@@ -241,11 +270,11 @@ export class PushService {
       let permission: boolean;
       try {
         permission = await firstValueFrom(this.nativePush.requestPermission());
-      } catch (error) {
+      } catch {
         this.registered = false;
         this._registration.set({
           status: 'error',
-          message: deviceErrorMessage(error),
+          message: DEVICE_REGISTRATION_FAILED,
         });
         this._runtimeStatus.set({
           status: 'degraded',
@@ -275,11 +304,11 @@ export class PushService {
       // Fires the `registration` listener with the FCM/APNs token — or `registrationError`.
       // A rejection here means the OS flow never started, so release the one-time guard:
       // holding it would make every later register() early-exit for the process lifetime.
-      await firstValueFrom(this.nativePush.register()).catch((e: unknown) => {
+      await firstValueFrom(this.nativePush.register()).catch(() => {
         this.registered = false;
         this._registration.set({
           status: 'error',
-          message: deviceErrorMessage(e),
+          message: DEVICE_REGISTRATION_FAILED,
         });
         this._runtimeStatus.set({
           status: 'degraded',
@@ -305,63 +334,88 @@ export class PushService {
    */
   unregister(userId?: string): Observable<void> {
     return defer(() => {
+      const platform = this.nativePush.platform;
+      if (platform !== 'android' && platform !== 'ios') return of(void 0);
       this.registrationGeneration += 1;
-      if (!userId) this.acceptsRegistrationTokens = false;
-      else {
+      const targets = userId
+        ? [userId]
+        : [
+            ...new Set([
+              ...this.matrix.accountIds(),
+              ...this.removingAccounts.keys(),
+            ]),
+          ];
+      if (userId) {
         const client = this.matrix.clientFor(userId);
-        if (client) this.removingAccounts.set(userId, client);
-      }
-      return this.serializePusherMutation(async () => {
-        const pushkey = this.currentPushkey;
-        const appIds = this.liveAppIds();
-        if (userId) {
-          const client = this.matrix.clientFor(userId);
-          if (pushkey && client) {
-            for (const appId of appIds) {
-              await client.removePusher(pushkey, appId).catch(() => undefined);
-            }
-          }
-          return;
+        if (client) {
+          this.removingAccounts.set(userId, client);
+          this.retiringClients.add(client);
         }
+      }
+      if (!userId) {
+        this.acceptsRegistrationTokens = false;
         this.currentPushkey = null;
         this.registered = false;
-        // Every pusher is going away — a lingering "applied to N accounts" would be a lie
-        // the settings page shows after a clear or logout.
-        this._registration.set({ status: 'idle' });
-        this._runtimeStatus.set({
-          status: 'idle',
-          code: 'push-registration-idle',
-        });
-        if (pushkey) {
-          for (const account of this.matrix.all()) {
-            for (const appId of appIds) {
-              await account.client
-                .removePusher(pushkey, appId)
-                .catch(() => undefined);
-            }
+      }
+      return this.serializePusherMutation(async () => {
+        try {
+          const routes = await firstValueFrom(
+            this.sessions.getPushAccountRoutes(),
+          );
+          const report = await firstValueFrom(
+            this.registrationCoordinator.unregister({
+              platform,
+              accounts: targets.map((accountId) => ({
+                accountId,
+                route: routes.find((route) => route.accountId === accountId)
+                  ?.route,
+                deviceDisplayName:
+                  this.pusherClient(accountId).getDeviceId() ?? '',
+              })),
+              legacyAppIds: this.ownedAppIds(),
+            }),
+          );
+          for (const accountId of report.applied)
+            this.removingAccounts.delete(accountId);
+          if (report.failed.length) throw new Error(CLEANUP_FAILED);
+          if (!userId) {
+            this._registration.set({ status: 'idle' });
+            this._runtimeStatus.set({
+              status: 'idle',
+              code: 'push-registration-idle',
+            });
           }
+        } catch {
+          this._registration.set({ status: 'error', message: CLEANUP_FAILED });
+          this._runtimeStatus.set({
+            status: 'degraded',
+            code: 'push-pusher-registration-failed',
+          });
+          throw new Error(CLEANUP_FAILED);
         }
       });
     });
   }
 
-  /**
-   * Every per-platform app id a pusher of ours might currently be registered under:
-   * the one last written (the ledger) plus the one currently configured. Usually the
-   * same value, so usually one entry — they diverge only when an app-id change was
-   * interrupted, and removing both is what stops that stranding a pusher on the old
-   * gateway. `removePusher` against an id with no pusher is harmless.
-   */
-  private liveAppIds(): readonly string[] {
-    const ids = new Set<string>();
+  private pusherClient(
+    accountId: string,
+  ): NonNullable<ReturnType<MatrixClientService['clientFor']>> {
+    const client =
+      this.matrix.clientFor(accountId) ?? this.removingAccounts.get(accountId);
+    if (!client) throw new Error(CLEANUP_FAILED);
+    return client;
+  }
+
+  /** Only identifiers written by this installation may participate in legacy discovery. */
+  private ownedAppIds(): readonly string[] {
+    const ids = new Set([
+      this.platformAppId(undefined),
+      this.appliedPlatformAppId(DEFAULT_APP_ID),
+    ]);
     const applied = this.gateway.appliedAppId();
-    if (applied) {
-      ids.add(this.appliedPlatformAppId(applied));
-    }
-    const config = this.gateway.effective();
-    if (config) {
-      ids.add(this.platformAppId(undefined));
-    }
+    if (applied) ids.add(this.appliedPlatformAppId(applied));
+    for (const id of this.gateway.legacyAppIds())
+      ids.add(this.appliedPlatformAppId(id));
     return [...ids];
   }
 
@@ -401,11 +455,11 @@ export class PushService {
       case 'ready':
         return this.register().pipe(
           ignoreElements(),
-          catchError((error: unknown) => {
+          catchError(() => {
             this.registered = false;
             this._registration.set({
               status: 'error',
-              message: deviceErrorMessage(error),
+              message: DEVICE_REGISTRATION_FAILED,
             });
             this._runtimeStatus.set({
               status: 'degraded',
@@ -421,7 +475,7 @@ export class PushService {
         this.registered = false;
         this._registration.set({
           status: 'error',
-          message: event.message || DEVICE_REGISTRATION_FAILED,
+          message: DEVICE_REGISTRATION_FAILED,
         });
         this._runtimeStatus.set({
           status: 'degraded',
@@ -441,22 +495,6 @@ export class PushService {
     }
   }
 
-  /**
-   * Register (or refresh) a pusher for every signed-in account with `pushkey`.
-   *
-   * When the configured app id differs from the one last written, each account's stale
-   * pusher is removed *before* the new one is set. A pusher's identity is
-   * `(user_id, app_id, pushkey)`, so a changed app id does not update the existing row —
-   * it adds a second one and the first keeps delivering to the previous gateway
-   * (verified against Synapse: `GET /pushers` returns two rows after such a change).
-   * Remove-then-set is the safe order: interrupted after the remove, the account is
-   * simply unregistered until the next `register()` re-applies it; interrupted the other
-   * way round, the old gateway would keep receiving indefinitely.
-   *
-   * The ledger only advances once *every* account succeeded, so a partial failure leaves
-   * the old id recorded and the next round retries the removal. Re-removing an id that
-   * is already gone is harmless.
-   */
   /** Keep pusher removal and registration in one transaction order. */
   private serializePusherMutation(action: () => Promise<void>): Promise<void> {
     const task = this.pusherMutations.catch(() => undefined).then(action);
@@ -478,128 +516,70 @@ export class PushService {
     generation: number,
   ): Promise<void> {
     const config = this.gateway.effective();
-    if (!config) {
-      return;
-    }
-    this.currentPushkey = pushkey;
-    const appId = this.platformAppId(undefined);
-    const routes = await firstValueFrom(
-      this.sessions.ensurePushAccountRoutes(),
-    );
-    const routeByAccount = new Map(
-      routes.map((route) => [route.accountId, route.route]),
-    );
-    const appliedBase = this.gateway.appliedAppId();
-    const stale =
-      appliedBase && this.appliedPlatformAppId(appliedBase) !== appId
-        ? this.appliedPlatformAppId(appliedBase)
-        : null;
-    // The first failure's message, if any: kept so the settings UI can show why the
-    // gateway did not take, instead of the round failing silently. A null failure gates
-    // the ledger advance exactly as the old boolean did — a stale removal that failed
-    // keeps the old id recorded so the next round retries it.
-    let failure: string | null = null;
-    let accounts = 0;
-
-    // A signing-out Account remains in the Matrix inventory until its cleanup
-    // command completes. Token refreshes must not register that same lifetime again.
-    for (const [accountId, client] of this.removingAccounts) {
-      if (this.matrix.clientFor(accountId) !== client)
-        this.removingAccounts.delete(accountId);
-    }
-    const liveAccounts = this.matrix
-      .all()
-      .filter(
-        (account) =>
-          this.removingAccounts.get(account.userId) !== account.client,
-      );
-    if (liveAccounts.some((account) => !routeByAccount.has(account.userId))) {
-      failure = 'Push account routes could not be established.';
-    }
-    for (const account of liveAccounts) {
-      accounts++;
-      if (stale) {
-        await account.client
-          .removePusher(pushkey, stale)
-          .catch((e) => (failure ??= pushErrorMessage(e)));
-      }
-    }
-
     const platform = this.nativePush.platform;
-    if (platform !== 'android' && platform !== 'ios') {
-      failure ??= 'Push is unavailable on this platform.';
-    } else {
-      await firstValueFrom(
+    if (!config || (platform !== 'android' && platform !== 'ios')) return;
+    this.currentPushkey = pushkey;
+    try {
+      const routes = await firstValueFrom(
+        this.sessions.ensurePushAccountRoutes(),
+      );
+      for (const [accountId, client] of this.removingAccounts) {
+        if (this.matrix.clientFor(accountId) !== client)
+          this.removingAccounts.delete(accountId);
+      }
+      const live = this.matrix
+        .all()
+        .filter(({ client }) => !this.retiringClients.has(client));
+      const accounts = live.map(({ userId, client }) => {
+        const route = routes.find((entry) => entry.accountId === userId)?.route;
+        if (!route) throw new Error(REGISTRATION_FAILED);
+        return {
+          accountId: userId,
+          route,
+          deviceDisplayName: client.getDeviceId() ?? '',
+        };
+      });
+      const report = await firstValueFrom(
         this.registrationCoordinator.register({
           platform,
           pushkey,
           gatewayUrl: config.gatewayUrl,
-          accounts: liveAccounts.flatMap((account) => {
-            const route = routeByAccount.get(account.userId);
-            return route ? [{ accountId: account.userId, route }] : [];
-          }),
+          accounts,
+          legacyAppIds: this.ownedAppIds(),
         }),
-      ).catch((e: unknown) => (failure ??= pushErrorMessage(e)));
-    }
-
-    if (generation !== this.registrationGeneration) return;
-    if (failure === null) {
-      await this.gateway.markApplied(appId);
-      this._registration.set({ status: 'applied', accounts, at: Date.now() });
+      );
+      if (generation !== this.registrationGeneration) return;
+      if (report.failed.length) {
+        this._registration.set({
+          status: 'error',
+          message: REGISTRATION_FAILED,
+        });
+        this._runtimeStatus.set({
+          status: 'degraded',
+          code: report.failed.some(({ code }) => code === 'readback-failed')
+            ? 'push-pusher-verification-failed'
+            : 'push-pusher-registration-failed',
+        });
+        return;
+      }
+      if (report.applied.length === 0) return;
+      await this.gateway.markApplied(pushAppId(platform));
+      this._registration.set({
+        status: 'applied',
+        accounts: report.applied.length,
+        at: Date.now(),
+      });
       this._runtimeStatus.set({
         status: 'available',
         code: 'push-registration-ready',
       });
-      await this.verifyPushers(pushkey, appId);
-    } else {
-      this._registration.set({ status: 'error', message: failure });
+    } catch {
+      if (generation !== this.registrationGeneration) return;
+      this._registration.set({ status: 'error', message: REGISTRATION_FAILED });
       this._runtimeStatus.set({
         status: 'degraded',
         code: 'push-pusher-registration-failed',
       });
-    }
-  }
-
-  /**
-   * Read the pushers back and confirm the one just registered is actually there.
-   *
-   * `setPusher` returning 200 is the homeserver's word that it stored the pusher; this
-   * is an independent check that the row is queryable — the state the gateway depends
-   * on — and catches a homeserver that accepts the POST but does not persist it (a real
-   * risk on the non-Synapse homeservers this feature invites people to point at). It is
-   * the only delivery-adjacent thing the client CAN verify: the gateway → FCM/APNs →
-   * device leg is invisible from here, so this confirms registration, never delivery.
-   *
-   * Matching is on the `(app_id, pushkey)` identity tuple, not the URL: the URL we sent
-   * is authoritative, and a homeserver that canonicalises it differently must not read
-   * as a failure. Only a definitive *absence* downgrades the state — if the readback GET
-   * itself fails, the just-succeeded registration is left standing rather than punished
-   * for an unrelated network blip.
-   */
-  private async verifyPushers(pushkey: string, appId: string): Promise<void> {
-    for (const account of this.matrix.all()) {
-      if (this.removingAccounts.get(account.userId) === account.client)
-        continue;
-      let pushers: readonly { app_id: string; pushkey: string }[];
-      try {
-        pushers = (await account.client.getPushers()).pushers;
-      } catch {
-        return; // Inconclusive — leave the applied state as it stands.
-      }
-      const present = pushers.some(
-        (p) => p.app_id === appId && p.pushkey === pushkey,
-      );
-      if (!present) {
-        this._registration.set({
-          status: 'error',
-          message: `${account.userId} accepted the pusher but the homeserver did not keep it.`,
-        });
-        this._runtimeStatus.set({
-          status: 'degraded',
-          code: 'push-pusher-verification-failed',
-        });
-        return;
-      }
     }
   }
 
@@ -614,7 +594,13 @@ export class PushService {
     ).catch(() => []);
     const route = resolvePushAccountRoute(routes, payload.accountRoute);
     const accountId = route?.accountId;
-    if (!accountId || !this.matrix.accountIds().includes(accountId))
+    const client = accountId ? this.matrix.clientFor(accountId) : null;
+    if (
+      !accountId ||
+      !client ||
+      !this.matrix.accountIds().includes(accountId) ||
+      this.retiringClients.has(client)
+    )
       return null;
     return {
       accountId,

@@ -156,13 +156,40 @@ export class NativePushLifetime {
             this.current.preparation,
           );
           if (demanded) attach();
+          else if (next === 'not-configured' && this.gateway.disabled()) {
+            // A prior disable may have been interrupted after persisting the
+            // choice. Retry its saved removals without requesting a device token.
+            listener.add(
+              this.push.retryRegistration().subscribe({
+                error: () =>
+                  publish(
+                    'degraded',
+                    'push-pusher-registration-failed',
+                    'failed',
+                  ),
+              }),
+            );
+          }
         } finally {
           applying = false;
         }
       };
       const observeStatus = (): void => {
-        if (!this.current?.demanded || !ownsListener) return;
+        if (!this.current) return;
         const state = this.push.runtimeStatus();
+        if (prerequisite === 'not-configured' && this.gateway.disabled()) {
+          if (state.status === 'idle') {
+            publish(
+              'waiting-for-precondition',
+              'push-registration-not-configured',
+              'acknowledged',
+            );
+          } else if (state.status === 'degraded') {
+            publish('degraded', state.code, 'failed');
+          }
+          return;
+        }
+        if (!this.current.demanded || !ownsListener) return;
         if (state.status === 'idle') return;
         publish(
           state.status === 'available'
