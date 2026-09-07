@@ -27,6 +27,23 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "container": {
+      "//": "Container security and PWA smoke against the verified shared www renderer; the wrapper owns the E2E lifecycle descriptor.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-web"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-container.mts",
+        "cwd": "{workspaceRoot}"
+      },
+      "dependsOn": [
+        {
+          "projects": ["trinity-web-container"],
+          "target": "build-prebuilt"
+        }
+      ]
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

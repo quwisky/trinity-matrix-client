@@ -1,0 +1,138 @@
+[general]
+host = "0.0.0.0"
+port = 8080
+root = "/home/sws/public"
+directory-listing = false
+compression = true
+compression-level = "default"
+compression-static = false
+cache-control-headers = false
+security-headers = false
+# Preserve the application shell as the body of an unknown-route 404 while
+# retaining the 404 status. Supported routes below are rewritten with 200.
+page404 = "/home/sws/public/index.html"
+health = true
+text-charset = true
+
+[advanced]
+
+# Route-shaped asset requests must never become a successful SPA navigation.
+# Mapping them to a deliberately absent file preserves SWS's 404 status before
+# the page404 body is selected.
+[[advanced.rewrites]]
+source = "/rooms/**/*.*"
+destination = "/__trinity_missing_asset__"
+[[advanced.rewrites]]
+source = "/settings/**/*.*"
+destination = "/__trinity_missing_asset__"
+
+# Every supported client-side route is rewritten to the immutable application shell.
+[[advanced.rewrites]]
+source = "/login"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/register"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/sso-callback"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/rooms"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/rooms/*"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/profile"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/presence"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/devices"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/account"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/security"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/appearance"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/notifications"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/privacy"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/server"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/gifs"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/stickers"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/shortcuts"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/experimental"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/settings/advanced"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/encryption/setup"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/encryption/unlock"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/encryption/verify"
+destination = "/index.html"
+
+# The application supplies its complete CSP; the host adds only the origin-level
+# frame and MIME/referrer protections required by the container contract.
+[[advanced.headers]]
+source = "**"
+headers = {
+  Content-Security-Policy = "frame-ancestors 'none'",
+  X-Frame-Options = "DENY",
+  X-Content-Type-Options = "nosniff",
+  Referrer-Policy = "strict-origin-when-cross-origin",
+  Cache-Control = "no-cache"
+}
+
+# Content-hashed Angular output can be cached immutably. Fixed-name files below
+# are listed after this rule so they retain the revalidation baseline.
+[[advanced.headers]]
+source = "/*-[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9].{js,css}"
+headers.Cache-Control = "public, max-age=31536000, immutable"
+
+[[advanced.headers]]
+source = "/index.html"
+headers.Cache-Control = "no-cache"
+[[advanced.headers]]
+source = "/ngsw.json"
+headers.Cache-Control = "no-cache"
+[[advanced.headers]]
+source = "/ngsw-worker.js"
+headers.Cache-Control = "no-cache"
+[[advanced.headers]]
+source = "/manifest.webmanifest"
+headers.Cache-Control = "no-cache"
+[[advanced.headers]]
+source = "/favicon.ico"
+headers.Cache-Control = "no-cache"
+[[advanced.headers]]
+source = "/assets/crypto/matrix_sdk_crypto_wasm_bg.wasm"
+headers = {
+  Cache-Control = "no-cache",
+  Content-Type = "application/wasm"
+}

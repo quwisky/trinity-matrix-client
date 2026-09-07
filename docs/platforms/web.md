@@ -54,6 +54,41 @@ uses its own server and cannot prove your production host sends the correct head
 Publication and release authorization belong to
 [maintainer guidance](../maintaining/index.md); building locally does not publish anything.
 
+## Verify the container host
+
+The `trinity-web-container` Nx project packages the production renderer in a pinned,
+non-root Static Web Server image. It consumes the same verified `www/` payload used by
+other production hosts. Prepare that payload once, then run the container contract:
+
+```bash
+pnpm build
+pnpm bundle:manifest:write
+pnpm nx run trinity-web-container:verify
+pnpm nx run trinity-web-container:build-prebuilt
+pnpm nx run trinity-web-container:smoke
+```
+
+The build and smoke targets require Docker, and smoke also requires the matching Playwright
+Chromium browser. The static verifier checks the pinned host and MIT license declarations.
+Build and smoke verify the manifest against the current checkout and never rebuild Angular. A missing or altered payload fails verification. The native smoke uses Linux amd64;
+it does not establish arm64 runtime coverage.
+
+The image serves the origin root on port 8080 with a read-only filesystem, all capabilities
+dropped, no-new-privileges and no writable mounts. HTTPS and HSTS belong to an external proxy.
+The checked-in SWS configuration supplies the anti-framing, MIME-sniffing and referrer headers,
+keeps fixed-name assets revalidated, and grants immutable caching only to hashed bundles.
+Supported application deep links return the shell with HTTP 200; unknown links receive the
+shell with HTTP 404 so Angular can repair stale navigation. SWS trims surrounding whitespace
+in custom error responses; the image payload itself still matches the manifest exactly.
+Missing asset paths remain 404.
+Dynamic compression preserves the renderer bytes and `/health` supplies a readiness endpoint.
+
+Smoke checks the HTTP and container restrictions and runs the production PWA browser contract,
+including standalone startup, service-worker control and offline crypto WASM. It retains
+failure evidence under ignored `dist/` output and removes its running container afterward.
+This host prerequisite is available locally; CI fan-out and registry publication are separate
+steps in the CI/release map.
+
 ## Where the build output goes
 
 The resolved `trinity:build` target sets `outputPath` to `{ "base": "www", "browser": "" }`.

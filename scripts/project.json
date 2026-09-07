@@ -44,7 +44,10 @@
         "{workspaceRoot}/.github/actions/**/*.yml",
         "{workspaceRoot}/package.json",
         "{workspaceRoot}/pnpm-lock.yaml",
-        "{workspaceRoot}/ios/project.json"
+        "{workspaceRoot}/ios/project.json",
+        "{workspaceRoot}/container/**",
+        "{workspaceRoot}/LICENSE",
+        "{workspaceRoot}/electron/package.json"
       ]
     },
     "record-renderer": {

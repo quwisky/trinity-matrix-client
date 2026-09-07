@@ -131,7 +131,11 @@ export const E2E_PACKAGE_SCRIPTS = [
     name: 'e2e:web',
     command: 'nx run trinity-e2e:e2e-web',
     kind: 'canonical',
-    suiteIds: ['web.production-pwa', 'web.production-renderer'],
+    suiteIds: [
+      'web.production-pwa',
+      'web.container',
+      'web.production-renderer',
+    ],
   },
   {
     name: 'e2e:android',
