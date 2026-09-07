@@ -95,7 +95,10 @@ export class ComposerTextField {
       return;
     }
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
+    // A wrapping room-name placeholder is not draft content. Keep an empty input at rows=1.
+    if (el.value.length > 0) {
+      el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
+    }
   }
 
   /**

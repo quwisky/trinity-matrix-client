@@ -371,6 +371,11 @@
       color: var(--trinity-text-muted);
     }
 
+    // A long room name may wrap below the resting row, but an empty input must not scroll.
+    &:placeholder-shown {
+      overflow-y: hidden;
+    }
+
     // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). Suppress the native
     // textarea ring so a bare input inside the filled field does not read as two controls.
     &:focus-visible {
