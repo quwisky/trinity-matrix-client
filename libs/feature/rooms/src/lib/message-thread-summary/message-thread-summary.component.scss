@@ -2,6 +2,7 @@
   :host {
     // Reserve a complete flex row so even a short preview stays below its parent.
     display: block;
+    container-type: inline-size;
     flex: 0 0 calc(100% - var(--message-body-indent));
     min-width: 0;
     margin-inline-start: var(--message-body-indent);
@@ -39,8 +40,8 @@
       top: calc(-1 * var(--trinity-density-message-column-gap));
       width: calc(17px + var(--trinity-density-message-column-gap));
       height: calc(var(--trinity-density-message-column-gap) + 18px);
-      border-inline-start: 2px solid var(--trinity-border-subtle);
-      border-bottom: 2px solid var(--trinity-border-subtle);
+      border-inline-start: 2px solid var(--trinity-text-muted);
+      border-bottom: 2px solid var(--trinity-text-muted);
       border-end-start-radius: var(--trinity-radius-sm);
       pointer-events: none;
     }
@@ -86,7 +87,9 @@
 
   .msg__thread-author {
     flex: 0 0 auto;
-    max-width: 40%;
+
+    // Use the full message column, not the content-sized preview button.
+    max-width: 40cqi;
     overflow: hidden;
     text-overflow: ellipsis;
     color: var(--trinity-text);

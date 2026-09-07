@@ -40,6 +40,7 @@ interface SeededThread {
   authorName: string;
   imageRootBody?: string;
   imageFilename?: string;
+  imageLatestBody?: string;
 }
 
 interface SeedThreadOptions {
@@ -47,6 +48,7 @@ interface SeedThreadOptions {
   rootBody?: string;
   latestBody?: string;
   includeImageRoot?: boolean;
+  imageLatestBody?: string;
 }
 
 async function apiLogin(
@@ -205,7 +207,7 @@ async function seedThread(
       roomId,
       author,
       `${replyPrefix}-2`,
-      latestBody,
+      image ? (options.imageLatestBody ?? latestBody) : latestBody,
       rootEventId,
     );
   };
@@ -230,6 +232,7 @@ async function seedThread(
     authorName,
     imageRootBody,
     imageFilename: imageRootBody ? 'short-root.png' : undefined,
+    imageLatestBody: options.imageLatestBody,
   };
 }
 
@@ -290,6 +293,7 @@ async function assertPreview(
       button: button.getBoundingClientRect(),
       preview: previewBox,
       previewAuthor: previewAuthor.getBoundingClientRect(),
+      authorAllowance: button.parentElement!.clientWidth * 0.4,
       previewText: textBox,
       previewFitsContainer:
         previewBox.left >= button.getBoundingClientRect().left &&
@@ -315,9 +319,9 @@ async function assertPreview(
   expect(
     measurements.previewAuthor.width / measurements.preview.width,
   ).toBeGreaterThanOrEqual(0.3);
-  expect(
-    measurements.previewAuthor.width / measurements.preview.width,
-  ).toBeLessThanOrEqual(0.41);
+  expect(measurements.previewAuthor.width).toBeLessThanOrEqual(
+    measurements.authorAllowance + 1,
+  );
   expect(
     Math.abs(measurements.connectorCenter - measurements.avatarCenter),
   ).toBeLessThanOrEqual(0.5);
@@ -360,7 +364,9 @@ async function assertShortPreviewLayout(
   const summary = root.getByTestId('message-thread-summary');
   await expect(summary).toContainText('2 replies');
   await expect(summary).toContainText(seeded.authorName);
-  await expect(summary).toContainText(seeded.latestBody);
+  await expect(summary).toContainText(
+    image ? (seeded.imageLatestBody ?? seeded.latestBody) : seeded.latestBody,
+  );
   const geometry = await summary.evaluate((element) => {
     const summaryBox = element.getBoundingClientRect();
     const body = element
@@ -480,20 +486,44 @@ test.describe('Thread preview', () => {
           request,
           touchPlatform,
         }, testInfo) => {
+          await page.emulateMedia({ colorScheme: mobile ? 'dark' : 'light' });
           const seeded = await seedThread(
             request,
             `${testResourceId('run')}${mobile ? 'shortphone' : 'shortdesk'}`,
             {
-              authorName: 'Bob',
+              authorName: 'Quwisky Example',
               rootBody: 'Short text root',
               latestBody: 'OK',
               includeImageRoot: true,
+              imageLatestBody:
+                'A longer reply makes the preview wider but must not change the username allowance.',
             },
           );
           await login(page, seeded.reader);
           await openRoom(page, seeded.roomName);
           const textSummary = await assertShortPreviewLayout(page, seeded);
-          await assertShortPreviewLayout(page, seeded, true);
+          const imageSummary = await assertShortPreviewLayout(
+            page,
+            seeded,
+            true,
+          );
+          const authorWidth = (summary: Locator) =>
+            summary
+              .locator('.msg__thread-author')
+              .evaluate((element) => element.getBoundingClientRect().width);
+          expect(
+            Math.abs(
+              (await authorWidth(textSummary)) -
+                (await authorWidth(imageSummary)),
+            ),
+          ).toBeLessThanOrEqual(1);
+          const colors = await textSummary.evaluate((element) => ({
+            connector: getComputedStyle(element, '::before').borderBottomColor,
+            replyToken: getComputedStyle(
+              element.querySelector('.msg__thread-time')!,
+            ).color,
+          }));
+          expect(colors.connector).toBe(colors.replyToken);
           await textSummary.scrollIntoViewIfNeeded();
           const textProofPath = testInfo.outputPath(
             `thread-preview-short-text-${mobile ? 'mobile' : 'desktop'}.png`,

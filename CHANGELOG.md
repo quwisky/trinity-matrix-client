@@ -1136,6 +1136,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Thread previews give the same username the same width allowance across short and long
+  replies, and their connector uses the same theme color as ordinary reply connectors.
+
 - Loading older timeline history preserves deliberate reading offsets even near the bottom.
   Jumping to the latest message cancels pending history corrections so they cannot pull the
   reader back to an older message.

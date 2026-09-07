@@ -99,7 +99,8 @@ actions depend on the event, the room and your permissions:
 Threads with replies show a preview beneath their parent message: reply count, unread status,
 latest reply author and text, and how recently it arrived. Select anywhere on the preview to
 open the thread. On phones the reply text stays on one line and the entire preview is a tap
-target; no hover action is needed.
+target; no hover action is needed. Long author names truncate according to the available
+message width, consistently across short and long replies.
 
 Use **Cancel reply** or **Cancel edit** in the composer banner when you opened the wrong action.
 
