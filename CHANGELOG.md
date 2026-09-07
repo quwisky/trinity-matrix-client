@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Resolve disposable federation signing keys directly between the test homeservers,
+  preventing slow public-notary lookups from failing room-preview alias resolution.
+
 - Exercise thread replies through Android's long-press action sheet in the shared
   quote regression test, instead of waiting for the desktop-only hover toolbar.
 

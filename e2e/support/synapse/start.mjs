@@ -319,15 +319,20 @@ async function ensureConfig() {
     // Both homeservers live on Docker-private addresses in this disposable stack.
     additions.push('federation_ip_range_blacklist: []');
   }
-  let trustedKeysChanged = false;
-  if (!/^\s+accept_keys_insecurely:/m.test(yaml)) {
-    const beforeTrustedKeys = yaml;
-    yaml = yaml.replace(
-      /^(\s+- server_name: ["']?matrix\.org["']?)$/m,
-      '$1\n    accept_keys_insecurely: true',
-    );
-    trustedKeysChanged = yaml !== beforeTrustedKeys;
+  // These disposable server names cannot be known by a public key notary. A slow
+  // matrix.org lookup delays signature verification and can make local alias
+  // resolution return 502 before Synapse falls back to fetching the peer's key.
+  // Replace the generated notary list, including an older harness's insecure-key
+  // override, so federation verifies signatures directly against the local peer.
+  const beforeTrustedKeys = yaml;
+  yaml = yaml.replace(
+    /^trusted_key_servers:[^\n]*(?:\n[ \t]+[^\n]*)*/m,
+    'trusted_key_servers: []',
+  );
+  if (!/^trusted_key_servers:/m.test(yaml)) {
+    additions.push('trusted_key_servers: []');
   }
+  const trustedKeysChanged = yaml !== beforeTrustedKeys;
 
   if (additions.length) {
     yaml += `\n\n# === appended by e2e/support/synapse/start.mjs ===\n${additions.join('\n')}\n`;
@@ -389,13 +394,16 @@ async function ensureSecondaryConfig() {
   // The remote listener is deliberately distinct from the primary's even inside the
   // container, because netns CI puts both processes on one loopback.
   yaml = yaml.replace(/(^\s+- port:) \d+$/m, '$1 8009');
-  if (!/^\s+accept_keys_insecurely:/m.test(yaml)) {
-    yaml = yaml.replace(
-      /^(\s+- server_name: ["']?matrix\.org["']?)$/m,
-      '$1\n    accept_keys_insecurely: true',
-    );
-  }
+  // The secondary verifies the primary's signatures through the same local-only
+  // key lookup policy; the generated matrix.org notary must not delay this path.
+  yaml = yaml.replace(
+    /^trusted_key_servers:[^\n]*(?:\n[ \t]+[^\n]*)*/m,
+    'trusted_key_servers: []',
+  );
   const additions = [];
+  if (!/^trusted_key_servers:/m.test(yaml)) {
+    additions.push('trusted_key_servers: []');
+  }
   if (!/^enable_registration:/m.test(yaml)) {
     additions.push('enable_registration: true');
   }

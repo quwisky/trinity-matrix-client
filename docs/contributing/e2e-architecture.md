@@ -58,6 +58,14 @@ then children validate and join it; they must never start fallback servers or ho
 journeys use the development bundle; the production PWA target builds production without Docker.
 A development journey therefore does not establish service-worker, native, or Electron behavior.
 
+Both disposable Synapses set `trusted_key_servers: []` and fetch signing keys directly
+from the local federation peer. The generated public matrix.org notary would first try to
+resolve private harness server names; a slow lookup can exhaust the alias-resolution timeout
+and return `502 Failed to fetch alias` before direct key discovery runs. Signature verification
+still occurs, using the local Caddy federation endpoints. Startup rewrites the generated notary
+list, including configurations left by older harness versions. See Synapse's
+[trusted key server configuration](https://element-hq.github.io/synapse/latest/usage/configuration/config_documentation.html#trusted_key_servers).
+
 The Android runner validates a dedicated API 36 x86_64 emulator, installs the Capacitor
 app, and owns ADB reverse mappings and driver cleanup. It must not select an arbitrary
 attached device. Electron needs separately installed shell dependencies and a display
