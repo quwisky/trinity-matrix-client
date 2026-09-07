@@ -9,7 +9,9 @@ import {
 } from '../../../fixtures.mts';
 import {
   clickRowToolbar,
+  isAndroidE2E,
   login,
+  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -482,10 +484,15 @@ test.describe('Thread preview', () => {
 
     // Use the real thread reply action so the SDK emits an explicit m.in_reply_to
     // relation with is_falling_back=false and the rich-reply fallback content.
-    await clickRowToolbar(
-      ordinary,
-      ordinary.getByRole('button', { name: 'Reply' }),
-    );
+    if (isAndroidE2E) {
+      const sheet = await openMessageActionSheet(page, ordinary);
+      await sheet.getByTestId('sheet-reply').click();
+    } else {
+      await clickRowToolbar(
+        ordinary,
+        ordinary.getByRole('button', { name: 'Reply' }),
+      );
+    }
     await expect(thread.locator('.composer__banner')).toContainText(
       'Replying to',
     );

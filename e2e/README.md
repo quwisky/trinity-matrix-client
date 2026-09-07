@@ -65,6 +65,11 @@ checks. It can clear the test application and change ADB reverse mappings. Set
 [E2E architecture](../docs/contributing/e2e-architecture.md#lifecycle-and-resource-ownership)
 for ownership and cleanup limits.
 
+Shared message-action journeys must use Android's long-press action sheet through
+`openMessageActionSheet`; the desktop hover toolbar is intentionally absent on Android,
+even in a wide WebView. The thread-preview quote journey exercises Reply through each
+platform's action surface before checking quote content and jump behavior.
+
 ## MSC2545 image-pack management
 
 The image-pack journey is shared by browser, Android WebView, and Electron wrappers. It

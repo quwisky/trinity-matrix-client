@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Exercise thread replies through Android's long-press action sheet in the shared
+  quote regression test, instead of waiting for the desktop-only hover toolbar.
+
 - Keep the timeline's reading position steady when the older-history loading indicator
   appears, including Android, and preserve that position when the messages arrive.
 
