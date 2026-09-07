@@ -18,10 +18,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
-- Timeline threads now show a preview connected beneath the avatar center at both densities,
-  with the latest reply author and text,
-  relative activity time, reply count and unread status. The whole preview opens the
-  thread, with touch-sized targets and single-line text on narrow mobile screens.
+- Timeline threads now keep their connected preview beneath the parent message, including
+  short replies and image messages. The connector aligns with the avatar center at both
+  densities. Previews show the latest reply author and text, relative activity time, reply
+  count and unread status. The whole preview opens the thread, with touch-sized targets
+  and single-line text on narrow mobile screens.
 
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the

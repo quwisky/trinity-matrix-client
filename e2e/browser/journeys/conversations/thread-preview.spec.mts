@@ -21,6 +21,10 @@ import { captureScreenshot } from '../../../support/screenshot.mts';
 const session = synapseSession();
 const { defaultBrowserType: pixel5BrowserType, ...pixel5 } = devices['Pixel 5'];
 void pixel5BrowserType;
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 interface ApiUser {
   userId: string;
@@ -34,6 +38,15 @@ interface SeededThread {
   latestBody: string;
   latestPrefix: string;
   authorName: string;
+  imageRootBody?: string;
+  imageFilename?: string;
+}
+
+interface SeedThreadOptions {
+  authorName?: string;
+  rootBody?: string;
+  latestBody?: string;
+  includeImageRoot?: boolean;
 }
 
 async function apiLogin(
@@ -86,6 +99,7 @@ async function sendMessage(
 async function seedThread(
   request: APIRequestContext,
   runId: string,
+  options: SeedThreadOptions = {},
 ): Promise<SeededThread> {
   const hs = session.hs as string;
   const readerUser = `thread-preview-reader-${runId}`;
@@ -93,9 +107,11 @@ async function seedThread(
   const authorUser = `thread-preview-author-${runId}`;
   const authorPass = `${authorUser}-pass`;
   const roomName = `Thread preview ${runId.slice(-8)}`;
-  const authorName = 'Preview Author With An Unusually Long Display Name';
-  const rootBody = 'Thread root message';
-  const latestBody = `Latest reply ${'long preview text '.repeat(24)}`;
+  const authorName =
+    options.authorName ?? 'Preview Author With An Unusually Long Display Name';
+  const rootBody = options.rootBody ?? 'Thread root message';
+  const latestBody =
+    options.latestBody ?? `Latest reply ${'long preview text '.repeat(24)}`;
   const latestPrefix = latestBody.slice(0, 32);
 
   await registerUser(request, readerUser, readerPass);
@@ -119,39 +135,91 @@ async function seedThread(
     { headers: author.headers },
   );
 
-  const rootEventId = await sendMessage(
-    request,
-    hs,
-    roomId,
-    reader,
-    `${runId}-root`,
-    rootBody,
-  );
-  await request.post(
-    `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/read_markers`,
-    {
-      headers: reader.headers,
-      data: { 'm.fully_read': rootEventId, 'm.read': rootEventId },
-    },
-  );
-  await sendMessage(
-    request,
-    hs,
-    roomId,
-    author,
-    `${runId}-reply-1`,
-    `first reply ${runId}`,
-    rootEventId,
-  );
-  await sendMessage(
-    request,
-    hs,
-    roomId,
-    author,
-    `${runId}-reply-2`,
-    latestBody,
-    rootEventId,
-  );
+  const seedRoot = async (
+    root: string,
+    rootTransactionId: string,
+    replyPrefix: string,
+    image = false,
+  ): Promise<void> => {
+    let rootEventId: string;
+    if (image) {
+      const upload = await request.post(
+        `${hs}/_matrix/media/v3/upload?filename=short-root.png`,
+        {
+          headers: { ...reader.headers, 'Content-Type': 'image/png' },
+          data: PNG_1X1,
+        },
+      );
+      const { content_uri: mxc } = (await upload.json()) as {
+        content_uri: string;
+      };
+      rootEventId = await request
+        .put(
+          `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${rootTransactionId}`,
+          {
+            headers: reader.headers,
+            data: {
+              msgtype: 'm.image',
+              body: 'short-root.png',
+              url: mxc,
+              info: {
+                mimetype: 'image/png',
+                size: PNG_1X1.length,
+                w: 320,
+                h: 480,
+              },
+            },
+          },
+        )
+        .then((response) => response.json())
+        .then((json) => json.event_id as string);
+    } else {
+      rootEventId = await sendMessage(
+        request,
+        hs,
+        roomId,
+        reader,
+        rootTransactionId,
+        root,
+      );
+    }
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/read_markers`,
+      {
+        headers: reader.headers,
+        data: { 'm.fully_read': rootEventId, 'm.read': rootEventId },
+      },
+    );
+    await sendMessage(
+      request,
+      hs,
+      roomId,
+      author,
+      `${replyPrefix}-1`,
+      'first reply',
+      rootEventId,
+    );
+    await sendMessage(
+      request,
+      hs,
+      roomId,
+      author,
+      `${replyPrefix}-2`,
+      latestBody,
+      rootEventId,
+    );
+  };
+
+  await seedRoot(rootBody, `${runId}-root`, `${runId}-reply`);
+  const imageRootBody = options.includeImageRoot ? 'short-root.png' : undefined;
+  if (imageRootBody) {
+    await seedRoot(
+      imageRootBody,
+      `${runId}-image-root`,
+      `${runId}-image-reply`,
+      true,
+    );
+  }
 
   return {
     reader: { available: true, hs, user: readerUser, pass: readerPass },
@@ -160,6 +228,8 @@ async function seedThread(
     latestBody,
     latestPrefix,
     authorName,
+    imageRootBody,
+    imageFilename: imageRootBody ? 'short-root.png' : undefined,
   };
 }
 
@@ -258,6 +328,79 @@ async function assertPreview(
   return summary;
 }
 
+async function assertShortPreviewLayout(
+  page: Page,
+  seeded: SeededThread,
+  image = false,
+): Promise<Locator> {
+  if (image) {
+    const imageRoot = page
+      .locator('.scroll .msg', { has: page.getByTestId('media-bubble') })
+      .first();
+    const bubble = imageRoot.getByTestId('media-bubble');
+    await expect(bubble).toHaveAttribute('data-media-state', 'ready', {
+      timeout: 30_000,
+    });
+    const rendered = bubble.locator(`img[alt="${seeded.imageFilename}"]`);
+    await expect(rendered).toBeVisible();
+    await expect
+      .poll(() =>
+        rendered.evaluate(
+          (element) => (element as HTMLImageElement).naturalWidth,
+        ),
+      )
+      .toBeGreaterThan(0);
+  }
+  const root = image
+    ? page
+        .locator('.scroll .msg', { has: page.getByTestId('media-bubble') })
+        .first()
+    : page.locator('.scroll .msg', { hasText: seeded.rootBody }).first();
+  await expect(root).toBeVisible({ timeout: 20_000 });
+  const summary = root.getByTestId('message-thread-summary');
+  await expect(summary).toContainText('2 replies');
+  await expect(summary).toContainText(seeded.authorName);
+  await expect(summary).toContainText(seeded.latestBody);
+  const geometry = await summary.evaluate((element) => {
+    const summaryBox = element.getBoundingClientRect();
+    const body = element
+      .closest('.msg')
+      ?.querySelector<HTMLElement>('.msg__body');
+    const avatar = element
+      .closest('.msg')
+      ?.querySelector<HTMLElement>('.msg__avatar, .msg__gutter');
+    if (!body || !avatar)
+      throw new Error('short preview geometry target missing');
+    const bodyBox = body.getBoundingClientRect();
+    const avatarBox = avatar.getBoundingClientRect();
+    const connector = getComputedStyle(element, '::before');
+    return {
+      summary: summaryBox,
+      body: bodyBox,
+      avatar: avatarBox,
+      connectorCenter:
+        summaryBox.left +
+        Number.parseFloat(connector.left) +
+        Number.parseFloat(connector.borderLeftWidth) / 2,
+      viewportWidth: document.documentElement.clientWidth,
+    };
+  });
+  expect(geometry.summary.top).toBeGreaterThanOrEqual(geometry.body.bottom - 1);
+  expect(
+    Math.abs(geometry.summary.left - geometry.body.left),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(
+      geometry.connectorCenter -
+        (geometry.avatar.left + geometry.avatar.width / 2),
+    ),
+  ).toBeLessThanOrEqual(0.5);
+  expect(geometry.summary.right).toBeLessThanOrEqual(
+    geometry.viewportWidth + 1,
+  );
+  return summary;
+}
+
 test.describe('Thread preview', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
@@ -325,4 +468,69 @@ test.describe('Thread preview', () => {
       });
     });
   });
+
+  for (const mobile of [false, true]) {
+    test.describe(
+      mobile ? 'short previews on Pixel 5' : 'short previews on desktop',
+      () => {
+        if (mobile) test.use(pixel5);
+
+        test(`keeps short text and image previews below their roots`, async ({
+          page,
+          request,
+          touchPlatform,
+        }, testInfo) => {
+          const seeded = await seedThread(
+            request,
+            `${testResourceId('run')}${mobile ? 'shortphone' : 'shortdesk'}`,
+            {
+              authorName: 'Bob',
+              rootBody: 'Short text root',
+              latestBody: 'OK',
+              includeImageRoot: true,
+            },
+          );
+          await login(page, seeded.reader);
+          await openRoom(page, seeded.roomName);
+          const textSummary = await assertShortPreviewLayout(page, seeded);
+          await assertShortPreviewLayout(page, seeded, true);
+          await textSummary.scrollIntoViewIfNeeded();
+          const textProofPath = testInfo.outputPath(
+            `thread-preview-short-text-${mobile ? 'mobile' : 'desktop'}.png`,
+          );
+          await captureScreenshot(page, () =>
+            textSummary
+              .locator('xpath=ancestor::div[contains(@class, "msg")][1]')
+              .screenshot({ path: textProofPath }),
+          );
+          await testInfo.attach(
+            `thread-preview-short-text-${mobile ? 'mobile' : 'desktop'}`,
+            { path: textProofPath, contentType: 'image/png' },
+          );
+          const screenshotPath = testInfo.outputPath(
+            `thread-preview-short-${mobile ? 'mobile' : 'desktop'}.png`,
+          );
+          await captureScreenshot(page, () =>
+            page.screenshot({ path: screenshotPath }),
+          );
+          await testInfo.attach(
+            `thread-preview-short-${mobile ? 'mobile' : 'desktop'}`,
+            {
+              path: screenshotPath,
+              contentType: 'image/png',
+            },
+          );
+          if (mobile) {
+            await touchPlatform.tap(page, textSummary);
+          } else {
+            await textSummary.focus();
+            await textSummary.press('Enter');
+          }
+          await expect(page.getByTestId('thread-view')).toBeVisible({
+            timeout: 15_000,
+          });
+        });
+      },
+    );
+  }
 });
