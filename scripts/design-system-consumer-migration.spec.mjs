@@ -320,17 +320,17 @@ describe('migrated application design-system consumers', () => {
     ).toEqual([
       '2xl',
       ...Array(4).fill('lg'),
-      ...Array(14).fill('md'),
+      ...Array(13).fill('md'),
       ...Array(4).fill('sm'),
-      'xl',
+      ...Array(2).fill('xl'),
     ]);
     expect(
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      ...Array(13).fill('dialog'),
-      'dynamic',
+      ...Array(12).fill('dialog'),
+      ...Array(2).fill('dynamic'),
       ...Array(4).fill('fullscreen'),
       ...Array(6).fill('popover'),
     ]);
@@ -338,6 +338,12 @@ describe('migrated application design-system consumers', () => {
     expect(
       surfaces.find(([file]) =>
         file.endsWith('room-link-preview.component.html'),
+      )?.[1],
+    ).toMatch(/\[layout\]="sheet\(\) \? 'sheet' : 'dialog'"/u);
+
+    expect(
+      surfaces.find(([file]) =>
+        file.endsWith('reactions-dialog.component.html'),
       )?.[1],
     ).toMatch(/\[layout\]="sheet\(\) \? 'sheet' : 'dialog'"/u);
 
@@ -383,14 +389,20 @@ describe('migrated application design-system consumers', () => {
     expect(conversationSurfaces).toHaveLength(7);
     for (const [file, tag] of conversationSurfaces) {
       expect(tag, file).toMatch(/\bvariant="neutral"/u);
-      expect(tag, file).toMatch(/\bsize="md"/u);
+      // Reaction details has a directory and people pane; other conversation surfaces
+      // retain the original medium recipe.
+      expect(tag, file).toMatch(
+        file.endsWith('/reactions-dialog/reactions-dialog.component.html')
+          ? /\bsize="xl"/u
+          : /\bsize="md"/u,
+      );
     }
     expect(
       conversationSurfaces
-        .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1])
+        .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      'dialog',
+      'dynamic',
       'fullscreen',
       'fullscreen',
       'fullscreen',

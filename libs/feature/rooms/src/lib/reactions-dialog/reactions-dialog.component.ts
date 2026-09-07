@@ -1,13 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   OnInit,
   computed,
   inject,
   input,
   signal,
 } from '@angular/core';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
+import {
+  EmptyStateComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import {
   TrnDialogRef,
   TrnOverlaySurfaceDirective,
@@ -18,6 +22,8 @@ import {
   type ReactionDetail,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
+import { textScaledViewportSignal } from '@trinity/util/ui';
 
 /**
  * Dialog listing everyone who reacted to a message, one section per emoji.
@@ -32,11 +38,16 @@ import { AvatarComponent } from '@trinity/components/generic-content';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './reactions-dialog.component.html',
   styleUrl: './reactions-dialog.component.scss',
+  host: {
+    '[class.reactions-dialog--sheet]': 'sheet()',
+  },
   imports: [
     EmptyStateComponent,
     AvatarComponent,
     TrnButton,
     TrnOverlaySurfaceDirective,
+    TrnIconComponent,
+    TrnTooltip,
   ],
 })
 export class ReactionsDialogComponent implements OnInit {
@@ -45,6 +56,9 @@ export class ReactionsDialogComponent implements OnInit {
 
   /** The message whose reactors to list (populated from the dialog's `inputs`). */
   readonly eventId = input.required<string>();
+
+  /** Whether the shared dialog is presented as a mobile bottom sheet. */
+  readonly sheet = input(false);
 
   /** The reactors, grouped by reaction key, as they stood when the dialog opened. */
   readonly sections = signal<ReactionDetail[]>([]);
@@ -63,6 +77,9 @@ export class ReactionsDialogComponent implements OnInit {
   readonly total = computed(() =>
     this.sections().reduce((sum, s) => sum + s.reactors.length, 0),
   );
+
+  /** Keep the directory and detail panes together only when the text scale permits it. */
+  readonly wide = textScaledViewportSignal(48, inject(DestroyRef));
 
   // Read here, not in the constructor: TrnDialogService sets the inputs after the
   // component is created but before the first change detection. Nothing to react to

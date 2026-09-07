@@ -1,24 +1,34 @@
 <div
   trnOverlaySurface
   variant="neutral"
-  size="md"
-  layout="dialog"
-  class="flex flex-col gap-3 p-4"
+  size="xl"
+  [layout]="sheet() ? 'sheet' : 'dialog'"
+  class="reactions-dialog flex"
+  [class.w-full]="sheet()"
+  [class.max-w-full]="sheet()"
+  [class.reactions-dialog--wide]="wide() && !sheet()"
+  [class.reactions-dialog--sheet]="sheet()"
   data-testid="reactions-dialog"
 >
-  <div class="flex items-center gap-2">
-    <h2 class="flex-1 text-lg font-semibold">Reactions</h2>
+  <header class="reactions-dialog__header">
+    <div class="reactions-dialog__heading">
+      <h2>Reactions</h2>
+      <span class="reactions-dialog__total">{{ total() }} total</span>
+    </div>
     <button
       trnBtn
       type="button"
-      variant="secondary"
       presentation="ghost"
-      size="sm"
+      shape="icon"
+      size="md"
+      trnTooltip="Close Reactions"
+      aria-label="Close Reactions"
+      data-testid="close-reactions"
       (click)="close()"
     >
-      Close
+      <trn-icon name="x" motion="rotate" />
     </button>
-  </div>
+  </header>
 
   @if (sections().length === 0) {
     <trn-empty-state
@@ -27,41 +37,62 @@
       data-testid="reactions-empty"
     />
   } @else {
-    <!-- One chip per emoji; the selected one's reactors are listed below. -->
-    <div class="keys" role="tablist" aria-label="Reactions">
-      @for (section of sections(); track section.key) {
-        <button
-          type="button"
-          role="tab"
-          class="key"
-          [class.key--active]="section.key === selected()?.key"
-          [attr.aria-selected]="section.key === selected()?.key"
-          [attr.data-testid]="'reactions-key'"
-          [attr.aria-label]="
-            section.key + ', ' + section.reactors.length + ' reacted'
-          "
-          (click)="select(section.key)"
+    <div class="reactions-dialog__workspace">
+      <nav
+        class="keys"
+        aria-label="Reaction types"
+        data-testid="reactions-directory"
+      >
+        @for (section of sections(); track section.key) {
+          <button
+            trnBtn
+            type="button"
+            class="key"
+            [variant]="
+              section.key === selected()?.key ? 'secondary' : 'primary'
+            "
+            [presentation]="section.key === selected()?.key ? 'solid' : 'ghost'"
+            size="md"
+            [class.key--active]="section.key === selected()?.key"
+            [attr.aria-pressed]="section.key === selected()?.key"
+            [attr.aria-current]="
+              section.key === selected()?.key ? 'true' : null
+            "
+            [attr.data-testid]="'reactions-key'"
+            [attr.aria-label]="
+              section.key + ', ' + section.reactors.length + ' reacted'
+            "
+            (click)="select(section.key)"
+          >
+            <span class="key__emoji">{{ section.key }}</span>
+            <span class="key__count">{{ section.reactors.length }}</span>
+          </button>
+        }
+      </nav>
+
+      @if (selected(); as section) {
+        <section
+          class="reactions-dialog__detail"
+          aria-label="People who reacted"
         >
-          <span class="key__emoji">{{ section.key }}</span>
-          <span class="key__count">{{ section.reactors.length }}</span>
-        </button>
+          <h3>
+            {{ section.key }} <span>{{ section.reactors.length }}</span>
+          </h3>
+          <ul class="reactors" data-testid="reactors-list">
+            @for (reactor of section.reactors; track reactor.userId) {
+              <li class="reactor">
+                <trn-avatar
+                  [mxc]="reactor.avatarMxc"
+                  [initial]="reactor.initial"
+                  [name]="reactor.name"
+                  size="lg"
+                />
+                <span class="reactor__name">{{ reactor.name }}</span>
+              </li>
+            }
+          </ul>
+        </section>
       }
     </div>
-
-    @if (selected(); as section) {
-      <ul class="reactors" data-testid="reactors-list">
-        @for (reactor of section.reactors; track reactor.userId) {
-          <li class="reactor">
-            <trn-avatar
-              [mxc]="reactor.avatarMxc"
-              [initial]="reactor.initial"
-              [name]="reactor.name"
-              size="lg"
-            />
-            <span class="reactor__name">{{ reactor.name }}</span>
-          </li>
-        }
-      </ul>
-    }
   }
 </div>
