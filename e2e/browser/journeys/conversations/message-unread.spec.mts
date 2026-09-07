@@ -179,8 +179,10 @@ test.describe('Unread divider + jump-to-unread', () => {
         below: connectorBox.bottom - dividerBox.bottom,
       };
     });
-    expect(extension.above).toBeGreaterThanOrEqual(8);
-    expect(extension.below).toBeGreaterThanOrEqual(8);
+    // WebView viewport scaling can report an 8px extension just below 8.
+    const geometryTolerance = 0.01;
+    expect(extension.above).toBeGreaterThanOrEqual(8 - geometryTolerance);
+    expect(extension.below).toBeGreaterThanOrEqual(8 - geometryTolerance);
 
     // The divider is actually STYLED, not merely present.
     //

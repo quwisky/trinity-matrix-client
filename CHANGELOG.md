@@ -20,7 +20,10 @@ All notable changes to this project are documented here. The format is based on
 
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
-  so Android suites accept the updated test.
+  so Android suites accept the updated test, and allow subpixel rounding in WebView.
+
+- Wait for shared locations to finish sending before testing their message menus,
+  preventing server-echo row replacement from closing the menu during the check.
 
 - Resolve disposable federation signing keys directly between the test homeservers,
   preventing slow public-notary lookups from failing room-preview alias resolution.

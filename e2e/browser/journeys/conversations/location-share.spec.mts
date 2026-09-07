@@ -5,6 +5,7 @@ import {
   login,
   openMessageActionSheet,
   synapseSession,
+  waitForSent,
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -80,6 +81,8 @@ test.describe('Share location', () => {
     const row = page.locator('.scroll .msg', {
       hasText: '40.71280, -74.00600',
     });
+    // The server echo replaces the pending row and closes any menu opened on it.
+    await waitForSent(row.first());
     if (isAndroidE2E) {
       const sheet = await openMessageActionSheet(page, row.first());
       await expect(sheet.getByTestId('sheet-edit')).toHaveCount(0);
