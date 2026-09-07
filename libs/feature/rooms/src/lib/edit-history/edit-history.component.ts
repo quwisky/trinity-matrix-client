@@ -16,14 +16,18 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import { TrnIconComponent } from '@trinity/components/foundations';
+import {
+  TrnSpinnerComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import { EditHistoryService } from '@trinity/data-access/timeline';
 import {
   annotateRevision,
   type MessageRevisionView,
 } from '@trinity/util/matrix';
 import { filter, switchMap, timer } from 'rxjs';
-import { runWithBusy } from '@trinity/util/ui';
+import { runWithBusy, textScaledViewportSignal } from '@trinity/util/ui';
 import { SpoilerRevealDirective } from '../spoiler/spoiler-reveal.directive';
 import {
   type MatrixLinkClick,
@@ -58,7 +62,9 @@ const REFRESH_DELAY_MS = 600;
   styleUrl: './edit-history.component.scss',
   imports: [
     TrnButton,
+    TrnIconComponent,
     TrnSpinnerComponent,
+    TrnTooltip,
     TrnOverlaySurfaceDirective,
     SpoilerRevealDirective,
     MatrixLinkDirective,
@@ -78,6 +84,8 @@ export class EditHistoryComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
+  /** Settings uses the 48rem text-scaled breakpoint for its compact presentation. */
+  readonly wide = textScaledViewportSignal(48, this.destroyRef);
   /** Versions removed in this dialog, so a stale refetch cannot put one back. */
   private readonly removed = new Set<string>();
   /** The message already fetched, so a re-run of the effect can't refetch it. */
