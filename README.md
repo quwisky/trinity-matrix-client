@@ -77,4 +77,5 @@ connects known symptoms to their owning contracts.
 
 ## License
 
-TBD.
+Trinity is licensed under the [MIT License](LICENSE). Third-party dependencies and
+vendored code retain their respective licenses.

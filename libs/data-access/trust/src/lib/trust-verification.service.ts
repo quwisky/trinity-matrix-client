@@ -9,7 +9,22 @@ import {
   type VerificationRequest,
   type Verifier,
 } from 'matrix-js-sdk/lib/crypto-api';
-import { Observable, defer, finalize, from, of } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  defer,
+  filter,
+  finalize,
+  from,
+  map,
+  of,
+  switchMap,
+  take,
+  takeUntil,
+  tap,
+  throwError,
+  timeout,
+} from 'rxjs';
 import {
   TrustCryptoPort,
   type TrustCryptoApi,
@@ -80,6 +95,7 @@ const QR_SHOW_METHOD = 'm.qr_code.show.v1';
 @Injectable({ providedIn: 'root' })
 export class TrustVerificationService {
   private readonly cryptoPort = inject(TrustCryptoPort);
+  private readonly stopStartup = new Subject<void>();
   private request: VerificationRequest | null = null;
   private verifier: Verifier | null = null;
   private sas: ShowSasCallbacks | null = null;
@@ -156,6 +172,7 @@ export class TrustVerificationService {
       }
     },
     reset: () => {
+      this.stopStartup.next();
       this.clearRequest();
       this._active.set(null);
     },
@@ -165,6 +182,7 @@ export class TrustVerificationService {
   runProjection(): Observable<void> {
     return this.projection.run().pipe(
       finalize(() => {
+        this.stopStartup.next();
         // A locally-started verification can exist before the projection attaches, so the
         // projection reset is not sufficient on its own.
         this.clearRequest();
@@ -193,21 +211,48 @@ export class TrustVerificationService {
 
   /**
    * Request cross-user verification of `userId` over a direct-message room (emoji SAS).
-   * The request is sent as an event in `roomId` (a DM with that user), and the active
+   * Capture the Account before subscribing to the cold, finite DM acquisition. The
    * verification is adopted so the app's host presents the SAS UI. Cold — runs on subscribe.
    */
-  startUserVerification(userId: string, roomId: string): Observable<void> {
-    return defer(() =>
-      from(
-        (async (): Promise<void> => {
-          const request = await this.requireCrypto().requestVerificationDM(
-            userId,
-            roomId,
+  startUserVerification(
+    userId: string,
+    directRoom: Observable<string>,
+  ): Observable<void> {
+    return defer(() => {
+      const context = this.cryptoPort.active();
+      const client = context.client;
+      const crypto = this.requireCrypto(context.crypto);
+      return directRoom.pipe(
+        take(1),
+        switchMap((roomId) => {
+          this.requireCurrentCrypto(client, crypto);
+          return this.waitForIdentity(client, crypto, userId).pipe(
+            switchMap(() => {
+              this.requireCurrentCrypto(client, crypto);
+              return this.sendUserVerification(client, crypto, userId, roomId);
+            }),
           );
-          this.adopt(request);
-        })(),
-      ),
-    ).pipe(recoverTrustOperation('start-verification'));
+        }),
+        tap((request) => this.adopt(request)),
+        map(() => undefined),
+        timeout({
+          first: 30_000,
+          with: () =>
+            throwError(
+              () =>
+                new TrustOperationError(
+                  'start-verification',
+                  'not-ready',
+                  'retry',
+                  'Verification is not ready for this user yet. Try again.',
+                ),
+            ),
+        }),
+      );
+    }).pipe(
+      takeUntil(this.stopStartup),
+      recoverTrustOperation('start-verification'),
+    );
   }
 
   /** Accept an incoming verification request. */
@@ -373,6 +418,56 @@ export class TrustVerificationService {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
+  private sendUserVerification(
+    client: TrustMatrixClient,
+    crypto: TrustCryptoApi,
+    userId: string,
+    roomId: string,
+  ): Observable<VerificationRequest> {
+    return new Observable((subscriber) => {
+      void crypto.requestVerificationDM(userId, roomId).then(
+        (request) => {
+          try {
+            this.requireCurrentCrypto(client, crypto);
+          } catch (error) {
+            void request.cancel().catch(() => undefined);
+            subscriber.error(error);
+            return;
+          }
+          if (subscriber.closed) {
+            // SDK sends cannot be aborted. Cancel a late result without adopting it.
+            void request.cancel().catch(() => undefined);
+            return;
+          }
+          subscriber.next(request);
+          subscriber.complete();
+        },
+        (error: unknown) => subscriber.error(error),
+      );
+    });
+  }
+
+  private waitForIdentity(
+    client: TrustMatrixClient,
+    crypto: TrustCryptoApi,
+    userId: string,
+  ): Observable<boolean> {
+    return new Observable<void>((subscriber) => {
+      const changed = (changedUserId: string): void => {
+        if (changedUserId === userId) subscriber.next();
+      };
+      client.on(CryptoEvent.UserTrustStatusChanged, changed);
+      subscriber.next();
+      return () => client.off(CryptoEvent.UserTrustStatusChanged, changed);
+    }).pipe(
+      // The encrypted DM makes Matrix Runtime track this user. Wait for its
+      // identity to reach Rust crypto; an uncached HTTP key lookup is insufficient.
+      switchMap(() => crypto.userHasCrossSigningKeys(userId)),
+      filter(Boolean),
+      take(1),
+    );
+  }
+
   private adopt(request: VerificationRequest): void {
     this.clearRequest();
     this.request = request;
@@ -505,8 +600,25 @@ export class TrustVerificationService {
     return crypto.getVerificationRequestsToDeviceInProgress(userId)[0] ?? null;
   }
 
-  private requireCrypto(): TrustCryptoApi {
-    const crypto = this.cryptoPort.active().crypto;
+  private requireCurrentCrypto(
+    client: TrustMatrixClient,
+    crypto: TrustCryptoApi,
+  ): void {
+    if (this.cryptoPort.isAvailable()) {
+      const current = this.cryptoPort.active();
+      if (current.client === client && current.crypto === crypto) return;
+    }
+    throw new TrustOperationError(
+      'start-verification',
+      'stale-state',
+      'retry',
+      'The active Account changed. Start verification again.',
+    );
+  }
+
+  private requireCrypto(
+    crypto: TrustCryptoApi | null = this.cryptoPort.active().crypto,
+  ): TrustCryptoApi {
     if (!crypto) {
       throw new TrustOperationError(
         'start-verification',

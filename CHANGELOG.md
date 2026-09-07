@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- MIT license for Trinity, with license metadata in the application and desktop
+  package manifests and links from the README and contributor guide.
+
 - Search the Settings directory by section name or group in both the page and dialog.
   Keyboard-accessible clear and result announcements accompany filtering, while selected
   sections, mobile Back focus, navigation history and the search during resizing are preserved.
@@ -1130,6 +1133,10 @@ All notable changes to this project are documented here. The format is based on
 - Images load again when returning to a retained Conversation after switching Rooms. Media
   references survive view-cache cleanup while decoded URLs and staged uploads are still released;
   removed or replaced Account clients cannot resolve old references.
+
+- Cross-user verification waits for the other user's identity to reach the crypto store,
+  preventing startup failures during slow key refreshes. Startup is bounded and cancelled
+  on session teardown; late requests cannot appear after leaving or changing Accounts.
 
 - Startup no longer loops when an unsupported app badge reports its health
   synchronously, including on Android WebView and WebKit. Badge updates track

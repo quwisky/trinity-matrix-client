@@ -16,7 +16,10 @@ import {
   IdentityService,
 } from '@trinity/data-access/identity';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
-import { TrustVerificationService } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  TrustVerificationService,
+} from '@trinity/data-access/trust';
 import { MockProvider } from 'ng-mocks';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -253,7 +256,10 @@ describe('MemberInfoComponent', () => {
     cmp.verify();
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
-    expect(startUserVerification).toHaveBeenCalledWith('@bob:hs', '!dm:hs');
+    expect(startUserVerification).toHaveBeenCalledWith(
+      '@bob:hs',
+      createDirectMessage.mock.results[0].value,
+    );
     expect(close).toHaveBeenCalledWith(null);
   });
 
@@ -270,6 +276,31 @@ describe('MemberInfoComponent', () => {
     expect(close).not.toHaveBeenCalled();
     expect(toastShow).toHaveBeenCalledWith(
       expect.stringContaining('Could not start verification'),
+      expect.objectContaining({ variant: 'danger' }),
+    );
+  });
+
+  it('shows safe retry guidance when the counterpart identity is not ready', async () => {
+    const startUserVerification = vi.fn(() =>
+      throwError(
+        () =>
+          new TrustOperationError(
+            'start-verification',
+            'not-ready',
+            'retry',
+            'Verification is not ready for this user yet. Try again.',
+          ),
+      ),
+    );
+    const { cmp, close, toastShow } = await build(member(), {
+      startUserVerification,
+    });
+
+    cmp.verify();
+
+    expect(close).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Verification is not ready for this user yet. Try again.',
       expect.objectContaining({ variant: 'danger' }),
     );
   });
