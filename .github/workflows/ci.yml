@@ -311,6 +311,7 @@ jobs:
         id: ios
         env:
           CI_IOS_SHA: ${{ needs.renderer.outputs.sha }}
+          PROBE_582_TIMEOUT_MS: '30000'
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-ios:build-prebuilt

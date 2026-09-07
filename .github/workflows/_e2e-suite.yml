@@ -101,6 +101,7 @@ jobs:
           CI_RENDERER_ARTIFACT_ID: ${{ inputs.artifact-id }}
           CI_RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
           CI_RENDERER_MANIFEST_DIGEST: ${{ inputs.manifest-digest }}
+          PROBE_582_TIMEOUT_MS: '30000'
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-e2e-suite.mjs run

@@ -115,12 +115,23 @@ export async function run(
     signal,
     forwardedArgs: ['--fail-on-flaky-tests'],
     execute: async (command, args, options) => {
+      const probeTimeoutMs = Number(environment.PROBE_582_TIMEOUT_MS);
+      const timeoutMs =
+        suite.id === 'components.storybook' &&
+        Number.isFinite(probeTimeoutMs) &&
+        probeTimeoutMs > 0
+          ? probeTimeoutMs
+          : options.timeout;
+      if (timeoutMs !== options.timeout)
+        console.error(
+          `[probe] deliberate ${suite.id} timeout: ${timeoutMs} ms`,
+        );
       const result = await execute({
         command,
         args,
         cwd: options.cwd,
         env: options.environment,
-        timeoutMs: options.timeout,
+        timeoutMs,
         abortSignal: options.signal,
         killGraceMs: 60_000,
         label: `suite-${suite.id}`,

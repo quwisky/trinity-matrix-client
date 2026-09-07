@@ -155,6 +155,15 @@ export async function buildNative({
   runId = `run.${Date.now()}-${randomUUID().slice(0, 12)}`,
 } = {}) {
   const workspaceRoot = resolve(root);
+  const probeTimeoutMs = Number(environment.PROBE_582_TIMEOUT_MS);
+  const compilerTimeoutMs =
+    Number.isFinite(probeTimeoutMs) && probeTimeoutMs > 0
+      ? probeTimeoutMs
+      : timeoutMs;
+  if (compilerTimeoutMs !== timeoutMs)
+    console.error(
+      `[probe] deliberate iOS compiler timeout: ${compilerTimeoutMs} ms`,
+    );
   const iosRoot = join(workspaceRoot, 'ios');
   const diagnosticRoot = join(workspaceRoot, 'dist', 'ios-native', runId);
   const derivedDataRoot = join(
@@ -317,7 +326,7 @@ export async function buildNative({
       cwd: iosRoot,
       label: 'ios-build',
       logDir: diagnosticRoot,
-      timeoutMs,
+      timeoutMs: compilerTimeoutMs,
       killGraceMs,
       env: environment,
       onSpawn: (child) => {
