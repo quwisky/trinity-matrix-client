@@ -151,7 +151,7 @@ export class SidebarUserPanelComponent {
   /** Show the account picker as a dialog — raised only when {@link pickAccountsInDialog}. */
   readonly openAccountPicker = output<void>();
 
-  /** The user ticked/unticked an account in the "Show accounts" picker. */
+  /** The user ticked/unticked an account in the "Accounts in view" picker. */
   readonly toggleAccountShown = output<string>();
   /** Switch the active account to the given user id (a switcher row that isn't active). */
   readonly switchAccount = output<string>();

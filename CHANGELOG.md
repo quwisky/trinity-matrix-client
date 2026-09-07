@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Clarify which Accounts appear together in Room Library with matching desktop and mobile
+  selectors, clearer identity rows, and an explicit “Always included” Active Account state.
+  Selections apply immediately, with Done dismissing the mobile dialog.
+
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
   so Android suites accept the updated test, and allow subpixel rounding in WebView.

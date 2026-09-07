@@ -233,20 +233,57 @@
 
   .account-pick__id {
     display: flex;
+    text-align: start;
     min-width: 0;
+    flex: 1;
     flex-direction: column;
   }
 
   .account-pick__name {
     @include ellipsis;
 
-    font-size: 13px;
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    font-weight: var(--trinity-type-control-weight);
+    color: var(--trinity-text-bright);
   }
 
   .account-pick__handle {
     @include ellipsis;
 
-    font-size: 11px;
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
     color: var(--trinity-text-muted);
+  }
+
+  .account-pick__indicator {
+    order: 3;
+    display: inline-flex;
+    flex: 0 0 auto;
+    min-width: 20px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .account-pick__active {
+    flex: 0 0 auto;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-control-weight);
+    color: var(--trinity-text-muted);
+  }
+
+  .account-pick-menu {
+    box-sizing: border-box;
+    max-width: min(22rem, calc(100vw - 2 * var(--trinity-space-3)));
+    max-height: min(
+      32rem,
+      calc(
+        100dvh - var(--trinity-navigation-dock-height) - var(
+            --trinity-space-6
+          ) - var(--trinity-navigation-safe-area-bottom)
+      )
+    );
+    overflow-y: auto;
   }
 }

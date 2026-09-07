@@ -240,6 +240,13 @@ describe('SidebarUserPanelComponent', () => {
       document.querySelector<HTMLElement>(
         `[data-testid="show-account-${userId}"]`,
       )!;
+    expect(document.querySelector('.account-pick-menu')?.textContent).toContain(
+      'Accounts in view',
+    );
+    expect(row('@alice:hs').textContent).toContain('Always included');
+    expect(row('@alice:hs').querySelector('trn-avatar')?.textContent).toContain(
+      'A',
+    );
     expect(row('@alice:hs').getAttribute('aria-checked')).toBe('true');
     expect(row('@bob:hs').getAttribute('aria-checked')).toBe('true');
     expect(row('@carol:hs').getAttribute('aria-checked')).toBe('false');
@@ -253,6 +260,13 @@ describe('SidebarUserPanelComponent', () => {
     );
     row('@carol:hs').click();
     expect(toggled).toEqual(['@carol:hs']);
+    fixture.componentRef.setInput(
+      'shownAccountIds',
+      new Set(['@alice:hs', '@carol:hs']),
+    );
+    fixture.detectChanges();
+    expect(row('@carol:hs').getAttribute('aria-checked')).toBe('true');
+    expect(row('@bob:hs').getAttribute('aria-checked')).toBe('false');
   });
 
   // Issue #28. Below the md breakpoint this panel is a bar across the bottom of a full-screen

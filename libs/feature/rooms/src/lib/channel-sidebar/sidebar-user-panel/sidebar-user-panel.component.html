@@ -148,7 +148,7 @@
           data-testid="show-accounts"
         >
           <trn-icon name="users" />
-          Show accounts
+          Accounts in view
         </button>
       } @else {
         <button
@@ -157,7 +157,7 @@
           data-testid="show-accounts"
         >
           <trn-icon name="users" />
-          Show accounts
+          Accounts in view
           <trn-dropdown-menu-item-sub-indicator />
         </button>
       }
@@ -189,8 +189,8 @@
        CDK early-returns on a disabled item, so it can neither be unticked nor drift out of
        sync with the state that refuses to drop it. -->
   <ng-template #showAccountsMenu>
-    <div trnDropdownMenuSub>
-      <div trnDropdownMenuLabel>Show accounts</div>
+    <div class="account-pick-menu" trnDropdownMenuSub>
+      <div trnDropdownMenuLabel>Accounts in view</div>
       <div trnDropdownMenuSeparator></div>
       @for (account of accounts(); track account.userId) {
         @let isActive = account.userId === activeUserId();
@@ -203,23 +203,25 @@
           (triggered)="toggleAccountShown.emit(account.userId)"
           [attr.data-testid]="'show-account-' + account.userId"
         >
-          <trn-dropdown-menu-checkbox-indicator />
+          <span class="account-pick__indicator" aria-hidden="true">
+            <trn-dropdown-menu-checkbox-indicator />
+          </span>
           <trn-avatar
             [mxc]="account.avatarMxc"
             [accountId]="account.userId"
             [initial]="initialFor(account)"
             [name]="account.displayName"
-            size="xs"
+            size="md"
           />
           <span class="account-pick__id">
             <span class="account-pick__name">{{ account.displayName }}</span>
             <!-- The mxid, because two accounts can share a display name and the tick alone
                  would not say which server you are blending in. -->
             <span class="account-pick__handle">{{ account.userId }}</span>
+            @if (isActive) {
+              <span class="account-pick__active">Always included</span>
+            }
           </span>
-          @if (isActive) {
-            <span class="account-row__active">active</span>
-          }
         </button>
       }
     </div>

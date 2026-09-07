@@ -51,9 +51,10 @@ Matrix IDs; display names alone may be identical across different homeservers.
 - Choose **Add account** to sign in to another identity while the existing accounts remain
   connected. Follow [signing in](signing-in.md).
 - Choose an account row to make that Account active.
-- Choose **Show accounts** to include other signed-in Accounts in the room list, rail and
-  quick switcher. The active Account is always included. On a narrow layout this selection
-  opens in a dialog; select **Done** to return.
+- Choose **Accounts in view** to include other signed-in Accounts in the room list, rail and
+  quick switcher without switching the active Account. The active Account is marked
+  **Always included** and cannot be deselected. Changes apply immediately. On a narrow
+  layout this selection opens in a dialog; select **Done** to return.
 - Clear the other selections to return to the active Account's content alone. The selection
   is saved on this installation; hiding an Account does not sign it out.
 
