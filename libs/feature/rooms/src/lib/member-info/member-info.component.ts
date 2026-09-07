@@ -11,7 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { filter, switchMap, type Observable } from 'rxjs';
+import { filter, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
@@ -36,7 +36,10 @@ import {
   IdentityPresenceService,
   IdentityService,
 } from '@trinity/data-access/identity';
-import { TrustVerificationService } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  TrustVerificationService,
+} from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 
@@ -228,21 +231,18 @@ export class MemberInfoComponent {
    */
   verify(): void {
     const userId = this.member().userId;
-    this.rooms
-      .createDirectMessage(userId)
-      .pipe(
-        switchMap((roomId) =>
-          this.verification.startUserVerification(userId, roomId),
-        ),
-        takeUntilDestroyed(this.destroyRef),
-      )
+    this.verification
+      .startUserVerification(userId, this.rooms.createDirectMessage(userId))
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => this.finish(null),
-        error: () =>
-          this.toast.show('Could not start verification.', {
-            duration: 4000,
-            variant: 'danger',
-          }),
+        error: (error: unknown) =>
+          this.toast.show(
+            error instanceof TrustOperationError
+              ? error.message
+              : 'Could not start verification.',
+            { duration: 4000, variant: 'danger' },
+          ),
       });
   }
 

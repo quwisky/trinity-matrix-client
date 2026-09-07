@@ -1130,6 +1130,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Cross-user verification waits for the other user's identity to reach the crypto store,
+  preventing startup failures during slow key refreshes. Startup is bounded and cancelled
+  on session teardown; late requests cannot appear after leaving or changing Accounts.
+
 - Startup no longer loops when an unsupported app badge reports its health
   synchronously, including on Android WebView and WebKit. Badge updates track
   unread totals without subscribing to signal reads made by outcome consumers.

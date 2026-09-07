@@ -2,7 +2,7 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { Subject, firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CryptoEvent,
@@ -122,6 +122,7 @@ const activeUserId = signal<string | null>(null);
 
 function setup(opts: { inProgress?: ReturnType<typeof fakeRequest> } = {}) {
   const crypto = {
+    userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
     requestOwnUserVerification: vi.fn(),
     requestVerificationDM: vi.fn(),
     getVerificationRequestsToDeviceInProgress: vi.fn(() =>
@@ -216,7 +217,7 @@ describe('TrustVerificationService', () => {
     });
     crypto.requestVerificationDM.mockResolvedValue(req);
 
-    await firstValueFrom(svc.startUserVerification('@bob:hs', '!dm:hs'));
+    await firstValueFrom(svc.startUserVerification('@bob:hs', of('!dm:hs')));
 
     expect(crypto.requestVerificationDM).toHaveBeenCalledWith(
       '@bob:hs',
@@ -225,6 +226,194 @@ describe('TrustVerificationService', () => {
     expect(svc.active()?.otherUserId).toBe('@bob:hs');
     expect(svc.active()?.isSelfVerification).toBe(false);
   });
+
+  it('waits for the counterpart identity before sending and presenting verification', async () => {
+    const { svc, crypto, client } = setup();
+    let identityReady = false;
+    crypto.userHasCrossSigningKeys.mockImplementation(
+      async () => identityReady,
+    );
+    crypto.requestVerificationDM.mockImplementation(async () => {
+      if (!identityReady) throw new Error('unknown userId');
+      return fakeRequest({
+        initiatedByMe: true,
+        otherUserId: '@bob:hs',
+        isSelfVerification: false,
+      });
+    });
+    const outcome = firstValueFrom(
+      svc.startUserVerification('@bob:hs', of('!dm:hs')),
+    ).then(
+      () => 'started',
+      () => 'failed',
+    );
+    await Promise.resolve();
+
+    expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
+    expect(svc.active()).toBeNull();
+
+    identityReady = true;
+    client.emit(CryptoEvent.UserTrustStatusChanged, '@bob:hs');
+
+    await expect(outcome).resolves.toBe('started');
+    expect(svc.active()).toMatchObject({
+      stage: 'requested',
+      otherUserId: '@bob:hs',
+      isSelfVerification: false,
+    });
+  });
+
+  it('reports unavailable identity finitely and ignores a later refresh', async () => {
+    vi.useFakeTimers();
+    const { svc, crypto, client } = setup();
+    crypto.userHasCrossSigningKeys.mockResolvedValue(false);
+    crypto.requestVerificationDM.mockResolvedValue(fakeRequest());
+    const errors: unknown[] = [];
+    const attempt = svc
+      .startUserVerification('@bob:hs', of('!dm:hs'))
+      .subscribe({
+        error: (error: unknown) => errors.push(error),
+      });
+    try {
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(errors).toEqual([
+        expect.objectContaining({
+          operation: 'start-verification',
+          kind: 'not-ready',
+          recovery: 'retry',
+        }),
+      ]);
+      crypto.userHasCrossSigningKeys.mockResolvedValue(true);
+      client.emit(CryptoEvent.UserTrustStatusChanged, '@bob:hs');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
+      expect(svc.active()).toBeNull();
+    } finally {
+      attempt.unsubscribe();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops pending verification startup when the session lifetime ends', async () => {
+    const { svc, crypto, client } = setup();
+    crypto.userHasCrossSigningKeys.mockResolvedValue(false);
+    crypto.requestVerificationDM.mockResolvedValue(fakeRequest());
+    const lifetime = svc.runProjection().subscribe();
+    const attempt = svc
+      .startUserVerification('@bob:hs', of('!dm:hs'))
+      .subscribe();
+    await Promise.resolve();
+
+    lifetime.unsubscribe();
+    crypto.userHasCrossSigningKeys.mockResolvedValue(true);
+    client.emit(CryptoEvent.UserTrustStatusChanged, '@bob:hs');
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+
+    try {
+      expect(attempt.closed).toBe(true);
+      expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
+      expect(svc.active()).toBeNull();
+    } finally {
+      attempt.unsubscribe();
+    }
+  });
+
+  it.each(['signed out', 'replaced'])(
+    'does not send after the captured Account client is %s during identity lookup',
+    async (transition) => {
+      const { svc, crypto, client, matrix } = setup();
+      let ready!: (value: boolean) => void;
+      crypto.userHasCrossSigningKeys.mockReturnValue(
+        new Promise<boolean>((resolve) => {
+          ready = resolve;
+        }),
+      );
+      crypto.requestVerificationDM.mockResolvedValue(fakeRequest());
+      const outcome = firstValueFrom(
+        svc.startUserVerification('@bob:hs', of('!dm:hs')),
+      ).catch((error: unknown) => error);
+
+      if (transition === 'signed out') {
+        ngMocks.stubMember(matrix, 'isInitialized', false);
+      } else {
+        ngMocks.stubMember(matrix, 'instance', {
+          ...client,
+        } as unknown as MatrixClient);
+      }
+      ready(true);
+
+      await expect(outcome).resolves.toMatchObject({ kind: 'stale-state' });
+      expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
+      expect(svc.active()).toBeNull();
+    },
+  );
+
+  it('retains the initiating Account while its direct room is being created', async () => {
+    const { svc, crypto, client, matrix } = setup();
+    const directRoom = new Subject<string>();
+    const outcome = firstValueFrom(
+      svc.startUserVerification('@bob:hs', directRoom),
+    ).catch((error: unknown) => error);
+
+    expect(crypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
+    ngMocks.stubMember(matrix, 'instance', {
+      ...client,
+    } as unknown as MatrixClient);
+    directRoom.next('!dm:hs');
+    directRoom.complete();
+
+    await expect(outcome).resolves.toMatchObject({ kind: 'stale-state' });
+    expect(crypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
+    expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
+    expect(svc.active()).toBeNull();
+  });
+
+  it.each(['unsubscribe', 'session end', 'Account replacement'])(
+    'cancels an unadopted request that arrives after %s',
+    async (transition) => {
+      const { svc, crypto, client, matrix } = setup();
+      const request = fakeRequest();
+      let sent!: (value: ReturnType<typeof fakeRequest>) => void;
+      crypto.requestVerificationDM.mockReturnValue(
+        new Promise<ReturnType<typeof fakeRequest>>((resolve) => {
+          sent = resolve;
+        }),
+      );
+      const lifetime = svc.runProjection().subscribe();
+      const errors: unknown[] = [];
+      const attempt = svc
+        .startUserVerification('@bob:hs', of('!dm:hs'))
+        .subscribe({
+          error: (error: unknown) => errors.push(error),
+        });
+      await vi.waitFor(() =>
+        expect(crypto.requestVerificationDM).toHaveBeenCalled(),
+      );
+
+      if (transition === 'unsubscribe') attempt.unsubscribe();
+      else if (transition === 'session end') lifetime.unsubscribe();
+      else {
+        ngMocks.stubMember(matrix, 'instance', {
+          ...client,
+        } as unknown as MatrixClient);
+      }
+      sent(request);
+
+      try {
+        await vi.waitFor(() => expect(request.cancel).toHaveBeenCalledOnce());
+        expect(svc.active()).toBeNull();
+        if (transition === 'Account replacement') {
+          expect(errors).toEqual([
+            expect.objectContaining({ kind: 'stale-state' }),
+          ]);
+        }
+      } finally {
+        attempt.unsubscribe();
+        lifetime.unsubscribe();
+      }
+    },
+  );
 
   it('clears an active verification on disconnect even if connect never ran', async () => {
     // A verification can be started without connect(): startSelfVerification adopts the
