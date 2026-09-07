@@ -169,12 +169,18 @@ test.describe('Unread divider + jump-to-unread', () => {
 
     const connector = divider.locator('.thread-connector');
     await expect(connector).toHaveCount(1);
-    const connectorBox = await connector.boundingBox();
-    const dividerBox = await divider.boundingBox();
-    expect(connectorBox!.y).toBeLessThanOrEqual(dividerBox!.y - 8);
-    expect(connectorBox!.y + connectorBox!.height).toBeGreaterThanOrEqual(
-      dividerBox!.y + dividerBox!.height + 8,
-    );
+    // Read both boxes in one browser turn: opening the room can still scroll the
+    // timeline, so separate measurements may describe different layout states.
+    const extension = await connector.evaluate((el) => {
+      const connectorBox = el.getBoundingClientRect();
+      const dividerBox = el.parentElement!.getBoundingClientRect();
+      return {
+        above: dividerBox.top - connectorBox.top,
+        below: connectorBox.bottom - dividerBox.bottom,
+      };
+    });
+    expect(extension.above).toBeGreaterThanOrEqual(8);
+    expect(extension.below).toBeGreaterThanOrEqual(8);
 
     // The divider is actually STYLED, not merely present.
     //
