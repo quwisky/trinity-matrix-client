@@ -56,6 +56,19 @@ using this distribution workflow. It is separate from unsigned simulator compila
 `trinity-ios:verify-native`; the Nx target's declared `ios/App/build` output does not match
 the CLI's actual IPA export directory.
 
+CI and cross-host parity use the verified renderer aliases:
+
+```bash
+pnpm android:build:prebuilt
+pnpm ios:build:prebuilt
+```
+
+They verify `dist/web-bundle-manifest.json` and the existing `www/` payload before
+Capacitor synchronization, then allow only the generated Cordova files in the native
+public directory. They do not compile another web renderer. The normal `android:build`,
+`ios:build`, `*:sync`, and `*:run` targets retain their production renderer dependency
+for standalone local workflows.
+
 `cap sync` updates checked-in native plugin paths. After changing a Capacitor dependency,
 synchronize both projects and review the regenerated files:
 
@@ -89,7 +102,9 @@ pnpm nx run trinity-ios:verify-native
 
 Android native verification synchronizes and runs Gradle unit validation. iOS native
 verification synchronizes and builds the unsigned Simulator target, so it requires macOS
-and Xcode. On Linux, `pnpm ios:verify` can pass while
+and Xcode. CI runs the corresponding prebuilt iOS target on `macos-26`; it checks the
+native host around the verified renderer and retains Xcode diagnostics, but does not
+launch an installed simulator journey. On Linux, `pnpm ios:verify` can pass while
 `trinity-ios:verify-native` is unavailable; report that difference accurately.
 
 For Android debugging, run `pnpm android:open`, select the intended emulator or device in

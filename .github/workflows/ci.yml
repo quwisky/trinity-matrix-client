@@ -92,29 +92,43 @@ jobs:
       - run: pnpm exec nx run-many -t typecheck
       - run: pnpm test
 
-  # Not redundant with `test`: the production build runs the AOT compiler, which rejects
-  # things Vitest happily runs — template type errors, and the `lib: es2018` trap where
-  # ES2019+ methods pass the unit tests and fail the build (docs/reference/stack.md).
-  build:
+  # The production AOT build remains independent of unit/type checks.
+  renderer:
     needs: classify
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Web build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup
-      - run: pnpm build
+    uses: ./.github/workflows/_renderer.yml
+    permissions:
+      contents: read
+    with:
+      sha: ${{ github.sha }}
+      artifact-name: renderer-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+      retention-days: 30
 
   # electron/ is a separate package with its own lockfile and an explicit trinity-desktop
   # Nx application. The dedicated job additionally launches the real binary.
   desktop:
-    needs: classify
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    needs: [classify, renderer]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
     name: Desktop (Electron)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.renderer.outputs.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-verified-renderer
+        with:
+          sha: ${{ needs.renderer.outputs.sha }}
+          source-run-id: ${{ github.run_id }}
+          artifact-id: ${{ needs.renderer.outputs.artifact-id }}
+          artifact-name: ${{ needs.renderer.outputs.artifact-name }}
+          manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
+          destination: dist/renderer-download
       # The binary download is NOT skipped any more, and that is the point of this job.
       # It used to be, on the reasoning that "nothing here launches Electron" — which was
       # true and was the problem: a two-major Chromium bump had no gate at all, and the
@@ -136,27 +150,30 @@ jobs:
       # electron/tsconfig.spec.json for why it differs on module resolution).
       - run: pnpm electron:typecheck
       - run: pnpm electron:test
-      # Launches the real binary and serves www/ over trinity://app. `electron:e2e` runs
-      # the Nx-owned `trinity-desktop:build` first (Angular www/ + main-process tsc), which this job needs
-      # and no other job hands it. `xvfb-run` is required — Electron needs an X server
-      # even headless. This is the only gate in the repo that exercises the custom
-      # privileged scheme, WASM stream-instantiation, the sandbox posture and safeStorage.
+      # Launch the host built from the verified renderer without another Angular build.
       - id: electron
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm electron:e2e
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm nx run trinity-e2e-electron:full-prebuilt
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.electron.outputs.started == 'true' }}
         with:
           surface: electron
           report-path: dist/.playwright/trinity-e2e-electron/*/electron.full/**
 
-  # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
+      # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
+      - name: Verify Desktop left the worktree unchanged
+        if: ${{ !cancelled() }}
+        run: git diff --exit-code
+
   e2e:
-    needs: classify
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    needs: [classify, renderer]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
     name: E2E (Playwright + Synapse)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
     # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
@@ -165,6 +182,9 @@ jobs:
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.renderer.outputs.sha }}
+          persist-credentials: false
       - uses: ./.github/actions/setup
 
       - uses: ./.github/actions/setup-playwright
@@ -193,6 +213,15 @@ jobs:
         with:
           surface: storybook
           report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
+
+      - uses: ./.github/actions/restore-verified-renderer
+        with:
+          sha: ${{ needs.renderer.outputs.sha }}
+          source-run-id: ${{ github.run_id }}
+          artifact-id: ${{ needs.renderer.outputs.artifact-id }}
+          artifact-name: ${{ needs.renderer.outputs.artifact-name }}
+          manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
+          destination: dist/renderer-download
 
       # Real production UI semantics, contrast and geometry across the canonical viewport matrix.
       # Review screenshots are PR uploads, never committed pixel baselines.
@@ -249,10 +278,13 @@ jobs:
   # Capacitor WebView. Browser E2E cannot substitute for native Back, process
   # relaunch, Android TLS policy, or the packaged application itself.
   android-e2e:
-    needs: classify
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    needs: [classify, renderer]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
     name: Android E2E (Capacitor WebView, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 75
     strategy:
       fail-fast: false
@@ -260,11 +292,22 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.renderer.outputs.sha }}
+          persist-credentials: false
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-verified-renderer
+        with:
+          sha: ${{ needs.renderer.outputs.sha }}
+          source-run-id: ${{ github.run_id }}
+          artifact-id: ${{ needs.renderer.outputs.artifact-id }}
+          artifact-name: ${{ needs.renderer.outputs.artifact-name }}
+          manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
+          destination: dist/renderer-download
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -309,6 +352,56 @@ jobs:
           report-path: dist/.playwright/trinity-e2e-android/*/android.installed-webview/**
 
       - name: Verify Android E2E left the worktree unchanged
+        if: ${{ !cancelled() }}
+        run: git diff --exit-code
+
+  ios-native-build:
+    name: iOS Native Build
+    needs: [classify, renderer]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.renderer.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-verified-renderer
+        with:
+          sha: ${{ needs.renderer.outputs.sha }}
+          source-run-id: ${{ github.run_id }}
+          artifact-id: ${{ needs.renderer.outputs.artifact-id }}
+          artifact-name: ${{ needs.renderer.outputs.artifact-name }}
+          manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
+          destination: dist/renderer-download
+      - name: Record selected Xcode and simulator SDK
+        run: |
+          xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
+          xcrun --sdk iphonesimulator --show-sdk-version | tee -a "$GITHUB_STEP_SUMMARY"
+      - run: pnpm nx run trinity-ios:verify
+      - name: Compile unsigned simulator host from verified renderer
+        id: ios
+        run: |
+          mkdir -p dist/ios-native
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          set -o pipefail
+          pnpm nx run trinity-ios:build-prebuilt 2>&1 | tee dist/ios-native/xcodebuild.log
+      - name: Retain Xcode diagnostics
+        if: ${{ !cancelled() && steps.ios.outputs.started == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-native-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: |
+            dist/ios-native/xcodebuild.log
+            dist/ios-native/run.*/build.xcresult/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify iOS left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
 

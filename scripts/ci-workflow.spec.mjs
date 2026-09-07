@@ -15,7 +15,7 @@ describe('CI execution contract', () => {
       'steps.classify.outputs.mode',
     );
     for (const id of CODE_JOB_IDS) {
-      expect(workflow.jobs[id].needs).toBe('classify');
+      expect([workflow.jobs[id].needs].flat()).toContain('classify');
       expect(workflow.jobs[id].if).toContain('!cancelled()');
       expect(workflow.jobs[id].if).toContain(
         "needs.classify.outputs.mode != 'docs'",

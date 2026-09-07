@@ -62,15 +62,16 @@ log. Do not infer repository-wide merge rules from the workflow YAML: branch
 protection and rulesets live in GitHub settings and may impose additional
 requirements.
 
-| Job             | Checks                                                                                                       | First recovery step                                                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`       | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                       | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                           |
-| `test`          | Workspace-wide typecheck, then `pnpm test`                                                                   | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                    |
-| `build`         | Production web build                                                                                         | Resolve the production/AOT failure.                                                                                                                   |
-| `desktop`       | Electron install, compile, typecheck, unit tests, and launched-shell E2E                                     | Use the [desktop guide](../platforms/desktop.md) to reproduce the matching shell or packaging step.                                                   |
-| `e2e`           | Component Storybook, production renderer, styling, disposable-Synapse browser journeys, then QR verification | Read the Playwright report and reproduce the smallest owned journey. The Synapse-backed flows use a fixed disposable stack, so run them sequentially. |
-| `android-e2e`   | Four API 36 Pixel 6 WebView shards                                                                           | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host.                     |
-| `scheduled-e2e` | Chromium, Firefox, and WebKit scheduled suite                                                                | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                          |
+| Job                | Checks                                                                                                          | First recovery step                                                                                                                                   |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`          | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                           |
+| `test`             | Workspace-wide typecheck, then `pnpm test`                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                    |
+| `renderer`         | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                         |
+| `desktop`          | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer            | Use the [desktop guide](../platforms/desktop.md) to reproduce the matching shell or packaging step.                                                   |
+| `e2e`              | Component Storybook, production renderer, styling, disposable-Synapse browser journeys, then QR verification    | Read the Playwright report and reproduce the smallest owned journey. The Synapse-backed flows use a fixed disposable stack, so run them sequentially. |
+| `android-e2e`      | Four API 36 Pixel 6 WebView shards using the verified renderer                                                  | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host.                     |
+| `ios-native-build` | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                              |
+| `scheduled-e2e`    | Chromium, Firefox, and WebKit scheduled suite                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                          |
 
 Started Playwright suites upload hidden `dist/.playwright/` output through the
 [diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
@@ -101,6 +102,39 @@ returns a nonzero status and records `verified: true` in its ignored
 `dist/.playwright/ci-proof/evidence/` summary. The timeout case must interrupt a
 running test; a normal test timeout or a hang after reporting does not qualify.
 These real-browser proofs are separate from the browser-free scripts test gate.
+
+### The verified renderer artifact
+
+The reusable [`_renderer.yml`](../../.github/workflows/_renderer.yml) workflow checks
+out the exact full commit SHA requested by `ci.yml`, runs one production renderer
+compilation, and records `dist/web-bundle-manifest.json` version 2. The manifest binds
+the production configuration and every file's path, byte count, and SHA-256; its own
+SHA-256, source SHA, immutable artifact ID, and run-bound artifact name are passed to
+downstream jobs. The canonical verifier is `node scripts/web-bundle-manifest.mjs`,
+with artifact coordinate handling in `node scripts/renderer-artifact.mjs`.
+
+Desktop, Android, iOS, and the production renderer journey download that artifact and
+validate its coordinates, manifest digest, file contents, and expected checkout before
+installing the payload into the canonical `www/` directory. The native wrappers allow
+only their generated Cordova files alongside the manifest payload. A failed validation
+does not replace `www/`. The `e2e` job still builds its development bundle while
+preparing Docker/browser prerequisites; the production renderer step restores the
+verified artifact afterward, while styling and browser journeys intentionally use the
+development server.
+
+For local host parity checks against an already recorded artifact, use:
+
+```bash
+pnpm ios:build:prebuilt
+pnpm android:build:prebuilt
+pnpm nx run trinity-e2e-electron:full-prebuilt
+pnpm nx run trinity-e2e-electron:smoke-prebuilt
+```
+
+These targets require `www/` and `dist/web-bundle-manifest.json` to have been recorded
+by the renderer build; they verify before copying or launching and do not create a new
+production renderer. On Linux, prefix the Electron targets with `xvfb-run -a` when a
+display is required.
 
 For local commands and the distinction between unit, type, renderer, and real
 host checks, see [testing](../contributing/testing.md) and

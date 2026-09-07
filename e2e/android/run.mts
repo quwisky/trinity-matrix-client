@@ -327,13 +327,7 @@ async function selectOrStartDevice(): Promise<void> {
   emulatorLogFd = openSync(join(outputDirectory, 'emulator.log'), 'w');
   spawnedEmulator = spawn(
     emulator,
-    [
-      '-avd',
-      DEFAULT_AVD,
-      '-port',
-      String(port),
-      ...ownedEmulatorLaunchArgs,
-    ],
+    ['-avd', DEFAULT_AVD, '-port', String(port), ...ownedEmulatorLaunchArgs],
     {
       cwd: workspaceRoot,
       detached: true,
@@ -649,15 +643,16 @@ function registerSignals(): void {
 }
 
 async function main(): Promise<void> {
+  if (process.env['CI'] && process.env['TRINITY_E2E_PREBUILT_WWW'] !== '1') {
+    throw new Error('Android CI requires the verified prebuilt renderer');
+  }
   await assertJava21();
   assertPlaywrightVersions();
   await run('pnpm', ['exec', 'playwright', 'install', 'android']);
   await selectOrStartDevice();
   await validateAndWaitForBoot();
   process.env['TRINITY_E2E_PLATFORM'] = 'android';
-  const reusePrebuiltBundle = Boolean(
-    process.env['TRINITY_E2E_PREBUILT_WWW'],
-  );
+  const reusePrebuiltBundle = process.env['TRINITY_E2E_PREBUILT_WWW'] === '1';
   if (reusePrebuiltBundle) {
     await run(process.execPath, [
       'scripts/web-bundle-manifest.mjs',
@@ -667,9 +662,7 @@ async function main(): Promise<void> {
     ]);
   }
   await run('pnpm', [
-    reusePrebuiltBundle
-      ? 'android:build:prebuilt'
-      : 'android:build',
+    reusePrebuiltBundle ? 'android:build:prebuilt' : 'android:build',
   ]);
   if (!reusePrebuiltBundle) {
     await run(process.execPath, [

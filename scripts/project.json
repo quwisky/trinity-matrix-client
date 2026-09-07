@@ -43,8 +43,25 @@
         "{workspaceRoot}/.github/workflows/*.yml",
         "{workspaceRoot}/.github/actions/**/*.yml",
         "{workspaceRoot}/package.json",
-        "{workspaceRoot}/pnpm-lock.yaml"
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/ios/project.json"
       ]
+    },
+    "record-renderer": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/renderer-artifact.mjs record",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "verify-renderer": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www",
+        "cwd": "{workspaceRoot}"
+      }
     }
   }
 }

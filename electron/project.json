@@ -65,7 +65,13 @@
     "build": {
       "//": "Build the shared production renderer, copy it unchanged, compile main/preload, and apply the optional development signature.",
       "cache": false,
-      "dependsOn": ["install", { "projects": ["trinity"], "target": "build" }],
+      "dependsOn": [
+        "install",
+        {
+          "projects": ["trinity"],
+          "target": "build"
+        }
+      ],
       "outputs": ["{projectRoot}/dist", "{projectRoot}/www"],
       "executor": "nx:run-commands",
       "options": {
@@ -75,7 +81,13 @@
     },
     "build-prebuilt": {
       "cache": false,
-      "dependsOn": ["install"],
+      "dependsOn": [
+        "install",
+        {
+          "projects": ["scripts"],
+          "target": "verify-renderer"
+        }
+      ],
       "outputs": ["{projectRoot}/dist", "{projectRoot}/www"],
       "executor": "nx:run-commands",
       "options": {
@@ -88,7 +100,10 @@
       "cache": false,
       "dependsOn": [
         "install-dependencies",
-        { "projects": ["trinity"], "target": "build" }
+        {
+          "projects": ["trinity"],
+          "target": "build"
+        }
       ],
       "outputs": ["{projectRoot}/dist", "{projectRoot}/www"],
       "executor": "nx:run-commands",

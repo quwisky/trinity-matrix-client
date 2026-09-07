@@ -1,0 +1,64 @@
+name: Verified production renderer
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Exact full commit SHA to build.
+        required: true
+        type: string
+      artifact-name:
+        description: Renderer artifact name containing caller run, attempt and full SHA.
+        required: true
+        type: string
+      retention-days:
+        required: true
+        type: number
+    outputs:
+      artifact-id:
+        value: ${{ jobs.renderer.outputs.artifact-id }}
+      artifact-name:
+        value: ${{ jobs.renderer.outputs.artifact-name }}
+      manifest-digest:
+        value: ${{ jobs.renderer.outputs.manifest-digest }}
+      sha:
+        value: ${{ jobs.renderer.outputs.sha }}
+permissions:
+  contents: read
+jobs:
+  renderer:
+    name: Build and verify renderer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TRINITY_RENDERER_SHA: ${{ inputs.sha }}
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-name: ${{ inputs.artifact-name }}
+      manifest-digest: ${{ steps.manifest.outputs.manifest-digest }}
+      sha: ${{ steps.manifest.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Validate renderer request
+        env:
+          RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        run: node scripts/renderer-artifact.mjs assert-source
+      - run: pnpm nx build trinity --configuration=production --skipNxCache
+      - id: manifest
+        run: pnpm nx run scripts:record-renderer
+      - id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            www/
+            dist/web-bundle-manifest.json
+            dist/web-bundle-manifest.json.sha256
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+      - run: git diff --exit-code

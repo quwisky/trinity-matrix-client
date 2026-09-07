@@ -10,7 +10,12 @@
       "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
       "cache": false,
       "parallelism": false,
-      "dependsOn": [{ "projects": ["trinity-desktop"], "target": "build" }],
+      "dependsOn": [
+        {
+          "projects": ["trinity-desktop"],
+          "target": "build"
+        }
+      ],
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
       "executor": "nx:run-commands",
       "options": {
@@ -22,7 +27,12 @@
       "//": "Owns the Docker-independent launched-shell protocol, bridge, security and styling proof.",
       "cache": false,
       "parallelism": false,
-      "dependsOn": [{ "projects": ["trinity-desktop"], "target": "build" }],
+      "dependsOn": [
+        {
+          "projects": ["trinity-desktop"],
+          "target": "build"
+        }
+      ],
       "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
       "executor": "nx:run-commands",
       "options": {
@@ -42,6 +52,40 @@
       "options": {
         "command": "tsc -p tsconfig.json --noEmit",
         "cwd": "{projectRoot}"
+      }
+    },
+    "full-prebuilt": {
+      "//": "Owns the launched desktop shell and joins the support-owned Electron and disposable Synapse lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        {
+          "projects": ["trinity-desktop"],
+          "target": "build-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node e2e/support/run-playwright.mts --config=e2e/electron/playwright.full.config.mts --resource=electron --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "smoke-prebuilt": {
+      "//": "Owns the Docker-independent launched-shell protocol, bridge, security and styling proof.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        {
+          "projects": ["trinity-desktop"],
+          "target": "build-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-electron"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node e2e/support/run-playwright.mts --config=e2e/electron/playwright.smoke.config.mts --resource=electron",
+        "cwd": "{workspaceRoot}"
       }
     }
   }

@@ -9,7 +9,12 @@
     "sync": {
       "//": "Build the shared production renderer first, then let Capacitor copy that exact www artifact and refresh native plugin wiring. Sync mutates checked-in generated native files, so it is deliberately uncached.",
       "cache": false,
-      "dependsOn": [{ "projects": ["trinity"], "target": "build" }],
+      "dependsOn": [
+        {
+          "projects": ["trinity"],
+          "target": "build"
+        }
+      ],
       "executor": "nx:run-commands",
       "options": {
         "command": "pnpm exec cap sync android",
@@ -21,7 +26,12 @@
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec cap sync android",
+        "commands": [
+          "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www",
+          "pnpm exec cap sync android",
+          "node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json android/app/src/main/assets/public cordova.js cordova_plugins.js"
+        ],
+        "parallel": false,
         "cwd": "{workspaceRoot}"
       }
     },

@@ -87,10 +87,11 @@ describe('CI change classifier', () => {
     expect(CODE_JOB_IDS).toEqual([
       'quality',
       'test',
-      'build',
+      'renderer',
       'desktop',
       'e2e',
       'android-e2e',
+      'ios-native-build',
     ]);
     expect(DOCS_JOB_IDS).toEqual(['docs-gate']);
     expect(expectedJobsForMode('code')).toEqual(CODE_JOB_IDS);

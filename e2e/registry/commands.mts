@@ -260,7 +260,7 @@ export const E2E_PACKAGE_SCRIPTS = [
 
 export const E2E_CI_ENTRYPOINTS = [
   {
-    command: 'xvfb-run -a pnpm electron:e2e',
+    command: 'xvfb-run -a pnpm nx run trinity-e2e-electron:full-prebuilt',
     tier: 'pull-request',
     suiteIds: ['electron.full'],
   },

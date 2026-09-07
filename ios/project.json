@@ -9,7 +9,12 @@
     "sync": {
       "//": "Build the shared production renderer first, then let Capacitor copy that exact www artifact and refresh Swift Package Manager plugin wiring. Sync mutates checked-in generated native files, so it is deliberately uncached.",
       "cache": false,
-      "dependsOn": [{ "projects": ["trinity"], "target": "build" }],
+      "dependsOn": [
+        {
+          "projects": ["trinity"],
+          "target": "build"
+        }
+      ],
       "executor": "nx:run-commands",
       "options": {
         "command": "pnpm exec cap sync ios",
@@ -21,7 +26,12 @@
       "cache": false,
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm exec cap sync ios",
+        "commands": [
+          "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www",
+          "pnpm exec cap sync ios",
+          "node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json ios/App/App/public cordova.js cordova_plugins.js"
+        ],
+        "parallel": false,
         "cwd": "{workspaceRoot}"
       }
     },
@@ -65,6 +75,15 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug build CODE_SIGNING_ALLOWED=NO",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "build-prebuilt": {
+      "cache": false,
+      "dependsOn": ["sync-prebuilt"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGNING_ALLOWED=NO",
         "cwd": "{projectRoot}"
       }
     }
