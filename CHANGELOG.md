@@ -1127,6 +1127,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Images load again when returning to a retained Conversation after switching Rooms. Media
+  references survive view-cache cleanup while decoded URLs and staged uploads are still released;
+  removed or replaced Account clients cannot resolve old references.
+
 - Startup no longer loops when an unsupported app badge reports its health
   synchronously, including on Android WebView and WebKit. Badge updates track
   unread totals without subscribing to signal reads made by outcome consumers.

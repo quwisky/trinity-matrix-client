@@ -47,7 +47,12 @@ export class MediaPipeline {
   private readonly bytes = inject(MediaService);
   private readonly staged = new WeakMap<StagedMediaReference, StagedEntry>();
   private readonly liveStaged = new Set<StagedMediaReference>();
-  private presented = new WeakMap<PresentedMediaReference, PresentedEntry>();
+  // Retained MessageViews own these references across Workspace switches. Weak keys
+  // release their opaque sources with the views, independently of the byte cache.
+  private readonly presented = new WeakMap<
+    PresentedMediaReference,
+    PresentedEntry
+  >();
 
   stage(file: File): MediaStageOutcome {
     if (!file || file.size === 0) {
@@ -323,19 +328,23 @@ export class MediaPipeline {
     reference: PresentedMediaReference,
     variant: 'thumbnail' | 'full',
   ): Observable<string> {
-    const source = this.presented.get(reference);
-    return source
-      ? this.bytes.resolveMedia(source.media, variant, source.client)
-      : throwError(() => new Error('Media reference is no longer available'));
+    return defer(() => {
+      const source = this.liveSource(reference);
+      return source
+        ? this.bytes.resolveMedia(source.media, variant, source.client)
+        : throwError(() => new Error('Media reference is no longer available'));
+    });
   }
 
   downloadMedia(
     reference: PresentedMediaReference,
   ): Observable<{ blob: Blob; filename: string }> {
-    const source = this.presented.get(reference);
-    return source
-      ? this.bytes.downloadMedia(source.media, source.client)
-      : throwError(() => new Error('Media reference is no longer available'));
+    return defer(() => {
+      const source = this.liveSource(reference);
+      return source
+        ? this.bytes.downloadMedia(source.media, source.client)
+        : throwError(() => new Error('Media reference is no longer available'));
+    });
   }
 
   pin(url: string | null): void {
@@ -346,10 +355,22 @@ export class MediaPipeline {
     this.bytes.unpin(url);
   }
 
+  /** Release view resources without retiring references owned by retained messages. */
   releaseAll(): void {
     for (const staged of [...this.liveStaged]) this.releaseStaged(staged);
-    this.presented = new WeakMap();
     this.bytes.releaseAll();
+  }
+
+  private liveSource(
+    reference: PresentedMediaReference,
+  ): PresentedEntry | undefined {
+    const source = this.presented.get(reference);
+    const accountId = source?.client.getUserId();
+    return source &&
+      accountId &&
+      this.matrix.clientFor(accountId) === source.client
+      ? source
+      : undefined;
   }
 
   private eventContent(media: UploadedMedia, caption: string): object {

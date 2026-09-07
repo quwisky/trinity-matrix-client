@@ -162,6 +162,11 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'security',
   },
   {
+    path: 'journeys/conversations/media-retention.spec.mts',
+    capability: 'conversations',
+    contractType: 'journey',
+  },
+  {
     path: 'journeys/conversations/message-poll.spec.mts',
     capability: 'conversations',
     contractType: 'journey',

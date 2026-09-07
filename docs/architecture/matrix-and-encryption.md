@@ -546,7 +546,13 @@ credentials. Encrypted uploads omit the filename and use `application/octet-stre
 thumbnails have independent encryption material because a server cannot resize the ciphertext.
 Message Presentation exposes bounded `PresentedMediaReference` metadata, not MXC credentials,
 encrypted descriptors, keys, IVs or hashes. Media consumers acquire bytes through the pipeline;
-its pin-aware object-URL cache is bounded to 64 entries and URLs are released on Room teardown.
+its pin-aware object-URL cache is bounded to 64 entries and URLs are released on Workspace
+transitions. Those byte-cache releases do not invalidate opaque references still owned by
+retained Message Views. References use weak keys so their source descriptors can be collected
+when the views are discarded. Resolution and download recheck the captured client against the
+live Account at subscription time; signing out or replacing that client makes old references
+unusable without retargeting them to another Account. Staged previews and decrypted byte caches
+are still cleared on release, and cancelled resolutions cannot repopulate the released cache.
 Gallery acquisition and export use host-media adapters; Conversations does not branch on host
 identity. See [host capabilities](../platforms/index.md).
 

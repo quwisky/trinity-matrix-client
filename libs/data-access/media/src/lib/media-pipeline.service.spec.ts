@@ -44,6 +44,7 @@ function setup() {
     }),
   };
   const client = {
+    getUserId: (): string => KEY.accountId,
     getRoom: vi.fn(() => room),
     makeTxnId: vi.fn(() => 'txn-1'),
     sendMessage: vi.fn((_roomId: string, _content: unknown, _txnId: string) =>
@@ -67,13 +68,17 @@ function setup() {
     unpin: vi.fn(),
     releaseAll: vi.fn(),
   };
+  const matrix = {
+    clientFor: vi.fn((_accountId: string): typeof client | null => client),
+    instance: client,
+  };
   TestBed.configureTestingModule({
     providers: [
       MediaPipeline,
       { provide: MediaService, useValue: bytes },
       {
         provide: MatrixClientService,
-        useValue: { clientFor: vi.fn(() => client), instance: client },
+        useValue: matrix,
       },
     ],
   });
@@ -81,6 +86,7 @@ function setup() {
     pipeline: TestBed.inject(MediaPipeline),
     bytes,
     client,
+    matrix,
     room,
     pendingEcho,
   };
@@ -206,6 +212,78 @@ describe('MediaPipeline', () => {
     ).resolves.toMatchObject({ filename: 'secret.png' });
     expect(bytes.downloadMedia).toHaveBeenCalledWith(
       expect.objectContaining({ file: uploaded().file }),
+      client,
+    );
+  });
+
+  it.each(['removed', 'replaced'])(
+    'rejects reads created before the source Account client is %s',
+    async (transition) => {
+      const { pipeline, bytes, client, matrix } = setup();
+      const reference = pipeline.present({
+        kind: 'image',
+        mxc: 'mxc://example.org/photo',
+        file: null,
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        thumbnailMxc: null,
+        thumbnailFile: null,
+      });
+      bytes.downloadMedia.mockReturnValue(
+        of({ blob: new Blob(['photo']), filename: 'photo.png' }),
+      );
+      const reads = [
+        pipeline.resolveMedia(reference, 'thumbnail'),
+        pipeline.resolveMedia(reference, 'full'),
+        pipeline.downloadMedia(reference),
+      ];
+      matrix.clientFor.mockReturnValue(
+        transition === 'removed' ? null : { ...client },
+      );
+
+      for (const read of reads) {
+        await expect(firstValueFrom<unknown>(read)).rejects.toThrow(
+          'Media reference is no longer available',
+        );
+      }
+      expect(bytes.resolveMedia).not.toHaveBeenCalled();
+      expect(bytes.downloadMedia).not.toHaveBeenCalled();
+    },
+  );
+
+  it('keeps media reads bound to their live opening Account after an Active Account switch', async () => {
+    const { pipeline, bytes, client, matrix } = setup();
+    const reference = pipeline.present({
+      kind: 'image',
+      mxc: 'mxc://example.org/photo',
+      file: null,
+      filename: 'photo.png',
+      mimeType: 'image/png',
+      thumbnailMxc: null,
+      thumbnailFile: null,
+    });
+    matrix.instance = { ...client, getUserId: () => '@bob:example.org' };
+    matrix.clientFor.mockImplementation((id) =>
+      id === KEY.accountId ? client : matrix.instance,
+    );
+    bytes.downloadMedia.mockReturnValue(
+      of({ blob: new Blob(['photo']), filename: 'photo.png' }),
+    );
+    pipeline.releaseAll();
+
+    await expect(
+      firstValueFrom(pipeline.resolveMedia(reference, 'full')),
+    ).resolves.toBe('blob:resolved');
+    await expect(
+      firstValueFrom(pipeline.downloadMedia(reference)),
+    ).resolves.toMatchObject({ filename: 'photo.png' });
+    expect(bytes.resolveMedia).toHaveBeenCalledWith(
+      expect.any(Object),
+      'full',
+      client,
+    );
+    expect(bytes.downloadMedia).toHaveBeenCalledWith(
+      expect.any(Object),
       client,
     );
   });
