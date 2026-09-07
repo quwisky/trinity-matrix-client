@@ -145,7 +145,7 @@ describe('configJsonSchema', () => {
       .toMatchInlineSnapshot(`
       "{
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://qwky.eu/trinity/config-v2.schema.json",
+        "$id": "https://qwky.eu/trinity/config-v3.schema.json",
         "title": "Trinity configuration export",
         "type": "object",
         "description": "A Trinity configuration export: the local preference layer of one device, in a versioned envelope. It carries no accounts, no access tokens and no message content.",
@@ -191,7 +191,7 @@ describe('configJsonSchema', () => {
             }
           },
           "version": {
-            "const": 2,
+            "const": 3,
             "description": "The format version. A document from a newer version is read as far as this build understands it, and what it cannot apply is named rather than dropped silently."
           }
         }

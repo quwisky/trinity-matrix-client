@@ -48,7 +48,7 @@ export class SlashAutocomplete {
    * does it for the emoji and mention engines. The difference is deliberate and rests on a
    * property only this engine has: `matches` is a pure function of `query` over a module
    * constant, so the same fragment always yields the same list and the highlight can safely
-   * survive a re-sync the user did not ask for — a caret move, a toolbar edit further along
+   * survive a re-sync the user did not ask for — a caret move, a format edit further along
    * the message. Mention's list can change underneath an unchanged query (members arrive), so
    * it cannot make that promise and resets on every change instead.
    */

@@ -5,7 +5,6 @@ import { GifSettingsService } from '@trinity/data-access/gif';
 import { PushGatewayService } from '@trinity/data-access/notifications';
 import { AccountScopeService } from '@trinity/data-access/room-library';
 import {
-  ComposerSettingsService,
   DateTimeFormatService,
   FeatureFlagsService,
   KeyboardShortcutsService,
@@ -48,7 +47,6 @@ describe('TrinityPreferenceStartupSources', () => {
           useValue: { init: () => of({ kind: 'ready' as const }) },
         },
         { provide: SystemLineSettingsService, useValue: ready },
-        { provide: ComposerSettingsService, useValue: ready },
         { provide: MessageGestureSettingsService, useValue: ready },
         { provide: DateTimeFormatService, useValue: ready },
         { provide: KeyboardShortcutsService, useValue: ready },

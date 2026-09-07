@@ -112,33 +112,15 @@ test.describe('Kit state styling', () => {
     );
   });
 
-  test('a vertical separator has a width', async ({ page, request }) => {
+  test('the public dropdown separator has a rendered size', async ({
+    page,
+    request,
+  }) => {
     test.setTimeout(150_000);
     await openRoom(page, request, 's');
-
-    // The formatting bar is contextual: a selection raises it.
-    const composer = page.getByTestId('composer-input');
-    await composer.fill('say hello there');
-    await composer.evaluate((element) => {
-      const input = element as HTMLTextAreaElement;
-      input.focus();
-      input.setSelectionRange(4, 9);
-    });
-    await expect(page.getByTestId('format-bold')).toBeVisible({
-      timeout: 10_000,
-    });
-
-    // Scoped to the toolbar. A document-wide `[data-slot="separator"]` is unambiguous today
-    // but would start failing against correct code the day a HORIZONTAL separator renders
-    // earlier in the room view.
-    const rule = page
-      .locator('trn-composer-toolbar [data-slot="separator"]')
-      .first();
-    await expect(rule).toHaveAttribute('data-orientation', 'vertical');
-
-    // A rule with no width is not a rule. `data-vertical:w-px` is the only thing that gives
-    // it one — the base class is `inline-flex shrink-0 bg-border`, which has no size of its
-    // own, so a broken pairing renders a 0px element that is still "visible" to Playwright.
+    await page.getByTestId('room-actions-overflow').click();
+    const rule = page.locator('[role="menu"] [role="separator"]').first();
+    await expect(rule).toBeVisible();
     const box = await rule.boundingBox();
     expect(box?.width ?? 0).toBeGreaterThan(0);
     expect(box?.height ?? 0).toBeGreaterThan(0);

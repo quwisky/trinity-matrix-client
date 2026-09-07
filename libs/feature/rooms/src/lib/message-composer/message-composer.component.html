@@ -36,17 +36,6 @@
 />
 
 <div class="composer">
-  @if (!recordingVoice() && showToolbar()) {
-    <trn-composer-toolbar
-      [previewing]="previewing()"
-      [disabled]="contextUploadProgress() !== null"
-      [pinned]="toolbarPinned()"
-      [active]="activeFormats()"
-      (format)="onFormat($event)"
-      (togglePreview)="onTogglePreview()"
-      (togglePinned)="onTogglePinned()"
-    />
-  }
   <!-- Both pickers render in the CDK overlay container, anchored to the input row. They were
        `position: absolute` children pinned at `bottom: calc(100% + 4px)`, which is what made
        `.composer` have to stay `position: relative` and what would have let any
@@ -146,9 +135,7 @@
        what all four floating layers anchor to. A grid rather than a flex row, so the preview
        can occupy the textarea's own cell instead of standing beside it — see the stylesheet.
 
-       It is the field rather than `.composer` because the field is the thing the layers belong
-       above; the old rule anchored them to `.composer`, which meant they cleared the toolbar
-       too, which is why the toolbar had to live inside it. -->
+       The layers anchor to the field and remain independent of the composer's layout. -->
   <div
     class="composer__field"
     #composerField
@@ -238,9 +225,6 @@
       (keydown.arrowDown)="onArrowDown($event)"
       (keydown.tab)="onTab($event)"
       (blur)="onBlur()"
-      (select)="onSelectionChange()"
-      (keyup)="onSelectionChange()"
-      (pointerup)="onSelectionChange()"
       (paste)="onPaste($event)"
     ></textarea>
     <trn-composer-format-menu
