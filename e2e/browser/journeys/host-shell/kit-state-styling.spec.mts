@@ -111,18 +111,4 @@ test.describe('Kit state styling', () => {
       await styleOf(inactive, 'color'),
     );
   });
-
-  test('the public dropdown separator has a rendered size', async ({
-    page,
-    request,
-  }) => {
-    test.setTimeout(150_000);
-    await openRoom(page, request, 's');
-    await page.getByTestId('room-actions-overflow').click();
-    const rule = page.locator('[role="menu"] [role="separator"]').first();
-    await expect(rule).toBeVisible();
-    const box = await rule.boundingBox();
-    expect(box?.width ?? 0).toBeGreaterThan(0);
-    expect(box?.height ?? 0).toBeGreaterThan(0);
-  });
 });

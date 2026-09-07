@@ -8,6 +8,7 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
+  readPreference,
   seedPreference,
   synapseSession,
   type SynapseSession,
@@ -24,6 +25,7 @@ import { captureScreenshot } from '../../../support/screenshot.mts';
 // otherwise.
 const session = synapseSession();
 const mobile = devices['Pixel 5'];
+const DRAFTS_KEY = 'trinity.composer.drafts';
 
 /** Register, create a room, sign in and open it. Returns the composer locator. */
 async function openComposer(
@@ -413,6 +415,9 @@ test.describe('Composer formatting', () => {
       'retired-keys',
     );
     await composer.fill('draft survives toolbar retirement');
+    await expect
+      .poll(() => readPreference(page, DRAFTS_KEY).then((value) => value ?? ''))
+      .toContain('draft survives toolbar retirement');
     await seedPreference(page, 'trinity.composer.show-toolbar', 'true');
     await seedPreference(page, 'trinity.composer.format-on-selection', 'true');
 

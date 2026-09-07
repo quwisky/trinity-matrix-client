@@ -106,9 +106,18 @@ for (const preview of STORYBOOK_THEME_PREVIEWS) {
       await expect(
         page.getByTestId(`catalog-separator-${variant}-horizontal-decorative`),
       ).toHaveAttribute('role', 'none');
-      await expect(
-        page.getByTestId(`catalog-separator-${variant}-vertical-announced`),
-      ).toHaveAttribute('role', 'separator');
+      const verticalSeparator = page.getByTestId(
+        `catalog-separator-${variant}-vertical-announced`,
+      );
+      await expect(verticalSeparator).toHaveAttribute('role', 'separator');
+      await expect(verticalSeparator).toHaveAttribute(
+        'data-orientation',
+        'vertical',
+      );
+      await expect(verticalSeparator).toBeVisible();
+      const separatorBox = await verticalSeparator.boundingBox();
+      expect(separatorBox?.width ?? 0).toBeGreaterThan(0);
+      expect(separatorBox?.height ?? 0).toBeGreaterThan(0);
     }
 
     expect(
