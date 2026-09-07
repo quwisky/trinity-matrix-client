@@ -1130,6 +1130,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Images load again when returning to a retained Conversation after switching Rooms. Media
+  references survive view-cache cleanup while decoded URLs and staged uploads are still released;
+  removed or replaced Account clients cannot resolve old references.
+
 - Cross-user verification waits for the other user's identity to reach the crypto store,
   preventing startup failures during slow key refreshes. Startup is bounded and cancelled
   on session teardown; late requests cannot appear after leaving or changing Accounts.
