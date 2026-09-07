@@ -11,6 +11,9 @@
   </div>
 } @else {
   <div class="new-divider" data-testid="new-messages-divider">
+    @if (threadConnected()) {
+      <span class="thread-connector" aria-hidden="true"></span>
+    }
     <span class="new-divider__label">New messages</span>
   </div>
 }

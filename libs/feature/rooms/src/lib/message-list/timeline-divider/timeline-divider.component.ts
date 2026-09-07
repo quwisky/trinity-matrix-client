@@ -29,4 +29,6 @@ export class TimelineDividerComponent {
   readonly kind = input.required<'day' | 'unread'>();
   /** The day label. Ignored for `unread`, which has nothing to vary. */
   readonly label = input<string>('');
+  /** Continue the avatar column across an unread marker inside a sender group. */
+  readonly threadConnected = input(false);
 }

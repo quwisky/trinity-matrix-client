@@ -215,6 +215,16 @@ async function seedThread(
   await seedRoot(rootBody, `${runId}-root`, `${runId}-reply`);
   const imageRootBody = options.includeImageRoot ? 'short-root.png' : undefined;
   if (imageRootBody) {
+    for (let index = 0; index < 3; index++) {
+      await sendMessage(
+        request,
+        hs,
+        roomId,
+        reader,
+        `${runId}-between-${index}`,
+        `Intervening message ${index}`,
+      );
+    }
     await seedRoot(
       imageRootBody,
       `${runId}-image-root`,
@@ -507,6 +517,62 @@ test.describe('Thread preview', () => {
             seeded,
             true,
           );
+          const connection = await imageSummary.evaluate((element) => {
+            const rows = Array.from(
+              element.closest('.scroll')!.querySelectorAll<HTMLElement>('.msg'),
+            );
+            const last = rows.indexOf(element.closest('.msg') as HTMLElement);
+            let first = last;
+            while (first > 0 && !rows[first].querySelector('.msg__avatar'))
+              first--;
+            const avatar = rows[first]
+              .querySelector('.msg__avatar')!
+              .firstElementChild!.getBoundingClientRect();
+            const center = avatar.left + avatar.width / 2;
+            const segments: { top: number; bottom: number; center: number }[] =
+              [];
+            for (const row of rows.slice(first, last + 1)) {
+              for (const target of row.querySelectorAll<HTMLElement>(
+                '.msg__body, trn-message-thread-summary, .msg__thread',
+              )) {
+                const style = getComputedStyle(target, '::before');
+                const width = Number.parseFloat(style.borderLeftWidth);
+                if (style.content === 'none' || !width) continue;
+                const box = target.getBoundingClientRect();
+                const top = box.top + Number.parseFloat(style.top);
+                const bottom =
+                  style.bottom !== 'auto'
+                    ? box.bottom - Number.parseFloat(style.bottom)
+                    : top + Number.parseFloat(style.height);
+                segments.push({
+                  top,
+                  bottom,
+                  center: box.left + Number.parseFloat(style.left) + width / 2,
+                });
+              }
+            }
+            let end = avatar.bottom;
+            let largestGap = 0;
+            for (const segment of segments.sort((a, b) => a.top - b.top)) {
+              largestGap = Math.max(largestGap, segment.top - end);
+              end = Math.max(end, segment.bottom);
+            }
+            return {
+              largestGap,
+              end,
+              target: element.getBoundingClientRect().top + 18,
+              centers: segments.map((segment) =>
+                Math.abs(segment.center - center),
+              ),
+              rows: last - first + 1,
+            };
+          });
+          expect(connection.rows).toBeGreaterThanOrEqual(5);
+          expect(connection.largestGap).toBeLessThanOrEqual(1);
+          expect(connection.end).toBeGreaterThanOrEqual(connection.target);
+          expect(connection.centers.every((offset) => offset <= 0.5)).toBe(
+            true,
+          );
           const authorWidth = (summary: Locator) =>
             summary
               .locator('.msg__thread-author')
@@ -525,6 +591,20 @@ test.describe('Thread preview', () => {
           }));
           expect(colors.connector).toBe(colors.replyToken);
           await textSummary.scrollIntoViewIfNeeded();
+          if (!mobile) {
+            await page.setViewportSize({ width: 1280, height: 1200 });
+            await textSummary.scrollIntoViewIfNeeded();
+            const groupProofPath = testInfo.outputPath(
+              'thread-preview-connected-group.png',
+            );
+            await captureScreenshot(page, () =>
+              page.screenshot({ path: groupProofPath }),
+            );
+            await testInfo.attach('thread-preview-connected-group', {
+              path: groupProofPath,
+              contentType: 'image/png',
+            });
+          }
           const textProofPath = testInfo.outputPath(
             `thread-preview-short-text-${mobile ? 'mobile' : 'desktop'}.png`,
           );

@@ -101,6 +101,8 @@ latest reply author and text, and how recently it arrived. Select anywhere on th
 open the thread. On phones the reply text stays on one line and the entire preview is a tap
 target; no hover action is needed. Long author names truncate according to the available
 message width, consistently across short and long replies.
+The connector continues back to the group's existing avatar even when other messages
+appear between the avatar and the thread.
 
 Use **Cancel reply** or **Cancel edit** in the composer banner when you opened the wrong action.
 

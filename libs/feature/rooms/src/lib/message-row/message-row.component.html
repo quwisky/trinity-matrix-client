@@ -12,6 +12,10 @@
   <div
     class="msg"
     [class.msg--cont]="!r.showHeader"
+    [class.msg--thread-connected]="
+      threadContinues() || threadSummary() !== null
+    "
+    [class.msg--thread-continues]="threadContinues()"
     [class.msg--failed]="r.decryptionFailed"
     [class.msg--sticker]="r.kind === 'sticker'"
     [class.msg--sending]="r.status === 'sending'"

@@ -1136,6 +1136,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Thread connectors reach the group's existing avatar through intervening messages,
+  tall images, earlier thread previews, and unread markers without repeating the avatar.
+
 - Thread previews give the same username the same width allowance across short and long
   replies, and their connector uses the same theme color as ordinary reply connectors.
 

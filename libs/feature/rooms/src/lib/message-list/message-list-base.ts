@@ -379,6 +379,25 @@ export abstract class MessageListBase {
     return result;
   });
 
+  /** Rows whose avatar column continues to a later thread in the same sender group. */
+  readonly threadContinuationIds = computed<ReadonlySet<string>>(() => {
+    const rows = this.rows();
+    const summaries = this.threadSummaries();
+    const connected = new Set<string>();
+    let threadBelow = false;
+    for (let index = rows.length - 1; index >= 0; index--) {
+      const row = rows[index];
+      if (row.kind === 'event') {
+        threadBelow = false;
+        continue;
+      }
+      if (threadBelow) connected.add(row.id);
+      if (summaries[row.id]) threadBelow = true;
+      if (row.showHeader) threadBelow = false;
+    }
+    return connected;
+  });
+
   /**
    * Declared ABOVE the constructor on purpose. The constructor registers an `onDestroy` on
    * it, which works wherever the field sits — every initializer runs before the constructor

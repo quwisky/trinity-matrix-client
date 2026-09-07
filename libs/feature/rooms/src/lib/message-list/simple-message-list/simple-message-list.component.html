@@ -28,11 +28,18 @@
         <trn-timeline-divider kind="day" [label]="day" />
       }
       @if (row.id === firstUnreadId()) {
-        <trn-timeline-divider kind="unread" />
+        <trn-timeline-divider
+          kind="unread"
+          [threadConnected]="
+            !row.showHeader &&
+            (threadContinuationIds().has(row.id) || !!threadSummaries()[row.id])
+          "
+        />
       }
       <trn-message-row
         [row]="row"
         [threadSummary]="threadSummaries()[row.id] ?? null"
+        [threadContinues]="threadContinuationIds().has(row.id)"
         [caps]="rowCaps(row)"
         (action)="onRowAction(row, $event)"
         (longPress)="onRowLongPress(row, $event)"

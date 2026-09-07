@@ -125,8 +125,9 @@ test.describe('Unread divider + jump-to-unread', () => {
     );
 
     // …then a run of unread ones (enough to overflow the short viewport below).
+    let threadRoot = '';
     for (let i = 0; i < 14; i++) {
-      await sendText(
+      const eventId = await sendText(
         request,
         hs,
         roomId,
@@ -134,7 +135,23 @@ test.describe('Unread divider + jump-to-unread', () => {
         `unread message ${i}`,
         `${runId}-b${i}`,
       );
+      if (i === 2) threadRoot = eventId;
     }
+    await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${runId}-thread`,
+      {
+        headers: reader.headers,
+        data: {
+          msgtype: 'm.text',
+          body: 'Thread after the unread marker',
+          'm.relates_to': {
+            rel_type: 'm.thread',
+            event_id: threadRoot,
+            'm.in_reply_to': { event_id: threadRoot },
+          },
+        },
+      },
+    );
 
     // A short viewport so the divider (near the top) is scrolled off on open.
     await page.setViewportSize({ width: 1000, height: 400 });
@@ -149,6 +166,15 @@ test.describe('Unread divider + jump-to-unread', () => {
     // The "New messages" divider is rendered before the first unread message.
     const divider = page.getByTestId('new-messages-divider');
     await expect(divider).toHaveText(/New messages/i, { timeout: 20_000 });
+
+    const connector = divider.locator('.thread-connector');
+    await expect(connector).toHaveCount(1);
+    const connectorBox = await connector.boundingBox();
+    const dividerBox = await divider.boundingBox();
+    expect(connectorBox!.y).toBeLessThanOrEqual(dividerBox!.y - 8);
+    expect(connectorBox!.y + connectorBox!.height).toBeGreaterThanOrEqual(
+      dividerBox!.y + dividerBox!.height + 8,
+    );
 
     // The divider is actually STYLED, not merely present.
     //

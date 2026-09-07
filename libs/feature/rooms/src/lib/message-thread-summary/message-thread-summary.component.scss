@@ -2,6 +2,7 @@
   :host {
     // Reserve a complete flex row so even a short preview stays below its parent.
     display: block;
+    position: relative;
     container-type: inline-size;
     flex: 0 0 calc(100% - var(--message-body-indent));
     min-width: 0;

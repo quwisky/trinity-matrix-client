@@ -243,11 +243,44 @@
   }
 
   .msg__body {
+    position: relative;
     min-width: 0;
     flex: 1;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
+  }
+
+  // The list marks every row from a group's avatar to its last thread. Body-sized
+  // segments follow media/reflow naturally, including messages with no thread of their own.
+  .msg--thread-connected .msg__body::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(-21px - var(--trinity-density-message-column-gap));
+    top: 42px; // 40px avatar plus its 2px top inset.
+    bottom: calc(-1 * var(--trinity-space-1));
+    border-inline-start: 2px solid var(--trinity-text-muted);
+    pointer-events: none;
+  }
+
+  .msg--cont.msg--thread-connected .msg__body::before {
+    top: 0;
+  }
+
+  // The summary owns the bend from the body's bottom to its reply count.
+  .msg--thread-connected:has(> trn-message-thread-summary) .msg__body::before {
+    bottom: 0;
+  }
+
+  // A later thread in this group also needs the line through this summary and row padding.
+  .msg--thread-continues > trn-message-thread-summary::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(-21px - var(--trinity-density-message-column-gap));
+    top: 0;
+    bottom: calc(-1 * var(--trinity-space-1));
+    border-inline-start: 2px solid var(--trinity-text-muted);
+    pointer-events: none;
   }
 
   // The content alone reserves the trailing authenticity column. Read receipts sit on the next
