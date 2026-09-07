@@ -19,29 +19,6 @@ on:
     # otherwise run all five jobs twice per rebase: once here, once for the pull request.
     branches: [develop, master, 'renovate/patch-**']
   pull_request:
-    # Documentation-only pull requests skip CI. The filter lives here and not on `push`
-    # because a feature branch never matches the push branch list above — `pull_request` is
-    # the only trigger it gets, and GitHub ignores `[skip ci]` markers for that event, so a
-    # commit-message convention cannot do this job.
-    #
-    # GitHub evaluates these against the PR's whole diff, not one push, so a branch that
-    # touches code AND docs still runs everything. Only an entirely-documentation PR is
-    # skipped. Safe today because `develop` has no required status checks; if branch
-    # protection is ever turned on, a skipped run reports nothing and would block the merge.
-    #
-    # `docs/reference/stack.md` is deliberately absent: scripts/stack-versions.spec.mjs
-    # parses its version table and asserts every row against node_modules, so editing it
-    # really can fail `pnpm test`. The rest of docs/reference is listed file by file rather
-    # than as `docs/reference/**` for the same reason — a new page there runs CI until
-    # someone decides otherwise, which is the safe direction to fail.
-    paths-ignore:
-      - 'docs/index.md'
-      - 'docs/users/**'
-      - 'docs/contributing/**'
-      - 'docs/architecture/**'
-      - 'docs/platforms/**'
-      - 'docs/reference/push-notifications.md'
-      - 'docs/reference/troubleshooting.md'
 
 # A newer push to the same branch makes the run in flight obsolete.
 concurrency:
@@ -52,12 +29,41 @@ permissions:
   contents: read
 
 jobs:
+  classify:
+    name: Classify changes
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+      classification: ${{ steps.classify.outputs.classification }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - id: classify
+        run: node scripts/ci-classify.mjs
+
+  docs-gate:
+    name: Documentation contracts
+    needs: classify
+    if: needs.classify.outputs.mode == 'docs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: pnpm format:check
+      - run: pnpm nx test scripts
+
   # E2E tier contract: pull-request suites run in the existing host/browser jobs,
   # scheduled suites run only in scheduled-e2e, and local-only suites never run here.
   # Everything that reads the code without running it. Grouped because each part is
   # seconds long; split only if one starts dominating.
   quality:
-    if: github.event_name != 'schedule'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Lint & format
     runs-on: ubuntu-latest
     steps:
@@ -70,7 +76,8 @@ jobs:
       - run: pnpm format:check
 
   test:
-    if: github.event_name != 'schedule'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Unit tests
     runs-on: ubuntu-latest
     steps:
@@ -89,7 +96,8 @@ jobs:
   # things Vitest happily runs — template type errors, and the `lib: es2018` trap where
   # ES2019+ methods pass the unit tests and fail the build (docs/reference/stack.md).
   build:
-    if: github.event_name != 'schedule'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Web build
     runs-on: ubuntu-latest
     steps:
@@ -100,7 +108,8 @@ jobs:
   # electron/ is a separate package with its own lockfile and an explicit trinity-desktop
   # Nx application. The dedicated job additionally launches the real binary.
   desktop:
-    if: github.event_name != 'schedule'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Desktop (Electron)
     runs-on: ubuntu-latest
     steps:
@@ -132,108 +141,119 @@ jobs:
       # and no other job hands it. `xvfb-run` is required — Electron needs an X server
       # even headless. This is the only gate in the repo that exercises the custom
       # privileged scheme, WASM stream-instantiation, the sandbox posture and safeStorage.
-      - run: xvfb-run -a pnpm electron:e2e
+      - id: electron
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm electron:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.electron.outputs.started == 'true' }}
+        with:
+          surface: electron
+          report-path: dist/.playwright/trinity-e2e-electron/*/electron.full/**
 
   # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
   e2e:
-    if: github.event_name != 'schedule'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: E2E (Playwright + Synapse)
     runs-on: ubuntu-latest
     # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
-    # /sync), at workers: 2 with retries: 2 — plus browser installation, three Docker image
+    # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
-    # (docs/contributing/testing.md); the 60-minute ceiling is hang containment, not an
+    # (docs/contributing/testing.md); the 75-minute ceiling is hang containment, not an
     # expected duration. Keep this count synchronized with the executable E2E registry.
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
 
-      # Browsers are cached. `--with-deps` still runs (it apt-installs the shared
-      # libraries Chromium and WebKit need, which no cache covers) but the download is skipped
-      # on a hit. The restore-keys prefix matters: without it, any dependency change at
-      # all re-downloads Chromium on the one job with the longest budget.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: ./.github/actions/setup-playwright
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: playwright-${{ runner.os }}-
-      # Three independent legs that would otherwise run strictly one after another:
-      # Playwright orders webServer (the dev build) BEFORE globalSetup (the Synapse
-      # boot), and the browser install is its own step ahead of both. Overlapping them
-      # is the only real saving available on this job — roughly 25-45s of an 8-11min
-      # critical path. The pre-build is not duplicated work: the suite's own webServer
-      # replays it from the in-job Nx cache (measured 0.97s on the second invocation).
+          install: 'false'
       - name: Prepare e2e prerequisites
-        run: |
-          pnpm exec playwright install --with-deps chromium webkit >/tmp/pw.log 2>&1 &
-          pw=$!
-          docker compose -f e2e/synapse/docker-compose.yml pull -q >/tmp/pull.log 2>&1 &
-          dk=$!
-          pnpm exec nx run trinity:build:development
-          # Per-pid, deliberately: `wait $pw $dk` returns only the LAST pid's status, so a
-          # failed browser install would be swallowed and the job would then burn its
-          # 60-minute budget on 104 specs x 3 attempts of "Executable doesn't exist".
-          wait "$pw"; pw_rc=$?
-          wait "$dk"; dk_rc=$?
-          echo '--- playwright install ---'; cat /tmp/pw.log
-          echo '--- docker pull ---';        cat /tmp/pull.log
-          # The browser install is fatal; the pre-pull is not. `compose up` in global setup
-          # pulls anything missing anyway, so a Hub rate-limit blip stays self-healing
-          # instead of becoming a hard job failure.
-          [ "$dk_rc" -eq 0 ] || echo "::warning::docker pre-pull failed (rc=$dk_rc); global setup will pull"
-          exit "$pw_rc"
+        id: prerequisites
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
       # Separate from the Synapse suite: this builds and serves the component Storybook, then
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
-      - run: pnpm exec nx run trinity-e2e-components:storybook
+      - id: storybook
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
+        with:
+          surface: storybook
+          report-path: dist/.playwright/trinity-e2e-components/*/components.storybook/**
 
       # Real production UI semantics, contrast and geometry across the canonical viewport matrix.
       # Review screenshots are PR uploads, never committed pixel baselines.
-      - run: pnpm exec nx run trinity-e2e-web:production-renderer
+      - id: renderer
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-web:production-renderer
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.renderer.outputs.started == 'true' }}
+        with:
+          surface: renderer
+          report-path: dist/.playwright/trinity-e2e-web/*/web.production-renderer/**
 
       # Separate from the Synapse suite: this serves the already-built app and checks CSS
       # capability queries in desktop and real mobile-device browser profiles.
-      - run: pnpm exec nx run trinity-e2e-components:styling
+      - id: styling
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 300000 -- pnpm exec nx run trinity-e2e-components:styling
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.styling.outputs.started == 'true' }}
+        with:
+          surface: styling
+          report-path: dist/.playwright/trinity-e2e-components/*/components.styling/**
 
       # No env var needed to make this strict: the harness's graceful "Docker is missing,
       # skip the authenticated specs" fallback turns itself off whenever CI is set, so a
       # runner that cannot reach Docker Hub fails here instead of reporting a green E2E
       # job that tested almost nothing. See e2e/playwright/support/global-setup.mts.
-      - run: pnpm exec nx run trinity-e2e-browser:e2e
+      - id: browser
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
       # The QR protocol harness owns the same fixed Synapse stack, so run it only after
       # the main suite has completed and torn its stack down. Its synthetic camera feeds
       # a real SDK payload through production rendering, decoding and reciprocation.
-      - run: pnpm e2e:verify:qr
-
-      # always(), not failure(): `timeout-minutes` CANCELS the job, and failure() does not
-      # fire on a cancellation — so the run most in need of a trace would upload nothing.
-      # A superseded run is cancelled too, but concurrency already discards those.
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
+      - id: qr
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 300000 -- pnpm e2e:verify:qr
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.qr.outputs.started == 'true' }}
         with:
-          name: playwright-report
-          # Each lifecycle config emits mergeable blob and JUnit reports plus raw output under
-          # one project/run id, so a single recursive upload preserves the complete evidence.
-          path: |
-            dist/.playwright/trinity-e2e-browser/
-            dist/.playwright/trinity-e2e-components/
-            dist/.playwright/trinity-e2e-web/
-          if-no-files-found: warn
-          retention-days: 7
-          # Artifacts are immutable per run, so without this a re-run of a failed job
-          # dies with "409 Conflict: an artifact with this name already exists".
-          overwrite: true
+          surface: qr
+          report-path: dist/.playwright/trinity-e2e-protocol/*/protocol.verify-qr/**
 
   # A separate job because it boots an API 36 emulator and drives the installed
   # Capacitor WebView. Browser E2E cannot substitute for native Back, process
   # relaunch, Android TLS policy, or the packaged application itself.
   android-e2e:
-    if: github.event_name != 'schedule'
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Android E2E (Capacitor WebView, shard ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -251,18 +271,25 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-            ~/.cache/ms-playwright/android-*
-          key: android-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: android-e2e-${{ runner.os }}-
+          key: gradle-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright/android-*
+          key: android-playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: android-playwright-${{ runner.os }}-
 
       - name: Grant emulator access to KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          sudo udevadm settle --timeout=30
           test -r /dev/kvm -a -w /dev/kvm
 
-      - uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+      - id: android
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 36
           target: google_apis
@@ -270,20 +297,20 @@ jobs:
           profile: pixel_6
           avd-name: trinity_api_36_ci
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
+          script: |
+            echo 'started=true' >> "$GITHUB_OUTPUT"
+            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.started == 'true' }}
+        with:
+          surface: android
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.installed-webview/**
 
       - name: Verify Android E2E left the worktree unchanged
-        if: always()
+        if: ${{ !cancelled() }}
         run: git diff --exit-code
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: android-playwright-report-${{ matrix.shard }}
-          path: dist/.playwright/trinity-e2e-android/
-          if-no-files-found: warn
-          retention-days: 7
-          overwrite: true
 
   scheduled-e2e:
     name: Scheduled E2E
@@ -293,18 +320,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
-      - run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium firefox webkit
       # The typed registry is the source of truth for this tier. Its strict
       # preflight fails before starting any suite when a required host is absent.
-      - run: pnpm e2e:scheduled
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
+      - id: scheduled
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 6600000 -- pnpm e2e:scheduled
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.scheduled.outputs.started == 'true' }}
         with:
-          name: scheduled-playwright-report
-          path: |
-            dist/.playwright/trinity-e2e/
-            dist/.playwright/trinity-e2e-components/
-            dist/.playwright/trinity-e2e-protocol/
-          if-no-files-found: warn
-          retention-days: 7
-          overwrite: true
+          surface: scheduled
+          report-path: dist/.playwright/**/**

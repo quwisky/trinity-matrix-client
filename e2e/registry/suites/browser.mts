@@ -16,6 +16,7 @@ export const BROWSER_E2E_SUITES = [
     prerequisites: ['docker', 'playwright-chromium'],
     availabilityPolicy: 'required',
     ciTier: 'pull-request',
+    ciRetries: 1,
     cachePolicy: 'never',
     serializationKeys: ['synapse'],
     timeoutClass: 'long',

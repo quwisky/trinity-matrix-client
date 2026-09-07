@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import { isAndroidE2E } from '../../../support/app.mts';
 import {
@@ -174,7 +175,9 @@ test.describe('Settings', () => {
     };
     expectSharedFrame(main);
     await test.info().attach('main-settings-desktop-scaled', {
-      body: await page.getByTestId('settings-dialog').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('settings-dialog').screenshot(),
+      ),
       contentType: 'image/png',
     });
 
@@ -192,7 +195,9 @@ test.describe('Settings', () => {
     });
     expectSharedFrame(roomFrame);
     await test.info().attach('room-settings-desktop-scaled', {
-      body: await page.getByTestId('room-settings').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('room-settings').screenshot(),
+      ),
       contentType: 'image/png',
     });
     const roomHeader = page
@@ -219,7 +224,9 @@ test.describe('Settings', () => {
     });
     expectSharedFrame(spaceFrame);
     await test.info().attach('space-settings-desktop-scaled', {
-      body: await page.getByTestId('space-settings').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('space-settings').screenshot(),
+      ),
       contentType: 'image/png',
     });
     const spaceHeader = page

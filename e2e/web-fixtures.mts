@@ -23,7 +23,13 @@ const webTestWithPlatform = webTest.extend<{
   touchPlatform: async ({}, use) => {
     await use({
       async tap(_page, target): Promise<void> {
-        await target.tap({ force: true, timeout: 5_000 });
+        // Ordinary controls must settle before receiving real touch input. Only
+        // unavailable actions bypass the enabled check to explain their state.
+        const force = (await target.getAttribute('aria-disabled')) === 'true';
+        await target.tap({ force, timeout: 30_000 });
+      },
+      async dismissKeyboard(): Promise<void> {
+        // Browser device profiles do not display an operating-system keyboard.
       },
       swipe: cdpSwipe,
     });

@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   isAndroidE2E,
@@ -138,6 +139,10 @@ test.describe('Security settings', () => {
     page,
     request,
   }, testInfo) => {
+    test.skip(
+      process.env['TRINITY_E2E_PLATFORM'] === 'android',
+      'fault injection requires Angular development hooks; the installed APK is production',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}trust-health`;
     const user = `trust-health-${runId}`;
@@ -192,7 +197,7 @@ test.describe('Security settings', () => {
       'Verification and recovery status may be out of date',
     );
     await testInfo.attach('trust-unavailable', {
-      body: await page.screenshot(),
+      body: await captureScreenshot(page, () => page.screenshot()),
       contentType: 'image/png',
     });
 
@@ -212,7 +217,7 @@ test.describe('Security settings', () => {
     await expect(page.getByTestId('security-setup')).toBeVisible();
     await expect(page.getByTestId('security-verify')).toBeVisible();
     await testInfo.attach('trust-recovered', {
-      body: await page.screenshot(),
+      body: await captureScreenshot(page, () => page.screenshot()),
       contentType: 'image/png',
     });
   });

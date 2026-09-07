@@ -27,6 +27,7 @@ import {
   trinityCrashProcessNames,
 } from './health.mts';
 import { navigateApplication } from '../support/navigation.mts';
+import { setAndroidTouchViewport, touchAndroidControl } from './touch.mts';
 import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import type {
   AuthCallbackKind,
@@ -191,10 +192,7 @@ async function waitForActivatedApplicationPage(
   await waitForApplicationReadySurface(page, description);
 }
 
-function configureApplicationNavigation(
-  page: Page,
-  description: string,
-): void {
+function configureApplicationNavigation(page: Page, description: string): void {
   const originalGoto = page.goto.bind(page);
   const originalReload = page.reload.bind(page);
 
@@ -220,8 +218,7 @@ function configureApplicationNavigation(
   page.goto = async (url, gotoOptions) => {
     let response = await runApplicationWebViewOperation(
       page,
-      () =>
-        originalGoto(new URL(url, appOrigin).href, gotoOptions),
+      () => originalGoto(new URL(url, appOrigin).href, gotoOptions),
       `${description} navigation`,
     );
     await waitForApplicationReadySurface(
@@ -293,25 +290,9 @@ async function setEmulatorLocation(
   device: AndroidDevice,
   position: { latitude: number; longitude: number },
 ): Promise<void> {
-  const sdkRoot =
-    process.env['ANDROID_HOME'] ?? process.env['ANDROID_SDK_ROOT'];
-  if (!sdkRoot) {
-    throw new Error(
-      'ANDROID_HOME or ANDROID_SDK_ROOT is required for geolocation',
-    );
-  }
-  await exec(
-    join(sdkRoot, 'platform-tools/adb'),
-    [
-      '-s',
-      device.serial(),
-      'emu',
-      'geo',
-      'fix',
-      String(position.longitude),
-      String(position.latitude),
-    ],
-    { timeout: 10_000 },
+  await shell(
+    device,
+    `cmd location providers set-test-provider-location gps --location ${position.latitude},${position.longitude} --accuracy 1`,
   );
 }
 
@@ -460,20 +441,49 @@ async function configurePage(
   configureApplicationNavigation(page, 'Android WebView');
 
   const session = await page.context().newCDPSession(page);
-  let currentViewport = options.viewport;
+  let currentViewport: AndroidUseOptions['viewport'] = null;
   const applyViewport = async (viewport: { width: number; height: number }) => {
-    await session.send('Emulation.setDeviceMetricsOverride', {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: options.deviceScaleFactor ?? 1,
-      mobile: options.isMobile,
-      screenWidth: viewport.width,
-      screenHeight: viewport.height,
-    });
+    if (
+      currentViewport?.width === viewport.width &&
+      currentViewport.height === viewport.height
+    ) {
+      // Native Chromium rounds device scale ratios through single-precision values.
+      const unchanged = await page.evaluate(
+        ({ width, height, dpr }) =>
+          innerWidth === width &&
+          innerHeight === height &&
+          Math.abs(devicePixelRatio - dpr) < 1e-6,
+        { ...viewport, dpr: options.deviceScaleFactor ?? 1 },
+      );
+      if (unchanged) return;
+    }
+    // Screenshot capture restores another CDP session's metrics. Clear our cached
+    // override first so reapplying the same requested size reaches the WebView.
+    await session.send('Emulation.clearDeviceMetricsOverride');
+    const physical = await session.send('Page.getLayoutMetrics');
+    const scale = Math.min(
+      1,
+      physical.cssVisualViewport.clientWidth / viewport.width,
+    );
+    const applyScale = async (scale: number): Promise<void> => {
+      await session.send('Emulation.setDeviceMetricsOverride', {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: options.deviceScaleFactor ?? 1,
+        mobile: options.isMobile,
+        screenWidth: viewport.width,
+        screenHeight: viewport.height,
+        scale,
+      });
+    };
+    // The viewport owner retains this session: detaching a temporary emulation session
+    // would clear the metrics and trigger the phone layout after a wide-layout tap.
+    setAndroidTouchViewport(page, { scale, applyScale });
+    await applyScale(1);
     currentViewport = viewport;
   };
-  if (currentViewport) {
-    await applyViewport(currentViewport);
+  if (options.viewport) {
+    await applyViewport(options.viewport);
   }
   page.viewportSize = () => currentViewport;
   page.setViewportSize = applyViewport;
@@ -559,14 +569,24 @@ async function configurePage(
     });
   }
 
-  // The emulator drops a console location sent before a native listener exists.
-  // Pulse the requested fix while the journey runs so the Capacitor plugin's
-  // later getCurrentPosition subscription receives a real provider update. This
-  // is intentionally the only location source in Android journeys: a CDP override
-  // would let navigator.geolocation mask a native plugin regression.
+  // API 36 can keep returning its default GPS fix despite emulator-console updates.
+  // Drive the Android GPS test provider, so Capacitor still receives native location
+  // updates rather than a JavaScript geolocation stub. Keep pulsing for late listeners.
   let locationPulse: ReturnType<typeof setInterval> | undefined;
   let locationPulseTask: Promise<void> | undefined;
   if (options.geolocation) {
+    await shell(
+      device,
+      'appops set com.android.shell android:mock_location allow',
+    );
+    await shell(
+      device,
+      'cmd location providers add-test-provider gps --requiresSatellite --supportsAltitude --supportsSpeed --supportsBearing --powerRequirement 3',
+    );
+    await shell(
+      device,
+      'cmd location providers set-test-provider-enabled gps true',
+    );
     await setEmulatorLocation(device, options.geolocation);
     const pulseLocation = () => {
       if (locationPulseTask) return;
@@ -587,6 +607,13 @@ async function configurePage(
   return async () => {
     if (locationPulse) clearInterval(locationPulse);
     await locationPulseTask;
+    if (options.geolocation) {
+      await shell(device, 'cmd location providers remove-test-provider gps');
+      await shell(
+        device,
+        'appops set com.android.shell android:mock_location default',
+      );
+    }
   };
 }
 
@@ -821,30 +848,7 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
         await this.pressKey(4);
       },
       async touch(control: Locator): Promise<void> {
-        const box = await control.boundingBox();
-        if (!box)
-          throw new Error('Cannot touch an element without a bounding box');
-        const point = {
-          x: Math.round(box.x + box.width / 2),
-          y: Math.round(box.y + box.height / 2),
-          id: 1,
-        };
-        // The attached page is the installed package's real WebView. Send touch
-        // through its input pipeline in CSS coordinates, avoiding the density
-        // and letterboxing drift of mapping through UIAutomator bounds.
-        const session = await page.context().newCDPSession(page);
-        try {
-          await session.send('Input.dispatchTouchEvent', {
-            type: 'touchStart',
-            touchPoints: [point],
-          });
-          await session.send('Input.dispatchTouchEvent', {
-            type: 'touchEnd',
-            touchPoints: [],
-          });
-        } finally {
-          await session.detach();
-        }
+        await touchAndroidControl(page, control);
       },
       async relaunch(): Promise<Page> {
         await stopTrace();
@@ -933,6 +937,21 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           );
         }
         await app.touch(target);
+      },
+      async dismissKeyboard(page): Promise<void> {
+        if (page !== app.page) {
+          throw new Error(
+            'Android keyboard dismissal must target the primary app WebView',
+          );
+        }
+        const keyboardShown = async () =>
+          /mInputShown=true/.test(
+            await shell(app.device, 'dumpsys input_method'),
+          );
+        if (await keyboardShown()) {
+          await app.pressBack();
+          await expect.poll(keyboardShown, { timeout: 10_000 }).toBe(false);
+        }
       },
       async swipe(page): Promise<void> {
         if (page !== app.page) {
@@ -1041,16 +1060,10 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           await context.clearCookies();
           await activatePrimary();
           const observedPages: Page[] = [];
-          const navigationListeners = new Map<
-            Page,
-            (frame: Frame) => void
-          >();
+          const navigationListeners = new Map<Page, (frame: Frame) => void>();
           let observingTrigger = false;
           const notePage = (candidate: Page): void => {
-            if (
-              observingTrigger &&
-              !observedPages.includes(candidate)
-            ) {
+            if (observingTrigger && !observedPages.includes(candidate)) {
               observedPages.push(candidate);
             }
           };

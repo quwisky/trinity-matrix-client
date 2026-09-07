@@ -328,6 +328,7 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
 async function expectScrollContract(
   page: Page,
   viewport: { width: number; height: number },
+  activate: (target: Locator) => Promise<void>,
 ): Promise<void> {
   const previousViewport = page.viewportSize();
   await page.setViewportSize(viewport);
@@ -341,7 +342,7 @@ async function expectScrollContract(
     // Entering the drawer presentation deliberately closes the remembered wide roster.
     await expect(membersToggle).toHaveAttribute('aria-pressed', 'false');
     await expect(memberList).toBeHidden();
-    await membersToggle.click();
+    await activate(membersToggle);
   }
   await expect(membersToggle).toHaveAttribute('aria-pressed', 'true');
   await expect(memberList).toBeVisible();
@@ -454,7 +455,11 @@ test.describe('Modern room shell layout', () => {
   test('keeps overflowing panes and long identities safe in both densities', async ({
     page,
     request,
+    authPlatform,
+    touchPlatform,
   }) => {
+    const activate = (target: Locator): Promise<void> =>
+      authPlatform.isNative ? touchPlatform.tap(page, target) : target.click();
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}sh`;
     const readerName = `shell-${runId}`;
@@ -602,12 +607,11 @@ test.describe('Modern room shell layout', () => {
       await row.locator('.channel').click();
       await expect(page.locator('.scroll')).toBeVisible({ timeout: 30_000 });
       if (
-        !(await page
-          .locator('.members')
-          .isVisible()
-          .catch(() => false))
+        (await page
+          .getByTestId('toggle-members')
+          .getAttribute('aria-pressed')) !== 'true'
       ) {
-        await page.getByTestId('toggle-members').click();
+        await activate(page.getByTestId('toggle-members'));
       }
       await expect(page.locator('.members')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('.member').first()).toHaveCSS('height', '44px');
@@ -627,7 +631,7 @@ test.describe('Modern room shell layout', () => {
         { width: 1024, height: 768 },
         { width: 900, height: 700 },
       ]) {
-        await expectScrollContract(page, viewport);
+        await expectScrollContract(page, viewport, activate);
       }
 
       await expectAccountMenuAboveDock(page);

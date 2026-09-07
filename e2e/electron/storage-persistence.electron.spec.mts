@@ -38,7 +38,7 @@ test('restores a signed-in Account without a storage warning after restart', asy
       true,
     );
 
-    await restored.getByTestId('system-status-access').click();
+    await restored.getByTestId('open-system-status').click();
     const status = restored.getByRole('dialog', { name: 'System Status' });
     await expect(status).toBeVisible();
     await expect(status.getByTestId('system-status-all-working')).toBeVisible();

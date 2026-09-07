@@ -1,0 +1,24 @@
+name: Prepare Playwright browsers
+description: Cache browser downloads and optionally install browsers and host libraries.
+inputs:
+  browsers:
+    description: Space-separated Playwright browser names.
+    default: chromium webkit
+  install:
+    description: Set false when the prerequisite helper owns concurrent installation.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ inputs.browsers }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: playwright-${{ runner.os }}-${{ inputs.browsers }}-
+    - if: inputs.install == 'true'
+      shell: bash
+      env:
+        PLAYWRIGHT_BROWSERS: ${{ inputs.browsers }}
+      run: |
+        read -r -a browsers <<< "$PLAYWRIGHT_BROWSERS"
+        pnpm exec playwright install --with-deps "${browsers[@]}"

@@ -22,14 +22,20 @@ The branch workflow accepts pushes to `develop`, `master`, and
 the same workflow and ref cancels an older run. Diagnose the newest run rather
 than treating a cancelled predecessor as a product failure.
 
-`ci.yml` deliberately ignores a limited set of documentation-only pull-request
-paths. That set covers the established user, contributor, architecture, and
-platform documentation paths, plus two named reference guides. It does **not**
-cover every documentation path, including `docs/maintaining/`, root documents,
-agent instructions, or the stack reference. A skipped workflow is therefore
-evidence only that the changed paths matched that filter. Run the relevant local
-checks when a documentation change changes an executable claim or needs a host
-proof.
+Every pull request runs `classify`. Its event payload supplies explicit base and head
+commits: PRs use a unique merge base, and pushes compare before/after commits.
+Only Markdown under `docs/users/`, `docs/contributing/`, `docs/architecture/`,
+`docs/platforms/`, plus `docs/index.md` and the named push-notification and
+troubleshooting reference guides qualifies for `docs-gate`. That gate runs
+formatting and the scripts source-contract suite. Unknown events, empty or
+unavailable diffs, branch creation, ambiguous merge bases, and every other path
+select the full code graph. Configuration, scripts, lockfiles, root documents,
+`docs/maintaining/`, and `docs/reference/stack.md` therefore retain full validation.
+
+The classifier emits its reason and expected jobs. The tested required-result
+evaluator rejects failed, cancelled, missing, or skipped expected jobs; wiring
+that aggregate status into branch rules belongs to the later protection slice
+of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
 
 ### Diagnose setup and cache failures
 
@@ -66,16 +72,35 @@ requirements.
 | `android-e2e`   | Four API 36 Pixel 6 WebView shards                                                                           | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host.                     |
 | `scheduled-e2e` | Chromium, Firefox, and WebKit scheduled suite                                                                | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                          |
 
-The browser, Android and scheduled jobs attempt report uploads with `always()`
-and seven-day retention. Inspect any available artifacts before rerunning, but
-do not assume all traces or raw output were captured: their paths are under hidden
-`dist/.playwright/`, while the workflows do not enable `include-hidden-files` and
-the [pinned upload action](https://github.com/actions/upload-artifact/blob/043fb46d1a93c77aae656e7c1c64a875d1fc6a0a/action.yml)
-defaults it to false. Missing files only produce a warning. This report-preservation
-gap is part of [pending CI work](https://github.com/quwisky/trinity-matrix-client/issues/462).
-When an artifact is missing or incomplete, use the workflow step logs and reproduce
-the owning check locally, retaining its ignored output. A failed Renovate run
-separately attempts to upload the non-hidden `renovate-log.ndjson` for seven days.
+Started Playwright suites upload hidden `dist/.playwright/` output through the
+[diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
+Each artifact identifies the run, attempt, commit, job, surface and shard, with
+seven-day retention. HTML, blob, JUnit and GitHub reporting remain enabled in CI;
+failed attempts retain traces and screenshots. CI allows one diagnostic retry
+and rejects pass-on-retry results.
+
+Uploads run after ordinary failures and managed suite timeouts. A soft timeout
+terminates the owned process group before the job deadline, leaving time for
+report flushing and upload. Superseded-run cancellation skips uploads. A suite
+that never started does not demand a report; a started suite with missing reports
+fails diagnostic validation even when process logs are available. Runner loss or
+a hard job deadline cannot guarantee an upload, so inspect step logs as well.
+
+The browser prerequisites helper runs browser installation, development build,
+and optional Docker pre-pull concurrently, retaining each exit code and labeled
+logs under `dist/.ci/`. Browser/build failure is fatal; Docker pre-pull failure is
+a warning because suite setup can pull again. Android waits for udev to settle
+before checking KVM access. Its Playwright download cache is separate from Gradle.
+A failed Renovate run separately uploads `renovate-log.ndjson` for seven days.
+
+To exercise diagnostic failure handling explicitly after installing Chromium, run
+`node scripts/ci-diagnostics-proof.mjs` with `always-fail`, `retry`, `soft-timeout`,
+or `missing-report`. These disposable browser fixtures use the shared reporting
+policy through pnpm, Nx and the invocation owner. Successful proof intentionally
+returns a nonzero status and records `verified: true` in its ignored
+`dist/.playwright/ci-proof/evidence/` summary. The timeout case must interrupt a
+running test; a normal test timeout or a hang after reporting does not qualify.
+These real-browser proofs are separate from the browser-free scripts test gate.
 
 For local commands and the distinction between unit, type, renderer, and real
 host checks, see [testing](../contributing/testing.md) and

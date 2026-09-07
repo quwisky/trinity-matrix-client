@@ -12,7 +12,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { ConnectionError, MatrixError } from 'matrix-js-sdk';
+import { ClientEvent, ConnectionError, MatrixError } from 'matrix-js-sdk';
 import {
   CryptoEvent,
   deriveRecoveryKeyFromPassphrase,
@@ -1715,11 +1715,32 @@ describe('TrustService', () => {
       lifetime.unsubscribe();
     });
 
-    it('wires crypto listeners once and is idempotent', () => {
+    it('refreshes restored secret-storage readiness when fresh account data arrives', async () => {
+      const { svc, client, crypto } = setup({
+        crossSigningReady: true,
+        secretStorageReady: false,
+        defaultKeyId: 'new-recovery-key',
+      });
+      const lifetime = svc.runProjection().subscribe();
+      try {
+        await vi.waitFor(() => expect(svc.status()).toBe('needs-recovery'));
+
+        // Reload can first read cached secrets encrypted with the old default key.
+        // Fresh /sync supplies the matching secrets without changing crypto identity.
+        crypto.isSecretStorageReady.mockResolvedValue(true);
+        client.emit(ClientEvent.AccountData);
+
+        await vi.waitFor(() => expect(svc.status()).toBe('ready'));
+      } finally {
+        lifetime.unsubscribe();
+      }
+    });
+
+    it('wires health listeners once and is idempotent', () => {
       const { svc, client } = setup({ defaultKeyId: 'k' });
       svc.runProjection().subscribe();
       svc.runProjection().subscribe();
-      expect(client.on).toHaveBeenCalledTimes(4);
+      expect(client.on).toHaveBeenCalledTimes(5);
     });
 
     it('coalesces a burst of crypto events into one status recompute', async () => {

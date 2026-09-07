@@ -1,5 +1,9 @@
 import { expect, test, testResourceId } from '../../../fixtures.mts';
-import { fillLabeledInput, readPreference } from '../../../support/app.mts';
+import {
+  fillLabeledInput,
+  isAndroidE2E,
+  readPreference,
+} from '../../../support/app.mts';
 import {
   PNG_1x1,
   configureSettingsSuite,
@@ -62,25 +66,61 @@ test.describe('Settings', () => {
       timeout: 20_000,
     });
 
-    // The detail pane is the scroller. It used to be `.settings__detail`; that class went
-    // when the page moved to utilities, and a `querySelector` for it returned null — which
-    // made `!!pane && …` short-circuit to false and BOTH assertions below pass whatever
-    // the pane did. Located structurally now, and thrown on rather than defaulted, so the
-    // check cannot go quiet again.
-    const detailOverflows = () =>
-      page.evaluate(() => {
-        const pane = document.querySelector('[data-testid="settings-detail"]');
-        if (!pane) {
-          throw new Error('settings detail pane not found');
+    const detailGeometry = () =>
+      page.getByTestId('settings-detail').evaluate((pane) => {
+        const rect = pane.getBoundingClientRect();
+        let ancestorScrollbars = 0;
+        for (
+          let parent = pane.parentElement;
+          parent;
+          parent = parent.parentElement
+        ) {
+          const overflow = getComputedStyle(parent).overflowY;
+          if (
+            /^(auto|scroll)$/.test(overflow) &&
+            parent.scrollHeight > parent.clientHeight + 1
+          ) {
+            ancestorScrollbars++;
+          }
         }
-        return pane.scrollHeight > pane.clientHeight + 1;
+        return {
+          overflows: pane.scrollHeight > pane.clientHeight + 1,
+          ancestorScrollbars,
+          documentOverflow: document.scrollingElement
+            ? document.scrollingElement.scrollHeight -
+              document.scrollingElement.clientHeight
+            : 0,
+          contained: rect.left >= -1 && rect.right <= innerWidth + 1,
+          horizontalOverflow: pane.scrollWidth - pane.clientWidth,
+        };
       });
 
-    expect(await detailOverflows()).toBe(false);
+    expect((await detailGeometry()).overflows).toBe(false);
     await page.getByTestId('hs-unstable').locator('summary').click();
     await expect(page.getByTestId('hs-unstable')).toHaveAttribute('open', '');
 
-    expect(await detailOverflows()).toBe(false);
+    const expanded = await detailGeometry();
+    expect(expanded.ancestorScrollbars).toBe(0);
+    expect(expanded.documentOverflow).toBeLessThanOrEqual(1);
+    expect(expanded.contained).toBe(true);
+    expect(expanded.horizontalOverflow).toBeLessThanOrEqual(1);
+    // Native Settings is routed, with host chrome above the detail pane. Its one
+    // content scroller may be needed; the fixed-height desktop dialog still fits.
+    if (!isAndroidE2E) expect(expanded.overflows).toBe(false);
+    const flagRows = await page
+      .getByTestId('hs-unstable')
+      .locator('li')
+      .evaluateAll((flags) => ({
+        count: flags.length,
+        rows: new Set(
+          flags.map((flag) => Math.round(flag.getBoundingClientRect().top)),
+        ).size,
+      }));
+    expect(flagRows.count).toBeGreaterThan(1);
+    expect(
+      flagRows.rows,
+      'flags wrap compactly instead of one flag per line',
+    ).toBeLessThan(flagRows.count);
   });
 
   test('re-checks the server on demand', async ({ page }) => {

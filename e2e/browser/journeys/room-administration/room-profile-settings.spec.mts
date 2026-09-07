@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { expect, test, testResourceId } from '../../../fixtures.mts';
 import { login, type SynapseSession } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
@@ -118,7 +119,7 @@ test.describe('Room settings', () => {
       document.documentElement.removeAttribute('data-theme');
     });
     await test.info().attach('room-settings-desktop-general-light', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -126,7 +127,7 @@ test.describe('Room settings', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('room-settings-desktop-general-dark-amethyst', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme }) => {

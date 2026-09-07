@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   devices,
   expect,
@@ -113,7 +114,9 @@ test.describe('System Status navigation placement', () => {
     ).toBe(true);
 
     await testInfo.attach('system-status-placement-desktop', {
-      body: await page.screenshot({ animations: 'disabled' }),
+      body: await captureScreenshot(page, () =>
+        page.screenshot({ animations: 'disabled' }),
+      ),
       contentType: 'image/png',
     });
     await sidebarStatus.click();
@@ -160,7 +163,9 @@ test.describe('System Status navigation placement', () => {
         )
         .toBe(true);
       await testInfo.attach('system-status-placement-mobile-menu', {
-        body: await page.screenshot({ animations: 'disabled' }),
+        body: await captureScreenshot(page, () =>
+          page.screenshot({ animations: 'disabled' }),
+        ),
         contentType: 'image/png',
       });
       await mobileStatus.click();

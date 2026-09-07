@@ -40,6 +40,8 @@ export interface ManagedCommandOptions {
   readonly environment?: NodeJS.ProcessEnv;
   readonly timeout?: number;
   readonly terminationGraceMs?: number;
+  /** Signal sent to the process tree before the hard kill. */
+  readonly terminationSignal?: NodeJS.Signals;
   readonly platform?: NodeJS.Platform;
   readonly stdio?: StdioOptions;
   readonly signal?: AbortSignal;
@@ -99,6 +101,7 @@ export function runManagedCommand(
     environment = process.env,
     timeout,
     terminationGraceMs = 10_000,
+    terminationSignal = 'SIGTERM',
     platform = process.platform,
     stdio = 'inherit',
     signal,
@@ -139,7 +142,7 @@ export function runManagedCommand(
       if (terminating) return;
       terminating = true;
       timedOut = becauseTimeout;
-      signalProcessTree(child, 'SIGTERM', platform);
+      signalProcessTree(child, terminationSignal, platform);
       terminationTimer = setTimeout(() => {
         signalProcessTree(child, 'SIGKILL', platform);
         finish({ status: 1, signal: 'SIGKILL', timedOut });
@@ -156,7 +159,11 @@ export function runManagedCommand(
       ) {
         return;
       }
-      finish({ status: code ?? 1, signal: exitSignal, timedOut });
+      finish({
+        status: terminating ? 1 : (code ?? 1),
+        signal: exitSignal,
+        timedOut,
+      });
     });
     if (typeof timeout === 'number')
       timeoutTimer = setTimeout(() => terminate(true), timeout);

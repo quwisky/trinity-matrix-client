@@ -26,16 +26,19 @@ describe('widget iframe boundary', () => {
 
   it('keeps application-owned iframe creation in the reviewed widget host', () => {
     const sources = ['apps/trinity/src', 'libs'];
+    // Git is already required by checkout and the repository contracts; ripgrep
+    // is not installed on every public runner that executes the docs gate.
     const matches = execFileSync(
-      'rg',
+      'git',
       [
+        'grep',
         '-l',
-        '<iframe|createElement(?:<HTMLIFrameElement>)?\\([\'\"]iframe',
+        '-E',
+        '<iframe|createElement(<HTMLIFrameElement>)?\\([\'\"]iframe',
+        '--',
         ...sources,
-        '-g',
-        '!*.spec.ts',
-        '-g',
-        '!*.stories.ts',
+        ':!*.spec.ts',
+        ':!*.stories.ts',
       ],
       { cwd: workspaceRoot, encoding: 'utf8' },
     )

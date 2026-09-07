@@ -88,6 +88,7 @@ export const HOST_E2E_SUITES = defineSuites([
     prerequisites: ['android-avd', 'android-sdk', 'docker', 'java-21', 'kvm'],
     availabilityPolicy: 'required',
     ciTier: 'pull-request',
+    ciRetries: 1,
     cachePolicy: 'never',
     serializationKeys: ['android-avd', 'synapse'],
     timeoutClass: 'host',

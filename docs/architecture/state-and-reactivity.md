@@ -222,7 +222,9 @@ listener is retained, or reattaches released listener ownership, without restart
 rules, Workspace or other session capabilities.
 
 Badge support and update-check availability are installation-scoped Host health. Unsupported
-hosts are not problems. A rejected badge write is a one-shot incident because a later unread total
+hosts are not problems. Badge coordination tracks only Room Library's unread total; it delivers
+sink results outside signal tracking so synchronous health reporting cannot feed back into the
+unread effect. A rejected badge write is a one-shot incident because a later unread total
 can still succeed; a failed update check is health because automatic discovery is unavailable
 until an authoritative later check succeeds. Initial checks and foreground retries are finite,
 but live notification, push, deep-link, Back and lifecycle streams have no idle deadline. Failed

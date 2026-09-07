@@ -88,11 +88,63 @@ For broader flows and host prerequisites, use [the E2E router](../../e2e/README.
 [E2E architecture](e2e-architecture.md). Do not start an extra server, Synapse, or
 emulator beside a lifecycle target: the target owns that resource and its cleanup.
 
+Production renderer journeys wait for the visible login form after DOM readiness;
+background network activity is not a login readiness signal. Mobile geometry checks
+cover the current System Status access control and room heading. Settings geometry
+checks use the shared frame's public directory hook, including in Electron.
+Electron restart checks open System Status through the sidebar after reaching Rooms;
+the startup access button is intentionally absent there. Historical-notification
+checks count calls to the Electron presenter before and after restart, alongside
+the current capability-summary assertion. Installation-reset journeys use the distinct
+`RESET TRINITY` confirmation phrase and verify that mistyped input preserves data.
+Room and Space settings checks target the shared navigation and persistent forms; toast
+assertions stay scoped to the notification surface so accessibility announcements
+do not create ambiguous matches. Recovery-reset coverage retains a full document
+reload to verify restored Trust health refreshes when fresh account data replaces
+cached secret-storage state.
+
+Installed Android journeys send complete Chromium touch gestures after stable scrolling
+and visibility/native-disabled checks. ARIA-disabled actions remain touchable so their
+unavailability explanation can be verified. A temporary capture guard blocks input if layout moves
+another control beneath the tap. Only input blocked before reaching a control is retried;
+partial or completed input is never repeated. A captured pointer release is accepted only
+when the original control still owns the hit point; an unavailable action completes on its
+real touch release. Wide-layout touches temporarily fit the emulated viewport onto the
+physical WebView and convert coordinates at the viewport owner's connection. Restoring its
+scale before that owner closes avoids a spurious phone-layout transition. Browser touch
+profiles dispatch real touch input as well, with normal stability and actionability
+checks for ordinary controls. Only explicitly ARIA-disabled feedback actions force a tap
+past the enabled check.
+Storybook theme assertions wait for the requested theme and mode on the document root
+before checking rendered tokens; navigation alone does not await preview initialization.
+Lower address actions explicitly dismiss the native keyboard first; browser device
+profiles have no operating-system keyboard.
+Canonical proof capture uses `captureScreenshot` to restore the configured viewport:
+Android's screenshot session otherwise resets the WebView to its physical size. An
+unchanged viewport request preserves the current layout and tolerates native pixel-ratio
+rounding, avoiding an artificial phone-layout transition that would close a wide pane.
+Location fixtures use Android's GPS test provider and remove it after the journey;
+Capacitor's native location plugin remains in the path. Desktop-OS interaction cases
+and development-hook fault injection are explicitly excluded per case from the
+production APK; their ordinary and mobile product journeys remain enabled.
+Timeline prepend coverage holds a real history response until the reader scrolls again,
+then checks the same rendered message offset after the response and late height measurements. Unit coverage distinguishes programmatic scrolling from user movement
+and rejects queued corrections after the reader moves or the room changes. Shell overflow
+checks read the Members toggle's explicit open state before waiting for its rows; native
+SSO and Members controls use the installed touch path.
+Native Settings Back checks require the Rooms surface to render after history changes;
+the URL alone cannot prove that the route guard accepted navigation. Routed application
+surfaces must not consume the same browser-history action a second time.
+
 ## Failure handling and review evidence
 
 On failure, keep command output and inspect the retained trace, report, or host diagnostic
 before retrying. A retry can identify flakiness but does not turn an initial failure into a
-clean pass. Avoid parallel Synapse-backed commands: they share fixed ports and state.
+clean pass. CI uses one diagnostic retry and fails pass-on-retry results. Its
+HTML, blob and JUnit reports retain failed-attempt traces and screenshots under
+`dist/.playwright/`; started suites require downloadable diagnostics. See
+[CI failure handling](../maintaining/ci-and-releases.md#the-ci-jobs).
+Avoid parallel Synapse-backed commands: they share fixed ports and state.
 
 Artifacts under `dist/` are ignored. Attach review evidence to a pull request when useful,
 but never commit screenshots, videos, traces, or pixel baselines. Before review, state the

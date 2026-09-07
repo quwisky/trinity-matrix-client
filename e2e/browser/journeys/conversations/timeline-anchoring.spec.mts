@@ -77,6 +77,18 @@ test.describe('Timeline anchoring', () => {
       );
     }
 
+    // Hold real history until the reader moves again while its request is in flight.
+    let releaseHistory = (): void => undefined;
+    let historyRequested = false;
+    const historyGate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    page.once('close', releaseHistory);
+    await page.route(/\/messages\?/, async (route) => {
+      historyRequested = true;
+      await historyGate;
+      if (!page.isClosed()) await route.continue();
+    });
     await login(page, { available: true, hs, user, pass } as SynapseSession);
     await openRoom(page, roomName);
 
@@ -97,6 +109,11 @@ test.describe('Timeline anchoring', () => {
     const rowCount = () => page.locator('.msg').count();
     const before = await rowCount();
     expect(before, 'expected a partial window to page into').toBeGreaterThan(5);
+
+    await scroll.evaluate((element) => {
+      element.scrollTop = 100;
+    });
+    await expect.poll(() => historyRequested).toBe(true);
 
     // Scroll and capture the anchor in ONE evaluate, before yielding to the event loop.
     //
@@ -127,6 +144,15 @@ test.describe('Timeline anchoring', () => {
         top: Math.round(row.getBoundingClientRect().top - viewport.top),
       };
     });
+
+    // Let the scroll event transfer the in-flight restore point before history arrives.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        }),
+    );
+    releaseHistory();
 
     // Wait for the backfill to land.
     await expect.poll(rowCount, { timeout: 30_000 }).toBeGreaterThan(before);

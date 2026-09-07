@@ -72,6 +72,31 @@ describe('BadgeCoordinator', () => {
     lifetime.unsubscribe();
   });
 
+  it('does not track signal reads made by synchronous outcome subscribers', () => {
+    const health = signal(0);
+    const write = vi.fn((_count: number): Observable<HostOperationOutcome> =>
+      of({ kind: 'unavailable', reason: 'not-supported' }),
+    );
+    const { total, coordinator, flush } = setup(0, write);
+    const lifetime = coordinator.run().subscribe(() => {
+      // Host health reads its previous snapshot before publishing a new one.
+      // Bound the update so a regression fails without spinning the test runner.
+      if (health() === 0) health.set(1);
+    });
+    flush();
+    expect(write).toHaveBeenCalledTimes(1);
+
+    health.set(2);
+    flush();
+    expect(write).toHaveBeenCalledTimes(1);
+
+    total.set(3);
+    flush();
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write).toHaveBeenLastCalledWith(3);
+    lifetime.unsubscribe();
+  });
+
   it('turns an unexpected sink error into a warning-ready typed outcome', () => {
     const write = vi.fn<(count: number) => Observable<HostOperationOutcome>>(
       () => throwError(() => new Error('adapter defect')),

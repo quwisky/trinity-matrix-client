@@ -37,6 +37,16 @@ export class WorkspaceRoutedSurfaceAdapter {
   readonly roomProjectionDemand = this._roomProjectionDemand.asReadonly();
   /** Exact routed Room or Space whose administration projections are applicable. */
   readonly activeRoomId = this._activeRoomId.asReadonly();
+
+  /** Whether this adapter owns the exact routed application surface. */
+  owns(surface: WorkspaceSurface): boolean {
+    const active = this.active();
+    if (!active || active.layer !== surface.layer) return false;
+    if (active.layer !== 'application' || surface.layer !== 'application') {
+      return false;
+    }
+    return sameWorkspaceApplicationSurface(active.surface, surface.surface);
+  }
   private currentUrl: string | null = null;
   private previousUrl: string | null = null;
 
@@ -76,7 +86,7 @@ export class WorkspaceRoutedSurfaceAdapter {
     surface: WorkspaceSurface,
   ): Observable<'dismissed' | 'blocked'> {
     return defer(() => {
-      if (surface.layer !== 'application' || !this.sameActiveSurface(surface)) {
+      if (surface.layer !== 'application' || !this.owns(surface)) {
         return of('blocked' as const);
       }
       const application = surface.surface;
@@ -115,15 +125,6 @@ export class WorkspaceRoutedSurfaceAdapter {
     return from(this.router.navigateByUrl(url, { replaceUrl: true })).pipe(
       map((accepted) => (accepted ? 'dismissed' : 'blocked')),
     );
-  }
-
-  private sameActiveSurface(surface: WorkspaceSurface): boolean {
-    const active = this.active();
-    if (!active || active.layer !== surface.layer) return false;
-    if (active.layer !== 'application' || surface.layer !== 'application') {
-      return false;
-    }
-    return sameWorkspaceApplicationSurface(active.surface, surface.surface);
   }
 
   private settingsSection(url: string | null): string | null | undefined {

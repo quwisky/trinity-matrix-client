@@ -121,6 +121,11 @@ export class VirtualMessageListComponent extends MessageListBase {
   // where the prepended rows are estimated spacer height, not real).
   private prependAnchorId = '';
   private prependAnchorOffset = 0;
+  /** Keep the captured row fixed while the first rendered rows settle their heights. */
+  private prependAnchorActive = false;
+  private prependAnchorGeneration = 0;
+  /** Last scrollTop written by our own correction; distinguishes it from user movement. */
+  private expectedProgrammaticScrollTop: number | null = null;
 
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
@@ -199,38 +204,20 @@ export class VirtualMessageListComponent extends MessageListBase {
         const prevTop = this.prevScrollTop;
         const anchorId = this.prependAnchorId;
         const anchorOffset = this.prependAnchorOffset;
+        const anchorGeneration = this.prependAnchorGeneration;
+        this.prependAnchorActive = true;
         requestAnimationFrame(() => {
-          const idx = this.ids().indexOf(anchorId);
-          const anchor = Array.from(
-            el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
-          ).find((row) => row.getAttribute('data-mid') === anchorId);
-          if (anchor) {
-            // Prefer the rendered row itself: freshly-prepended rows have real DOM heights
-            // before ResizeObserver has replaced their estimates in `prefix()`. Restoring
-            // from those estimates can overshoot, then compensate only the rows whose
-            // estimated boxes happen to sit fully above the fold. Measuring the captured
-            // row keeps the two sides of the restore in the same, real coordinate space.
-            const currentOffset =
-              anchor.getBoundingClientRect().top -
-              el.getBoundingClientRect().top;
-            el.scrollTop = Math.max(
-              0,
-              el.scrollTop + currentOffset - anchorOffset,
-            );
-          } else if (idx >= 0) {
-            // A large page can move the anchor outside the rendered window. A raw
-            // scrollHeight delta is contaminated by the estimated spacer for those
-            // unrendered rows, so use their computed offsets as the fallback.
-            el.scrollTop = Math.max(
-              0,
-              this.rowsRegionTop(el) +
-                offsetOf(this.prefix(), idx) -
-                anchorOffset,
-            );
-          } else {
-            el.scrollTop = el.scrollHeight - prevHeight + prevTop;
+          if (this.destroyRef.destroyed) {
+            return;
           }
-          this.scrollTop.set(el.scrollTop);
+          this.restorePrependAnchor(
+            el,
+            anchorId,
+            anchorOffset,
+            prevHeight,
+            prevTop,
+            anchorGeneration,
+          );
         });
         return;
       }
@@ -335,6 +322,9 @@ export class VirtualMessageListComponent extends MessageListBase {
     this.lastBackfillOldestId = null;
     this.backfillRounds = 0;
     this.pendingPrepend = false;
+    this.prependAnchorActive = false;
+    this.prependAnchorGeneration++;
+    this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(true);
     // Forget the old room's measured heights and scroll position so the new room
     // starts from the top with fresh estimates.
@@ -349,11 +339,35 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (!el) {
       return;
     }
+    if (this.expectedProgrammaticScrollTop !== null) {
+      if (Math.abs(el.scrollTop - this.expectedProgrammaticScrollTop) < 1) {
+        this.expectedProgrammaticScrollTop = null;
+      } else {
+        this.prependAnchorActive = false;
+        this.prependAnchorGeneration++;
+        this.expectedProgrammaticScrollTop = null;
+      }
+    } else if (this.prependAnchorActive) {
+      // A subsequent user scroll starts a new read position; the prepend lock must not
+      // keep correcting that intentional movement.
+      this.prependAnchorActive = false;
+      this.prependAnchorGeneration++;
+    }
     this.scrollTop.set(el.scrollTop);
     this.atBottomSig.set(
       el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX,
     );
     this.updateJumpToUnread(); // divider may have scrolled in/out of the window
+    if (this.loadingOlder() && !this.atBottomSig()) {
+      // A reader can move while an earlier automatic backfill is still in flight.
+      // Transfer its restore point to the position they are reading now.
+      this.prevScrollHeight = el.scrollHeight;
+      this.prevScrollTop = el.scrollTop;
+      this.capturePrependAnchor(el);
+      this.pendingPrepend = true;
+      this.backfilling = false;
+      return;
+    }
     if (this.pendingPrepend || this.loadingOlder() || !this.canLoadOlder()) {
       return;
     }
@@ -490,6 +504,35 @@ export class VirtualMessageListComponent extends MessageListBase {
     if (!changed) {
       return;
     }
+    if (this.prependAnchorActive) {
+      // ResizeObserver runs after the prepend restore and can replace estimated spacer
+      // heights with real measurements. Correct from the rendered anchor after each such
+      // batch so the measured row remains in the same viewport position.
+      const anchorGeneration = this.prependAnchorGeneration;
+      const anchorId = this.prependAnchorId;
+      const anchorOffset = this.prependAnchorOffset;
+      const prevHeight = this.prevScrollHeight;
+      const prevTop = this.prevScrollTop;
+      requestAnimationFrame(() => {
+        if (
+          this.destroyRef.destroyed ||
+          !this.prependAnchorActive ||
+          anchorGeneration !== this.prependAnchorGeneration
+        ) {
+          return;
+        }
+        this.restorePrependAnchor(
+          el,
+          anchorId,
+          anchorOffset,
+          prevHeight,
+          prevTop,
+          anchorGeneration,
+        );
+      });
+      this.heightVersion.update((v) => v + 1);
+      return;
+    }
     if (atBottom) {
       // Stay pinned to the newest message as measured heights settle.
       el.scrollTop = el.scrollHeight;
@@ -512,6 +555,42 @@ export class VirtualMessageListComponent extends MessageListBase {
       }
     }
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /** Restore the captured row using rendered geometry, with prefix sums as a windowed fallback. */
+  private restorePrependAnchor(
+    el: HTMLElement,
+    anchorId: string,
+    anchorOffset: number,
+    prevHeight: number,
+    prevTop: number,
+    anchorGeneration: number,
+  ): void {
+    if (
+      this.destroyRef.destroyed ||
+      !this.prependAnchorActive ||
+      anchorGeneration !== this.prependAnchorGeneration
+    ) {
+      return;
+    }
+    const idx = this.ids().indexOf(anchorId);
+    const anchor = Array.from(
+      el.querySelectorAll<HTMLElement>('.msg[data-mid]'),
+    ).find((row) => row.getAttribute('data-mid') === anchorId);
+    if (anchor) {
+      const currentOffset =
+        anchor.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      el.scrollTop = Math.max(0, el.scrollTop + currentOffset - anchorOffset);
+    } else if (idx >= 0) {
+      el.scrollTop = Math.max(
+        0,
+        this.rowsRegionTop(el) + offsetOf(this.prefix(), idx) - anchorOffset,
+      );
+    } else {
+      el.scrollTop = el.scrollHeight - prevHeight + prevTop;
+    }
+    this.expectedProgrammaticScrollTop = el.scrollTop;
+    this.scrollTop.set(el.scrollTop);
   }
 
   /**

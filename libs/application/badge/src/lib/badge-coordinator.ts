@@ -1,4 +1,4 @@
-import { Injectable, Injector, effect, inject } from '@angular/core';
+import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
 import { UnreadAggregatorService } from '@trinity/data-access/room-library';
 import type { HostOperationOutcome } from '@trinity/runtime/host';
 import { Observable, Subject, catchError, of, switchMap } from 'rxjs';
@@ -34,7 +34,12 @@ export class BadgeCoordinator {
         )
         .subscribe(subscriber);
       const unreadEffect = effect(
-        () => totals.next(this.unread.totalUnread()),
+        () => {
+          const total = this.unread.totalUnread();
+          // Synchronous sink outcomes must not add their consumers' health
+          // signals to the unread effect and feed writes back into themselves.
+          untracked(() => totals.next(total));
+        },
         { injector: this.injector },
       );
       return () => {

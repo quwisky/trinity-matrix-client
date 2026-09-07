@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices } from '@playwright/test';
 import {
   testResourceId,
@@ -246,6 +247,10 @@ for (const mobile of [false, true]) {
         page,
         request,
       }, testInfo) => {
+        test.skip(
+          process.env['TRINITY_E2E_PLATFORM'] === 'android',
+          'fault injection requires Angular development hooks; the installed APK is production',
+        );
         const { reader, roomName } = await seedRoomWithMember(
           request,
           session.hs as string,
@@ -315,7 +320,7 @@ for (const mobile of [false, true]) {
         await expect(page.getByTestId('composer-input')).toBeVisible();
         await expect(page).toHaveURL(conversationUrl);
         await testInfo.attach('presence-unavailable', {
-          body: await page.screenshot(),
+          body: await captureScreenshot(page, () => page.screenshot()),
           contentType: 'image/png',
         });
 
@@ -339,7 +344,7 @@ for (const mobile of [false, true]) {
         await expect(page).toHaveURL(conversationUrl);
         await status.getByRole('button', { name: 'Close' }).click();
         await testInfo.attach('presence-recovered', {
-          body: await page.screenshot(),
+          body: await captureScreenshot(page, () => page.screenshot()),
           contentType: 'image/png',
         });
       });

@@ -72,12 +72,15 @@ export async function expectStorybookThemeRoot(
   page: Page,
   preview: StorybookThemePreview,
 ): Promise<void> {
-  const rootState = await page.locator('html').evaluate((root) => ({
-    dark: root.classList.contains('dark'),
-    themeCarrier: root.getAttribute('data-theme'),
-  }));
-  expect(rootState).toEqual({
-    dark: preview.mode.previewClass === 'dark',
-    themeCarrier: preview.theme.dataTheme,
-  });
+  await expect
+    .poll(() =>
+      page.locator('html').evaluate((root) => ({
+        dark: root.classList.contains('dark'),
+        themeCarrier: root.getAttribute('data-theme'),
+      })),
+    )
+    .toEqual({
+      dark: preview.mode.previewClass === 'dark',
+      themeCarrier: preview.theme.dataTheme,
+    });
 }

@@ -41,7 +41,9 @@ test.describe('Electron settings geometry', () => {
       });
 
       const geometry = await page.evaluate(() => {
-        const nav = document.querySelector<HTMLElement>('.settings-nav');
+        const nav = document.querySelector<HTMLElement>(
+          '[data-testid=settings-dialog-directory]',
+        );
         const detail = document.querySelector<HTMLElement>(
           '[data-testid=settings-detail]',
         );

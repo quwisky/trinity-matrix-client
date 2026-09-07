@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   expect,
   test,
@@ -266,7 +267,7 @@ test.describe('Room settings · For you', () => {
           { selectedTheme: theme, selectedDark: dark },
         );
         await expect(
-          page.getByTestId('room-settings-for-you-save'),
+          page.getByTestId('room-settings-for-you-form'),
         ).toBeVisible();
       }
     }
@@ -274,11 +275,13 @@ test.describe('Room settings · For you', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await page
-      .getByTestId('room-settings-for-you-save')
+      .getByTestId('room-settings-for-you-form')
       .scrollIntoViewIfNeeded();
-    await expect(page.getByTestId('room-settings-for-you-save')).toBeVisible();
+    await expect(page.getByTestId('room-settings-for-you-form')).toBeVisible();
     await test.info().attach('room-settings-for-you-desktop', {
-      body: await page.getByTestId('room-settings').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('room-settings').screenshot(),
+      ),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {

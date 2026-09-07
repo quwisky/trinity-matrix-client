@@ -60,7 +60,9 @@ test.describe('Encrypted key export', () => {
     await importDialog.locator('input').fill(PASSPHRASE);
     await page.getByTestId('alert-confirm').click();
 
-    await expect(page.getByText('Room keys imported.')).toBeVisible({
+    await expect(
+      page.getByLabel('Notifications alt+T').getByText('Room keys imported.'),
+    ).toBeVisible({
       timeout: 20_000,
     });
   });

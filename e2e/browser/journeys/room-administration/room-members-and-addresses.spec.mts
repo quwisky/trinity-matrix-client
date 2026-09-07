@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import {
   devices,
   expect,
@@ -12,6 +13,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import type { TouchPlatform } from '../../../support/platform-contracts.mts';
 import {
   configureRoomSettingsSuite,
   openRoom,
@@ -44,20 +46,24 @@ async function openSpaceSettings(
   page: Page,
   spaceName: string,
   roomName: string,
+  touchPlatform: TouchPlatform,
 ): Promise<void> {
   const space = page.getByRole('button', { name: spaceName, exact: true });
   await space.waitFor({ state: 'visible', timeout: 30_000 });
-  await space.tap();
+  await touchPlatform.tap(page, space);
   const room = page.locator('.channel', { hasText: roomName }).first();
   await room.waitFor({ state: 'visible', timeout: 30_000 });
-  await room.tap();
+  await touchPlatform.tap(page, room);
   await expect(page.getByTestId('composer-input')).toBeVisible({
     timeout: 15_000,
   });
-  await page.getByRole('button', { name: 'Back to rooms' }).tap();
-  await space.tap();
-  await page.getByTestId('space-actions-overflow').tap();
-  await page.getByTestId('open-space-settings').tap();
+  await touchPlatform.tap(
+    page,
+    page.getByRole('button', { name: 'Back to rooms' }),
+  );
+  await touchPlatform.tap(page, space);
+  await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+  await touchPlatform.tap(page, page.getByTestId('open-space-settings'));
   await expect(page.getByTestId('space-settings')).toBeVisible({
     timeout: 10_000,
   });
@@ -288,7 +294,9 @@ test.describe('Room settings', () => {
       'Moderator',
     );
     await test.info().attach('room-members-desktop', {
-      body: await page.getByTestId('room-settings').screenshot(),
+      body: await captureScreenshot(page, () =>
+        page.getByTestId('room-settings').screenshot(),
+      ),
       contentType: 'image/png',
     });
 
@@ -475,7 +483,7 @@ test.describe('Room settings', () => {
         .getByText(`${alias} is now the primary address.`),
     ).toBeHidden({ timeout: 5_000 });
     await test.info().attach('room-addresses-desktop', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
 
@@ -535,6 +543,7 @@ test.describe('Space member and address settings on a phone', () => {
   test('opens Space Members from the shortcut and invites only to the Space', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
@@ -581,9 +590,9 @@ test.describe('Space member and address settings on a phone', () => {
     } as SynapseSession);
     const space = page.getByRole('button', { name: spaceName, exact: true });
     await space.waitFor({ state: 'visible', timeout: 30_000 });
-    await space.tap();
-    await page.getByTestId('space-actions-overflow').tap();
-    await page.getByTestId('open-space-members').tap();
+    await touchPlatform.tap(page, space);
+    await touchPlatform.tap(page, page.getByTestId('space-actions-overflow'));
+    await touchPlatform.tap(page, page.getByTestId('open-space-members'));
 
     const settings = page.getByTestId('space-settings');
     await expect(settings).toBeVisible({ timeout: 10_000 });
@@ -596,9 +605,12 @@ test.describe('Space member and address settings on a phone', () => {
     expect((await invite.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(
       44,
     );
-    await invite.tap();
+    await touchPlatform.tap(page, invite);
     await page.getByLabel('@user:server or a name').fill(inviteeId);
-    await page.getByRole('button', { name: 'Invite', exact: true }).tap();
+    await touchPlatform.tap(
+      page,
+      page.getByRole('button', { name: 'Invite', exact: true }),
+    );
 
     const membership = async (roomId: string): Promise<unknown> => {
       const response = await request.get(
@@ -623,7 +635,7 @@ test.describe('Space member and address settings on a phone', () => {
       .getByTestId('member-row')
       .filter({ hasText: inviteeName });
     await expect(row).toBeVisible({ timeout: 20_000 });
-    await row.tap();
+    await touchPlatform.tap(page, row);
     const detail = page.getByTestId('members-settings-detail');
     await expect(detail).toContainText(inviteeName);
     await expect(detail).toContainText(inviteeId);
@@ -639,7 +651,7 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.style.fontSize = '125%';
     });
     await test.info().attach('space-members-mobile-light', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -647,7 +659,7 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-members-mobile-dark-amethyst', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {
@@ -658,9 +670,9 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.style.fontSize = fontSize;
     }, originalAppearance);
 
-    await page.getByTestId('member-info-close').tap();
+    await touchPlatform.tap(page, page.getByTestId('member-info-close'));
     await expect(row).toBeVisible();
-    await page.getByTestId('members-settings-banned').tap();
+    await touchPlatform.tap(page, page.getByTestId('members-settings-banned'));
     await expect(page.getByTestId('banned-members')).toBeVisible();
     expect(
       (await page.getByTestId('members-settings-banned').boundingBox())
@@ -674,6 +686,7 @@ test.describe('Space member and address settings on a phone', () => {
   test('keeps a long Space address readable, actionable and inside the viewport', async ({
     page,
     request,
+    touchPlatform,
   }) => {
     test.setTimeout(150_000);
     const hs = session.hs as string;
@@ -725,7 +738,7 @@ test.describe('Space member and address settings on a phone', () => {
     };
 
     await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openSpaceSettings(page, spaceName, roomName);
+    await openSpaceSettings(page, spaceName, roomName, touchPlatform);
     await openSettingsTab(page, 'space-settings', 'addresses');
     await expect(
       page.getByTestId('space-settings-section-heading'),
@@ -733,11 +746,12 @@ test.describe('Space member and address settings on a phone', () => {
 
     const input = page.getByTestId('room-alias-input');
     await input.fill(localpart);
-    await page.getByTestId('room-alias-add').tap();
+    await touchPlatform.dismissKeyboard(page);
+    await touchPlatform.tap(page, page.getByTestId('room-alias-add'));
     const row = page.getByTestId('room-alias').filter({ hasText: alias });
     await expect(row).toBeVisible({ timeout: 10_000 });
     await expect.poll(directoryRoom, { timeout: 20_000 }).toBe(spaceId);
-    await row.getByTestId('room-alias-set-main').tap();
+    await touchPlatform.tap(page, row.getByTestId('room-alias-set-main'));
     await expect(page.getByTestId('room-alias-primary')).toHaveText(alias);
     await expect.poll(canonicalAddress, { timeout: 20_000 }).toBe(alias);
     await expect(
@@ -768,12 +782,15 @@ test.describe('Space member and address settings on a phone', () => {
     }
 
     // Touch opens the exact-address confirmation; cancel keeps the published Space link.
-    await row.getByTestId('room-alias-remove').tap();
+    await touchPlatform.tap(page, row.getByTestId('room-alias-remove'));
     const confirmation = page.getByRole('dialog', {
       name: `Remove ${alias}?`,
     });
     await expect(confirmation).toContainText('does not delete the Space');
-    await confirmation.getByRole('button', { name: 'Keep address' }).tap();
+    await touchPlatform.tap(
+      page,
+      confirmation.getByRole('button', { name: 'Keep address' }),
+    );
     await expect(row).toBeVisible();
 
     const originalAppearance = await page.evaluate(() => ({
@@ -788,7 +805,7 @@ test.describe('Space member and address settings on a phone', () => {
     });
     await expect(row).toBeVisible();
     await test.info().attach('space-addresses-mobile-light', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(() => {
@@ -796,7 +813,7 @@ test.describe('Space member and address settings on a phone', () => {
       document.documentElement.setAttribute('data-theme', 'amethyst');
     });
     await test.info().attach('space-addresses-mobile-dark-amethyst', {
-      body: await settings.screenshot(),
+      body: await captureScreenshot(page, () => settings.screenshot()),
       contentType: 'image/png',
     });
     await page.evaluate(({ dark, theme, fontSize }) => {
@@ -821,7 +838,8 @@ test.describe('Space member and address settings on a phone', () => {
     });
     const retryLocalpart = `retry-space-${runId}`;
     await input.fill(retryLocalpart);
-    await page.getByTestId('room-alias-add').tap();
+    await touchPlatform.dismissKeyboard(page);
+    await touchPlatform.tap(page, page.getByTestId('room-alias-add'));
     await expect(
       page
         .getByLabel('Notifications alt+T')
@@ -836,8 +854,11 @@ test.describe('Space member and address settings on a phone', () => {
     await page.unroute(spaceDirectoryRoute);
 
     // Confirmation removes both the Space's canonical state and its local directory entry.
-    await row.getByTestId('room-alias-remove').tap();
-    await confirmation.getByRole('button', { name: 'Remove address' }).tap();
+    await touchPlatform.tap(page, row.getByTestId('room-alias-remove'));
+    await touchPlatform.tap(
+      page,
+      confirmation.getByRole('button', { name: 'Remove address' }),
+    );
     await expect(row).toHaveCount(0);
     await expect.poll(directoryRoom, { timeout: 20_000 }).toBeUndefined();
     await expect.poll(canonicalAddress, { timeout: 20_000 }).toBeUndefined();
@@ -845,7 +866,8 @@ test.describe('Space member and address settings on a phone', () => {
     // Publish it again, then remove this Account's power remotely. The address remains
     // readable and public actions remain usable while every administration action vanishes.
     await input.fill(localpart);
-    await page.getByTestId('room-alias-add').tap();
+    await touchPlatform.dismissKeyboard(page);
+    await touchPlatform.tap(page, page.getByTestId('room-alias-add'));
     await expect(row).toBeVisible({ timeout: 10_000 });
     const powerLevelsUrl = `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.power_levels/`;
     const powerLevels = await request
@@ -872,7 +894,10 @@ test.describe('Space member and address settings on a phone', () => {
     await expect(page.getByTestId('room-alias-set-main')).toHaveCount(0);
     await expect(page.getByTestId('room-alias-remove')).toHaveCount(0);
 
-    await page.getByTestId('space-settings-mobile-back').tap();
+    await touchPlatform.tap(
+      page,
+      page.getByTestId('space-settings-mobile-back'),
+    );
     await expect(page.getByTestId('space-settings-directory')).toBeVisible();
 
     // The server remains the final authority for the address created through the UI.

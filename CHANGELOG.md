@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- CI now classifies documentation changes into formatting and source-contract checks,
+  retains full code validation for uncertain diffs, rejects flaky retry passes, and
+  uploads hidden Playwright diagnostics after failures and managed timeouts. Browser
+  prerequisite failures preserve installer logs; Android waits for KVM permissions
+  and caches browser downloads separately from Gradle.
+
 - Simplify contributor issue forms and pull requests: bug reports separate observed and
   expected behavior, accept unknown environment details and support multiple platforms;
   feature requests focus on outcomes. Both forms enter triage automatically, and PRs
@@ -1111,6 +1117,42 @@ All notable changes to this project are documented here. The format is based on
   attachment, because those are sent as written.
 
 ### Fixed
+
+- Startup no longer loops when an unsupported app badge reports its health
+  synchronously, including on Android WebView and WebKit. Badge updates track
+  unread totals without subscribing to signal reads made by outcome consumers.
+
+- Trust health refreshes when account data changes, so a recovery reset followed by
+  reload cannot remain stuck on stale secret-storage readiness.
+
+- Virtualized timelines retain the reader's message position while newly prepended
+  history finishes measuring. A reader who scrolls during an outstanding history request
+  transfers its restore point to the new position. User scrolling after restoration and
+  room changes cancel the previous correction.
+
+- Back from routed Settings can return to Rooms without a second semantic dismissal
+  cancelling the history navigation. Overlay dismissal guards still run first.
+
+- Production renderer checks wait for the usable login form and verify the current
+  mobile System Status control. Electron settings geometry checks use the shared
+  Settings directory hook after the layout migration. Electron restart checks open
+  System Status from the sidebar. Historical-notification checks now count presenter
+  calls before and after restart. Browser installation-reset and Settings journeys
+  follow the current confirmation, navigation and save controls, and key-import
+  assertions distinguish the toast from its accessibility announcement.
+- Browser touch checks preserve the touch pointer type and wait for ordinary controls
+  to settle; only unavailable-action feedback bypasses the enabled check. Android unavailable-action taps
+  allow legitimate drawer pointer capture, while wide-layout gestures use the viewport
+  owner's connection and scaled physical coordinates. SSO and responsive Members controls
+  use that input path; shell checks distinguish an open pane from rows still rendering.
+  Reapplying an unchanged Android viewport tolerates pixel-ratio rounding and preserves
+  open panes instead of briefly switching to the phone layout.
+- Storybook theme checks wait for the selected theme and mode to reach the document
+  root before checking semantic colours, avoiding a read during preview initialization.
+- Android test controls guard touch targets through activation, dismiss the native
+  keyboard before lower address actions, and feed deterministic native GPS updates. Screenshot capture preserves the configured viewport after Android
+  resets its emulated metrics. Desktop-only interaction and development-hook fault injection cases
+  no longer run against the production Android APK.
 
 - System Status no longer floats over message-composer controls. It stays available as an icon immediately
   left of Settings in the sidebar and in the mobile conversation's More actions menu, with emphasis

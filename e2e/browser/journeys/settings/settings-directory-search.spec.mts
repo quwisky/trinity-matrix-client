@@ -1,3 +1,4 @@
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { devices, expect, test, type Page } from '../../../fixtures.mts';
 import { isAndroidE2E } from '../../../support/app.mts';
 import {
@@ -47,7 +48,7 @@ test.describe('Settings directory search', () => {
     ).toBeHidden();
     await expect(navItems(page)).toHaveCount(3);
     await test.info().attach('settings-search-desktop', {
-      body: await page.screenshot(),
+      body: await captureScreenshot(page, () => page.screenshot()),
       contentType: 'image/png',
     });
     expect(await navItems(page).allTextContents()).toEqual([
@@ -180,7 +181,7 @@ test.describe('Settings directory search', () => {
       const field = search(page);
       await field.fill('appearance');
       await test.info().attach('settings-search-mobile', {
-        body: await page.screenshot(),
+        body: await captureScreenshot(page, () => page.screenshot()),
         contentType: 'image/png',
       });
       const appearance = page.getByTestId('settings-nav-appearance');

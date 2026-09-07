@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { dirname, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { openE2EInvocation, type E2EInvocation } from './invocation.mts';
 import {
@@ -8,6 +9,8 @@ import {
 } from './managed-command.mts';
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const require = createRequire(import.meta.url);
+const playwrightCli = require.resolve('@playwright/test/cli');
 
 interface Arguments {
   readonly config: string;
@@ -140,20 +143,17 @@ export async function runPlaywright(
       signal: termination.signal,
     });
     if (prepared !== 0) return prepared;
+    // Own the reporter process directly: an intermediate package-manager process
+    // can forward a second termination signal before Playwright flushes reports.
     const result = await runManagedCommand(
-      'pnpm',
-      [
-        'exec',
-        'playwright',
-        'test',
-        '-c',
-        options.config,
-        ...options.forwarded,
-      ],
+      process.execPath,
+      [playwrightCli, 'test', '-c', options.config, ...options.forwarded],
       {
         cwd: workspaceRoot,
         environment: invocationEnvironment,
         timeout: 3_600_000,
+        terminationSignal: 'SIGINT',
+        terminationGraceMs: 30_000,
         signal: termination.signal,
       },
     );

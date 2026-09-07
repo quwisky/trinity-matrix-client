@@ -319,9 +319,60 @@ export const yamlRunCommands = (source) => {
     }
   }
 
-  return commands.filter((command) =>
-    /(?:trinity-e2e|e2e:|electron:e2e)/.test(command),
+  return commands
+    .map((command) => {
+      const wrapper = command.match(
+        /^(.*?\s)?node scripts\/ci-run-command\.mjs --timeout-ms \d+ -- (.+)$/u,
+      );
+      return wrapper ? `${wrapper[1] ?? ''}${wrapper[2]}` : command;
+    })
+    .filter((command) => /(?:trinity-e2e|e2e:|electron:e2e)/.test(command));
+};
+
+export const yamlReportPaths = (source) =>
+  [...source.matchAll(/^\s*(?:-\s*)?report-path:\s*(\S.*)$/gmu)].map((match) =>
+    match[1].trim(),
   );
+
+export const validateCiReportPaths = (errors, source, snapshot) => {
+  const paths = yamlReportPaths(source);
+  const suitesById = new Map(snapshot.suites.map((suite) => [suite.id, suite]));
+  const coveredSuites = new Set();
+  for (const path of paths) {
+    if (path === 'dist/.playwright/**/**') continue;
+    const match = path.match(
+      /^dist\/\.playwright\/([^/]+)\/\*\/([^/]+)\/\*\*$/u,
+    );
+    if (!match) {
+      errors.push(`CI report path has an invalid registry shape: ${path}`);
+      continue;
+    }
+    const [project, suiteId] = match.slice(1);
+    const suite = suitesById.get(suiteId);
+    if (!suite) {
+      errors.push(`CI report path references unknown suite: ${path}`);
+      continue;
+    }
+    if (suite.targetProject !== project) {
+      errors.push(
+        `CI report path for ${suiteId} targets ${project}, expected ${suite.targetProject}`,
+      );
+      continue;
+    }
+    coveredSuites.add(suiteId);
+  }
+  for (const suite of snapshot.suites) {
+    if (
+      suite.ciTier !== 'local-only' &&
+      suite.ciTier !== 'scheduled' &&
+      snapshot.ciEntrypoints.some(({ suiteIds }) =>
+        suiteIds.includes(suite.id),
+      ) &&
+      !coveredSuites.has(suite.id)
+    ) {
+      errors.push(`CI report path is missing suite ${suite.id}`);
+    }
+  }
 };
 
 const validatePackageScripts = (
@@ -397,6 +448,33 @@ const validateSuiteFilesAndTargets = (errors, workspaceRoot, snapshot) => {
         errors.push(
           `${target} must publish the standard ${suite.targetProject} artifact root`,
         );
+      }
+    }
+    if (suite.ciRetries !== undefined) {
+      if (!Number.isInteger(suite.ciRetries) || suite.ciRetries < 0) {
+        errors.push(`${suite.id} has an invalid CI retry policy`);
+      }
+      const configEntrypoint = suite.sourceEntrypoints.find((entrypoint) =>
+        /playwright\.config\.mts$/u.test(entrypoint),
+      );
+      const source = configEntrypoint
+        ? readFileSync(join(workspaceRoot, configEntrypoint), 'utf8')
+        : '';
+      if (suite.ciRetries !== 1) {
+        errors.push(`${suite.id} must allow exactly one CI retry`);
+      } else {
+        if (!source.includes("retries: process.env['CI'] ? 1 : 0")) {
+          errors.push(`${suite.id} must allow exactly one CI retry`);
+        }
+        if (!source.includes("failOnFlakyTests: Boolean(process.env['CI'])")) {
+          errors.push(`${suite.id} must fail on flaky tests in CI`);
+        }
+        if (!source.includes("trace: 'retain-on-failure'")) {
+          errors.push(`${suite.id} must retain failed-attempt traces`);
+        }
+        if (!source.includes("screenshot: 'only-on-failure'")) {
+          errors.push(`${suite.id} must retain failed-attempt screenshots`);
+        }
       }
     }
   }
@@ -521,6 +599,7 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
     'utf8',
   );
   const observedCiCommands = yamlRunCommands(workflow);
+  validateCiReportPaths(errors, workflow, snapshot);
   const expectedCiCommands = snapshot.ciEntrypoints.map(
     ({ command }) => command,
   );

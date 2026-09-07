@@ -1,4 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
+import { ClientEvent } from 'matrix-js-sdk';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { Observable, defer, from } from 'rxjs';
 import {
@@ -72,6 +73,8 @@ export class TrustHealthService {
       CryptoEvent.UserTrustStatusChanged,
       CryptoEvent.KeyBackupStatus,
       CryptoEvent.DevicesUpdated,
+      // Restored /sync may contain old secrets until fresh account data arrives.
+      ClientEvent.AccountData,
     ],
     rebuild: (client, context) =>
       defer(() => from(this.reconcileProjection(client, context))),

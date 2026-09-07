@@ -103,12 +103,11 @@ export function e2eReportConfig(
     ['blob', { outputDir: artifact('blob-report') }],
     ['junit', { outputFile: artifact('junit/results.xml') }],
   ];
-  if (!process.env['CI']) {
-    reporter.push([
-      'html',
-      { outputFolder: artifact('html-report'), open: 'never' },
-    ]);
-  }
+  if (process.env['CI']) reporter.push(['github']);
+  reporter.push([
+    'html',
+    { outputFolder: artifact('html-report'), open: 'never' },
+  ]);
   return {
     metadata,
     outputDir: artifact('test-output'),
@@ -122,7 +121,8 @@ export function e2eLifecycleConfig(
 ): PlaywrightTestConfig {
   return {
     ...nxE2EPreset(options.projectRoot, { testDir: options.testDir }),
-    retries: 0,
+    retries: process.env['CI'] ? 1 : 0,
+    failOnFlakyTests: Boolean(process.env['CI']),
     workers: 1,
     timeout: options.timeout,
     ...(options.expectTimeout
@@ -132,6 +132,7 @@ export function e2eLifecycleConfig(
     use: {
       baseURL: e2eEndpoint(options.endpoint),
       trace: 'retain-on-failure',
+      screenshot: 'only-on-failure',
     },
   };
 }
