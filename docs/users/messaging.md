@@ -103,6 +103,8 @@ target; no hover action is needed. Long author names truncate according to the a
 message width, consistently across short and long replies.
 The connector continues back to the group's existing avatar even when other messages
 appear between the avatar and the thread.
+Inside the thread, ordinary messages do not repeat an automatic quoted reply. Explicitly
+replying to a particular message still shows its quote, which you can select to jump to it.
 
 Use **Cancel reply** or **Cancel edit** in the composer banner when you opened the wrong action.
 

@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Thread messages no longer show automatic fallback quotes in the sidebar. Explicit
+  replies to a particular message retain their quote and jump action.
+
 - Timeline threads now keep their connected preview beneath the parent message, including
   short replies and image messages. The connector aligns with the avatar center at both
   densities. Previews show the latest reply author and text, relative activity time, reply

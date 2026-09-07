@@ -8,6 +8,7 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
+  clickRowToolbar,
   login,
   synapseSession,
   type SynapseSession,
@@ -86,6 +87,7 @@ async function sendMessage(
     content['m.relates_to'] = {
       rel_type: 'm.thread',
       event_id: rootEventId,
+      is_falling_back: true,
       'm.in_reply_to': { event_id: rootEventId },
     };
   }
@@ -450,6 +452,98 @@ test.describe('Thread preview', () => {
     await summary.press('Enter');
     await expect(page.getByTestId('thread-view')).toBeVisible({
       timeout: 15_000,
+    });
+  });
+
+  test('hides fallback thread quotes but keeps explicit in-thread replies quotable', async ({
+    page,
+    request,
+  }, testInfo) => {
+    const seeded = await seedThread(request, `${testResourceId('run')}quote`);
+    await login(page, seeded.reader);
+    await openRoom(page, seeded.roomName);
+
+    // Ordinary thread replies carry the protocol fallback marker. They belong to the
+    // thread summary, not to a reply-preview treatment in the room timeline.
+    await expect(page.locator('.scroll .msg__reply')).toHaveCount(0);
+    const summary = await assertPreview(page, seeded);
+    await summary.click();
+
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toBeVisible({ timeout: 15_000 });
+    const ordinary = thread.locator('.msg', { hasText: 'first reply' }).first();
+    await expect(ordinary).toBeVisible({ timeout: 15_000 });
+    await expect(ordinary.locator('.msg__reply')).toHaveCount(0);
+    const latestOrdinary = thread
+      .locator('.msg', { hasText: seeded.latestPrefix })
+      .first();
+    await expect(latestOrdinary).toHaveClass(/msg--cont/u);
+    await expect(latestOrdinary.locator('.msg__avatar')).toHaveCount(0);
+
+    // Use the real thread reply action so the SDK emits an explicit m.in_reply_to
+    // relation with is_falling_back=false and the rich-reply fallback content.
+    await clickRowToolbar(
+      ordinary,
+      ordinary.getByRole('button', { name: 'Reply' }),
+    );
+    await expect(thread.locator('.composer__banner')).toContainText(
+      'Replying to',
+    );
+    const explicitBody = `explicit quote ${testResourceId('body')}`;
+    await thread.getByTestId('composer-input').fill(explicitBody);
+    await thread.getByTestId('composer-input').press('Enter');
+
+    const explicit = thread.locator('.msg', { hasText: explicitBody }).first();
+    await expect(explicit).toBeVisible({ timeout: 20_000 });
+    const replyPreview = explicit.locator('.msg__reply');
+    await expect(replyPreview).toBeVisible();
+    await expect(replyPreview).toContainText('first reply');
+
+    // The preview is a jump control, and the target is the ordinary reply it quotes.
+    await page.evaluate(() => {
+      const win = window as Window & {
+        __trinityJumped?: string;
+        __trinityOriginalScroll?: typeof HTMLElement.prototype.scrollIntoView;
+      };
+      win.__trinityOriginalScroll = HTMLElement.prototype.scrollIntoView;
+      HTMLElement.prototype.scrollIntoView = function (...args) {
+        win.__trinityJumped = this.getAttribute('data-mid') ?? '';
+        return win.__trinityOriginalScroll?.apply(this, args);
+      };
+    });
+    await replyPreview.click();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as Window & { __trinityJumped?: string }).__trinityJumped,
+        ),
+      )
+      .toBe(await ordinary.getAttribute('data-mid'));
+    await page.evaluate(() => {
+      const win = window as Window & {
+        __trinityOriginalScroll?: typeof HTMLElement.prototype.scrollIntoView;
+      };
+      if (win.__trinityOriginalScroll) {
+        HTMLElement.prototype.scrollIntoView = win.__trinityOriginalScroll;
+      }
+      delete win.__trinityOriginalScroll;
+    });
+
+    await page.setViewportSize({ width: 1280, height: 1100 });
+    await thread.locator('[data-message-scroller]').evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await page.mouse.move(0, 0);
+    const screenshotPath = testInfo.outputPath(
+      'thread-preview-explicit-quote.png',
+    );
+    await captureScreenshot(page, () =>
+      page.screenshot({ path: screenshotPath }),
+    );
+    await testInfo.attach('thread-preview-explicit-quote', {
+      path: screenshotPath,
+      contentType: 'image/png',
     });
   });
 

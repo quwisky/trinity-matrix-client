@@ -192,6 +192,14 @@ function normalizeReceipts(
 }
 
 function normalizeReply(room: Room, event: MatrixEvent): ReplyPreview | null {
+  const relation = record(read(() => event.getContent()['m.relates_to'], null));
+  // Thread fallbacks support clients without threads; they are not explicit replies.
+  if (
+    relation['rel_type'] === 'm.thread' &&
+    relation['is_falling_back'] === true
+  ) {
+    return null;
+  }
   const eventId = read(() => event.replyEventId, undefined);
   if (!eventId) return null;
   const preview = read(() => replyPreview(room, eventId), null);

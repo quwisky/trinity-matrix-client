@@ -15,7 +15,7 @@ const room = {
         }
       : null,
   getUsersReadUpTo: () => [],
-  findEventById: () => null,
+  findEventById: (eventId: string) => (eventId === '$parent' ? event() : null),
   hasEncryptionStateEvent: () => true,
   getUnfilteredTimelineSet: () => ({ relations: undefined }),
 } as unknown as Room;
@@ -147,6 +147,69 @@ describe('normalizeTimelineEvent', () => {
       body: 'Readable custom event',
     });
   });
+
+  it('omits the automatic thread fallback quote from a normal thread message', () => {
+    const normalized = normalizeTimelineEvent(
+      client,
+      room,
+      event({
+        replyEventId: '$parent',
+        getContent: () => ({
+          msgtype: 'm.text',
+          body: 'Normal thread message',
+          'm.relates_to': {
+            rel_type: 'm.thread',
+            event_id: '$thread',
+            is_falling_back: true,
+            'm.in_reply_to': { event_id: '$parent' },
+          },
+        }),
+      }),
+      null,
+    );
+
+    expect(normalized).toMatchObject({
+      type: 'text',
+      body: 'Normal thread message',
+      replyTo: null,
+    });
+  });
+
+  it.each([
+    {
+      name: 'explicit in-thread reply',
+      rel_type: 'm.thread',
+      is_falling_back: false,
+    },
+    { name: 'in-thread reply without a fallback flag', rel_type: 'm.thread' },
+    { name: 'ordinary room reply' },
+  ])(
+    'preserves the quote target for an $name',
+    ({ name: _name, ...relation }) => {
+      const normalized = normalizeTimelineEvent(
+        client,
+        room,
+        event({
+          replyEventId: '$parent',
+          getContent: () => ({
+            msgtype: 'm.text',
+            body: 'Explicit reply',
+            'm.relates_to': {
+              ...relation,
+              'm.in_reply_to': { event_id: '$parent' },
+            },
+          }),
+        }),
+        null,
+      );
+
+      expect(normalized?.replyTo).toMatchObject({
+        id: '$parent',
+        senderName: 'Alice',
+        body: 'hello',
+      });
+    },
+  );
 
   it('marks unsupported replies so presentation can remove their fallback', () => {
     const normalized = normalizeTimelineEvent(
