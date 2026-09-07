@@ -4,10 +4,15 @@ import { spawnSync } from 'node:child_process';
 
 export const CODE_JOB_IDS = Object.freeze([
   'quality',
-  'test',
+  'unit-and-types',
   'renderer',
-  'desktop',
-  'e2e',
+  'component-storybook-e2e',
+  'component-styling-e2e',
+  'browser-synapse-e2e',
+  'qr-protocol-e2e',
+  'production-renderer-e2e',
+  'web-container',
+  'desktop-e2e',
   'android-e2e',
   'ios-native-build',
 ]);

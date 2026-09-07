@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, globSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import {
   E2E_AGGREGATE_TARGETS,
   E2E_CI_ENTRYPOINTS,
@@ -13,6 +14,7 @@ import {
 } from '../e2e/registry/index.mts';
 import { validateBrowserJourneyInventory } from './e2e-browser-inventory.mjs';
 import { validateProtocolAssertionInventory } from './e2e-protocol-inventory.mjs';
+import { CODE_JOB_IDS } from './ci-classify.mjs';
 
 const TARGET_PROJECT_BY_ENVIRONMENT = {
   android: 'trinity-e2e-android',
@@ -60,6 +62,275 @@ export const registrySnapshot = () =>
     timeouts: E2E_TIMEOUTS_MS,
     inventory: E2E_INVENTORY,
   });
+
+const SHA_PIN = /@[0-9a-f]{40}$/iu;
+const fiveReusableSuites = new Set([
+  'components.storybook',
+  'components.styling',
+  'browser.canonical',
+  'protocol.verify-qr',
+  'web.production-renderer',
+]);
+
+const walkSteps = (document) => [
+  ...Object.values(document?.jobs ?? {}).flatMap((job) => job?.steps ?? []),
+  ...(document?.runs?.steps ?? []),
+];
+
+const workflowUses = (document) =>
+  [
+    ...Object.values(document?.jobs ?? {}).map((job) => job?.uses),
+    ...walkSteps(document).map((step) => step?.uses),
+  ].filter((uses) => typeof uses === 'string');
+
+const hasSecretsInherit = (value) => {
+  if (!value || typeof value !== 'object') return false;
+  if (value.secrets === 'inherit') return true;
+  return Object.values(value).some(hasSecretsInherit);
+};
+
+const permissionKeysAre = (permissions, expected) =>
+  permissions &&
+  Object.keys(permissions).length === Object.keys(expected).length &&
+  Object.entries(expected).every(([key, value]) => permissions[key] === value);
+
+const localActionPaths = (workspaceRoot, document) => [
+  ...new Set(
+    [...walkSteps(document), ...Object.values(document?.jobs ?? {})]
+      .map((item) => item?.uses)
+      .filter((uses) => typeof uses === 'string' && uses.startsWith('./'))
+      .map((uses) => uses.replace(/^\.\//u, ''))
+      .filter((path) => existsSync(join(workspaceRoot, path))),
+  ),
+];
+
+/** Validate the concrete caller/callee graph, including mutations that regex-only guards miss. */
+export const validateWorkflowContracts = (
+  workspaceRoot,
+  { ci, e2e, renderer, restore, diagnostics, setupPlaywright } = {},
+  expectedSuiteIds = fiveReusableSuites,
+) => {
+  const errors = [];
+  const ciJobs = ci?.jobs ?? {};
+  const e2eJobs = e2e?.jobs ?? {};
+  const reusableCalls = Object.entries(ciJobs).filter(
+    ([, job]) => job?.uses === './.github/workflows/_e2e-suite.yml',
+  );
+  const expectedCallSuites = new Set();
+  for (const [id, job] of reusableCalls) {
+    const suiteId = job.with?.['suite-id'];
+    if (!fiveReusableSuites.has(suiteId) || !expectedSuiteIds.has(suiteId)) {
+      errors.push(
+        `${id} calls an unknown or forbidden reusable suite: ${suiteId ?? 'missing'}`,
+      );
+    } else expectedCallSuites.add(suiteId);
+    if (hasSecretsInherit(job)) errors.push(`${id} inherits secrets`);
+    if (job.with?.environment !== undefined)
+      errors.push(`${id} exposes a protected environment input`);
+    if (
+      !permissionKeysAre(job.permissions, { contents: 'read', actions: 'read' })
+    ) {
+      errors.push(
+        `${id} must grant only the reusable workflow read permissions`,
+      );
+    }
+    const sha = job.with?.sha;
+    if (
+      typeof sha !== 'string' ||
+      !/^\$\{\{ (?:github\.sha|needs\.renderer\.outputs\.sha) \}\}$/u.test(sha)
+    ) {
+      errors.push(`${id} must pass an exact immutable checkout SHA`);
+    }
+    if (typeof job.with?.['diagnostics-artifact-name'] !== 'string') {
+      errors.push(`${id} is missing a diagnostics artifact identity`);
+    } else {
+      const name = job.with['diagnostics-artifact-name'];
+      for (const token of [
+        'github.run_id',
+        'github.run_attempt',
+        'github.sha',
+      ]) {
+        if (!name.includes(token))
+          errors.push(`${id} diagnostics identity omits ${token}`);
+      }
+      if (suiteId && !name.includes(suiteId.replaceAll('.', '-')))
+        errors.push(`${id} diagnostics identity omits suite identity`);
+    }
+  }
+  for (const suiteId of fiveReusableSuites) {
+    if (!expectedCallSuites.has(suiteId))
+      errors.push(`reusable suite caller is missing ${suiteId}`);
+  }
+  const rendererCaller = ciJobs.renderer;
+  if (rendererCaller?.uses === './.github/workflows/_renderer.yml') {
+    if (!permissionKeysAre(rendererCaller.permissions, { contents: 'read' })) {
+      errors.push('renderer caller permissions must be contents read-only');
+    }
+    if (rendererCaller.with?.sha !== '${{ github.sha }}') {
+      errors.push('renderer caller must pass github.sha exactly');
+    }
+  } else {
+    errors.push('renderer caller is missing the local renderer workflow');
+  }
+  for (const [id, job] of Object.entries(e2eJobs)) {
+    if (job?.uses)
+      errors.push(`reusable E2E job ${id} nests another reusable workflow`);
+  }
+  if (
+    !permissionKeysAre(e2eJobs.suite?.permissions, {
+      contents: 'read',
+      actions: 'read',
+    })
+  ) {
+    errors.push(
+      'reusable E2E callee permissions must be contents/actions read-only',
+    );
+  }
+  if (
+    !permissionKeysAre(renderer?.jobs?.renderer?.permissions, {
+      contents: 'read',
+    })
+  ) {
+    errors.push('renderer callee permissions must be contents read-only');
+  }
+  const exactCheckout = (document, expectedRef, label) => {
+    const checkout = walkSteps(document).find(
+      (step) =>
+        typeof step.uses === 'string' &&
+        step.uses.startsWith('actions/checkout@'),
+    );
+    if (!checkout || checkout.with?.ref !== expectedRef) {
+      errors.push(`${label} checkout must use ${expectedRef}`);
+    }
+  };
+  exactCheckout(e2e, '${{ inputs.sha }}', 'reusable E2E');
+  exactCheckout(renderer, '${{ inputs.sha }}', 'renderer');
+  const allDocuments = [
+    ci,
+    e2e,
+    renderer,
+    restore,
+    diagnostics,
+    setupPlaywright,
+  ].filter(Boolean);
+  for (const document of [ci, e2e, renderer].filter(Boolean)) {
+    for (const path of localActionPaths(workspaceRoot, document)) {
+      const sourcePath =
+        path.endsWith('.yml') || path.endsWith('.yaml')
+          ? path
+          : `${path}/action.yml`;
+      try {
+        allDocuments.push(
+          parseYaml(readFileSync(join(workspaceRoot, sourcePath), 'utf8')),
+        );
+      } catch {
+        errors.push(`local action cannot be parsed: ${sourcePath}`);
+      }
+    }
+  }
+  for (const document of allDocuments) {
+    for (const uses of workflowUses(document)) {
+      if (uses.startsWith('./')) continue;
+      if (!SHA_PIN.test(uses))
+        errors.push(`mutable or unpinned action reference: ${uses}`);
+    }
+    if (hasSecretsInherit(document))
+      errors.push('secrets inherit is forbidden');
+  }
+  for (const [id, job] of Object.entries(ciJobs)) {
+    if (!job || typeof job !== 'object') continue;
+    if (job.strategy?.matrix && Object.keys(job.outputs ?? {}).length > 0)
+      errors.push(`${id} exports a matrix scalar output`);
+    if (job.strategy?.matrix && job.strategy['fail-fast'] !== false) {
+      errors.push(`${id} matrix must disable fail-fast`);
+    }
+  }
+  const requiredNeeds = new Set([
+    ...(ciJobs.required?.needs ?? []),
+    'classify',
+    'docs-gate',
+  ]);
+  for (const id of CODE_JOB_IDS) {
+    if (!requiredNeeds.has(id)) errors.push(`Required aggregate omits ${id}`);
+  }
+  if (!expectedCallSuites.has('web.production-renderer')) {
+    errors.push(
+      'production-renderer-e2e is missing the reusable production suite caller',
+    );
+  }
+  const productionConsumers = [
+    'web-container',
+    'desktop-e2e',
+    'android-e2e',
+    'ios-native-build',
+  ];
+  for (const id of productionConsumers) {
+    const job = ciJobs[id];
+    if (!job) {
+      errors.push(`production consumer is missing ${id}`);
+      continue;
+    }
+    if (!job.needs || ![job.needs].flat().includes('renderer'))
+      errors.push(`${id} does not depend on renderer`);
+    const steps = job.steps ?? [];
+    if (
+      !steps.some(
+        (step) => step.uses === './.github/actions/restore-verified-renderer',
+      )
+    )
+      errors.push(`${id} does not restore the verified renderer`);
+    const upload = steps.find(
+      (step) => step.uses === './.github/actions/upload-playwright-diagnostics',
+    );
+    if (
+      id !== 'ios-native-build' &&
+      (!upload || !String(upload.if).includes('outputs.started'))
+    )
+      errors.push(`${id} does not gate diagnostics on started execution`);
+    if (id === 'ios-native-build') {
+      if (
+        !steps.some((step) =>
+          String(step.run).includes('trinity-ios:build-prebuilt'),
+        )
+      )
+        errors.push(
+          'ios-native-build bypasses the managed Nx build-prebuilt target',
+        );
+      if (
+        !steps.some((step) =>
+          String(step.if).includes('steps.ios.outputs.started'),
+        )
+      )
+        errors.push(
+          'ios-native-build diagnostics are not gated on started execution',
+        );
+    }
+  }
+  const reusableSteps = walkSteps(e2e);
+  const restoreStep = reusableSteps.find(
+    (step) => step.uses === './.github/actions/restore-verified-renderer',
+  );
+  if (!restoreStep)
+    errors.push('reusable E2E workflow has no verified renderer restore step');
+  if (
+    restoreStep?.if !== "${{ steps.plan.outputs.requires-renderer == 'true' }}"
+  )
+    errors.push('reusable E2E restore is not controlled by the registry plan');
+  const reportUpload = reusableSteps.find(
+    (step) => step.uses === './.github/actions/upload-playwright-diagnostics',
+  );
+  if (
+    reportUpload?.with?.['report-path'] !==
+    '${{ steps.plan.outputs.report-path }}'
+  )
+    errors.push('reusable E2E report path is not registry-owned');
+  if (
+    !reportUpload ||
+    !String(reportUpload.if).includes('steps.suite.outputs.started')
+  )
+    errors.push('reusable E2E diagnostics are not gated on started execution');
+  return errors;
+};
 
 const duplicateValues = (values) => {
   const seen = new Set();
@@ -168,6 +439,25 @@ export function validateRegistry(snapshot, now = new Date()) {
     if (suite.sourceEntrypoints.length === 0) {
       errors.push(`${suite.id} has no source entrypoint`);
     }
+    const expectedCiPreparation = {
+      'components.storybook': {
+        buildTarget: 'components-storybook-host:build-storybook',
+      },
+      'components.styling': { buildTarget: 'trinity:build:development' },
+      'browser.canonical': { buildTarget: 'trinity:build:development' },
+      'protocol.verify-qr': { buildTarget: 'trinity:build:development' },
+      'web.production-renderer': { renderer: 'verified-production' },
+    }[suite.id];
+    if (
+      expectedCiPreparation &&
+      JSON.stringify(suite.ciPreparation) !==
+        JSON.stringify(expectedCiPreparation)
+    ) {
+      errors.push(`${suite.id} has incorrect CI preparation metadata`);
+    }
+    if (suite.id === 'web.container' && suite.ciPreparation !== undefined) {
+      errors.push('web.container must not declare CI preparation metadata');
+    }
     for (const key of suite.serializationKeys) {
       if (!resourceKeys.has(key)) {
         errors.push(`${suite.id} uses undefined serialization resource ${key}`);
@@ -180,6 +470,25 @@ export function validateRegistry(snapshot, now = new Date()) {
     } else if (!canonicalScript.suiteIds.includes(suite.id)) {
       errors.push(`${suite.id} is absent from ${suite.canonicalScript}`);
     }
+  }
+  const expectedPreparationIds = [
+    'components.storybook',
+    'components.styling',
+    'browser.canonical',
+    'protocol.verify-qr',
+    'web.production-renderer',
+  ];
+  const actualPreparationIds = snapshot.suites
+    .filter(({ ciPreparation }) => ciPreparation !== undefined)
+    .map(({ id }) => id)
+    .sort();
+  if (
+    JSON.stringify(actualPreparationIds) !==
+    JSON.stringify([...expectedPreparationIds].sort())
+  ) {
+    errors.push(
+      'CI preparation metadata must exist for exactly the five reusable suites',
+    );
   }
 
   for (const script of snapshot.packageScripts) {
@@ -327,7 +636,9 @@ export const yamlRunCommands = (source) => {
       );
       return wrapper ? `${wrapper[1] ?? ''}${wrapper[2]}` : command;
     })
-    .filter((command) => /(?:trinity-e2e|e2e:|electron:e2e)/.test(command));
+    .filter((command) =>
+      /(?:trinity-e2e|trinity-web-container|e2e:|electron:e2e)/.test(command),
+    );
 };
 
 export const yamlReportPaths = (source) =>
@@ -338,8 +649,15 @@ export const yamlReportPaths = (source) =>
 export const validateCiReportPaths = (errors, source, snapshot) => {
   const paths = yamlReportPaths(source);
   const suitesById = new Map(snapshot.suites.map((suite) => [suite.id, suite]));
-  const coveredSuites = new Set();
+  const coveredSuites = new Set(
+    [...source.matchAll(/^\s*suite-id:\s*["']?([a-z0-9.-]+)["']?\s*$/gimu)].map(
+      ([, suiteId]) => suiteId,
+    ),
+  );
+  if (source.includes('trinity-web-container:smoke'))
+    coveredSuites.add('web.container');
   for (const path of paths) {
+    if (path.includes('${{') || path.includes('steps.plan.outputs')) continue;
     if (path === 'dist/.playwright/**/**') continue;
     const match = path.match(
       /^dist\/\.playwright\/([^/]+)\/\*\/([^/]+)\/\*\*$/u,
@@ -595,22 +913,48 @@ const validateCanonicalSpecInventory = (errors, workspaceRoot, snapshot) => {
 };
 
 const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
-  const workflow = readFileSync(
-    join(workspaceRoot, '.github/workflows/ci.yml'),
-    'utf8',
+  const workflowSources = globSync('.github/workflows/*.{yml,yaml}', {
+    cwd: workspaceRoot,
+  }).map((path) => readFileSync(join(workspaceRoot, path), 'utf8'));
+  const workflow = workflowSources.join('\n');
+  const observedCiCommands = workflowSources.flatMap(yamlRunCommands);
+  const observedSuiteIds = new Set(
+    [
+      ...workflow.matchAll(/^\s*suite-id:\s*["']?([a-z0-9.-]+)["']?\s*$/gimu),
+    ].map(([, suiteId]) => suiteId),
   );
-  const observedCiCommands = yamlRunCommands(workflow);
+  if (workflow.includes('trinity-web-container:smoke'))
+    observedSuiteIds.add('web.container');
+  const infrastructureCommands = new Set([
+    'pnpm nx run trinity-web-container:verify',
+    'pnpm nx run trinity-web-container:build-prebuilt',
+  ]);
   validateCiReportPaths(errors, workflow, snapshot);
   const expectedCiCommands = snapshot.ciEntrypoints.map(
     ({ command }) => command,
   );
+  const registeredSuiteIds = new Set(
+    snapshot.ciEntrypoints.flatMap(({ suiteIds }) => suiteIds),
+  );
+  for (const suiteId of observedSuiteIds) {
+    if (!registeredSuiteIds.has(suiteId)) {
+      errors.push(`unregistered CI E2E entrypoint suite: ${suiteId}`);
+    }
+  }
   for (const command of observedCiCommands) {
+    if (infrastructureCommands.has(command)) continue;
     if (!expectedCiCommands.includes(command)) {
       errors.push(`unregistered CI E2E entrypoint: ${command}`);
     }
   }
-  for (const command of expectedCiCommands) {
-    if (!observedCiCommands.includes(command)) {
+  for (const [command, entrypoint] of snapshot.ciEntrypoints.map((entry) => [
+    entry.command,
+    entry,
+  ])) {
+    const coveredBySuiteInput = entrypoint.suiteIds.every((suiteId) =>
+      observedSuiteIds.has(suiteId),
+    );
+    if (!observedCiCommands.includes(command) && !coveredBySuiteInput) {
       errors.push(`registered CI E2E entrypoint is absent: ${command}`);
     }
   }
@@ -624,7 +968,11 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
       errors.push(`${suite.ciTier} suite has no CI entrypoint: ${suite.id}`);
     }
   }
-  if (!workflow.includes('# 110 canonical browser specs')) {
+  if (
+    !workflow.includes('# 110 canonical browser specs') &&
+    !workflow.includes('canonicalBrowserSpecCount') &&
+    !observedSuiteIds.has('browser.canonical')
+  ) {
     errors.push('CI canonical browser spec count is stale');
   }
 };
@@ -694,6 +1042,28 @@ export function validateWorkspace(
   );
   validateProtocolAssertionInventory(errors, workspaceRoot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
+  const readYaml = (path) =>
+    parseYaml(readFileSync(join(workspaceRoot, path), 'utf8'));
+  errors.push(
+    ...validateWorkflowContracts(
+      workspaceRoot,
+      {
+        ci: readYaml('.github/workflows/ci.yml'),
+        e2e: readYaml('.github/workflows/_e2e-suite.yml'),
+        renderer: readYaml('.github/workflows/_renderer.yml'),
+        restore: readYaml(
+          '.github/actions/restore-verified-renderer/action.yml',
+        ),
+        diagnostics: readYaml(
+          '.github/actions/upload-playwright-diagnostics/action.yml',
+        ),
+        setupPlaywright: readYaml(
+          '.github/actions/setup-playwright/action.yml',
+        ),
+      },
+      new Set(snapshot.ciEntrypoints.flatMap(({ suiteIds }) => suiteIds)),
+    ),
+  );
   validateArchitectureCommand(errors, packageScripts);
   validateDurableE2ENames(errors, workspaceRoot);
 

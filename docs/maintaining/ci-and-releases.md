@@ -32,9 +32,10 @@ unavailable diffs, branch creation, ambiguous merge bases, and every other path
 select the full code graph. Configuration, scripts, lockfiles, root documents,
 `docs/maintaining/`, and `docs/reference/stack.md` therefore retain full validation.
 
-The classifier emits its reason and expected jobs. The tested required-result
-evaluator rejects failed, cancelled, missing, or skipped expected jobs; wiring
-that aggregate status into branch rules belongs to the later protection slice
+The classifier emits its reason and expected jobs. The `Required` job runs after
+the independent checks and feeds their results to the tested required-result
+evaluator. It rejects failed, cancelled, missing, or skipped expected jobs; wiring
+the `CI / Required` status into branch rules belongs to the later protection slice
 of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
 
 ### Diagnose setup and cache failures
@@ -62,16 +63,29 @@ log. Do not infer repository-wide merge rules from the workflow YAML: branch
 protection and rulesets live in GitHub settings and may impose additional
 requirements.
 
-| Job                | Checks                                                                                                          | First recovery step                                                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`          | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                                           |
-| `test`             | Workspace-wide typecheck, then `pnpm test`                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                                    |
-| `renderer`         | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                         |
-| `desktop`          | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer            | Use the [desktop guide](../platforms/desktop.md) to reproduce the matching shell or packaging step.                                                   |
-| `e2e`              | Component Storybook, production renderer, styling, disposable-Synapse browser journeys, then QR verification    | Read the Playwright report and reproduce the smallest owned journey. The Synapse-backed flows use a fixed disposable stack, so run them sequentially. |
-| `android-e2e`      | Four API 36 Pixel 6 WebView shards using the verified renderer                                                  | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host.                     |
-| `ios-native-build` | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                              |
-| `scheduled-e2e`    | Chromium, Firefox, and WebKit scheduled suite                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                          |
+| Job                       | Checks                                                                                                          | First recovery step                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`                 | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                       |
+| `unit-and-types`          | Workspace-wide typecheck, then `pnpm test`                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                |
+| `renderer`                | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                     |
+| `component-storybook-e2e` | Component Storybook journeys                                                                                    | Inspect the component report and its Storybook build prerequisites.                                                               |
+| `component-styling-e2e`   | Styling journeys against the development application                                                            | Inspect the styling report and the selected theme or viewport.                                                                    |
+| `browser-synapse-e2e`     | Full canonical browser journeys with disposable Synapse                                                         | Reproduce the smallest owned journey through its Nx lifecycle target.                                                             |
+| `qr-protocol-e2e`         | QR verification protocol journeys                                                                               | Inspect both clients' verification state and the protocol report.                                                                 |
+| `production-renderer-e2e` | Production renderer journeys using the verified artifact                                                        | Inspect the manifest verification and production browser report.                                                                  |
+| `web-container`           | Rootless container HTTP, image, and offline PWA checks using the verified renderer                              | Inspect the Docker host evidence and PWA report.                                                                                  |
+| `desktop-e2e`             | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer            | Use the [desktop guide](../platforms/desktop.md) to reproduce the matching shell or packaging step.                               |
+| `android-e2e`             | Four API 36 Pixel 6 WebView shards using the verified renderer                                                  | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host. |
+| `ios-native-build`        | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                          |
+| `scheduled-e2e`           | Chromium, Firefox, and WebKit scheduled suite                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.      |
+
+Code events run twelve code-job definitions, with Android expanding to four shards
+for fifteen code executions. Only production consumers wait for `renderer`; one
+browser suite failure does not suppress the other suites. The five browser jobs
+call the bounded [`_e2e-suite.yml`](../../.github/workflows/_e2e-suite.yml) workflow.
+Nx and the E2E registry retain command, preparation, timeout, and resource ownership.
+The `Required` aggregate is a separate non-matrix job and reads the matrix result
+without relying on a shard's scalar output.
 
 Started Playwright suites upload hidden `dist/.playwright/` output through the
 [diagnostics action](../../.github/actions/upload-playwright-diagnostics/action.yml).
@@ -87,8 +101,9 @@ that never started does not demand a report; a started suite with missing report
 fails diagnostic validation even when process logs are available. Runner loss or
 a hard job deadline cannot guarantee an upload, so inspect step logs as well.
 
-The browser prerequisites helper runs browser installation, development build,
-and optional Docker pre-pull concurrently, retaining each exit code and labeled
+The browser prerequisites helper selects browser installation, any required development
+or Storybook build, and optional Docker pre-pull from the suite registry. It runs
+those prerequisites concurrently, retaining each exit code and labeled
 logs under `dist/.ci/`. Browser/build failure is fatal; Docker pre-pull failure is
 a warning because suite setup can pull again. Android waits for udev to settle
 before checking KVM access. Its Playwright download cache is separate from Gradle.
@@ -113,14 +128,13 @@ SHA-256, source SHA, immutable artifact ID, and run-bound artifact name are pass
 downstream jobs. The canonical verifier is `node scripts/web-bundle-manifest.mjs`,
 with artifact coordinate handling in `node scripts/renderer-artifact.mjs`.
 
-Desktop, Android, iOS, and the production renderer journey download that artifact and
+Desktop, Android, iOS, the Web container, and the production renderer journey download that artifact and
 validate its coordinates, manifest digest, file contents, and expected checkout before
 installing the payload into the canonical `www/` directory. The native wrappers allow
 only their generated Cordova files alongside the manifest payload. A failed validation
-does not replace `www/`. The `e2e` job still builds its development bundle while
-preparing Docker/browser prerequisites; the production renderer step restores the
-verified artifact afterward, while styling and browser journeys intentionally use the
-development server.
+does not replace `www/`. Production consumers do not prepare a development bundle.
+Styling and canonical browser journeys intentionally use the development server;
+Storybook keeps its separate component build.
 
 For local host parity checks against an already recorded artifact, use:
 
@@ -142,12 +156,22 @@ host checks, see [testing](../contributing/testing.md) and
 Docker, browser, emulator, or macOS host into a passing result; record the
 unavailable prerequisite and the evidence that did run.
 
-## Container prerequisite
+### iOS compiler diagnostics
 
-The local `trinity-web-container` host exposes `verify`, `build-prebuilt`, and `smoke`
-Nx targets for the next CI fan-out step. It checks the existing production renderer manifest
+The unsigned iOS job records the selected Xcode and SDK versions, build settings,
+compiler log, execution status, and unique Xcode result bundle under `dist/ios-native/`.
+Its managed compiler deadline leaves time to validate and upload evidence after an
+ordinary compiler failure or timeout. Required missing or malformed diagnostics fail
+the job; that validation failure does not suppress upload of the evidence that exists.
+DerivedData is excluded from uploads. This gate proves compilation on `macos-26`;
+it does not boot a simulator or use a signing environment.
+
+## Container validation
+
+The `trinity-web-container` host exposes `verify`, `build-prebuilt`, and `smoke`
+Nx targets. The independent `web-container` CI job checks the shared production renderer manifest
 before building the pinned rootless SWS image and proves its HTTP and offline PWA contract
-without registry credentials. The current workflow does not yet invoke this consumer.
+without registry credentials.
 See [container validation](../platforms/web.md#verify-the-container-host) for commands,
 Docker/browser prerequisites, and the native architecture limit. Trinity's existing root and
 Electron package licenses remain MIT, with matching OCI metadata and preserved third-party

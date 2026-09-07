@@ -10,6 +10,12 @@ inputs:
   report-path:
     description: Registry-owned report paths or globs, separated by newlines.
     required: true
+  artifact-name:
+    description: Immutable caller-provided artifact name including run, attempt and suite identity.
+    required: true
+  retention-days:
+    description: Number of days to retain diagnostics.
+    required: true
 runs:
   using: composite
   steps:
@@ -22,10 +28,10 @@ runs:
       # Still retain process logs if report validation failed during startup/timeout.
       if: ${{ !cancelled() }}
       with:
-        name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-${{ inputs.surface }}-${{ inputs.shard }}
+        name: ${{ inputs.artifact-name }}
         path: |
           ${{ inputs.report-path }}
           dist/.ci/
         include-hidden-files: true
         if-no-files-found: error
-        retention-days: 7
+        retention-days: ${{ inputs.retention-days }}

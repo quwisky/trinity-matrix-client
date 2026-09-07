@@ -98,6 +98,43 @@ describe('runCommand', () => {
 });
 
 describe('runPrerequisites', () => {
+  it('waits for every child after a prerequisite throws', async () => {
+    let finishBuild;
+    let buildFinished = false;
+    const build = new Promise((resolve) => {
+      finishBuild = () => {
+        buildFinished = true;
+        resolve({ label: 'development-build', exitCode: 0 });
+      };
+    });
+    const pending = runPrerequisites({
+      logDir: makeLogDir(),
+      run: async ({ label }) => {
+        if (label === 'playwright-install')
+          throw new Error('installation failed');
+        if (label === 'development-build') return build;
+        return { label, exitCode: 0 };
+      },
+    });
+    expect(buildFinished).toBe(false);
+    finishBuild();
+    const result = await pending;
+    expect(result.exitCode).toBe(1);
+    expect(result.build.exitCode).toBe(0);
+    expect(buildFinished).toBe(true);
+  });
+
+  it('does not invent successful results for omitted prerequisites', async () => {
+    const result = await runPrerequisites({
+      includeDocker: false,
+      buildTarget: null,
+      run: async ({ label }) => ({ label, exitCode: 0 }),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.docker).toBeUndefined();
+    expect(result.build).toBeUndefined();
+  });
+
   it('keeps optional docker failure from masking mandatory failures', async () => {
     const outcomes = await runPrerequisites({
       logDir: makeLogDir(),

@@ -52,6 +52,10 @@ export interface E2ESuiteDefinition {
   readonly prerequisites: readonly E2EPrerequisite[];
   readonly availabilityPolicy: 'required' | 'optional';
   readonly ciTier: E2ECiTier;
+  /** Preparation owned by the reusable browser CI workflow; absent for explicit host jobs. */
+  readonly ciPreparation?:
+    | { readonly buildTarget: `${string}:${string}` }
+    | { readonly renderer: 'verified-production' };
   /** Number of retries permitted for this suite in CI. */
   readonly ciRetries?: number;
   readonly cachePolicy: 'never';

@@ -8,6 +8,7 @@ import {
 export const BROWSER_E2E_SUITES = [
   {
     id: 'browser.canonical',
+    ciPreparation: { buildTarget: 'trinity:build:development' },
     environment: 'browser',
     capabilities: BROWSER_CAPABILITIES,
     contractTypes: BROWSER_CONTRACT_TYPES,
