@@ -70,19 +70,21 @@ unhelpful ciphertext notification. Notification previews and timing still depend
 
 On iOS or Android, open Settings → Notifications → **Push gateway** and enter the gateway URL
 provided by your project or organisation. Use HTTPS unless the gateway is on a trusted local
-network. Leave the App ID blank unless that provider gave you a different value, then select
-**Save** and accept the disclosure.
+network, then select **Save** and accept the disclosure. Trinity selects the platform App ID
+automatically. The default shipped in this build is a placeholder; enter a deployed Trinity
+gateway URL before expecting mobile delivery.
 
 The URL is stored on this device, but saving it registers a pusher for every Trinity account
 signed in on that device. The gateway receives a device delivery token and event metadata; its
 operator can learn which rooms receive activity, when it occurs, and correlate Accounts registered
-through that device. Trinity requests event-reference delivery rather than message text. This is
+through that device. Trinity sends an opaque Account identifier and requests event-reference delivery rather than message text. This is
 ongoing metadata access, not just a registration disclosure; read the displayed trust explanation
 before accepting a provider.
 
 “Registered on N accounts” confirms that homeservers accepted the registrations. It cannot prove
 that APNs or FCM delivered an alert. **Clear** removes this device's pushers before clearing the
-local gateway override, so mobile push stops until a gateway is configured again. Gateway
+local gateway override and remembers that push is disabled, including after restarting.
+Mobile push stays off until a gateway is configured again. Gateway
 deployment and credentials are maintained separately; see
 [push-notification reference](../reference/push-notifications.md).
 

@@ -10,6 +10,10 @@ export type NativePushRegistrationEvent =
   | {
       readonly kind: 'activated';
       readonly data: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly kind: 'received';
+      readonly data: Readonly<Record<string, unknown>>;
     };
 
 /** Platform adapter for the OS token-registration half of Matrix push. */
@@ -49,7 +53,7 @@ export class NativePushRegistrationService {
   /**
    * Own native push callbacks for exactly one Application Runtime session.
    *
-   * Subscription attaches all three listeners and emits `ready` only after their handles
+   * Subscription attaches all four listeners and emits `ready` only after their handles
    * resolve, so the registration command cannot race the token callback. Unsubscription
    * removes only these handles; it never clears another consumer's plugin listeners.
    */
@@ -57,44 +61,84 @@ export class NativePushRegistrationService {
     return new Observable((subscriber) => {
       let active = true;
       const handles: PluginListenerHandle[] = [];
-      const pending = [
-        PushNotifications.addListener('registration', ({ value }) =>
-          subscriber.next({ kind: 'registered', token: value }),
-        ),
-        PushNotifications.addListener('registrationError', ({ error }) =>
-          subscriber.next({ kind: 'registration-failed', message: error }),
-        ),
-        PushNotifications.addListener(
-          'pushNotificationActionPerformed',
-          (action) => {
-            const legacyData = (action as unknown as { data?: unknown }).data;
-            const data = action.notification?.data ?? legacyData;
-            subscriber.next({
-              kind: 'activated',
-              data:
-                data && typeof data === 'object'
-                  ? (data as Readonly<Record<string, unknown>>)
-                  : {},
-            });
+      const removed = new Set<PluginListenerHandle>();
+      const cleanup = (): void => {
+        for (const handle of handles) {
+          if (removed.has(handle)) continue;
+          removed.add(handle);
+          removeListener(handle);
+        }
+      };
+      const track = (
+        pending: Promise<PluginListenerHandle>,
+      ): Promise<PluginListenerHandle> => {
+        void pending.then(
+          (handle) => {
+            if (!active) {
+              removeListener(handle);
+              return;
+            }
+            handles.push(handle);
           },
+          () => undefined,
+        );
+        return pending;
+      };
+      const pending = [
+        track(
+          PushNotifications.addListener('registration', ({ value }) =>
+            subscriber.next({ kind: 'registered', token: value }),
+          ),
+        ),
+        track(
+          PushNotifications.addListener('registrationError', ({ error }) =>
+            subscriber.next({ kind: 'registration-failed', message: error }),
+          ),
+        ),
+        track(
+          PushNotifications.addListener(
+            'pushNotificationActionPerformed',
+            (action) => {
+              const legacyData = (action as unknown as { data?: unknown }).data;
+              const data = action.notification?.data ?? legacyData;
+              subscriber.next({
+                kind: 'activated',
+                data:
+                  data && typeof data === 'object'
+                    ? (data as Readonly<Record<string, unknown>>)
+                    : {},
+              });
+            },
+          ),
+        ),
+        track(
+          PushNotifications.addListener(
+            'pushNotificationReceived',
+            (notification) => {
+              const data = notification.data;
+              subscriber.next({
+                kind: 'received',
+                data:
+                  data && typeof data === 'object'
+                    ? (data as Readonly<Record<string, unknown>>)
+                    : {},
+              });
+            },
+          ),
         ),
       ];
 
       void Promise.allSettled(pending).then((results) => {
-        handles.push(
-          ...results.flatMap((result) =>
-            result.status === 'fulfilled' ? [result.value] : [],
-          ),
-        );
         const rejected = results.find(
           (result): result is PromiseRejectedResult =>
             result.status === 'rejected',
         );
         if (!active) {
-          for (const handle of handles) removeListener(handle);
+          cleanup();
           return;
         }
         if (rejected) {
+          cleanup();
           subscriber.error(rejected.reason);
           return;
         }
@@ -103,7 +147,7 @@ export class NativePushRegistrationService {
 
       return () => {
         active = false;
-        for (const handle of handles) removeListener(handle);
+        cleanup();
       };
     });
   }

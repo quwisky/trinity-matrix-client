@@ -77,28 +77,25 @@ message text.
 
 ### Provision the gateway and native build
 
-1. Deploy a Matrix push gateway and expose its notify endpoint, for example
-   `https://push.example/_matrix/push/v1/notify`. Configure its platform credentials
-   using the gateway's own instructions; [Sygnal's application configuration](https://github.com/matrix-org/sygnal/blob/main/docs/applications.md)
-   describes its FCM and APNs integrations. Platform credentials belong on the
-   gateway, not in Trinity's `PushConfig`.
-2. Select the endpoint in **Settings → Notifications → Push gateway**, or set
-   `environment.push` in the appropriate build environment:
-   [`environment.ts`](../../apps/trinity/src/environments/environment.ts) or
-   [`environment.prod.ts`](../../apps/trinity/src/environments/environment.prod.ts).
-   Both checked-in defaults are `null`. A saved device override takes precedence
-   over the build default; with neither configured, registration is disabled.
-
-   ```ts
-   push: { gatewayUrl: 'https://push.example/_matrix/push/v1/notify' },
-   ```
+1. Deploy the Trinity push gateway and expose its notify endpoint, for example
+   `https://push.example/_matrix/push/v1/notify`. Configure its Firebase and APNs
+   credentials using the gateway's own instructions. Platform credentials belong
+   in native provisioning and on the gateway, not in Trinity's `PushConfig`.
+2. Select the endpoint in **Settings → Notifications → Push gateway**. A saved
+   device override takes precedence over the build default. Both build environments
+   share `DEFAULT_PUSH_GATEWAY_URL` from the internal
+   [`push-client` library](../../libs/util/push-client/src/index.ts); change that one
+   value to ship a real default. The checked-in value is
+   `https://push.example.invalid/_matrix/push/v1/notify`, a nonfunctional placeholder.
+   Settings identifies the placeholder, and successful pusher registration never
+   proves that it can deliver a notification.
 
    [`PushConfig`](../../libs/data-access/notifications/src/lib/push-config.ts)
-   accepts `gatewayUrl` and an optional base `appId`. Omitting `appId` uses
-   `eu.qwky.trinity`. `PushService` appends the platform suffix, so configure the
-   gateway entries as `eu.qwky.trinity.android` and `eu.qwky.trinity.ios`, or the
-   equivalent suffixed names for a custom base ID. The gateway's app key is
-   distinct from the native bundle/package ID, which has no platform suffix.
+   accepts the gateway URL. Trinity chooses the gateway app ID automatically:
+   `ovh.qwky.trinity.android` or `ovh.qwky.trinity.ios`. These gateway IDs are
+   independent of the native package/bundle ID, `eu.qwky.trinity`; do not rename
+   the native app merely to match a gateway entry. Custom gateway app IDs and
+   the legacy `trinity_user_id` payload contract are no longer supported.
 
 3. For Android, register package `eu.qwky.trinity` in the matching Firebase
    project and place its downloaded configuration at
@@ -107,31 +104,53 @@ message text.
    when this nonempty file exists. The manifest already declares
    `POST_NOTIFICATIONS` and the `messages` channel; runtime permission and a
    correctly configured gateway are still required for delivery.
-4. For iOS, provision the App ID and signing profile with Push Notifications
-   enabled, then add that capability to the App target in Xcode as described in
-   [Capacitor's iOS push setup](https://capacitorjs.com/docs/apis/push-notifications#ios).
-   The checked-in project has registration callbacks in
-   [`AppDelegate.swift`](../../ios/App/App/AppDelegate.swift), but no push
-   entitlement; callback code alone does not provision the capability. Configure
-   the gateway with credentials permitted for this bundle and APNs environment.
-   For token authentication, [create an APNs-enabled private key](https://developer.apple.com/help/account/keys/create-a-private-key)
-   and supply its key file, Key ID and Team ID through the gateway's configuration.
-   Do not infer silent background handling from notification registration: the
-   [Capacitor plugin does not implement iOS silent push](https://capacitorjs.com/docs/apis/push-notifications#silent-push-notifications--data-only-notifications).
+4. The Trinity gateway requires an FCM registration token on iOS as well as Android.
+   The current iOS host still forwards an APNs device token, so it cannot yet
+   register a compatible pusher. The iOS integration work must add Firebase
+   Messaging token delivery, a Push Notifications entitlement and the matching
+   Firebase/APNs provisioning. Existing callbacks in
+   [`AppDelegate.swift`](../../ios/App/App/AppDelegate.swift) alone do not establish
+   FCM compatibility or a provisioned push capability.
 5. Rebuild, sync and install the native host with `pnpm android:run`, or
    `pnpm ios:run` on macOS with Xcode and signing configured. These commands own
    the web build and Capacitor sync; see [mobile run and debug guidance](../platforms/mobile.md).
    Verify delivery with an installed native build, a device token and the deployed
    gateway. Browser tests and successful registration do not exercise that path.
 
-### Preserve account attribution
+### Preserve Account attribution
 
-Each pusher includes `data.trinity_user_id` containing its owning Matrix user ID.
-The gateway must forward that exact field into the delivered payload's `data`
-alongside the destination identifiers. Trinity reads `trinity_user_id` when
-admitting a notification activation; a gateway that drops it prevents reliable
-account attribution. Check the gateway's forwarding behavior explicitly rather
-than assuming arbitrary pusher metadata survives delivery.
+Each pusher includes `data.trinity_account_id`, a stable opaque Account Route,
+and `data.trinity_push_version: "1"`, alongside `format: "event_id_only"`.
+The route contains 1–48 base64url characters; it is neither a Matrix user ID nor
+an access token. It is persisted with the saved Account record before the pusher
+is written, survives reauthentication and token changes, and disappears when
+that Account is removed.
+
+The gateway forwards the route in its versioned data payload. Trinity admits
+`schema: "1"` events only after validating their fields and resolving the route
+against saved Accounts. Unknown or ambiguous routes, malformed payloads and
+unsupported versions cannot select the Active Account as a fallback. An event
+needs both a Room ID and event ID; count-only payloads never activate a
+Conversation.
+
+The internal shared library owns the v1 contract, route helpers and registration
+coordination. Matrix writes stay in Notifications data access, persistence stays
+with the Account storage adapter, and host token/presentation APIs stay in platform
+adapters. Application Runtime and Workspace retain activation authority.
+
+### Android foreground delivery
+
+Android receives data-only gateway messages. While Trinity is running, its native
+listener forwards those messages into the same notification policy and duplicate
+ledger used by live Matrix events. The mobile gateway path presents generic copy;
+it does not need plaintext from the gateway or native background decryption. The
+focused Conversation remains suppressed, and a push followed by Matrix sync (or
+the reverse) cannot create a second alert for the same Account and event.
+
+A tap opens the owning Account and Conversation through the ordinary Workspace
+readiness path. Background or process-absent Android delivery requires additional
+native handling; a JavaScript listener does not establish that capability. iOS FCM
+delivery and platform badge/count handling are separate implementation slices.
 
 ### Registration lifetime
 
@@ -162,9 +181,8 @@ homeserver in pusher metadata. The user-facing settings flow validates and
 explains it in [Control notifications](../users/notifications.md#configure-mobile-push-carefully).
 
 Treat the gateway as a metadata boundary. Its shared device token can correlate
-the installation's account pushers, and the pusher owner tag can identify an
-account when forwarded for activation. `event_id_only` excludes message text,
-but it does not make room/event identifiers, unread counts, priority, or account
+the installation's account pushers, and the opaque route distinguishes an Account across its deliveries. `event_id_only` excludes message text,
+but it does not make room/event identifiers, unread counts, priority, or Account
 metadata private from the gateway operator.
 
 ## Keep a gateway migration recoverable
@@ -178,7 +196,11 @@ registration; setting first would leave the old gateway receiving events.
 
 The ledger advances only after every account succeeds. Clearing a gateway must
 therefore unregister first, while the ledger still identifies every app ID to
-remove. The service attempts a pusher readback for the app-ID/token identity. A
+remove. Clear persists a disabled choice, so the shipped default cannot silently
+re-enable push after restart. Configuration export represents that choice as
+`{ "disabled": true }`; `null` restores the build default.
+
+The service attempts a pusher readback for the app-ID/token identity. A
 definitive missing tuple changes registration to an error; a failed readback is
 inconclusive and preserves the applied result. Neither result proves a gateway
 or platform service delivered an alert.

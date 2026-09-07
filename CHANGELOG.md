@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Internal shared Trinity push client library with opaque Account routes, version-one
+  gateway registration and Android foreground generic alerts that open the owning
+  Conversation without duplicate sync notifications. Native background Android and
+  iOS FCM delivery remain separate work.
+
 - MIT license for Trinity, with license metadata in the application and desktop
   package manifests and links from the README and contributor guide.
 
@@ -17,6 +22,10 @@ All notable changes to this project are documented here. The format is based on
   Shared Settings frames also return to side-by-side panes when a compact window is widened.
 
 ### Changed
+
+- Mobile push settings use Trinity's fixed platform gateway App IDs and one easily
+  changed build default. The shipped default is an explicitly labeled placeholder;
+  a device URL override is still available for a deployed gateway.
 
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory

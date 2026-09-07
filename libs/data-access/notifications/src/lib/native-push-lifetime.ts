@@ -98,8 +98,7 @@ export class NativePushLifetime {
         ownsListener = true;
         let released = false;
         const owned = this.push.run().subscribe({
-          next: (destination) =>
-            subscriber.next({ kind: 'activated', destination }),
+          next: (event) => subscriber.next(event),
           error: () => {
             released = true;
             release();

@@ -1,6 +1,7 @@
 import { signal, type WritableSignal } from '@angular/core';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { render } from '@trinity/testing';
+import { DEFAULT_PUSH_GATEWAY_URL } from '@trinity/util/push-client';
 import { MockProvider } from 'ng-mocks';
 import { of } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -13,7 +14,8 @@ import { PushGatewayBlockComponent } from './push-gateway-block.component';
 
 interface Stub {
   supported: boolean;
-  override: { gatewayUrl: string; appId?: string } | null;
+  override: { gatewayUrl: string } | null;
+  fallback: { gatewayUrl: string } | null;
   registration: PushRegistrationState;
   confirm: boolean;
 }
@@ -30,6 +32,7 @@ function providers(overrides: Partial<Stub> = {}) {
   const stub: Stub = {
     supported: true,
     override: null,
+    fallback: null,
     registration: { status: 'idle' },
     confirm: true,
     ...overrides,
@@ -44,6 +47,7 @@ function providers(overrides: Partial<Stub> = {}) {
     MockProvider(PushGatewayService, {
       supported: signal(stub.supported).asReadonly(),
       override: signal(stub.override).asReadonly(),
+      effective: signal(stub.override ?? stub.fallback).asReadonly(),
       save: saveSpy,
       clear: clearSpy,
     }),
@@ -84,10 +88,32 @@ describe('PushGatewayBlockComponent', () => {
     ).not.toBeNull();
   });
 
+  it('shows the placeholder default and asks for a deployed gateway', async () => {
+    const { container } = await render(PushGatewayBlockComponent, {
+      providers: providers({
+        fallback: { gatewayUrl: DEFAULT_PUSH_GATEWAY_URL },
+      }),
+    });
+    expect(
+      container.querySelector<HTMLInputElement>(
+        '[data-testid=push-gateway-url]',
+      )?.value,
+    ).toBe(DEFAULT_PUSH_GATEWAY_URL);
+    expect(
+      container.querySelector('[data-testid=push-gateway-placeholder]')
+        ?.textContent,
+    ).toContain('Enter your deployed Trinity');
+    expect(
+      container.querySelector<HTMLButtonElement>(
+        '[data-testid=push-gateway-save]',
+      )?.disabled,
+    ).toBe(true);
+  });
+
   it('seeds the fields from a stored override', async () => {
     const { container } = await render(PushGatewayBlockComponent, {
       providers: providers({
-        override: { gatewayUrl: NOTIFY, appId: 'org.example.gw' },
+        override: { gatewayUrl: NOTIFY },
       }),
     });
 
@@ -95,33 +121,15 @@ describe('PushGatewayBlockComponent', () => {
       '[data-testid=push-gateway-url]',
     );
     expect(url?.value).toBe(NOTIFY);
-    // A stored app id opens the advanced section and prefills it.
-    const appId = container.querySelector<HTMLInputElement>(
-      '[data-testid=push-gateway-appid]',
-    );
-    expect(appId?.value).toBe('org.example.gw');
-  });
-
-  it('hides the app id behind the advanced toggle until revealed', async () => {
-    const { fixture, container } = await render(PushGatewayBlockComponent, {
-      providers: providers(),
-    });
     expect(
       container.querySelector('[data-testid=push-gateway-appid]'),
     ).toBeNull();
-
-    fixture.componentInstance.toggleAdvanced();
-    fixture.detectChanges();
-
-    expect(
-      container.querySelector('[data-testid=push-gateway-appid]'),
-    ).not.toBeNull();
   });
 
   it('clears the drafts after a clear', async () => {
     const { fixture } = await render(PushGatewayBlockComponent, {
       providers: providers({
-        override: { gatewayUrl: NOTIFY, appId: 'org.example.gw' },
+        override: { gatewayUrl: NOTIFY },
       }),
     });
     const cmp = fixture.componentInstance;
@@ -130,7 +138,6 @@ describe('PushGatewayBlockComponent', () => {
     cmp.clear();
 
     await vi.waitFor(() => expect(cmp.urlDraft()).toBe(''));
-    expect(cmp.appIdDraft()).toBe('');
   });
 
   it('disables Save until a valid, changed URL is entered', async () => {
@@ -203,9 +210,7 @@ describe('PushGatewayBlockComponent', () => {
 
     await fixture.componentInstance.save();
 
-    await vi.waitFor(() =>
-      expect(saveSpy).toHaveBeenCalledWith(NOTIFY, undefined),
-    );
+    await vi.waitFor(() => expect(saveSpy).toHaveBeenCalledWith(NOTIFY));
     expect(registerSpy).toHaveBeenCalled();
   });
 
@@ -219,20 +224,6 @@ describe('PushGatewayBlockComponent', () => {
 
     expect(saveSpy).not.toHaveBeenCalled();
     expect(registerSpy).not.toHaveBeenCalled();
-  });
-
-  it('passes the advanced app id through when set', async () => {
-    const { fixture } = await render(PushGatewayBlockComponent, {
-      providers: providers({ confirm: true }),
-    });
-    fixture.componentInstance.urlDraft.set(NOTIFY);
-    fixture.componentInstance.appIdDraft.set('org.example.gw');
-
-    await fixture.componentInstance.save();
-
-    await vi.waitFor(() =>
-      expect(saveSpy).toHaveBeenCalledWith(NOTIFY, 'org.example.gw'),
-    );
   });
 
   it('tears pushers down before clearing the stored gateway', async () => {
@@ -251,13 +242,24 @@ describe('PushGatewayBlockComponent', () => {
     );
   });
 
-  it('hides Clear when no override is stored', async () => {
+  it('hides Clear when no gateway is configured', async () => {
     const { container } = await render(PushGatewayBlockComponent, {
       providers: providers({ override: null }),
     });
     expect(
       container.querySelector('[data-testid=push-gateway-clear]'),
     ).toBeNull();
+  });
+
+  it('offers Clear for a build default', async () => {
+    const { container } = await render(PushGatewayBlockComponent, {
+      providers: providers({
+        fallback: { gatewayUrl: DEFAULT_PUSH_GATEWAY_URL },
+      }),
+    });
+    expect(
+      container.querySelector('[data-testid=push-gateway-clear]'),
+    ).not.toBeNull();
   });
 
   it('offers Clear when an override is stored', async () => {

@@ -254,6 +254,7 @@ export default defineConfig([
       // sanctioned exception that models the SDK's own types, so a directory-wide glob here
       // would ban the one library that has to import it.
       'libs/util/ui/**/*.ts',
+      'libs/util/push-client/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': [

@@ -27,7 +27,10 @@ describe('PushGatewayTrustDialogComponent', () => {
     const { container } = await setup(HTTPS);
 
     expect(container.textContent).toContain('push.example.org');
-    expect(container.textContent).toContain('your Matrix ID');
+    expect(container.textContent).toContain(
+      'an opaque identifier for each account',
+    );
+    expect(container.textContent).not.toContain('your Matrix ID');
     // The reassurance half must be present too, not just the scary half.
     expect(container.textContent).toContain('not');
     expect(container.textContent?.toLowerCase()).toContain('never its content');

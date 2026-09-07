@@ -15,21 +15,11 @@ import { InjectionToken } from '@angular/core';
 export interface PushConfig {
   /** The gateway's notify endpoint, e.g. `https://push.example/_matrix/push/v1/notify`. */
   gatewayUrl: string;
-  /**
-   * Base app id the gateway keys its credentials by. Optional: omit it and
-   * {@link DEFAULT_APP_ID} — the app's own bundle id — is used, which is what a gateway
-   * following the setup in docs/reference/push-notifications.md expects. Only set it for a gateway that
-   * registered this app under some other key.
-   */
-  appId?: string;
 }
 
 /**
- * Fallback base app id: the application identifier itself, kept in step with
- * `capacitor.config.ts`, `android/app/build.gradle` (`applicationId`) and the Xcode
- * `PRODUCT_BUNDLE_IDENTIFIER` — all three are `eu.qwky.trinity`. APNs binds its auth key
- * to the bundle id and FCM to the sender project, so a gateway that can physically
- * deliver to this build is almost always keyed by this id.
+ * Legacy base app id retained in the applied-id ledger so upgrades can remove old
+ * pushers. New registrations use the fixed gateway app IDs from the shared push client.
  */
 export const DEFAULT_APP_ID = 'eu.qwky.trinity';
 

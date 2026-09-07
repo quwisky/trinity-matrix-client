@@ -1,0 +1,16 @@
+{
+  "name": "util-push-client",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/util/push-client/src",
+  "projectType": "library",
+  "tags": [
+    "type:util",
+    "scope:shared",
+    "role:kernel",
+    "capability:notifications"
+  ],
+  "targets": {
+    "test": {},
+    "typecheck": {}
+  }
+}

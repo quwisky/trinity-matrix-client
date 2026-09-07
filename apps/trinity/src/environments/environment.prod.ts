@@ -1,6 +1,9 @@
+import { DEFAULT_PUSH_GATEWAY_URL } from '@trinity/util/push-client';
+
 export const environment = {
   production: true,
-  // See environment.ts. Set `gatewayUrl` to enable native push in production builds;
-  // `appId` is optional (defaults to the bundle id).
-  push: null as { gatewayUrl: string; appId?: string } | null,
+  // Replace the shared DEFAULT_PUSH_GATEWAY_URL for a deployed Trinity gateway.
+  // The shipped .invalid placeholder cannot deliver notifications. A saved device
+  // override takes precedence; platform credentials belong in native/gateway setup.
+  push: { gatewayUrl: DEFAULT_PUSH_GATEWAY_URL },
 };

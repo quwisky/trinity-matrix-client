@@ -1,12 +1,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_APP_ID, PUSH_CONFIG, type PushConfig } from './push-config';
+import { PUSH_CONFIG, type PushConfig } from './push-config';
 import { PushGatewayService } from './push-gateway.service';
 import { PushService } from './push.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { SessionStorageService } from '@trinity/platform-native';
 
 // Shared, mutable mock state — hoisted so the vi.mock factories can close over it.
 const h = vi.hoisted(() => {
@@ -60,7 +61,6 @@ vi.mock('@capacitor/preferences', () => ({
 
 const CONFIG: PushConfig = {
   gatewayUrl: 'https://push.example/_matrix/push/v1/notify',
-  appId: 'eu.qwky.trinity',
 };
 
 /**
@@ -124,6 +124,22 @@ function setup(
           ),
         clientFor: (id: string) => (clients.get(id) as never) ?? null,
       }),
+      MockProvider(SessionStorageService, {
+        ensurePushAccountRoutes: () =>
+          of(
+            [...clients.keys()].map((accountId) => ({
+              accountId,
+              route: `route-${accountId.slice(1, 3)}`,
+            })),
+          ),
+        getPushAccountRoutes: () =>
+          of(
+            [...clients.keys()].map((accountId) => ({
+              accountId,
+              route: `route-${accountId.slice(1, 3)}`,
+            })),
+          ),
+      }),
       {
         provide: PUSH_CONFIG,
         useValue: 'config' in opts ? opts.config : CONFIG,
@@ -171,7 +187,7 @@ describe('PushService', () => {
 
     expect(client.setPusher).toHaveBeenCalledWith(
       expect.objectContaining({
-        app_id: 'eu.qwky.trinity.ios',
+        app_id: 'ovh.qwky.trinity.ios',
         pushkey: 'TOKEN123',
         kind: 'http',
         // Must be true: all accounts share one device token, so `false` would make
@@ -182,13 +198,14 @@ describe('PushService', () => {
         data: {
           url: CONFIG.gatewayUrl,
           format: 'event_id_only',
-          trinity_user_id: '@me:hs',
+          trinity_account_id: 'route-me',
+          trinity_push_version: '1',
         },
       }),
     );
   });
 
-  it('registers a pusher on every account, each tagged by its user id', async () => {
+  it('registers a pusher on every account, each tagged by its opaque route', async () => {
     const { clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
     const svc = TestBed.inject(PushService);
 
@@ -200,7 +217,9 @@ describe('PushService', () => {
       expect(client.setPusher).toHaveBeenCalledWith(
         expect.objectContaining({
           pushkey: 'TOKEN123',
-          data: expect.objectContaining({ trinity_user_id: userId }),
+          data: expect.objectContaining({
+            trinity_account_id: `route-${userId.slice(1, 3)}`,
+          }),
         }),
       );
     }
@@ -271,7 +290,7 @@ describe('PushService', () => {
 
       expect(client.setPusher).toHaveBeenCalledWith(
         expect.objectContaining({
-          app_id: `${DEFAULT_APP_ID}.ios`,
+          app_id: 'ovh.qwky.trinity.ios',
           data: expect.objectContaining({
             url: 'https://mine.example/_matrix/push/v1/notify',
           }),
@@ -318,7 +337,7 @@ describe('PushService', () => {
         'old.app.id.ios',
       );
       expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ app_id: 'new.app.id.ios' }),
+        expect.objectContaining({ app_id: 'ovh.qwky.trinity.ios' }),
       );
       // Order matters: the delete must precede the set, else a crash between them
       // leaves the old gateway live.
@@ -327,7 +346,7 @@ describe('PushService', () => {
       expect(removeOrder).toBeLessThan(setOrder);
     });
 
-    it('does not remove anything when the app id is unchanged', async () => {
+    it('removes a legacy app id while adopting the fixed Trinity app id', async () => {
       const { svc, client } = setup({ config: null });
       await withOverride(svc, {
         gatewayUrl: 'https://mine.example/_matrix/push/v1/notify',
@@ -339,9 +358,12 @@ describe('PushService', () => {
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
 
-      expect(client.removePusher).not.toHaveBeenCalled();
+      expect(client.removePusher).toHaveBeenCalledWith(
+        'TOKEN123',
+        'same.app.id.ios',
+      );
       expect(client.setPusher).toHaveBeenCalledWith(
-        expect.objectContaining({ app_id: 'same.app.id.ios' }),
+        expect.objectContaining({ app_id: 'ovh.qwky.trinity.ios' }),
       );
     });
 
@@ -357,7 +379,7 @@ describe('PushService', () => {
       await flush();
 
       expect(TestBed.inject(PushGatewayService).appliedAppId()).toBe(
-        'new.app.id',
+        'ovh.qwky.trinity.ios',
       );
     });
 
@@ -580,7 +602,7 @@ describe('PushService', () => {
     expect(clients.get('@me:hs')!.setPusher).toHaveBeenCalled();
     expect(clients.get('@alt:hs')!.setPusher).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ trinity_user_id: '@alt:hs' }),
+        data: expect.objectContaining({ trinity_account_id: 'route-al' }),
       }),
     );
   });
@@ -598,7 +620,7 @@ describe('PushService', () => {
     await flush();
 
     expect(clients.get('@me:hs')!.setPusher).toHaveBeenCalledWith(
-      expect.objectContaining({ app_id: `${DEFAULT_APP_ID}.ios` }),
+      expect.objectContaining({ app_id: 'ovh.qwky.trinity.ios' }),
     );
     const [[sent]] = clients.get('@me:hs')!.setPusher.mock.calls;
     expect(sent.app_id).not.toContain('undefined');
@@ -623,13 +645,31 @@ describe('PushService', () => {
     }
   });
 
+  it('does not report registration success when only an unrelated saved Account has a route', async () => {
+    const { svc, client } = setup();
+    vi.spyOn(
+      TestBed.inject(SessionStorageService),
+      'ensurePushAccountRoutes',
+    ).mockReturnValue(
+      of([{ accountId: '@saved-but-inactive:hs', route: 'saved-route' }]),
+    );
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    expect(client.setPusher).not.toHaveBeenCalled();
+    expect(svc.registration()).toMatchObject({
+      status: 'error',
+      message: 'Push account routes could not be established.',
+    });
+  });
+
   it('opens the app when a notification is tapped', async () => {
     const { svc, activations } = setup();
     await firstValueFrom(svc.register());
 
     h.listeners['pushNotificationActionPerformed']({});
 
-    expect(activations).toEqual([{}]);
+    expect(activations).toEqual([]);
   });
 
   it('switches to the tagged account and opens the room on tap', async () => {
@@ -638,19 +678,33 @@ describe('PushService', () => {
       active: '@me:hs',
     });
     await firstValueFrom(svc.register());
+    await flush();
 
     h.listeners['pushNotificationActionPerformed']({
       notification: {
         data: {
-          trinity_user_id: '@alt:hs',
+          trinity_account_id: 'route-al',
           room_id: '!r:hs',
           event_id: '$event',
+          schema: '1',
+          kind: 'event',
+          unread: '1',
+          missed_calls: '0',
+          sound: 'true',
         },
       },
     });
+    await flush();
 
     expect(activations).toEqual([
-      { accountId: '@alt:hs', roomId: '!r:hs', eventId: '$event' },
+      {
+        kind: 'activated',
+        destination: {
+          accountId: '@alt:hs',
+          roomId: '!r:hs',
+          eventId: '$event',
+        },
+      },
     ]);
   });
 
@@ -660,20 +714,133 @@ describe('PushService', () => {
       active: '@me:hs',
     });
     await firstValueFrom(svc.register());
+    await flush();
 
     // Tagged with an account signed out since delivery — not in accountIds().
     h.listeners['pushNotificationActionPerformed']({
-      notification: { data: { trinity_user_id: '@gone:hs', room_id: '!a:hs' } },
+      notification: {
+        data: {
+          trinity_account_id: 'route-gone',
+          room_id: '!a:hs',
+          schema: '1',
+          kind: 'event',
+          event_id: '$a',
+          unread: '1',
+          missed_calls: '0',
+          sound: 'true',
+        },
+      },
     });
+    await flush();
     // Tagged with the account that is already active — no redundant switch.
     h.listeners['pushNotificationActionPerformed']({
-      notification: { data: { trinity_user_id: '@me:hs', room_id: '!b:hs' } },
+      notification: {
+        data: {
+          trinity_account_id: 'route-me',
+          room_id: '!b:hs',
+          schema: '1',
+          kind: 'event',
+          event_id: '$b',
+          unread: '1',
+          missed_calls: '0',
+          sound: 'true',
+        },
+      },
     });
+    await flush();
 
     expect(activations).toEqual([
-      { roomId: '!a:hs' },
-      { accountId: '@me:hs', roomId: '!b:hs' },
+      {
+        kind: 'activated',
+        destination: { accountId: '@me:hs', roomId: '!b:hs', eventId: '$b' },
+      },
     ]);
+  });
+
+  it('keeps identical Room/event taps isolated by their saved Account routes', async () => {
+    const { svc, activations } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+    await firstValueFrom(svc.register());
+    for (const route of ['route-me', 'route-al']) {
+      h.listeners['pushNotificationActionPerformed']({
+        notification: {
+          data: {
+            schema: '1',
+            kind: 'event',
+            trinity_account_id: route,
+            room_id: '!same:hs',
+            event_id: '$same',
+            unread: '1',
+            missed_calls: '0',
+            sound: 'false',
+          },
+        },
+      });
+    }
+    await flush();
+    expect(activations).toEqual(
+      ['@me:hs', '@alt:hs'].map((accountId) => ({
+        kind: 'activated',
+        destination: { accountId, roomId: '!same:hs', eventId: '$same' },
+      })),
+    );
+  });
+
+  it.each([
+    { schema: '2' },
+    { kind: 'counts' },
+    { room_id: '' },
+    { event_id: '' },
+    { unread: '-1' },
+    { trinity_account_id: 'unknown-route' },
+  ])('rejects a tap with invalid destination data %j', async (invalid) => {
+    const { svc, activations } = setup();
+    await firstValueFrom(svc.register());
+    h.listeners['pushNotificationActionPerformed']({
+      notification: {
+        data: {
+          schema: '1',
+          kind: 'event',
+          trinity_account_id: 'route-me',
+          room_id: '!r:hs',
+          event_id: '$event',
+          unread: '1',
+          missed_calls: '0',
+          sound: 'false',
+          ...invalid,
+        },
+      },
+    });
+    await flush();
+    expect(activations).toEqual([]);
+  });
+
+  it('waits for an in-flight registration before Clear and rejects a late token', async () => {
+    const { svc, client } = setup();
+    const gateway = TestBed.inject(PushGatewayService);
+    await firstValueFrom(svc.register());
+    const write = client.setPusher.getMockImplementation()!;
+    let finishRegistration!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      finishRegistration = resolve;
+    });
+    client.setPusher.mockImplementationOnce(async (pusher) => {
+      await barrier;
+      return write(pusher);
+    });
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await vi.waitFor(() => expect(client.setPusher).toHaveBeenCalledOnce());
+    const clear = firstValueFrom(svc.unregister()).then(() => gateway.clear());
+    expect(client.removePusher).not.toHaveBeenCalled();
+    finishRegistration();
+    await clear;
+    expect((await client.getPushers()).pushers).toEqual([]);
+    expect(gateway.effective()).toBeNull();
+    expect(svc.registration().status).toBe('idle');
+    h.listeners['registration']({ value: 'LATE_TOKEN' });
+    await flush();
+    expect(client.setPusher).toHaveBeenCalledOnce();
+    expect((await client.getPushers()).pushers).toEqual([]);
+    expect(svc.registration().status).toBe('idle');
   });
 
   it('deletes every account pusher while session teardown owns the listeners', async () => {
@@ -689,7 +856,7 @@ describe('PushService', () => {
     for (const [, client] of clients) {
       expect(client.removePusher).toHaveBeenCalledWith(
         'TOKEN123',
-        'eu.qwky.trinity.ios',
+        'ovh.qwky.trinity.ios',
       );
     }
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
@@ -713,10 +880,38 @@ describe('PushService', () => {
 
     expect(clients.get('@alt:hs')!.removePusher).toHaveBeenCalledWith(
       'TOKEN123',
-      'eu.qwky.trinity.ios',
+      'ovh.qwky.trinity.ios',
     );
     expect(clients.get('@me:hs')!.removePusher).not.toHaveBeenCalled();
     // A single-account teardown must NOT detach the shared listeners.
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
+  });
+
+  it('does not re-add a signing-out account when a token arrives during removal', async () => {
+    const { svc, client } = setup();
+    await firstValueFrom(svc.register());
+    h.listeners['registration']({ value: 'TOKEN123' });
+    await flush();
+    client.setPusher.mockClear();
+
+    let finishRemoval!: () => void;
+    client.removePusher.mockImplementation(
+      () => new Promise((resolve) => (finishRemoval = () => resolve({}))),
+    );
+    const removal = firstValueFrom(svc.unregister('@me:hs'));
+
+    // Native token refresh can race with account cleanup. The queued refresh must
+    // observe the account's exact client lifetime as removed and skip re-registration.
+    h.listeners['registration']({ value: 'TOKEN456' });
+    await flush();
+    expect(client.setPusher).not.toHaveBeenCalled();
+
+    finishRemoval();
+    await removal;
+    await flush();
+    expect(client.setPusher).not.toHaveBeenCalledWith(
+      expect.objectContaining({ pushkey: 'TOKEN456' }),
+    );
+    expect(svc.registration().status).not.toBe('error');
   });
 });
