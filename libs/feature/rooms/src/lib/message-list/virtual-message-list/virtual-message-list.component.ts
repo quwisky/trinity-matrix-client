@@ -191,6 +191,8 @@ export class VirtualMessageListComponent extends MessageListBase {
 
     effect(() => {
       const msgs = this.messages();
+      // The delayed loading strip changes row geometry before history arrives too.
+      this.showLoadingOlder();
       const el = this.scrollEl()?.nativeElement;
       if (!el) {
         return;
@@ -198,7 +200,8 @@ export class VirtualMessageListComponent extends MessageListBase {
 
       if (this.pendingPrepend) {
         // Keep the viewport anchored on what the user was reading.
-        this.pendingPrepend = false;
+        // Keep the same restore point through the loading strip and the final prepend.
+        this.pendingPrepend = this.loadingOlder();
         this.lastId = msgs[msgs.length - 1]?.id ?? this.lastId;
         const prevHeight = this.prevScrollHeight;
         const prevTop = this.prevScrollTop;
@@ -206,19 +209,23 @@ export class VirtualMessageListComponent extends MessageListBase {
         const anchorOffset = this.prependAnchorOffset;
         const anchorGeneration = this.prependAnchorGeneration;
         this.prependAnchorActive = true;
-        requestAnimationFrame(() => {
-          if (this.destroyRef.destroyed) {
-            return;
-          }
-          this.restorePrependAnchor(
-            el,
-            anchorId,
-            anchorOffset,
-            prevHeight,
-            prevTop,
-            anchorGeneration,
-          );
-        });
+        // Correct as soon as the strip/prepend renders, before another scroll event
+        // can capture its displaced geometry as the reader's intended position.
+        untracked(() =>
+          afterNextRender(
+            () => {
+              this.restorePrependAnchor(
+                el,
+                anchorId,
+                anchorOffset,
+                prevHeight,
+                prevTop,
+                anchorGeneration,
+              );
+            },
+            { injector: this.injector },
+          ),
+        );
         return;
       }
 

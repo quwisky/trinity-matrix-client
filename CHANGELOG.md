@@ -18,6 +18,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Keep the timeline's reading position steady when the older-history loading indicator
+  appears, including Android, and preserve that position when the messages arrive.
+
 - Make the CI process-cleanup test wait for its child to be ready before checking
   forced termination, so slower startup cannot cause a false failure.
 

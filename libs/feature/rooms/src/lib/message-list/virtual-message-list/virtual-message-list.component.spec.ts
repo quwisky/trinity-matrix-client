@@ -665,9 +665,9 @@ describe('VirtualMessageListComponent', () => {
     });
   });
 
-  // Anchoring / backfill / prepend-restore are deferred into requestAnimationFrame;
-  // run it synchronously (like the plain component's backfill test) to exercise them.
-  describe('anchoring (rAF synchronous)', () => {
+  // Backfill and row-measurement corrections use animation frames; run those
+  // synchronously. Prepend restoration runs after the fixture renders.
+  describe('anchoring', () => {
     beforeEach(() =>
       vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
         cb(0);
@@ -787,7 +787,7 @@ describe('VirtualMessageListComponent', () => {
         ),
         ...many(30),
       ]);
-      fixture.detectChanges(); // prepend branch → rAF (sync) → offset-anchor restore
+      fixture.detectChanges(); // render the prepend, then restore the anchor
 
       // Preserve the new 20px viewport offset: previous 120 + real prepend height 110.
       expect(st).toBe(230);
@@ -885,11 +885,6 @@ describe('VirtualMessageListComponent', () => {
 
       fixture.componentRef.setInput('canLoadOlder', true);
       fixture.detectChanges();
-      const restoreFrames: FrameRequestCallback[] = [];
-      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-        restoreFrames.push(cb);
-        return restoreFrames.length;
-      });
       cmp.onScroll(); // captures $5, then asks for history
       expect(
         (cmp as unknown as { prependAnchorId: string }).prependAnchorId,
@@ -905,12 +900,6 @@ describe('VirtualMessageListComponent', () => {
         ...many(120),
       ]);
       fixture.detectChanges();
-      expect(restoreFrames).not.toHaveLength(0);
-      for (const frame of restoreFrames) {
-        frame(0);
-      }
-
-      expect(scroll.querySelector('[data-mid="$5"]')).toBeNull();
       expect(st).toBe(35 * EST - 40);
     });
   });

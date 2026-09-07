@@ -155,19 +155,6 @@ test.describe('Timeline anchoring', () => {
         };
       }, position);
 
-      // Let the scroll event transfer the in-flight restore point before history arrives.
-      await page.evaluate(
-        () =>
-          new Promise<void>((resolve) => {
-            requestAnimationFrame(() => resolve());
-          }),
-      );
-      releaseHistory();
-
-      // Wait for the backfill to land.
-      await expect.poll(rowCount, { timeout: 30_000 }).toBeGreaterThan(before);
-      const settledCount = await rowCount();
-
       /** The same message's position, once everything has settled. */
       const offsetOf = (id: string) =>
         page.evaluate((mid) => {
@@ -183,6 +170,30 @@ test.describe('Timeline anchoring', () => {
               scroller.getBoundingClientRect().top,
           );
         }, id);
+
+      // Let the scroll event transfer the in-flight restore point before history arrives.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          }),
+      );
+      // Keep the request in flight long enough for the delayed loading strip to appear.
+      // Its insertion must preserve the reader just as the eventual prepend does.
+      await expect(page.locator('.load-older')).toBeVisible();
+      const loadingOffset = await offsetOf(anchor.id);
+      if (loadingOffset === null) {
+        throw new Error('the anchored message left the DOM while loading');
+      }
+      expect(
+        Math.abs(loadingOffset - anchor.top),
+        'showing the history loading indicator moved the anchored message',
+      ).toBeLessThan(8);
+      releaseHistory();
+
+      // Wait for the backfill to land.
+      await expect.poll(rowCount, { timeout: 30_000 }).toBeGreaterThan(before);
+      const settledCount = await rowCount();
 
       await page.waitForTimeout(1500);
       expect(
