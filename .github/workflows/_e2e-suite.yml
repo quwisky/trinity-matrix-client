@@ -108,11 +108,16 @@ jobs:
       - name: Probe 582 remove styling reports
         if: ${{ inputs.suite-id == 'components.styling' && !cancelled() }}
         shell: bash
+        env:
+          CI_REPORT_PATH: ${{ steps.plan.outputs.report-path }}
         run: |
-          report_root="$(find dist/.playwright/trinity-e2e-components -type d -name components.styling -print -quit)"
-          test -n "$report_root"
-          test -d "$report_root"
-          rm -rf "$report_root"
+          node --input-type=module <<'JS'
+          import { globSync, rmSync } from 'node:fs';
+          const roots = globSync(process.env.CI_REPORT_PATH.replace(/\/\*\*$/, ''));
+          if (roots.length !== 1) throw new Error(`Expected one suite report root, got ${roots.length}`);
+          console.log(`probe-582: removing completed suite reports from ${roots[0]}`);
+          rmSync(roots[0], { recursive: true });
+          JS
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.suite.outputs.started == 'true' }}
         with:
