@@ -9,6 +9,9 @@ const h = vi.hoisted(() => {
   return {
     platform: 'ios',
     available: true,
+    androidRegistration: {
+      register: vi.fn(async () => undefined),
+    },
     rejectRemoval: false,
     listeners,
     handles,
@@ -38,6 +41,7 @@ vi.mock('@capacitor/core', () => ({
     getPlatform: () => h.platform,
     isPluginAvailable: () => h.available,
   },
+  registerPlugin: () => h.androidRegistration,
 }));
 vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: h.push }));
 
@@ -47,6 +51,8 @@ describe('NativePushRegistrationService', () => {
     h.platform = 'ios';
     h.available = true;
     h.rejectRemoval = false;
+    h.androidRegistration.register.mockReset();
+    h.androidRegistration.register.mockResolvedValue(undefined);
     for (const key of Object.keys(h.listeners)) delete h.listeners[key];
     h.handles.length = 0;
     vi.clearAllMocks();
@@ -68,6 +74,31 @@ describe('NativePushRegistrationService', () => {
     expect(h.push.createChannel).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'messages' }),
     );
+  });
+
+  it('uses the Android companion while preserving the iOS push plugin', async () => {
+    const service = TestBed.inject(NativePushRegistrationService);
+    await firstValueFrom(service.register());
+    expect(h.push.register).toHaveBeenCalledOnce();
+    expect(h.androidRegistration.register).not.toHaveBeenCalled();
+
+    h.platform = 'android';
+    TestBed.resetTestingModule();
+    await firstValueFrom(
+      TestBed.inject(NativePushRegistrationService).register(),
+    );
+    expect(h.androidRegistration.register).toHaveBeenCalledOnce();
+  });
+
+  it('surfaces a missing Android companion as a rejected registration', async () => {
+    h.platform = 'android';
+    h.androidRegistration.register.mockRejectedValue(
+      new Error('Push notifications are not configured for this Android build'),
+    );
+
+    await expect(
+      firstValueFrom(TestBed.inject(NativePushRegistrationService).register()),
+    ).rejects.toThrow('not configured');
   });
 
   it('normalizes callbacks and owns listener teardown for one subscription', async () => {

@@ -1167,6 +1167,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Android builds without Firebase configuration now report push registration as
+  unavailable instead of crashing after notification permission is granted or the
+  app process restarts.
+
 - Thread connectors reach the group's existing avatar through intervening messages,
   tall images, earlier thread previews, and unread markers without repeating the avatar.
 

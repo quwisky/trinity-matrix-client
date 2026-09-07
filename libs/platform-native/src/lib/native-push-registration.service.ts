@@ -1,5 +1,9 @@
 import { Injectable } from '@angular/core';
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import {
+  Capacitor,
+  registerPlugin,
+  type PluginListenerHandle,
+} from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Observable, defer, from, map, of } from 'rxjs';
 
@@ -15,6 +19,14 @@ export type NativePushRegistrationEvent =
       readonly kind: 'received';
       readonly data: Readonly<Record<string, unknown>>;
     };
+
+interface AndroidPushRegistrationPlugin {
+  register(): Promise<void>;
+}
+
+const androidPushRegistration = registerPlugin<AndroidPushRegistrationPlugin>(
+  'TrinityPushRegistration',
+);
 
 /** Platform adapter for the OS token-registration half of Matrix push. */
 @Injectable({ providedIn: 'root' })
@@ -153,7 +165,13 @@ export class NativePushRegistrationService {
   }
 
   register(): Observable<void> {
-    return defer(() => from(PushNotifications.register()));
+    return defer(() =>
+      from(
+        this.platform === 'android'
+          ? androidPushRegistration.register()
+          : PushNotifications.register(),
+      ),
+    );
   }
 }
 

@@ -15,6 +15,7 @@ const h = vi.hoisted(() => {
   const handles: { remove: ReturnType<typeof vi.fn> }[] = [];
   const state = { platform: 'ios', permission: 'granted' as string };
   const prefs = new Map<string, string>();
+  const androidRegistration = { register: vi.fn(async () => undefined) };
   const push = {
     requestPermissions: vi.fn(async () => ({ receive: state.permission })),
     register: vi.fn(async () => undefined),
@@ -27,11 +28,13 @@ const h = vi.hoisted(() => {
     }),
     removeAllListeners: vi.fn(async () => undefined),
   };
-  return { listeners, handles, state, push, prefs };
+  return { listeners, handles, state, push, prefs, androidRegistration };
 });
 
 vi.mock('@capacitor/core', () => ({
-  registerPlugin: vi.fn(() => ({})),
+  registerPlugin: vi.fn((name: string) =>
+    name === 'TrinityPushRegistration' ? h.androidRegistration : {},
+  ),
   Capacitor: {
     getPlatform: () => h.state.platform,
     // Electron reports isNativePlatform() === true but has no push plugin — the
@@ -234,7 +237,10 @@ describe('PushService', () => {
     expect(h.push.createChannel).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'messages' }),
     );
-    expect(h.push.register).toHaveBeenCalled();
+    expect(h.androidRegistration.register).toHaveBeenCalled();
+    expect(h.push.createChannel.mock.invocationCallOrder[0]).toBeLessThan(
+      h.androidRegistration.register.mock.invocationCallOrder[0],
+    );
   });
 
   it('no-ops on web (plugin unavailable)', async () => {

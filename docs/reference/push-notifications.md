@@ -103,7 +103,10 @@ message text.
    [`build.gradle`](../../android/app/build.gradle) applies Google Services only
    when this nonempty file exists. The manifest already declares
    `POST_NOTIFICATIONS` and the `messages` channel; runtime permission and a
-   correctly configured gateway are still required for delivery.
+   correctly configured gateway are still required for delivery. Unprovisioned
+   builds reject registration safely through the native Android guard, so granting
+   notification permission or restarting the app cannot trigger an uncaught Firebase
+   initialization exception. The existing push plugin retains token and listener ownership.
 4. The Trinity gateway requires an FCM registration token on iOS as well as Android.
    The current iOS host still forwards an APNs device token, so it cannot yet
    register a compatible pusher. The iOS integration work must add Firebase
