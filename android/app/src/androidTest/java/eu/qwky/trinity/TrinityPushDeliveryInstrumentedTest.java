@@ -155,7 +155,7 @@ public final class TrinityPushDeliveryInstrumentedTest {
         payload.put("unread", "10000");
         TrinityPushDelivery.handle(context, payload);
         assertEquals(9999, TrinityBadge.get(context));
-        assertEquals(1, activeNotifications().size());
+        assertNotificationCount(1);
         assertEquals("trinity-notifications-silent", activeNotifications().get(0).getChannelId());
         assertEquals(NotificationCompat.PRIORITY_LOW, activeNotifications().get(0).priority);
         assertEquals(0, activeNotifications().get(0).defaults & NotificationCompat.DEFAULT_SOUND);
@@ -167,7 +167,7 @@ public final class TrinityPushDeliveryInstrumentedTest {
         }
         TrinityPushDelivery.handle(context, payload);
         assertEquals(9999, TrinityBadge.get(context));
-        assertEquals(1, activeNotifications().size());
+        assertNotificationCount(1);
     }
 
     @Test
