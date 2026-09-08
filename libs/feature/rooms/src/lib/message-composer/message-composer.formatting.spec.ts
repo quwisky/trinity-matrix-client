@@ -3,14 +3,10 @@ import {
   renderComposer,
   stubObjectUrls,
 } from './message-composer.spec-harness';
-import { signal } from '@angular/core';
 import { type ComponentFixture } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockProvider } from 'ng-mocks';
-import {
-  ComposerSettingsService,
-  VoiceRecorderService,
-} from '@trinity/platform-native';
+import { VoiceRecorderService } from '@trinity/platform-native';
 import { MessageComposerComponent } from './message-composer.component';
 
 describe('MessageComposerComponent — quoting, the formatting actions and the preview', () => {
@@ -125,7 +121,7 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
       return ta;
     }
 
-    it('wraps the selection when a toolbar action fires', async () => {
+    it('wraps the selection when a format action fires', async () => {
       const { fixture } = await renderComposer();
       await withSelection(fixture, 'say hello there', 4, 9);
 
@@ -517,77 +513,6 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
         expect(fixture.componentInstance.preview().rich).toBe(false);
       });
 
-      it('shows the toolbar unless the setting says otherwise', async () => {
-        // The default matters as much as the switch: an install that never opens Settings
-        // must still get the toolbar.
-        const { container } = await renderComposer();
-
-        expect(container.querySelector('trn-composer-toolbar')).not.toBeNull();
-      });
-
-      it('keeps markdown-aware Enter working with the toolbar hidden', async () => {
-        // The other half of "the row goes, the capability stays" — list continuation is not
-        // on the toolbar at all, so it must be untouched by the setting.
-        const { fixture } = await renderComposer({}, [
-          MockProvider(ComposerSettingsService, {
-            showFormattingToolbar: signal(false).asReadonly(),
-          }),
-        ]);
-        const cmp = fixture.componentInstance;
-        cmp.text.set('- one');
-        const textarea = fixture.nativeElement.querySelector('textarea');
-        textarea.value = '- one';
-        textarea.setSelectionRange(5, 5);
-
-        // onKeydown, not onEnter: Angular only fires (keydown.enter) with no modifier held,
-        // which is why list continuation lives in the general handler.
-        cmp.onKeydown(
-          new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }),
-        );
-
-        expect(cmp.text()).toBe('- one\n- ');
-      });
-
-      it('hides the toolbar when the setting is off, keeping the shortcuts', async () => {
-        // Hiding it is about screen space, not about giving up formatting — Ctrl+B has to
-        // keep working, or the setting quietly removes a capability instead of a row.
-        const { fixture, container } = await renderComposer({}, [
-          MockProvider(ComposerSettingsService, {
-            showFormattingToolbar: signal(false).asReadonly(),
-          }),
-        ]);
-        fixture.detectChanges();
-
-        expect(container.querySelector('trn-composer-toolbar')).toBeNull();
-
-        fixture.componentInstance.text.set('hello');
-        fixture.componentInstance.onFormat('bold');
-
-        expect(fixture.componentInstance.text()).toContain('**');
-      });
-
-      it('keeps the preview when the legacy toolbar is taken away', async () => {
-        // Preview is now owned by the always available Aa menu, so removing the legacy toolbar
-        // must not strand or cancel an active preview.
-        const showToolbar = signal(true);
-        const { fixture, container } = await renderComposer({}, [
-          MockProvider(ComposerSettingsService, {
-            showFormattingToolbar: showToolbar.asReadonly(),
-          }),
-        ]);
-        fixture.componentInstance.onTogglePreview();
-        fixture.detectChanges();
-        expect(fixture.componentInstance.previewing()).toBe(true);
-
-        showToolbar.set(false);
-        fixture.detectChanges();
-
-        expect(fixture.componentInstance.previewing()).toBe(true);
-        expect(
-          container.querySelector('[data-testid=composer-preview]'),
-        ).not.toBeNull();
-      });
-
       it('leaves the preview when a reply starts', async () => {
         // The reply effect focuses the textarea, which is display:none while previewing —
         // so the composer would sit on the preview and swallow every keystroke.
@@ -602,7 +527,7 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
       });
 
       it('leaves the preview when a voice recording starts', async () => {
-        // Recording removes the toolbar, and with it the only way back out of the preview.
+        // Recording replaces the input while preserving a safe return from preview.
         const { fixture } = await renderComposer({}, [
           MockProvider(VoiceRecorderService, {
             supported: true,
@@ -618,67 +543,32 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
 
         expect(fixture.componentInstance.previewing()).toBe(false);
       });
-    });
-  });
 
-  describe('what the bar reports as pressed', () => {
-    // End to end through the DOM, because the value is derived in the composer and rendered
-    // by the toolbar — asserting the signal would test neither half of the wiring.
-    async function withSelection(text: string, start: number, end: number) {
-      const { fixture, container } = await renderComposer({}, [
-        MockProvider(ComposerSettingsService, {
-          // Pinned, so the bar is up regardless of the selection and this tests the pressed
-          // state rather than the raising.
-          showFormattingToolbar: signal(true).asReadonly(),
-          formatOnSelection: signal(true).asReadonly(),
-        }),
-      ]);
-      fixture.componentInstance.text.set(text);
-      fixture.detectChanges();
+      it('keeps only the Aa menu visible after selection and room changes', async () => {
+        const { fixture, container } = await renderComposer({
+          roomId: 'room-a',
+        });
+        const textarea = container.querySelector<HTMLTextAreaElement>(
+          '[data-testid=composer-input]',
+        );
+        if (!textarea) throw new Error('composer input not rendered');
+        textarea.value = 'selected text';
+        textarea.setSelectionRange(0, textarea.value.length);
+        textarea.dispatchEvent(new Event('select', { bubbles: true }));
+        fixture.detectChanges();
 
-      const ta = container.querySelector<HTMLTextAreaElement>(
-        '[data-testid=composer-input]',
-      );
-      if (!ta) {
-        throw new Error('composer input not rendered');
-      }
-      ta.value = text;
-      ta.setSelectionRange(start, end);
-      ta.dispatchEvent(new Event('select', { bubbles: true }));
-      fixture.detectChanges();
+        expect(container.querySelector('[role=toolbar]')).toBeNull();
+        expect(
+          container.querySelector('[data-testid=composer-format]'),
+        ).not.toBeNull();
 
-      return (testid: string) =>
-        container
-          .querySelector<HTMLElement>(`[data-testid=${testid}]`)
-          ?.getAttribute('aria-pressed');
-    }
-
-    it('presses Bold over bold text', async () => {
-      const pressed = await withSelection('say **hello** there', 6, 11);
-
-      expect(pressed('format-bold')).toBe('true');
-      expect(pressed('format-italic')).toBe('false');
-    });
-
-    it('presses nothing over plain text', async () => {
-      const pressed = await withSelection('say hello there', 4, 9);
-
-      expect(pressed('format-bold')).toBe('false');
-      expect(pressed('format-quote')).toBe('false');
-    });
-
-    it('presses Quote from anywhere on a quoted line', async () => {
-      // A block action is about the line, so the middle of it counts.
-      const pressed = await withSelection('> one', 3, 4);
-
-      expect(pressed('format-quote')).toBe('true');
-    });
-
-    it('presses nothing when there is no selection', async () => {
-      // The nine act on a selection, so a bare caret has nothing to be in a state about.
-      const pressed = await withSelection('say **hello** there', 6, 6);
-
-      expect(pressed('format-bold')).toBe('false');
+        fixture.componentRef.setInput('roomId', 'room-b');
+        fixture.detectChanges();
+        expect(container.querySelector('[role=toolbar]')).toBeNull();
+        expect(
+          container.querySelector('[data-testid=composer-format]'),
+        ).not.toBeNull();
+      });
     });
   });
 });

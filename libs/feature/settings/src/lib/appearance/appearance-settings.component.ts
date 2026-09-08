@@ -16,7 +16,6 @@ import {
 } from '@trinity/components/controls';
 import {
   DateTimeFormatService,
-  ComposerSettingsService,
   SystemLineSettingsService,
 } from '@trinity/platform-native';
 import {
@@ -96,7 +95,6 @@ export class AppearanceSettingsComponent {
     optionTestIdPrefix: 'text-scale',
   } as const satisfies AppearancePreferenceField;
   readonly systemLines = inject(SystemLineSettingsService);
-  readonly composer = inject(ComposerSettingsService);
   readonly format = inject(DateTimeFormatService);
   readonly spaceOrder = inject(SpaceRoomOrderService);
 

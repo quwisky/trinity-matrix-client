@@ -103,7 +103,6 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.scss',
   'libs/feature/rooms/src/lib/message-composer/composer-suggestions/composer-suggestions.component.scss',
-  'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.scss',
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
   'libs/feature/rooms/src/lib/message-list/drop-overlay/drop-overlay.component.scss',
   'libs/feature/rooms/src/lib/message-list/simple-message-list/simple-message-list.component.scss',

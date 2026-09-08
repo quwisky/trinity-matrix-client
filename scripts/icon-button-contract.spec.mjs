@@ -68,7 +68,6 @@ const expectedBespokeCounts = {
   'libs/feature/rooms/src/lib/message-composer/composer-attachment-strip/composer-attachment-strip.component.html': 2,
   'libs/feature/rooms/src/lib/message-composer/composer-format-menu/composer-format-menu.component.html': 2,
   'libs/feature/rooms/src/lib/message-composer/composer-insert-menu/composer-insert-menu.component.html': 3,
-  'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.html': 2,
   'libs/feature/rooms/src/lib/message-composer/message-composer.component.html': 6,
   'libs/feature/rooms/src/lib/message-reactions/message-reactions.component.html': 1,
   'libs/feature/rooms/src/lib/server-rail/server-rail.component.html': 4,

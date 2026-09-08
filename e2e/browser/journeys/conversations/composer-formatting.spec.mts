@@ -8,6 +8,7 @@ import {
 } from '../../../fixtures.mts';
 import {
   login,
+  readPreference,
   seedPreference,
   synapseSession,
   type SynapseSession,
@@ -16,14 +17,15 @@ import { registerUser } from '../../../support/account.mts';
 import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 import { captureScreenshot } from '../../../support/screenshot.mts';
 
-// Covers the composer's formatting affordances (issue #29, second half): the toolbar, the
-// rebindable chords behind it, markdown-aware Shift+Enter, and the preview toggle.
+// Covers the composer's formatting affordances: the on-demand Format menu, rebindable chords,
+// markdown-aware Shift+Enter, preview, sending, and composer layout.
 //
 // These assert on the TEXTAREA's value rather than on a sent message — the point is what the
 // composer does to what you are writing. Needs a Synapse homeserver (Docker); self-skips
 // otherwise.
 const session = synapseSession();
 const mobile = devices['Pixel 5'];
+const DRAFTS_KEY = 'trinity.composer.drafts';
 
 /** Register, create a room, sign in and open it. Returns the composer locator. */
 async function openComposer(
@@ -102,61 +104,20 @@ async function selectWord(page: Page, word: string): Promise<void> {
   }, word);
 }
 
+async function chooseDesktopFormat(page: Page, action: string): Promise<void> {
+  await page.getByTestId('composer-format').click();
+  await page
+    .getByTestId('composer-format-menu')
+    .getByTestId(`format-${action}`)
+    .click();
+}
+
 test.describe('Composer formatting', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-
-  test('a toolbar button wraps the selected word', async ({
-    page,
-    request,
-  }) => {
-    const { composer } = await openComposer(page, request, 'tb');
-
-    await composer.fill('say hello there');
-    await selectWord(page, 'hello');
-    await page.getByTestId('format-bold').click();
-
-    await expect(composer).toHaveValue('say **hello** there');
-  });
-
-  test('every action is on the bar, with nothing behind a menu', async ({
-    page,
-    request,
-  }) => {
-    // This used to open the kebab first. The overflow existed because the bar was always
-    // there and had to earn its row; a bar that appears when you select something can afford
-    // to show all nine, and an action behind a menu is one nobody discovers.
-    const { composer } = await openComposer(page, request, 'ov');
-
-    await composer.fill('one');
-    await selectWord(page, 'one');
-
-    await expect(page.getByTestId('format-more')).toHaveCount(0);
-    await page.getByTestId('format-quote').click();
-
-    await expect(composer).toHaveValue('> one');
-  });
-
-  test('unpinned, the bar comes and goes with the selection', async ({
-    page,
-    request,
-  }) => {
-    // The contextual behaviour, end to end. Unpinning is now "stop keeping it open" rather
-    // than "never show it": the second preference decides whether a selection still raises it,
-    // and it defaults on for anyone who had not already opted out.
-    const { composer } = await openComposer(page, request, 'ct');
-    await composer.fill('say hello there');
-
-    // Unpin from the bar itself — the `Aa` control, which is where you notice you want it.
-    await page.getByTestId('format-pin').click();
-    await expect(page.getByTestId('format-bold')).toHaveCount(0);
-
-    await selectWord(page, 'hello');
-    await expect(page.getByTestId('format-bold')).toBeVisible();
-
-    // And it applies to the selection that raised it.
-    await page.getByTestId('format-bold').click();
-    await expect(composer).toHaveValue('say **hello** there');
-  });
+  test.skip(
+    process.env['TRINITY_E2E_PLATFORM'] === 'android',
+    'Android uses the mobile Format action sheet journey',
+  );
 
   test('a keyboard chord formats, and the rebound one takes over', async ({
     page,
@@ -220,7 +181,7 @@ test.describe('Composer formatting', () => {
     const { composer } = await openComposer(page, request, 'pv');
 
     await composer.fill('**bold** and `code`');
-    await page.getByTestId('composer-preview-toggle').click();
+    await chooseDesktopFormat(page, 'preview');
 
     const preview = page.getByTestId('composer-preview');
     await expect(preview).toBeVisible();
@@ -228,7 +189,7 @@ test.describe('Composer formatting', () => {
     await expect(preview.locator('code')).toHaveText('code');
     await expect(composer).toBeHidden();
 
-    await page.getByTestId('composer-preview-toggle').click();
+    await chooseDesktopFormat(page, 'preview');
     await expect(preview).toBeHidden();
     await expect(composer).toHaveValue('**bold** and `code`');
   });
@@ -242,7 +203,7 @@ test.describe('Composer formatting', () => {
     const { composer } = await openComposer(page, request, 'sp');
 
     await composer.fill('/spoiler the butler did it');
-    await page.getByTestId('composer-preview-toggle').click();
+    await chooseDesktopFormat(page, 'preview');
 
     const spoiler = page.getByTestId('composer-preview').locator('.mx-spoiler');
     await expect(spoiler).toHaveText('the butler did it');
@@ -262,7 +223,7 @@ test.describe('Composer formatting', () => {
     const { composer } = await openComposer(page, request, 'ps');
 
     await composer.fill('**shipped**');
-    await page.getByTestId('composer-preview-toggle').click();
+    await chooseDesktopFormat(page, 'preview');
     await expect(page.getByTestId('composer-preview')).toBeVisible();
 
     await page.getByTestId('composer-send').click();
@@ -282,113 +243,6 @@ test.describe('Composer formatting', () => {
 
     await composer.fill('still typing');
     await expect(composer).toHaveValue('still typing');
-  });
-
-  test('hiding the toolbar in settings keeps the shortcuts working', async ({
-    page,
-    request,
-  }) => {
-    // The setting takes away the ROW, not the capability — so the assertion that matters is
-    // that Ctrl+B still formats once the buttons are gone.
-    const { openRoom } = await openComposer(page, request, 'ht');
-
-    await expect(page.getByTestId('format-bold')).toBeVisible();
-
-    await openSettingsSection(page, 'appearance');
-    const toolbarToggle = page
-      .getByTestId('composer-show-toolbar')
-      .locator('trn-switch');
-    await expect(toolbarToggle).toBeVisible({ timeout: 15_000 });
-    await toolbarToggle.click();
-
-    // Settings is a full-page route, so leave it before looking for the rail.
-    await page.goto('/rooms');
-    const back = await openRoom();
-
-    // Unchecking the settings box unpins it, and with no selection there is nothing to raise
-    // it — so the row is gone, which is what this test has always been about.
-    await expect(page.getByTestId('format-bold')).toHaveCount(0);
-    // The legacy Preview toggle disappears, but Aa still offers Preview independently.
-    await expect(page.getByTestId('composer-preview-toggle')).toHaveCount(0);
-    await back.fill('**Preview without the toolbar**');
-    const formatSurface = page
-      .getByTestId('composer-format-menu')
-      .or(page.getByRole('dialog', { name: 'Format message' }));
-    await page.getByTestId('composer-format').click();
-    await formatSurface.getByTestId('format-preview').click();
-    await expect(
-      page.getByTestId('composer-preview').locator('strong'),
-    ).toHaveText('Preview without the toolbar');
-    await expect(page.getByTestId('composer-preview-toggle')).toHaveCount(0);
-    await page.getByTestId('composer-format').click();
-    await formatSurface.getByTestId('format-preview').click();
-    await expect(back).toBeFocused();
-
-    await back.fill('say hello there');
-    await selectWord(page, 'hello');
-    await page.keyboard.press('Control+b');
-    await expect(back).toHaveValue('say **hello** there');
-
-    // Shift+Enter still continues a list, which was never on the toolbar to begin with.
-    await back.fill('');
-    await back.click();
-    await back.pressSequentially('- one');
-    await back.press('Shift+Enter');
-    await expect(back).toHaveValue('- one\n- ');
-
-    // And the choice is persisted, not session state.
-    await page.reload();
-    const reopened = await openRoom();
-    await expect(reopened).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByTestId('format-bold')).toHaveCount(0);
-  });
-
-  test('the toolbar is there until you turn it off', async ({
-    page,
-    request,
-  }) => {
-    // The default is what almost every install sees, so it gets its own check rather than
-    // riding on the setup of the test above.
-    await openComposer(page, request, 'dt');
-
-    await expect(page.getByTestId('format-bold')).toBeVisible();
-    await expect(page.getByTestId('composer-preview-toggle')).toBeVisible();
-  });
-
-  test('the toolbar lines up with the controls it sits above', async ({
-    page,
-    request,
-  }) => {
-    // Rewritten rather than deleted, and re-aimed at the field's BUTTONS.
-    //
-    // It used to assert the first format button aligned with the textarea's own left edge:
-    // `971f95ae` added two hand-computed custom properties (44px and 88px, restated as 48/96
-    // at the touch breakpoint) to indent the row past buttons that flanked the input from
-    // OUTSIDE, so bold sat over the first character it would format.
-    //
-    // The buttons are inside the field now, so the field is the control and the text starts a
-    // button-width into it. That reversal is deliberate: bold no longer sits over the first
-    // character, it sits over the `+`. What replaces the arithmetic is the field's own
-    // `padding-inline`, which the toolbar copies — so the invariant worth guarding is that the
-    // two rows agree on their controls, and it fails if either padding drifts.
-    const { composer } = await openComposer(page, request, 'al');
-    await expect(composer).toBeVisible();
-
-    const insert = await page.getByTestId('composer-insert').boundingBox();
-    const send = await page.getByTestId('composer-send').boundingBox();
-    const firstButton = await page.getByTestId('format-bold').boundingBox();
-    const previewToggle = await page
-      .getByTestId('composer-preview-toggle')
-      .boundingBox();
-    if (!insert || !send || !firstButton || !previewToggle) {
-      throw new Error('composer controls or toolbar buttons not laid out');
-    }
-
-    // Leading: bold over the `+`. Trailing: the preview toggle over send.
-    expect(Math.abs(firstButton.x - insert.x)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(previewToggle.x + previewToggle.width - (send.x + send.width)),
-    ).toBeLessThanOrEqual(1);
   });
 
   test('the field forwards a press on itself, and rings only for the input', async ({
@@ -431,34 +285,6 @@ test.describe('Composer formatting', () => {
     await expect(field).toHaveCSS('outline-style', 'solid');
   });
 
-  test('the bar shows what the selection already carries', async ({
-    page,
-    request,
-  }) => {
-    // `aria-pressed` on the nine is derived from the marks around the selection, so it says
-    // something true about the text rather than about the last button pressed. Only a real
-    // browser has a real selection, and only the rendered attribute proves the whole chain:
-    // textarea event -> composer `detectFormat` -> toggle group -> the DOM.
-    const { composer } = await openComposer(page, request, 'mk');
-    const bold = page.getByTestId('format-bold');
-    const italic = page.getByTestId('format-italic');
-
-    await composer.fill('say hello there');
-    await selectWord(page, 'hello');
-    await expect(bold).toHaveAttribute('aria-pressed', 'false');
-
-    // Bolding the selection makes Bold true of it — and the button follows the text.
-    await bold.click();
-    await expect(composer).toHaveValue('say **hello** there');
-    await expect(bold).toHaveAttribute('aria-pressed', 'true');
-    await expect(italic).toHaveAttribute('aria-pressed', 'false');
-
-    // And pressing it again removes the marks, which is exactly what "pressed" promised.
-    await bold.click();
-    await expect(composer).toHaveValue('say hello there');
-    await expect(bold).toHaveAttribute('aria-pressed', 'false');
-  });
-
   test('toggling the preview does not resize the composer', async ({
     page,
     request,
@@ -486,7 +312,6 @@ test.describe('Composer formatting', () => {
     // against 40 from the other side.
     const { composer } = await openComposer(page, request, 'ph');
     const field = page.getByTestId('composer-field');
-    const toggle = page.getByTestId('composer-preview-toggle');
 
     /** Height across one preview round trip. Tolerance is sub-pixel rounding, not slack in
      *  the invariant: `autoGrow` writes an integer `scrollHeight` while the preview's box is
@@ -496,11 +321,11 @@ test.describe('Composer formatting', () => {
       const writing = (await field.boundingBox())?.height ?? 0;
       expect(writing).toBeGreaterThan(0);
 
-      await toggle.click();
+      await chooseDesktopFormat(page, 'preview');
       await expect(page.getByTestId('composer-preview')).toBeVisible();
       const previewing = (await field.boundingBox())?.height ?? 0;
 
-      await toggle.click();
+      await chooseDesktopFormat(page, 'preview');
       await expect(composer).toBeVisible();
       return { writing, previewing };
     };
@@ -579,66 +404,45 @@ test.describe('Composer formatting', () => {
       .poll(() => scroller.evaluate((element) => element.scrollTop))
       .toBe(before);
   });
-});
 
-// The bar at phone size, which the suite above structurally cannot see: the project is
-// Desktop Chrome at 1280, and the 44px touch minimums only apply under `(pointer: coarse)` —
-// so `hasTouch` here is not decoration, it is the half that makes the buttons big enough to
-// overflow. Nine of them plus two rules is 470px of content against about 358px of bar.
-test.describe('Composer formatting on a phone', () => {
-  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
-  test.describe.configure({ timeout: 60_000 });
-
-  test('the whole bar stays on screen, including the pin and the preview toggle', async ({
+  test('legacy toolbar preferences cannot restore the removed toolbar or erase a draft', async ({
     page,
     request,
   }) => {
-    // `.chat-body` is `overflow: hidden`, so anything past the right edge is not merely
-    // off-screen but unreachable — and the two that fall off the end are the pin and the
-    // preview toggle, the second of which is the only way to reach a preview on a phone.
-    await openComposer(page, request, 'ph-narrow');
+    const { composer, openRoom } = await openComposer(
+      page,
+      request,
+      'retired-keys',
+    );
+    await composer.fill('draft survives toolbar retirement');
+    await expect
+      .poll(() => readPreference(page, DRAFTS_KEY).then((value) => value ?? ''))
+      .toContain('draft survives toolbar retirement');
+    await seedPreference(page, 'trinity.composer.show-toolbar', 'true');
+    await seedPreference(page, 'trinity.composer.format-on-selection', 'true');
 
-    const width = page.viewportSize()?.width ?? 0;
-    expect(width).toBeGreaterThan(0);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    const reopened = await openRoom();
+    await expect(reopened).toHaveValue('draft survives toolbar retirement');
+    await expect(page.locator('trn-composer-toolbar')).toHaveCount(0);
+    await expect(page.getByTestId('format-pin')).toHaveCount(0);
+    await expect(page.getByTestId('composer-preview-toggle')).toHaveCount(0);
 
-    const controls = [
-      'format-bold',
-      'format-italic',
-      'format-strike',
-      'format-code',
-      'format-codeblock',
-      'format-quote',
-      'format-link',
-      'format-list',
-      'format-tasklist',
-      'format-pin',
-      'composer-preview-toggle',
-    ];
-    for (const id of controls) {
-      const box = await page.getByTestId(id).boundingBox();
-      if (!box) {
-        throw new Error(`${id} is not laid out`);
-      }
-      // Half a pixel of slack for sub-pixel rounding, not for a button hanging off the edge.
-      expect(
-        box.x + box.width,
-        `${id} runs past the right edge`,
-      ).toBeLessThanOrEqual(width + 0.5);
-      expect(box.x, `${id} runs past the left edge`).toBeGreaterThanOrEqual(
-        -0.5,
-      );
-    }
+    await reopened.fill('say hello');
+    await selectWord(page, 'hello');
+    await chooseDesktopFormat(page, 'bold');
+    await expect(reopened).toHaveValue('say **hello**');
 
-    // And it wrapped rather than scrolled: the row is taller than one button, which is the
-    // mechanism the assertions above depend on.
-    const bar = await page.locator('.toolbar').boundingBox();
-    expect(bar?.height ?? 0).toBeGreaterThan(50);
+    await openSettingsSection(page, 'appearance');
+    await expect(page.getByTestId('composer-show-toolbar')).toHaveCount(0);
+    await expect(page.getByTestId('composer-format-on-selection')).toHaveCount(
+      0,
+    );
   });
 });
 
-// The replacement interaction is covered additively here so the existing keyboard, list,
-// preview, and toolbar regressions remain useful while the feature lands.
+// The replacement interaction is covered here alongside the existing keyboard, list, preview,
+// send, and layout regressions.
 test.describe('On-demand composer formatting', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.skip(

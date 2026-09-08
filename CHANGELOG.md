@@ -24,6 +24,9 @@ All notable changes to this project are documented here. The format is based on
 - Keep empty message inputs at one row even when a long room-name placeholder wraps,
   so the composer remains reachable on small screens with larger text.
 
+- Replace the persistent and selection-triggered composer toolbar with the Aa formatting
+  action, and remove the toolbar visibility preferences from Appearance.
+
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
   so Android suites accept the updated test, and allow subpixel rounding in WebView.

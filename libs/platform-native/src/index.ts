@@ -12,7 +12,6 @@ export * from './lib/geolocation.service';
 export * from './lib/voice-recorder.service';
 export * from './lib/draft-store.service';
 export * from './lib/system-line-settings.service';
-export * from './lib/composer-settings.service';
 export * from './lib/message-gesture-settings.service';
 export * from './lib/shell-layout.service';
 export * from './lib/native-navigation.service';
