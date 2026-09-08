@@ -337,8 +337,7 @@ export class ComposerAttachmentsService {
       return;
     }
     this.recordingVoice.set(true);
-    // Recording replaces the toolbar, and the preview toggle lives on it — leaving the
-    // preview up would strand it with no way back to the input.
+    // Recording replaces the input, so leave preview before the recording controls take over.
     this.host.leavePreview();
     this.voiceElapsed.set(0);
     this.voiceTimer = setInterval(

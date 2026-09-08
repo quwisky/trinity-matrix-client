@@ -8,14 +8,14 @@ what you can do after a room is open. Trinity does not provide voice or video ca
 Type in the message box and select **Send message**. Press Enter to send; press Shift+Enter for a
 new line. Your unsent text is kept as a draft for that room on this device.
 
-Trinity sends Markdown. Use the [formatting toolbar](#the-formatting-toolbar) for bold, italic,
-links, inline code, quotes, lists and code blocks, or write Markdown directly. The preview button
-replaces the input with a rendered preview until you return to editing.
+Trinity sends Markdown. Select **Aa** beside the message box to open **Format message**.
+Choose bold, italic, strikethrough, inline code, a link, a quote, a bulleted list, a task list,
+or a code block. Select text first to format it, or place the cursor where you want to insert
+Markdown. You can also write Markdown directly or use your formatting keyboard shortcuts.
 
-### The formatting toolbar
-
-In Settings → Appearance, you can keep the toolbar open, show it only after selecting text, or
-hide it. Hiding it leaves keyboard shortcuts available.
+Choose **Preview** from Format message to see the rendered draft. Open Aa again and choose
+**Edit message** to return to the same editing position. Cancel closes the formatting menu
+without changing your draft. On mobile, formatting opens in an action sheet.
 
 At the start of a message, these commands have a special meaning:
 

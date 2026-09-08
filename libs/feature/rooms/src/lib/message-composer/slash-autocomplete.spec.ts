@@ -114,7 +114,7 @@ describe('SlashAutocomplete', () => {
   });
 
   it('keeps the highlight while the fragment is unchanged', () => {
-    // A caret move or a toolbar edit elsewhere in the message re-syncs the same fragment;
+    // A caret move or a format edit elsewhere in the message re-syncs the same fragment;
     // that must not yank the highlight back from wherever the user arrowed it to.
     const engine = new SlashAutocomplete();
     engine.sync('/', 1);

@@ -13,6 +13,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { captureScreenshot } from '../../../support/screenshot.mts';
 
 /**
  * Rendered Phase 2 shell contract.
@@ -307,6 +308,24 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
   const menu = page.getByRole('menu').last();
   await expect(menu).toBeVisible();
 
+  // The seeded reader has a deliberately long display name. Check the real account row
+  // keeps both identity lines accessible while its fixed-width text column clips safely.
+  const accountRow = menu.getByTestId('account-row').first();
+  await expect(accountRow).toBeVisible();
+  await expect(accountRow.locator('.account-row__name')).toContainText(
+    'Alexandria Very Long Account Name',
+  );
+  await expectEllipsis(accountRow.locator('.account-row__name'));
+  await expectEllipsis(accountRow.locator('.account-row__handle'));
+  const activeCheck = accountRow.locator('.account-row__check');
+  if (await activeCheck.count()) {
+    await expectInside(activeCheck, accountRow);
+  }
+  const unreadBadge = accountRow.locator('.account-row__badge');
+  if (await unreadBadge.count()) {
+    await expectInside(unreadBadge, accountRow);
+  }
+
   // The anchored overlay may meet the dock inside the 4px spacing token (including its
   // shadow), but it must remain above the dock controls after its entrance motion settles.
   await expect
@@ -320,6 +339,44 @@ async function expectAccountMenuAboveDock(page: Page): Promise<void> {
       );
     })
     .toBe(true);
+
+  // Capture reviewable visual proof for both themes at the larger text scale. The state is
+  // restored immediately so this helper remains safe inside the cosy/compact loop.
+  const appearance = await page.evaluate(() => ({
+    dark: document.documentElement.classList.contains('dark'),
+    fontSize: document.documentElement.style.fontSize,
+  }));
+  for (const dark of [false, true]) {
+    await page.evaluate((selectedDark) => {
+      document.documentElement.classList.toggle('dark', selectedDark);
+      document.documentElement.style.fontSize = '125%';
+    }, dark);
+    await expect(menu).toBeVisible();
+    const viewport = page.viewportSize();
+    const menuBox = await menu.boundingBox();
+    expect(menuBox).not.toBeNull();
+    expect(menuBox!.x).toBeGreaterThanOrEqual(-1);
+    expect(menuBox!.y).toBeGreaterThanOrEqual(-1);
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(
+      (viewport?.width ?? 0) + 1,
+    );
+    expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(
+      (viewport?.height ?? 0) + 1,
+    );
+    await test
+      .info()
+      .attach(
+        `account-menu-${dark ? 'dark' : 'light'}-${viewport?.width ?? 'unknown'}-${viewport?.height ?? 'unknown'}`,
+        {
+          body: await captureScreenshot(page, () => page.screenshot()),
+          contentType: 'image/png',
+        },
+      );
+  }
+  await page.evaluate(({ dark, fontSize }) => {
+    document.documentElement.classList.toggle('dark', dark);
+    document.documentElement.style.fontSize = fontSize;
+  }, appearance);
 
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();

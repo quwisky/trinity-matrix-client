@@ -1,4 +1,5 @@
-import { expect, test, testResourceId } from '../../../fixtures.mts';
+import { devices, expect, test, testResourceId } from '../../../fixtures.mts';
+import { captureScreenshot } from '../../../support/screenshot.mts';
 import { login } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 import {
@@ -134,9 +135,9 @@ test.describe('Multiple accounts', () => {
   }) => {
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}pk`;
-    const userA = `pick-a-${runId}`;
+    const userA = `pick-a-${runId}-long-display-account-name`;
     const passA = `pick-a-pass-${runId}`;
-    const userB = `pick-b-${runId}`;
+    const userB = `pick-b-${runId}-long-display-account-name`;
     const passB = `pick-b-pass-${runId}`;
     const roomA = `Room A ${runId}`;
     const roomB = `Room B ${runId}`;
@@ -178,17 +179,143 @@ test.describe('Multiple accounts', () => {
 
     // The account being acted as is always shown: its picker row is present but disabled,
     // so it cannot be unticked.
-    await page.getByTestId('user-menu-trigger').click();
-    await page.getByTestId('show-accounts').click();
+    const desktopTrigger = page.getByTestId('user-menu-trigger');
+    await desktopTrigger.focus();
+    await desktopTrigger.press('ArrowDown');
+    await expect(page.getByRole('menu').last()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(desktopTrigger).toBeFocused();
+    await desktopTrigger.press('ArrowDown');
+    const selectorTrigger = page.getByTestId('show-accounts');
+    await selectorTrigger.focus();
+    await selectorTrigger.press('ArrowRight');
+    const desktopSelector = page.getByRole('menu').last();
+    await expect(
+      desktopSelector.getByText('Accounts in view', { exact: true }),
+    ).toBeVisible();
     const activeRow = page.locator(`[data-testid^="show-account-@${userB}:"]`);
     await expect(activeRow).toHaveAttribute('aria-checked', 'true');
     await expect(activeRow).toHaveAttribute('data-disabled', '');
     await expect(activeRow).toHaveCSS('opacity', '1');
+    await expect(activeRow.locator('trn-avatar')).toBeVisible();
+    await expect(activeRow).toContainText(`@${userB}:`);
+    await expect(activeRow).toContainText('Always included');
+    const originalTheme = await page.evaluate(() => ({
+      dark: document.documentElement.classList.contains('dark'),
+      fontSize: document.documentElement.style.fontSize,
+    }));
+    for (const dark of [false, true]) {
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await page.evaluate(
+        ({ dark }) => {
+          document.documentElement.classList.toggle('dark', dark);
+          document.documentElement.style.fontSize = '125%';
+        },
+        { dark },
+      );
+      await desktopTrigger.press('ArrowDown');
+      await selectorTrigger.focus();
+      await selectorTrigger.press('ArrowRight');
+      await expect(desktopSelector).toBeVisible();
+      await expect
+        .poll(() =>
+          desktopSelector.evaluate((menu) => {
+            const bounds = menu.getBoundingClientRect();
+            const rows = [
+              ...menu.querySelectorAll<HTMLElement>('.account-pick'),
+            ];
+            const indicators = rows.map((row) =>
+              row
+                .querySelector('.account-pick__indicator')!
+                .getBoundingClientRect(),
+            );
+            return (
+              bounds.left >= 0 &&
+              bounds.right <= innerWidth &&
+              bounds.top >= 0 &&
+              bounds.bottom <= innerHeight &&
+              indicators.every(
+                (indicator) => Math.abs(indicator.x - indicators[0].x) < 1,
+              ) &&
+              rows.every((row, index) => {
+                const identity = row
+                  .querySelector('.account-pick__id')!
+                  .getBoundingClientRect();
+                return (
+                  identity.width > 60 &&
+                  identity.right <= indicators[index].left
+                );
+              })
+            );
+          }),
+        )
+        .toBe(true);
+      const desktopAvatar = await activeRow.locator('trn-avatar').boundingBox();
+      const desktopCheck = await activeRow
+        .locator('.account-pick__indicator')
+        .boundingBox();
+      expect(desktopAvatar && desktopCheck).toBeTruthy();
+      expect(
+        Math.abs(
+          (desktopAvatar?.y ?? 0) +
+            (desktopAvatar?.height ?? 0) / 2 -
+            ((desktopCheck?.y ?? 0) + (desktopCheck?.height ?? 0) / 2),
+        ),
+      ).toBeLessThan(12);
+      await test
+        .info()
+        .attach(`accounts-in-view-desktop-${dark ? 'dark' : 'light'}-125`, {
+          body: await captureScreenshot(page, () =>
+            desktopSelector.screenshot(),
+          ),
+          contentType: 'image/png',
+        });
+    }
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.evaluate(({ dark, fontSize }) => {
+      document.documentElement.classList.toggle('dark', dark);
+      document.documentElement.style.fontSize = fontSize;
+    }, originalTheme);
+    await desktopTrigger.press('ArrowDown');
+    await selectorTrigger.focus();
+    await selectorTrigger.press('ArrowRight');
+
+    const desktopRow = await activeRow.boundingBox();
+    const desktopName = await activeRow
+      .locator('.account-pick__name')
+      .boundingBox();
+    const desktopHandle = await activeRow
+      .locator('.account-pick__handle')
+      .boundingBox();
+    expect(desktopRow && desktopName && desktopHandle).toBeTruthy();
+    expect(desktopName!.x).toBeGreaterThanOrEqual(desktopRow!.x);
+    expect(desktopHandle!.x).toBeGreaterThanOrEqual(desktopRow!.x);
 
     // Unticking the other account returns the view to a single account.
-    await page.locator(`[data-testid^="show-account-@${userA}:"]`).click();
+    const otherRow = page.locator(`[data-testid^="show-account-@${userA}:"]`);
+    await expect(otherRow).toHaveAttribute('aria-checked', 'true');
+    const selectorRows = desktopSelector.getByRole('menuitemcheckbox');
+    await page.keyboard.press('End');
+    await expect(selectorRows.last()).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(selectorRows.first()).toBeFocused();
+    if (
+      (await selectorRows.first().getAttribute('data-testid')) !==
+      (await otherRow.getAttribute('data-testid'))
+    ) {
+      await page.keyboard.press('ArrowDown');
+    }
+    await expect(otherRow).toBeFocused();
+    await otherRow.press('Space');
+    // Selecting an account for the room list never changes the account being acted as.
+    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    await expect(otherRow).toHaveAttribute('aria-checked', 'false');
     await page.keyboard.press('Escape');
+    await expect(selectorTrigger).toBeFocused();
     await page.keyboard.press('Escape');
+    await expect(desktopTrigger).toBeFocused();
     await expect(roomARow).toHaveCount(0);
     await expect(roomBRow).toBeVisible();
     await expect(page.getByTestId('account-stack')).toHaveCount(0);
@@ -196,67 +323,158 @@ test.describe('Multiple accounts', () => {
   // The quick switcher shares the picker's scope, so it must find another account's rooms
   // and switch to that account on the jump — the same contract as clicking a sidebar row.
   // Issue #28. Below the md breakpoint a submenu has nowhere to fly out to — it would land
-  // back on top of the account menu — so the picker is a dialog there instead. The suite runs
-  // a single desktop project, so this test resizes rather than adding a whole project.
-  test('narrow layout picks accounts in a dialog rather than a submenu', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}nrw`;
-    const userA = `narrow-a-${runId}`;
-    const passA = `narrow-a-pass-${runId}`;
-    const userB = `narrow-b-${runId}`;
-    const passB = `narrow-b-pass-${runId}`;
-    const roomA = `Narrow A ${runId}`;
-
-    await registerUser(request, userA, passA);
-    await registerUser(request, userB, passB);
-    const a = await apiLogin(request, hs, userA, passA);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: a.headers,
-      data: { name: roomA, preset: 'private_chat' },
+  // back on top of the account menu — so the picker is a dialog there instead.
+  // Desktop and mobile profiles share this journey; the mobile profile also resizes to a
+  // short viewport so the picker must keep its list scrollable while leaving Done reachable.
+  test.describe('mobile account selector', () => {
+    const mobileProfile = devices['Pixel 5'];
+    test.use({
+      viewport: mobileProfile.viewport,
+      userAgent: mobileProfile.userAgent,
+      deviceScaleFactor: mobileProfile.deviceScaleFactor,
+      isMobile: mobileProfile.isMobile,
+      hasTouch: mobileProfile.hasTouch,
     });
 
-    await login(page, { available: true, hs, user: userA, pass: passA });
-    await addAccountViaUi(page, hs, userB, passB);
-    await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+    test('narrow layout picks accounts in a dialog rather than a submenu', async ({
+      page,
+      request,
+    }) => {
+      const hs = session.hs as string;
+      const runId = `${testResourceId('run')}nrw`;
+      const userA = `narrow-a-${runId}-long-display-account-name`;
+      const passA = `narrow-a-pass-${runId}`;
+      const userB = `narrow-b-${runId}-long-display-account-name`;
+      const passB = `narrow-b-pass-${runId}`;
+      const roomA = `Narrow A ${runId}`;
 
-    // A phone-sized viewport. With no room open the sidebar is the full-screen page, so the
-    // user panel is a bar across the bottom — the worst case for a flyout.
-    await page.setViewportSize({ width: 390, height: 844 });
+      await registerUser(request, userA, passA);
+      await registerUser(request, userB, passB);
+      const a = await apiLogin(request, hs, userA, passA);
+      await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+        headers: a.headers,
+        data: { name: roomA, preset: 'private_chat' },
+      });
 
-    await page.getByTestId('user-menu-trigger').click();
-    await page.getByTestId('show-accounts').click();
+      await login(page, { available: true, hs, user: userA, pass: passA });
+      await addAccountViaUi(page, hs, userB, passB);
+      await expect(page.locator('.userbar__handle')).toContainText(
+        `@${userB}:`,
+      );
 
-    // A dialog, not a submenu: the account menu is gone by now.
-    const picker = page.getByTestId('account-picker');
-    await expect(picker).toBeVisible({ timeout: 15_000 });
-    await expect(picker).toHaveCSS('display', 'flex');
-    await expect(picker.locator('.picker__list')).toHaveCSS(
-      'overflow-y',
-      'auto',
-    );
-    await expect(page.getByTestId('user-menu-trigger')).toBeVisible();
+      // A phone-sized viewport. With no room open the sidebar is the full-screen page, so the
+      // user panel is a bar across the bottom — the worst case for a flyout.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect
+        .poll(() => page.evaluate(() => navigator.userAgent))
+        .toContain('Android');
+      await page.evaluate(() => {
+        document.documentElement.style.fontSize = '125%';
+      });
 
-    // The same row contract the desktop submenu carries.
-    const activeRow = page.locator(`[data-testid^="show-account-@${userB}:"]`);
-    await expect(activeRow).toHaveAttribute('aria-checked', 'true');
-    await expect(activeRow).toHaveAttribute('data-disabled', '');
-    await expect(activeRow).toHaveCSS('opacity', '1');
+      await page.getByTestId('user-menu-trigger').click();
+      await page.getByTestId('show-accounts').click();
 
-    // Ticking applies immediately and does NOT close the picker — it is a multi-select.
-    const otherRow = page.locator(`[data-testid^="show-account-@${userA}:"]`);
-    await otherRow.click();
-    await expect(otherRow).toHaveAttribute('aria-checked', 'true');
-    await expect(picker).toBeVisible();
+      // A dialog, not a submenu: the account menu is gone by now.
+      const picker = page.getByTestId('account-picker');
+      await expect(picker).toBeVisible({ timeout: 15_000 });
+      await expect(picker).toHaveCSS('display', 'flex');
+      await expect(
+        picker.getByText('Accounts in view', { exact: true }),
+      ).toBeVisible();
+      await expect(picker.locator('[data-autofocus]')).toBeFocused();
+      await expect(picker.locator('.picker__list')).toHaveCSS(
+        'overflow-y',
+        'auto',
+      );
+      await expect(picker.getByTestId('account-picker-done')).toBeVisible();
+      await expect(page.getByTestId('user-menu-trigger')).toBeVisible();
 
-    await page.getByTestId('account-picker-done').click();
-    await expect(picker).toHaveCount(0);
+      // The same row contract the desktop submenu carries.
+      const activeRow = page.locator(
+        `[data-testid^="show-account-@${userB}:"]`,
+      );
+      await expect(activeRow).toHaveAttribute('aria-checked', 'true');
+      await expect(activeRow).toHaveAttribute('data-disabled', '');
+      await expect(activeRow).toHaveCSS('opacity', '1');
+      await expect(activeRow.locator('trn-avatar')).toBeVisible();
+      await expect(activeRow).toContainText(`@${userB}:`);
+      await expect(activeRow).toContainText('Always included');
+      const mobileAvatar = await activeRow.locator('trn-avatar').boundingBox();
+      const mobileCheck = await activeRow
+        .locator('.account-pick__indicator')
+        .boundingBox();
+      expect(mobileAvatar && mobileCheck).toBeTruthy();
+      expect(
+        Math.abs(
+          mobileAvatar!.y +
+            mobileAvatar!.height / 2 -
+            (mobileCheck!.y + mobileCheck!.height / 2),
+        ),
+      ).toBeLessThan(12);
 
-    // The mix took effect: A's room is now listed alongside B's.
-    await expect(page.locator('.channel', { hasText: roomA })).toBeVisible({
-      timeout: 20_000,
+      for (const dark of [false, true]) {
+        await page.evaluate(
+          (dark) => document.documentElement.classList.toggle('dark', dark),
+          dark,
+        );
+        await test
+          .info()
+          .attach(`accounts-in-view-mobile-${dark ? 'dark' : 'light'}-125`, {
+            body: await captureScreenshot(page, () => page.screenshot()),
+            contentType: 'image/png',
+          });
+      }
+      await page.setViewportSize({ width: 390, height: 260 });
+      await test.info().attach('accounts-in-view-mobile-scroll', {
+        body: await captureScreenshot(page, () => picker.screenshot()),
+        contentType: 'image/png',
+      });
+      const mobileList = picker.locator('.picker__list');
+      await expect
+        .poll(() =>
+          mobileList.evaluate(
+            (element) => element.scrollHeight > element.clientHeight,
+          ),
+        )
+        .toBe(true);
+      await page
+        .locator(`[data-testid^="show-account-@${userA}:"]`)
+        .scrollIntoViewIfNeeded();
+      await expect(
+        page.locator(`[data-testid^="show-account-@${userA}:"]`),
+      ).toBeVisible();
+
+      // Ticking applies immediately and does NOT close the picker — it is a multi-select.
+      const otherRow = page.locator(`[data-testid^="show-account-@${userA}:"]`);
+      await otherRow.click();
+      await expect(otherRow).toHaveAttribute('aria-checked', 'true');
+      await expect(picker).toBeVisible();
+      await expect(page.locator('.userbar__handle')).toContainText(
+        `@${userB}:`,
+      );
+
+      await expect(page.getByTestId('account-picker-done')).toBeInViewport({
+        ratio: 1,
+      });
+      await page.getByTestId('account-picker-done').click();
+      await expect(picker).toHaveCount(0);
+      await expect(page.getByTestId('user-menu-trigger')).toBeFocused();
+
+      // Reopening reflects the committed state, then Escape restores focus to the trigger too.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByTestId('user-menu-trigger').click();
+      await page.getByTestId('show-accounts').click();
+      await expect(
+        page.locator(`[data-testid^="show-account-@${userA}:"]`),
+      ).toHaveAttribute('aria-checked', 'true');
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('user-menu-trigger')).toBeFocused();
+
+      // The mix took effect: A's room is now listed alongside B's.
+      await expect(page.locator('.channel', { hasText: roomA })).toBeVisible({
+        timeout: 20_000,
+      });
     });
   });
 

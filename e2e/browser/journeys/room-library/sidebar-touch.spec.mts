@@ -5,6 +5,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { captureScreenshot } from '../../../support/screenshot.mts';
 
 // Covers the sidebar's touch affordances, which no other spec can see: every other
 // authenticated spec runs the desktop Chromium project, where `hover: hover` and
@@ -63,6 +64,36 @@ test.describe('Sidebar on a touch device', () => {
       coarsePointer: matchMedia('(pointer: coarse)').matches,
     }));
     expect(coarse).toEqual({ noHover: true, coarsePointer: true });
+
+    // The identity menu remains usable on the touch layout and keeps the same hierarchy as
+    // desktop. Escape must close it without leaving focus stranded in the overlay.
+    await page.getByTestId('user-menu-trigger').click();
+    const accountMenu = page.getByRole('menu').last();
+    await expect(accountMenu).toBeVisible();
+    await expect(accountMenu).toContainText('Switch account');
+    await expect(accountMenu.getByTestId('add-account')).toContainText(
+      'Add account',
+    );
+    await expect(accountMenu.getByTestId('logout')).toContainText(
+      'Remove account from this device',
+    );
+    const menuGeometry = await accountMenu.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return {
+        withinViewport:
+          box.top >= 0 &&
+          box.left >= 0 &&
+          box.bottom <= window.innerHeight &&
+          box.right <= window.innerWidth,
+      };
+    });
+    expect(menuGeometry.withinViewport).toBe(true);
+    await test.info().attach('account-menu-mobile', {
+      body: await captureScreenshot(page, () => page.screenshot()),
+      contentType: 'image/png',
+    });
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('user-menu-trigger')).toBeFocused();
 
     // Phones keep the identity dock in normal flow rather than letting a desktop overlay
     // cover the last room or duplicate the shell's safe-area ownership.

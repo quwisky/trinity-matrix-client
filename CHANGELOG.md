@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format is based on
   PWA behavior. Local Nx targets build and check the image without rebuilding Angular
   or publishing to a registry.
 
+- Open Markdown formatting and Preview from an Aa composer action, using a desktop
+  popover or a mobile action sheet while preserving the editing selection.
+
 - MIT license for Trinity, with license metadata in the application and desktop
   package manifests and links from the README and contributor guide.
 
@@ -22,6 +25,19 @@ All notable changes to this project are documented here. The format is based on
   Shared Settings frames also return to side-by-side panes when a compact window is widened.
 
 ### Changed
+
+- Keep empty message inputs at one row even when a long room-name placeholder wraps,
+  so the composer remains reachable on small screens with larger text.
+
+- Replace the persistent and selection-triggered composer toolbar with the Aa formatting
+  action, and remove the toolbar visibility preferences from Appearance.
+
+- Clarify which Accounts appear together in Room Library with matching desktop and mobile
+  selectors, clearer identity rows, and an explicit “Always included” Active Account state.
+  Selections apply immediately, with Done dismissing the mobile dialog.
+
+- Restyle Edit history with the Settings dialog surface, title bar close action,
+  responsive fullscreen presentation and a clearer highlighted revision list.
 
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
@@ -50,6 +66,10 @@ All notable changes to this project are documented here. The format is based on
   densities. Previews show the latest reply author and text, relative activity time, reply
   count and unread status. The whole preview opens the thread, with touch-sized targets
   and single-line text on narrow mobile screens.
+
+- Refine the bottom Account bar and switching menu with clearer identity rows, aligned
+  status indicators, grouped account actions, and explicit account-removal wording.
+  Settings and System Status remain directly available across desktop and mobile.
 
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the

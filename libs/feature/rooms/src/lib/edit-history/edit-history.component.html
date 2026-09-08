@@ -2,15 +2,33 @@
   trnOverlaySurface
   variant="neutral"
   size="xl"
-  layout="dialog"
-  class="flex flex-col gap-3 p-4"
+  [layout]="wide() ? 'workspace' : 'fullscreen'"
+  class="edit-history flex min-h-0 flex-col"
+  [attr.data-compact]="!wide()"
+  [style.width]="wide() ? null : '100vw'"
+  [style.height]="wide() ? null : '100dvh'"
   data-testid="edit-history"
 >
-  <div class="flex items-center gap-2">
-    <h2 class="flex-1 text-lg font-semibold">Edit history</h2>
-    @if (!busy() && !error() && entries().length > 1) {
-      <!-- Variant and presentation carry the pressed state visually, as the room-directory tabs do;
-           aria-pressed alone would leave a sighted user unable to tell it apart. -->
+  <header class="edit-history__header">
+    <h1 data-autofocus tabindex="-1">Edit history</h1>
+    <button
+      trnBtn
+      presentation="ghost"
+      shape="icon"
+      size="md"
+      aria-label="Close Edit history"
+      trnTooltip="Close Edit history"
+      data-testid="edit-history-close"
+      (click)="close()"
+    >
+      <trn-icon name="x" motion="rotate" />
+    </button>
+  </header>
+
+  @if (!busy() && !error() && entries().length > 1) {
+    <div class="edit-history__toolbar">
+      <!-- Variant and presentation carry the pressed state visually; aria-pressed alone
+           would leave a sighted user unable to tell it apart. -->
       <button
         trnBtn
         type="button"
@@ -23,88 +41,78 @@
       >
         Highlight changes
       </button>
-    }
-  </div>
-
-  @if (busy()) {
-    <div class="center" role="status" aria-live="polite">
-      <trn-spinner />
-      <p class="text-muted-foreground">Loading earlier versions…</p>
     </div>
-  } @else if (error(); as message) {
-    <p class="text-danger" role="alert" data-testid="edit-history-error">
-      {{ message }}
-    </p>
-  } @else {
-    @if (truncated()) {
-      <p class="truncated" data-testid="edit-history-truncated">
-        This message has been edited more times than can be shown — the earliest
-        versions are missing.
-      </p>
-    }
-
-    <ol class="revisions">
-      @for (entry of rows(); track entry.id) {
-        <li class="revision">
-          <div class="revision__head">
-            <span class="revision__label">{{ entry.label }}</span>
-            <time class="revision__time">{{
-              fmt.longDateTime(entry.timestamp)
-            }}</time>
-            @if (entry.removable) {
-              <button
-                trnBtn
-                type="button"
-                variant="danger"
-                presentation="ghost"
-                size="sm"
-                class="revision__remove"
-                data-testid="revision-remove"
-                [attr.aria-label]="
-                  'Remove this version, sent ' +
-                  fmt.longDateTime(entry.timestamp)
-                "
-                [disabled]="removing() !== null"
-                (click)="remove(entry.id)"
-              >
-                {{ removing() === entry.id ? 'Removing…' : 'Remove' }}
-              </button>
-            }
-          </div>
-
-          @if (entry.kind === 'undecryptable') {
-            <p class="revision__text revision__text--muted">{{ entry.body }}</p>
-          } @else if (entry.html) {
-            <!-- trnSpoilerReveal / trnMatrixLink delegate from this container, so they
-                 must stay on whichever element holds the body — moving the binding
-                 would break spoilers and in-app permalinks here with no error. -->
-            <div
-              class="revision__text"
-              [class.msg__text--html]="entry.rich"
-              trnSpoilerReveal
-              trnMatrixLink
-              [trnInlineMxcImages]="entry.html"
-              (matrixLink)="onMatrixLink($event)"
-              [innerHTML]="entry.html"
-            ></div>
-          } @else {
-            <p class="revision__text">{{ entry.body }}</p>
-          }
-        </li>
-      }
-    </ol>
   }
 
-  <div class="flex justify-end">
-    <button
-      trnBtn
-      variant="secondary"
-      presentation="ghost"
-      size="sm"
-      data-testid="edit-history-close"
-      (click)="close()"
-    >
-      Close
-    </button>
+  <div class="edit-history__content">
+    @if (busy()) {
+      <div class="center" role="status" aria-live="polite">
+        <trn-spinner />
+        <p class="text-muted-foreground">Loading earlier versions…</p>
+      </div>
+    } @else if (error(); as message) {
+      <p class="text-danger" role="alert" data-testid="edit-history-error">
+        {{ message }}
+      </p>
+    } @else {
+      @if (truncated()) {
+        <p class="truncated" data-testid="edit-history-truncated">
+          This message has been edited more times than can be shown — the
+          earliest versions are missing.
+        </p>
+      }
+
+      <ol class="revisions">
+        @for (entry of rows(); track entry.id) {
+          <li class="revision">
+            <div class="revision__head">
+              <span class="revision__label">{{ entry.label }}</span>
+              <time class="revision__time">{{
+                fmt.longDateTime(entry.timestamp)
+              }}</time>
+              @if (entry.removable) {
+                <button
+                  trnBtn
+                  type="button"
+                  variant="danger"
+                  presentation="ghost"
+                  size="sm"
+                  class="revision__remove"
+                  data-testid="revision-remove"
+                  [attr.aria-label]="
+                    'Remove this version, sent ' +
+                    fmt.longDateTime(entry.timestamp)
+                  "
+                  [disabled]="removing() !== null"
+                  (click)="remove(entry.id)"
+                >
+                  {{ removing() === entry.id ? 'Removing…' : 'Remove' }}
+                </button>
+              }
+            </div>
+
+            @if (entry.kind === 'undecryptable') {
+              <p class="revision__text revision__text--muted">
+                {{ entry.body }}
+              </p>
+            } @else if (entry.html) {
+              <!-- trnSpoilerReveal / trnMatrixLink delegate from this container, so they
+                   must stay on whichever element holds the body. -->
+              <div
+                class="revision__text"
+                [class.msg__text--html]="entry.rich"
+                trnSpoilerReveal
+                trnMatrixLink
+                [trnInlineMxcImages]="entry.html"
+                (matrixLink)="onMatrixLink($event)"
+                [innerHTML]="entry.html"
+              ></div>
+            } @else {
+              <p class="revision__text">{{ entry.body }}</p>
+            }
+          </li>
+        }
+      </ol>
+    }
   </div>
 </div>

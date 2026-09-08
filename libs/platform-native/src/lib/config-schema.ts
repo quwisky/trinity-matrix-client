@@ -398,18 +398,6 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'platform-native',
   },
 
-  // — composer-settings.service.ts —
-  {
-    disposition: 'exported',
-    key: 'trinity.composer.show-toolbar',
-    owner: 'platform-native',
-  },
-  {
-    disposition: 'exported',
-    key: 'trinity.composer.format-on-selection',
-    owner: 'platform-native',
-  },
-
   // — feature-flags.service.ts —
   {
     disposition: 'exported',
@@ -564,7 +552,8 @@ export function exportedKeysFor(owner: ConfigOwner): readonly string[] {
  * Bumped when a path is renamed or removed, so an import can tell a document written by an
  * older build from a malformed one — without it the two are indistinguishable.
  */
-export const CONFIG_EXPORT_VERSION = 2;
+// Version 3 records removal of the legacy composer toolbar preferences.
+export const CONFIG_EXPORT_VERSION = 3;
 
 /** The exported document: a versioned envelope around the nested settings. */
 export interface ConfigDocument {

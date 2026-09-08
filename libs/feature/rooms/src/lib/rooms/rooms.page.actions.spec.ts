@@ -295,7 +295,7 @@ describe('RoomsPage space actions', () => {
     expect(alertConfirm).toHaveBeenCalled();
     expect(alertConfirm).toHaveBeenCalledWith({
       header: 'Remove account',
-      message: ACCOUNT_REMOVAL_CONSEQUENCES,
+      message: `Account @me:hs\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}`,
       confirmText: 'Remove account',
       variant: 'danger',
     });

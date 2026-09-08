@@ -19,7 +19,6 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnIconButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
-  ComposerSettingsService,
   DraftStoreService,
   KeyboardShortcutsService,
 } from '@trinity/platform-native';
@@ -28,7 +27,6 @@ import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
   applyFormat,
   continueList,
-  detectFormat,
   escapeHtml,
   linkifyText,
   renderMarkdown,
@@ -39,7 +37,7 @@ import {
   type FormatAction,
   type Mention,
 } from '@trinity/util/matrix';
-import { ComposerToolbarComponent } from './composer-toolbar/composer-toolbar.component';
+import { ComposerFormatMenuComponent } from './composer-format-menu/composer-format-menu.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
 import { ComposerInsertMenuComponent } from './composer-insert-menu/composer-insert-menu.component';
 import { ComposerSuggestionsComponent } from './composer-suggestions/composer-suggestions.component';
@@ -79,6 +77,13 @@ export interface ComposerSubmit {
   mentions: Mention[];
 }
 
+interface FormatSelection {
+  readonly context: object;
+  readonly text: string;
+  readonly start: number;
+  readonly end: number;
+}
+
 /**
  * Which formatting action each shortcut applies. An explicit table rather than deriving the
  * action from the id: a `format.*` id with no entry here is simply not a formatting shortcut,
@@ -116,7 +121,7 @@ let nextPickerId = 0;
     GifPickerComponent,
     StickerPickerComponent,
     InlineMxcImagesDirective,
-    ComposerToolbarComponent,
+    ComposerFormatMenuComponent,
     ComposerAttachmentStripComponent,
     ComposerInsertMenuComponent,
     ComposerSuggestionsComponent,
@@ -133,14 +138,7 @@ let nextPickerId = 0;
   // pickers render inside this component, so the keystroke reaches here from anywhere in
   // the composer. Bound once: a second binding on the textarea would double-fire and
   // close two things per press.
-  // `focusout` alongside Escape, and on the HOST for the same reason: the bar is raised by a
-  // selection that outlives the focus, so something has to notice the focus going. It has to be
-  // the whole composer rather than the textarea, or moving focus onto a toolbar button would
-  // dismiss the bar out from under the click that is about to land on it.
-  host: {
-    '(keydown.escape)': 'onEscape()',
-    '(focusout)': 'onComposerFocusOut($event)',
-  },
+  host: { '(keydown.escape)': 'onEscape()' },
   templateUrl: './message-composer.component.html',
   styleUrl: './message-composer.component.scss',
 })
@@ -180,6 +178,8 @@ export class MessageComposerComponent {
   /** Active room/thread id. A change discards any staged (unsent) attachment —
    * the composer instance is reused across rooms, so it must not leak. */
   readonly roomId = input<string | null>(null);
+  /** Account identity distinguishes two Conversations in the same Matrix Room. */
+  readonly accountId = input<string | null>(null);
   /** Sender name of the message being replied to, or '' when not replying. */
   readonly replyingTo = input('');
   /** Room members, for the @-mention autocomplete (empty disables mentions). */
@@ -367,6 +367,8 @@ export class MessageComposerComponent {
   );
 
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
+  private readonly previewPanel =
+    viewChild<ElementRef<HTMLElement>>('previewPanel');
   /** Caret reads, splices, focus and auto-grow — everything that touches the textarea. */
   private readonly field: ComposerTextField;
   private readonly fileInput =
@@ -381,57 +383,14 @@ export class MessageComposerComponent {
     return this.attachments.voiceSupported;
   }
   private readonly drafts = inject(DraftStoreService);
-  private readonly composerSettings = inject(ComposerSettingsService);
-  /** Whether the bar is pinned open (Settings → Appearance, or the bar's own `Aa`). */
-  readonly toolbarPinned = this.composerSettings.showFormattingToolbar;
-
-  /**
-   * The textarea's selection, or null when there is none to speak of.
-   *
-   * A range rather than the boolean this used to be: the bar's pressed state is derived from
-   * the marks around the selection, and that needs the offsets. `hasSelection` survives as a
-   * computed so the "is the bar up" question reads the same as before.
-   */
-  private readonly selection = signal<{ start: number; end: number } | null>(
-    null,
-  );
-  private readonly hasSelection = computed(() => this.selection() !== null);
-
-  /**
-   * Which formatting actions the current selection already carries, for the bar to show as
-   * pressed. Empty with no selection: the nine act on one, so there is nothing to be in a
-   * state about.
-   *
-   * Derived rather than remembered, which is the point — `detectFormat` is defined as the
-   * exact inverse of what `applyFormat` would do, so a button reads as pressed when pressing
-   * it would REMOVE that formatting. The bar previously pinned this to empty and cleared it
-   * after every apply, which meant `aria-pressed` was permanently "false" on nine buttons
-   * that announce themselves as toggles.
-   */
-  protected readonly activeFormats = computed<FormatAction[]>(() => {
-    const range = this.selection();
-    return range === null
-      ? []
-      : detectFormat(this.text(), range.start, range.end);
-  });
-  /** This component's own element — {@link onComposerFocusOut} asks it what focus left. */
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-
-  /**
-   * Whether the formatting bar is on screen.
-   *
-   * Pinned, or raised by a selection while the second preference allows it. Both are a screen
-   * space choice and neither takes anything away but the ROW: {@link onKeydown} still resolves
-   * the formatting chords with no bar in sight, and Shift+Enter still continues a list.
-   *
-   * Raised by a SELECTION rather than by focus, because the bar's nine actions all act on one
-   * — a bar offered against a bare caret is offering to wrap nothing.
-   */
-  readonly showToolbar = computed(
-    () =>
-      this.toolbarPinned() ||
-      (this.composerSettings.formatOnSelection() && this.hasSelection()),
-  );
+  private formatSelection: FormatSelection | null = null;
+  protected readonly composing = signal(false);
+  protected readonly formatContext = computed(() => ({
+    accountId: this.accountId(),
+    roomId: this.roomId(),
+    editing: this.editing(),
+    editTargetId: this.editTargetId(),
+  }));
   /** Resolves the user's (rebindable) formatting chords — see {@link onKeydown}. */
   private readonly shortcuts = inject(KeyboardShortcutsService);
   private wasEditing = false;
@@ -515,6 +474,7 @@ export class MessageComposerComponent {
             this.cancelVoiceRecording();
           }
           this.menus.clearChosen(); // they belong to the old conversation
+          this.formatSelection = null;
           this.previewing.set(false); // the new room opens ready to write, not to read
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
           if (!this.editing()) {
@@ -531,13 +491,14 @@ export class MessageComposerComponent {
       }
     });
 
-    // The preview toggle lives ON the toolbar, so taking the toolbar away mid-preview would
-    // leave the composer showing a preview with nothing left to switch back — the same trap
-    // `resetMenus` guards against, arriving from Settings rather than from a send.
+    // Formatting UI belongs to the exact Account, Conversation and editing target.
+    // Draft persistence remains with its existing Conversation owner.
     effect(() => {
-      if (!this.showToolbar()) {
+      this.formatContext();
+      untracked(() => {
+        this.formatSelection = null;
         this.previewing.set(false);
-      }
+      });
     });
 
     // Highlight the first suggestion whenever either result set changes.
@@ -747,6 +708,7 @@ export class MessageComposerComponent {
 
   /** Apply a formatting action to the current selection. */
   onFormat(action: FormatAction): void {
+    if (this.composing()) return;
     const el = this.textarea()?.nativeElement;
     const value = this.text();
     const start = el?.selectionStart ?? value.length;
@@ -754,22 +716,51 @@ export class MessageComposerComponent {
     this.applyEdit(applyFormat(value, start, end, action));
   }
 
+  /** Apply the selection saved before focus moved into the Format surface. */
+  protected onMenuFormat(action: FormatAction): void {
+    const saved = this.formatSelection;
+    if (!saved || !this.isFormatSelectionCurrent(saved) || this.composing())
+      return;
+    const result = applyFormat(saved.text, saved.start, saved.end, action);
+    this.previewing.set(false);
+    this.applyEdit(result);
+    this.formatSelection = {
+      context: saved.context,
+      text: result.text,
+      start: result.selectionStart,
+      end: result.selectionEnd,
+    };
+    this.restoreFormatSelection(true);
+  }
+
   /** Land an edit in the field, then do the bookkeeping a keystroke would have done. */
   private applyEdit(result: EditResult): void {
     this.field.write(result);
     // Without this an open mention menu keeps a query anchored to a caret that has moved —
     // accepting it then splices at a stale offset — and a message begun entirely from the
-    // toolbar never announces that anyone is typing.
+    // format action never announces that anyone is typing.
     this.menus.sync();
     this.typing.emit(result.text.trim().length > 0);
   }
 
   /** Swap between writing and previewing, returning focus to the input on the way back. */
   onTogglePreview(): void {
+    if (this.composing()) return;
     const next = !this.previewing();
+    if (next) this.captureFormatSelection();
     this.previewing.set(next);
-    if (!next) {
-      this.field.focusAfterRender();
+    if (next) {
+      const context = this.formatContext();
+      afterNextRender(
+        () => {
+          if (context === this.formatContext() && this.previewing()) {
+            this.previewPanel()?.nativeElement.focus();
+          }
+        },
+        { injector: this.injector },
+      );
+    } else {
+      this.restoreFormatSelection(true);
     }
   }
 
@@ -861,11 +852,9 @@ export class MessageComposerComponent {
     });
     this.typing.emit(false); // a sent message ends the typing notification
     this.resetMenus();
-    // Emptying the box below is a signal write, and writing `value` fires no `select` — so
-    // nothing would tell the bar its selection is gone. Enter happens to self-correct on the
-    // following `keyup`; pressing Send with the mouse does not, and left the bar hanging over
-    // an empty composer.
-    this.selection.set(null);
+    // Clear the saved Aa selection when the message is sent so it cannot be applied to a later
+    // draft.
+    this.formatSelection = null;
     if (!this.editing() && this.composeDraft() === null) {
       // Conversation-owned text clears from the authoritative input signal. The legacy
       // thread composer still owns its local draft and therefore clears it here.
@@ -878,7 +867,7 @@ export class MessageComposerComponent {
   private resetMenus(): void {
     this.menus.reset();
     // A grid left open across a send is the one remaining route to two uploads at once: its
-    // items call `sendMedia` directly, and unlike the toolbar button they are not disabled
+    // items call `sendMedia` directly, and unlike the input button they are not disabled
     // while an upload runs. `dispatchMedia` refuses it either way; closing the grid means the
     // user does not lose a chosen GIF to that refusal.
     this.gifPickerOpen.set(false);
@@ -929,53 +918,34 @@ export class MessageComposerComponent {
     this.field.focus();
   }
 
-  /**
-   * Track whether anything is selected, which is what raises the unpinned bar.
-   *
-   * Three events rather than one, because a selection arrives three ways: `select` covers the
-   * browser's own (a double-click, a drag, Select All), `keyup` covers Shift+arrow, and
-   * `pointerup` covers a drag that ends without changing the selection — where `select` has
-   * already fired but the bar has to notice the release. The element-level `selectionchange`
-   * would replace all three and is not yet everywhere this app runs.
-   */
-  protected onSelectionChange(): void {
+  /** Save the exact caret or selection before the Aa trigger takes focus. */
+  protected captureFormatSelection(): void {
     const el = this.textarea()?.nativeElement;
-    this.selection.set(
-      el && el.selectionStart !== el.selectionEnd
-        ? { start: el.selectionStart, end: el.selectionEnd }
-        : null,
-    );
+    if (!el || this.composing()) return;
+    this.formatSelection = {
+      context: this.formatContext(),
+      text: this.text(),
+      start: el.selectionStart,
+      end: el.selectionEnd,
+    };
   }
 
-  /**
-   * Focus left the composer, so the bar it raised goes with it.
-   *
-   * A textarea keeps `selectionStart !== selectionEnd` after it blurs, and none of the three
-   * events above fire when the press lands somewhere else — so without this an unpinned bar
-   * raised by a selection stays up indefinitely once you click away into the timeline.
-   *
-   * `relatedTarget` is what makes it safe: it is the element about to receive focus, and a
-   * press on one of the bar's own buttons blurs the textarea BEFORE the click is delivered.
-   * Clearing unconditionally would unmount the bar between the press and the click, so the
-   * button you aimed at would never fire. Null means focus is leaving the document entirely
-   * (another window, the URL bar), which counts as leaving.
-   */
-  protected onComposerFocusOut(event: FocusEvent): void {
-    const next = event.relatedTarget;
-    if (next instanceof Node && this.host.nativeElement.contains(next)) {
-      return;
-    }
-    this.selection.set(null);
+  protected restoreFormatSelection(focus = false): void {
+    const saved = this.formatSelection;
+    if (!saved) return;
+    const restore = () => {
+      if (!this.isFormatSelectionCurrent(saved) || this.composing()) return;
+      const el = this.textarea()?.nativeElement;
+      if (focus) el?.focus();
+      el?.setSelectionRange(saved.start, saved.end);
+      this.field.autoGrow();
+    };
+    restore();
+    if (focus) afterNextRender(restore, { injector: this.injector });
   }
 
-  /**
-   * The bar's `Aa`: keep it, or stop keeping it.
-   *
-   * Writes the same preference the settings checkbox does, because it is the same question —
-   * asked where someone actually notices they want the answer changed.
-   */
-  protected onTogglePinned(): void {
-    this.composerSettings.setShowFormattingToolbar(!this.toolbarPinned());
+  private isFormatSelectionCurrent(saved: FormatSelection): boolean {
+    return saved.context === this.formatContext() && saved.text === this.text();
   }
 
   /** Toggle the emoji picker, closing the other overlays (only one at a time). */
