@@ -841,6 +841,66 @@ describe('VirtualMessageListComponent', () => {
       expect(st).toBe(0);
     });
 
+    it.each([0, 85])(
+      'preserves the row offset when a user scrolls to %d before the queued prepend restore runs',
+      (userScrollTop) => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+          TestBed.overrideComponent(VirtualMessageListComponent, {
+            remove: { imports: [MessageComposerComponent] },
+            add: { imports: [MockComponent(MessageComposerComponent)] },
+          });
+          const fixture = TestBed.createComponent(VirtualMessageListComponent);
+          fixture.componentRef.setInput('canLoadOlder', true);
+          fixture.componentRef.setInput('messages', many(30));
+          fixture.detectChanges();
+          const container = fixture.nativeElement as HTMLElement;
+          const cmp = fixture.componentInstance;
+          const scroll = container.querySelector('.scroll') as HTMLElement;
+
+          let st = 100;
+          Object.defineProperties(scroll, {
+            scrollTop: { get: () => st, set: (value: number) => (st = value) },
+            clientHeight: { value: 600 },
+            scrollHeight: { value: 30 * EST },
+          });
+          scroll.getBoundingClientRect = () => rect(0);
+          (scroll.querySelector('.vpad') as HTMLElement).getBoundingClientRect =
+            () => rect(-st);
+          for (const id of ['$0', '$1', '$2', '$3', '$4']) {
+            (
+              scroll.querySelector(`[data-mid="${id}"]`) as HTMLElement
+            ).getBoundingClientRect = () => rect(-100, -50);
+          }
+          const anchor = scroll.querySelector('[data-mid="$5"]') as HTMLElement;
+          anchor.getBoundingClientRect = () =>
+            rect(
+              40 + (scroll.querySelector('.load-older') ? 36 : 0) - (st - 100),
+              40 +
+                (scroll.querySelector('.load-older') ? 36 : 0) -
+                (st - 100) +
+                EST,
+            );
+
+          cmp.onScroll();
+          fixture.componentRef.setInput('loadingOlder', true);
+          fixture.detectChanges();
+
+          // The browser has moved the viewport, but its scroll event has not reached Angular yet.
+          st = userScrollTop;
+          const offsetBeforeRender = anchor.getBoundingClientRect().top;
+          vi.advanceTimersByTime(200);
+          fixture.detectChanges();
+
+          expect(scroll.querySelector('.load-older')).not.toBeNull();
+          expect(st).toBe(userScrollTop + 36);
+          expect(anchor.getBoundingClientRect().top).toBe(offsetBeforeRender);
+        } finally {
+          vi.useRealTimers();
+        }
+      },
+    );
+
     it('falls back to prefix offsets when a large prepend windows the anchor out', () => {
       TestBed.overrideComponent(VirtualMessageListComponent, {
         remove: { imports: [MessageComposerComponent] },

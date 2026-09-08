@@ -27,6 +27,13 @@ All notable changes to this project are documented here. The format is based on
 - Replace the persistent and selection-triggered composer toolbar with the Aa formatting
   action, and remove the toolbar visibility preferences from Appearance.
 
+- Clarify which Accounts appear together in Room Library with matching desktop and mobile
+  selectors, clearer identity rows, and an explicit “Always included” Active Account state.
+  Selections apply immediately, with Done dismissing the mobile dialog.
+
+- Restyle Edit history with the Settings dialog surface, title bar close action,
+  responsive fullscreen presentation and a clearer highlighted revision list.
+
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
   so Android suites accept the updated test, and allow subpixel rounding in WebView.
@@ -54,6 +61,10 @@ All notable changes to this project are documented here. The format is based on
   densities. Previews show the latest reply author and text, relative activity time, reply
   count and unread status. The whole preview opens the thread, with touch-sized targets
   and single-line text on narrow mobile screens.
+
+- Refine the bottom Account bar and switching menu with clearer identity rows, aligned
+  status indicators, grouped account actions, and explicit account-removal wording.
+  Settings and System Status remain directly available across desktop and mobile.
 
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
@@ -1166,6 +1177,9 @@ All notable changes to this project are documented here. The format is based on
   attachment, because those are sent as written.
 
 ### Fixed
+
+- Older-history loading indicators preserve the reader's latest timeline position even
+  when the browser has not yet delivered its scroll event.
 
 - Thread connectors reach the group's existing avatar through intervening messages,
   tall images, earlier thread previews, and unread markers without repeating the avatar.
