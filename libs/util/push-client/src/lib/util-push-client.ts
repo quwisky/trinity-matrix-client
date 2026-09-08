@@ -76,6 +76,27 @@ export interface TrinityPushCountsPayload {
   readonly sound: boolean;
   readonly highlight?: boolean;
 }
+
+export interface TrinityPushSummary {
+  readonly badgeCount: number;
+  readonly missedCalls: number;
+  readonly effectiveSound: boolean;
+  readonly highlight?: boolean;
+}
+
+/** Apply the shared presentation policy to a validated gateway payload. */
+export function interpretTrinityPushSummary(
+  payload: TrinityPushPayload,
+): TrinityPushSummary {
+  return {
+    badgeCount: Math.min(payload.unread, 9999),
+    missedCalls: payload.missedCalls,
+    effectiveSound: payload.kind === 'counts' ? false : payload.sound,
+    ...(payload.highlight === undefined
+      ? {}
+      : { highlight: payload.highlight }),
+  };
+}
 function requiredString(
   data: Record<string, unknown>,
   key: string,

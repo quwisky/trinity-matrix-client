@@ -21,6 +21,18 @@ public final class TrinityPushDeliveryPlugin extends Plugin {
         super.load();
         preferences = getContext().getSharedPreferences(TrinityPushDelivery.STORAGE, 0);
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener);
+        TrinityBadge.restore(getContext());
+    }
+    @PluginMethod public void badgeSupport(PluginCall call) {
+        try {
+            call.resolve(new com.getcapacitor.JSObject().put("supported", TrinityBadge.supported(getContext())));
+        } catch (RuntimeException ignored) { call.reject("Badge support is unavailable"); }
+    }
+    @PluginMethod public void setBadge(PluginCall call) {
+        Integer count = call.getInt("count");
+        if (count == null) { call.reject("Badge count is unavailable"); return; }
+        if (!TrinityBadge.set(getContext(), count)) { call.reject("Badge is unavailable"); return; }
+        call.resolve();
     }
     static boolean ready() { synchronized (owners) { return owners.containsKey("listener") && owners.containsKey("presentation"); } }
     @PluginMethod public void claimPresentation(PluginCall call) {

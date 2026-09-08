@@ -2,8 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Capacitor } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
-import { firstValueFrom } from 'rxjs';
+import { Observable, firstValueFrom, of, throwError } from 'rxjs';
 import { MobileBadgeService } from './mobile-badge.service';
+import { NativePushDeliveryService } from './native-push-delivery.service';
 
 // Mock the native plugin: every method is a spy the tests drive per case.
 vi.mock('@capawesome/capacitor-badge', () => ({
@@ -16,9 +17,19 @@ vi.mock('@capawesome/capacitor-badge', () => ({
 }));
 
 const badge = vi.mocked(Badge);
+const nativeDelivery = {
+  platform: 'ios' as 'android' | 'ios' | null,
+  badgeSupport: vi.fn<() => Observable<boolean>>(),
+  setBadge: vi.fn<(count: number) => Observable<void>>(),
+};
 
 function makeService(): MobileBadgeService {
-  TestBed.configureTestingModule({ providers: [MobileBadgeService] });
+  TestBed.configureTestingModule({
+    providers: [
+      MobileBadgeService,
+      { provide: NativePushDeliveryService, useValue: nativeDelivery },
+    ],
+  });
   return TestBed.inject(MobileBadgeService);
 }
 
@@ -31,6 +42,9 @@ describe('MobileBadgeService', () => {
     badge.requestPermissions.mockResolvedValue({ display: 'granted' });
     badge.set.mockResolvedValue();
     badge.clear.mockResolvedValue();
+    nativeDelivery.platform = 'ios';
+    nativeDelivery.badgeSupport.mockReset().mockReturnValue(of(true));
+    nativeDelivery.setBadge.mockReset().mockReturnValue(of(void 0));
   });
 
   afterEach(() => {
@@ -44,6 +58,77 @@ describe('MobileBadgeService', () => {
 
     expect(badge.set).toHaveBeenCalledWith({ count: 5 });
     expect(badge.clear).not.toHaveBeenCalled();
+  });
+
+  it('uses the Android delivery bridge without requiring the Badge plugin', async () => {
+    nativeDelivery.platform = 'android';
+    vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(false);
+
+    await expect(firstValueFrom(makeService().set(7))).resolves.toEqual({
+      kind: 'completed',
+    });
+
+    expect(nativeDelivery.badgeSupport).toHaveBeenCalledOnce();
+    expect(nativeDelivery.setBadge).toHaveBeenCalledWith(7);
+    expect(badge.isSupported).not.toHaveBeenCalled();
+    expect(badge.set).not.toHaveBeenCalled();
+  });
+
+  it('retries Android support after a transient native probe failure', async () => {
+    nativeDelivery.platform = 'android';
+    const secret = 'native badge probe details';
+    nativeDelivery.badgeSupport
+      .mockReturnValueOnce(throwError(() => new Error(secret)))
+      .mockReturnValue(of(true));
+    const service = makeService();
+
+    const first = await firstValueFrom(service.support());
+    expect(first).toEqual({
+      kind: 'unavailable',
+      reason: 'host-rejected',
+      diagnostic: { code: 'badge-probe-failed' },
+    });
+    expect(JSON.stringify(first)).not.toContain(secret);
+    await expect(firstValueFrom(service.support())).resolves.toEqual({
+      kind: 'supported',
+    });
+    await expect(firstValueFrom(service.set(3))).resolves.toEqual({
+      kind: 'completed',
+    });
+    expect(nativeDelivery.badgeSupport).toHaveBeenCalledTimes(2);
+    expect(nativeDelivery.setBadge).toHaveBeenCalledWith(3);
+  });
+
+  it('delegates Android counts, including the zero clear', async () => {
+    nativeDelivery.platform = 'android';
+    const service = makeService();
+
+    await firstValueFrom(service.set(-4));
+    await firstValueFrom(service.set(10_004));
+
+    expect(nativeDelivery.setBadge).toHaveBeenNthCalledWith(1, -4);
+    expect(nativeDelivery.setBadge).toHaveBeenNthCalledWith(2, 10_004);
+  });
+
+  it('does not write after a canceled Android readiness wait', async () => {
+    nativeDelivery.platform = 'android';
+    let resolveSupport!: (supported: boolean) => void;
+    nativeDelivery.badgeSupport.mockImplementation(
+      () =>
+        new Observable((subscriber) => {
+          resolveSupport = (supported) => {
+            subscriber.next(supported);
+            subscriber.complete();
+          };
+        }),
+    );
+    const subscription = makeService().set(4).subscribe();
+    subscription.unsubscribe();
+
+    resolveSupport(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(nativeDelivery.setBadge).not.toHaveBeenCalled();
   });
 
   it('clears the badge for a count of 0', async () => {

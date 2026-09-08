@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createPushAccountRoute,
   createTrinityPusherDescriptor,
+  interpretTrinityPushSummary,
   isValidPushAccountRoute,
   isTrinityPushRegistrationState,
   parseTrinityPushPayload,
@@ -127,6 +128,54 @@ describe('push client contract', () => {
         sound: 'false',
       }),
     ).toBeNull();
+  });
+
+  it.each([
+    {
+      payload: {
+        kind: 'event',
+        unread: 0,
+        missedCalls: 2,
+        sound: false,
+      },
+      expected: { badgeCount: 0, missedCalls: 2, effectiveSound: false },
+    },
+    {
+      payload: {
+        kind: 'event',
+        unread: Number.MAX_SAFE_INTEGER,
+        missedCalls: 0,
+        sound: true,
+        highlight: true,
+      },
+      expected: {
+        badgeCount: 9999,
+        missedCalls: 0,
+        effectiveSound: true,
+        highlight: true,
+      },
+    },
+    {
+      payload: {
+        kind: 'counts',
+        unread: 4,
+        missedCalls: 1,
+        sound: true,
+        highlight: false,
+      },
+      expected: {
+        badgeCount: 4,
+        missedCalls: 1,
+        effectiveSound: false,
+        highlight: false,
+      },
+    },
+  ] as const)('interprets summary policy %#', ({ payload, expected }) => {
+    expect(
+      interpretTrinityPushSummary(
+        payload as Parameters<typeof interpretTrinityPushSummary>[0],
+      ),
+    ).toEqual(expected);
   });
 
   it('builds the version-one append descriptor', () => {

@@ -45,6 +45,17 @@ export async function installBadgeRecorder(page: Page): Promise<void> {
         methodName: string,
         options: Record<string, unknown> = {},
       ): Promise<unknown> => {
+        if (pluginName === 'TrinityPushDelivery') {
+          if (methodName === 'badgeSupport') {
+            return Promise.resolve({ supported: true });
+          }
+          if (methodName === 'setBadge') {
+            const count = Number(options['count'] ?? 0);
+            if (count > 0) recordSet(count);
+            else recordClear();
+            return Promise.resolve();
+          }
+        }
         if (pluginName !== 'Badge') {
           return nativePromise(pluginName, methodName, options);
         }

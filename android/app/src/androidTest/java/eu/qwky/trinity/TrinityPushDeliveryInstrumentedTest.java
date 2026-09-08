@@ -80,6 +80,8 @@ public final class TrinityPushDeliveryInstrumentedTest {
             if (expected == null) assertEquals(fixture.getString("name"), null, parsed);
             else {
                 assertNotNull(parsed);
+                JSONObject summary = fixture.optJSONObject("expectedSummary");
+                assertNotNull("valid fixture must define summary", summary);
                 assertEquals(expected.optString("kind"), parsed.kind == TrinityPushDelivery.Kind.EVENT ? "event" : "counts");
                 assertEquals(expected.optString("accountRoute"), parsed.route);
                 if (parsed.kind == TrinityPushDelivery.Kind.EVENT) {
@@ -89,7 +91,11 @@ public final class TrinityPushDeliveryInstrumentedTest {
                 assertEquals(expected.optLong("unread"), Long.parseLong(parsed.data.get("unread")));
                 assertEquals(expected.optLong("missedCalls"), Long.parseLong(parsed.data.get("missed_calls")));
                 assertEquals(expected.optBoolean("sound"), "true".equals(parsed.data.get("sound")));
-                if (expected.has("highlight")) assertEquals(expected.optBoolean("highlight"), "true".equals(parsed.data.get("highlight")));
+                assertEquals(summary.getLong("badgeCount"), (long) parsed.unread);
+                assertEquals(summary.getLong("missedCalls"), Long.parseLong(parsed.data.get("missed_calls")));
+                assertEquals(summary.getBoolean("effectiveSound"), parsed.kind == TrinityPushDelivery.Kind.EVENT && "true".equals(parsed.data.get("sound")));
+                assertEquals(summary.has("highlight"), parsed.data.containsKey("highlight"));
+                if (summary.has("highlight")) assertEquals(summary.getBoolean("highlight"), "true".equals(parsed.data.get("highlight")));
             }
         }
     }
@@ -133,10 +139,69 @@ public final class TrinityPushDeliveryInstrumentedTest {
 
     @Test
     public void disabledGatewaySuppressesPresentation() {
+        TrinityBadge.set(context, 12);
         context.getSharedPreferences(TrinityPushDelivery.STORAGE, Context.MODE_PRIVATE)
                 .edit().putString(TrinityPushDelivery.GATEWAY_KEY, "{\"disabled\":true}").commit();
         TrinityPushDelivery.handle(context, event(ROUTE_A, "$event:disabled", "!room:disabled"));
         assertNotificationCount(0);
+        assertEquals(12, TrinityBadge.get(context));
+    }
+
+    @Test
+    public void silentEventUsesSilentChannelAndUpdatesAbsoluteBadge() {
+        notifications.deleteNotificationChannel("trinity-notifications-silent");
+        Map<String, String> payload = event(ROUTE_A, "$event:silent", "!room:silent");
+        payload.put("sound", "false");
+        payload.put("unread", "10000");
+        TrinityPushDelivery.handle(context, payload);
+        assertEquals(9999, TrinityBadge.get(context));
+        assertEquals(1, activeNotifications().size());
+        assertEquals("trinity-notifications-silent", activeNotifications().get(0).getChannelId());
+        assertEquals(NotificationCompat.PRIORITY_LOW, activeNotifications().get(0).priority);
+        assertEquals(0, activeNotifications().get(0).defaults & NotificationCompat.DEFAULT_SOUND);
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel silent = notifications.getNotificationChannel("trinity-notifications-silent");
+            assertNotNull(silent);
+            assertEquals(null, silent.getSound());
+            assertEquals(false, silent.shouldVibrate());
+        }
+        TrinityPushDelivery.handle(context, payload);
+        assertEquals(9999, TrinityBadge.get(context));
+        assertEquals(1, activeNotifications().size());
+    }
+
+    @Test
+    public void countSnapshotsSetAbsoluteBadgeWithoutAlertsAndIgnoreMissedCalls() {
+        TrinityBadge.set(context, 77);
+        Map<String, String> first = counts(ROUTE_A);
+        first.put("unread", "4");
+        first.put("missed_calls", "9");
+        TrinityPushDelivery.handle(context, first);
+        assertEquals(4, TrinityBadge.get(context));
+        assertEquals(0, activeNotifications().size());
+
+        Map<String, String> second = counts(ROUTE_B);
+        second.put("unread", "0");
+        TrinityPushDelivery.handle(context, second);
+        assertEquals(0, TrinityBadge.get(context));
+        TrinityPushDelivery.handle(context, second);
+        assertEquals(0, TrinityBadge.get(context));
+        assertEquals(0, activeNotifications().size());
+    }
+
+    @Test
+    public void malformedAndUnknownRoutesDoNotChangeBadge() {
+        TrinityBadge.set(context, 12);
+        Map<String, String> unknown = counts("unknown_route");
+        unknown.put("unread", "9999");
+        TrinityPushDelivery.handle(context, unknown);
+        assertEquals(12, TrinityBadge.get(context));
+
+        Map<String, String> malformed = counts(ROUTE_A);
+        malformed.remove("schema");
+        malformed.put("unread", "9999");
+        TrinityPushDelivery.handle(context, malformed);
+        assertEquals(12, TrinityBadge.get(context));
     }
 
     @Test
@@ -187,6 +252,9 @@ public final class TrinityPushDeliveryInstrumentedTest {
         assertEquals(CHANNEL, notification.getChannelId());
         assertEquals("Trinity", notification.extras.getString(Notification.EXTRA_TITLE));
         assertEquals("New message", notification.extras.getString(Notification.EXTRA_TEXT));
+        assertEquals(NotificationCompat.PRIORITY_HIGH, notification.priority);
+        assertEquals(Build.VERSION.SDK_INT < 26 ? NotificationCompat.DEFAULT_SOUND : 0,
+                notification.defaults & NotificationCompat.DEFAULT_SOUND);
         assertNotNull(notification.contentIntent);
     }
 
@@ -197,6 +265,7 @@ public final class TrinityPushDeliveryInstrumentedTest {
             NotificationChannel channel = notifications.getNotificationChannel(CHANNEL);
             assertNotNull(channel);
             assertTrue(channel.getImportance() > NotificationManager.IMPORTANCE_NONE);
+            assertNotNull(channel.getSound());
         }
     }
 

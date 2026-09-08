@@ -13,6 +13,8 @@ const h = vi.hoisted(() => ({
         channelId: string;
       }) => Promise<{ claimed: boolean }>
     >(),
+  badgeSupport: vi.fn<() => Promise<{ supported: boolean }>>(),
+  setBadge: vi.fn<(options: { count: number }) => Promise<void>>(),
   setForegroundOwner: vi.fn(
     (_options: {
       kind: 'listener' | 'presentation';
@@ -30,6 +32,8 @@ vi.mock('@capacitor/core', () => ({
       eventId: string;
       channelId: string;
     }) => h.claimPresentation(options),
+    badgeSupport: () => h.badgeSupport(),
+    setBadge: (options: { count: number }) => h.setBadge(options),
     setForegroundOwner: (options: {
       kind: 'listener' | 'presentation';
       owner: string;
@@ -43,6 +47,8 @@ describe('NativePushDeliveryService', () => {
     TestBed.resetTestingModule();
     h.platform = 'web';
     h.claimPresentation.mockReset().mockResolvedValue({ claimed: true });
+    h.badgeSupport.mockReset().mockResolvedValue({ supported: true });
+    h.setBadge.mockReset().mockResolvedValue(undefined);
     h.setForegroundOwner.mockReset().mockResolvedValue(undefined);
   });
 
@@ -88,6 +94,17 @@ describe('NativePushDeliveryService', () => {
       eventId: '$event',
       channelId: 'trinity-notifications-silent',
     });
+  });
+
+  it('clamps Android badge writes to the native range', async () => {
+    h.platform = 'android';
+    const service = TestBed.inject(NativePushDeliveryService);
+
+    await firstValueFrom(service.setBadge(-4));
+    await firstValueFrom(service.setBadge(10_004));
+
+    expect(h.setBadge).toHaveBeenNthCalledWith(1, { count: 0 });
+    expect(h.setBadge).toHaveBeenNthCalledWith(2, { count: 9999 });
   });
 
   it('maps native claim rejection to a generic error', async () => {

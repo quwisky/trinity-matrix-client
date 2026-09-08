@@ -22,6 +22,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import {
+  interpretTrinityPushSummary,
   parseTrinityPushPayload,
   resolvePushAccountRoute,
 } from '@trinity/util/push-client';
@@ -199,6 +200,7 @@ export class NotificationService {
         return of(undefined);
       const payload = parseTrinityPushPayload(data);
       if (!payload || payload.kind !== 'event') return of(undefined);
+      const summary = interpretTrinityPushSummary(payload);
       return new Observable<void>((subscriber) => {
         // The command belongs to this Runtime session as well as its caller.
         // Stopping either cancels pending storage and presentation observations.
@@ -240,7 +242,9 @@ export class NotificationService {
                 viewerId: client.getUserId() ?? route.accountId,
                 rules: {
                   notify: true,
-                  silent: !payload.sound || !this.sound.isOn(route.accountId),
+                  silent:
+                    !summary.effectiveSound ||
+                    !this.sound.isOn(route.accountId),
                 },
                 visibility: this.visibility.snapshot(),
                 duplicate: this.notified.has(key),

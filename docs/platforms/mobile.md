@@ -166,6 +166,13 @@ The manifest declares camera and media access for attachments and QR verificatio
 Without the runtime permission or channel, the OS does not deliver the notification as the
 application expects.
 
+Android uses Trinity's native badge adapter for both push snapshots and synced unread
+totals. Capacitor's vendor badge plugin remains enabled for iOS only; Android links the
+same pinned ShortcutBadger launcher library directly to avoid competing badge writers.
+Supported numerical badges use unread counts, capped at 9,999. Launcher dots and
+notification-channel sound behavior follow Android settings; see
+[counts and sound behavior](../reference/push-notifications.md#android-native-and-foreground-delivery).
+
 Android backup is explicitly disabled. The WebView crypto store holds device identity and
 inbound Megolm sessions, so copying it through Android Auto Backup would compromise cached
 encrypted history on restore. After a Capacitor update and sync, verify that
