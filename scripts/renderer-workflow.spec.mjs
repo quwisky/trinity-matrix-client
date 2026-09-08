@@ -139,12 +139,30 @@ describe('verified renderer workflow boundary', () => {
     expect(job.steps.find((step) => step.id === 'ios').run).toContain(
       'nx run trinity-ios:build-prebuilt',
     );
+    const pushTests = job.steps.findIndex(
+      (step) => step.id === 'ios-push-tests',
+    );
+    expect(pushTests).toBeGreaterThan(-1);
+    expect(pushTests).toBeLessThan(
+      job.steps.findIndex((step) => step.id === 'ios'),
+    );
+    expect(job.steps[pushTests].run).toContain('set -o pipefail');
+    expect(job.steps[pushTests].run).toContain(
+      'pnpm nx run trinity-ios:test-push-registration',
+    );
+    expect(
+      json('ios/project.json').targets['test-push-registration'].options
+        .command,
+    ).toBe(
+      'swift test --package-path ios/PushRegistration --scratch-path dist/ios-native/push-registration',
+    );
     const upload = job.steps.find((step) =>
       step.uses?.startsWith('actions/upload-artifact@'),
     );
     expect(upload.if).toContain(
-      "!cancelled() && steps.ios.outputs.started == 'true'",
+      "!cancelled() && (steps.ios.outputs.started == 'true' || steps.ios-push-tests.outputs.started == 'true')",
     );
+    expect(upload.with.path).toContain('push-registration-tests.log');
     expect(upload.with.path).toContain('xcodebuild.log');
     expect(upload.with.path).toContain('build.xcresult');
     expect(upload.with['if-no-files-found']).toBe('error');

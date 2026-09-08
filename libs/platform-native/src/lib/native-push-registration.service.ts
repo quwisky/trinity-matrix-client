@@ -21,11 +21,11 @@ export type NativePushRegistrationEvent =
       readonly data: Readonly<Record<string, unknown>>;
     };
 
-interface AndroidPushRegistrationPlugin {
+interface NativePushRegistrationPlugin {
   register(): Promise<void>;
 }
 
-const androidPushRegistration = registerPlugin<AndroidPushRegistrationPlugin>(
+const nativePushRegistration = registerPlugin<NativePushRegistrationPlugin>(
   'TrinityPushRegistration',
 );
 
@@ -37,7 +37,9 @@ export class NativePushRegistrationService {
 
   supported(): boolean {
     return (
-      this.platform !== null && Capacitor.isPluginAvailable('PushNotifications')
+      this.platform !== null &&
+      Capacitor.isPluginAvailable('PushNotifications') &&
+      Capacitor.isPluginAvailable('TrinityPushRegistration')
     );
   }
 
@@ -176,11 +178,7 @@ export class NativePushRegistrationService {
 
   register(): Observable<void> {
     return defer(() =>
-      from(
-        this.platform === 'android'
-          ? androidPushRegistration.register()
-          : PushNotifications.register(),
-      ),
+      this.supported() ? from(nativePushRegistration.register()) : of(void 0),
     );
   }
 }

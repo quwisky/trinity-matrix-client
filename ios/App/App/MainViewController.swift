@@ -18,6 +18,7 @@ class MainViewController: CAPBridgeViewController {
         super.capacitorDidLoad()
         webView?.allowsBackForwardNavigationGestures = false
         bridge?.registerPluginInstance(NativeNavigationPlugin())
+        bridge?.registerPluginInstance(TrinityPushRegistrationPlugin())
     }
 }
 

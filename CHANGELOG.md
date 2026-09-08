@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- iOS uses Firebase Messaging registration tokens for Trinity gateway pushers,
+  preserves shared Account-correct notification activation, and bundles generic
+  alert text. Missing Firebase configuration reports an error without blocking
+  application launch.
+
 - Android applies gateway unread snapshots to supported app badges, including silent
   count-only updates and zero clears. Matrix sync restores the combined unread total
   across Accounts, and event sound hints respect Android notification channels.

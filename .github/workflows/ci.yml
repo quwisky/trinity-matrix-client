@@ -383,6 +383,13 @@ jobs:
           xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
           xcrun --sdk iphonesimulator --show-sdk-version | tee -a "$GITHUB_STEP_SUMMARY"
       - run: pnpm nx run trinity-ios:verify
+      - name: Test native push token lifecycle
+        id: ios-push-tests
+        run: |
+          mkdir -p dist/ios-native
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          set -o pipefail
+          pnpm nx run trinity-ios:test-push-registration 2>&1 | tee dist/ios-native/push-registration-tests.log
       - name: Compile unsigned simulator host from verified renderer
         id: ios
         run: |
@@ -391,11 +398,12 @@ jobs:
           set -o pipefail
           pnpm nx run trinity-ios:build-prebuilt 2>&1 | tee dist/ios-native/xcodebuild.log
       - name: Retain Xcode diagnostics
-        if: ${{ !cancelled() && steps.ios.outputs.started == 'true' }}
+        if: ${{ !cancelled() && (steps.ios.outputs.started == 'true' || steps.ios-push-tests.outputs.started == 'true') }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-native-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
           path: |
+            dist/ios-native/push-registration-tests.log
             dist/ios-native/xcodebuild.log
             dist/ios-native/run.*/build.xcresult/
           include-hidden-files: true
