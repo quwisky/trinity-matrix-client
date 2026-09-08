@@ -32,11 +32,14 @@ unavailable diffs, branch creation, ambiguous merge bases, and every other path
 select the full code graph. Configuration, scripts, lockfiles, root documents,
 `docs/maintaining/`, and `docs/reference/stack.md` therefore retain full validation.
 
-The classifier emits its reason and expected jobs. The `Required` job runs after
+The classifier emits its reason and expected jobs. The `CI / Required` job runs after
 the independent checks and feeds their results to the tested required-result
-evaluator. It rejects failed, cancelled, missing, or skipped expected jobs; wiring
-the `CI / Required` status into branch rules belongs to the later protection slice
-of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
+evaluator. It rejects failed, cancelled, missing, or skipped expected jobs and missing
+classifier data. Its master-source guard checks the event against fresh PR metadata;
+the result summary still runs when source validation fails. `CI / Required` is the
+literal check-run name returned by GitHub, not a workflow-name prefix inferred from
+the UI. Installing this workflow and applying the
+[protected-branch cutover](#enforce-branch-checks) are separate steps.
 
 ### Diagnose setup and cache failures
 
@@ -84,7 +87,7 @@ for fifteen code executions. Only production consumers wait for `renderer`; one
 browser suite failure does not suppress the other suites. The five browser jobs
 call the bounded [`_e2e-suite.yml`](../../.github/workflows/_e2e-suite.yml) workflow.
 Nx and the E2E registry retain command, preparation, timeout, and resource ownership.
-The `Required` aggregate is a separate non-matrix job and reads the matrix result
+The `CI / Required` aggregate is a separate non-matrix job and reads the matrix result
 without relying on a shard's scalar output.
 
 Started Playwright suites upload hidden `dist/.playwright/` output through the
@@ -176,6 +179,116 @@ See [container validation](../platforms/web.md#verify-the-container-host) for co
 Docker/browser prerequisites, and the native architecture limit. Trinity's existing root and
 Electron package licenses remain MIT, with matching OCI metadata and preserved third-party
 notices. Container publication remains release work.
+
+## Enforce branch checks
+
+The [protection child](https://github.com/quwisky/trinity-matrix-client/issues/583) owns
+the live cutover and its dated API evidence. Complete source review and merge the CI
+change through the normal user-owned merge process before applying settings. A stacked
+PR's test-merge result cannot replace successful push CI at a protected branch tip.
+
+### Query the exact CI evidence
+
+`scripts/ci-check-trust.mjs` makes read-only GitHub API requests. It pins repository
+`1283201912` (`quwisky/trinity-matrix-client`), CI workflow `318169767`
+(`.github/workflows/ci.yml`), and check App `15368` (`github-actions`). It requires one
+unambiguous matching push run and a successful `CI / Required` job/check in that run's
+latest completed successful attempt. Conflicting runs, a changed attempt, a wrong
+source/SHA or a missing aggregate reject the proof. An earlier failure permits a later
+successful retry; an earlier success cannot conceal a failed or running latest attempt.
+
+```bash
+node scripts/ci-check-trust.mjs branch-tip --branch develop --sha FULL_SHA --out dist/ci-protection/develop-proof.json
+node scripts/ci-check-trust.mjs branch-tip --branch master --sha FULL_SHA --out dist/ci-protection/master-proof.json
+node scripts/ci-check-trust.mjs release --sha TAGGED_FULL_SHA --out dist/ci-protection/release-proof.json
+```
+
+Replace each placeholder with the full observed commit SHA. `branch-tip` re-reads the
+selected ref before and after collection. `release` always checks a push on `master`
+at the supplied historical commit; it does not resolve a branch or accept ancestry,
+a PR check or a newer green commit. Release automation adopts this query in its owning
+child; the current `release.yml` retains the ancestry gate documented below.
+
+Master PRs accept a `develop` head only when both event and fresh API data identify
+this same numeric repository and agree on the PR/head identity. The dedicated Release
+Please exception defaults to disabled. Its release child must provision the numeric
+App-to-bot binding before enabling it; a bot login or branch prefix is insufficient.
+The master-only ruleset enforces merge commits because CI cannot determine which merge
+method a maintainer will eventually select.
+
+### Bootstrap and apply the reviewed policy
+
+Use a maintainer credential with repository rule/administration access, branch-creation
+access and read access to Actions, checks, contents and PRs. Keep administrative
+credentials out of PR jobs. Save fresh API responses and reviewed JSON payloads under
+ignored `dist/ci-protection/`; do not commit settings snapshots or an apply framework.
+
+1. Read the repository, both branch refs, CI workflow identity, all active rulesets
+   (including inherited rules), effective branch rules and outside-contributor policy.
+   Run the exact-tip query on the merged `develop` SHA and inspect the emitted check
+   name and source. Only an actual 404 proves that `master` is absent; a permission
+   or network failure is not absence.
+2. If `master` is absent, re-read `develop` and verify its unchanged tip immediately
+   before creation. Prepare `create-master.json` with exactly
+   `{"ref":"refs/heads/master","sha":"VERIFIED_DEVELOP_FULL_SHA"}`. Create it once
+   with `gh api --method POST repos/quwisky/trinity-matrix-client/git/refs --input dist/ci-protection/create-master.json`
+   using a credential that triggers push CI, then read it back. Never reset an existing
+   branch or weaken basic PR/deletion/force-push rules to make bootstrap succeed.
+3. Wait for the designated workflow's real push run on `master`. Verify both branches
+   independently at their current tips using the commands above. PR/dispatch evidence
+   and the ref-creation response do not substitute for either push result.
+4. Prepare the following payloads from fresh rule/settings responses and inspect their
+   before/after diff. Preserve every unrelated writable field. Stop and reconcile an
+   unexpected required context, bypass, moved ref or changed baseline before applying.
+
+| Payload                  | Required policy                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `master-merge-rule.json` | One active branch ruleset targeting only `refs/heads/master`, with no bypass. Copy the baseline PR parameters and set `allowed_merge_methods` to `["merge"]`. Reuse its recorded ID on resumption instead of creating duplicates.                                                                                                             |
+| `required-ruleset.json`  | Update existing active ruleset `22388906`, preserving its `develop`/`master` targets, PR requirement, resolved conversations, zero approvals, no deletion and no force push. Set `bypass_actors` to `[]`. The sole required status is `{"context":"CI / Required","integration_id":15368}` with `strict_required_status_checks_policy: true`. |
+| `fork-approval.json`     | `{"approval_policy":"all_external_contributors"}`                                                                                                                                                                                                                                                                                             |
+| `repository.json`        | `{"allow_auto_merge":true}`; preserve the other repository merge settings.                                                                                                                                                                                                                                                                    |
+
+5. Repeat both exact-tip proofs and compare fresh refs/rules to the reviewed inputs.
+   Apply the master-only rule and contributor policy first:
+
+```bash
+gh api --method POST repos/quwisky/trinity-matrix-client/rulesets --input dist/ci-protection/master-merge-rule.json
+gh api --method PUT repos/quwisky/trinity-matrix-client/actions/permissions/fork-pr-contributor-approval --input dist/ci-protection/fork-approval.json
+```
+
+Record and read back the new master-only ruleset ID. Repeat both exact-tip queries and
+compare freshly fetched refs and the existing ruleset to the reviewed baseline immediately
+before requiring the status. Refresh the reviewed payload if the baseline changed.
+Enable auto-merge last:
+
+```bash
+gh api --method PUT repos/quwisky/trinity-matrix-client/rulesets/22388906 --input dist/ci-protection/required-ruleset.json
+gh api --method PATCH repos/quwisky/trinity-matrix-client --input dist/ci-protection/repository.json
+```
+
+Read back the repository, every active ruleset and both effective branch policies:
+
+```bash
+gh api repos/quwisky/trinity-matrix-client
+gh api repos/quwisky/trinity-matrix-client/git/ref/heads/develop
+gh api repos/quwisky/trinity-matrix-client/git/ref/heads/master
+gh api repos/quwisky/trinity-matrix-client/actions/workflows/ci.yml
+gh api --paginate repos/quwisky/trinity-matrix-client/rulesets
+gh api repos/quwisky/trinity-matrix-client/rulesets/22388906
+gh api repos/quwisky/trinity-matrix-client/rules/branches/develop
+gh api repos/quwisky/trinity-matrix-client/rules/branches/master
+gh api repos/quwisky/trinity-matrix-client/actions/permissions/fork-pr-contributor-approval
+```
+
+Fetch each other active ruleset by its observed ID as well. Confirm the single required
+context/App, strict current-base policy, no active bypass, zero approvals, resolved
+conversations, deletion/force-push restrictions, master merge-only rule, auto-merge and
+all-outside-contributor approval. Keep disabled unrelated rulesets disabled. A classic
+branch-protection 404 does not override effective ruleset protection. Recheck branch tips
+after settings changes: GitHub has no atomic transaction covering refs and rule updates.
+Record partial failures and retain installed protection; never restore a bypass to
+complete the sequence. Observe current-base blocking and actual contributor approval
+when those real events occur, distinguishing settings read-back from behavioral proof.
 
 ## Releases
 

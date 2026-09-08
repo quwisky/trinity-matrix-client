@@ -170,6 +170,28 @@ Artifacts under `dist/` are ignored. Attach review evidence to a pull request wh
 but never commit screenshots, videos, traces, or pixel baselines. Before review, state the
 behavior checked, exact command, result, and meaningful unavailable host checks.
 
+### Required-check and source-trust proof
+
+Run `pnpm nx test scripts` and `node scripts/e2e-suite-registry.mjs check` when changing
+the aggregate, master-source policy or CI trust query. Fixtures must reject every expected
+job's failure, cancellation, skip and absence; missing classifier data; changed expected
+sets; fork/name/author spoofing; and inconsistent event/API PR identity. Source rejection
+must leave the aggregate's result summary available. Workflow mutations must exercise the
+exact `CI / Required` name, complete needs, unconditional aggregation and permission limits.
+
+The trust-query fixtures must bind repository, workflow, event, branch, full SHA, run,
+latest attempt, job, check suite and GitHub Actions App. Include pagination ambiguity,
+conflicting records, a failed latest attempt after an earlier success, a successful latest
+retry after an earlier failure, and branch-tip movement during collection. A passing
+same-name PR check does not establish release trust.
+
+Hosted proof is separate: observe the actual raw check name on docs and code PRs, retain
+failure and retry artifacts, and query successful push CI at each protected branch's own
+tip. Keep exact run/attempt/check identifiers and settings read-backs in ignored output.
+Unit fixtures, a green stack PR and a prepared settings payload do not prove a live cutover.
+Use the [maintainer runbook](../maintaining/ci-and-releases.md#enforce-branch-checks) for the
+read-only query and the required external evidence.
+
 ## Angular test setup
 
 Most application-library test targets run Vitest in jsdom through the shared workspace

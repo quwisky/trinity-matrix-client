@@ -25,8 +25,58 @@ const workflowDocs = () => ({
 });
 
 describe('CI execution contract', () => {
+  it('emits the exact protected Required check and validates source before diagnostics', () => {
+    const required = workflow.jobs.required;
+    expect(required.name).toBe('CI / Required');
+    expect(required.if).toContain('always()');
+    expect(required.needs).toEqual([
+      'classify',
+      'docs-gate',
+      'quality',
+      'unit-and-types',
+      'renderer',
+      'component-storybook-e2e',
+      'component-styling-e2e',
+      'browser-synapse-e2e',
+      'qr-protocol-e2e',
+      'production-renderer-e2e',
+      'web-container',
+      'desktop-e2e',
+      'android-e2e',
+      'ios-native-build',
+    ]);
+    expect(required.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+    });
+    const sourceIndex = required.steps.findIndex(
+      (step) => step.id === 'master-source',
+    );
+    const evaluatorIndex = required.steps.findIndex(
+      (step) => step.name === 'Evaluate required results',
+    );
+    expect(sourceIndex).toBeGreaterThanOrEqual(0);
+    expect(required.steps[sourceIndex].run).toBe(
+      'node scripts/ci-master-source.mjs',
+    );
+    expect(required.steps[sourceIndex]['continue-on-error']).toBe(true);
+    expect(required.steps[sourceIndex].env).toEqual({
+      GH_TOKEN: '${{ github.token }}',
+    });
+    expect(evaluatorIndex).toBeGreaterThan(sourceIndex);
+    expect(required.steps[evaluatorIndex].env.CI_SOURCE_RESULT).toContain(
+      'steps.master-source.outcome',
+    );
+  });
+
   it('classifies every PR and preserves the full code graph', () => {
     expect(workflow.on.pull_request?.['paths-ignore']).toBeUndefined();
+    expect(workflow.on.pull_request?.types).toEqual([
+      'opened',
+      'synchronize',
+      'reopened',
+      'edited',
+    ]);
     expect(workflow.jobs.classify.outputs.mode).toContain(
       'steps.classify.outputs.mode',
     );

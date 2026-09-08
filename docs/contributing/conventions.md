@@ -86,6 +86,18 @@ unrelated active work, work on a task branch rather than a shared branch, and re
 target before an authorized pull request. Do not rewrite pushed history without explicit
 authorization.
 
+When stacked pull requests are explicitly authorized, a dependent change may target its
+preceding reviewable prerequisite branch before merge. Keep each PR scoped, retain native
+issue dependencies, and leave acceptance and external cutover work visible until complete.
+
+Promote `develop` to `master` from this repository using a merge commit. CI checks the
+event and fresh PR identity; a fork's branch named `develop` is not an accepted source.
+The dedicated Release Please App exception remains disabled until its authenticated
+App-to-bot binding is provisioned. The protected-branch policy requires current-base
+`CI / Required` from GitHub Actions, resolved conversations, zero formal review approvals
+and no bypass. Apply and verify that policy through the
+[branch cutover runbook](../maintaining/ci-and-releases.md#enforce-branch-checks).
+
 Authorization for a task remains valid for its necessary, reviewable steps; do not ask again for
 the same authorized action. It does not authorize a new external action. When an action is not
 authorized, leave changes uncommitted and report them. For an authorized commit or pull request,

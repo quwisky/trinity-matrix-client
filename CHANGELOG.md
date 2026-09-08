@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- An exact `CI / Required` check, a verified source policy for promotions to `master`,
+  and read-only CI evidence checks that bind release trust to the designated workflow's
+  latest attempt at the exact commit. A maintainer runbook defines protected-branch
+  cutover and its required API evidence; Release Please App integration remains pending.
+
 - Independent CI jobs report Storybook, styling, browser, QR protocol, production
   renderer, Web container, desktop, Android, and iOS results while sharing one verified
   production renderer. A fail-closed aggregate reports the complete expected result set,
