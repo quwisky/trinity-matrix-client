@@ -119,6 +119,31 @@ describe('BadgeCoordinator', () => {
     lifetime.unsubscribe();
   });
 
+  it('keeps the remaining account total when one account reaches zero', () => {
+    const { total, accounts, coordinator, write, flush } = setup(5);
+    accounts.set(
+      new Map([
+        ['@a:hs', 2],
+        ['@b:hs', 3],
+      ]),
+    );
+    const lifetime = coordinator.run().subscribe();
+    flush();
+    write.mockClear();
+
+    accounts.set(
+      new Map([
+        ['@a:hs', 0],
+        ['@b:hs', 3],
+      ]),
+    );
+    total.set(3);
+    flush();
+
+    expect(write).toHaveBeenLastCalledWith(3);
+    lifetime.unsubscribe();
+  });
+
   it('rewrites the current total when the host becomes active', () => {
     const { lifecycle, coordinator, write, flush } = setup(5);
     const lifetime = coordinator.run().subscribe();

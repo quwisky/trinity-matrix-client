@@ -176,6 +176,14 @@ describe('UnreadAggregatorService', () => {
     expect(svc.totalUnread()).toBe(5);
     expect(svc.unreadByAccount().has('@a:hs')).toBe(false);
     expect(a.listenerCount()).toBe(0);
+
+    // A late event from the detached client must not restore a signed-out Account's
+    // contribution after reconciliation has removed it.
+    a.getRooms()[0].unread = 99;
+    a.emit(ClientEvent.Sync);
+    await flush();
+    expect(svc.totalUnread()).toBe(5);
+    expect(svc.unreadByAccount().has('@a:hs')).toBe(false);
   });
 
   it('re-binds when an account is handed a NEW client object', async () => {

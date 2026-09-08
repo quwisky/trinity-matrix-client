@@ -40,6 +40,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- iOS preserves the delivered APNs badge during plugin startup until Matrix sync or
+  resume restores the combined unread total, without replaying an older cached count.
+
 - Mobile push settings use Trinity's fixed platform gateway App IDs and one easily
   changed build default. The shipped default is an explicitly labeled placeholder;
   a device URL override is still available for a deployed gateway.

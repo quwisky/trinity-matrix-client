@@ -14,6 +14,12 @@ const config: CapacitorConfig = {
     ].filter((name) => name !== '@capawesome/capacitor-badge'),
   },
   plugins: {
+    // iOS keeps the delivered APNs badge until Matrix supplies its combined total.
+    // Plugin startup must not restore an older cached count or clear it on resume.
+    Badge: {
+      persist: false,
+      autoClear: false,
+    },
     // Chat app with a bottom-pinned composer: resize the whole native WebView when
     // the soft keyboard shows so `100dvh`/`vh` shrink and the composer rides up above
     // the keyboard instead of being covered. `native` is the default but pinned here

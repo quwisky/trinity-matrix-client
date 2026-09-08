@@ -181,8 +181,8 @@ FCM token and a working gateway. Process absence is different from Android's
 after a force-stop, reopen the app before expecting push delivery. Battery and
 background restrictions can also delay messages. Instrumentation that injects a
 data-only message proves the native handler and activation path, not gateway/FCM transport.
-Real-device delivery remains a separate verification requirement. iOS
-badge/count/sound handling has its own implementation slice.
+Real-device delivery remains a separate verification requirement. See the
+[iOS delivery contract](#ios-fcm-registration-and-generic-alerts) for that host.
 
 Android consumes `unread` as a current snapshot, including zero, for both event and
 count-only payloads. Repeated or collapsed deliveries replace the badge count; they
@@ -241,6 +241,38 @@ Background alert presentation belongs to iOS. The bundled localization keys
 can display an alert before the application runs, application-side schema or retired
 Account checks govern activation and foreground presentation; they cannot retract
 an already displayed background alert.
+
+iOS applies the gateway's `aps.badge` as the latest delivered per-Account unread
+snapshot, including zero. This is not an exact combined background total: a zero
+for Account B can clear the icon while Account A still has unread messages. The
+next normal Matrix reconciliation or foreground resume restores the combined total
+across signed-in Accounts, even when that total has not changed. The iOS Badge plugin
+has `persist: false` and `autoClear: false`, preventing startup from restoring an
+older cached badge or clearing the delivered badge before reconciliation.
+
+Badge-only counts require `apns-push-type: alert`, with priority `5` for nonurgent
+delivery and no `aps.alert` or `aps.sound`; Apple requires the alert push type for
+[badge updates](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns).
+The gateway correction is tracked in [#608](https://github.com/quwisky/trinity-matrix-client/issues/608)
+and needs separate gateway publication and deployment before that transport contract
+is satisfied. iOS can apply this badge without an application background callback;
+Trinity does not add a background execution mode merely to rewrite it. Delivery can
+be delayed or dropped, and background execution is restricted after force-quit.
+No count freshness or background application execution is promised.
+
+Event alert and sound fields remain gateway-provided and subject to iOS notification
+permissions and user sound settings. Where JavaScript consumes the v1 metadata, the
+shared interpreter keeps count-only messages silent and without a navigation target,
+even with `sound=true` or `highlight=true`. Event sound also respects the owning
+Account's preference; highlight does not independently enable sound. `missed_calls`
+does not add unread or calling UI. Client unread values are capped at 9,999.
+
+Push counts never enter Matrix state or a replay queue. Removing an Account retires
+its contribution to the combined total, and obsolete client callbacks cannot restore
+it. APNs messages already queued before removal, or arriving out of order, can still
+change the OS badge before client validation runs; Matrix reconciliation repairs it.
+An extension to intercept those messages and exact combined background badges remain
+outside this implementation.
 
 `pnpm ios:verify` checks wiring without Xcode. Actual unsigned Simulator compilation
 uses `pnpm nx run trinity-ios:verify-native`, or the existing macOS CI build against

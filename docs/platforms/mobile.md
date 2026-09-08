@@ -203,6 +203,15 @@ callbacks. The Push Notifications entitlement selects the signing environment;
 operator configuration at `ios/App/App/GoogleService-Info.plist` is optional for builds
 and required for push registration. See [iOS push setup](../reference/push-notifications.md#ios-fcm-registration-and-generic-alerts).
 
+iOS keeps the latest delivered APNs badge until Matrix sync or foreground resume
+restores the combined unread count. The Badge plugin disables cached-count restoration
+and automatic clearing. A background badge is a per-Account snapshot, so zero can
+temporarily clear the icon while another Account remains unread. Badge-only delivery
+requires the gateway's APNs alert push type with no alert or sound fields; see the
+linked push reference for the gateway prerequisite, permission behavior and delivery
+limits. No background execution mode or Notification Service Extension is added for
+badge reconciliation.
+
 ## Package and release boundaries
 
 Android release packaging is `pnpm android:build:release`; configure release signing outside
