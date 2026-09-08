@@ -130,7 +130,7 @@ describe('modern timeline layout contracts', () => {
 
   it('keeps input and preview in one stable grid cell', () => {
     expect(composerCss).toMatch(
-      /\.composer__field\s*\{[^}]*grid-template-columns:\s*auto 1fr auto auto;[^}]*align-items:\s*end;/s,
+      /\.composer__field\s*\{[^}]*grid-template-columns:\s*auto 1fr auto auto auto;[^}]*align-items:\s*end;/s,
     );
     expect(composerCss).toMatch(
       /\.composer__preview,\s*\.composer__input\s*\{[^}]*grid-column:\s*2;[^}]*grid-row:\s*1;/s,

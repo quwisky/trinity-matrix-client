@@ -57,6 +57,7 @@
   <div class="thread__footer">
     <trn-typing-indicator [names]="typingNames()" [announce]="false" />
     <trn-message-composer
+      [accountId]="accountId()"
       placeholder="Reply…"
       [roomId]="rootEventId()"
       [members]="members()"

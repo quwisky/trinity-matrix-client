@@ -1,7 +1,6 @@
 import { NgtscProgram, readConfiguration } from '@angular/compiler-cli';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import postcss from 'postcss';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
@@ -183,41 +182,27 @@ describe('control recipe strict-template contract', () => {
     expect(imports).not.toContain('@trinity/helm/toggle-group');
   });
 
-  it('keeps representative consumer classes layout-only', () => {
+  it('keeps catalog toggle consumers free of appearance overrides', () => {
     const template = readFileSync(
       join(
         workspaceRoot,
-        'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.html',
+        'libs/components/controls/src/lib/control-recipe-matrix.stories.ts',
       ),
       'utf8',
     );
-    const styles = readFileSync(
-      join(
-        workspaceRoot,
-        'libs/feature/rooms/src/lib/message-composer/composer-toolbar/composer-toolbar.component.scss',
-      ),
-      'utf8',
-    );
+    const controlTags = [
+      ...withoutHtmlComments(template).matchAll(/<button\b[^>]*>/gu),
+    ]
+      .map(([tag]) => tag)
+      .filter((tag) => /\b(?:trnToggle|trnToggleGroupItem)\b/u.test(tag));
 
-    const markup = withoutHtmlComments(template);
-    const controlTags = [...markup.matchAll(/<button\b[^>]*>/gu)].map(
-      ([tag]) => tag,
-    );
-    const styleRoot = postcss.parse(withoutCodeComments(styles));
-    const selectors = [];
-    styleRoot.walkRules((rule) => selectors.push(rule.selector));
-
-    expect(controlTags.length).toBeGreaterThan(0);
-    expect(selectors.length).toBeGreaterThan(0);
     expect(controlTags.some((tag) => /\btrnToggleGroupItem\b/u.test(tag))).toBe(
       true,
     );
     expect(controlTags.some((tag) => /\btrnToggle\b/u.test(tag))).toBe(true);
-    expect(controlTags.some((tag) => /\btrnIconButton\b/u.test(tag))).toBe(
-      false,
-    );
-    expect(markup).not.toContain('toolbar__button');
-    expect(selectors).not.toContain('.toolbar__button');
-    expect(selectors).not.toContain('.toolbar__button--on');
+    for (const tag of controlTags) {
+      expect(tag).not.toMatch(/\btrnIconButton\b/u);
+      expect(tag).not.toMatch(/(?:\bclass|\bstyle|\[class|\[style)\s*[=.]/u);
+    }
   });
 });

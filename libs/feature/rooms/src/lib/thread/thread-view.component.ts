@@ -145,6 +145,7 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly roomId = input.required<string>();
+  readonly accountId = input<string | null>(null);
   readonly rootEventId = input.required<string>();
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
   readonly dismissed = output<void>();

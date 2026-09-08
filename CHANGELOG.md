@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Open Markdown formatting and Preview from an Aa composer action, using a desktop
+  popover or a mobile action sheet while preserving the editing selection.
+
 - MIT license for Trinity, with license metadata in the application and desktop
   package manifests and links from the README and contributor guide.
 
@@ -17,6 +20,12 @@ All notable changes to this project are documented here. The format is based on
   Shared Settings frames also return to side-by-side panes when a compact window is widened.
 
 ### Changed
+
+- Keep empty message inputs at one row even when a long room-name placeholder wraps,
+  so the composer remains reachable on small screens with larger text.
+
+- Replace the persistent and selection-triggered composer toolbar with the Aa formatting
+  action, and remove the toolbar visibility preferences from Appearance.
 
 - Clarify which Accounts appear together in Room Library with matching desktop and mobile
   selectors, clearer identity rows, and an explicit “Always included” Active Account state.
