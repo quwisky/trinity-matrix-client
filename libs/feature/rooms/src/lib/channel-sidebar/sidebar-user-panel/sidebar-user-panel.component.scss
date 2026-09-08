@@ -66,9 +66,9 @@
     }
   }
 
-  .account-menu {
+  .account-menu,
+  .account-pick-menu {
     box-sizing: border-box;
-    width: min(22rem, calc(100vw - 2 * var(--trinity-space-3)));
     max-height: min(
       32rem,
       calc(
@@ -80,6 +80,10 @@
     overflow-y: auto;
   }
 
+  .account-menu {
+    width: min(22rem, calc(100vw - 2 * var(--trinity-space-3)));
+  }
+
   .userbar__id {
     display: flex;
     flex-direction: column;
@@ -87,21 +91,15 @@
     flex: 1;
   }
 
-  .userbar__name {
+  .userbar__name,
+  .account-row__name,
+  .account-pick__name {
     @include ellipsis;
 
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
     font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-bright);
-  }
-
-  .userbar__handle {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-metadata-size);
-    line-height: var(--trinity-type-metadata-line-height);
-    color: var(--trinity-text-muted);
   }
 
   .userbar__settings {
@@ -158,16 +156,9 @@
     flex: 1;
   }
 
-  .account-row__name {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-bright);
-  }
-
-  .account-row__handle {
+  .userbar__handle,
+  .account-row__handle,
+  .account-pick__handle {
     @include ellipsis;
 
     font-size: var(--trinity-type-metadata-size);
@@ -279,20 +270,30 @@
 
   .account-pick__id {
     display: flex;
+    text-align: start;
     min-width: 0;
+    flex: 1;
     flex-direction: column;
   }
 
-  .account-pick__name {
-    @include ellipsis;
-
-    font-size: 13px;
+  .account-pick__indicator {
+    order: 3;
+    display: inline-flex;
+    flex: 0 0 auto;
+    min-width: 20px;
+    align-items: center;
+    justify-content: center;
   }
 
-  .account-pick__handle {
-    @include ellipsis;
-
-    font-size: 11px;
+  .account-pick__active {
+    flex: 0 0 auto;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-muted);
+  }
+
+  .account-pick-menu {
+    max-width: min(22rem, calc(100vw - 2 * var(--trinity-space-3)));
   }
 }

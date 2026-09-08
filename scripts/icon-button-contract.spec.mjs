@@ -79,6 +79,7 @@ const expectedBespokeCounts = {
 };
 
 const expectedCompositeCounts = {
+  'libs/feature/rooms/src/lib/account-picker/account-picker.component.html': 1,
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.html': 9,
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.html': 9,
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.html': 8,

@@ -35,7 +35,7 @@ describe('AccountPickerService', () => {
     await Promise.resolve();
 
     expect(openAndWait$).toHaveBeenCalledWith(AccountPickerComponent, {
-      ariaLabel: 'Show accounts',
+      ariaLabel: 'Accounts in view',
       inputs: { accounts: ACCOUNTS, activeUserId: '@alice:hs' },
       autoFocus: '[data-autofocus]',
     });

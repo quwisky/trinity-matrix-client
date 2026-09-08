@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Clarify which Accounts appear together in Room Library with matching desktop and mobile
+  selectors, clearer identity rows, and an explicit “Always included” Active Account state.
+  Selections apply immediately, with Done dismissing the mobile dialog.
+
 - Restyle Edit history with the Settings dialog surface, title bar close action,
   responsive fullscreen presentation and a clearer highlighted revision list.
 

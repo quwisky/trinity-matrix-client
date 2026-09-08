@@ -101,7 +101,7 @@ export async function seedUnreadReader(
 }
 
 /**
- * Tick another account into the mixed view via the user panel's "Show accounts" picker.
+ * Tick another account into the mixed view via the user panel's "Accounts in view" picker.
  * The active account is always included (its row is disabled), so this is only for others.
  *
  * **Desktop layout only.** Below the md breakpoint the picker is a dialog rather than a

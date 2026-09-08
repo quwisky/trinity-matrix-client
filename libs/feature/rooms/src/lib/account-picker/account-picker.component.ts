@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   input,
 } from '@angular/core';
@@ -12,12 +13,13 @@ import {
   TrnOverlaySurfaceDirective,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
- * The mobile stand-in for the user panel's "Show accounts" submenu.
+ * The mobile stand-in for the user panel's "Accounts in view" submenu.
  *
  * Below the `md` breakpoint the sidebar is a full-screen page and the user panel is a bar
  * across the bottom of the viewport, so a flyout anchored beside the account menu has nowhere
@@ -38,6 +40,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   imports: [
     AvatarComponent,
     TrnButton,
+    TrnIconComponent,
     TrnLockedSelectionDirective,
     TrnOverlaySurfaceDirective,
   ],
@@ -52,6 +55,11 @@ export class AccountPickerComponent {
 
   /** The account being acted as — always shown, so its row is locked. */
   readonly activeUserId = input<string | null>(null);
+
+  /** First account that can be changed; focus skips the locked active account. */
+  readonly firstFocusableAccountId = computed(
+    () => this.accounts().find(({ userId }) => !this.isLocked(userId))?.userId,
+  );
 
   /** Whether `userId` is currently mixed into the view. Live, so a tick re-renders its row. */
   isShown(userId: string): boolean {
