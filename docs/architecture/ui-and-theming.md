@@ -551,7 +551,8 @@ these current contracts intact:
   even inside the 120px near-bottom threshold used for incoming messages. Only an exact
   bottom pin is exempt. The same anchor remains pending when the delayed loading strip
   appears, so inserting the strip cannot shift the reader or replace the saved offset
-  with its displaced position. Correction runs immediately after rendering, before a
+  with its displaced position. Before rendering the strip, observe any viewport movement
+  whose browser scroll event is still pending. Correction runs immediately after rendering, before a
   subsequent scroll event can recapture the shifted geometry. The shared
   [timeline anchoring journey](../../e2e/browser/journeys/conversations/timeline-anchoring.spec.mts)
   checks the position both while the strip is visible and after history settles, including

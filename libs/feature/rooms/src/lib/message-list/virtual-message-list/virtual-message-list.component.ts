@@ -199,6 +199,19 @@ export class VirtualMessageListComponent extends MessageListBase {
       }
 
       if (this.pendingPrepend) {
+        // The viewport moves before the browser delivers its scroll event. Capture
+        // that movement before the loading strip changes the row geometry.
+        if (
+          this.loadingOlder() &&
+          el.scrollTop !==
+            (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
+        ) {
+          this.prevScrollHeight = el.scrollHeight;
+          this.prevScrollTop = el.scrollTop;
+          this.capturePrependAnchor(el);
+          this.prependAnchorGeneration++;
+          this.expectedProgrammaticScrollTop = null;
+        }
         // Keep the viewport anchored on what the user was reading.
         // Keep the same restore point through the loading strip and the final prepend.
         this.pendingPrepend = this.loadingOlder();

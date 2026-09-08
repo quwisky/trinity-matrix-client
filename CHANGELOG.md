@@ -1169,6 +1169,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Older-history loading indicators preserve the reader's latest timeline position even
+  when the browser has not yet delivered its scroll event.
+
 - Thread connectors reach the group's existing avatar through intervening messages,
   tall images, earlier thread previews, and unread markers without repeating the avatar.
 
