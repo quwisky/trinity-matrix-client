@@ -371,3 +371,5 @@ deadline after readiness to prove that a healthy retained lifetime remains owned
 verify the one producer ledger and the absence of a parallel warning path. Browser proof is
 needed for visible eviction-risk and scoped-recovery consequences; keep that proof in ignored
 Playwright output and attach it to the pull request.
+
+<!-- Temporary #583 documentation-only Required-check acceptance probe. Do not merge. -->
