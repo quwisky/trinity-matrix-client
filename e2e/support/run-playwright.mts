@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,9 @@ import {
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
 const playwrightCli = require.resolve('@playwright/test/cli');
+
+export const E2E_SAFE_COMPLETION_FILE = 'TRINITY_E2E_SAFE_COMPLETION_FILE';
+export const E2E_SAFE_COMPLETION_SUITE = 'TRINITY_E2E_SAFE_COMPLETION_SUITE';
 
 interface Arguments {
   readonly config: string;
@@ -122,6 +126,14 @@ export async function runPlaywright(
   const options = parseArguments(argv);
   const termination = createProcessTerminationScope();
   let invocation: E2EInvocation | undefined;
+  let safeCompletion:
+    | {
+        readonly file: string;
+        readonly suiteId: string;
+        readonly status: number;
+      }
+    | undefined;
+  let status = 1;
   try {
     invocation = await openE2EInvocation({
       resources: options.resources,
@@ -142,26 +154,54 @@ export async function runPlaywright(
       environment: invocationEnvironment,
       signal: termination.signal,
     });
-    if (prepared !== 0) return prepared;
-    // Own the reporter process directly: an intermediate package-manager process
-    // can forward a second termination signal before Playwright flushes reports.
-    const result = await runManagedCommand(
-      process.execPath,
-      [playwrightCli, 'test', '-c', options.config, ...options.forwarded],
-      {
-        cwd: workspaceRoot,
-        environment: invocationEnvironment,
-        timeout: 3_600_000,
-        terminationSignal: 'SIGINT',
-        terminationGraceMs: 30_000,
-        signal: termination.signal,
-      },
-    );
-    return result.status;
+    if (prepared !== 0) status = prepared;
+    else {
+      // Own the reporter process directly: an intermediate package-manager process
+      // can forward a second termination signal before Playwright flushes reports.
+      const result = await runManagedCommand(
+        process.execPath,
+        [playwrightCli, 'test', '-c', options.config, ...options.forwarded],
+        {
+          cwd: workspaceRoot,
+          environment: invocationEnvironment,
+          timeout: 3_600_000,
+          terminationSignal: 'SIGINT',
+          terminationGraceMs: 30_000,
+          signal: termination.signal,
+        },
+      );
+      status = result.status;
+      if (
+        !result.error &&
+        !result.signal &&
+        !result.timedOut &&
+        !termination.signal.aborted &&
+        invocationEnvironment[E2E_SAFE_COMPLETION_FILE] &&
+        invocationEnvironment[E2E_SAFE_COMPLETION_SUITE]
+      ) {
+        safeCompletion = {
+          file: invocationEnvironment[E2E_SAFE_COMPLETION_FILE],
+          suiteId: invocationEnvironment[E2E_SAFE_COMPLETION_SUITE],
+          status,
+        };
+      }
+    }
   } finally {
     termination.close();
     await invocation?.close();
   }
+  if (safeCompletion) {
+    mkdirSync(dirname(safeCompletion.file), { recursive: true });
+    writeFileSync(
+      safeCompletion.file,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        suiteId: safeCompletion.suiteId,
+        status: safeCompletion.status,
+      })}\n`,
+    );
+  }
+  return status;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

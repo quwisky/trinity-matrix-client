@@ -188,6 +188,82 @@ describe('Playwright config primitives', () => {
     ]);
   });
 
+  it('reports selected, executed and final test outcomes without using retries as flakes', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-reporter-'));
+    directories.push(directory);
+    const summaryFile = join(directory, 'suite-summary.json');
+    const stepSummary = join(directory, 'step-summary.md');
+    const previousStepSummary = process.env['GITHUB_STEP_SUMMARY'];
+    process.env['GITHUB_STEP_SUMMARY'] = stepSummary;
+    try {
+      const test = (id: string, outcome: string, expectedStatus = 'passed') =>
+        ({
+          id,
+          annotations: [],
+          expectedStatus,
+          outcome: () => outcome,
+        }) as never;
+      const flaky = test('flaky', 'flaky');
+      const exhausted = test('exhausted', 'unexpected');
+      const expected = test('expected', 'expected', 'failed');
+      const skipped = test('skipped', 'skipped', 'skipped');
+      const reporter = new RegistryMetadataReporter({
+        metadata: { 'trinity.e2e.suite': 'reporting.tests' },
+        outputFile: summaryFile,
+      });
+      reporter.onBegin(
+        {} as never,
+        { allTests: () => [flaky, exhausted, expected, skipped] } as never,
+      );
+      for (const [testCase, statuses] of [
+        [flaky, ['failed', 'passed']],
+        [exhausted, ['failed', 'failed']],
+        [expected, ['failed']],
+      ] as const) {
+        statuses.forEach((status, retry) =>
+          reporter.onTestEnd(testCase, {
+            annotations: [],
+            status,
+            retry,
+            duration: 1,
+          } as never),
+        );
+      }
+      reporter.onEnd({ status: 'failed', duration: 5 } as never);
+
+      expect(JSON.parse(readFileSync(summaryFile, 'utf8'))).toMatchObject({
+        selectedTestCount: 4,
+        executedTestCount: 3,
+        flakyTestCount: 1,
+        expectedFailureCount: 1,
+        unexpectedFailureCount: 1,
+        skippedTestCount: 1,
+        attempts: 5,
+        retries: 2,
+      });
+      expect(readFileSync(stepSummary, 'utf8')).toContain(
+        '| Status | Selected | Executed | Flaky | Expected failures | Unexpected failures | Skipped | Attempts | Retries | Elapsed |',
+      );
+
+      const preservedJson = join(directory, 'preserved.json');
+      process.env['GITHUB_STEP_SUMMARY'] = directory;
+      const resilientReporter = new RegistryMetadataReporter({
+        metadata: { 'trinity.e2e.suite': 'reporting.failure' },
+        outputFile: preservedJson,
+      });
+      resilientReporter.onBegin({} as never, { allTests: () => [] } as never);
+      resilientReporter.onEnd({ status: 'passed', duration: 0 } as never);
+      expect(JSON.parse(readFileSync(preservedJson, 'utf8'))).toMatchObject({
+        suiteId: 'reporting.failure',
+        status: 'passed',
+      });
+    } finally {
+      if (previousStepSummary === undefined)
+        delete process.env['GITHUB_STEP_SUMMARY'];
+      else process.env['GITHUB_STEP_SUMMARY'] = previousStepSummary;
+    }
+  });
+
   it('preserves registry identity in generated JUnit XML', () => {
     const workspaceRoot = resolve(import.meta.dirname, '../..');
     const directory = mkdtempSync(join(tmpdir(), 'trinity-junit-'));

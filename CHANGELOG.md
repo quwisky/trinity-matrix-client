@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Dedicated nightly/manual scheduled coverage reuses the registry's union-lock owner,
+  retains later diagnostics after ordinary suite failures, and reports actual cache,
+  test/retry/flake and phase measurements. The Sunday workflow remains during replacement
+  proof; final removal and ten-run performance acceptance remain pending.
+
 - An exact `CI / Required` check, a verified source policy for promotions to `master`,
   and read-only CI evidence checks that bind release trust to the designated workflow's
   latest attempt at the exact commit. A maintainer runbook defines protected-branch

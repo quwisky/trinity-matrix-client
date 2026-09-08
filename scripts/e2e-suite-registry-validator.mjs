@@ -77,6 +77,14 @@ const walkSteps = (document) => [
   ...(document?.runs?.steps ?? []),
 ];
 
+const scheduledInvocations = (document) =>
+  walkSteps(document).reduce(
+    (count, step) =>
+      count +
+      [...String(step?.run ?? '').matchAll(/\bpnpm e2e:scheduled\b/gu)].length,
+    0,
+  );
+
 const workflowUses = (document) =>
   [
     ...Object.values(document?.jobs ?? {}).map((job) => job?.uses),
@@ -107,12 +115,16 @@ const localActionPaths = (workspaceRoot, document) => [
 /** Validate the concrete caller/callee graph, including mutations that regex-only guards miss. */
 export const validateWorkflowContracts = (
   workspaceRoot,
-  { ci, e2e, renderer, restore, diagnostics, setupPlaywright } = {},
+  { ci, e2e, renderer, restore, diagnostics, setupPlaywright, nightly } = {},
   expectedSuiteIds = fiveReusableSuites,
 ) => {
   const errors = [];
   const ciJobs = ci?.jobs ?? {};
   const e2eJobs = e2e?.jobs ?? {};
+  if (scheduledInvocations(ci) !== 1)
+    errors.push(
+      'CI transition workflow must have exactly one scheduled aggregate invocation',
+    );
   const reusableCalls = Object.entries(ciJobs).filter(
     ([, job]) => job?.uses === './.github/workflows/_e2e-suite.yml',
   );
@@ -207,6 +219,7 @@ export const validateWorkflowContracts = (
   exactCheckout(renderer, '${{ inputs.sha }}', 'renderer');
   const allDocuments = [
     ci,
+    nightly,
     e2e,
     renderer,
     restore,
@@ -271,6 +284,7 @@ export const validateWorkflowContracts = (
     !permissionKeysAre(requiredJob?.permissions, {
       contents: 'read',
       'pull-requests': 'read',
+      actions: 'read',
     })
   )
     errors.push(
@@ -374,6 +388,111 @@ export const validateWorkflowContracts = (
     !String(reportUpload.if).includes('steps.suite.outputs.started')
   )
     errors.push('reusable E2E diagnostics are not gated on started execution');
+  if (nightly) {
+    const triggers = nightly.on ?? {};
+    if (
+      nightly.concurrency?.group !==
+        '${{ github.workflow }}-${{ github.ref }}' ||
+      nightly.concurrency?.['cancel-in-progress'] !== true
+    )
+      errors.push(
+        'nightly workflow must cancel superseded runs on the same ref',
+      );
+    const schedules = triggers.schedule ?? [];
+    if (schedules.length !== 1 || schedules[0]?.cron !== '23 3 * * 1-6')
+      errors.push(
+        'nightly workflow must schedule Monday through Saturday at 03:23 UTC',
+      );
+    if (!triggers.workflow_dispatch)
+      errors.push('nightly workflow must support workflow_dispatch');
+    const nightlyJobs = Object.entries(nightly.jobs ?? {});
+    if (
+      nightlyJobs.length !== 1 ||
+      nightly.jobs?.['scheduled-e2e'] === undefined
+    )
+      errors.push('nightly workflow must have one canonical scheduled job');
+    const nightlyJob = nightly.jobs?.['scheduled-e2e'];
+    if (nightlyJob?.['timeout-minutes'] !== 120)
+      errors.push('nightly scheduled job must retain a 120 minute ceiling');
+    if (
+      !permissionKeysAre(nightly.permissions, {
+        contents: 'read',
+        actions: 'read',
+      })
+    )
+      errors.push(
+        'nightly workflow permissions must be contents/actions read-only',
+      );
+    if (nightlyJob?.uses)
+      errors.push('nightly scheduled job must not nest a reusable workflow');
+    const checkout = (nightlyJob?.steps ?? []).find((step) =>
+      step.uses?.startsWith('actions/checkout@'),
+    );
+    if (checkout?.with?.ref !== '${{ github.sha }}')
+      errors.push('nightly checkout must use github.sha exactly');
+    const identity = (nightlyJob?.steps ?? []).find((step) =>
+      String(step.run).includes('Nightly execution identity'),
+    );
+    if (
+      !identity ||
+      !identity.env?.EVENT_NAME ||
+      !identity.env?.EVENT_REF ||
+      !identity.env?.EVENT_SHA ||
+      String(identity.run).includes('${{')
+    )
+      errors.push(
+        'nightly identity must pass event values through the environment',
+      );
+    const defaultRefGuard = (nightlyJob?.steps ?? []).find((step) =>
+      String(step.run).includes('refs/heads/develop'),
+    );
+    if (
+      !defaultRefGuard ||
+      !String(defaultRefGuard.if).includes("event_name == 'schedule'")
+    )
+      errors.push('nightly scheduled runs must guard the develop default ref');
+    const aggregate = (nightlyJob?.steps ?? []).find((step) =>
+      String(step.run).includes('pnpm e2e:scheduled'),
+    );
+    if (scheduledInvocations(nightly) !== 1)
+      errors.push(
+        'nightly workflow must have exactly one scheduled aggregate invocation',
+      );
+    if (!aggregate || !String(aggregate.run).includes('--timeout-ms 6600000'))
+      errors.push(
+        'nightly workflow must invoke the canonical scheduled aggregate with its managed ceiling',
+      );
+    const upload = (nightlyJob?.steps ?? []).find(
+      (step) => step.uses === './.github/actions/upload-playwright-diagnostics',
+    );
+    if (
+      !upload ||
+      !String(upload.if).includes('steps.scheduled.outputs.started') ||
+      !String(upload.with?.path ?? upload.with?.['report-path']).includes(
+        'dist/.playwright',
+      )
+    )
+      errors.push('nightly diagnostics must retain started suite reports');
+    const timing = (nightlyJob?.steps ?? []).find((step) =>
+      String(step.run).includes('ci-timing-summary.mjs'),
+    );
+    if (
+      !timing ||
+      timing['continue-on-error'] !== true ||
+      timing.env?.GH_TOKEN !== '${{ github.token }}'
+    )
+      errors.push(
+        'nightly timing reporting must be best effort with a narrowly scoped token',
+      );
+    if (
+      timing &&
+      upload &&
+      nightlyJob.steps.indexOf(timing) > nightlyJob.steps.indexOf(upload)
+    )
+      errors.push(
+        'nightly timing reporting must run before diagnostics upload',
+      );
+  }
   return errors;
 };
 
@@ -1087,6 +1206,12 @@ export function validateWorkspace(
   );
   validateProtocolAssertionInventory(errors, workspaceRoot);
   validateCiEntrypoints(errors, workspaceRoot, snapshot);
+  const nightlyWorkflowPath = join(
+    workspaceRoot,
+    '.github/workflows/e2e-nightly.yml',
+  );
+  if (!existsSync(nightlyWorkflowPath))
+    errors.push('nightly workflow is missing');
   const readYaml = (path) =>
     parseYaml(readFileSync(join(workspaceRoot, path), 'utf8'));
   errors.push(
@@ -1105,6 +1230,9 @@ export function validateWorkspace(
         setupPlaywright: readYaml(
           '.github/actions/setup-playwright/action.yml',
         ),
+        nightly: existsSync(nightlyWorkflowPath)
+          ? readYaml('.github/workflows/e2e-nightly.yml')
+          : undefined,
       },
       new Set(snapshot.ciEntrypoints.flatMap(({ suiteIds }) => suiteIds)),
     ),

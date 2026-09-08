@@ -1,0 +1,65 @@
+name: E2E Nightly
+
+on:
+  schedule:
+    - cron: '23 3 * * 1-6'
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  scheduled-e2e:
+    name: Scheduled E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions: { contents: read, actions: read }
+    steps:
+      - name: Validate scheduled default ref
+        if: ${{ github.event_name == 'schedule' }}
+        env:
+          EVENT_REF: ${{ github.ref }}
+        run: test "$EVENT_REF" = 'refs/heads/develop'
+      - name: Check out exact event SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Identify selected ref
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          {
+            echo '### Nightly execution identity'
+            echo '| Event | Ref | SHA |'
+            echo '| --- | --- | --- |'
+            printf '| %s | %s | %s |\n' "$EVENT_NAME" "$EVENT_REF" "$EVENT_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with: { browsers: chromium firefox webkit }
+      - id: scheduled
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 6600000 -- pnpm e2e:scheduled
+      - name: Summarize exact attempt timings
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-timing-summary.mjs --label 'Nightly prerequisite timing'
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.scheduled.outputs.started == 'true' }}
+        with:
+          surface: scheduled
+          shard: all
+          report-path: dist/.playwright/**/**
+          artifact-name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-scheduled-linux-all
+          retention-days: 7

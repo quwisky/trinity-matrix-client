@@ -11,11 +11,12 @@ changelog, and publication rules, use the [conventions](../contributing/conventi
 
 ## Know what ran
 
-| Workflow                                               | Starts when                                                       | What it provides                                               |
-| ------------------------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)             | A pull request, selected pushes, or its weekly schedule           | Branch checks and browser, desktop, and Android evidence       |
-| [`release.yml`](../../.github/workflows/release.yml)   | A stable `vX.Y.Z` tag push, or a manual dispatch with a tag input | Tag verification, desktop packages, and a draft GitHub release |
-| [`renovate.yml`](../../.github/workflows/renovate.yml) | Daily at 00:00 UTC or a manual dispatch                           | Dependency update maintenance through a GitHub App token       |
+| Workflow                                                     | Starts when                                                              | What it provides                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                   | A pull request, selected pushes, or its weekly schedule                  | Branch checks and browser, desktop, and Android evidence                      |
+| [`e2e-nightly.yml`](../../.github/workflows/e2e-nightly.yml) | Monday–Saturday at 03:23 UTC or manual dispatch during replacement proof | Canonical scheduled registry tier, aggregate diagnostics and timing summaries |
+| [`release.yml`](../../.github/workflows/release.yml)         | A stable `vX.Y.Z` tag push, or a manual dispatch with a tag input        | Tag verification, desktop packages, and a draft GitHub release                |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)       | Daily at 00:00 UTC or a manual dispatch                                  | Dependency update maintenance through a GitHub App token                      |
 
 The branch workflow accepts pushes to `develop`, `master`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -59,6 +60,14 @@ between hosted runners: Nx's local result index is machine-specific, and this
 repository has no remote Nx cache. Treat a repeated build in another CI job as
 an independent build, not a cache regression.
 
+Setup summaries report the pinned cache action's actual output: an exact hit, a
+non-exact/missed lookup, or unavailable evidence. A quick install is not proof of
+a cache hit. Browser-download caching remains separate from pnpm and Gradle.
+The phase summary uses the current workflow attempt's job/step timestamps;
+missing timestamps and in-progress steps remain explicit. Overlapping job
+durations are not added together as elapsed workflow time. A bounded timing API
+failure is a visible reporting warning and cannot change the required result.
+
 ## The CI jobs
 
 Open the newest workflow run, then start with the first failing step and its
@@ -66,21 +75,21 @@ log. Do not infer repository-wide merge rules from the workflow YAML: branch
 protection and rulesets live in GitHub settings and may impose additional
 requirements.
 
-| Job                       | Checks                                                                                                          | First recovery step                                                                                                               |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`                 | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                       |
-| `unit-and-types`          | Workspace-wide typecheck, then `pnpm test`                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                |
-| `renderer`                | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                     |
-| `component-storybook-e2e` | Component Storybook journeys                                                                                    | Inspect the component report and its Storybook build prerequisites.                                                               |
-| `component-styling-e2e`   | Styling journeys against the development application                                                            | Inspect the styling report and the selected theme or viewport.                                                                    |
-| `browser-synapse-e2e`     | Full canonical browser journeys with disposable Synapse                                                         | Reproduce the smallest owned journey through its Nx lifecycle target.                                                             |
-| `qr-protocol-e2e`         | QR verification protocol journeys                                                                               | Inspect both clients' verification state and the protocol report.                                                                 |
-| `production-renderer-e2e` | Production renderer journeys using the verified artifact                                                        | Inspect the manifest verification and production browser report.                                                                  |
-| `web-container`           | Rootless container HTTP, image, and offline PWA checks using the verified renderer                              | Inspect the Docker host evidence and PWA report.                                                                                  |
-| `desktop-e2e`             | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer            | Use the [desktop guide](../platforms/desktop.md) to reproduce the matching shell or packaging step.                               |
-| `android-e2e`             | Four API 36 Pixel 6 WebView shards using the verified renderer                                                  | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host. |
-| `ios-native-build`        | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                          |
-| `scheduled-e2e`           | Chromium, Firefox, and WebKit scheduled suite                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.      |
+| Job                       | Checks                                                                                                          | First recovery step                                                                                                                |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`                 | `pnpm lint`, `pnpm stylelint`, and `pnpm format:check`                                                          | Fix the reported rule or formatting issue. Stylelint is separate from lint.                                                        |
+| `unit-and-types`          | Workspace-wide typecheck, then `pnpm test`                                                                      | Fix the type or unit failure; a passing Vitest run does not replace the typecheck.                                                 |
+| `renderer`                | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                      |
+| `component-storybook-e2e` | Component Storybook journeys                                                                                    | Inspect the component report and its Storybook build prerequisites.                                                                |
+| `component-styling-e2e`   | Styling journeys against the development application                                                            | Inspect the styling report and the selected theme or viewport.                                                                     |
+| `browser-synapse-e2e`     | Full canonical browser journeys with disposable Synapse                                                         | Reproduce the smallest owned journey through its Nx lifecycle target.                                                              |
+| `qr-protocol-e2e`         | QR verification protocol journeys                                                                               | Inspect both clients' verification state and the protocol report.                                                                  |
+| `production-renderer-e2e` | Production renderer journeys using the verified artifact                                                        | Inspect the manifest verification and production browser report.                                                                   |
+| `web-container`           | Rootless container HTTP, image, and offline PWA checks using the verified renderer                              | Inspect the Docker host evidence and PWA report.                                                                                   |
+| `desktop-e2e`             | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer            | Use the [desktop guide](../platforms/desktop.md) to reproduce the matching shell or packaging step.                                |
+| `android-e2e`             | Four API 36 Pixel 6 WebView shards using the verified renderer                                                  | Use the [mobile guide](../platforms/mobile.md) and the Android-specific failure output; browser success does not prove this host.  |
+| `ios-native-build`        | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                           |
+| `scheduled-e2e`           | Chromium, Firefox, and WebKit scheduled suite                                                                   | The canonical tier runs in the nightly/manual workflow; the Sunday CI owner remains temporarily until replacement proof completes. |
 
 Code events run twelve code-job definitions, with Android expanding to four shards
 for fifteen code executions. Only production consumers wait for `renderer`; one
@@ -179,6 +188,88 @@ See [container validation](../platforms/web.md#verify-the-container-host) for co
 Docker/browser prerequisites, and the native architecture limit. Trinity's existing root and
 Electron package licenses remain MIT, with matching OCI metadata and preserved third-party
 notices. Container publication remains release work.
+
+## Scheduled coverage and timing evidence
+
+The dedicated [nightly workflow](../../.github/workflows/e2e-nightly.yml) invokes
+`pnpm e2e:scheduled`, the existing registry-owned aggregate. The registry selects
+the scheduled tier at execution time; the workflow does not maintain another
+suite list. One invocation acquires the full resource union before children,
+and the selected suites execute sequentially. Shared-port suites do not overlap.
+
+After an ordinary completed suite failure, this aggregate runs the later intended
+suites and retains an overall failure. Before continuing, it verifies a unique
+completion record written after the inner Playwright process exits normally and
+its invocation cleanup succeeds; an outer Nx exit code alone is insufficient.
+A missing or malformed started-suite summary is a failure. Termination or unsafe execution/cleanup stops later work
+with an explicit not-run reason. Partial aggregate JSON and Markdown retain
+completed results and the failure; other aggregates retain their existing
+fail-fast behavior. Managed command timeout leaves collection time before the
+job deadline. Hard runner loss or cancellation cannot guarantee uploads.
+
+Each suite records selected/executed test counts, attempts, retries, expected
+and unexpected failures, skipped tests and final flaky outcomes. Flakiness comes
+from the final Playwright test outcome; retry count alone is not a flaky-test
+count. Older schema-1 reports remain readable, with absent measurements marked
+unavailable. Suite rows and the aggregate Markdown appear in the job summary;
+raw reports and process logs remain in the attempt-specific diagnostic artifact.
+Renderer jobs continue to report their existing verified manifest identity.
+
+### Finish the scheduled-workflow replacement
+
+The first change deliberately schedules the new workflow Monday–Saturday at
+03:23 UTC and preserves the existing Sunday 03:23 UTC job. These automatic dates
+do not overlap; both use the same aggregate and its one resource owner. This is
+a temporary replacement period, not completed nightly acceptance.
+
+After the user merges the new workflow onto default branch `develop`, collect
+one real manual run and a real scheduled event. Record event, ref, full checkout
+SHA, run/attempt, selected tier, lock/cleanup evidence, terminal results and
+retained artifacts. A manual dispatch does not prove the scheduler fired.
+Demonstrate ordinary-failure continuation and managed-timeout diagnostics without
+weakening the product suites or counting deliberate probes as performance samples.
+Then make the reviewed follow-up remove `ci.yml`'s Sunday trigger/job and change
+the new cron to every day. Leave that merge to the user and read back both final
+workflow files plus an actual scheduled run. Keep #584 open until replacement
+and measurement acceptance are complete.
+
+### Measure the first ten representative code-PR runs
+
+Use the first ten chronological public code-PR executions of the new #582 graph,
+starting at its initial public rollout. Record the boundary revision and each
+run's exact graph revision, PR, target branch, head/test-merge SHA, run ID and
+initial attempt before drawing conclusions. Use one sample per run ID; reruns
+are diagnostic follow-up. Retain older qualifying runs even when newer summary
+fields were not yet available, reconstructing available timestamps from the API
+and logs and labeling missing measurements.
+
+Exclude docs-only, push, nightly/manual and deliberate probe runs, synthetic
+trigger-only changes and runs demonstrably broken during initial environment
+provisioning. Keep a chronological exclusion ledger with evidence. Cold cache,
+queue time, slow hosts, ordinary failures and retries are not exclusions.
+Keep superseded/cancelled runs as censored observations; their short duration is
+not fast completion. Report their frequency separately from ten complete runs.
+
+Measure user wait from workflow creation, including queue/dependency delay, and
+also report execution-only phases. First actionable failure uses a failing
+phase's timestamp; terminal step time is an upper bound when finer evidence is
+unavailable. Green runs have no first-failure observation. Non-native completion
+is the latest completed required quality, unit/type, renderer, browser, container
+or Electron job. Exclude Android, iOS and the aggregate's wait on them. A failed
+prerequisite with unexecuted dependent jobs does not prove full-graph latency;
+report the available denominator instead of replacing that run silently.
+
+Publish raw observations and nearest-rank p95, sorted value `ceil(0.95 × n)`.
+For ten observations this is the maximum. Assess the five-minute first-failure
+goal only across observed natural failures and the fifteen-minute non-native
+p95 goal only with a sufficient complete denominator. Keep each Android shard's
+distribution, slowest-shard completion and iOS compile distribution separate.
+Derive provisional native targets from those observations with stated headroom;
+do not pool forty correlated shard observations as forty independent PRs.
+Verify one production renderer compilation and exact consumer identity for each
+eligible complete graph. Missing data or a target miss stays visible; the goals
+do not authorize reduced tests or new merge gates. Store raw collection and
+calculation files under ignored output, and record the resulting evidence on #584.
 
 ## Enforce branch checks
 
@@ -426,8 +517,9 @@ reviewing an update branch or diagnosing why it did not merge.
 This guide documents committed behavior. [Issue #462](https://github.com/quwisky/trinity-matrix-client/issues/462)
 is open work toward further CI and release readiness; it is not evidence that a
 release finalizer, release-please, Web ZIP, container publication, or store
-delivery exists today. The weekly scheduled E2E workflow already exists, even
-if older discussion of that issue predates it.
+delivery exists today. Scheduled E2E is transitioning to the dedicated nightly/manual
+workflow; [replacement proof and timing evidence](#scheduled-coverage-and-timing-evidence)
+remain separate acceptance work.
 
 [Issue #464](https://github.com/quwisky/trinity-matrix-client/issues/464) is
 also open work for signed Android Play internal-testing and iOS TestFlight

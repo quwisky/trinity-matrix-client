@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { accessSync, constants, existsSync } from 'node:fs';
+import {
+  accessSync,
+  appendFileSync,
+  constants,
+  existsSync,
+  readFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -22,6 +28,10 @@ import {
   suiteSummaryPath,
   writeAggregateReport,
 } from '../e2e/support/execution-report.mts';
+import {
+  E2E_SAFE_COMPLETION_FILE,
+  E2E_SAFE_COMPLETION_SUITE,
+} from '../e2e/support/run-playwright.mts';
 
 export { runManagedCommand } from '../e2e/support/managed-command.mts';
 
@@ -286,6 +296,7 @@ export const runSuite = (
     report = writeOutput,
     forwardedArgs = [],
     signal,
+    rejectUnsafeOutcome = false,
   } = {},
 ) => {
   const targetArgs = [
@@ -312,6 +323,15 @@ export const runSuite = (
       signal,
     }),
   ).then((result) => {
+    if (
+      rejectUnsafeOutcome &&
+      (result.error || result.signal || result.timedOut)
+    ) {
+      throw new Error(
+        `managed suite process ended unsafely${result.timedOut ? ' (timed out)' : ''}`,
+        { cause: result.error },
+      );
+    }
     if (result.timedOut) {
       report(`[e2e] ${suite.id} timed out after ${timeout} ms`);
     }
@@ -339,7 +359,15 @@ const suiteResult = (
 });
 
 const createReportPersister =
-  ({ targetName, startedAt, now, writeReport, reportOutput }) =>
+  ({
+    targetName,
+    startedAt,
+    now,
+    writeReport,
+    reportOutput,
+    environment,
+    reportError,
+  }) =>
   (runId, results) => {
     const report = buildAggregateReport({
       target: targetName,
@@ -350,8 +378,33 @@ const createReportPersister =
     });
     const paths = writeReport(workspaceRoot, report);
     if (paths?.json) reportOutput(`[e2e] aggregate summary -> ${paths.json}`);
+    const stepSummary = environment['GITHUB_STEP_SUMMARY'];
+    if (stepSummary && paths?.markdown) {
+      try {
+        appendFileSync(
+          stepSummary,
+          `${readFileSync(paths.markdown, 'utf8')}\n`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        reportError(
+          `E2E aggregate step summary could not be appended: ${message}`,
+        );
+      }
+    }
     return report;
   };
+
+const persistReportSafely = (persistReport, runId, results, reportError) => {
+  try {
+    persistReport(runId, results);
+    return 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    reportError(`E2E aggregate summary could not be written: ${message}`);
+    return 1;
+  }
+};
 
 const initialSelectionResults = (aggregate, selectedSuites) => {
   if (aggregate.selection.kind !== 'ci-tier') return [];
@@ -444,19 +497,54 @@ const readValidatedSuiteSummary = ({
   }
 };
 
+const readSafeCompletion = (file, suiteId, status) => {
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8'));
+    if (
+      parsed?.schemaVersion !== 1 ||
+      parsed?.suiteId !== suiteId ||
+      !Number.isInteger(parsed?.status) ||
+      parsed.status < 0 ||
+      parsed.status > 255 ||
+      (parsed.status === 0) !== (status === 0)
+    ) {
+      return 'invalid scheduled suite completion record';
+    }
+    return undefined;
+  } catch {
+    return 'scheduled suite emitted no safe completion record';
+  }
+};
+
 const executeRegisteredSuite = async ({
   suite,
   invocation,
   forwardedArgs,
   signal,
+  rejectUnsafeOutcome = false,
   executeSuite,
   readSuiteResult,
 }) => {
   const startedAt = Date.now();
+  const completionFile =
+    rejectUnsafeOutcome && invocation.descriptor?.artifactsRoot
+      ? join(
+          invocation.descriptor.artifactsRoot,
+          'safe-completion',
+          `${suite.id}-${randomUUID()}.json`,
+        )
+      : undefined;
   const status = await executeSuite(suite, {
     forwardedArgs,
-    environment: invocation.environment,
+    environment: completionFile
+      ? {
+          ...invocation.environment,
+          [E2E_SAFE_COMPLETION_FILE]: completionFile,
+          [E2E_SAFE_COMPLETION_SUITE]: suite.id,
+        }
+      : invocation.environment,
     signal,
+    rejectUnsafeOutcome,
   });
   const summaryResult = readValidatedSuiteSummary({
     suite,
@@ -464,33 +552,73 @@ const executeRegisteredSuite = async ({
     runId: invocation.descriptor?.id,
     readSuiteResult,
   });
+  const completionFailure = completionFile
+    ? readSafeCompletion(completionFile, suite.id, status)
+    : undefined;
   return {
     status,
     durationMs: Date.now() - startedAt,
     ...summaryResult,
+    ...(completionFailure ? { completionFailure } : {}),
   };
 };
 
 const executeRunnableSuites = async ({
+  continueAfterFailure,
   runnableSuites,
   results,
   invocation,
   forwardedArgs,
   signal,
+  rejectUnsafeOutcome = false,
   executeSuite,
   readSuiteResult,
   reportError,
 }) => {
+  let firstFailure = 0;
   for (const [index, suite] of runnableSuites.entries()) {
-    const execution = await executeRegisteredSuite({
-      suite,
-      invocation,
-      forwardedArgs,
-      signal,
-      executeSuite,
-      readSuiteResult,
-    });
-    const failed = execution.status !== 0 || Boolean(execution.summaryFailure);
+    if (signal.aborted) {
+      appendNotRun(
+        results,
+        runnableSuites.slice(index),
+        'aggregate interrupted',
+      );
+      return 1;
+    }
+    let execution;
+    const executionStartedAt = Date.now();
+    try {
+      execution = await executeRegisteredSuite({
+        suite,
+        invocation,
+        forwardedArgs,
+        signal,
+        rejectUnsafeOutcome,
+        executeSuite,
+        readSuiteResult,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      results.push(
+        suiteResult(suite, 'failure', {
+          durationMs: Date.now() - executionStartedAt,
+          detail: `suite execution failed: ${message}`,
+        }),
+      );
+      appendNotRun(
+        results,
+        runnableSuites.slice(index + 1),
+        `stopped after ${suite.id} execution error`,
+      );
+      reportError(`E2E suite ${suite.id} execution failed: ${message}`);
+      return 1;
+    }
+    const interrupted = signal.aborted;
+    const failed =
+      interrupted ||
+      execution.status !== 0 ||
+      Boolean(execution.summaryFailure) ||
+      Boolean(execution.completionFailure);
     results.push(
       suiteResult(
         suite,
@@ -498,18 +626,28 @@ const executeRunnableSuites = async ({
         {
           retries: execution.summary?.retries ?? 0,
           durationMs: execution.durationMs,
-          ...(execution.summaryFailure
-            ? { detail: execution.summaryFailure }
-            : {}),
+          ...(interrupted
+            ? { detail: 'aggregate interrupted' }
+            : execution.summaryFailure || execution.completionFailure
+              ? {
+                  detail:
+                    execution.summaryFailure ?? execution.completionFailure,
+                }
+              : {}),
         },
       ),
     );
     if (!failed) continue;
     reportError(
-      execution.summaryFailure
-        ? `${suite.id} failed report validation: ${execution.summaryFailure}`
-        : `${suite.id} failed with exit code ${execution.status}; remaining suites were not run.`,
+      interrupted
+        ? `${suite.id} interrupted; remaining suites were not run.`
+        : execution.summaryFailure || execution.completionFailure
+          ? `${suite.id} failed report validation: ${execution.summaryFailure ?? execution.completionFailure}`
+          : `${suite.id} failed with exit code ${execution.status}`,
     );
+    firstFailure ||= execution.status || 1;
+    if (continueAfterFailure && !interrupted && !execution.completionFailure)
+      continue;
     appendNotRun(
       results,
       runnableSuites.slice(index + 1),
@@ -517,7 +655,7 @@ const executeRunnableSuites = async ({
     );
     return execution.status || 1;
   }
-  return 0;
+  return firstFailure;
 };
 
 const closeInvocation = async ({
@@ -575,6 +713,8 @@ export const runSelection = async (
     now,
     writeReport,
     reportOutput,
+    environment,
+    reportError,
   });
   const termination = createTerminationScope();
   try {
@@ -603,28 +743,58 @@ export const runSelection = async (
     }
 
     const results = initialSelectionResults(aggregate, selectedSuites);
-    const { runnableSuites, unavailableSuites } = await planSelectedSuites({
-      targetName,
-      selectedSuites,
-      results,
-      isQuarantined,
-      preflight,
-      reportError,
-    });
+    let runnableSuites;
+    let unavailableSuites;
+    try {
+      ({ runnableSuites, unavailableSuites } = await planSelectedSuites({
+        targetName,
+        selectedSuites,
+        results,
+        isQuarantined,
+        preflight,
+        reportError,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const plannedIds = new Set(results.map(({ id }) => id));
+      appendNotRun(
+        results,
+        selectedSuites.filter(({ id }) => !plannedIds.has(id)),
+        `preflight failed: ${message}`,
+      );
+      persistReportSafely(
+        persistReport,
+        syntheticRunId(),
+        results,
+        reportError,
+      );
+      reportError(`E2E prerequisite preflight failed: ${message}`);
+      return 1;
+    }
     if (blocksOnUnavailable(aggregate, unavailableSuites)) {
       appendNotRun(
         results,
         runnableSuites,
         'required selection failed prerequisite preflight',
       );
-      persistReport(syntheticRunId(), results);
+      persistReportSafely(
+        persistReport,
+        syntheticRunId(),
+        results,
+        reportError,
+      );
       reportError('E2E prerequisite preflight failed; no suites were started.');
       return 1;
     }
 
     if (runnableSuites.length === 0) {
-      persistReport(syntheticRunId(), results);
-      return 0;
+      const reportStatus = persistReportSafely(
+        persistReport,
+        syntheticRunId(),
+        results,
+        reportError,
+      );
+      return reportStatus;
     }
 
     const resources = [
@@ -632,20 +802,76 @@ export const runSelection = async (
         runnableSuites.flatMap(({ serializationKeys }) => serializationKeys),
       ),
     ];
-    const invocation = await openInvocation(resources, termination.signal);
+    let invocation;
+    try {
+      invocation = await openInvocation(resources, termination.signal);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendNotRun(
+        results,
+        runnableSuites,
+        `invocation setup failed: ${message}`,
+      );
+      persistReportSafely(
+        persistReport,
+        syntheticRunId(),
+        results,
+        reportError,
+      );
+      reportError(`E2E invocation setup failed: ${message}`);
+      return 1;
+    }
     const runId = invocation.descriptor?.id ?? syntheticRunId();
+    if (
+      targetName === 'e2e-scheduled' &&
+      !invocation.descriptor?.artifactsRoot
+    ) {
+      appendNotRun(
+        results,
+        runnableSuites,
+        'scheduled invocation did not provide an artifacts root',
+      );
+      const teardownStatus = await closeInvocation({
+        invocation,
+        results,
+        runnableSuites,
+        reportError,
+      });
+      const reportStatus = persistReportSafely(
+        persistReport,
+        runId,
+        results,
+        reportError,
+      );
+      reportError(
+        'E2E scheduled invocation did not provide an artifacts root; no suites were started.',
+      );
+      return Math.max(1, teardownStatus, reportStatus);
+    }
     let finalStatus;
     try {
       finalStatus = await executeRunnableSuites({
+        continueAfterFailure: targetName === 'e2e-scheduled',
         runnableSuites,
         results,
         invocation,
         forwardedArgs,
         signal: termination.signal,
         executeSuite,
+        rejectUnsafeOutcome: targetName === 'e2e-scheduled',
         readSuiteResult,
         reportError,
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const reportedIds = new Set(results.map(({ id }) => id));
+      appendNotRun(
+        results,
+        runnableSuites.filter(({ id }) => !reportedIds.has(id)),
+        `aggregate execution failed: ${message}`,
+      );
+      reportError(`E2E aggregate execution failed: ${message}`);
+      finalStatus = 1;
     } finally {
       const teardownStatus = await closeInvocation({
         invocation,
@@ -655,8 +881,13 @@ export const runSelection = async (
       });
       finalStatus ||= teardownStatus;
     }
-    persistReport(runId, results);
-    return finalStatus;
+    const reportStatus = persistReportSafely(
+      persistReport,
+      runId,
+      results,
+      reportError,
+    );
+    return finalStatus || reportStatus;
   } finally {
     termination.close();
   }

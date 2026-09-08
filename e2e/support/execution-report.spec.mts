@@ -111,6 +111,32 @@ describe('E2E execution reports', () => {
     writeFileSync(file, `${JSON.stringify(summary)}\n`);
 
     expect(readPlaywrightSuiteSummary(file)).toEqual(summary);
+    expect(readPlaywrightSuiteSummary(file)?.flakyTestCount).toBeUndefined();
+    expect(readPlaywrightSuiteSummary(file)?.selectedTestCount).toBeUndefined();
+  });
+
+  it('rejects malformed new test measurements', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-suite-report-'));
+    directories.push(directory);
+    const file = join(directory, 'suite-summary.json');
+    writeFileSync(
+      file,
+      `${JSON.stringify({
+        schemaVersion: 1,
+        suiteId: 'browser.canonical',
+        status: 'passed',
+        attempts: 1,
+        retries: 0,
+        durationMs: 1,
+        attemptDurationMs: 1,
+        attemptsByStatus: { passed: 1 },
+        flakyTestCount: -1,
+      })}\n`,
+    );
+
+    expect(() => readPlaywrightSuiteSummary(file)).toThrow(
+      'Invalid Playwright suite summary field: flakyTestCount',
+    );
   });
 
   it('rejects malformed or negative suite summaries', () => {
