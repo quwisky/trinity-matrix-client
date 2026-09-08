@@ -75,7 +75,7 @@ export class SessionActionsService {
     this.alert
       .confirm$({
         header: 'Remove account',
-        message: ACCOUNT_REMOVAL_CONSEQUENCES,
+        message: `Account ${userId}\n\n${ACCOUNT_REMOVAL_CONSEQUENCES}`,
         confirmText: 'Remove account',
         variant: 'danger',
       })

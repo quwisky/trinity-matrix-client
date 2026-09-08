@@ -113,7 +113,6 @@ describe('RoomsPage rendered right-panel focus', () => {
       spaceInvitePermission: signal({ available: false, reason: null }),
       defaultSpaceSortMode: signal('recent'),
       filteredRooms: signal<RoomSummary[]>([]),
-      loadHomeserverInfo: vi.fn(),
       members: signal<MemberSummary[]>([BOB]),
       membersView: signal({
         availability: 'coherent' as const,

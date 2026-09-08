@@ -8,22 +8,6 @@ import { SidebarUserPanelComponent } from './sidebar-user-panel.component';
 // here we cover the always-visible footer trigger this component owns.
 const USER = { userId: '@alice:hs', displayName: 'Alice', avatarMxc: null };
 
-/**
- * An ArrowDown keydown CDK will actually act on.
- *
- * `CdkMenuTrigger` switches on the deprecated `event.keyCode`, which jsdom leaves at 0 for a
- * `KeyboardEvent` built from `key` alone — so the plain constructor produces an event the
- * trigger ignores, and a test using it would pass against the very bug it is written for.
- */
-function arrowDown(): KeyboardEvent {
-  const event = new KeyboardEvent('keydown', {
-    key: 'ArrowDown',
-    bubbles: true,
-  });
-  Object.defineProperty(event, 'keyCode', { get: () => 40 });
-  return event;
-}
-
 describe('SidebarUserPanelComponent', () => {
   it('shows the signed-in user name and handle in the trigger', async () => {
     const { container } = await render(SidebarUserPanelComponent, {
@@ -92,83 +76,34 @@ describe('SidebarUserPanelComponent', () => {
     ).toContain(button);
   });
 
-  it('asks the host to look up the homeserver versions when the menu is opened', async () => {
-    // Lazy on purpose: the version is only ever visible in this menu and in Settings →
-    // Server, so nothing is spent until someone reaches for one of them. The host's lookup
-    // is cached, so reaching for it repeatedly costs nothing.
-    const { fixture, container } = await render(SidebarUserPanelComponent, {
-      inputs: { user: USER },
-    });
-
-    let asked = 0;
-    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
-    container
-      .querySelector<HTMLElement>('[data-testid="user-menu-trigger"]')!
-      .click();
-
-    expect(asked).toBe(1);
-  });
-
-  it('asks when the menu is opened by keyboard, not only by pointer', async () => {
-    // The bug this pins: CDK's trigger opens on ArrowDown by calling `open()` directly and
-    // never dispatches a click, so a `(click)` handler left a keyboard user with no lookup
-    // at all — silently, for the whole session. Enter and Space are safe, because CDK stands
-    // aside there for the native click, which is what made this easy to miss.
-    const { fixture, container } = await render(SidebarUserPanelComponent, {
-      inputs: { user: USER },
-    });
-
-    let asked = 0;
-    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
-    container
-      .querySelector<HTMLElement>('[data-testid="user-menu-trigger"]')!
-      .dispatchEvent(arrowDown());
-
-    expect(asked).toBe(1);
-  });
-
-  it('does not ask again when the menu is closed', async () => {
-    // CDK's click handler is `toggle()`, so a `(click)` binding fired on the closing click
-    // as well — a second lookup for a menu the user just dismissed.
-    const { fixture, container } = await render(SidebarUserPanelComponent, {
-      inputs: { user: USER },
-    });
-    const trigger = container.querySelector<HTMLElement>(
-      '[data-testid="user-menu-trigger"]',
-    )!;
-
-    let asked = 0;
-    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
-    trigger.click(); // open
-    trigger.click(); // close
-
-    expect(asked).toBe(1);
-  });
-
-  it('prefetches on hover and on focus, so the menu opens with its answers ready', async () => {
-    // The menu is a `side="top"` overlay pinned by its bottom edge, so a version arriving
-    // after it opens pushes the rows upward under the pointer. Hovering or tabbing to the
-    // trigger is enough warning to have the answer in hand first.
-    const { fixture, container } = await render(SidebarUserPanelComponent, {
-      inputs: { user: USER },
-    });
-    const trigger = container.querySelector<HTMLElement>(
-      '[data-testid="user-menu-trigger"]',
-    )!;
-
-    let asked = 0;
-    fixture.componentInstance.accountsOpened.subscribe(() => (asked += 1));
-    trigger.dispatchEvent(new Event('pointerenter'));
-    trigger.dispatchEvent(new Event('focus'));
-
-    expect(asked).toBe(2);
-  });
-
   const ACCOUNTS = [
     { userId: '@alice:hs', displayName: 'Alice', avatarMxc: null, unread: 0 },
     { userId: '@bob:hs', displayName: 'Bob', avatarMxc: null, unread: 0 },
     { userId: '@carol:hs', displayName: 'Carol', avatarMxc: null, unread: 0 },
   ];
+
+  it('renders readable initials in account and signed-out rows', async () => {
+    const { fixture, container } = await render(SidebarUserPanelComponent, {
+      inputs: {
+        user: USER,
+        accounts: ACCOUNTS,
+        activeUserId: '@alice:hs',
+        reauthAccounts: ['@dave:hs'],
+      },
+    });
+
+    container.querySelector<HTMLElement>('.userbar__trigger')!.click();
+    fixture.detectChanges();
+
+    const accountRow = document.querySelector<HTMLElement>(
+      '[data-testid="account-row"]',
+    );
+    const reauthRow = document.querySelector<HTMLElement>(
+      '[data-testid="reauth-row"]',
+    );
+    expect(accountRow?.querySelector('trn-avatar')?.textContent).toContain('A');
+    expect(reauthRow?.querySelector('trn-avatar')?.textContent).toContain('D');
+  });
 
   it('shows the plain avatar and no stack while only one account is shown', async () => {
     const { container } = await render(SidebarUserPanelComponent, {

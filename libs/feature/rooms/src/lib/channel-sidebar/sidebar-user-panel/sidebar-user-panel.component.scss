@@ -34,6 +34,10 @@
     background: var(--trinity-surface-navigation-header);
     box-shadow: inset 0 1px 0 var(--trinity-border-subtle);
 
+    // Keep the three actions visually related while letting the identity carry the weight.
+    // The trigger owns the flexible space; the icon actions stay stable at the target floor.
+    color: var(--trinity-text-muted);
+
     @media #{$md} {
       --userbar-avatar-ring: var(--trinity-surface-floating);
 
@@ -56,6 +60,28 @@
     gap: 8px;
     padding: 4px;
     text-align: left;
+
+    &:hover {
+      text-decoration: none;
+    }
+  }
+
+  .account-menu,
+  .account-pick-menu {
+    box-sizing: border-box;
+    max-height: min(
+      32rem,
+      calc(
+        100dvh - var(--trinity-navigation-dock-height) - var(
+            --trinity-space-6
+          ) - var(--trinity-navigation-safe-area-bottom)
+      )
+    );
+    overflow-y: auto;
+  }
+
+  .account-menu {
+    width: min(22rem, calc(100vw - 2 * var(--trinity-space-3)));
   }
 
   .userbar__id {
@@ -65,19 +91,15 @@
     flex: 1;
   }
 
-  .userbar__name {
+  .userbar__name,
+  .account-row__name,
+  .account-pick__name {
     @include ellipsis;
 
-    font-size: 13px;
-    font-weight: 600;
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-bright);
-  }
-
-  .userbar__handle {
-    @include ellipsis;
-
-    font-size: 12px;
-    color: var(--trinity-text-muted);
   }
 
   .userbar__settings {
@@ -106,11 +128,25 @@
   }
 
   .account-row {
+    @include interactive-row;
+
     display: flex;
     align-items: center;
     gap: 8px;
     width: 100%;
+    min-height: var(--trinity-interaction-target-min-size);
+    padding: 6px 8px;
     text-align: left;
+  }
+
+  .menu-action {
+    min-height: var(--trinity-interaction-target-min-size);
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .menu-action--danger {
+    color: var(--trinity-danger);
   }
 
   .account-row__id {
@@ -120,52 +156,51 @@
     flex: 1;
   }
 
-  .account-row__name {
+  .userbar__handle,
+  .account-row__handle,
+  .account-pick__handle {
     @include ellipsis;
 
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--trinity-text-bright);
-  }
-
-  .account-row__handle {
-    @include ellipsis;
-
-    font-size: 12px;
-    color: var(--trinity-text-muted);
-  }
-
-  // A third, quieter line under the handle. Ellipsised like its siblings: a version can
-  // carry a build suffix (`1.158.0 (b=…,5569b9e479)`) that would otherwise widen the menu.
-  .account-row__server {
-    @include ellipsis;
-
-    font-size: 11px;
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
     color: var(--trinity-text-muted);
   }
 
   .account-row__badge {
+    display: inline-flex;
     flex: 0 0 auto;
+    min-height: 16px;
     min-width: 16px;
-    height: 16px;
+    align-items: center;
+    justify-content: center;
     padding: 0 5px;
     border-radius: var(--trinity-radius-pill);
     background: var(--trinity-text-muted);
     color: var(--trinity-sidebar);
-    font-size: 11px;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
     font-weight: 700;
-    line-height: 16px;
     text-align: center;
   }
 
   .account-row__check {
     flex: 0 0 auto;
+    display: inline-flex;
+    width: 20px;
+    min-height: 20px;
+    align-items: center;
+    justify-content: center;
     color: var(--trinity-text-bright);
+  }
+
+  .account-row__badge + .account-row__check {
+    margin-left: 2px;
   }
 
   .account-row__reauth {
     flex: 0 0 auto;
-    font-size: 11px;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
     font-weight: 600;
     color: var(--trinity-link);
   }
@@ -173,8 +208,9 @@
   .account-row__active {
     flex: 0 0 auto;
     margin-left: auto;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-muted);
   }
 
@@ -226,8 +262,9 @@
 
   .userbar__mixed {
     flex: 0 0 auto;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-muted);
   }
 
@@ -237,23 +274,6 @@
     min-width: 0;
     flex: 1;
     flex-direction: column;
-  }
-
-  .account-pick__name {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
-    font-weight: var(--trinity-type-control-weight);
-    color: var(--trinity-text-bright);
-  }
-
-  .account-pick__handle {
-    @include ellipsis;
-
-    font-size: var(--trinity-type-metadata-size);
-    line-height: var(--trinity-type-metadata-line-height);
-    color: var(--trinity-text-muted);
   }
 
   .account-pick__indicator {
@@ -274,16 +294,6 @@
   }
 
   .account-pick-menu {
-    box-sizing: border-box;
     max-width: min(22rem, calc(100vw - 2 * var(--trinity-space-3)));
-    max-height: min(
-      32rem,
-      calc(
-        100dvh - var(--trinity-navigation-dock-height) - var(
-            --trinity-space-6
-          ) - var(--trinity-navigation-safe-area-bottom)
-      )
-    );
-    overflow-y: auto;
   }
 }
