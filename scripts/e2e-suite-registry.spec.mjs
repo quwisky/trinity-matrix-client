@@ -432,6 +432,7 @@ describe('E2E suite registry runner', () => {
     expect(selectSuites('e2e-web').map(({ id }) => id)).toEqual([
       'web.production-pwa',
       'web.production-renderer',
+      'web.container',
     ]);
     expect(() => selectSuites('missing')).toThrow(
       'Unknown E2E aggregate target: missing',

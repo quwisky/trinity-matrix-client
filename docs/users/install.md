@@ -53,6 +53,8 @@ the Android SDK and `pnpm android:run`; iOS requires macOS and Xcode and uses `p
 The [getting-started guide](../contributing/getting-started.md) and
 [platform guides](../platforms/index.md) contain the toolchain and packaging details.
 
+For a production container built from source, follow the [container host guide](../platforms/web.md#verify-the-container-host). It packages the verified web build; a local container build does not create an official hosted service or publish a registry image.
+
 Once a source build is running, it opens at the sign-in screen. Continue with
 [signing in](signing-in.md); do not treat a local development server as a public deployment.
 

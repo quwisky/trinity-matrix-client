@@ -142,6 +142,17 @@ host checks, see [testing](../contributing/testing.md) and
 Docker, browser, emulator, or macOS host into a passing result; record the
 unavailable prerequisite and the evidence that did run.
 
+## Container prerequisite
+
+The local `trinity-web-container` host exposes `verify`, `build-prebuilt`, and `smoke`
+Nx targets for the next CI fan-out step. It checks the existing production renderer manifest
+before building the pinned rootless SWS image and proves its HTTP and offline PWA contract
+without registry credentials. The current workflow does not yet invoke this consumer.
+See [container validation](../platforms/web.md#verify-the-container-host) for commands,
+Docker/browser prerequisites, and the native architecture limit. Trinity's existing root and
+Electron package licenses remain MIT, with matching OCI metadata and preserved third-party
+notices. Container publication remains release work.
+
 ## Releases
 
 An authorized release begins with the repository's normal review process.

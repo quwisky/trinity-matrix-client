@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- A rootless Web container host packages the verified production renderer with tested
+  deep-link routing, security and cache headers for every generated bundle, and offline
+  PWA behavior. Local Nx targets build and check the image without rebuilding Angular
+  or publishing to a registry.
+
 - Open Markdown formatting and Preview from an Aa composer action, using a desktop
   popover or a mobile action sheet while preserving the editing selection.
 
