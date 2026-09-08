@@ -6,7 +6,7 @@ import type {
   TestCase,
   TestResult,
 } from '@playwright/test/reporter';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 interface RegistryMetadataReporterOptions {
@@ -20,6 +20,7 @@ interface AnnotationTarget {
 
 /** Copy registry metadata onto every test so blob and JUnit preserve the same identity. */
 export default class RegistryMetadataReporter implements Reporter {
+  private readonly tests = new Map<string, TestCase>();
   private attempts = 0;
   private attemptDurationMs = 0;
   private readonly attemptsByStatus = new Map<string, number>();
@@ -34,6 +35,7 @@ export default class RegistryMetadataReporter implements Reporter {
   onBegin(_config: FullConfig, suite: Suite): void {
     for (const test of suite.allTests()) {
       this.annotate(test);
+      this.tests.set(test.id, test);
     }
   }
 
@@ -56,7 +58,23 @@ export default class RegistryMetadataReporter implements Reporter {
   }
 
   onEnd(result: FullResult): void {
-    if (!this.options.outputFile) return;
+    const tests = [...this.tests.values()];
+    const outcomes = tests.map((test) => test.outcome());
+    const selectedTestCount = tests.length;
+    const skippedTestCount = outcomes.filter(
+      (outcome) => outcome === 'skipped',
+    ).length;
+    const executedTestCount = selectedTestCount - skippedTestCount;
+    const flakyTestCount = outcomes.filter(
+      (outcome) => outcome === 'flaky',
+    ).length;
+    const expectedFailureCount = tests.filter(
+      (test) =>
+        test.expectedStatus === 'failed' && test.outcome() === 'expected',
+    ).length;
+    const unexpectedFailureCount = outcomes.filter(
+      (outcome) => outcome === 'unexpected',
+    ).length;
     const summary = {
       schemaVersion: 1,
       suiteId: this.options.metadata['trinity.e2e.suite'],
@@ -69,12 +87,55 @@ export default class RegistryMetadataReporter implements Reporter {
       durationMs: result.duration,
       attemptDurationMs: this.attemptDurationMs,
       attemptsByStatus: Object.fromEntries(this.attemptsByStatus),
+      selectedTestCount,
+      executedTestCount,
+      flakyTestCount,
+      expectedFailureCount,
+      unexpectedFailureCount,
+      skippedTestCount,
     } as const;
-    mkdirSync(dirname(this.options.outputFile), { recursive: true });
-    writeFileSync(
-      this.options.outputFile,
-      `${JSON.stringify(summary, undefined, 2)}\n`,
-    );
+    if (this.options.outputFile) {
+      mkdirSync(dirname(this.options.outputFile), { recursive: true });
+      writeFileSync(
+        this.options.outputFile,
+        `${JSON.stringify(summary, undefined, 2)}\n`,
+      );
+    }
+    this.appendStepSummary(summary);
+  }
+
+  private appendStepSummary(summary: {
+    readonly suiteId: string;
+    readonly status: FullResult['status'];
+    readonly selectedTestCount: number;
+    readonly executedTestCount: number;
+    readonly flakyTestCount: number;
+    readonly expectedFailureCount: number;
+    readonly unexpectedFailureCount: number;
+    readonly skippedTestCount: number;
+    readonly attempts: number;
+    readonly retries: number;
+    readonly durationMs: number;
+  }): void {
+    const file = process.env['GITHUB_STEP_SUMMARY'];
+    if (!file) return;
+    try {
+      appendFileSync(
+        file,
+        [
+          `### E2E suite ${summary.suiteId}`,
+          '',
+          '| Status | Selected | Executed | Flaky | Expected failures | Unexpected failures | Skipped | Attempts | Retries | Elapsed |',
+          '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+          `| ${summary.status} | ${summary.selectedTestCount} | ${summary.executedTestCount} | ${summary.flakyTestCount} | ${summary.expectedFailureCount} | ${summary.unexpectedFailureCount} | ${summary.skippedTestCount} | ${summary.attempts} | ${summary.retries} | ${summary.durationMs} ms |`,
+          '',
+        ].join('\n'),
+      );
+    } catch (error) {
+      process.stderr.write(
+        `[e2e] unable to append suite summary: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
   }
 
   private annotate(target: AnnotationTarget): void {

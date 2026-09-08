@@ -33,6 +33,10 @@ import {
   selectSuites,
   suitesForRun,
 } from './e2e-suite-registry.mjs';
+import {
+  E2E_SAFE_COMPLETION_FILE,
+  E2E_SAFE_COMPLETION_SUITE,
+} from '../e2e/support/run-playwright.mts';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const discardReport = () => undefined;
@@ -51,6 +55,25 @@ const runnerSuite = (overrides = {}) => ({
   timeoutClass: 'medium',
   ...overrides,
 });
+
+const scheduledInvocation = (environment = {}) => {
+  const artifactsRoot = mkdtempSync(join(tmpdir(), 'trinity-e2e-scheduled-'));
+  return {
+    descriptor: { id: 'run-12345678', artifactsRoot },
+    environment,
+    close: async () => rmSync(artifactsRoot, { recursive: true, force: true }),
+  };
+};
+
+const writeCompletion = (environment, suiteId, status) => {
+  mkdirSync(join(environment[E2E_SAFE_COMPLETION_FILE], '..'), {
+    recursive: true,
+  });
+  writeFileSync(
+    environment[E2E_SAFE_COMPLETION_FILE],
+    `${JSON.stringify({ schemaVersion: 1, suiteId, status })}\n`,
+  );
+};
 
 describe('E2E suite registry', () => {
   // Resolves every owned Nx project on a cold hosted runner. The first public
@@ -693,6 +716,34 @@ describe('E2E suite registry runner', () => {
     ]);
   });
 
+  it.each([
+    { name: 'timeout', result: { status: 1, timedOut: true } },
+    { name: 'signal', result: { status: 1, signal: 'SIGKILL' } },
+    {
+      name: 'process error',
+      result: { status: 1, error: new Error('spawn failed') },
+    },
+  ])(
+    'rejects an unsafe managed $name outcome for scheduled execution',
+    async ({ result }) => {
+      await expect(
+        runSuite(
+          {
+            id: 'components.storybook',
+            currentTarget: 'trinity-e2e-components:storybook',
+            prerequisites: [],
+            timeoutClass: 'medium',
+          },
+          {
+            execute: () => result,
+            report: () => undefined,
+            rejectUnsafeOutcome: true,
+          },
+        ),
+      ).rejects.toThrow('managed suite process ended unsafely');
+    },
+  );
+
   it('reports a managed command timeout', async () => {
     const result = await runManagedCommand(
       process.execPath,
@@ -826,6 +877,358 @@ describe('E2E suite registry runner', () => {
     ).toBe(7);
     expect(executed).toEqual(['components.storybook', 'components.styling']);
     expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('continues scheduled suites after a completed failure and retains failure', async () => {
+    const suites = [
+      runnerSuite(),
+      runnerSuite({
+        id: 'components.styling',
+        currentTarget: 'trinity-e2e-components:styling',
+      }),
+      runnerSuite({
+        id: 'components.accessibility',
+        currentTarget: 'trinity-e2e-components:accessibility',
+      }),
+    ];
+    const executed = [];
+    const writeReport = vi.fn(() => undefined);
+    const statuses = [7, 0, 0];
+
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => suites,
+        preflight: async () => [],
+        executeSuite: ({ id }, { environment }) => {
+          executed.push(id);
+          const status = statuses.shift();
+          writeCompletion(environment, id, status);
+          return status;
+        },
+        openInvocation: async (resources) => ({
+          ...scheduledInvocation(),
+          environment: { TRINITY_TEST_RESOURCES: resources.join(',') },
+          close: async () => undefined,
+        }),
+        readSuiteResult: ({ suiteId } = {}) => ({
+          schemaVersion: 1,
+          suiteId: suiteId ?? suites[executed.length - 1]?.id,
+          status: 'passed',
+          attempts: 1,
+          retries: 0,
+          durationMs: 5,
+          attemptDurationMs: 5,
+          attemptsByStatus: { passed: 1 },
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(7);
+    expect(executed).toEqual(suites.map(({ id }) => id));
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: suites[0].id, outcome: 'failure' }),
+        expect.objectContaining({ id: suites[1].id, outcome: 'pass' }),
+        expect.objectContaining({ id: suites[2].id, outcome: 'pass' }),
+      ]),
+    );
+  });
+
+  it('stops scheduled suites after an unsafe nested managed outcome', async () => {
+    const suites = [
+      runnerSuite(),
+      runnerSuite({
+        id: 'components.styling',
+        currentTarget: 'trinity-e2e-components:styling',
+      }),
+    ];
+    const writeReport = vi.fn(() => undefined);
+    const executeSuite = vi.fn((suite, executionOptions) =>
+      runSuite(suite, {
+        ...executionOptions,
+        execute: async () => ({ status: 1, signal: 'SIGTERM' }),
+      }),
+    );
+
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => suites,
+        preflight: async () => [],
+        executeSuite,
+        openInvocation: async () => ({
+          ...scheduledInvocation(),
+          environment: {},
+          close: async () => undefined,
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(executeSuite).toHaveBeenCalledOnce();
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: suites[0].id, outcome: 'failure' }),
+        expect.objectContaining({ id: suites[1].id, outcome: 'not-run' }),
+      ]),
+    );
+  });
+
+  it.each([
+    {
+      name: 'a missing record',
+      write: () => undefined,
+      detail: 'scheduled suite emitted no safe completion record',
+    },
+    {
+      name: 'a malformed record',
+      write: (file) => writeFileSync(file, '{not-json'),
+      detail: 'scheduled suite emitted no safe completion record',
+    },
+    {
+      name: 'a record for another suite',
+      write: (file) =>
+        writeFileSync(
+          file,
+          JSON.stringify({ schemaVersion: 1, suiteId: 'other', status: 0 }),
+        ),
+      detail: 'invalid scheduled suite completion record',
+    },
+    {
+      name: 'a negative status record',
+      write: (file, suiteId) =>
+        writeFileSync(
+          file,
+          JSON.stringify({ schemaVersion: 1, suiteId, status: -1 }),
+        ),
+      detail: 'invalid scheduled suite completion record',
+    },
+    {
+      name: 'an out-of-range status record',
+      write: (file, suiteId) =>
+        writeFileSync(
+          file,
+          JSON.stringify({ schemaVersion: 1, suiteId, status: 256 }),
+        ),
+      detail: 'invalid scheduled suite completion record',
+    },
+  ])('stops scheduled execution after $name', async ({ write, detail }) => {
+    const suites = [
+      runnerSuite(),
+      runnerSuite({
+        id: 'components.styling',
+        currentTarget: 'trinity-e2e-components:styling',
+      }),
+    ];
+    const executed = [];
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => suites,
+        preflight: async () => [],
+        executeSuite: (suite, { environment }) => {
+          executed.push(suite.id);
+          const file = environment[E2E_SAFE_COMPLETION_FILE];
+          mkdirSync(join(file, '..'), { recursive: true });
+          write(file, suite.id);
+          return 0;
+        },
+        openInvocation: async () => ({
+          ...scheduledInvocation(),
+          environment: {},
+        }),
+        readSuiteResult: ({ suiteId } = {}) => ({
+          schemaVersion: 1,
+          suiteId: suiteId ?? suites[executed.length - 1]?.id,
+          status: 'passed',
+          attempts: 1,
+          retries: 0,
+          durationMs: 5,
+          attemptDurationMs: 5,
+          attemptsByStatus: { passed: 1 },
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(executed).toEqual([suites[0].id]);
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: suites[0].id,
+          outcome: 'failure',
+          detail,
+        }),
+        expect.objectContaining({ id: suites[1].id, outcome: 'not-run' }),
+      ]),
+    );
+  });
+
+  it('accepts a nonzero nested status when Nx normalizes the outer status', async () => {
+    const suites = [
+      runnerSuite(),
+      runnerSuite({
+        id: 'components.styling',
+        currentTarget: 'trinity-e2e-components:styling',
+      }),
+    ];
+    const executed = [];
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => suites,
+        preflight: async () => [],
+        executeSuite: (suite, { environment }) => {
+          executed.push(suite.id);
+          writeCompletion(
+            environment,
+            suite.id,
+            suite.id === suites[0].id ? 2 : 0,
+          );
+          return suite.id === suites[0].id ? 1 : 0;
+        },
+        openInvocation: async () => ({
+          ...scheduledInvocation(),
+          environment: {},
+        }),
+        readSuiteResult: ({ suiteId } = {}) => ({
+          schemaVersion: 1,
+          suiteId: suiteId ?? suites[executed.length - 1]?.id,
+          status: 'passed',
+          attempts: 1,
+          retries: 0,
+          durationMs: 5,
+          attemptDurationMs: 5,
+          attemptsByStatus: { passed: 1 },
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(executed).toEqual(suites.map(({ id }) => id));
+  });
+
+  it('stops scheduled suites after aggregate interruption', async () => {
+    const suites = [
+      runnerSuite(),
+      runnerSuite({
+        id: 'components.styling',
+        currentTarget: 'trinity-e2e-components:styling',
+      }),
+    ];
+    const controller = new AbortController();
+    const executed = [];
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => suites,
+        preflight: async () => [],
+        executeSuite: ({ id }) => {
+          executed.push(id);
+          controller.abort();
+          return 0;
+        },
+        createTerminationScope: () => ({
+          signal: controller.signal,
+          close: () => undefined,
+        }),
+        openInvocation: async () => ({
+          ...scheduledInvocation(),
+          environment: {},
+          close: async () => undefined,
+        }),
+        readSuiteResult: () => ({
+          schemaVersion: 1,
+          suiteId: suites[0].id,
+          status: 'passed',
+          attempts: 1,
+          retries: 0,
+          durationMs: 5,
+          attemptDurationMs: 5,
+          attemptsByStatus: { passed: 1 },
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(executed).toEqual([suites[0].id]);
+    expect(writeReport.mock.calls[0][1].suites).toContainEqual(
+      expect.objectContaining({ id: suites[1].id, outcome: 'not-run' }),
+    );
+  });
+
+  it('retains the execution failure when partial report publication fails', async () => {
+    const reportError = vi.fn();
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => [runnerSuite()],
+        preflight: async () => [],
+        executeSuite: async (_suite, { environment }) => {
+          writeCompletion(environment, 'components.storybook', 9);
+          return 9;
+        },
+        openInvocation: async () => ({
+          ...scheduledInvocation(),
+          environment: {},
+          close: async () => undefined,
+        }),
+        writeReport: () => {
+          throw new Error('disk full');
+        },
+        reportError,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(9);
+    expect(reportError).toHaveBeenCalledWith(
+      expect.stringContaining('could not be written'),
+    );
+  });
+
+  it('fails a successful aggregate when its report cannot be written', async () => {
+    expect(
+      await runSelection('e2e-scheduled', {
+        validate: () => [],
+        select: () => [runnerSuite()],
+        preflight: async () => [],
+        executeSuite: async (_suite, { environment }) => {
+          writeCompletion(environment, 'components.storybook', 0);
+          return 0;
+        },
+        openInvocation: async () => ({
+          ...scheduledInvocation(),
+          environment: {},
+          close: async () => undefined,
+        }),
+        readSuiteResult: () => ({
+          schemaVersion: 1,
+          suiteId: 'components.storybook',
+          status: 'passed',
+          attempts: 1,
+          retries: 0,
+          durationMs: 5,
+          attemptDurationMs: 5,
+          attemptsByStatus: { passed: 1 },
+        }),
+        writeReport: () => {
+          throw new Error('disk full');
+        },
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
   });
 
   it('passes aggregate termination through the owner and every managed child', async () => {

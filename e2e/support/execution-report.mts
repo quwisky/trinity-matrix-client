@@ -38,6 +38,13 @@ export interface PlaywrightSuiteSummary {
   readonly durationMs: number;
   readonly attemptDurationMs: number;
   readonly attemptsByStatus: Readonly<Record<string, number>>;
+  /** Added in schema 1; absent in older reports and therefore unavailable. */
+  readonly selectedTestCount?: number;
+  readonly executedTestCount?: number;
+  readonly flakyTestCount?: number;
+  readonly expectedFailureCount?: number;
+  readonly unexpectedFailureCount?: number;
+  readonly skippedTestCount?: number;
 }
 
 export interface E2EAggregateSuiteResult {
@@ -97,6 +104,17 @@ function isAttemptStatusCounts(
   return isRecord(value) && Object.values(value).every(isNonNegativeInteger);
 }
 
+function optionalNonNegativeInteger(
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+): number | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (!isNonNegativeInteger(value))
+    throw new Error(`Invalid Playwright suite summary field: ${key}`);
+  return value;
+}
+
 export function suiteSummaryPath(
   workspaceRoot: string,
   project: string,
@@ -138,6 +156,31 @@ export function readPlaywrightSuiteSummary(
   ) {
     throw new Error(`Invalid Playwright suite summary: ${file}`);
   }
+  const measurements = Object.fromEntries(
+    [
+      [
+        'selectedTestCount',
+        optionalNonNegativeInteger(parsed, 'selectedTestCount'),
+      ],
+      [
+        'executedTestCount',
+        optionalNonNegativeInteger(parsed, 'executedTestCount'),
+      ],
+      ['flakyTestCount', optionalNonNegativeInteger(parsed, 'flakyTestCount')],
+      [
+        'expectedFailureCount',
+        optionalNonNegativeInteger(parsed, 'expectedFailureCount'),
+      ],
+      [
+        'unexpectedFailureCount',
+        optionalNonNegativeInteger(parsed, 'unexpectedFailureCount'),
+      ],
+      [
+        'skippedTestCount',
+        optionalNonNegativeInteger(parsed, 'skippedTestCount'),
+      ],
+    ].filter(([, value]) => value !== undefined),
+  );
   return {
     schemaVersion: 1,
     suiteId: parsed['suiteId'],
@@ -147,6 +190,7 @@ export function readPlaywrightSuiteSummary(
     durationMs: parsed['durationMs'],
     attemptDurationMs: parsed['attemptDurationMs'],
     attemptsByStatus: parsed['attemptsByStatus'],
+    ...measurements,
   };
 }
 

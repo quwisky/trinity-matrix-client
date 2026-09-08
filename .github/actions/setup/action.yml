@@ -19,7 +19,8 @@ runs:
     # error, not an override.
     - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+    - id: setup-node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         # .nvmrc tracks the supported Node 24 line, while package.json's engines enforce
         # the ^24.15.0 floor. Using the file keeps CI, nvm and fnm on the latest available
@@ -33,6 +34,18 @@ runs:
         cache-dependency-path: |
           pnpm-lock.yaml
           electron/pnpm-lock.yaml
+
+    - name: Report Node cache result
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.setup-node.outputs.cache-hit }}
+      run: |
+        echo '### Dependency cache' >> "$GITHUB_STEP_SUMMARY"
+        case "$CACHE_HIT" in
+          true) echo 'setup-node: exact hit' >> "$GITHUB_STEP_SUMMARY" ;;
+          false) echo 'setup-node: non-exact restore or miss' >> "$GITHUB_STEP_SUMMARY" ;;
+          *) echo 'setup-node: unavailable (action output was empty)' >> "$GITHUB_STEP_SUMMARY" ;;
+        esac
 
     # --frozen-lockfile fails when pnpm-lock.yaml is out of sync with package.json, so a
     # dependency edit committed without its lockfile change is caught here rather than

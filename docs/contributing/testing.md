@@ -192,6 +192,22 @@ Unit fixtures, a green stack PR and a prepared settings payload do not prove a l
 Use the [maintainer runbook](../maintaining/ci-and-releases.md#enforce-branch-checks) for the
 read-only query and the required external evidence.
 
+### Scheduled continuation and reporting
+
+For scheduled aggregate changes, test union acquisition before children, sequential
+execution, ordinary-failure continuation with a retained nonzero result, abort/unsafe
+cleanup stopping later work, and honest partial or missing-report failures. Other
+aggregates must preserve their fail-fast behavior. Run the registry tests through the
+`scripts` Nx target; support reporting changes additionally require `trinity-e2e-support`
+tests and typechecks for both support and `trinity-e2e` consumers.
+
+Reporter tests must distinguish selected/executed tests, attempt/retry counts, final
+flaky outcomes, expected failures and skipped tests. Older report schemas must not
+invent measurements. Timing fixtures cover exact-attempt pagination, nested reusable
+jobs, native shards, missing timestamps and reporting failure without changing the
+required CI result. Hosted manual/nightly evidence and the ten-run timing cohort remain
+separate from those fixtures; follow the [measurement and replacement rules](../maintaining/ci-and-releases.md#scheduled-coverage-and-timing-evidence).
+
 ## Angular test setup
 
 Most application-library test targets run Vitest in jsdom through the shared workspace

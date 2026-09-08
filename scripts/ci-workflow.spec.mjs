@@ -8,6 +8,7 @@ import { validateWorkflowContracts } from './e2e-suite-registry-validator.mjs';
 const root = resolve(import.meta.dirname, '..');
 const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
+const nightly = yaml('.github/workflows/e2e-nightly.yml');
 const reusableE2e = yaml('.github/workflows/_e2e-suite.yml');
 const renderer = yaml('.github/workflows/_renderer.yml');
 const restore = yaml('.github/actions/restore-verified-renderer/action.yml');
@@ -22,6 +23,7 @@ const workflowDocs = () => ({
   restore: structuredClone(restore),
   diagnostics: structuredClone(diagnostics),
   setupPlaywright: structuredClone(setupPlaywright),
+  nightly: structuredClone(nightly),
 });
 
 describe('CI execution contract', () => {
@@ -48,6 +50,7 @@ describe('CI execution contract', () => {
     expect(required.permissions).toEqual({
       contents: 'read',
       'pull-requests': 'read',
+      actions: 'read',
     });
     const sourceIndex = required.steps.findIndex(
       (step) => step.id === 'master-source',
@@ -67,6 +70,91 @@ describe('CI execution contract', () => {
     expect(required.steps[evaluatorIndex].env.CI_SOURCE_RESULT).toContain(
       'steps.master-source.outcome',
     );
+  });
+
+  it('keeps the transition schedules separate and nightly reporting best effort', () => {
+    expect(workflow.on.schedule).toEqual([{ cron: '23 3 * * 0' }]);
+    expect(nightly.on.schedule).toEqual([{ cron: '23 3 * * 1-6' }]);
+    expect(nightly.on.workflow_dispatch).toEqual({});
+    const job = nightly.jobs['scheduled-e2e'];
+    expect(job['timeout-minutes']).toBe(120);
+    expect(
+      job.steps.find((step) => String(step.run).includes('refs/heads/develop')),
+    ).toBeTruthy();
+    expect(
+      job.steps.find((step) => step.uses?.startsWith('actions/checkout@')).with
+        .ref,
+    ).toBe('${{ github.sha }}');
+    expect(
+      job.steps.find((step) => String(step.run).includes('pnpm e2e:scheduled')),
+    ).toBeTruthy();
+    const timing = job.steps.find((step) =>
+      String(step.run).includes('ci-timing-summary.mjs'),
+    );
+    expect(timing['continue-on-error']).toBe(true);
+    expect(timing.env.GH_TOKEN).toBe('${{ github.token }}');
+    expect(job.steps.indexOf(timing)).toBeLessThan(
+      job.steps.findIndex(
+        (step) =>
+          step.uses === './.github/actions/upload-playwright-diagnostics',
+      ),
+    );
+    expect(validateWorkflowContracts(root, workflowDocs())).toEqual([]);
+  });
+
+  it('rejects nightly ownership, identity, permission, and evidence mutations', () => {
+    const mutations = [
+      (docs) => {
+        docs.nightly.on.schedule[0].cron = '23 3 * * *';
+      },
+      (docs) => {
+        docs.nightly.jobs['scheduled-e2e'].steps.find((step) =>
+          step.uses?.startsWith('actions/checkout@'),
+        ).with.ref = 'develop';
+      },
+      (docs) => {
+        docs.nightly.concurrency['cancel-in-progress'] = false;
+      },
+      (docs) => {
+        docs.nightly.jobs.extra = { 'runs-on': 'ubuntu-latest' };
+      },
+      (docs) => {
+        docs.nightly.jobs['scheduled-e2e'].uses =
+          './.github/workflows/_e2e-suite.yml';
+      },
+      (docs) => {
+        docs.nightly.permissions.actions = 'write';
+      },
+      (docs) => {
+        const step = docs.nightly.jobs['scheduled-e2e'].steps.find(
+          (candidate) =>
+            String(candidate.run).includes('Nightly execution identity'),
+        );
+        step.run += '\necho ${{ github.sha }}';
+      },
+      (docs) => {
+        const step = docs.nightly.jobs['scheduled-e2e'].steps.find(
+          (candidate) =>
+            candidate.uses?.includes('upload-playwright-diagnostics'),
+        );
+        step.with['report-path'] = 'dist/reports/**';
+      },
+      (docs) => {
+        docs.nightly.jobs['scheduled-e2e'].steps.push({
+          run: 'pnpm e2e:scheduled',
+        });
+      },
+      (docs) => {
+        docs.ci.jobs['scheduled-e2e'].steps.push({
+          run: 'pnpm e2e:scheduled',
+        });
+      },
+    ];
+    for (const mutate of mutations) {
+      const docs = workflowDocs();
+      mutate(docs);
+      expect(validateWorkflowContracts(root, docs)).not.toEqual([]);
+    }
   });
 
   it('classifies every PR and preserves the full code graph', () => {

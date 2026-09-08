@@ -10,11 +10,22 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - id: playwright-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ inputs.browsers }}-${{ hashFiles('pnpm-lock.yaml') }}
         restore-keys: playwright-${{ runner.os }}-${{ inputs.browsers }}-
+    - name: Report Playwright cache result
+      shell: bash
+      env:
+        CACHE_HIT: ${{ steps.playwright-cache.outputs.cache-hit }}
+      run: |
+        case "$CACHE_HIT" in
+          true) echo 'setup-playwright: exact hit' >> "$GITHUB_STEP_SUMMARY" ;;
+          false) echo 'setup-playwright: non-exact restore or miss' >> "$GITHUB_STEP_SUMMARY" ;;
+          *) echo 'setup-playwright: unavailable (action output was empty)' >> "$GITHUB_STEP_SUMMARY" ;;
+        esac
     - if: inputs.install == 'true'
       shell: bash
       env:
