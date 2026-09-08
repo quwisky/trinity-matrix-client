@@ -10,10 +10,7 @@ import {
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import {
-  ComposerSettingsService,
-  SystemLineSettingsService,
-} from '@trinity/platform-native';
+import { SystemLineSettingsService } from '@trinity/platform-native';
 import { By } from '@angular/platform-browser';
 import {
   TrnSelectComponent,
@@ -44,10 +41,6 @@ describe('AppearanceSettingsComponent', () => {
   let setShowRoomChanges: Mock;
   let spaceOrderDefault: ReturnType<typeof signal<RoomSortMode>>;
   let setDefault: Mock;
-  let showFormattingToolbar: ReturnType<typeof signal<boolean>>;
-  let setShowFormattingToolbar: Mock;
-  let formatOnSelection: ReturnType<typeof signal<boolean>>;
-  let setFormatOnSelection: Mock;
 
   beforeEach(() => {
     resolved = signal<ResolvedAppearance | undefined>({
@@ -68,10 +61,6 @@ describe('AppearanceSettingsComponent', () => {
     setShowRoomChanges = vi.fn();
     spaceOrderDefault = signal<RoomSortMode>('recent');
     setDefault = vi.fn(() => of(void 0));
-    showFormattingToolbar = signal(true);
-    setShowFormattingToolbar = vi.fn();
-    formatOnSelection = signal(true);
-    setFormatOnSelection = vi.fn();
   });
 
   async function renderPage() {
@@ -88,12 +77,6 @@ describe('AppearanceSettingsComponent', () => {
         MockProvider(AppearanceEffects, {
           resolved: resolved.asReadonly(),
           run: () => NEVER,
-        }),
-        MockProvider(ComposerSettingsService, {
-          showFormattingToolbar,
-          setShowFormattingToolbar,
-          formatOnSelection,
-          setFormatOnSelection,
         }),
         MockProvider(SystemLineSettingsService, {
           showMembership,
@@ -556,29 +539,5 @@ describe('AppearanceSettingsComponent', () => {
 
     switchFor(fixture, 'timeline-show-room-changes')!.checkedChange.emit(false);
     expect(setShowRoomChanges).toHaveBeenCalledWith(false);
-  });
-  it('reflects and sets the formatting-toolbar preference', async () => {
-    showFormattingToolbar.set(false);
-    const { fixture } = await renderPage();
-
-    const toggle = switchFor(fixture, 'composer-show-toolbar')!;
-    expect(toggle.checked()).toBe(false);
-
-    toggle.checkedChange.emit(true);
-    expect(setShowFormattingToolbar).toHaveBeenCalledWith(true);
-  });
-
-  it('reflects and sets the raise-on-selection preference', async () => {
-    // Its own switch and its own setter. The two are separate preferences precisely so they
-    // can disagree, so a test that only drove the pinned one would not notice them re-merged.
-    formatOnSelection.set(false);
-    const { fixture } = await renderPage();
-
-    const toggle = switchFor(fixture, 'composer-format-on-selection')!;
-    expect(toggle.checked()).toBe(false);
-
-    toggle.checkedChange.emit(true);
-    expect(setFormatOnSelection).toHaveBeenCalledWith(true);
-    expect(setShowFormattingToolbar).not.toHaveBeenCalled();
   });
 });

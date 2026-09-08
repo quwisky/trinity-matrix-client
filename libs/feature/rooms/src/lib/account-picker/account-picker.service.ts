@@ -13,7 +13,7 @@ export interface AccountPickerOptions {
 
 /**
  * Presents {@link AccountPickerComponent} — the narrow-layout stand-in for the user panel's
- * "Show accounts" submenu, which has nowhere to fly out to below the `md` breakpoint.
+ * "Accounts in view" submenu, which has nowhere to fly out to below the `md` breakpoint.
  *
  * Presentation only: the dialog applies each tick itself, so there is no result to hand back.
  * Mirrors {@link ReactionsDialogService}, including the re-entrancy guard that makes a repeat
@@ -43,10 +43,10 @@ export class AccountPickerService {
           this.dialog.openAndWait$<void, AccountPickerComponent>(
             AccountPickerComponent,
             {
-              ariaLabel: 'Show accounts',
+              ariaLabel: 'Accounts in view',
               inputs: { accounts, activeUserId },
-              // Land on the first account rather than CDK's first tabbable element, which is
-              // the Done button.
+              // Land on the first changeable account rather than the locked active row or
+              // CDK's first tabbable element, which is the Done button when none can change.
               autoFocus: '[data-autofocus]',
             },
           ),

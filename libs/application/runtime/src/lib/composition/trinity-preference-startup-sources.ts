@@ -4,7 +4,6 @@ import { GifSettingsService } from '@trinity/data-access/gif';
 import { PushGatewayService } from '@trinity/data-access/notifications';
 import { AccountScopeService } from '@trinity/data-access/room-library';
 import {
-  ComposerSettingsService,
   DateTimeFormatService,
   FeatureFlagsService,
   KeyboardShortcutsService,
@@ -30,7 +29,6 @@ export class TrinityPreferenceStartupSources {
   private readonly featureFlags = inject(FeatureFlagsService);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly systemLines = inject(SystemLineSettingsService);
-  private readonly composer = inject(ComposerSettingsService);
   private readonly gestures = inject(MessageGestureSettingsService);
   private readonly dateTime = inject(DateTimeFormatService);
   private readonly shortcuts = inject(KeyboardShortcutsService);
@@ -110,7 +108,6 @@ export class TrinityPreferenceStartupSources {
         ),
       'system-lines': () =>
         initialized('system-lines', () => this.systemLines.init()),
-      composer: () => initialized('composer', () => this.composer.init()),
       gestures: () => initialized('gestures', () => this.gestures.init()),
       'date-time': () => initialized('date-time', () => this.dateTime.init()),
       shortcuts: () => initialized('shortcuts', () => this.shortcuts.init()),

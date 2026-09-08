@@ -6,7 +6,6 @@ export const PREFERENCE_STARTUP_PRODUCERS = [
   'feature-flags',
   'privacy',
   'system-lines',
-  'composer',
   'gestures',
   'date-time',
   'shortcuts',
@@ -50,7 +49,6 @@ export type PreferenceSafeDefaultKey =
   | 'feature-flags-shipping-defaults'
   | 'privacy-declared-defaults'
   | 'system-lines-visible'
-  | 'composer-toolbar-visible'
   | 'message-swipe-off'
   | 'date-time-system-format'
   | 'shortcuts-built-in-bindings'
@@ -64,7 +62,6 @@ export type PreferenceFallbackConsequenceKey =
   | 'feature-flags-fallback'
   | 'privacy-fallback'
   | 'system-lines-fallback'
-  | 'composer-fallback'
   | 'gestures-fallback'
   | 'date-time-fallback'
   | 'shortcuts-fallback'
@@ -113,7 +110,6 @@ export const PREFERENCE_STARTUP_PRODUCER_POLICIES = {
     'system-lines-visible',
     'system-lines-fallback',
   ),
-  composer: policy('composer', 'composer-toolbar-visible', 'composer-fallback'),
   gestures: policy('gestures', 'message-swipe-off', 'gestures-fallback'),
   'date-time': policy(
     'date-time',
@@ -146,7 +142,6 @@ const FALLBACK_MESSAGES = {
     'Experimental features use their shipping defaults.',
   'privacy-fallback': 'Privacy controls are using their declared defaults.',
   'system-lines-fallback': 'Timeline system lines are shown by default.',
-  'composer-fallback': 'The composer uses its standard toolbar behavior.',
   'gestures-fallback': 'Message swipe actions are turned off.',
   'date-time-fallback': 'Dates and times use the system format.',
   'shortcuts-fallback': 'Keyboard shortcuts use their built-in bindings.',

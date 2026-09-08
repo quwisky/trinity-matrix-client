@@ -1,7 +1,65 @@
 @layer components {
+  :host {
+    display: block;
+  }
+
+  .edit-history {
+    contain: layout paint;
+  }
+
+  .edit-history__header {
+    display: flex;
+    min-height: 3.5rem;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    padding: max(var(--trinity-space-2), env(safe-area-inset-top))
+      max(var(--trinity-space-3), env(safe-area-inset-right))
+      var(--trinity-space-2)
+      max(var(--trinity-space-3), env(safe-area-inset-left));
+    border-bottom: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-floating);
+
+    h1 {
+      min-width: 0;
+      flex: 1;
+      margin: 0;
+      padding-inline-start: calc(
+        var(--trinity-space-4) - var(--trinity-space-3)
+      );
+      color: var(--trinity-text-bright);
+      font-size: var(--trinity-type-title-size);
+      line-height: var(--trinity-type-title-line-height);
+      font-weight: var(--trinity-type-title-weight);
+      outline: none;
+    }
+  }
+
+  .edit-history__toolbar {
+    display: flex;
+    min-height: 3.5rem;
+    flex: 0 0 auto;
+    align-items: center;
+    padding: var(--trinity-space-2)
+      max(var(--trinity-space-4), env(safe-area-inset-right))
+      var(--trinity-space-2)
+      max(var(--trinity-space-4), env(safe-area-inset-left));
+    border-bottom: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-floating);
+  }
+
+  .edit-history__content {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--trinity-surface-raised);
+  }
+
   .center {
     text-align: center;
-    padding: 12px 0;
+    padding: var(--trinity-space-5) var(--trinity-space-4);
 
     p {
       margin: 8px 0 0;
@@ -10,8 +68,10 @@
 
   .truncated {
     margin: 0;
+    padding: var(--trinity-space-3) var(--trinity-space-4) 0;
     color: var(--trinity-text-muted);
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
   }
 
   .revisions {
@@ -19,32 +79,34 @@
     flex: 1;
     overflow-y: auto;
     margin: 0;
-    padding: 0;
+    padding: var(--trinity-space-3) var(--trinity-space-4)
+      max(var(--trinity-space-7), env(safe-area-inset-bottom));
     list-style: none;
   }
 
   .revision + .revision {
-    margin-top: 12px;
-    padding-top: 12px;
+    margin-top: var(--trinity-space-4);
+    padding-top: var(--trinity-space-4);
     border-top: 1px solid var(--trinity-divider);
   }
 
   .revision__head {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    margin-bottom: 2px;
+    flex-wrap: wrap;
+    gap: var(--trinity-space-2);
+    margin-bottom: var(--trinity-space-1);
   }
 
   .revision__label {
     color: var(--trinity-text-bright);
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
     font-weight: 600;
   }
 
   .revision__time {
     color: var(--trinity-text-muted);
-    font-size: 12px;
+    font-size: var(--trinity-type-caption-size);
   }
 
   // The body rules the timeline applies live in message-row's own stylesheet, which is

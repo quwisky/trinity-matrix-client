@@ -1,0 +1,46 @@
+@layer components {
+  :host {
+    display: contents;
+  }
+
+  .composer__format {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--trinity-density-composer-action-size);
+    height: var(--trinity-density-composer-action-size);
+    border: 0;
+    border-radius: var(--trinity-shape-control-radius);
+    background: none;
+    color: var(--trinity-text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .composer__format:hover:where(:not(:disabled)) {
+    background: var(--trinity-state-hover-surface);
+    color: var(--trinity-state-hover-foreground);
+  }
+
+  .composer__format:focus-visible {
+    outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+  }
+
+  .composer__format:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  @media (pointer: coarse) {
+    .composer__format {
+      min-width: var(--trinity-interaction-target-min-size);
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+
+    .composer__format-item {
+      min-height: var(--trinity-interaction-target-min-size);
+    }
+  }
+}

@@ -1,6 +1,4 @@
-import { DestroyRef, Injectable, computed, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HomeserverInfoService } from '@trinity/data-access/homeserver';
+import { Injectable, computed, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   RoomActionPermissionsService,
@@ -49,8 +47,6 @@ export class RoomShellViewModel {
   private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly matrix = inject(MatrixClientService);
   private readonly identities = inject(AccountIdentitiesService);
-  private readonly homeservers = inject(HomeserverInfoService);
-  private readonly destroyRef = inject(DestroyRef);
 
   /** Whether a row is filed under one of its selected owner's spaces. A shared Room uses
    * the hierarchy of the Account that won the selected-view row, just as its actions do. */
@@ -302,37 +298,16 @@ export class RoomShellViewModel {
   readonly accounts = computed<AccountSummary[]>(() => {
     const unread = this.unreadAgg.unreadByAccount();
     const profiles = this.identities.identities();
-    const servers = this.homeservers.infos();
     return this.matrix.accountIds().map((userId) => {
       const profile = profiles.get(userId);
-      const software = servers.get(userId)?.software;
       return {
         userId,
         displayName: profile?.displayName || userId,
         avatarMxc: profile?.avatarMxc ?? null,
         unread: unread.get(userId) ?? 0,
-        // Null until the menu has been opened once, and null again for a server that does
-        // not publish a version — the switcher simply omits the line in both cases rather
-        // than reserving space for a word like "Unknown" nobody came to the menu to read.
-        server: software ? `${software.name} ${software.version}` : null,
       };
     });
   });
-
-  /**
-   * Look up each account's homeserver version, once per session.
-   *
-   * Driven by the account menu being opened rather than by startup: it is a request nobody
-   * may ever want, and the answer is only visible in that menu and in Settings -> Server,
-   * which loads it for itself. Cached, so reopening the menu costs nothing; the deliberate
-   * re-check lives in the settings section.
-   */
-  loadHomeserverInfo(): void {
-    this.homeservers
-      .loadAll()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
-  }
 
   /** The account currently in view — marks the active row in the switcher. */
   readonly activeAccountId = this.matrix.activeUserId;

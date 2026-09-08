@@ -84,6 +84,20 @@ describe('AccountPickerComponent', () => {
     expect(surface?.getAttribute('data-trn-layout')).toBe('dialog');
   });
 
+  it('renders the account identity, initial, and locked state together', async () => {
+    const { container } = await renderPicker();
+
+    expect(container.querySelector('.picker__title')?.textContent).toContain(
+      'Accounts in view',
+    );
+    expect(
+      row(container, '@alice:hs').querySelector('trn-avatar')?.textContent,
+    ).toContain('A');
+    expect(row(container, '@alice:hs').textContent).toContain(
+      'Always included',
+    );
+  });
+
   it('toggles an account without closing — this is a multi-select', async () => {
     const { container } = await renderPicker();
 
@@ -132,12 +146,26 @@ describe('AccountPickerComponent', () => {
     expect(close).toHaveBeenCalled();
   });
 
-  // TrnDialogService focuses `[data-autofocus]`; without it CDK lands on the Done button.
-  it('marks the first account for autofocus', async () => {
+  // TrnDialogService focuses `[data-autofocus]`; skip the disabled active account and land on
+  // the first account the user can change.
+  it('marks the first enabled account for autofocus', async () => {
     const { container } = await renderPicker();
 
     expect(
       container.querySelector('[data-autofocus]')?.getAttribute('data-testid'),
-    ).toBe('show-account-@alice:hs');
+    ).toBe('show-account-@bob:hs');
+  });
+
+  it('focuses Done when every account is locked', async () => {
+    const { container, fixture } = await renderPicker('@alice:hs');
+    fixture.componentRef.setInput('accounts', [ACCOUNTS[0]]);
+    fixture.detectChanges();
+
+    expect(
+      container.querySelector('[data-autofocus]')?.getAttribute('data-testid'),
+    ).toBe('account-picker-done');
+    expect(
+      container.querySelector('[data-testid="account-picker-done"]'),
+    ).not.toBeNull();
   });
 });

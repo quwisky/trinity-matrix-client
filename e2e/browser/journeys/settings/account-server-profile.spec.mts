@@ -37,20 +37,16 @@ test.describe('Settings', () => {
     await expect(block.getByTestId('hs-spec-versions')).toContainText('v1.');
   });
 
-  test('shows the server version under the account in the switcher', async ({
+  test('keeps homeserver versions out of the account switcher', async ({
     page,
   }) => {
-    // The one assertion that exercises the whole switcher chain end to end: reaching for the
-    // menu → `accountsOpened` → `RoomShellViewModel.loadHomeserverInfo()` → the per-account
-    // signal → the row. Each link is unit-tested in isolation; nothing but this joins them,
-    // and the binding in `rooms.page.html` is the kind a unit test in this repo never covers.
+    // Homeserver details belong in Settings → Server. The account switcher stays focused on
+    // identity and actions, so opening it must not render the old per-row version metadata.
     await page.goto('/rooms');
     await page.getByTestId('user-menu-trigger').click();
 
-    await expect(page.getByTestId('account-row-server').first()).toHaveText(
-      /^\s*Synapse \d+\.\d+/,
-      { timeout: 20_000 },
-    );
+    await expect(page.getByTestId('account-row')).toBeVisible();
+    await expect(page.getByTestId('account-row-server')).toHaveCount(0);
   });
 
   test('expanding the unstable features does not add a second scrollbar', async ({

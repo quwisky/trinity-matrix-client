@@ -2,18 +2,29 @@
 
 @layer components {
   .picker {
+    box-sizing: border-box;
+    max-height: min(
+      32rem,
+      calc(
+        100dvh - var(--trinity-space-6) - var(
+            --trinity-navigation-safe-area-bottom
+          )
+      )
+    );
     gap: 4px;
     padding: 16px;
   }
 
   .picker__title {
-    font-size: 16px;
-    font-weight: 700;
+    font-size: var(--trinity-type-title-size);
+    line-height: var(--trinity-type-title-line-height);
+    font-weight: var(--trinity-type-title-weight);
   }
 
   .picker__hint {
     margin-bottom: 8px;
-    font-size: 13px;
+    font-size: var(--trinity-type-body-size);
+    line-height: var(--trinity-type-body-line-height);
     color: var(--trinity-text-muted);
   }
 
@@ -29,17 +40,16 @@
   }
 
   .account-pick {
+    @include interactive-row;
+
     display: flex;
+    min-height: var(--trinity-interaction-target-min-size);
     width: 100%;
     align-items: center;
     gap: 10px;
     border-radius: var(--trinity-radius-sm);
     padding: 8px;
     text-align: left;
-
-    &:hover:not([disabled]) {
-      background: var(--trinity-chat);
-    }
   }
 
   // The active account is always shown, so its row is disabled to stop it being unticked.
@@ -50,7 +60,8 @@
     cursor: default;
   }
 
-  .account-pick__tick {
+  .account-pick__indicator {
+    order: 3;
     display: flex;
     flex: 0 0 16px;
     align-items: center;
@@ -68,26 +79,30 @@
   .account-pick__name {
     @include ellipsis;
 
-    font-size: 14px;
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    font-weight: var(--trinity-type-control-weight);
+    color: var(--trinity-text-bright);
   }
 
   .account-pick__handle {
     @include ellipsis;
 
-    font-size: 12px;
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
     color: var(--trinity-text-muted);
   }
 
   .account-pick__active {
-    flex: 0 0 auto;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    font-weight: var(--trinity-type-control-weight);
     color: var(--trinity-text-muted);
   }
 
   .picker__actions {
     display: flex;
+    flex: 0 0 auto;
     justify-content: flex-end;
     padding-top: 8px;
   }

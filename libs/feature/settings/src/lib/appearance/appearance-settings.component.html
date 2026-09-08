@@ -210,30 +210,5 @@
     </p>
   </trn-settings-group>
 
-  <trn-settings-group
-    title="Composer"
-    headingId="appearance-composer-heading"
-    description="Choose when the formatting controls appear above the message box."
-  >
-    <label trnSettingsToggleRow data-testid="composer-show-toolbar">
-      <trn-switch
-        [checked]="composer.showFormattingToolbar()"
-        (checkedChange)="composer.setShowFormattingToolbar($event)"
-      />
-      Keep the formatting toolbar open
-    </label>
-    <label trnSettingsToggleRow data-testid="composer-format-on-selection">
-      <trn-switch
-        [checked]="composer.formatOnSelection()"
-        (checkedChange)="composer.setFormatOnSelection($event)"
-      />
-      Show it when you select text
-    </label>
-    <p class="text-13 text-[var(--trinity-text-muted)]">
-      Turn both off to hide the buttons. Keyboard shortcuts and Shift+Enter list
-      continuation still work.
-    </p>
-  </trn-settings-group>
-
   <trn-message-gestures-block />
 </div>

@@ -181,6 +181,7 @@ export abstract class MessageListBase {
    * otherwise a pending edit/reply target and the scroll anchors leak between rooms.
    */
   readonly roomId = input<string | null>(null);
+  readonly accountId = input<string | null>(null);
   /** Room members, forwarded to the composer's @-mention autocomplete. */
   readonly members = input<readonly MentionMember[]>([]);
   /** Display names of members currently typing in the room (excludes the local user). */

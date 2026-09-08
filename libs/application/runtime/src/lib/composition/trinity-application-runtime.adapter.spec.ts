@@ -50,7 +50,6 @@ import {
   type TrustLifetimeEvent,
 } from '@trinity/data-access/trust';
 import {
-  ComposerSettingsService,
   AppConfigService,
   DateTimeFormatService,
   DraftStoreService,
@@ -287,7 +286,6 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         }),
         MockProvider(DraftStoreService, promiseInit()),
         MockProvider(SystemLineSettingsService, promiseInit()),
-        MockProvider(ComposerSettingsService, promiseInit()),
         MockProvider(MessageGestureSettingsService, promiseInit()),
         MockProvider(DateTimeFormatService, promiseInit()),
         MockProvider(KeyboardShortcutsService, promiseInit()),
