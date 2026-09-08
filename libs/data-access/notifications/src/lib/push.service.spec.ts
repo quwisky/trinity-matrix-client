@@ -15,7 +15,7 @@ const h = vi.hoisted(() => {
   const handles: { remove: ReturnType<typeof vi.fn> }[] = [];
   const state = { platform: 'ios', permission: 'granted' as string };
   const prefs = new Map<string, string>();
-  const androidRegistration = { register: vi.fn(async () => undefined) };
+  const nativeRegistration = { register: vi.fn(async () => undefined) };
   const androidDelivery = {
     setForegroundOwner: vi.fn(async () => undefined),
   };
@@ -37,14 +37,14 @@ const h = vi.hoisted(() => {
     state,
     push,
     prefs,
-    androidRegistration,
+    nativeRegistration,
     androidDelivery,
   };
 });
 
 vi.mock('@capacitor/core', () => ({
   registerPlugin: vi.fn((name: string) => {
-    if (name === 'TrinityPushRegistration') return h.androidRegistration;
+    if (name === 'TrinityPushRegistration') return h.nativeRegistration;
     if (name === 'TrinityPushDelivery') return h.androidDelivery;
     return {};
   }),
@@ -210,14 +210,14 @@ describe('PushService', () => {
     vi.clearAllMocks();
   });
 
-  it('registers a Matrix pusher with the device token on iOS', async () => {
+  it('registers a Matrix pusher with the FCM callback token on iOS', async () => {
     const { svc, client } = setup();
 
     await firstValueFrom(svc.register());
     expect(h.push.requestPermissions).toHaveBeenCalled();
-    expect(h.push.register).toHaveBeenCalled();
+    expect(h.nativeRegistration.register).toHaveBeenCalled();
 
-    // The plugin delivers the APNs/FCM token via the `registration` event.
+    // The iOS companion delivers the FCM token via the existing registration event.
     h.listeners['registration']({ value: 'TOKEN123' });
     await flush();
 
@@ -270,9 +270,9 @@ describe('PushService', () => {
     expect(h.push.createChannel).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'messages' }),
     );
-    expect(h.androidRegistration.register).toHaveBeenCalled();
+    expect(h.nativeRegistration.register).toHaveBeenCalled();
     expect(h.push.createChannel.mock.invocationCallOrder[0]).toBeLessThan(
-      h.androidRegistration.register.mock.invocationCallOrder[0],
+      h.nativeRegistration.register.mock.invocationCallOrder[0],
     );
   });
 
@@ -620,7 +620,7 @@ describe('PushService', () => {
 
       // The retry gets as far as the OS again, and a token this time registers pushers.
       await firstValueFrom(svc.register());
-      expect(h.push.register).toHaveBeenCalledTimes(2);
+      expect(h.nativeRegistration.register).toHaveBeenCalledTimes(2);
 
       h.listeners['registration']({ value: 'TOKEN123' });
       await flush();
@@ -629,7 +629,7 @@ describe('PushService', () => {
 
     it('releases the one-time guard when register() itself rejects', async () => {
       const { svc } = setup();
-      h.push.register.mockRejectedValueOnce(
+      h.nativeRegistration.register.mockRejectedValueOnce(
         new Error('no google play services'),
       );
 
@@ -642,7 +642,7 @@ describe('PushService', () => {
       });
 
       await firstValueFrom(svc.register());
-      expect(h.push.register).toHaveBeenCalledTimes(2);
+      expect(h.nativeRegistration.register).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -652,7 +652,7 @@ describe('PushService', () => {
     await firstValueFrom(svc.register());
     await firstValueFrom(svc.register());
 
-    expect(h.push.register).toHaveBeenCalledTimes(1);
+    expect(h.nativeRegistration.register).toHaveBeenCalledTimes(1);
   });
 
   it('restarts an in-progress OS-registration flow only through exact retry', async () => {
@@ -660,11 +660,11 @@ describe('PushService', () => {
 
     await firstValueFrom(svc.register());
     await firstValueFrom(svc.register());
-    expect(h.push.register).toHaveBeenCalledOnce();
+    expect(h.nativeRegistration.register).toHaveBeenCalledOnce();
 
     await firstValueFrom(svc.retryRegistration());
     expect(h.push.requestPermissions).toHaveBeenCalledTimes(2);
-    expect(h.push.register).toHaveBeenCalledTimes(2);
+    expect(h.nativeRegistration.register).toHaveBeenCalledTimes(2);
   });
 
   it('re-applies pushers for all accounts on a repeat register (new account)', async () => {
@@ -1042,7 +1042,7 @@ describe('PushService', () => {
     first.client.removePusher.mockRejectedValueOnce(new Error('offline'));
     await expect(firstValueFrom(first.svc.unregister())).rejects.toThrow();
     const permissionCalls = h.push.requestPermissions.mock.calls.length;
-    const registerCalls = h.push.register.mock.calls.length;
+    const registerCalls = h.nativeRegistration.register.mock.calls.length;
     first.lifetime.unsubscribe();
     TestBed.resetTestingModule();
     for (const key of Object.keys(h.listeners)) delete h.listeners[key];
@@ -1057,7 +1057,7 @@ describe('PushService', () => {
     await firstValueFrom(second.svc.register());
 
     expect(h.push.requestPermissions).toHaveBeenCalledTimes(permissionCalls);
-    expect(h.push.register).toHaveBeenCalledTimes(registerCalls);
+    expect(h.nativeRegistration.register).toHaveBeenCalledTimes(registerCalls);
     expect(second.client.remotePushers).toEqual([]);
     expect(second.svc.registration()).toEqual({ status: 'idle' });
   });

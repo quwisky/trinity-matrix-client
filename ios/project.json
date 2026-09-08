@@ -69,6 +69,14 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "test-push-registration": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "swift test --package-path ios/PushRegistration --scratch-path dist/ios-native/push-registration",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "verify-native": {
       "cache": false,
       "dependsOn": ["sync"],

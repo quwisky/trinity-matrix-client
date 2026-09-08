@@ -108,12 +108,17 @@ message text.
    notification permission or restarting the app cannot trigger an uncaught Firebase
    initialization exception. The existing push plugin retains token and listener ownership.
 4. The Trinity gateway requires an FCM registration token on iOS as well as Android.
-   The current iOS host still forwards an APNs device token, so it cannot yet
-   register a compatible pusher. The iOS integration work must add Firebase
-   Messaging token delivery, a Push Notifications entitlement and the matching
-   Firebase/APNs provisioning. Existing callbacks in
-   [`AppDelegate.swift`](../../ios/App/App/AppDelegate.swift) alone do not establish
-   FCM compatibility or a provisioned push capability.
+   Register the native bundle `eu.qwky.trinity` in the matching Firebase project and
+   place its downloaded `GoogleService-Info.plist` at
+   `ios/App/App/GoogleService-Info.plist`. This operator-supplied file is ignored;
+   the native build copies it only when present and removes an older bundled copy
+   when the input disappears. Configure an APNs authentication key for that app in
+   Firebase, and enable Push Notifications for the Apple App ID and provisioning
+   profile, following [Firebase's iOS setup](https://firebase.google.com/docs/cloud-messaging/ios/get-started).
+   Debug signing uses the development APNs environment; Release uses production.
+   Firebase Messaging receives the APNs device token and supplies an FCM token to
+   the existing registration lifetime. A missing configuration leaves the app
+   usable and rejects push registration; install a configured build before retrying.
 5. Rebuild, sync and install the native host with `pnpm android:run`, or
    `pnpm ios:run` on macOS with Xcode and signing configured. These commands own
    the web build and Capacitor sync; see [mobile run and debug guidance](../platforms/mobile.md).
@@ -176,8 +181,8 @@ FCM token and a working gateway. Process absence is different from Android's
 after a force-stop, reopen the app before expecting push delivery. Battery and
 background restrictions can also delay messages. Instrumentation that injects a
 data-only message proves the native handler and activation path, not gateway/FCM transport.
-Real-device delivery remains a separate verification requirement. iOS FCM and iOS
-badge/count/sound handling have their own implementation slices.
+Real-device delivery remains a separate verification requirement. iOS
+badge/count/sound handling has its own implementation slice.
 
 Android consumes `unread` as a current snapshot, including zero, for both event and
 count-only payloads. Repeated or collapsed deliveries replace the badge count; they
@@ -213,6 +218,37 @@ The lifecycle target builds and installs Trinity's test APK, checks the shared p
 fixtures and notification-permission denial, then exercises cold and warm taps between
 two real Accounts. It supplies an opaque route to an existing test Account without
 requiring Firebase credentials. The warm phase retains the same app process and WebView.
+
+### iOS FCM registration and generic alerts
+
+The iOS host uses Firebase Messaging to map its APNs token to an FCM registration
+token. Only FCM strings reach the existing Capacitor registration listener; APNs
+device-token bytes are never sent as Matrix pusher keys. Token refresh and explicit
+registration retries use the same Application Runtime lifetime and shared v1
+registration coordinator as Android. The gateway App ID stays
+`ovh.qwky.trinity.ios`, independently of the native bundle identifier.
+
+Capacitor retains ownership of remote and local notification callbacks, including
+tap events received before JavaScript listeners attach. Foreground remote alerts
+remain suppressed at the native presentation boundary so the shared notification
+policy can apply focused-Conversation suppression, Account sound preferences and
+deduplication. Warm and cold activation payloads pass through the shared schema and
+Account Route checks, then Application Runtime and Workspace restoration.
+
+Background alert presentation belongs to iOS. The bundled localization keys
+`TRINITY_NOTIFICATION_TITLE` and `TRINITY_NEW_MESSAGE` resolve to **Trinity** and
+**New message**. No notification extension decrypts message content. Because iOS
+can display an alert before the application runs, application-side schema or retired
+Account checks govern activation and foreground presentation; they cannot retract
+an already displayed background alert.
+
+`pnpm ios:verify` checks wiring without Xcode. Actual unsigned Simulator compilation
+uses `pnpm nx run trinity-ios:verify-native`, or the existing macOS CI build against
+its verified renderer artifact. `pnpm nx run trinity-ios:test-push-registration`
+runs Swift tests against the same token coordinator compiled into the app, covering
+APNs mapping order, token refresh, stale completions and retries. The macOS CI job
+runs these tests before compiling the host. Neither compilation nor callback tests
+prove provisioned APNs/FCM transport, locked-device delivery or a physical tap.
 
 ### Registration lifetime
 

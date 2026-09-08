@@ -195,6 +195,14 @@ its usage string, so add the matching plist key before shipping a new native per
 Back/Forward gestures with Angular's dialog and panel interception state, beginning in the
 safe disabled state until the bridge reports that nothing needs to intercept history.
 
+The host links Firebase Messaging directly through the Xcode project, leaving the
+CLI-generated Capacitor package unchanged. `TrinityPushRegistration` guards optional
+Firebase configuration and forwards FCM registration tokens through Capacitor's
+existing push listener. Capacitor continues to own notification presentation and tap
+callbacks. The Push Notifications entitlement selects the signing environment;
+operator configuration at `ios/App/App/GoogleService-Info.plist` is optional for builds
+and required for push registration. See [iOS push setup](../reference/push-notifications.md#ios-fcm-registration-and-generic-alerts).
+
 ## Package and release boundaries
 
 Android release packaging is `pnpm android:build:release`; configure release signing outside

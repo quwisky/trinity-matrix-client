@@ -9,7 +9,8 @@ const h = vi.hoisted(() => {
   return {
     platform: 'ios',
     available: true,
-    androidRegistration: {
+    customAvailable: true,
+    nativeRegistration: {
       register: vi.fn(async () => undefined),
     },
     androidDelivery: {
@@ -43,10 +44,11 @@ const h = vi.hoisted(() => {
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     getPlatform: () => h.platform,
-    isPluginAvailable: () => h.available,
+    isPluginAvailable: (name: string) =>
+      name === 'TrinityPushRegistration' ? h.customAvailable : h.available,
   },
   registerPlugin: (name: string) =>
-    name === 'TrinityPushDelivery' ? h.androidDelivery : h.androidRegistration,
+    name === 'TrinityPushDelivery' ? h.androidDelivery : h.nativeRegistration,
 }));
 vi.mock('@capacitor/push-notifications', () => ({ PushNotifications: h.push }));
 
@@ -55,9 +57,10 @@ describe('NativePushRegistrationService', () => {
     TestBed.resetTestingModule();
     h.platform = 'ios';
     h.available = true;
+    h.customAvailable = true;
     h.rejectRemoval = false;
-    h.androidRegistration.register.mockReset();
-    h.androidRegistration.register.mockResolvedValue(undefined);
+    h.nativeRegistration.register.mockReset();
+    h.nativeRegistration.register.mockResolvedValue(undefined);
     h.androidDelivery.claimPresentation.mockReset();
     h.androidDelivery.claimPresentation.mockResolvedValue({ claimed: true });
     h.androidDelivery.setForegroundOwner.mockReset();
@@ -85,29 +88,38 @@ describe('NativePushRegistrationService', () => {
     );
   });
 
-  it('uses the Android companion while preserving the iOS push plugin', async () => {
+  it('uses the custom registration guard on both iOS and Android', async () => {
     const service = TestBed.inject(NativePushRegistrationService);
     await firstValueFrom(service.register());
-    expect(h.push.register).toHaveBeenCalledOnce();
-    expect(h.androidRegistration.register).not.toHaveBeenCalled();
+    expect(h.nativeRegistration.register).toHaveBeenCalledOnce();
+    expect(h.push.register).not.toHaveBeenCalled();
 
     h.platform = 'android';
     TestBed.resetTestingModule();
     await firstValueFrom(
       TestBed.inject(NativePushRegistrationService).register(),
     );
-    expect(h.androidRegistration.register).toHaveBeenCalledOnce();
+    expect(h.nativeRegistration.register).toHaveBeenCalledTimes(2);
   });
 
-  it('surfaces a missing Android companion as a rejected registration', async () => {
+  it('surfaces a missing custom bridge as a rejected registration', async () => {
     h.platform = 'android';
-    h.androidRegistration.register.mockRejectedValue(
+    h.nativeRegistration.register.mockRejectedValue(
       new Error('Push notifications are not configured for this Android build'),
     );
 
     await expect(
       firstValueFrom(TestBed.inject(NativePushRegistrationService).register()),
     ).rejects.toThrow('not configured');
+  });
+
+  it('fails closed when the custom bridge is unavailable', async () => {
+    h.customAvailable = false;
+    const service = TestBed.inject(NativePushRegistrationService);
+
+    expect(service.supported()).toBe(false);
+    await firstValueFrom(service.register());
+    expect(h.nativeRegistration.register).not.toHaveBeenCalled();
   });
 
   it('normalizes callbacks and owns listener teardown for one subscription', async () => {

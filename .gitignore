@@ -23,6 +23,9 @@ log.txt
 /platforms
 /plugins
 
+# Optional Firebase configuration for local iOS provisioning.
+/ios/App/App/GoogleService-Info.plist
+
 # Compiled output
 /dist
 /tmp

@@ -148,6 +148,20 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   const iosPlugins = withoutComments(input.iosPlugins, true);
   const androidManifest = withoutXmlComments(input.androidManifest);
   const iosInfo = withoutXmlComments(input.iosInfo);
+  const iosProject = withoutComments(input.iosProject, true);
+  const iosProjectCode = iosProject;
+  const iosEntitlements = withoutXmlComments(input.iosEntitlements);
+  const iosViewController = withoutComments(input.iosViewController, true);
+  const iosRegistration = withoutComments(input.iosRegistration, true);
+  const iosRegistrationPlugin = withoutComments(
+    input.iosRegistrationPlugin,
+    true,
+  );
+  const iosAppDelegate = withoutComments(input.iosAppDelegate, true);
+  const iosCoordinator = withoutComments(input.iosCoordinator, true);
+  const iosPushPackage = withoutComments(input.iosPushPackage, true);
+  const iosStrings = input.iosStrings;
+  const iosCopyScript = withoutComments(input.iosCopyScript, true);
   const hostNames = selectedHosts ?? Object.keys(hosts);
   for (const hostName of hostNames) {
     const contract = hosts[hostName];
@@ -304,6 +318,92 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       'iOS host must delegate status-bar appearance to its view controller',
     );
   }
+  if (
+    !iosProject.includes(
+      'repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git"',
+    ) ||
+    !iosProject.includes('kind = exactVersion;') ||
+    !iosProject.includes('version = 12.13.0;') ||
+    !iosProject.includes('productName = FirebaseCore;') ||
+    !iosProject.includes('productName = FirebaseMessaging;')
+  ) {
+    errors.push(
+      'iOS host must pin FirebaseCore and FirebaseMessaging to 12.13.0',
+    );
+  }
+  if (
+    !iosPushPackage.includes('name: "PushRegistration"') ||
+    !iosPushPackage.includes('.target(name: "PushRegistration")') ||
+    !iosCoordinator.includes('import Foundation') ||
+    /import\s+(?:Firebase\w*|UIKit|Capacitor)\b/u.test(iosCoordinator) ||
+    !iosProject.includes(
+      'path = ../../PushRegistration/Sources/PushRegistration/TrinityPushTokenCoordinator.swift;',
+    ) ||
+    !/fileRef\s*=\s*B60600000000000000000024\s*;/u.test(iosProject) ||
+    !/B60600000000000000000006\s*,/u.test(iosProject)
+  ) {
+    errors.push(
+      'iOS host must compile the shared Foundation push coordinator from PushRegistration',
+    );
+  }
+  if (
+    (
+      iosProject.match(/CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/gu) ??
+      []
+    ).length < 2 ||
+    !iosEntitlements.includes('<key>aps-environment</key>')
+  ) {
+    errors.push(
+      'iOS Debug and Release builds must include the APNs entitlement',
+    );
+  }
+  if (
+    !iosInfo.includes('<key>FirebaseAppDelegateProxyEnabled</key>') ||
+    !/<key>FirebaseAppDelegateProxyEnabled<\/key>\s*<false\s*\/>/u.test(iosInfo)
+  ) {
+    errors.push('iOS Firebase App Delegate proxy must be disabled');
+  }
+  if (
+    !iosViewController.includes(
+      'registerPluginInstance(TrinityPushRegistrationPlugin())',
+    ) ||
+    !iosRegistrationPlugin.includes('let jsName = "TrinityPushRegistration"')
+  ) {
+    errors.push('iOS host must register the Trinity push bridge');
+  }
+  if (
+    !iosProjectCode.includes('path = ../en.lproj/Localizable.strings;') ||
+    !/fileRef\s*=\s*B60600000000000000000021\s*;/u.test(iosProjectCode) ||
+    !/B60600000000000000000003\s*[;,]/u.test(iosProjectCode) ||
+    !iosStrings.includes('"TRINITY_NOTIFICATION_TITLE"') ||
+    !iosStrings.includes('"TRINITY_NEW_MESSAGE"')
+  ) {
+    errors.push('iOS host must bundle the native push localization keys');
+  }
+  if (
+    !iosRegistration.includes(
+      'Messaging.messaging().apnsToken = deviceToken',
+    ) ||
+    !iosRegistrationPlugin.includes('setAPNsToken(deviceToken)') ||
+    !iosRegistration.includes('object: token') ||
+    `${iosRegistration}\n${iosRegistrationPlugin}\n${iosAppDelegate}`.includes(
+      'object: deviceToken',
+    ) ||
+    iosAppDelegate.includes('capacitorDidRegisterForRemoteNotifications') ||
+    `${iosRegistration}\n${iosRegistrationPlugin}\n${iosAppDelegate}`.includes(
+      'UNUserNotificationCenter',
+    )
+  ) {
+    errors.push('iOS push bridge must forward only FCM String tokens');
+  }
+  if (
+    !iosCopyScript.includes('if [ -s "${source_file}" ]') ||
+    !iosCopyScript.includes('rm -f "${destination}"')
+  ) {
+    errors.push(
+      'iOS Firebase config copy must safely handle missing or empty config',
+    );
+  }
 }
 
 export function validateCurrentNativeHosts(selectedHosts) {
@@ -327,6 +427,20 @@ export function validateCurrentNativeHosts(selectedHosts) {
       iosPlugins: read('ios/App/CapApp-SPM/Package.swift'),
       androidManifest: read('android/app/src/main/AndroidManifest.xml'),
       iosInfo: read('ios/App/App/Info.plist'),
+      iosProject: read('ios/App/App.xcodeproj/project.pbxproj'),
+      iosEntitlements: read('ios/App/App/App.entitlements'),
+      iosViewController: read('ios/App/App/MainViewController.swift'),
+      iosAppDelegate: read('ios/App/App/AppDelegate.swift'),
+      iosCoordinator: read(
+        'ios/PushRegistration/Sources/PushRegistration/TrinityPushTokenCoordinator.swift',
+      ),
+      iosPushPackage: read('ios/PushRegistration/Package.swift'),
+      iosRegistration: read('ios/App/App/TrinityPushRegistration.swift'),
+      iosRegistrationPlugin: read(
+        'ios/App/App/TrinityPushRegistrationPlugin.swift',
+      ),
+      iosStrings: read('ios/App/en.lproj/Localizable.strings'),
+      iosCopyScript: read('ios/App/App/copy-google-service-info.sh'),
     },
     errors,
     selectedHosts,
