@@ -1,6 +1,7 @@
 import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
 import { UnreadAggregatorService } from '@trinity/data-access/room-library';
 import type { HostOperationOutcome } from '@trinity/runtime/host';
+import { HostLifecycleService } from '@trinity/runtime/host';
 import { Observable, Subject, catchError, of, switchMap } from 'rxjs';
 import { BADGE_SINK } from './badge-sink';
 
@@ -14,6 +15,7 @@ export class BadgeCoordinator {
   private readonly unread = inject(UnreadAggregatorService);
   private readonly sink = inject(BADGE_SINK);
   private readonly injector = inject(Injector);
+  private readonly lifecycle = inject(HostLifecycleService);
 
   /** Application Runtime owns this cold stream for one restartable session. */
   run(): Observable<HostOperationOutcome> {
@@ -33,9 +35,17 @@ export class BadgeCoordinator {
           ),
         )
         .subscribe(subscriber);
+      const lifecycleEvents = this.lifecycle.events.subscribe((event) => {
+        if (event.kind === 'active') {
+          untracked(() => totals.next(this.unread.totalUnread()));
+        }
+      });
       const unreadEffect = effect(
         () => {
-          const total = this.unread.totalUnread();
+          // Track reconciliation generations even when the aggregate is unchanged;
+          // this restores the Matrix total after a native background snapshot.
+          this.unread.unreadByAccount();
+          const total = untracked(() => this.unread.totalUnread());
           // Synchronous sink outcomes must not add their consumers' health
           // signals to the unread effect and feed writes back into themselves.
           untracked(() => totals.next(total));
@@ -44,6 +54,7 @@ export class BadgeCoordinator {
       );
       return () => {
         unreadEffect.destroy();
+        lifecycleEvents.unsubscribe();
         writes.unsubscribe();
         totals.complete();
       };

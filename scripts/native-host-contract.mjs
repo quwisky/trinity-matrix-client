@@ -55,7 +55,6 @@ const androidPluginMarkers = [
   ':capacitor-local-notifications',
   ':capacitor-push-notifications',
   ':capacitor-status-bar',
-  ':capawesome-capacitor-badge',
 ];
 
 const iosPluginMarkers = [
@@ -270,6 +269,18 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
       errors.push(`Android host is missing plugin wiring: ${marker}`);
     }
   }
+  if (androidPlugins.includes(':capawesome-capacitor-badge')) {
+    errors.push('Android badge writes must have only the Trinity native owner');
+  }
+  if (
+    !withoutComments(input.androidAppBuild, true).includes(
+      'me.leolin:ShortcutBadger:1.1.22@aar',
+    )
+  ) {
+    errors.push(
+      'Android badge owner requires the pinned ShortcutBadger adapter',
+    );
+  }
   for (const marker of iosPluginMarkers) {
     if (!iosPlugins.includes(marker)) {
       errors.push(`iOS host is missing plugin wiring: ${marker}`);
@@ -312,6 +323,7 @@ export function validateCurrentNativeHosts(selectedHosts) {
         'libs/platform-native/src/lib/host-capabilities/host-operation.adapters.ts',
       ),
       androidPlugins: read('android/capacitor.settings.gradle'),
+      androidAppBuild: read('android/app/build.gradle'),
       iosPlugins: read('ios/App/CapApp-SPM/Package.swift'),
       androidManifest: read('android/app/src/main/AndroidManifest.xml'),
       iosInfo: read('ios/App/App/Info.plist'),

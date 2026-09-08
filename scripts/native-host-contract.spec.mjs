@@ -100,8 +100,8 @@ function validInput() {
       ':capacitor-local-notifications',
       ':capacitor-push-notifications',
       ':capacitor-status-bar',
-      ':capawesome-capacitor-badge',
     ].join('\n'),
+    androidAppBuild: 'implementation "me.leolin:ShortcutBadger:1.1.22@aar"',
     iosPlugins: [
       'AparajitaCapacitorSecureStorage',
       'CapacitorApp',
@@ -120,6 +120,27 @@ function validInput() {
 }
 
 describe('native host contract', () => {
+  it('rejects competing Android badge owners', () => {
+    const input = validInput();
+    input.androidPlugins += '\n:capawesome-capacitor-badge';
+    const errors = [];
+    validateNativeHostContract(input, errors);
+    expect(errors).toContain(
+      'Android badge writes must have only the Trinity native owner',
+    );
+  });
+
+  it('rejects a missing native badge dependency', () => {
+    const input = validInput();
+    input.androidAppBuild =
+      '// implementation "me.leolin:ShortcutBadger:1.1.22@aar"';
+    const errors = [];
+    validateNativeHostContract(input, errors);
+    expect(errors).toContain(
+      'Android badge owner requires the pinned ShortcutBadger adapter',
+    );
+  });
+
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
   });

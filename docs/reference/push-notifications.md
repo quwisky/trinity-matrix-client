@@ -176,8 +176,36 @@ FCM token and a working gateway. Process absence is different from Android's
 after a force-stop, reopen the app before expecting push delivery. Battery and
 background restrictions can also delay messages. Instrumentation that injects a
 data-only message proves the native handler and activation path, not gateway/FCM transport.
-Real-device delivery remains a separate verification requirement. iOS FCM and detailed
-platform badge/count/sound handling have their own implementation slices.
+Real-device delivery remains a separate verification requirement. iOS FCM and iOS
+badge/count/sound handling have their own implementation slices.
+
+Android consumes `unread` as a current snapshot, including zero, for both event and
+count-only payloads. Repeated or collapsed deliveries replace the badge count; they
+never increment it. `missed_calls` remains separate and does not add to the unread
+badge or create calling UI. Malformed fields and unknown Account routes are ignored.
+The shared push client interprets counts and hints; native contract fixtures verify
+the same interpretation without needing a WebView.
+
+While backgrounded, the badge can reflect the latest delivered Account's unread
+snapshot. The next Matrix reconciliation or foreground resume restores the existing
+combined unread total across signed-in Accounts, including when that total has not
+changed. Push values are never queued for replay over Matrix state. Android badge
+operations share one native owner so a launcher support probe cannot restore an older
+count over a newer write. Counts are capped at 9,999 before reaching the launcher.
+
+Count-only deliveries stay silent even if their sound hint is true, and never create
+a notification destination. Event `sound=false` uses the existing silent notification
+channel; `sound=true` uses the normal channel. Foreground presentation also respects
+the owning Account's sound preference. An optional `highlight` hint is preserved, but
+does not independently turn sound on or override channel priority. Android permission
+and user-controlled channel settings remain authoritative.
+
+Badge rendering depends on the Android launcher: some show a number, some show only
+a notification dot, and others do not support application badges. A zero unread count
+clears a supported numerical badge; it does not dismiss earlier message alerts, so
+a launcher may retain their notification dot. Native instrumentation verifies stored
+counts and notification channel fields; it does not prove audible sound or numerical
+badge rendering on a physical device.
 
 Run the installed Android checks with
 `pnpm nx run trinity-e2e-android:e2e -- android/push-delivery.spec.mts`.

@@ -11,6 +11,8 @@ interface NativePushDeliveryPlugin {
     eventId: string;
     channelId: string;
   }): Promise<{ claimed: boolean }>;
+  badgeSupport(): Promise<{ supported: boolean }>;
+  setBadge(options: { count: number }): Promise<void>;
   setForegroundOwner(options: {
     kind: NativePushForegroundKind;
     owner: string;
@@ -47,6 +49,28 @@ export class NativePushDeliveryService {
       // Native failures must remain visible to the delivery caller. Keep the
       // bridge's details out of the application error surface.
       catchError(() => throwError(() => new Error(DELIVERY_FAILURE))),
+    );
+  }
+
+  badgeSupport(): Observable<boolean> {
+    return defer(() =>
+      this.platform !== 'android'
+        ? of(false)
+        : from(nativePushDelivery.badgeSupport()).pipe(
+            map(({ supported }) => supported),
+          ),
+    );
+  }
+
+  setBadge(count: number): Observable<void> {
+    return defer(() =>
+      this.platform !== 'android'
+        ? of(void 0)
+        : from(
+            nativePushDelivery.setBadge({
+              count: Math.min(9999, Math.max(0, Math.trunc(count))),
+            }),
+          ),
     );
   }
 

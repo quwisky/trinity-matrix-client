@@ -31,7 +31,7 @@ final class TrinityPushDelivery {
     static final String GATEWAY_KEY = "trinity.push.gateway";
     static final String DEDUPE_KEY = "trinity.push.delivery";
     private static final String CHANNEL = "messages";
-    private static final Object LOCK = new Object();
+    private static final Object LOCK = TrinityBadge.LOCK;
     private static final int MAX_CLAIMS = 500;
 
     private TrinityPushDelivery() {}
@@ -51,13 +51,14 @@ final class TrinityPushDelivery {
             Registry registry = Registry.read(context);
             if (registry == null || registry.routes.contains(payload.route) == false) return;
             if (disabled(context)) return;
+            TrinityBadge.set(context, payload.unread);
             if (payload.kind == Kind.COUNTS) return;
             if (MainActivity.isResumed() && TrinityPushDeliveryPlugin.ready()
                     && PushNotificationsPlugin.getPushNotificationsInstance() != null) {
                 PushNotificationsPlugin.sendRemoteMessage(original == null ? payload.remoteMessage : original);
                 return;
             }
-            if (!canPresent(context)) return;
+            if (!canPresent(context, payload.sound ? "messages" : "trinity-notifications-silent")) return;
             if (claimOutcome(context, registry.routes, payload.route, payload.eventId) != ClaimOutcome.CLAIMED) return;
             present(context, payload);
         }
@@ -167,7 +168,8 @@ final class TrinityPushDelivery {
     }
 
     private static void present(Context context, Payload payload) {
-        if (!canPresent(context)) return;
+        String channelId = payload.sound ? "messages" : "trinity-notifications-silent";
+        if (!canPresent(context, channelId)) return;
         String identity = digest(payload.route + "\u0000" + payload.eventId);
         String tag = "trinity.push." + digest(payload.route) + "." + identity;
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -177,9 +179,13 @@ final class TrinityPushDelivery {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nativeManager = context.getSystemService(NotificationManager.class);
             if (nativeManager == null) return;
-            NotificationChannel channel = nativeManager.getNotificationChannel(CHANNEL);
+            NotificationChannel channel = nativeManager.getNotificationChannel(channelId);
             if (channel == null) {
-                nativeManager.createNotificationChannel(new NotificationChannel(CHANNEL, "Messages", NotificationManager.IMPORTANCE_HIGH));
+                NotificationChannel created = new NotificationChannel(channelId,
+                        payload.sound ? "Messages" : "Silent notifications",
+                        payload.sound ? NotificationManager.IMPORTANCE_HIGH : NotificationManager.IMPORTANCE_DEFAULT);
+                if (!payload.sound) { created.setSound(null, null); created.enableVibration(false); }
+                nativeManager.createNotificationChannel(created);
             } else if (channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return;
         }
         Intent intent = new Intent(context, MainActivity.class).setAction("trinity.push.open");
@@ -188,12 +194,15 @@ final class TrinityPushDelivery {
         int requestCode = 0;
         PendingIntent click = PendingIntent.getActivity(context, requestCode, intent,
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(context.getApplicationInfo().icon)
                 .setContentTitle("Trinity")
                 .setContentText("New message")
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(payload.sound ? NotificationCompat.PRIORITY_HIGH : NotificationCompat.PRIORITY_LOW)
                 .setAutoCancel(true).setContentIntent(click);
+        if (Build.VERSION.SDK_INT < 26 && payload.sound) {
+            builder.setDefaults(NotificationCompat.DEFAULT_SOUND);
+        }
         manager.notify(tag, requestCode, builder.build());
     }
 
@@ -211,7 +220,7 @@ final class TrinityPushDelivery {
         return channel == null || channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
     }
 
-    private static boolean canPresent(Context context) {
+    private static boolean canPresent(Context context, String channelId) {
         if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) return false;
         NotificationManagerCompat manager = NotificationManagerCompat.from(context);
@@ -219,7 +228,7 @@ final class TrinityPushDelivery {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nativeManager = context.getSystemService(NotificationManager.class);
             if (nativeManager == null) return false;
-            NotificationChannel channel = nativeManager.getNotificationChannel(CHANNEL);
+            NotificationChannel channel = nativeManager.getNotificationChannel(channelId);
             if (channel != null && channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
         }
         return true;
@@ -238,8 +247,11 @@ final class TrinityPushDelivery {
     enum Kind { EVENT, COUNTS }
     static final class Payload {
         final Kind kind; final String route; final String eventId; final String messageId; final Map<String,String> data; final RemoteMessage remoteMessage;
+        final int unread; final boolean sound;
         private Payload(Kind kind, String route, String eventId, String messageId, Map<String,String> data) {
             this.kind=kind; this.route=route; this.eventId=eventId; this.messageId=messageId; this.data=data;
+            this.unread = (int) Math.min(9999L, Long.parseLong(data.get("unread")));
+            this.sound = "true".equals(data.get("sound"));
             this.remoteMessage = new RemoteMessage.Builder("trinity").setMessageId(messageId).setData(data).build();
         }
         void putExtras(Intent intent) {

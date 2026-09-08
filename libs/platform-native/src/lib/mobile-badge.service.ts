@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Badge } from '@capawesome/capacitor-badge';
 import type {
@@ -12,6 +12,7 @@ import {
   catchError,
   defer,
   finalize,
+  firstValueFrom,
   from,
   map,
   of,
@@ -20,6 +21,7 @@ import {
   tap,
   timeout,
 } from 'rxjs';
+import { NativePushDeliveryService } from './native-push-delivery.service';
 
 const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
 
@@ -38,6 +40,7 @@ const NATIVE_BADGE_OPERATION_TIMEOUT_MS = 5_000;
  */
 @Injectable({ providedIn: 'root' })
 export class MobileBadgeService implements HostBadgeOperation {
+  private readonly nativePush = inject(NativePushDeliveryService);
   /** Finite readiness results are memoized; a failed or timed-out attempt is retryable. */
   private ready?: boolean;
   private readiness?: Observable<boolean>;
@@ -70,7 +73,9 @@ export class MobileBadgeService implements HostBadgeOperation {
         support.kind === 'unavailable'
           ? of(support)
           : defer(() =>
-              from(count > 0 ? Badge.set({ count }) : Badge.clear()),
+              this.nativePush.platform === 'android'
+                ? this.nativePush.setBadge(count)
+                : from(count > 0 ? Badge.set({ count }) : Badge.clear()),
             ).pipe(
               map(() => ({ kind: 'completed' }) as const),
               timeout({ first: NATIVE_BADGE_OPERATION_TIMEOUT_MS }),
@@ -107,6 +112,9 @@ export class MobileBadgeService implements HostBadgeOperation {
   }
 
   private async probe(): Promise<boolean> {
+    if (this.nativePush.platform === 'android') {
+      return firstValueFrom(this.nativePush.badgeSupport());
+    }
     if (
       !Capacitor.isNativePlatform() ||
       !Capacitor.isPluginAvailable('Badge')

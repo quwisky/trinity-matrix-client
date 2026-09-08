@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Android applies gateway unread snapshots to supported app badges, including silent
+  count-only updates and zero clears. Matrix sync restores the combined unread total
+  across Accounts, and event sound hints respect Android notification channels.
+
 - Android handles Trinity gateway event notifications without a running WebView,
   keeps native and foreground alerts deduplicated across restarts, and opens the
   owning Account and Conversation from a generic notification.
