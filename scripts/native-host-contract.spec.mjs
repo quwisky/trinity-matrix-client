@@ -159,6 +159,22 @@ function validInput() {
 }
 
 describe('native host contract', () => {
+  it('preserves the APNs badge until Matrix reconciliation in the effective Capacitor configuration', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        "require('@capacitor/cli/dist/config').loadConfig().then(({ app }) => process.stdout.write(JSON.stringify(app.extConfig.plugins.Badge)))",
+      ],
+      { cwd: workspaceRoot, encoding: 'utf8' },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      persist: false,
+      autoClear: false,
+    });
+  });
+
   it('accepts the baseline used by mutation tests', () => {
     const errors = [];
     validateNativeHostContract(validInput(), errors);

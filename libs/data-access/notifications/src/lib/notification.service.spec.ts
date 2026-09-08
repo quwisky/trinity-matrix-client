@@ -652,6 +652,48 @@ describe('NotificationService', () => {
     expect(MockNotification.instances).toHaveLength(0);
   });
 
+  it('keeps iOS count snapshots silent even with sound, highlight, and missed calls', async () => {
+    cap.native = true;
+    const present = vi.fn(() => of({ kind: 'completed' as const }));
+    const { svc, activations, client } = setup({
+      hostNotifications: {
+        support: () => of({ kind: 'supported' as const }),
+        activated: NEVER,
+        requestPermission: () => of({ kind: 'completed' as const }),
+        present,
+      },
+    });
+    svc.connect();
+    await vi.waitFor(() =>
+      expect(client.on).toHaveBeenCalledWith(
+        RoomEvent.Timeline,
+        expect.any(Function),
+      ),
+    );
+    const counts = {
+      schema: '1',
+      kind: 'counts',
+      trinity_account_id: 'route-me',
+      unread: '4',
+      missed_calls: '3',
+      sound: 'true',
+      highlight: 'true',
+    };
+
+    svc.receivePush(counts).subscribe();
+    svc.receivePush({ ...counts, unread: '0' }).subscribe();
+    svc.receivePush({ ...counts, unread: '4' }).subscribe();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(present).not.toHaveBeenCalled();
+    expect(activations).toEqual([]);
+
+    // Control: the same ready native lifetime admits a visible event payload.
+    svc.receivePush(gatewayEvent()).subscribe();
+    await vi.waitFor(() => expect(present).toHaveBeenCalledOnce());
+  });
+
   it('ignores initial-sync history before notifying on the first ready event', () => {
     const { svc, client } = setup();
     client.getSyncState.mockReturnValue(null);
