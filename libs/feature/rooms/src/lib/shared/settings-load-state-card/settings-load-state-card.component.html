@@ -1,0 +1,35 @@
+@switch (state()) {
+  @case ('loading') {
+    <section class="settings-load-state-card" role="status" aria-live="polite">
+      <h3>{{ heading() }}</h3>
+      <p>{{ description() }}</p>
+    </section>
+  }
+  @case ('unavailable') {
+    <section class="settings-load-state-card" role="alert">
+      <h3>{{ heading() }}</h3>
+      <p>{{ description() }}</p>
+    </section>
+  }
+  @case ('failed') {
+    <section
+      class="settings-load-state-card settings-load-state-card--failure"
+      [class.settings-load-state-card--grouped]="failureLayout() === 'grouped'"
+      role="alert"
+    >
+      <div class="settings-load-state-card__copy">
+        <h3>{{ heading() }}</h3>
+        <p>{{ description() }}</p>
+      </div>
+      <button
+        trnBtn
+        type="button"
+        variant="secondary"
+        [attr.data-testid]="retryTestid()"
+        (click)="retry.emit()"
+      >
+        Try again
+      </button>
+    </section>
+  }
+}

@@ -1,26 +1,11 @@
-@use '../../styles/mixins' as rooms;
 @use '../space-settings-form' as form;
 
 @layer components {
   @include form.common;
 
-  .space-settings__failure {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--trinity-space-4);
-  }
-
   .space-settings__scope {
     display: flex;
     flex-direction: column;
     gap: var(--trinity-space-2);
-  }
-
-  @media #{rooms.$below-md} {
-    .space-settings__failure {
-      align-items: stretch;
-      flex-direction: column;
-    }
   }
 }

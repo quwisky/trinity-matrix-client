@@ -15,6 +15,7 @@ import {
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { initialOf } from '@trinity/util/matrix';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
+import { SettingsIdentityCardComponent } from '../shared/settings-identity-card/settings-identity-card.component';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 
 /** General Room profile editor backed by the hub's exact-target draft lifetime. */
@@ -23,6 +24,7 @@ import { RoomSettingsDraftService } from './room-settings-draft.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarFieldComponent,
+    SettingsIdentityCardComponent,
     FormField,
     FormRoot,
     TrnActionAvailability,

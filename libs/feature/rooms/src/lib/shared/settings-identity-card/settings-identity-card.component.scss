@@ -1,0 +1,58 @@
+@use '../../styles/mixins' as rooms;
+
+@layer components {
+  :host {
+    display: block;
+    min-width: 0;
+  }
+
+  .settings-identity-card {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--trinity-space-4);
+
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h3 {
+      color: var(--trinity-text-bright);
+      font-size: var(--trinity-type-body-size);
+      line-height: var(--trinity-type-body-line-height);
+      font-weight: 600;
+    }
+
+    :where(p) {
+      max-width: 65ch;
+      color: var(--trinity-text-muted);
+      font-size: var(--trinity-type-caption-size);
+      line-height: var(--trinity-type-caption-line-height);
+    }
+  }
+
+  .settings-identity-card__heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .settings-identity-card__restriction {
+    overflow-wrap: anywhere;
+    color: var(--trinity-danger);
+    line-height: var(
+      --settings-identity-restriction-line-height,
+      var(--trinity-type-caption-line-height)
+    );
+  }
+
+  @media #{rooms.$below-md} {
+    .settings-identity-card__heading {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+}

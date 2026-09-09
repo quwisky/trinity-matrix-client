@@ -9,6 +9,7 @@ import {
 import type { RoomNotifyMode } from '@trinity/data-access/notifications';
 import { RoomSettingsDraftService } from '../room-settings-draft.service';
 import { RoomSettingsForYouDraftService } from './room-settings-for-you-draft.service';
+import { SettingsLoadStateCardComponent } from '../../shared/settings-load-state-card/settings-load-state-card.component';
 
 const NOTIFICATION_OPTIONS: readonly TrnRadioOption<RoomNotifyMode>[] = [
   {
@@ -32,7 +33,13 @@ const NOTIFICATION_OPTIONS: readonly TrnRadioOption<RoomNotifyMode>[] = [
 @Component({
   selector: 'trn-room-settings-for-you',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormRoot, TrnButton, TrnCheckboxComponent, TrnRadioGroupComponent],
+  imports: [
+    FormRoot,
+    TrnButton,
+    TrnCheckboxComponent,
+    TrnRadioGroupComponent,
+    SettingsLoadStateCardComponent,
+  ],
   templateUrl: './room-settings-for-you.component.html',
   styleUrl: './room-settings-for-you.component.scss',
 })

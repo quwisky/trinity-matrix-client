@@ -1,4 +1,3 @@
-@use '../../styles/mixins' as rooms;
 @use '../room-settings-panel' as panel;
 
 @layer components {
@@ -32,23 +31,9 @@
     }
   }
 
-  .room-settings__failure {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
   .room-settings__scope {
     display: flex;
     flex-direction: column;
     gap: 8px;
-  }
-
-  @media #{rooms.$below-md} {
-    .room-settings__failure {
-      align-items: stretch;
-      flex-direction: column;
-    }
   }
 }

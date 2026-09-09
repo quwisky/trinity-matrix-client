@@ -1,0 +1,12 @@
+<section class="settings-identity-card">
+  <div class="settings-identity-card__heading">
+    <div>
+      <h3>{{ heading() }}</h3>
+      <p>Photo changes save immediately and are not undone by Discard.</p>
+    </div>
+    <ng-content />
+  </div>
+  @if (permissionReason() !== null) {
+    <p class="settings-identity-card__restriction">{{ permissionReason() }}</p>
+  }
+</section>

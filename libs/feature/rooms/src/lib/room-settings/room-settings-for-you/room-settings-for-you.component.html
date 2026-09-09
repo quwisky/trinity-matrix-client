@@ -1,39 +1,27 @@
 <section data-testid="room-settings-panel-for-you">
   @switch (draft.loadState()) {
     @case ('loading') {
-      <section class="room-settings__card" role="status" aria-live="polite">
-        <h3>Loading your Room preferences…</h3>
-        <p>Reading the opening Account’s current Matrix settings.</p>
-      </section>
+      <trn-settings-load-state-card
+        state="loading"
+        heading="Loading your Room preferences…"
+        description="Reading the opening Account’s current Matrix settings."
+      />
     }
     @case ('unavailable') {
-      <section class="room-settings__card" role="alert">
-        <h3>Room preferences unavailable</h3>
-        <p>
-          This Room is no longer available to the opening Account. No default
-          values have been substituted.
-        </p>
-      </section>
+      <trn-settings-load-state-card
+        state="unavailable"
+        heading="Room preferences unavailable"
+        description="This Room is no longer available to the opening Account. No default values have been substituted."
+      />
     }
     @case ('failed') {
-      <section class="room-settings__card room-settings__failure" role="alert">
-        <div>
-          <h3>Couldn’t read Room preferences</h3>
-          <p>
-            Trinity could not confirm the opening Account’s current notification
-            rules. Try again before making changes.
-          </p>
-        </div>
-        <button
-          trnBtn
-          type="button"
-          variant="secondary"
-          data-testid="room-settings-for-you-retry"
-          (click)="draft.retryLoad()"
-        >
-          Try again
-        </button>
-      </section>
+      <trn-settings-load-state-card
+        state="failed"
+        heading="Couldn’t read Room preferences"
+        description="Trinity could not confirm the opening Account’s current notification rules. Try again before making changes."
+        retryTestid="room-settings-for-you-retry"
+        (retry)="draft.retryLoad()"
+      />
     }
     @case ('ready') {
       <form
