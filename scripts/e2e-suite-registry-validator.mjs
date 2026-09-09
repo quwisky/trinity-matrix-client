@@ -250,6 +250,51 @@ export const validateWorkflowContracts = (
     'classify',
     'docs-gate',
   ]);
+  const requiredJob = ciJobs.required;
+  const expectedRequiredNeeds = new Set([
+    'classify',
+    'docs-gate',
+    ...CODE_JOB_IDS,
+  ]);
+  if (requiredJob?.name !== 'CI / Required')
+    errors.push(
+      'Required aggregate must emit the exact CI / Required check name',
+    );
+  if (
+    !Array.isArray(requiredJob?.needs) ||
+    requiredJob.needs.length !== expectedRequiredNeeds.size ||
+    new Set(requiredJob.needs).size !== expectedRequiredNeeds.size ||
+    requiredJob.needs.some((id) => !expectedRequiredNeeds.has(id))
+  )
+    errors.push('Required aggregate needs must be complete and explicit');
+  if (
+    !permissionKeysAre(requiredJob?.permissions, {
+      contents: 'read',
+      'pull-requests': 'read',
+    })
+  )
+    errors.push(
+      'Required aggregate permissions must be contents and pull requests read-only',
+    );
+  const sourceStep = requiredJob?.steps?.find(
+    (step) => step?.id === 'master-source',
+  );
+  const evaluatorStep = requiredJob?.steps?.find(
+    (step) => step?.name === 'Evaluate required results',
+  );
+  if (sourceStep?.run !== 'node scripts/ci-master-source.mjs')
+    errors.push('Required aggregate must run the master source guard');
+  if (sourceStep?.['continue-on-error'] !== true)
+    errors.push(
+      'Required aggregate source guard must preserve evaluator diagnostics',
+    );
+  if (
+    !evaluatorStep ||
+    !String(evaluatorStep.env?.CI_SOURCE_RESULT ?? '').includes(
+      'steps.master-source.outcome',
+    )
+  )
+    errors.push('Required evaluator must consume the source guard outcome');
   for (const id of CODE_JOB_IDS) {
     if (!requiredNeeds.has(id)) errors.push(`Required aggregate omits ${id}`);
   }

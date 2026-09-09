@@ -23,7 +23,9 @@ export const evaluateRequiredResult = (classification, needs) => {
   if (!expected || !sameJobSet) {
     failures.push('classification expected job set is not canonical');
   }
-  if (needs && typeof needs === 'object' && 'classify' in needs) {
+  if (!needs || typeof needs !== 'object' || !('classify' in needs)) {
+    failures.push('classify: missing');
+  } else {
     const classifierEntry = needs.classify;
     const classifierStatus =
       typeof classifierEntry === 'string'
@@ -59,9 +61,26 @@ export const main = ({ env = process.env } = {}) => {
     return { ok: false, failures: ['malformed evaluator input'], exitCode: 1 };
   }
   const evaluation = evaluateRequiredResult(classification, needs);
+  if (env.CI_SOURCE_RESULT !== 'success') {
+    evaluation.failures.unshift(
+      `master source guard: ${env.CI_SOURCE_RESULT ?? 'missing'}`,
+    );
+    evaluation.ok = false;
+  }
+  const resultLines = [
+    'classify',
+    ...(canonical(classification?.mode) ?? []),
+  ].map((job) => {
+    const entry = needs?.[job];
+    const status = typeof entry === 'string' ? entry : entry?.result;
+    return `- ${job}: ${status ?? 'missing'}`;
+  });
   const details = evaluation.ok
-    ? 'all required jobs succeeded'
-    : evaluation.failures.map((failure) => `- ${failure}`).join('\n');
+    ? ['all required jobs succeeded', ...resultLines].join('\n')
+    : [
+        ...evaluation.failures.map((failure) => `- ${failure}`),
+        ...resultLines,
+      ].join('\n');
   append(env.GITHUB_STEP_SUMMARY, `## Required CI results\n\n${details}`);
   append(env.GITHUB_OUTPUT, `result=${evaluation.ok ? 'success' : 'failure'}`);
   return { ...evaluation, exitCode: evaluation.ok ? 0 : 1 };

@@ -5,6 +5,7 @@ on:
   push:
     branches: [develop, master, 'renovate/patch-**']
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -340,7 +341,7 @@ jobs:
         timeout-minutes: 1
         run: git diff --exit-code
   required:
-    name: Required
+    name: CI / Required
     needs:
       [
         classify,
@@ -360,15 +361,22 @@ jobs:
       ]
     if: ${{ always() && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
-    permissions: { contents: read }
+    permissions: { contents: read, pull-requests: read }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc }
+      - name: Validate master promotion source
+        id: master-source
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci-master-source.mjs
       - name: Evaluate required results
         env:
           CI_CLASSIFICATION_JSON: ${{ needs.classify.outputs.classification }}
           CI_NEEDS_JSON: ${{ toJSON(needs) }}
+          CI_SOURCE_RESULT: ${{ steps.master-source.outcome }}
         run: node scripts/ci-required-result.mjs
   scheduled-e2e:
     name: Scheduled E2E

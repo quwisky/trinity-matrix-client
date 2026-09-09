@@ -1,5 +1,8 @@
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { evaluateRequiredResult } from './ci-required-result.mjs';
+import { evaluateRequiredResult, main } from './ci-required-result.mjs';
 
 const classification = {
   mode: 'code',
@@ -22,6 +25,7 @@ const classification = {
 const successfulNeeds = Object.fromEntries(
   classification.expectedJobs.map((job) => [job, 'success']),
 );
+successfulNeeds.classify = 'success';
 
 describe('required CI result evaluator', () => {
   it('accepts the current expected set when every required job succeeds', () => {
@@ -31,15 +35,16 @@ describe('required CI result evaluator', () => {
     });
   });
 
-  it.each(['failure', 'missing', 'cancelled', 'skipped'])(
-    'rejects a %s required result',
-    (kind) => {
-      const needs = { ...successfulNeeds };
-      if (kind === 'missing') delete needs['unit-and-types'];
-      else needs['unit-and-types'] = kind === 'failure' ? 'failure' : kind;
-      expect(evaluateRequiredResult(classification, needs).ok).toBe(false);
-    },
-  );
+  it.each(
+    classification.expectedJobs.flatMap((job) =>
+      ['failure', 'cancelled', 'skipped', 'missing'].map((kind) => [job, kind]),
+    ),
+  )('rejects %s with a %s result', (job, kind) => {
+    const needs = { ...successfulNeeds };
+    if (kind === 'missing') delete needs[job];
+    else needs[job] = kind;
+    expect(evaluateRequiredResult(classification, needs).ok).toBe(false);
+  });
 
   it('rejects a tampered expected job set and classifier failure', () => {
     expect(
@@ -63,6 +68,84 @@ describe('required CI result evaluator', () => {
         { ...successfulNeeds, docs: 'skipped' },
       ),
     ).toEqual({ ok: true, failures: [] });
+  });
+
+  it('rejects a missing classifier result even when all suites passed', () => {
+    const needs = { ...successfulNeeds };
+    delete needs.classify;
+    expect(evaluateRequiredResult(classification, needs)).toEqual({
+      ok: false,
+      failures: ['classify: missing'],
+    });
+  });
+
+  it('accepts the canonical docs-only set', () => {
+    expect(
+      evaluateRequiredResult(
+        { mode: 'docs', expectedJobs: ['docs-gate'] },
+        { classify: 'success', 'docs-gate': 'success' },
+      ),
+    ).toEqual({ ok: true, failures: [] });
+  });
+
+  it.each([
+    ['duplicate', ['quality', 'quality']],
+    ['tampered', ['quality']],
+    ['missing', undefined],
+  ])('rejects a %s expected job set', (_name, expectedJobs) => {
+    expect(
+      evaluateRequiredResult(
+        { ...classification, expectedJobs },
+        successfulNeeds,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it.each([undefined, 'failure'])(
+    'keeps the full summary when source is %s',
+    (sourceResult) => {
+      const directory = mkdtempSync(join(tmpdir(), 'trinity-required-'));
+      const summary = join(directory, 'summary.md');
+      const output = join(directory, 'output');
+      const result = main({
+        env: {
+          CI_CLASSIFICATION_JSON: JSON.stringify(classification),
+          CI_NEEDS_JSON: JSON.stringify(successfulNeeds),
+          ...(sourceResult === undefined
+            ? {}
+            : { CI_SOURCE_RESULT: sourceResult }),
+          GITHUB_STEP_SUMMARY: summary,
+          GITHUB_OUTPUT: output,
+        },
+      });
+      expect(result.ok).toBe(false);
+      const contents = readFileSync(summary, 'utf8');
+      expect(contents).toContain('master source guard');
+      for (const job of classification.expectedJobs)
+        expect(contents).toContain(job);
+      expect(contents).toContain('classify');
+      expect(readFileSync(output, 'utf8')).toContain('result=failure');
+    },
+  );
+
+  it('rejects malformed evaluator JSON', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-required-'));
+    const summary = join(directory, 'summary.md');
+    const output = join(directory, 'output');
+    const result = main({
+      env: {
+        CI_CLASSIFICATION_JSON: '{',
+        CI_NEEDS_JSON: '{}',
+        CI_SOURCE_RESULT: 'success',
+        GITHUB_STEP_SUMMARY: summary,
+        GITHUB_OUTPUT: output,
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(readFileSync(summary, 'utf8')).toContain(
+      'classifier input was malformed',
+    );
+    expect(existsSync(output)).toBe(false);
   });
 
   it.each(['failure', 'cancelled', 'skipped'])(
