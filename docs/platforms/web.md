@@ -63,13 +63,13 @@ other production hosts. Prepare that payload once, then run the container contra
 ```bash
 pnpm build
 pnpm bundle:manifest:write
-pnpm nx run trinity-web-container:verify
-pnpm nx run trinity-web-container:build-prebuilt
 pnpm nx run trinity-web-container:smoke
 ```
 
 The build and smoke targets require Docker, and smoke also requires the matching Playwright
 Chromium browser. The static verifier checks the pinned host and MIT license declarations.
+The `smoke` target runs `verify` and `build-prebuilt` through its Nx dependencies;
+run either dependency separately when diagnosing that stage.
 Build and smoke verify the manifest against the current checkout and never rebuild Angular. A missing or altered payload fails verification. The native smoke uses Linux amd64;
 it does not establish arm64 runtime coverage.
 
@@ -86,8 +86,8 @@ Dynamic compression preserves the renderer bytes and `/health` supplies a readin
 Smoke checks the HTTP and container restrictions and runs the production PWA browser contract,
 including standalone startup, service-worker control and offline crypto WASM. It retains
 failure evidence under ignored `dist/` output and removes its running container afterward.
-This host prerequisite is available locally; CI fan-out and registry publication are separate
-steps in the CI/release map.
+The independent `web-container` CI job runs the same contract after restoring the workflow's
+verified renderer. Registry publication remains a separate step in the CI/release map.
 
 ## Where the build output goes
 

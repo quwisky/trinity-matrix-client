@@ -42,6 +42,7 @@ export const PROTOCOL_E2E_SUITES = defineSuites([
   {
     ...synapseProtocol,
     id: 'protocol.verify-qr',
+    ciPreparation: { buildTarget: 'trinity:build:development' },
     capabilities: ['trust'],
     contractTypes: ['protocol', 'security'],
     currentTarget: 'trinity-e2e-protocol:verify-qr',

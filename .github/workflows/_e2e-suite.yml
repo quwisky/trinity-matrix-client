@@ -1,0 +1,114 @@
+name: Registered E2E suite
+
+on:
+  workflow_call:
+    inputs:
+      sha:
+        description: Exact full checkout SHA.
+        required: true
+        type: string
+      suite-id:
+        description: Registry suite identifier.
+        required: true
+        type: string
+      source-run-id:
+        description: Renderer workflow run ID for production suites.
+        required: false
+        type: string
+      artifact-id:
+        description: Immutable renderer artifact ID for production suites.
+        required: false
+        type: string
+      artifact-name:
+        description: Renderer artifact name for production suites.
+        required: false
+        type: string
+      manifest-digest:
+        description: Renderer manifest digest for production suites.
+        required: false
+        type: string
+      diagnostics-artifact-name:
+        description: Unique diagnostics artifact name including caller run, attempt and suite.
+        required: true
+        type: string
+      retention-days:
+        required: true
+        type: number
+permissions:
+  contents: read
+jobs:
+  suite:
+    name: Suite ${{ inputs.suite-id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Plan registered suite
+        id: plan
+        env:
+          CI_E2E_SUITE: ${{ inputs.suite-id }}
+          CI_E2E_SHA: ${{ inputs.sha }}
+          CI_RENDERER_SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          CI_RENDERER_ARTIFACT_ID: ${{ inputs.artifact-id }}
+          CI_RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          CI_RENDERER_MANIFEST_DIGEST: ${{ inputs.manifest-digest }}
+        run: node scripts/ci-e2e-suite.mjs plan
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: ${{ steps.plan.outputs.browsers }}
+          install: 'false'
+      - name: Prepare registered suite prerequisites
+        id: prerequisites
+        env:
+          CI_E2E_SUITE: ${{ inputs.suite-id }}
+          CI_E2E_SHA: ${{ inputs.sha }}
+          CI_E2E_BROWSERS: ${{ steps.plan.outputs.browsers }}
+          CI_RENDERER_SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          CI_RENDERER_ARTIFACT_ID: ${{ inputs.artifact-id }}
+          CI_RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          CI_RENDERER_MANIFEST_DIGEST: ${{ inputs.manifest-digest }}
+        run: node scripts/ci-e2e-suite.mjs prepare
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ inputs.suite-id }}-linux-all
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention-days }}
+      - uses: ./.github/actions/restore-verified-renderer
+        if: ${{ steps.plan.outputs.requires-renderer == 'true' }}
+        with:
+          sha: ${{ inputs.sha }}
+          source-run-id: ${{ inputs.source-run-id }}
+          artifact-id: ${{ inputs.artifact-id }}
+          artifact-name: ${{ inputs.artifact-name }}
+          manifest-digest: ${{ inputs.manifest-digest }}
+          destination: dist/renderer-download
+      - name: Run registered suite
+        id: suite
+        env:
+          CI_E2E_SUITE: ${{ inputs.suite-id }}
+          CI_E2E_SHA: ${{ inputs.sha }}
+          CI_RENDERER_SOURCE_RUN_ID: ${{ inputs.source-run-id }}
+          CI_RENDERER_ARTIFACT_ID: ${{ inputs.artifact-id }}
+          CI_RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+          CI_RENDERER_MANIFEST_DIGEST: ${{ inputs.manifest-digest }}
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-e2e-suite.mjs run
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.suite.outputs.started == 'true' }}
+        with:
+          surface: ${{ inputs.suite-id }}
+          shard: all
+          report-path: ${{ steps.plan.outputs.report-path }}
+          artifact-name: ${{ inputs.diagnostics-artifact-name }}
+          retention-days: ${{ inputs.retention-days }}

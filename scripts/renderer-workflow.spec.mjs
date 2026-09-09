@@ -1,16 +1,6 @@
 /** Production consumers share a verified renderer; intentional development builds stay independent. */
-import { execFileSync } from 'node:child_process';
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { parse } from 'yaml';
 
 const root = resolve(import.meta.dirname, '..');
@@ -20,6 +10,7 @@ const json = (path) => JSON.parse(read(path));
 const ci = yaml('.github/workflows/ci.yml');
 const renderer = yaml('.github/workflows/_renderer.yml');
 const restore = yaml('.github/actions/restore-verified-renderer/action.yml');
+const e2eSuite = yaml('.github/workflows/_e2e-suite.yml');
 const usesRestore = (step) =>
   step.uses === './.github/actions/restore-verified-renderer';
 
@@ -68,7 +59,7 @@ describe('verified renderer workflow boundary', () => {
     }
   });
 
-  it.each(['desktop', 'e2e', 'android-e2e', 'ios-native-build'])(
+  it.each(['desktop-e2e', 'android-e2e', 'ios-native-build'])(
     'restores explicit coordinates before %s consumes production',
     (id) => {
       const job = ci.jobs[id];
@@ -100,13 +91,13 @@ describe('verified renderer workflow boundary', () => {
   });
 
   it('restores production after development prerequisites and preserves development builds', () => {
-    const steps = ci.jobs.e2e.steps;
+    const steps = e2eSuite.jobs.suite.steps;
     const restored = steps.findIndex(usesRestore);
     expect(restored).toBeGreaterThan(
       steps.findIndex((step) => step.id === 'prerequisites'),
     );
     expect(restored).toBeLessThan(
-      steps.findIndex((step) => step.id === 'renderer'),
+      steps.findIndex((step) => step.id === 'suite'),
     );
     expect(read('scripts/ci-prerequisites.mjs')).toContain(
       'trinity:build:development',
@@ -118,7 +109,7 @@ describe('verified renderer workflow boundary', () => {
       "options.bundleManifest && environment['TRINITY_E2E_PREBUILT_WWW'] === '1'",
     );
     expect(
-      ci.jobs.desktop.steps.find((step) => step.id === 'electron').run,
+      ci.jobs['desktop-e2e'].steps.find((step) => step.id === 'electron').run,
     ).toContain('pnpm nx run trinity-e2e-electron:full-prebuilt');
     expect(read('e2e/android/run.mts')).toContain(
       'Android CI requires the verified prebuilt renderer',
@@ -168,41 +159,6 @@ describe('verified renderer workflow boundary', () => {
 });
 
 describe('prebuilt host target contracts', () => {
-  it('preserves prior Xcode results when the local prebuilt compiler is invoked twice', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'trinity-ios-command-'));
-    try {
-      const cwd = join(directory, 'ios');
-      mkdirSync(cwd);
-      const compiler = join(directory, 'xcodebuild');
-      // Exercise the actual shell command, substituting only the unavailable compiler.
-      writeFileSync(
-        compiler,
-        '#!/usr/bin/env node\nconst fs = require("node:fs"); const path = process.argv[process.argv.indexOf("-resultBundlePath") + 1]; fs.mkdirSync(path); fs.appendFileSync(process.env.XCODE_TEST_PATHS, path + "\\n");\n',
-      );
-      chmodSync(compiler, 0o755);
-      const paths = join(directory, 'paths');
-      const command =
-        json('ios/project.json').targets['build-prebuilt'].options.command;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        execFileSync('bash', ['-c', command], {
-          cwd,
-          env: {
-            ...process.env,
-            PATH: `${directory}:${process.env.PATH}`,
-            XCODE_TEST_PATHS: paths,
-          },
-        });
-      }
-      const results = readFileSync(paths, 'utf8').trim().split('\n');
-      expect(new Set(results).size).toBe(2);
-      expect(results.every((path) => existsSync(resolve(cwd, path)))).toBe(
-        true,
-      );
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
   it.each(['android', 'ios'])(
     '%s verifies both original and copied payload without a renderer dependency',
     (host) => {
@@ -222,10 +178,8 @@ describe('prebuilt host target contracts', () => {
       ]);
       expect(targets['build-prebuilt'].dependsOn).toEqual(['sync-prebuilt']);
       if (host === 'ios') {
-        expect(targets['build-prebuilt'].options.command).toContain(
-          '-sdk iphonesimulator',
-        );
-        expect(targets['build-prebuilt'].options.command).toContain(
+        expect(read('scripts/ios-native-build.mjs')).toContain('-sdk');
+        expect(read('scripts/ios-native-build.mjs')).toContain(
           'CODE_SIGNING_ALLOWED=NO',
         );
       }

@@ -106,6 +106,32 @@ describe('E2E suite registry', () => {
     ).toBe(1);
   });
 
+  it('rejects missing or mismatched CI preparation metadata', () => {
+    const snapshot = registrySnapshot();
+    snapshot.suites.find(
+      ({ id }) => id === 'components.storybook',
+    ).ciPreparation = {
+      buildTarget: 'trinity:build:development',
+    };
+    expect(validateRegistry(snapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'components.storybook has incorrect CI preparation metadata',
+        ),
+      ]),
+    );
+
+    const container = snapshot.suites.find(({ id }) => id === 'web.container');
+    container.ciPreparation = { buildTarget: 'trinity:build:development' };
+    expect(validateRegistry(snapshot)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'web.container must not declare CI preparation metadata',
+        ),
+      ]),
+    );
+  });
+
   it('rejects undefined serialization ownership and command drift', () => {
     const snapshot = registrySnapshot();
     snapshot.suites[0].serializationKeys = ['unowned-stack'];

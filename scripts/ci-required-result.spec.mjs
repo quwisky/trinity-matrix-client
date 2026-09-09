@@ -6,10 +6,15 @@ const classification = {
   reason: 'code changes',
   expectedJobs: [
     'quality',
-    'test',
+    'unit-and-types',
     'renderer',
-    'desktop',
-    'e2e',
+    'component-storybook-e2e',
+    'component-styling-e2e',
+    'browser-synapse-e2e',
+    'qr-protocol-e2e',
+    'production-renderer-e2e',
+    'web-container',
+    'desktop-e2e',
     'android-e2e',
     'ios-native-build',
   ],
@@ -30,8 +35,8 @@ describe('required CI result evaluator', () => {
     'rejects a %s required result',
     (kind) => {
       const needs = { ...successfulNeeds };
-      if (kind === 'missing') delete needs.test;
-      else needs.test = kind === 'failure' ? 'failure' : kind;
+      if (kind === 'missing') delete needs['unit-and-types'];
+      else needs['unit-and-types'] = kind === 'failure' ? 'failure' : kind;
       expect(evaluateRequiredResult(classification, needs).ok).toBe(false);
     },
   );

@@ -3,6 +3,7 @@ import { defineSuites } from '../types.mts';
 export const COMPONENT_E2E_SUITES = defineSuites([
   {
     id: 'components.storybook',
+    ciPreparation: { buildTarget: 'components-storybook-host:build-storybook' },
     environment: 'components',
     capabilities: ['design-system'],
     contractTypes: ['accessibility', 'visual'],
@@ -22,6 +23,7 @@ export const COMPONENT_E2E_SUITES = defineSuites([
   },
   {
     id: 'components.styling',
+    ciPreparation: { buildTarget: 'trinity:build:development' },
     environment: 'components',
     capabilities: ['design-system'],
     contractTypes: ['visual'],

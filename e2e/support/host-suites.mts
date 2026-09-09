@@ -23,6 +23,7 @@ export const HOST_E2E_SUITES = defineSuites([
   },
   {
     id: 'web.production-renderer',
+    ciPreparation: { renderer: 'verified-production' },
     environment: 'web',
     capabilities: ['cross-capability', 'design-system'],
     contractTypes: ['accessibility', 'visual'],
@@ -49,7 +50,7 @@ export const HOST_E2E_SUITES = defineSuites([
     targetProject: 'trinity-e2e-web',
     prerequisites: ['docker', 'playwright-chromium'],
     availabilityPolicy: 'required',
-    ciTier: 'local-only',
+    ciTier: 'pull-request',
     cachePolicy: 'never',
     serializationKeys: [],
     timeoutClass: 'host',

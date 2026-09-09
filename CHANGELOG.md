@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Independent CI jobs report Storybook, styling, browser, QR protocol, production
+  renderer, Web container, desktop, Android, and iOS results while sharing one verified
+  production renderer. A fail-closed aggregate reports the complete expected result set,
+  and unsigned iOS compiler failures retain validated build diagnostics.
+
 - A rootless Web container host packages the verified production renderer with tested
   deep-link routing, security and cache headers for every generated bundle, and offline
   PWA behavior. Local Nx targets build and check the image without rebuilding Angular

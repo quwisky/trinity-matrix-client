@@ -264,6 +264,11 @@ export const E2E_PACKAGE_SCRIPTS = [
 
 export const E2E_CI_ENTRYPOINTS = [
   {
+    command: 'pnpm nx run trinity-web-container:smoke',
+    tier: 'pull-request',
+    suiteIds: ['web.container'],
+  },
+  {
     command: 'xvfb-run -a pnpm nx run trinity-e2e-electron:full-prebuilt',
     tier: 'pull-request',
     suiteIds: ['electron.full'],

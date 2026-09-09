@@ -87,10 +87,16 @@ pnpm nx run trinity-e2e-web:production-pwa
 
 The production renderer journey builds and records a production `www/` payload by
 default. In CI, the renderer job performs that compilation once and the journey restores
-the verified artifact after development prerequisites complete. Restoration validates the
+the verified artifact in its independent production job. Restoration validates the
 exact checkout SHA, production manifest v2, file hashes, manifest digest, and immutable
 artifact coordinates before replacing `www/`. The styling and browser journeys retain
 their development bundle because their contracts are intentionally separate.
+
+CI reports Storybook, styling, canonical browser/Synapse, QR protocol, production
+renderer, and Web container results independently. Reproduce the failed suite through
+its registry-owned Nx target; local Synapse-backed suites still share fixed resources
+and must run sequentially. A hosted suite failure or timeout retains its own diagnostic
+artifact, identified by caller run, attempt, full commit SHA, surface, and shard.
 
 For native and desktop parity against a previously verified local payload, use
 `pnpm ios:build:prebuilt`, `pnpm android:build:prebuilt`,

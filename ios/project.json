@@ -83,7 +83,7 @@
       "dependsOn": ["sync-prebuilt"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "mkdir -p ../dist/ios-native && xcodebuild -project App/App.xcodeproj -scheme App -sdk iphonesimulator -configuration Debug -derivedDataPath ../dist/ios-native/DerivedData -resultBundlePath \"$(mktemp -d ../dist/ios-native/run.XXXXXX)/build.xcresult\" build CODE_SIGNING_ALLOWED=NO",
+        "command": "node ../scripts/ios-native-build.mjs build",
         "cwd": "{projectRoot}"
       }
     }
