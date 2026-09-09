@@ -5,6 +5,10 @@
   @include panel.layout;
   @include general.layout;
 
+  .room-settings__photo {
+    --settings-identity-restriction-line-height: 1.45;
+  }
+
   .room-settings__static-value {
     color: var(--trinity-text);
     font-size: var(--trinity-type-body-size);

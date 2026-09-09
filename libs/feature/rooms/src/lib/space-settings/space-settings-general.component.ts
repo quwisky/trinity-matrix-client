@@ -15,6 +15,7 @@ import {
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { initialOf } from '@trinity/util/matrix';
 import { AvatarFieldComponent } from '../shared/avatar-field/avatar-field.component';
+import { SettingsIdentityCardComponent } from '../shared/settings-identity-card/settings-identity-card.component';
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 
 /** Space profile editor backed by the hub's exact Account-and-Space lifetime. */
@@ -23,6 +24,7 @@ import { SpaceSettingsDraftService } from './space-settings-draft.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AvatarFieldComponent,
+    SettingsIdentityCardComponent,
     FormField,
     FormRoot,
     TrnActionAvailability,

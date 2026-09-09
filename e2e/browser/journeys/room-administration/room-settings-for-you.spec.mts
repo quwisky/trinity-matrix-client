@@ -147,6 +147,83 @@ async function serverTags(
 test.describe('Room settings · For you', () => {
   configureRoomSettingsSuite();
 
+  test('shows a failed preference read and retries into the editable form', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(150_000);
+    const hs = session.hs as string;
+    const shared = await seedSharedRoom(
+      request,
+      hs,
+      `${testResourceId('run')}load-state`,
+    );
+    await login(page, {
+      available: true,
+      hs,
+      user: shared.accountA.user,
+      pass: shared.accountA.pass,
+    } as SynapseSession);
+    await openRoom(page, shared.roomName);
+
+    let readAttempts = 0;
+    let failReads = true;
+    const pushRulesRoute = /\/pushrules\/?$/;
+    await page.route(pushRulesRoute, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      readAttempts++;
+      if (failReads) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ errcode: 'M_UNKNOWN', error: 'offline' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.getByTestId('open-room-settings').click();
+    await expect(page.getByTestId('room-settings')).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.getByTestId('room-settings-tab-for-you').click();
+    const panel = page.getByTestId('room-settings-panel-for-you');
+    await expect(
+      panel.getByRole('alert').getByRole('heading', {
+        name: 'Couldn’t read Room preferences',
+      }),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByRole('alert')).not.toHaveAttribute('aria-live');
+    const retry = page.getByTestId('room-settings-for-you-retry');
+    await expect(retry).toBeEnabled();
+    const alertBox = await panel.getByRole('alert').boundingBox();
+    const retryBox = await retry.boundingBox();
+    expect(alertBox).not.toBeNull();
+    expect(retryBox).not.toBeNull();
+    expect(retryBox!.x).toBeGreaterThanOrEqual(alertBox!.x);
+    expect(retryBox!.y).toBeGreaterThanOrEqual(alertBox!.y);
+    expect(retryBox!.x + retryBox!.width).toBeLessThanOrEqual(
+      alertBox!.x + alertBox!.width,
+    );
+    expect(retryBox!.y + retryBox!.height).toBeLessThanOrEqual(
+      alertBox!.y + alertBox!.height,
+    );
+    await test.info().attach('room-preferences-load-failure', {
+      body: await captureScreenshot(page, () => panel.screenshot()),
+      contentType: 'image/png',
+    });
+    failReads = false;
+    await retry.click();
+    await expect(page.getByTestId('room-settings-for-you-form')).toBeVisible({
+      timeout: 15_000,
+    });
+    expect(readAttempts).toBeGreaterThanOrEqual(2);
+  });
+
   test('isolates staged preferences to the opening Account and retries only a failed field', async ({
     page,
     request,

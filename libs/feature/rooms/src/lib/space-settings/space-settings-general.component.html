@@ -4,29 +4,23 @@
   data-testid="space-settings-panel-general"
   (submit)="draft.saveGeneral()"
 >
-  <section class="space-settings__card">
-    <div class="space-settings__card-heading">
-      <div>
-        <h3>Space photo</h3>
-        <p>Photo changes save immediately and are not undone by Discard.</p>
-      </div>
-      <trn-avatar-field
-        [accountId]="accountId()"
-        [roomId]="spaceId()"
-        [name]="draft.model().name || spaceDisplayName()"
-        [avatarMxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
-        [initial]="spaceInitial()"
-        [editable]="draft.mayEditAvatar()"
-        noun="Space"
-        testid="space-settings-avatar"
-      />
-    </div>
-    @if (!draft.mayEditAvatar()) {
-      <p class="space-settings__restriction">
-        {{ draft.permissions().avatar.reason }}
-      </p>
-    }
-  </section>
+  <trn-settings-identity-card
+    heading="Space photo"
+    [permissionReason]="
+      draft.mayEditAvatar() ? null : draft.permissions().avatar.reason
+    "
+  >
+    <trn-avatar-field
+      [accountId]="accountId()"
+      [roomId]="spaceId()"
+      [name]="draft.model().name || spaceDisplayName()"
+      [avatarMxc]="draft.snapshot()?.identity?.avatarMxc ?? null"
+      [initial]="spaceInitial()"
+      [editable]="draft.mayEditAvatar()"
+      noun="Space"
+      testid="space-settings-avatar"
+    />
+  </trn-settings-identity-card>
 
   <section class="space-settings__card space-settings__fields">
     <h3>Space details</h3>

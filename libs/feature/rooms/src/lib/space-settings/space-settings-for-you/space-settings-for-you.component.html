@@ -1,42 +1,28 @@
 <section data-testid="space-settings-panel-for-you">
   @switch (draft.loadState()) {
     @case ('loading') {
-      <section class="space-settings__card" role="status" aria-live="polite">
-        <h3>Loading your Space preference…</h3>
-        <p>Reading the opening Account’s saved choice on this device.</p>
-      </section>
+      <trn-settings-load-state-card
+        state="loading"
+        heading="Loading your Space preference…"
+        description="Reading the opening Account’s saved choice on this device."
+      />
     }
     @case ('unavailable') {
-      <section class="space-settings__card" role="alert">
-        <h3>Space preference unavailable</h3>
-        <p>
-          This Account or Space is no longer available. No default value has
-          been substituted.
-        </p>
-      </section>
+      <trn-settings-load-state-card
+        state="unavailable"
+        heading="Space preference unavailable"
+        description="This Account or Space is no longer available. No default value has been substituted."
+      />
     }
     @case ('failed') {
-      <section
-        class="space-settings__card space-settings__failure"
-        role="alert"
-      >
-        <div class="space-settings__field">
-          <h3>Couldn’t read your Space preference</h3>
-          <p>
-            Trinity could not confirm this Account’s saved room order on this
-            device. Try again before making changes.
-          </p>
-        </div>
-        <button
-          trnBtn
-          type="button"
-          variant="secondary"
-          data-testid="space-settings-for-you-retry"
-          (click)="draft.retryLoad()"
-        >
-          Try again
-        </button>
-      </section>
+      <trn-settings-load-state-card
+        state="failed"
+        failureLayout="grouped"
+        heading="Couldn’t read your Space preference"
+        description="Trinity could not confirm this Account’s saved room order on this device. Try again before making changes."
+        retryTestid="space-settings-for-you-retry"
+        (retry)="draft.retryLoad()"
+      />
     }
     @case ('ready') {
       <form
