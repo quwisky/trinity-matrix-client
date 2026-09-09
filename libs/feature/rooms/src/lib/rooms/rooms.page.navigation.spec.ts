@@ -20,10 +20,6 @@ import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
 import { KeyboardShortcutsService } from '@trinity/platform-native';
 import { type PendingInvite } from '@trinity/data-access/room-library';
-import {
-  HomeserverInfoService,
-  type HomeserverInfo,
-} from '@trinity/data-access/homeserver';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MediaPipeline } from '@trinity/data-access/media';
@@ -1030,16 +1026,6 @@ describe('RoomsPage mobile navigation', () => {
 // for yet, which still shows as a row with a zero badge.
 describe('RoomsPage account switcher summary', () => {
   const meAvatar = 'mxc://hs/me';
-  let homeservers: ReturnType<
-    typeof signal<ReadonlyMap<string, HomeserverInfo>>
-  >;
-  let loadAllHomeservers: Mock;
-
-  beforeEach(() => {
-    homeservers = signal<ReadonlyMap<string, HomeserverInfo>>(new Map());
-    loadAllHomeservers = vi.fn(() => of(undefined));
-  });
-
   function build() {
     TestBed.configureTestingModule({
       providers: [
@@ -1086,10 +1072,6 @@ describe('RoomsPage account switcher summary', () => {
             ]),
           ).asReadonly(),
         }),
-        MockProvider(HomeserverInfoService, {
-          infos: homeservers.asReadonly(),
-          loadAll: loadAllHomeservers,
-        }),
         invitesProvider(),
         MockProvider(UserPickerService),
         MockProvider(QuickSwitcherService),
@@ -1100,71 +1082,24 @@ describe('RoomsPage account switcher summary', () => {
     return shellFrom();
   }
 
-  it('carries each account\u2019s homeserver version into the switcher row', () => {
-    // #155: the same value the Server settings section shows, composed once here so the
-    // presentational panel stays a dumb renderer.
-    homeservers.set(
-      new Map([
-        [
-          '@me:hs',
-          {
-            userId: '@me:hs',
-            serverName: 'hs',
-            baseUrl: 'https://hs',
-            discovered: false,
-            software: {
-              name: 'Synapse',
-              version: '1.158.0',
-              source: 'base-url' as const,
-              host: 'https://hs',
-            },
-            specVersions: null,
-            unstableFeatures: null,
-            capabilities: null,
-          },
-        ],
-      ]),
-    );
-    const shell = build();
-
-    const rows = shell.vm.accounts();
-    expect(rows[0].server).toBe('Synapse 1.158.0');
-    // The account with no answer gets null rather than a placeholder \u2014 the switcher omits
-    // the line entirely rather than reserving space for a word nobody came to read.
-    expect(rows[1].server).toBeNull();
-  });
-
-  it('looks the versions up only when the account menu asks', () => {
-    const shell = build();
-    expect(loadAllHomeservers).not.toHaveBeenCalled();
-
-    shell.vm.loadHomeserverInfo();
-
-    expect(loadAllHomeservers).toHaveBeenCalledTimes(1);
-  });
-
   it('summarises each account by its client profile, MXID fallback, and unread total', () => {
     const shell = build();
 
     // '@me:hs': hydrated profile (name + avatar) with its unread total from the
     // aggregator. '@alt:hs': no profile entry yet, so the name falls back to the MXID,
     // the avatar is null, and its unread defaults to 0 (absent from the map).
-    // `server` is null for both: the homeserver version is looked up when the account menu
-    // is opened, not at startup, so nothing has asked for it yet here.
     expect(shell.vm.accounts()).toEqual([
       {
         userId: '@me:hs',
         displayName: 'Me',
         avatarMxc: meAvatar,
         unread: 4,
-        server: null,
       },
       {
         userId: '@alt:hs',
         displayName: '@alt:hs',
         avatarMxc: null,
         unread: 0,
-        server: null,
       },
     ]);
   });

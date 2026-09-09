@@ -62,12 +62,7 @@
   }
 
   .composer {
-    // A column of [formatting toolbar, input row].
-    // No `position: relative` any more, and the toolbar is no longer trapped in here by it.
-    // The four floating layers used to be `position: absolute` children anchored against this
-    // element, which is what made it their containing block AND what forced the toolbar inside
-    // it — anything outside would have been covered. They render in the CDK overlay container
-    // now, anchored to `.composer__field`, so this is a plain column again.
+    // The composer is a single compact input row; overlays render independently above its field.
     display: flex;
     flex-direction: column;
 
@@ -94,7 +89,7 @@
   // still gets its gutter.
   .composer__field {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto 1fr auto auto auto;
     align-items: end;
     gap: var(--trinity-density-composer-field-gap);
 
@@ -103,9 +98,7 @@
     // plus the button beside it, so nothing encodes a button's width as a number.
     // 6px is breathing room for the buttons against the box's edge, not a measurement of
     // anything: the 40px buttons carry their own hit area and the radius needs a little space
-    // inside it. It is also what the formatting toolbar indents itself by, so the two rows line
-    // up on their controls — the one number this file publishes by being copied, and the reason
-    // it is worth keeping at one.
+    // inside it. The field inset keeps the controls aligned with the input content.
     // The text consequently starts 50px into the FIELD (6 + 40 + the 4px gap) where it started
     // 58px into the old row (40 + 4 + the textarea's own 14px). Both measured from the same
     // edge, that is an 8px shift left — the visible half of moving the buttons inside.
@@ -139,7 +132,7 @@
     // 2) nothing wraps. Shortening the base template is not an option: with three columns
     // declared and four items, the fourth would wrap to an implicit row 2.
     &:not(:has(.composer__send)) {
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr auto auto;
     }
   }
 
@@ -181,10 +174,7 @@
     // a preview may not do.
     overflow-wrap: anywhere;
 
-    // Deliberately no border of its own. It used to have one, which was the only cue that a
-    // toggle had happened; the cue is now the toolbar's own pressed state on the preview button,
-    // and a second box inside the field's would read as a control within a control. The rendered
-    // markdown is itself the difference the reader is looking for.
+    // Deliberately no border of its own: the rendered markdown is the preview cue.
 
     color: var(--trinity-text);
 
@@ -369,6 +359,11 @@
 
     &::placeholder {
       color: var(--trinity-text-muted);
+    }
+
+    // A long room name may wrap below the resting row, but an empty input must not scroll.
+    &:placeholder-shown {
+      overflow-y: hidden;
     }
 
     // The ring is the FIELD's now (see its `:has(…:focus-visible)` above). Suppress the native

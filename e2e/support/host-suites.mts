@@ -40,6 +40,25 @@ export const HOST_E2E_SUITES = defineSuites([
     sourceEntrypoints: ['e2e/web/playwright.production-renderer.config.mts'],
   },
   {
+    id: 'web.container',
+    environment: 'web',
+    capabilities: ['composition', 'host'],
+    contractTypes: ['host', 'journey', 'security'],
+    currentTarget: 'trinity-e2e-web:container',
+    delegatingTargets: ['trinity-web-container:smoke'],
+    targetProject: 'trinity-e2e-web',
+    prerequisites: ['docker', 'playwright-chromium'],
+    availabilityPolicy: 'required',
+    ciTier: 'local-only',
+    cachePolicy: 'never',
+    serializationKeys: [],
+    timeoutClass: 'host',
+    canonicalScript: 'e2e:web',
+    currentArtifactRoot: 'dist/.playwright/trinity-e2e-web/<run-id>',
+    targetArtifactRoot: 'dist/.playwright/trinity-e2e-web/<run-id>',
+    sourceEntrypoints: ['e2e/web/playwright.container.config.mts'],
+  },
+  {
     id: 'electron.full',
     environment: 'electron',
     capabilities: ['composition', 'host'],
@@ -108,6 +127,6 @@ export const HOST_E2E_SUITES = defineSuites([
   },
 ]);
 
-export const ELECTRON_FULL_SUITE = HOST_E2E_SUITES[2];
-export const ELECTRON_SMOKE_SUITE = HOST_E2E_SUITES[3];
-export const ANDROID_INSTALLED_WEBVIEW_SUITE = HOST_E2E_SUITES[4];
+export const ELECTRON_FULL_SUITE = HOST_E2E_SUITES[3];
+export const ELECTRON_SMOKE_SUITE = HOST_E2E_SUITES[4];
+export const ANDROID_INSTALLED_WEBVIEW_SUITE = HOST_E2E_SUITES[5];

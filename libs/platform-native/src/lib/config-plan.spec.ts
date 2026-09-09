@@ -127,6 +127,31 @@ describe('planConfigApply', () => {
   });
 
   describe('a path this build does not know', () => {
+    it('warns about retired composer fields while applying supported preferences', () => {
+      const plan = planConfigApply(
+        document(
+          {
+            theme: { palette: 'amethyst' },
+            composer: {
+              showFormattingToolbar: false,
+              formatOnSelection: false,
+            },
+          },
+          2,
+        ),
+        registry,
+      );
+
+      expect(plan.ok).toBe(true);
+      expect(plan.warnings).toEqual([
+        'composer.showFormattingToolbar is not a setting this version of Trinity has, so it will not be applied.',
+        'composer.formatOnSelection is not a setting this version of Trinity has, so it will not be applied.',
+      ]);
+      expect(plan.ok && plan.changes).toEqual([
+        { path: 'theme.palette', from: 'trinity', to: 'amethyst' },
+      ]);
+    });
+
     it('warns and applies the rest, rather than silently dropping it', () => {
       const plan = planConfigApply(
         document({

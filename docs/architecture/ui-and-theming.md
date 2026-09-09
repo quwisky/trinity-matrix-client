@@ -245,6 +245,16 @@ libraries are checked through their declared build and lint targets.
 
 ### Vendored divergences
 
+The pinned Brain 1.3.0 [tooltip patch](../../patches/@spartan-ng__brain@1.3.0.patch)
+repairs input-origin handling at the owner of delayed tooltip requests. CDK FocusMonitor
+distinguishes touch activation from keyboard focus; pointer-leave events preserve a
+keyboard-focused tooltip while blur and scrolling still dismiss it. The
+[desktop and WebKit contract](../../e2e/components/storybook/tooltip-input.spec.mts)
+and [phone contract](../../e2e/components/storybook/tooltip-touch.mobile.spec.mts)
+exercise the public Trinity tooltip. Recheck this patch when upgrading Brain and remove
+it when upstream satisfies those tests. Nx shared inputs include dependency patches
+and their pnpm registration so a cached bundle cannot bypass the repair.
+
 A divergence from generated Helm must be narrow, explained at the source, and
 registered below. It needs a test that pins the behavioural reason, so
 regeneration cannot erase it silently. Do not use a divergence to add product
@@ -551,7 +561,8 @@ these current contracts intact:
   even inside the 120px near-bottom threshold used for incoming messages. Only an exact
   bottom pin is exempt. The same anchor remains pending when the delayed loading strip
   appears, so inserting the strip cannot shift the reader or replace the saved offset
-  with its displaced position. Correction runs immediately after rendering, before a
+  with its displaced position. Before rendering the strip, observe any viewport movement
+  whose browser scroll event is still pending. Correction runs immediately after rendering, before a
   subsequent scroll event can recapture the shifted geometry. The shared
   [timeline anchoring journey](../../e2e/browser/journeys/conversations/timeline-anchoring.spec.mts)
   checks the position both while the strip is visible and after history settles, including

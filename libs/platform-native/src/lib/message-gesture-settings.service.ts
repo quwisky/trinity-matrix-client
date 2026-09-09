@@ -60,7 +60,7 @@ export function isSwipeAction(
  * no DOM footprint at all — it is read by one component's pointer handling and by nothing
  * else. Putting it there would have meant an `applyX()` with nothing to apply.
  *
- * Device-scoped, like the other UI preferences ({@link ComposerSettingsService}, Theme):
+ * Device-scoped, like the other UI preferences (Theme):
  * non-secret, so it lives in Capacitor `Preferences` rather than secure storage. It is also
  * genuinely per-device — the hand holding a phone is not the hand on a tablet.
  */

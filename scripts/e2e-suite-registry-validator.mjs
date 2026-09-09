@@ -24,6 +24,7 @@ const TARGET_PROJECT_BY_ENVIRONMENT = {
 };
 
 const PROJECT_FILES = {
+  'trinity-web-container': 'container/project.json',
   'trinity-android': 'android/project.json',
   'trinity-desktop': 'electron/project.json',
   'trinity-e2e': 'e2e/project.json',

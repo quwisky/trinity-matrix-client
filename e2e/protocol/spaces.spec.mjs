@@ -4,15 +4,15 @@
 //      title updates; server-side confirms type=m.space.
 //
 //   2. With that space active, create a channel → the room row appears in the
-//      sidebar list; server-side confirms m.space.child (via + suggested),
-//      m.space.parent (canonical), and m.room.encryption on the child.
+//      sidebar list; server-side confirms an unsuggested m.space.child link,
+//      no reverse m.space.parent, and m.room.encryption on the child.
 //
 //   3. Leave the space → returns to Home (sidebar title = "Home"); the space
 //      pill disappears from the rail; sidebar actions are hidden; server-side
 //      confirms space membership=leave and child membership still=join.
 //
 // No encryption setup is needed — these flows only create rooms and write
-// m.space.child / m.space.parent state events.
+// parent-owned m.space.child state events.
 //
 // The Nx target defaults to disposable attempt-scoped credentials. Explicit
 // remote mode accepts TRINITY_HS/TRINITY_USER/TRINITY_PASS; HEADED/SLOWMO aid debugging.
@@ -212,7 +212,8 @@ async function main(protocolBrowser) {
     const childId = await findRoomIdByName(token, CHANNEL_NAME, false);
     log(`child room id: ${childId}`);
 
-    // m.space.child link on the space (via + suggested).
+    // Creation uses the same parent-owned policy as Space settings: linked,
+    // but not Suggested until an admin explicitly enables it.
     const childLink = await poll(async () => {
       const r = await get(
         token,
@@ -223,25 +224,22 @@ async function main(protocolBrowser) {
     if (!Array.isArray(childLink.via) || childLink.via.length === 0) {
       throw new Error('m.space.child: missing or empty via');
     }
-    if (childLink.suggested !== true) {
-      throw new Error('m.space.child: expected suggested=true');
+    if ((childLink.suggested ?? false) !== false) {
+      throw new Error('m.space.child: expected an unsuggested new child');
     }
-    log('m.space.child link verified (via + suggested) ✓');
+    log('m.space.child link verified (via, not suggested) ✓');
 
-    // m.space.parent (reverse) link on the child (canonical).
-    const parentLink = await poll(async () => {
-      const r = await get(
-        token,
-        `/_matrix/client/v3/rooms/${encodeURIComponent(childId)}/state/m.space.parent/${encodeURIComponent(spaceId)}`,
-      );
-      return r.ok ? r.body : null;
-    });
-    if (parentLink?.canonical !== true) {
-      throw new Error('m.space.parent: expected canonical=true');
+    // The parent policy must not write a reverse link into the child.
+    const parentLink = await get(
+      token,
+      `/_matrix/client/v3/rooms/${encodeURIComponent(childId)}/state/m.space.parent/${encodeURIComponent(spaceId)}`,
+    );
+    if (parentLink.status !== 404) {
+      throw new Error('m.space.parent: expected missing reverse parent state');
     }
-    log('m.space.parent link verified (canonical) ✓');
+    log('child has no reverse m.space.parent link ✓');
 
-    // E2EE: createRoomInSpace sets m.room.encryption in initial_state (Megolm).
+    // E2EE: Room creation sets m.room.encryption in initial_state (Megolm).
     const enc = await poll(async () => {
       const r = await get(
         token,

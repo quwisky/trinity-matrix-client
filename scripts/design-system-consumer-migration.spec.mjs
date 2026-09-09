@@ -329,8 +329,8 @@ describe('migrated application design-system consumers', () => {
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
     ).toEqual([
-      ...Array(12).fill('dialog'),
-      ...Array(2).fill('dynamic'),
+      ...Array(11).fill('dialog'),
+      ...Array(3).fill('dynamic'),
       ...Array(4).fill('fullscreen'),
       ...Array(6).fill('popover'),
     ]);
@@ -346,6 +346,13 @@ describe('migrated application design-system consumers', () => {
         file.endsWith('reactions-dialog.component.html'),
       )?.[1],
     ).toMatch(/\[layout\]="sheet\(\) \? 'sheet' : 'dialog'"/u);
+
+    // Edit history keeps a narrow workspace on desktop and fills compact screens.
+    expect(
+      surfaces.find(([file]) =>
+        file.endsWith('edit-history.component.html'),
+      )?.[1],
+    ).toMatch(/\[layout\]="wide\(\) \? 'workspace' : 'fullscreen'"/u);
 
     // Member info is the one overlay whose public surface directive belongs on the component
     // host: in panel mode that host is the actual in-flow pane measured beside the timeline.

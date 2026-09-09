@@ -105,6 +105,11 @@ export class TrnDropdownMenuTrigger {
   open(): void {
     this.cdkTrigger.open();
   }
+
+  /** Closes this trigger's configured menu without exposing the CDK trigger. */
+  close(): void {
+    this.cdkTrigger.close();
+  }
 }
 
 /** Trinity-owned dropdown row. */

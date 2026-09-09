@@ -18,7 +18,12 @@ import { trnDropdownMenuItemRecipe } from './trn-dropdown-menu-recipe';
     TrnDropdownMenuTrigger,
   ],
   template: `
-    <button [trnDropdownMenuTrigger]="menu">Open</button>
+    <button
+      [trnDropdownMenuTrigger]="menu"
+      (trnDropdownMenuClosed)="closed = closed + 1"
+    >
+      Open
+    </button>
     <ng-template #menu>
       <div trnDropdownMenu>
         <button
@@ -57,6 +62,7 @@ import { trnDropdownMenuItemRecipe } from './trn-dropdown-menu-recipe';
 class HostComponent {
   readonly trigger = viewChild.required(TrnDropdownMenuTrigger);
   chosen = 0;
+  closed = 0;
 }
 
 describe('Trinity dropdown menu', () => {
@@ -82,6 +88,20 @@ describe('Trinity dropdown menu', () => {
     TestBed.tick();
 
     expect(document.querySelector('[trnDropdownMenuItem]')).not.toBeNull();
+  });
+
+  it('closes programmatically and publishes the existing closed event', async () => {
+    const { fixture } = await render(HostComponent);
+
+    fixture.componentInstance.trigger().open();
+    TestBed.tick();
+    expect(document.querySelector('[trnDropdownMenuItem]')).not.toBeNull();
+
+    fixture.componentInstance.trigger().close();
+    TestBed.tick();
+
+    expect(document.querySelector('[trnDropdownMenuItem]')).toBeNull();
+    expect(fixture.componentInstance.closed).toBe(1);
   });
 
   it('applies semantic item appearance without changing disabled behavior', async () => {

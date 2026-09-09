@@ -501,9 +501,13 @@ describe('EditHistoryComponent', () => {
   it('closes with nothing when dismissed', async () => {
     const { container, close } = await build();
 
-    fireEvent.click(
-      container.querySelector('[data-testid=edit-history-close]')!,
-    );
+    const closeButton = container.querySelector(
+      '[data-testid=edit-history-close]',
+    ) as HTMLButtonElement;
+    expect(closeButton.getAttribute('aria-label')).toBe('Close Edit history');
+    expect(closeButton.closest('footer')).toBeNull();
+
+    fireEvent.click(closeButton);
 
     expect(close).toHaveBeenCalledWith(undefined);
   });

@@ -8,6 +8,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- A rootless Web container host packages the verified production renderer with tested
+  deep-link routing, security and cache headers for every generated bundle, and offline
+  PWA behavior. Local Nx targets build and check the image without rebuilding Angular
+  or publishing to a registry.
+
+- Open Markdown formatting and Preview from an Aa composer action, using a desktop
+  popover or a mobile action sheet while preserving the editing selection.
+
 - MIT license for Trinity, with license metadata in the application and desktop
   package manifests and links from the README and contributor guide.
 
@@ -17,6 +25,19 @@ All notable changes to this project are documented here. The format is based on
   Shared Settings frames also return to side-by-side panes when a compact window is widened.
 
 ### Changed
+
+- Keep empty message inputs at one row even when a long room-name placeholder wraps,
+  so the composer remains reachable on small screens with larger text.
+
+- Replace the persistent and selection-triggered composer toolbar with the Aa formatting
+  action, and remove the toolbar visibility preferences from Appearance.
+
+- Clarify which Accounts appear together in Room Library with matching desktop and mobile
+  selectors, clearer identity rows, and an explicit “Always included” Active Account state.
+  Selections apply immediately, with Done dismissing the mobile dialog.
+
+- Restyle Edit history with the Settings dialog surface, title bar close action,
+  responsive fullscreen presentation and a clearer highlighted revision list.
 
 - Measure unread-divider thread connectors in one browser turn so timeline scrolling
   cannot cause a false geometry failure in CI. Refresh the reviewed assertion inventory
@@ -50,6 +71,10 @@ All notable changes to this project are documented here. The format is based on
   reaction directory, selected-reaction people pane, total count and accessible
   icon close action. On mobile, a bottom sheet keeps horizontally scrolling
   reactions and the selected people list together.
+
+- Refine the bottom Account bar and switching menu with clearer identity rows, aligned
+  status indicators, grouped account actions, and explicit account-removal wording.
+  Settings and System Status remain directly available across desktop and mobile.
 
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
@@ -1163,6 +1188,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Older-history loading indicators preserve the reader's latest timeline position even
+  when the browser has not yet delivered its scroll event.
+
 - Thread connectors reach the group's existing avatar through intervening messages,
   tall images, earlier thread previews, and unread markers without repeating the avatar.
 
@@ -1172,6 +1200,14 @@ All notable changes to this project are documented here. The format is based on
 - Loading older timeline history preserves deliberate reading offsets even near the bottom.
   Jumping to the latest message cancels pending history corrections so they cannot pull the
   reader back to an older message.
+
+- Tooltips no longer open from touch-generated focus or disappear when the pointer
+  leaves while their trigger retains keyboard focus, preventing blocked navigation
+  and intermittent accessibility checks. Dependency patches now invalidate cached
+  builds and checks so they cannot keep exercising an older dependency implementation.
+
+- The Space protocol journey now verifies the current parent-owned creation policy:
+  new children are not implicitly Suggested and receive no reverse parent link.
 
 - Images load again when returning to a retained Conversation after switching Rooms. Media
   references survive view-cache cleanup while decoded URLs and staged uploads are still released;

@@ -1,0 +1,69 @@
+diff --git a/fesm2022/spartan-ng-brain-tooltip.mjs b/fesm2022/spartan-ng-brain-tooltip.mjs
+index 1bcae6281cd3d151079581e520e0181d0b4a1dce..28191c42b08c9062e48bd3c8558dc0e43cfac0db 100644
+--- a/fesm2022/spartan-ng-brain-tooltip.mjs
++++ b/fesm2022/spartan-ng-brain-tooltip.mjs
+@@ -1,3 +1,4 @@
++import { FocusMonitor } from '@angular/cdk/a11y';
+ import { Overlay, OverlayPositionBuilder } from '@angular/cdk/overlay';
+ import { ComponentPortal } from '@angular/cdk/portal';
+ import { DOCUMENT } from '@angular/common';
+@@ -276,6 +277,8 @@ class BrnTooltip {
+     _dir = inject(Directionality);
+     _group = inject(BrnTooltipGroup, { optional: true });
+     _tooltipHovered = false;
++    _focusMonitor = inject(FocusMonitor);
++    _focusVisible = false;
+     _listenersRefs = [];
+     _delaySubject = undefined;
+     _componentRef = undefined;
+@@ -344,7 +347,9 @@ class BrnTooltip {
+                         if (!this._isHoverPointer(event))
+                             return;
+                         this._tooltipHovered = false;
+-                        this.delay(false, this.hideDelay());
++                        // Pointer movement must not dismiss a keyboard-owned tooltip.
++                        if (!this._focusVisible)
++                            this.delay(false, this.hideDelay());
+                     }),
+                 ];
+             });
+@@ -428,6 +433,19 @@ class BrnTooltip {
+      * `_isHoverPointer`; use a popover when touch users need to see the content.
+      */
+     _initHoverListeners() {
++        // A touch tap focuses buttons too. Use CDK's input origin instead of treating
++        // every native focus event as a keyboard request to open the tooltip.
++        this._focusMonitor.monitor(this._elementRef)
++            .pipe(takeUntilDestroyed(this._destroyRef))
++            .subscribe((origin) => {
++                this._focusVisible = origin === 'keyboard' || origin === 'program';
++                if (this._focusVisible)
++                    this._requestShow();
++                else if (origin === 'touch')
++                    this.delay(false);
++                else if (origin === null)
++                    this.delay(false, this.hideDelay());
++            });
+         this._listenersRefs = [
+             ...this._listenersRefs,
+             this._renderer.listen(this._elementRef.nativeElement, 'pointerenter', (event) => {
+@@ -435,11 +453,16 @@ class BrnTooltip {
+                     this._requestShow();
+             }),
+             this._renderer.listen(this._elementRef.nativeElement, 'pointerleave', (event) => {
+-                if (this._isHoverPointer(event))
++                if (this._isHoverPointer(event) && !this._focusVisible)
+                     this.delay(false, this.hideDelay());
+             }),
+-            this._renderer.listen(this._elementRef.nativeElement, 'focus', () => this._requestShow()),
+-            this._renderer.listen(this._elementRef.nativeElement, 'blur', () => this.delay(false, this.hideDelay())),
++            this._renderer.listen(this._elementRef.nativeElement, 'pointerdown', (event) => {
++                if (event.pointerType === 'touch') {
++                    this._focusVisible = false;
++                    this.delay(false);
++                }
++            }),
++            () => this._focusMonitor.stopMonitoring(this._elementRef),
+         ];
+     }
+     _isHoverPointer(event) {

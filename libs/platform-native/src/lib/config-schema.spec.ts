@@ -65,8 +65,6 @@ describe('config key ledger', () => {
     // neither change. A list conflicts visibly and resolves additively — which is what
     // happened when this phase's density preference met the composer's selection toggle.
     expect([...exportedKeysFor('platform-native')].sort()).toEqual([
-      'trinity.composer.format-on-selection',
-      'trinity.composer.show-toolbar',
       'trinity.flags.virtual-timeline',
       'trinity.format.date',
       'trinity.format.time',
@@ -94,7 +92,7 @@ describe('config key ledger', () => {
     ).toBe(true);
   });
 
-  it('versions the Appearance path migration as format 2', () => {
-    expect(CONFIG_EXPORT_VERSION).toBe(2);
+  it('versions the retired composer preferences as format 3', () => {
+    expect(CONFIG_EXPORT_VERSION).toBe(3);
   });
 });

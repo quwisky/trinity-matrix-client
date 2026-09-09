@@ -1,0 +1,45 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "trinity-web-container",
+  "projectType": "application",
+  "sourceRoot": "container",
+  "tags": ["type:app", "scope:matrix", "role:app", "capability:composition"],
+  "targets": {
+    "verify": {
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-container.mjs verify",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "build-prebuilt": {
+      "cache": false,
+      "dependsOn": [
+        {
+          "projects": ["scripts"],
+          "target": "verify-renderer"
+        },
+        "verify"
+      ],
+      "outputs": ["{workspaceRoot}/dist/web-container-image.json"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node scripts/web-container.mjs build-prebuilt",
+        "cwd": "{workspaceRoot}"
+      },
+      "parallelism": false
+    },
+    "smoke": {
+      "cache": false,
+      "dependsOn": ["build-prebuilt"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-container.mts",
+        "cwd": "{workspaceRoot}"
+      },
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-web"]
+    }
+  }
+}
