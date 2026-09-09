@@ -224,7 +224,9 @@ async function main(protocolBrowser) {
     if (!Array.isArray(childLink.via) || childLink.via.length === 0) {
       throw new Error('m.space.child: missing or empty via');
     }
-    expect(childLink.suggested ?? false).toBe(false);
+    if ((childLink.suggested ?? false) !== false) {
+      throw new Error('m.space.child: expected an unsuggested new child');
+    }
     log('m.space.child link verified (via, not suggested) ✓');
 
     // The parent policy must not write a reverse link into the child.
@@ -232,7 +234,9 @@ async function main(protocolBrowser) {
       token,
       `/_matrix/client/v3/rooms/${encodeURIComponent(childId)}/state/m.space.parent/${encodeURIComponent(spaceId)}`,
     );
-    expect(parentLink.status).toBe(404);
+    if (parentLink.status !== 404) {
+      throw new Error('m.space.parent: expected missing reverse parent state');
+    }
     log('child has no reverse m.space.parent link ✓');
 
     // E2EE: Room creation sets m.room.encryption in initial_state (Megolm).
