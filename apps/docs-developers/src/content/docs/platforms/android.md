@@ -32,6 +32,15 @@ The static verifier checks host contracts. Native verification runs Android unit
 
 The release target creates an AAB but remains unsigned unless external signing is configured. Keep credentials and publishing procedure out of public documentation.
 
+The pinned `@capacitor/browser` 8.0.4
+[Android patch](../../../../../../patches/@capacitor__browser@8.0.4.patch)
+registers the controller-ready callback before launching its activity. The plugin
+handler and activity lifecycle run on different threads; launching first can leave
+the controller open without starting the Custom Tab during SSO or OIDC sign-in.
+Remove the patch when an upstream version registers the callback before activity
+creation, after repeating the installed Android authentication journeys with retries
+disabled. The scheduling delay used to reproduce the race is not part of the patch.
+
 ## Test native behavior natively {#native-behavior}
 
 Use an installed-host journey for permissions, system Back, app lifecycle, native secure storage, push, badges, keyboards, touch gestures, and WebView TLS. A mobile browser profile remains useful for layout but cannot prove these paths.
