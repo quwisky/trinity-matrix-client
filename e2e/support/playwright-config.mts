@@ -97,7 +97,11 @@ export function e2eReportConfig(
     [consoleReporter],
     [
       join(import.meta.dirname, 'registry-metadata.reporter.mts'),
-      { metadata, outputFile: artifact('suite-summary.json') },
+      {
+        metadata,
+        outputFile: artifact('suite-summary.json'),
+        progressFile: artifact('test-progress.jsonl'),
+      },
     ],
     ...(options.reportersAfterMetadata ?? []),
     ['blob', { outputDir: artifact('blob-report') }],
