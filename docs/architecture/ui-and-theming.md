@@ -245,6 +245,16 @@ libraries are checked through their declared build and lint targets.
 
 ### Vendored divergences
 
+The pinned Brain 1.3.0 [tooltip patch](../../patches/@spartan-ng__brain@1.3.0.patch)
+repairs input-origin handling at the owner of delayed tooltip requests. CDK FocusMonitor
+distinguishes touch activation from keyboard focus; pointer-leave events preserve a
+keyboard-focused tooltip while blur and scrolling still dismiss it. The
+[desktop and WebKit contract](../../e2e/components/storybook/tooltip-input.spec.mts)
+and [phone contract](../../e2e/components/storybook/tooltip-touch.mobile.spec.mts)
+exercise the public Trinity tooltip. Recheck this patch when upgrading Brain and remove
+it when upstream satisfies those tests. Nx shared inputs include dependency patches
+and their pnpm registration so a cached bundle cannot bypass the repair.
+
 A divergence from generated Helm must be narrow, explained at the source, and
 registered below. It needs a test that pins the behavioural reason, so
 regeneration cannot erase it silently. Do not use a divergence to add product

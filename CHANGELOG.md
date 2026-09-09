@@ -1196,6 +1196,14 @@ All notable changes to this project are documented here. The format is based on
   Jumping to the latest message cancels pending history corrections so they cannot pull the
   reader back to an older message.
 
+- Tooltips no longer open from touch-generated focus or disappear when the pointer
+  leaves while their trigger retains keyboard focus, preventing blocked navigation
+  and intermittent accessibility checks. Dependency patches now invalidate cached
+  builds and checks so they cannot keep exercising an older dependency implementation.
+
+- The Space protocol journey now verifies the current parent-owned creation policy:
+  new children are not implicitly Suggested and receive no reverse parent link.
+
 - Images load again when returning to a retained Conversation after switching Rooms. Media
   references survive view-cache cleanup while decoded URLs and staged uploads are still released;
   removed or replaced Account clients cannot resolve old references.
