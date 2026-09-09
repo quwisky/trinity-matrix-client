@@ -67,6 +67,11 @@ All notable changes to this project are documented here. The format is based on
   count and unread status. The whole preview opens the thread, with touch-sized targets
   and single-line text on narrow mobile screens.
 
+- Reaction details now use a compact Settings-style dialog on desktop, with a
+  reaction directory, selected-reaction people pane, total count and accessible
+  icon close action. On mobile, a bottom sheet keeps horizontally scrolling
+  reactions and the selected people list together.
+
 - Refine the bottom Account bar and switching menu with clearer identity rows, aligned
   status indicators, grouped account actions, and explicit account-removal wording.
   Settings and System Status remain directly available across desktop and mobile.
@@ -1195,6 +1200,14 @@ All notable changes to this project are documented here. The format is based on
 - Loading older timeline history preserves deliberate reading offsets even near the bottom.
   Jumping to the latest message cancels pending history corrections so they cannot pull the
   reader back to an older message.
+
+- Tooltips no longer open from touch-generated focus or disappear when the pointer
+  leaves while their trigger retains keyboard focus, preventing blocked navigation
+  and intermittent accessibility checks. Dependency patches now invalidate cached
+  builds and checks so they cannot keep exercising an older dependency implementation.
+
+- The Space protocol journey now verifies the current parent-owned creation policy:
+  new children are not implicitly Suggested and receive no reverse parent link.
 
 - Images load again when returning to a retained Conversation after switching Rooms. Media
   references survive view-cache cleanup while decoded URLs and staged uploads are still released;

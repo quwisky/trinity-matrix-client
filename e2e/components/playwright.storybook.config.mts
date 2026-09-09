@@ -34,7 +34,7 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: '**/*.webkit.spec.mts',
+      testMatch: ['**/*.webkit.spec.mts', '**/tooltip-input.spec.mts'],
     },
   ],
 });

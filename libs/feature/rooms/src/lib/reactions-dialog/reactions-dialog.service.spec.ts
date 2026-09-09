@@ -6,11 +6,18 @@ import { ReactionsDialogComponent } from './reactions-dialog.component';
 import { ReactionsDialogService } from './reactions-dialog.service';
 import { of, Subject } from 'rxjs';
 
+const platform = vi.hoisted(() => ({ mobile: false }));
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
 describe('ReactionsDialogService', () => {
   let dialog: TrnDialogService;
   let svc: ReactionsDialogService;
 
   beforeEach(() => {
+    platform.mobile = false;
     TestBed.configureTestingModule({
       providers: [ReactionsDialogService, MockProvider(TrnDialogService)],
     });
@@ -27,7 +34,21 @@ describe('ReactionsDialogService', () => {
 
     expect(dialog.openAndWait$).toHaveBeenCalledWith(ReactionsDialogComponent, {
       ariaLabel: 'Reactions',
-      inputs: { eventId: '$m' },
+      placement: 'center',
+      inputs: { eventId: '$m', sheet: false },
+    });
+  });
+
+  it('chooses the bottom sheet on mobile when the cold command is subscribed', () => {
+    platform.mobile = true;
+    vi.mocked(dialog.openAndWait$).mockReturnValue(of(void 0));
+
+    svc.open$('$m').subscribe();
+
+    expect(dialog.openAndWait$).toHaveBeenCalledWith(ReactionsDialogComponent, {
+      ariaLabel: 'Reactions',
+      placement: 'bottom',
+      inputs: { eventId: '$m', sheet: true },
     });
   });
 

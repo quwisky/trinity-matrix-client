@@ -29,3 +29,15 @@ export const Positions: Story = {
     `,
   }),
 };
+
+/** A touch tap must activate the next control even when it focuses this trigger. */
+export const TouchAction: Story = {
+  render: () => ({
+    template: `
+      <div class="flex flex-col items-center gap-4 p-16">
+        <button data-testid="tooltip-touch-source" type="button" trnBtn trnTooltip="Source" position="bottom">Source</button>
+        <a data-testid="tooltip-touch-target" href="#touch-target-activated" trnBtn>Target</a>
+      </div>
+    `,
+  }),
+};

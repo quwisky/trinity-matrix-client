@@ -14,7 +14,9 @@
     ],
     "sharedGlobals": [
       "{workspaceRoot}/tsconfig.base.json",
-      "{workspaceRoot}/.postcssrc.json"
+      "{workspaceRoot}/.postcssrc.json",
+      "{workspaceRoot}/pnpm-workspace.yaml",
+      "{workspaceRoot}/patches/**/*.patch"
     ]
   },
   "targetDefaults": {
