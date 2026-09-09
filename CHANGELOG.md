@@ -26,6 +26,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- E2E artifacts preserve test progress before suite shutdown and expose Android
+  failure-time logs as standalone files, making timeout and native handoff failures
+  easier to diagnose.
+
 - Keep empty message inputs at one row even when a long room-name placeholder wraps,
   so the composer remains reachable on small screens with larger text.
 
@@ -1187,6 +1191,9 @@ All notable changes to this project are documented here. The format is based on
   attachment, because those are sent as written.
 
 ### Fixed
+
+- Android sign-in can no longer lose the Custom Tab launch when the browser controller
+  starts before the native plugin registers its callback.
 
 - Older-history loading indicators preserve the reader's latest timeline position even
   when the browser has not yet delivered its scroll event.

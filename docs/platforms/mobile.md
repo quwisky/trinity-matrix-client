@@ -161,6 +161,14 @@ scheme-only `eu.qwky.trinity` deep-link filter. It accepts both legacy
 `eu.qwky.trinity:/sso-callback`; application code validates path and parameters before
 acting.
 
+The pinned `@capacitor/browser` 8.0.4 [Android patch](../../patches/@capacitor__browser@8.0.4.patch)
+registers the controller-ready callback before launching its activity. The plugin
+handler and activity lifecycle run on different threads; launching first can leave
+the controller open without starting the Custom Tab during SSO or OIDC sign-in.
+Remove the patch when an upstream version registers the callback before activity
+creation, after repeating the installed Android authentication journeys with retries
+disabled. The scheduling delay used to reproduce the race is not part of the patch.
+
 The manifest declares camera and media access for attachments and QR verification,
 `POST_NOTIFICATIONS` for Android 13 and later, and a `messages` notification channel.
 Without the runtime permission or channel, the OS does not deliver the notification as the
