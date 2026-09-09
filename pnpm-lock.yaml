@@ -5,6 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@capacitor/browser@8.0.4': a4336c47b1183208aa4e20f70d6787d34499195bc883c3df7a1f968822b5011f
   '@spartan-ng/brain@1.3.0': 27e0011c352f91f64ad9804890a3a1016569166d61e7271f747277718a543ec7
   matrix-widget-api@1.17.0: 306f9148adf2ec0a3547fcbfb16e9b63cef2ecdb4bb81787ba96527b7d9a655a
 
@@ -47,7 +48,7 @@ importers:
         version: 8.1.1(@capacitor/core@8.5.0)
       '@capacitor/browser':
         specifier: ^8.0.4
-        version: 8.0.4(@capacitor/core@8.5.0)
+        version: 8.0.4(patch_hash=a4336c47b1183208aa4e20f70d6787d34499195bc883c3df7a1f968822b5011f)(@capacitor/core@8.5.0)
       '@capacitor/camera':
         specifier: ^8.2.1
         version: 8.2.2(@capacitor/core@8.5.0)
@@ -11713,7 +11714,7 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.5.0
 
-  '@capacitor/browser@8.0.4(@capacitor/core@8.5.0)':
+  '@capacitor/browser@8.0.4(patch_hash=a4336c47b1183208aa4e20f70d6787d34499195bc883c3df7a1f968822b5011f)(@capacitor/core@8.5.0)':
     dependencies:
       '@capacitor/core': 8.5.0
 
