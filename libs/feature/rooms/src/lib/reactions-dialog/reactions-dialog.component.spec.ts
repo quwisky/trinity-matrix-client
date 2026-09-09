@@ -32,9 +32,9 @@ describe('ReactionsDialogComponent', () => {
     reactionDetails = vi.fn(() => SECTIONS);
   });
 
-  async function build() {
+  async function build(options: { sheet?: boolean } = {}) {
     const { fixture, container } = await render(ReactionsDialogComponent, {
-      inputs: { eventId: '$m' },
+      inputs: { eventId: '$m', sheet: options.sheet ?? false },
       imports: [MockComponent(AvatarComponent)],
       providers: [
         MockProvider(TrnDialogRef, { close: vi.fn() }),
@@ -60,6 +60,14 @@ describe('ReactionsDialogComponent', () => {
     expect(reactionDetails).toHaveBeenCalledWith('$m');
     expect(container.querySelectorAll('.key').length).toBe(2);
     expect(names(container)).toEqual(['Alice', 'Bob']);
+    expect(
+      container.querySelector('.reactions-dialog__total')?.textContent,
+    ).toContain('3 total');
+    expect(
+      container
+        .querySelector('[data-testid=close-reactions]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Close Reactions');
   });
 
   it('switches sections when another key is picked', async () => {
@@ -79,5 +87,38 @@ describe('ReactionsDialogComponent', () => {
       container.querySelector('[data-testid=reactions-empty]'),
     ).toBeTruthy();
     expect(container.querySelector('[data-testid=reactors-list]')).toBeNull();
+  });
+
+  it('keeps the selected reaction identifiable', async () => {
+    const { fixture, container } = await build();
+
+    const second = container.querySelectorAll<HTMLButtonElement>('.key')[1];
+    expect(second.getAttribute('aria-pressed')).toBe('false');
+    second.click();
+    fixture.detectChanges();
+
+    expect(second.getAttribute('aria-pressed')).toBe('true');
+    expect(
+      container.querySelector('.reactions-dialog__detail h3')?.textContent,
+    ).toContain('🎉');
+  });
+
+  it('uses the sheet surface input without changing the snapshot selection', async () => {
+    const { fixture, container, c } = await build({ sheet: true });
+
+    expect(container.querySelector('[data-trn-layout="sheet"]')).toBeTruthy();
+    expect(container.querySelector('[data-trn-layout="dialog"]')).toBeNull();
+    const surface = container.querySelector<HTMLElement>(
+      '[data-trn-layout="sheet"]',
+    );
+    expect(surface?.classList.contains('w-full')).toBe(true);
+    expect(surface?.classList.contains('max-w-full')).toBe(true);
+    c.select('🎉');
+    fixture.detectChanges();
+
+    expect(c.selected()?.key).toBe('🎉');
+    expect(
+      fixture.nativeElement.classList.contains('reactions-dialog--sheet'),
+    ).toBe(true);
   });
 });
