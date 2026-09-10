@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import {
   createTestResourceNamespace,
   withTestResourceNamespace,
@@ -66,6 +67,9 @@ export async function withNodeTestResources<T>(
       await namespace.cleanup();
     } catch (error) {
       cleanupError = error;
+      // Node test IPC drops nested AggregateError entries. Preserve their
+      // causes in the process diagnostics before the failure is serialized.
+      console.error(inspect(error, { depth: null, colors: false }));
     }
     termination.close();
     if (assertionError !== undefined && cleanupError !== undefined) {

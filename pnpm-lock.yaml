@@ -281,6 +281,9 @@ importers:
       '@types/omggif':
         specifier: ^1.0.5
         version: 1.0.5
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       '@vitest/coverage-v8':
         specifier: 4.1.10
         version: 4.1.10(vitest@4.1.10)
@@ -359,6 +362,9 @@ importers:
       webdriverio:
         specifier: 9.31.7
         version: 9.31.7(puppeteer-core@24.43.1(supports-color@7.2.0))(supports-color@7.2.0)
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

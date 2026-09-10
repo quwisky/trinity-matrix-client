@@ -80,14 +80,49 @@ function runNodeAllowFailure(source: string, suiteId: string) {
     directory: string;
     status: number | null;
     signal: NodeJS.Signals | null;
+    stdout: string;
   }>((resolve) => {
+    let stdout = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.resume();
     child.on('close', (status, signal) =>
-      resolve({ directory, status, signal }),
+      resolve({ directory, status, signal, stdout }),
     );
   });
 }
 
 describe('Node test reporter', () => {
+  it('retains the deepest fixture cleanup cause in process diagnostics', async () => {
+    const result = await runNodeAllowFailure(
+      `import { test } from 'node:test';
+       import { withNodeTestResources } from ${JSON.stringify(new URL('./node-fixtures.mts', import.meta.url).href)};
+       test('cleanup fails', () => withNodeTestResources(
+         { sessionId: 'diagnostics', testId: 'cleanup' },
+         async ({ namespace }) => {
+           namespace.registerCleanup('Android WebView diagnostics', async () => {
+             throw new AggregateError([
+               new Error('ADB forward removal deadline exceeded')
+             ], 'WebView cleanup failed');
+           });
+           throw new Error('flow failed');
+         }
+       ));`,
+      'node.cleanup-diagnostics',
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('ADB forward removal deadline exceeded');
+    expect(
+      readFileSync(join(result.directory, 'process.log'), 'utf8'),
+    ).toContain('ADB forward removal deadline exceeded');
+    expect(
+      JSON.parse(
+        readFileSync(join(result.directory, 'suite-summary.json'), 'utf8'),
+      ),
+    ).toMatchObject({ status: 'failed', attemptsByStatus: { failed: 1 } });
+  });
+
   it('retains process diagnostics for a failure before any test can start', async () => {
     const result = await runNodeAllowFailure(
       "console.error('startup diagnostic marker'); throw new Error('deliberate startup detail');",

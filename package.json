@@ -180,6 +180,7 @@
     "@types/luxon": "^3.7.2",
     "@types/node": "^24.13.3",
     "@types/omggif": "^1.0.5",
+    "@types/ws": "8.18.1",
     "@vitest/coverage-v8": "4.1.10",
     "angular-eslint": "22.1.0",
     "autoprefixer": "^10.5.4",
@@ -206,6 +207,7 @@
     "vite": "^8.2.0",
     "vitest": "4.1.10",
     "webdriverio": "9.31.7",
+    "ws": "8.21.1",
     "yaml": "^2.9.0"
   },
   "description": "Trinity — a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
