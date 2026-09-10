@@ -151,6 +151,24 @@ export const E2E_PACKAGE_SCRIPTS = [
     removalAfterRelease: compatibilityRelease,
   },
   {
+    name: 'e2e:runner:chromium',
+    command: 'nx run trinity-e2e-browser:runner-smoke',
+    kind: 'canonical',
+    suiteIds: ['runner.chromium'],
+  },
+  {
+    name: 'e2e:runner:electron',
+    command: 'nx run trinity-e2e-electron:runner-smoke',
+    kind: 'canonical',
+    suiteIds: ['runner.electron'],
+  },
+  {
+    name: 'e2e:runner:android',
+    command: 'nx run trinity-e2e-android:runner-smoke',
+    kind: 'canonical',
+    suiteIds: ['runner.android'],
+  },
+  {
     name: 'e2e:verify:qr',
     command: 'nx run trinity-e2e-protocol:verify-qr',
     kind: 'compatibility',
@@ -269,6 +287,11 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['electron.full'],
   },
   {
+    command: 'xvfb-run -a pnpm nx run trinity-e2e-electron:runner-smoke',
+    tier: 'pull-request',
+    suiteIds: ['runner.electron'],
+  },
+  {
     command: 'pnpm exec nx run trinity-e2e-components:storybook',
     tier: 'pull-request',
     suiteIds: ['components.storybook'],
@@ -289,6 +312,11 @@ export const E2E_CI_ENTRYPOINTS = [
     suiteIds: ['browser.canonical'],
   },
   {
+    command: 'pnpm exec nx run trinity-e2e-browser:runner-smoke',
+    tier: 'pull-request',
+    suiteIds: ['runner.chromium'],
+  },
+  {
     command: 'pnpm e2e:verify:qr',
     tier: 'pull-request',
     suiteIds: ['protocol.verify-qr'],
@@ -298,6 +326,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4',
     tier: 'pull-request',
     suiteIds: ['android.installed-webview'],
+  },
+  {
+    command:
+      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:runner-smoke',
+    tier: 'pull-request',
+    suiteIds: ['runner.android'],
   },
   {
     command: 'pnpm e2e:scheduled',

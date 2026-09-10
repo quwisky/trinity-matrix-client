@@ -29,7 +29,7 @@ export const PLAYWRIGHT_SUITE_STATUSES = [
 
 export type PlaywrightSuiteStatus = (typeof PLAYWRIGHT_SUITE_STATUSES)[number];
 
-export interface PlaywrightSuiteSummary {
+export interface E2ESuiteSummary {
   readonly schemaVersion: 1;
   readonly suiteId: string;
   readonly status: PlaywrightSuiteStatus;
@@ -39,6 +39,9 @@ export interface PlaywrightSuiteSummary {
   readonly attemptDurationMs: number;
   readonly attemptsByStatus: Readonly<Record<string, number>>;
 }
+
+/** @deprecated Use E2ESuiteSummary. Kept for Playwright callers during migration. */
+export type PlaywrightSuiteSummary = E2ESuiteSummary;
 
 export interface E2EAggregateSuiteResult {
   readonly id: string;
@@ -120,9 +123,7 @@ export function suiteSummaryPath(
   );
 }
 
-export function readPlaywrightSuiteSummary(
-  file: string,
-): PlaywrightSuiteSummary | undefined {
+export function readSuiteSummary(file: string): E2ESuiteSummary | undefined {
   if (!existsSync(file)) return undefined;
   const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
   if (
@@ -148,6 +149,13 @@ export function readPlaywrightSuiteSummary(
     attemptDurationMs: parsed['attemptDurationMs'],
     attemptsByStatus: parsed['attemptsByStatus'],
   };
+}
+
+/** @deprecated Use readSuiteSummary. */
+export function readPlaywrightSuiteSummary(
+  file: string,
+): PlaywrightSuiteSummary | undefined {
+  return readSuiteSummary(file);
 }
 
 function emptyOutcomeCounts(): Record<E2EOutcome, number> {

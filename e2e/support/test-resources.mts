@@ -19,7 +19,11 @@ function matrixLocalpart(
 
 /** Names every server-side resource through one per-attempt namespace. */
 export class MatrixTestResources {
-  constructor(readonly namespace: TestResourceNamespace) {}
+  readonly namespace: TestResourceNamespace;
+
+  constructor(namespace: TestResourceNamespace) {
+    this.namespace = namespace;
+  }
 
   userLocalpart(role: string): string {
     return matrixLocalpart(this.namespace, role);

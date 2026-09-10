@@ -1,0 +1,7 @@
+appId: eu.qwky.trinity
+androidWebViewHierarchy: devtools
+---
+- extendedWaitUntil:
+    visible:
+      id: homeserver
+    timeout: 60000

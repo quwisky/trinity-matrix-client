@@ -30,6 +30,9 @@ allowBuilds:
   msgpackr-extract: true
   nx: true
   less: false
+  # WDIO transitively includes other engines; Chromium-only coverage never installs them.
+  edgedriver: false
+  geckodriver: false
 
 patchedDependencies:
   '@capacitor/browser@8.0.4': patches/@capacitor__browser@8.0.4.patch
