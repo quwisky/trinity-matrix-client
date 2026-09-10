@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { prepareWebBundle, runPlaywright } from './run-playwright.mts';
-import { runNode } from './run-node.mts';
+import { runNode, type NodeRunnerDependencies } from './run-node.mts';
 import { recoverResourceLock, resourceLockFile } from './recover-lock.mts';
 import { synapseLockFile } from './synapse/lease.mts';
 
@@ -169,7 +169,9 @@ describe('E2E runner boundaries', () => {
         );
         return { status: 0, timedOut: false };
       });
-      const openInvocation = vi.fn(async (options) => ({
+      const openInvocation = vi.fn<
+        NonNullable<NodeRunnerDependencies['openInvocation']>
+      >(async (options) => ({
         owned: true,
         file: 'session.json',
         descriptor: {
