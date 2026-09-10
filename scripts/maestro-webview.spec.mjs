@@ -97,6 +97,11 @@ describe('Maestro WebView attachment', () => {
     expect(connections).toEqual([browserEndpoint]);
     expect(f.calls).toContainEqual([
       'browser-send',
+      'Target.setDiscoverTargets',
+      { discover: true },
+    ]);
+    expect(f.calls).toContainEqual([
+      'browser-send',
       'Security.setIgnoreCertificateErrors',
       { ignore: true },
     ]);
@@ -110,6 +115,24 @@ describe('Maestro WebView attachment', () => {
     expect(page.closed).toBe(1);
     await webview.close();
     expect(browser.closed).toBe(1);
+  });
+
+  it('rejects unavailable target discovery and releases the browser and forward', async () => {
+    const f = fixture();
+    const failure = new Error('target discovery unavailable');
+    f.diagnostics.send = async (method) => {
+      if (method === 'Target.setDiscoverTargets') throw failure;
+      return {};
+    };
+
+    await expect(
+      openMaestroWebview(f.device, {
+        fetch: f.fetch,
+        connect: f.connect,
+      }),
+    ).rejects.toBe(failure);
+    expect(f.diagnostics.closed).toBe(1);
+    expect(f.calls).toContainEqual(['removeForward', 'tcp:4711']);
   });
 
   it('keeps browser TLS when the startup page disappears before any page command', async () => {
