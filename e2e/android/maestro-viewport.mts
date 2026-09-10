@@ -6,14 +6,28 @@ import {
 import type { MaestroDevice } from './maestro-session.mts';
 
 export interface MaestroViewport {
-  apply(): Promise<void>;
+  apply(size?: ViewportSize): Promise<void>;
+  installDocumentScript(source: string): Promise<() => Promise<void>>;
+  nativePoint(point: { readonly x: number; readonly y: number }): Promise<{
+    readonly x: number;
+    readonly y: number;
+  }>;
   close(): Promise<void>;
+}
+
+export interface ViewportSize {
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface MaestroViewportOptions {
   readonly pid: string;
   readonly width: number;
   readonly height: number;
+  readonly deviceScaleFactor?: number;
+  readonly userAgent?: string;
+  readonly isMobile?: boolean;
+  readonly hasTouch?: boolean;
   readonly signal?: AbortSignal;
   readonly fetch?: (
     input: string,
@@ -28,6 +42,13 @@ interface DevtoolsTarget {
   readonly url?: unknown;
   readonly description?: unknown;
   readonly webSocketDebuggerUrl?: unknown;
+}
+
+interface TargetGeometry {
+  readonly screenX: number;
+  readonly screenY: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 function parseDescription(value: unknown): Record<string, unknown> {
@@ -53,6 +74,23 @@ function targetsFrom(value: unknown): DevtoolsTarget[] {
           target !== null && typeof target === 'object',
       )
     : [];
+}
+
+function targetGeometry(target: DevtoolsTarget): TargetGeometry | undefined {
+  const description = parseDescription(target.description);
+  const values = ['screenX', 'screenY', 'width', 'height'].map(
+    (key) => description[key],
+  );
+  if (
+    values.some(
+      (value) =>
+        typeof value !== 'number' || !Number.isFinite(value),
+    )
+  )
+    return undefined;
+  const [screenX, screenY, width, height] = values as number[];
+  if (width <= 0 || height <= 0) return undefined;
+  return { screenX, screenY, width, height };
 }
 
 function endpoint(target: DevtoolsTarget): string | undefined {
@@ -134,11 +172,16 @@ function abortable<T>(
   });
 }
 
-function metricValue(value: unknown): {
-  readonly width?: unknown;
-  readonly height?: unknown;
-  readonly dpr?: unknown;
-} | undefined {
+function validSize(size: ViewportSize): ViewportSize {
+  assert(
+    Number.isSafeInteger(size.width) && size.width > 0 &&
+      Number.isSafeInteger(size.height) && size.height > 0,
+    'Viewport dimensions must be positive integers',
+  );
+  return { width: size.width, height: size.height };
+}
+
+function evaluationValue(value: unknown): unknown {
   if (!value || typeof value !== 'object') return undefined;
   const result = value as { result?: unknown; value?: unknown };
   let nested: unknown = result.result ?? value;
@@ -146,6 +189,15 @@ function metricValue(value: unknown): {
     nested = (nested as { result?: unknown }).result;
   if (nested && typeof nested === 'object' && 'value' in nested)
     nested = (nested as { value?: unknown }).value;
+  return nested;
+}
+
+function metricValue(value: unknown): {
+  readonly width?: unknown;
+  readonly height?: unknown;
+  readonly dpr?: unknown;
+} | undefined {
+  const nested = evaluationValue(value);
   if (!nested || typeof nested !== 'object') return undefined;
   return nested as {
     readonly width?: unknown;
@@ -168,14 +220,28 @@ export async function openMaestroViewport(
     : connectionController.signal;
   signal.throwIfAborted();
   assert(/^\d+$/.test(options.pid), 'Android WebView pid must be numeric');
-  assert(Number.isSafeInteger(options.width) && options.width > 0 && Number.isSafeInteger(options.height) && options.height > 0, 'Viewport dimensions must be positive integers');
+  const initialSize = validSize(options);
+  const deviceScaleFactor = options.deviceScaleFactor ?? 1;
+  assert(
+    Number.isFinite(deviceScaleFactor) && deviceScaleFactor > 0,
+    'Device scale factor must be positive and finite',
+  );
+  const isMobile = options.isMobile ?? true;
+  const hasTouch = options.hasTouch ?? true;
 
   let port: string | undefined;
   let page: DevtoolsConnection | undefined;
   let connecting = false;
   let applied = false;
+  let requestedSize = initialSize;
+  let physicalCssWidth: number | undefined;
+  let physicalTargetWidth: number | undefined;
+  let viewportScale = 1;
+  let originalUserAgent: string | undefined;
+  let userAgentApplied = false;
   let forwarding: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
+  const documentScripts = new Set<string>();
   const removeForward = async (): Promise<void> => {
     const allocated = port;
     port = undefined;
@@ -183,10 +249,27 @@ export async function openMaestroViewport(
   };
   const cleanup = async (): Promise<void> => {
     const failures: unknown[] = [];
+    for (const identifier of documentScripts) {
+      documentScripts.delete(identifier);
+      try {
+        await page?.send('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+      } catch (error) {
+        failures.push(error);
+      }
+    }
     try {
       await page?.send('Emulation.clearDeviceMetricsOverride');
     } catch (error) {
       failures.push(error);
+    }
+    if (userAgentApplied && originalUserAgent !== undefined) {
+      try {
+        await page?.send('Network.setUserAgentOverride', {
+          userAgent: originalUserAgent,
+        });
+      } catch (error) {
+        failures.push(error);
+      }
     }
     try {
       await page?.send('Emulation.setTouchEmulationEnabled', { enabled: false });
@@ -270,14 +353,34 @@ export async function openMaestroViewport(
     } finally {
       connecting = false;
     }
-    const currentTarget = async (): Promise<void> => {
+    const currentTarget = async (): Promise<DevtoolsTarget> => {
       const observed = selectTarget(await readTargets());
       if (endpoint(observed) !== endpoint(target))
         throw new Error('Trinity WebView target was replaced during viewport use');
+      return observed;
     };
-    const apply = async (): Promise<void> => {
+    if (options.userAgent !== undefined) {
+      const userAgent = evaluationValue(
+        await page.send('Runtime.evaluate', {
+          expression: 'navigator.userAgent',
+          returnByValue: true,
+        }),
+      );
+      assert(typeof userAgent === 'string', 'Current WebView user agent is unavailable');
+      originalUserAgent = userAgent;
+      // The command can mutate Chromium before its reply rejects. Mark restoration
+      // required before dispatch so partial CDP failures cannot strand the override.
+      userAgentApplied = true;
+      await page.send('Network.setUserAgentOverride', {
+        userAgent: options.userAgent,
+      });
+    }
+    const apply = async (size?: ViewportSize): Promise<void> => {
       signal.throwIfAborted();
-      await currentTarget();
+      const nextSize = size === undefined ? requestedSize : validSize(size);
+      const observed = await currentTarget();
+      const observedGeometry = targetGeometry(observed);
+      requestedSize = nextSize;
       const metrics = await page?.send('Runtime.evaluate', {
         expression:
           '({width: innerWidth, height: innerHeight, dpr: devicePixelRatio})',
@@ -286,12 +389,15 @@ export async function openMaestroViewport(
       const value = metricValue(metrics);
       if (
         applied &&
-        value?.width === options.width &&
-        value.height === options.height &&
+        (observedGeometry?.width === undefined ||
+          observedGeometry.width === physicalTargetWidth) &&
+        value?.width === requestedSize.width &&
+        value.height === requestedSize.height &&
         typeof value.dpr === 'number' &&
-        Math.abs(value.dpr - 1) < 1e-6
+        Math.abs(value.dpr - deviceScaleFactor) < 1e-6
       )
         return;
+      applied = false;
       await page?.send('Emulation.clearDeviceMetricsOverride');
       const physical = await page?.send('Page.getLayoutMetrics');
       const physicalWidth =
@@ -301,25 +407,83 @@ export async function openMaestroViewport(
             }).cssVisualViewport?.clientWidth
           : undefined;
       assert(typeof physicalWidth === 'number' && Number.isFinite(physicalWidth) && physicalWidth > 0, 'Physical WebView layout width is unavailable');
-      const scale = Math.min(1, physicalWidth / options.width);
+      const scale = Math.min(1, physicalWidth / requestedSize.width);
       await page?.send('Emulation.setDeviceMetricsOverride', {
-        width: options.width,
-        height: options.height,
-        deviceScaleFactor: 1,
-        mobile: true,
-        screenWidth: options.width,
-        screenHeight: options.height,
+        width: requestedSize.width,
+        height: requestedSize.height,
+        deviceScaleFactor,
+        mobile: isMobile,
+        screenWidth: requestedSize.width,
+        screenHeight: requestedSize.height,
         scale,
       });
       await page?.send('Emulation.setTouchEmulationEnabled', {
-        enabled: true,
-        maxTouchPoints: 5,
+        enabled: hasTouch,
+        maxTouchPoints: hasTouch ? 5 : 1,
       });
+      physicalCssWidth = physicalWidth;
+      physicalTargetWidth = observedGeometry?.width;
+      viewportScale = scale;
       applied = true;
+    };
+    const nativePoint = async (point: {
+      readonly x: number;
+      readonly y: number;
+    }): Promise<{ readonly x: number; readonly y: number }> => {
+      signal.throwIfAborted();
+      assert(
+        Number.isFinite(point.x) && Number.isFinite(point.y) &&
+          point.x >= 0 && point.x <= requestedSize.width &&
+          point.y >= 0 && point.y <= requestedSize.height,
+        'Native point is outside the requested viewport',
+      );
+      const observed = await currentTarget();
+      const geometry = targetGeometry(observed);
+      assert(geometry, 'Current Trinity target has no native bounds');
+      assert(
+        physicalCssWidth !== undefined && physicalTargetWidth !== undefined,
+        'Native point mapping is unavailable before viewport apply',
+      );
+      assert(
+        geometry.width === physicalTargetWidth,
+        'Native WebView width changed; reapply the viewport before mapping points',
+      );
+      const factor =
+        (physicalTargetWidth / physicalCssWidth) * viewportScale;
+      const mapped = {
+        x: Math.round(geometry.screenX + point.x * factor),
+        y: Math.round(geometry.screenY + point.y * factor),
+      };
+      assert(
+        mapped.x >= geometry.screenX &&
+          mapped.x <= geometry.screenX + geometry.width &&
+          mapped.y >= geometry.screenY &&
+          mapped.y <= geometry.screenY + geometry.height,
+        'Native point is outside the attached WebView bounds',
+      );
+      return mapped;
+    };
+    // Chromium owns these registrations per CDP session. Keep them on the same
+    // retained connection as the viewport; per-command diagnostics cannot own them.
+    const installDocumentScript = async (source: string): Promise<() => Promise<void>> => {
+      signal.throwIfAborted();
+      await currentTarget();
+      // Registration alone stores the source; Page.enable activates Chromium's
+      // new-document callbacks on this retained session.
+      await page!.send('Page.enable');
+      const result = await page!.send('Page.addScriptToEvaluateOnNewDocument', { source });
+      signal.throwIfAborted();
+      assert(result && typeof result === 'object' && 'identifier' in result && typeof result.identifier === 'string', 'Document script registration has no identifier');
+      const identifier = result.identifier;
+      documentScripts.add(identifier);
+      return async () => {
+        if (!documentScripts.delete(identifier)) return;
+        await page!.send('Page.removeScriptToEvaluateOnNewDocument', { identifier });
+      };
     };
     signal.throwIfAborted();
     options.signal?.addEventListener('abort', onAbort, { once: true });
-    return { apply, close };
+    return { apply, nativePoint, installDocumentScript, close };
   } catch (error) {
     try {
       await close();

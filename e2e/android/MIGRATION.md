@@ -112,3 +112,55 @@ Batch acceptance is pending until the owning issue records installed-emulator
 parity, effective negative controls, predecessor coexistence and current-revision
 quality/CI diagnostics. Completing this batch does not complete the canonical
 Android ledger, physical push acceptance or the full migration's CI reliability gate.
+
+## Account lifecycle and mixed workspace batch
+
+[Account lifecycle and mixed workspace migration](https://github.com/quwisky/trinity-matrix-client/issues/672)
+owns all fourteen definitions in the two canonical files below at `ed70277`.
+The `android.accounts-workspace` suite runs every definition, resets the installed
+app before each case and records a separate outcome for each. The predecessors
+remain enabled during coexistence.
+
+| Predecessor | Lines | Required parity |
+| --- | --- | --- |
+| [Account lifecycle](../browser/journeys/accounts/account-lifecycle.spec.mts) | 25–83 | Add second Account; encryption banner; menu labels and exact count; Escape focus; switch back. |
+| Account lifecycle | 85–130 | Three Accounts, repeated switches, active-row no-op and absence of switch errors. |
+| Account lifecycle | 132–191 | Two unread messages contribute to the recorded Badge total before and after an active Account switch. |
+| Account lifecycle | 193–220 | Removing the active Account preserves the surviving Account and exact menu count. |
+| Account lifecycle | 222–260 | Remove and re-add the same Account through the real persistent crypto-store lifecycle. |
+| Account lifecycle | 262–283 | Remove the only Account, reach login and reconnect. |
+| Account lifecycle | 285–300 | Cancel adding an Account and preserve the current Account and menu count. |
+| Account lifecycle | 302–330 | Reconnect guidance, prefilled locked username, password entry and restored Account. |
+| [Mixed workspace](../browser/journeys/accounts/mixed-account-workspace.spec.mts) | 16–71 | Mixed room visibility, owning-Account badge, active-row constraints and correct acting identity. |
+| Mixed workspace | 73–128 | Mixed Space pills, owning-Account badge and correct acting identity. |
+| Mixed workspace | 132–322 | Persist selection across reload; desktop keyboard navigation, focus restoration and geometry in both themes at 125% font size. |
+| Mixed workspace | 339–478 | Pixel 5 profile; long Account names; both themes; actual short-list overflow, visible Done action, retained selection and focus. |
+| Mixed workspace | 481–529 | Quick switcher excludes another Account's room until mixed in, then shows its badge and opens it as its owner. |
+| Mixed workspace | 534–636 | Mixed invite visibility, distinct hydrated display names and the acting-identity header without an MXID fallback. |
+
+The retained viewport owner preserves the predecessor's desktop 1280×720 profile
+and Pixel 5 viewport, user agent and pixel ratio, including its explicit 390×844
+and 390×260 resizes. Maestro taps native screen coordinates measured from the
+current WebView and retained viewport scale. A capture listener verifies a trusted
+click reached the selected element; it does not dispatch or substitute input.
+The Android keyboard adapter sends native key events for Arrow, Home, End, Space,
+Tab and Escape because the pinned Maestro key enumeration lacks the required
+keyboard meanings. Explicit focus, theme and font fixtures mirror the predecessor.
+
+The badge case retains the predecessor's prebootstrap Capacitor Badge interception.
+It proves the application's aggregate Badge calls, not a physical launcher's badge.
+Matrix fixtures use the invocation-owned disposable Synapse and clean up room
+memberships before logging out their API sessions.
+
+```bash
+pnpm nx run trinity-e2e-android:accounts-workspace
+```
+
+The existing third Android CI shard runs the batch. Started-suite diagnostics live
+under `dist/.playwright/trinity-e2e-android/<run-id>/android.accounts-workspace/`;
+`accounts-workspace/journeys.json` records all started cases, original source
+ranges and first-attempt outcomes. Acceptance remains pending until the issue
+records complete installed-host parity, effective negative controls, repeated
+first-attempt runs and current-revision CI evidence. Other Account journeys,
+physical Android acceptance and the full migration reliability gate retain their
+separate owners.
