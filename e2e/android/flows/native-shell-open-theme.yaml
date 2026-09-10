@@ -1,0 +1,12 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- scrollUntilVisible:
+    element:
+      id: ${THEME_TRIGGER_ID}
+    direction: UP
+- tapOn:
+    id: ${THEME_TRIGGER_ID}
+- extendedWaitUntil:
+    visible: Onyx
+    timeout: 10000

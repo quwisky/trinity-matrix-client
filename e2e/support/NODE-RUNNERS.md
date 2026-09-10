@@ -59,3 +59,10 @@ dist/.playwright/trinity-e2e-android/<run-id>/runner.android/
 These smokes supplement the existing Playwright coverage. They do not claim that the full
 E2E migration is complete or replace the reliability and diagnostic guarantees of the
 canonical suites.
+
+Android capability batches use the same owned lifecycle. Run native shell, Back,
+keyboard, formatting and Appearance parity with `pnpm e2e:android:native-shell`.
+Its `android.native-shell` registry entry and dedicated diagnostic directory keep
+its outcomes separate from the four critical journeys. See the
+[Android migration ledger](../android/MIGRATION.md) for the exact predecessor
+assertions, retained viewport ownership and remaining acceptance work.

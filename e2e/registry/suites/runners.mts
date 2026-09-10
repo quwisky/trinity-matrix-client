@@ -3,7 +3,7 @@ import { defineSuites } from '../types.mts';
 const artifactRoot = (targetProject: string): string =>
   `dist/.playwright/${targetProject}/<run-id>`;
 
-/** Node test runner smoke coverage for the browser, desktop and Android hosts. */
+/** Node test runner coverage for the browser, desktop and Android hosts. */
 export const RUNNER_E2E_SUITES = defineSuites([
   {
     id: 'runner.chromium',
@@ -102,5 +102,32 @@ export const RUNNER_E2E_SUITES = defineSuites([
     currentArtifactRoot: artifactRoot('trinity-e2e-android'),
     targetArtifactRoot: artifactRoot('trinity-e2e-android'),
     sourceEntrypoints: ['e2e/android/critical-journeys.mts'],
+  },
+  {
+    id: 'android.native-shell',
+    environment: 'android',
+    capabilities: ['accounts', 'conversations', 'settings', 'host-shell'],
+    contractTypes: ['host', 'journey', 'accessibility', 'visual'],
+    runner: 'node-test',
+    currentTarget: 'trinity-e2e-android:native-shell',
+    targetProject: 'trinity-e2e-android',
+    prerequisites: [
+      'android-avd',
+      'android-sdk',
+      'docker',
+      'java-21',
+      'kvm',
+      'maestro',
+      'node-24',
+    ],
+    availabilityPolicy: 'required',
+    ciTier: 'pull-request',
+    cachePolicy: 'never',
+    serializationKeys: ['android-avd', 'synapse'],
+    timeoutClass: 'host',
+    canonicalScript: 'e2e:android:native-shell',
+    currentArtifactRoot: artifactRoot('trinity-e2e-android'),
+    targetArtifactRoot: artifactRoot('trinity-e2e-android'),
+    sourceEntrypoints: ['e2e/android/native-shell-journeys.mts'],
   },
 ] as const);

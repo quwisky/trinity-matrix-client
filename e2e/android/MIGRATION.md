@@ -1,7 +1,9 @@
 # Android runner migration ledger
 
 This ledger tracks the critical milestone owned by
-[Deliver critical Android Maestro journeys](https://github.com/quwisky/trinity-matrix-client/issues/659).
+[Deliver critical Android Maestro journeys](https://github.com/quwisky/trinity-matrix-client/issues/659)
+and the capability batches under
+[Migrate remaining Android user journeys](https://github.com/quwisky/trinity-matrix-client/issues/660).
 The [source inventory](https://github.com/quwisky/trinity-matrix-client/issues/654#issuecomment-5605110888)
 remains the complete starting inventory. Each later migration must account for its
 remaining assertions and variants before retiring their Playwright execution.
@@ -64,3 +66,49 @@ deliberate negative cases and the consecutive first-attempt acceptance run.
 Acceptance requires twenty consecutive successful runs of all four journeys on
 unchanged relevant inputs, with zero retries and effective negative cases. A
 successful implementation check or a single CI run does not establish that gate.
+
+## Native shell, Back and Appearance batch
+
+[Migrate Android native shell, Back and appearance journeys](https://github.com/quwisky/trinity-matrix-client/issues/670)
+owns the eight definitions in the four Android-specific predecessor files. The
+`android.native-shell` suite preserves their complete assertions and helper contracts;
+the critical milestone's login coverage does not replace the unauthenticated route
+guard or Settings Back assertions. Existing Playwright execution remains enabled
+while this batch is verified.
+
+| Stage | Predecessor definition at `877925dd` | Required parity |
+| --- | --- | --- |
+| `unauthenticated-shell` | [App shell](app-shell.spec.mts), lines 8–14, and `expectLoginScreen` / `expectProtectedRouteRedirect` | Visible Homeserver and Continue; unauthenticated Settings navigation redirects to login. |
+| `settings-touch-back` | [Navigation](navigation.spec.mts), lines 78–88 | Account-qualified Rooms, native touch opens Settings and its sections, hardware Back restores the rendered Rooms surface. |
+| `authenticated-process-restart` | [Navigation](navigation.spec.mts), lines 90–101 | Native process restart restores the authenticated Rooms route and visible surface at this batch's revision. |
+| `settings-section-back` | [Navigation](navigation.spec.mts), lines 103–140 | Retained 390×844 mobile/touch viewport; target ≥44px; Appearance heading focus; Back restores directory focus, overflow ≤1px, then Rooms. |
+| `composer-keyboard-insert-back` | [Navigation](navigation.spec.mts), lines 166–244 | Actual IME resize and native text input; insert tray dismisses IME, stays within the restored viewport, and Back restores focus and collapsed ARIA state. |
+| `members-back-order` | [Navigation](navigation.spec.mts), lines 246–299 | Focused Members filter and IME; ordered Back dismisses keyboard, Members, then Conversation. |
+| `composer-formatting` | [Native formatting](composer-format-native.spec.mts), lines 48–98 | Native Aa/italic activation produces `say *hello*`, selection [5,10], editor focus and shown IME; sheet geometry and Back cancellation preserve content. |
+| `native-appearance` | [Appearance](appearance.spec.mts), lines 75–219 | Android/coarse pointer, light Amethyst/Cosy and dark Onyx/Compact/Larger projections, native StatusBar state, 20px font, target/overflow/inset geometry and paired device/WebView proof. |
+
+The Settings viewport has a retained CDP owner; it is released before native IME
+checks so Android's real keyboard resize remains observable. Other CDP reads
+observe rendered state or the actual Capacitor plugin. Maestro owns native
+interaction. The formatting case retains the predecessor's explicit selection
+setup separately from the native formatting action. Its exact lowercase text
+fixture selects the initial character and replaces it through Maestro input to
+avoid the keyboard's word-commit capitalization; the expected formatted text,
+selection and native keyboard assertions remain exact.
+
+Run the batch against a verified production renderer with:
+
+```bash
+pnpm nx run trinity-e2e-android:native-shell
+```
+
+CI invokes it on the second existing Android shard and retains started-suite
+diagnostics under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.native-shell/`.
+The `native-shell/journeys.json` report records each stage's first-attempt outcome
+and duration; screenshots and native/runtime diagnostics stay in ignored output.
+
+Batch acceptance is pending until the owning issue records installed-emulator
+parity, effective negative controls, predecessor coexistence and current-revision
+quality/CI diagnostics. Completing this batch does not complete the canonical
+Android ledger, physical push acceptance or the full migration's CI reliability gate.

@@ -44,6 +44,7 @@
     "e2e:emoji": "node scripts/nx.mjs run trinity-e2e-protocol:emoji",
     "e2e:android": "node scripts/nx.mjs run trinity-e2e:e2e-android",
     "e2e:android:critical": "node scripts/nx.mjs run trinity-e2e-android:critical-journeys",
+    "e2e:android:native-shell": "node scripts/nx.mjs run trinity-e2e-android:native-shell",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",
