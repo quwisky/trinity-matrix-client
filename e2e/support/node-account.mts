@@ -4,13 +4,19 @@ import { readSession } from './session.mts';
 import type { MatrixTestResources } from './test-resources.mts';
 import { REGISTRATION_SHARED_SECRET, SYNAPSE_HTTP } from './synapse/start.mjs';
 
+export interface NodeAccountOptions {
+  readonly usernameSuffix?: string;
+}
+
 /** Register a unique account only in the invocation-owned disposable Synapse. */
 export async function createNodeAccount(
   resources: MatrixTestResources,
   signal?: AbortSignal,
   role = 'primary',
+  options: NodeAccountOptions = {},
 ): Promise<{
   readonly username: string;
+  readonly userId: string;
   readonly password: string;
   readonly homeserver: string;
 }> {
@@ -19,7 +25,7 @@ export async function createNodeAccount(
     session.synapse?.available,
     'This journey requires disposable Synapse',
   );
-  const username = resources.userLocalpart(role);
+  const username = `${resources.userLocalpart(role)}${options.usernameSuffix ?? ''}`;
   const password = randomUUID();
   const requestSignal = (): AbortSignal =>
     signal
@@ -48,5 +54,13 @@ export async function createNodeAccount(
     signal: requestSignal(),
   });
   assert.equal(response.status, 200, 'Unique journey account registration');
-  return { username, password, homeserver: session.synapse.hs! };
+  const registration: unknown = await response.json();
+  assert(registration && typeof registration === 'object');
+  assert('user_id' in registration && typeof registration.user_id === 'string');
+  return {
+    username,
+    userId: registration.user_id,
+    password,
+    homeserver: session.synapse.hs!,
+  };
 }

@@ -66,3 +66,11 @@ Its `android.native-shell` registry entry and dedicated diagnostic directory kee
 its outcomes separate from the four critical journeys. See the
 [Android migration ledger](../android/MIGRATION.md) for the exact predecessor
 assertions, retained viewport ownership and remaining acceptance work.
+
+`pnpm e2e:android:accounts` runs all fourteen account lifecycle and mixed workspace
+definitions through `android.accounts-workspace`. Each case clears the installed
+app, retains its canonical viewport profile and records its own first-attempt
+outcome. Native Maestro input and Android keyboard events drive the interactions;
+CDP supplies bounded observations and the predecessor's explicit fixtures. The
+migration ledger describes the Badge recorder's limited claim and coexistence
+with the original Android journeys.
