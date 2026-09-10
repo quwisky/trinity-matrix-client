@@ -1,0 +1,9 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn:
+    id: composer-input
+- eraseText
+- setClipboard: ${MESSAGE}
+- pasteText
+- hideKeyboard

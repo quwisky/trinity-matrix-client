@@ -8,6 +8,7 @@ import { REGISTRATION_SHARED_SECRET, SYNAPSE_HTTP } from './synapse/start.mjs';
 export async function createNodeAccount(
   resources: MatrixTestResources,
   signal?: AbortSignal,
+  role = 'primary',
 ): Promise<{
   readonly username: string;
   readonly password: string;
@@ -18,7 +19,7 @@ export async function createNodeAccount(
     session.synapse?.available,
     'This journey requires disposable Synapse',
   );
-  const username = resources.userLocalpart('primary');
+  const username = resources.userLocalpart(role);
   const password = randomUUID();
   const requestSignal = (): AbortSignal =>
     signal

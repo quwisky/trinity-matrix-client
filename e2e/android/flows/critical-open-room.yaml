@@ -1,0 +1,11 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- extendedWaitUntil:
+    visible: ${ROOM_PATTERN}
+    timeout: 60000
+- tapOn: ${ROOM_PATTERN}
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 30000

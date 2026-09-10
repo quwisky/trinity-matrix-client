@@ -1,8 +1,22 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
-import { openMaestroDevice } from '../e2e/android/maestro-session.mts';
+import {
+  openMaestroDevice,
+  redactMaestroArtifacts,
+} from '../e2e/android/maestro-session.mts';
 import { writeSession } from '../e2e/support/session.mts';
 
 const directories = [];
@@ -73,10 +87,59 @@ function fixture({ resources = ['android-avd'], rejectReverse = false } = {}) {
       avd: 'trinity-e2e-api36',
       environment: {
         ANDROID_HOME: '/sdk',
+        PATH: process.env.PATH,
         TRINITY_E2E_SESSION_FILE: sessionFile,
       },
     },
   };
+}
+
+function configureMaestro(
+  f,
+  { exitCode = 0, failScrub = false, sleepMs = 0 } = {},
+) {
+  const cli = join(f.options.workspaceRoot, 'maestro-fixture.mjs');
+  writeFileSync(
+    cli,
+    `#!/usr/bin/env node
+import { symlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+const args = process.argv.slice(2);
+const output = args[args.indexOf('--test-output-dir') + 1];
+const password = args[args.findIndex((arg) => arg.startsWith('PASSWORD='))].slice('PASSWORD='.length);
+writeFileSync(join(output, 'commands.json'), JSON.stringify({ defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
+writeFileSync(join(output, 'maestro.log'), 'login started: ' + password + '\\n');
+writeFileSync(join(output, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
+${failScrub ? "symlinkSync('missing.json', join(output, 'broken.json'));" : ''}
+${sleepMs ? `await new Promise((resolve) => setTimeout(resolve, ${sleepMs}));` : ''}
+process.exit(${exitCode});
+`,
+  );
+  chmodSync(cli, 0o700);
+  f.options.environment.MAESTRO_CLI = cli;
+  return cli;
+}
+
+function privateArtifacts(f) {
+  const root = join(f.options.workspaceRoot, 'dist/maestro-private');
+  const [directory] = readdirSync(root);
+  return join(root, directory);
+}
+
+async function waitForPrivateCommands(f) {
+  const root = join(f.options.workspaceRoot, 'dist/maestro-private');
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    if (existsSync(root)) {
+      const [directory] = readdirSync(root);
+      if (directory) {
+        const commands = join(root, directory, 'commands.json');
+        if (existsSync(commands)) return commands;
+      }
+    }
+    await delay(20);
+  }
+  throw new Error('private Maestro commands fixture was not produced');
 }
 
 describe('Maestro device ownership', () => {
@@ -147,6 +210,47 @@ describe('Maestro device ownership', () => {
     expect(f.closed()).toBe(1);
   });
 
+  it('stops every declared installed app after cancellation', async () => {
+    const f = fixture();
+    const controller = new AbortController();
+    const device = await openMaestroDevice(
+      { ...f.options, signal: controller.signal },
+      f.commands,
+    );
+    await device.install('/primary.apk');
+    await device.install('/secondary.apk', 'eu.qwky.trinity.secondary');
+    controller.abort(new Error('test cancellation'));
+    await device.close();
+
+    expect(f.closed()).toBe(1);
+    expect(f.calls).toContainEqual([
+      '/sdk/platform-tools/adb',
+      '-s',
+      'emulator-5556',
+      'shell',
+      'am',
+      'force-stop',
+      'eu.qwky.trinity',
+    ]);
+    expect(f.calls).toContainEqual([
+      '/sdk/platform-tools/adb',
+      '-s',
+      'emulator-5556',
+      'shell',
+      'am',
+      'force-stop',
+      'eu.qwky.trinity.secondary',
+    ]);
+    expect(f.calls).toContainEqual([
+      '/sdk/platform-tools/adb',
+      '-s',
+      'emulator-5556',
+      'reverse',
+      'tcp:8448',
+      'tcp:9448',
+    ]);
+  });
+
   it('bounds unresponsive ADB diagnostics before terminating the emulator', async () => {
     const f = fixture();
     const commands = {
@@ -170,6 +274,109 @@ describe('Maestro device ownership', () => {
     await device.close();
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(f.closed()).toBe(1);
+  });
+
+  it('redacts secret variables from JSON and text artifacts without changing PNG bytes', async () => {
+    const f = fixture();
+    const output = join(f.options.artifactDirectory, 'redaction');
+    const password = 'quoted "secret"\\value';
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+    mkdirSync(output, { recursive: true });
+    writeFileSync(
+      join(output, 'commands.json'),
+      JSON.stringify({
+        defineVariablesCommand: { env: { PASSWORD: password } },
+        evaluatedCommand: { env: { PASSWORD: password } },
+      }),
+    );
+    writeFileSync(join(output, 'maestro.log'), `login started: ${password}\n`);
+    writeFileSync(join(output, 'screenshot.png'), png);
+
+    await redactMaestroArtifacts(output, {
+      PASSWORD: password,
+      HOMESERVER: 'https://example.test',
+    });
+
+    const commands = JSON.parse(
+      readFileSync(join(output, 'commands.json'), 'utf8'),
+    );
+    expect(commands.defineVariablesCommand.env.PASSWORD).toBe('[REDACTED]');
+    expect(commands.evaluatedCommand.env.PASSWORD).toBe('[REDACTED]');
+    expect(readFileSync(join(output, 'maestro.log'), 'utf8')).toBe(
+      'login started: [REDACTED]\n',
+    );
+    expect(readFileSync(join(output, 'screenshot.png'))).toEqual(png);
+  });
+
+  it('keeps raw artifacts private when redaction fails', async () => {
+    const f = fixture();
+    configureMaestro(f, { failScrub: true });
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await expect(
+      device.runFlow('/flows/login.yaml', { PASSWORD: 'scrub-secret' }),
+    ).rejects.toThrow('redaction failed');
+    expect(
+      readdirSync(f.options.artifactDirectory).filter((name) =>
+        name.startsWith('login-'),
+      ),
+    ).toHaveLength(0);
+    expect(
+      statSync(join(f.options.workspaceRoot, 'dist/maestro-private')).mode &
+        0o777,
+    ).toBe(0o700);
+    expect(
+      readFileSync(join(privateArtifacts(f), 'commands.json'), 'utf8'),
+    ).toContain('scrub-secret');
+    await device.close();
+  });
+
+  it('publishes redacted reports before reporting a failed Maestro command', async () => {
+    const f = fixture();
+    configureMaestro(f, { exitCode: 7 });
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await expect(
+      device.runFlow('/flows/login.yaml', { PASSWORD: 'command-secret' }),
+    ).rejects.toThrow('failed (7)');
+    const [output] = readdirSync(f.options.artifactDirectory);
+    const commands = readFileSync(
+      join(f.options.artifactDirectory, output, 'commands.json'),
+      'utf8',
+    );
+    expect(commands).not.toContain('command-secret');
+    expect(commands).toContain('[REDACTED]');
+    await device.close();
+  });
+
+  it('keeps cancelled command output private when scrubbing fails', async () => {
+    const f = fixture();
+    configureMaestro(f, { failScrub: true, sleepMs: 5_000 });
+    const controller = new AbortController();
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554', signal: controller.signal },
+      f.commands,
+    );
+    const run = device.runFlow('/flows/login.yaml', {
+      PASSWORD: 'cancel-secret',
+    });
+    const privateCommands = await waitForPrivateCommands(f);
+    controller.abort(new Error('test cancellation'));
+
+    await expect(run).rejects.toThrow('redaction failed');
+    expect(
+      readdirSync(f.options.artifactDirectory).filter((name) =>
+        name.startsWith('login-'),
+      ),
+    ).toHaveLength(0);
+    expect(readFileSync(privateCommands, 'utf8')).toContain('cancel-secret');
+    await device.close();
   });
 
   it('fails a boot deadline and releases the same serial for the next run', async () => {

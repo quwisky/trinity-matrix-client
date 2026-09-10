@@ -144,6 +144,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.installed-webview'],
   },
   {
+    name: 'e2e:android:critical',
+    command: 'nx run trinity-e2e-android:critical-journeys',
+    kind: 'canonical',
+    suiteIds: ['android.critical-journeys'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -332,6 +338,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:runner-smoke',
     tier: 'pull-request',
     suiteIds: ['runner.android'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'critical-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:critical-journeys; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.critical-journeys'],
   },
   {
     command: 'pnpm e2e:scheduled',

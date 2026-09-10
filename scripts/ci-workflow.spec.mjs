@@ -1,4 +1,5 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -24,6 +25,7 @@ describe('CI execution contract', () => {
     expect(workflow.jobs['android-e2e'].strategy.matrix.shard).toEqual([
       1, 2, 3, 4,
     ]);
+    expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(100);
   });
 
   it('keeps the docs gate limited to formatting and source contracts', () => {
@@ -42,7 +44,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(11);
+    expect(uploads.length).toBe(12);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -50,11 +52,18 @@ describe('CI execution contract', () => {
     expect(
       uploads.filter((step) => step.with.surface === 'android-runner-smoke'),
     ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-critical-journeys',
+      ),
+    ).toHaveLength(1);
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
           ? /!cancelled\(\).*outputs\.smoke-started == 'true'/
-          : /!cancelled\(\).*outputs\.started == 'true'/;
+          : step.with.surface === 'android-critical-journeys'
+            ? /!cancelled\(\).*outputs\.critical-started == 'true'/
+            : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -107,5 +116,21 @@ describe('CI execution contract', () => {
           !step.with.path.includes('.gradle'),
       ),
     ).toBe(true);
+  });
+
+  it('keeps emulator-runner script commands valid as standalone shell lines', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
+
+    expect(lines).toHaveLength(5);
+    for (const line of lines) {
+      expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { closeSync, openSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,6 +23,60 @@ import {
 
 const executeFile = promisify(execFile);
 const applicationId = 'eu.qwky.trinity';
+type MaestroApplicationId = 'eu.qwky.trinity' | 'eu.qwky.trinity.secondary';
+
+const textArtifactExtensions = new Set([
+  '.json',
+  '.jsonl',
+  '.log',
+  '.txt',
+  '.xml',
+]);
+const redactedSecret = '[REDACTED]';
+
+const secretValues = (
+  variables: Readonly<Record<string, string>>,
+): readonly string[] =>
+  [
+    ...new Set(
+      Object.entries(variables)
+        .filter(([key, value]) => /password|secret|token/iu.test(key) && value)
+        .flatMap(([, value]) => {
+          const escaped = JSON.stringify(value);
+          return escaped ? [value, escaped.slice(1, -1)] : [value];
+        }),
+    ),
+  ].sort((left, right) => right.length - left.length);
+
+const redactText = (text: string, secrets: readonly string[]): string =>
+  secrets.reduce(
+    (redacted, secret) => redacted.replaceAll(secret, redactedSecret),
+    text,
+  );
+
+/** Redact supplied secret flow variables from Maestro's text diagnostics. */
+export async function redactMaestroArtifacts(
+  directory: string,
+  variables: Readonly<Record<string, string>>,
+): Promise<void> {
+  const secrets = secretValues(variables);
+  if (!secrets.length) return;
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const file = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await redactMaestroArtifacts(file, variables);
+      continue;
+    }
+    if (!entry.isFile())
+      throw new Error(`Cannot redact non-file Maestro artifact: ${entry.name}`);
+    if (!textArtifactExtensions.has(file.slice(file.lastIndexOf('.'))))
+      continue;
+    const text = await readFile(file, 'utf8');
+    const redacted = redactText(text, secrets);
+    if (redacted !== text) await writeFile(file, redacted, 'utf8');
+  }
+}
 
 export interface EmulatorProcess {
   assertRunning(): void;
@@ -124,7 +178,7 @@ export interface MaestroDevice {
   readonly artifactDirectory: string;
   adb(...args: string[]): Promise<string>;
   removeForward(local: string): Promise<void>;
-  install(apk: string): Promise<void>;
+  install(apk: string, applicationId?: MaestroApplicationId): Promise<void>;
   launch(): Promise<void>;
   runFlow(
     file: string,
@@ -154,7 +208,7 @@ export async function openMaestroDevice(
   let serial = options.serial ?? '';
   let processLease: EmulatorProcess | undefined;
   let lock: ProcessLock | undefined;
-  let installed = false;
+  const installedApplicationIds = new Set<MaestroApplicationId>();
   const reverses: Array<{ local: string; previous: string | undefined }> = [];
   let closing: Promise<void> | undefined;
   const rawAdb = (...args: string[]): Promise<string> =>
@@ -184,10 +238,14 @@ export async function openMaestroDevice(
             (error: unknown) => failures.push(error),
           );
         }
-        if (installed)
-          await rawAdb('shell', 'am', 'force-stop', applicationId).catch(
-            (error: unknown) => failures.push(error),
-          );
+        for (const installedApplicationId of installedApplicationIds) {
+          await rawAdb(
+            'shell',
+            'am',
+            'force-stop',
+            installedApplicationId,
+          ).catch((error: unknown) => failures.push(error));
+        }
         for (const { local, previous } of [...reverses].reverse()) {
           try {
             if (previous) await rawAdb('reverse', local, previous);
@@ -301,8 +359,8 @@ export async function openMaestroDevice(
       async removeForward(local) {
         await rawAdb('forward', '--remove', local);
       },
-      async install(apk) {
-        installed = true;
+      async install(apk, installedApplicationId = applicationId) {
+        installedApplicationIds.add(installedApplicationId);
         await adb('install', '-r', '-t', apk);
       },
       async launch() {
@@ -319,43 +377,89 @@ export async function openMaestroDevice(
           options.artifactDirectory,
           `${basename(file, '.yaml')}-${randomUUID()}`,
         );
-        await mkdir(output, { recursive: true });
-        const descriptor = openSync(join(output, 'maestro.log'), 'w');
+        const privateOutput = join(
+          options.workspaceRoot,
+          'dist/maestro-private',
+          randomUUID(),
+        );
+        await mkdir(privateOutput, { recursive: true, mode: 0o700 });
+        const descriptor = openSync(join(privateOutput, 'maestro.log'), 'w');
+        let commandStatus: number | string | undefined;
+        let descriptorFailure: unknown;
         try {
-          const result = await runManagedCommand(
-            environment['MAESTRO_CLI'] ?? 'maestro',
-            [
-              '--device',
-              serial,
-              'test',
-              '--test-output-dir',
-              output,
-              '--format',
-              'JUNIT',
-              '--output',
-              join(output, 'junit.xml'),
-              ...Object.entries(variables).flatMap(([key, value]) => [
-                '-e',
-                `${key}=${value}`,
-              ]),
-              file,
-            ],
-            {
-              cwd: options.workspaceRoot,
-              environment,
-              signal: options.signal,
-              timeout: 300_000,
-              stdio: ['ignore', descriptor, descriptor],
-            },
-          );
-          if (result.status !== 0)
-            throw new Error(
-              `Maestro ${basename(file)} failed (${result.status}); diagnostics: ${output}`,
-              { cause: result.error },
+          try {
+            const result = await runManagedCommand(
+              environment['MAESTRO_CLI'] ?? 'maestro',
+              [
+                '--device',
+                serial,
+                'test',
+                '--test-output-dir',
+                privateOutput,
+                '--format',
+                'JUNIT',
+                '--output',
+                join(privateOutput, 'junit.xml'),
+                ...Object.entries(variables).flatMap(([key, value]) => [
+                  '-e',
+                  `${key}=${value}`,
+                ]),
+                file,
+              ],
+              {
+                cwd: options.workspaceRoot,
+                environment,
+                signal: options.signal,
+                timeout: 300_000,
+                stdio: ['ignore', descriptor, descriptor],
+              },
             );
+            if (result.status !== 0) commandStatus = result.status ?? 'unknown';
+          } catch {
+            commandStatus = 'unknown';
+          }
         } finally {
-          closeSync(descriptor);
+          try {
+            closeSync(descriptor);
+          } catch (error) {
+            descriptorFailure = error;
+          }
         }
+        let redactionFailure = false;
+        try {
+          await redactMaestroArtifacts(privateOutput, variables);
+        } catch {
+          redactionFailure = true;
+        }
+        const commandFailure =
+          commandStatus !== undefined || descriptorFailure
+            ? new Error(
+                `Maestro ${basename(file)} failed (${commandStatus ?? 'output cleanup'}); diagnostics remain private`,
+              )
+            : undefined;
+        if (redactionFailure) {
+          const scrubFailure = new Error(
+            'Maestro diagnostics redaction failed',
+          );
+          if (commandFailure)
+            throw new AggregateError(
+              [commandFailure, scrubFailure],
+              `Maestro ${basename(file)} failed and diagnostics redaction failed`,
+            );
+          throw scrubFailure;
+        }
+        await mkdir(options.artifactDirectory, { recursive: true });
+        try {
+          await rename(privateOutput, output);
+        } catch {
+          throw new Error(
+            `Maestro ${basename(file)} diagnostics could not be published`,
+          );
+        }
+        if (commandFailure)
+          throw new Error(
+            `Maestro ${basename(file)} failed (${commandStatus ?? 'output cleanup'}); diagnostics: ${output}`,
+          );
       },
     };
   } catch (error) {
