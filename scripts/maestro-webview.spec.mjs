@@ -4,6 +4,7 @@ import { openMaestroWebview } from '../e2e/android/maestro-webview.mts';
 const descriptor = (overrides = {}) => ({
   id: '06A8',
   type: 'page',
+  title: 'Trinity',
   url: 'https://localhost/login',
   description: JSON.stringify({
     attached: true,
@@ -240,6 +241,42 @@ describe('Maestro WebView attachment', () => {
       await webview.close();
     }
   });
+
+  it.each(['', 'localhost'])(
+    'waits for the app document after a non-empty startup target titled %j',
+    async (title) => {
+      const f = fixture();
+      const startup = descriptor({
+        title,
+        url: 'https://localhost/',
+        webSocketDebuggerUrl: 'ws://127.0.0.1:4711/devtools/page/startup',
+      });
+      const ready = descriptor({ url: 'https://localhost/rooms' });
+      const connections = [];
+      let polls = 0;
+      const webview = await openMaestroWebview(f.device, {
+        pollIntervalMs: 0,
+        fetch: async () => ({
+          json: async () => [polls++ === 0 ? startup : ready],
+        }),
+        connect: async (endpoint) => {
+          connections.push(endpoint);
+          return f.diagnostics;
+        },
+      });
+      try {
+        expect(connections).toEqual([ready.webSocketDebuggerUrl]);
+        expect(polls).toBe(2);
+        expect(f.calls).toContainEqual([
+          'send',
+          'Security.setIgnoreCertificateErrors',
+          { ignore: true },
+        ]);
+      } finally {
+        await webview.close();
+      }
+    },
+  );
 
   it('cancels a pending connection and removes the owned forward', async () => {
     const controller = new AbortController();
