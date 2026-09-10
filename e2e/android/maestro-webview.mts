@@ -333,6 +333,13 @@ export async function openMaestroWebview(
       readinessSignal,
       () => undefined,
     );
+    // Chromium consults browser TLS handlers only for pages with agent hosts.
+    // Discovery creates them for both current and subsequently recreated WebViews.
+    await abortable(
+      browser.send('Target.setDiscoverTargets', { discover: true }),
+      readinessSignal,
+      () => undefined,
+    );
 
     const operationTimeoutMs = 5_000;
     const readPageOnce = async (

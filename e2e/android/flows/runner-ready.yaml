@@ -1,5 +1,5 @@
 appId: eu.qwky.trinity
-androidWebViewHierarchy: devtools
+# Keep readiness native so the TLS fixture cannot rely on earlier page inspection.
 ---
 - extendedWaitUntil:
     visible:

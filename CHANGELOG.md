@@ -1215,6 +1215,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Keep Android test-server TLS handling active before page inspection and across
+  WebView recreation, preventing false certificate failures in native login smoke tests.
+
 - Older-history loading indicators preserve the reader's latest timeline position even
   when the browser has not yet delivered its scroll event.
 
