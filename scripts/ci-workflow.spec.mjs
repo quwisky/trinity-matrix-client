@@ -47,9 +47,20 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(8);
+    expect(uploads.length).toBe(11);
+    const uploadIdentities = uploads.map((step) =>
+      [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
+    );
+    expect(new Set(uploadIdentities).size).toBe(uploads.length);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-runner-smoke'),
+    ).toHaveLength(1);
     for (const step of uploads) {
-      expect(step.if).toMatch(/!cancelled\(\).*outputs.started == 'true'/);
+      const gate =
+        step.with.surface === 'android-runner-smoke'
+          ? /!cancelled\(\).*outputs\.smoke-started == 'true'/
+          : /!cancelled\(\).*outputs\.started == 'true'/;
+      expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
     }

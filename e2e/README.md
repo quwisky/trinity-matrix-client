@@ -22,6 +22,9 @@ result proves.
 | Live login discovery smoke                                  | `pnpm smoke:login`                                       |
 | Installed Android WebView behavior                          | `pnpm e2e:android`                                       |
 | Launched Electron shell behavior                            | `pnpm electron:e2e`                                      |
+| Node runner Chromium smoke                                  | `pnpm e2e:runner:chromium`                               |
+| Node runner Electron smoke                                  | `pnpm e2e:runner:electron`                               |
+| Node runner Android/Maestro smoke                           | `pnpm e2e:runner:android`                                |
 
 Install browser binaries before a browser suite:
 
@@ -35,6 +38,10 @@ Check its prerequisites. Docker is required by Synapse-backed suites. Android re
 dedicated API 36 x86_64 emulator and its SDK; Electron needs its separately installed
 shell dependencies and a display; iOS needs macOS and Xcode but has no installed-WebView
 Playwright runner. The aggregate preflights selected suites.
+
+The additive Node runner smoke checks and their pinned prerequisites are documented in
+the [Node runners guide](support/NODE-RUNNERS.md). Existing Playwright targets remain the
+owners of the migrated suites during this coexistence period.
 
 The disposable Synapse stack uses fixed ports and shared state. Run Synapse-backed commands
 sequentially, never in parallel. Lifecycle targets and aggregates are uncached and serialized;

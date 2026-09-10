@@ -43,6 +43,9 @@
     "e2e:search": "node scripts/nx.mjs run trinity-e2e-protocol:search",
     "e2e:emoji": "node scripts/nx.mjs run trinity-e2e-protocol:emoji",
     "e2e:android": "node scripts/nx.mjs run trinity-e2e:e2e-android",
+    "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
+    "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
+    "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",
     "e2e:ui:shipped": "node scripts/nx.mjs run trinity-e2e-web:production-renderer",
     "bundle:manifest:write": "node scripts/web-bundle-manifest.mjs write www",
     "bundle:manifest:verify": "node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json electron/www && node scripts/web-bundle-manifest.mjs verify-with-extras dist/web-bundle-manifest.json android/app/src/main/assets/public cordova.js cordova_plugins.js",
@@ -206,6 +209,7 @@
     "typescript-eslint": "^8.65.0",
     "vite": "^8.2.0",
     "vitest": "4.1.11",
+    "webdriverio": "9.31.7",
     "yaml": "^2.9.0"
   },
   "description": "Trinity — a cross-platform Matrix client with end-to-end encryption (Angular, spartan.ng, Capacitor, Electron)"
