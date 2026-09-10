@@ -54,6 +54,9 @@ describe('Node test fixtures', () => {
       ),
     ).rejects.toThrow('caller cancelled');
     expect(observedSignal).toBeDefined();
+    if (observedSignal === undefined) {
+      throw new Error('withNodeTestResources did not expose a signal');
+    }
     expect(observedSignal.aborted).toBe(true);
     expect(cleaned).toBe(true);
   });
