@@ -75,7 +75,7 @@ describe('E2E runner boundaries', () => {
                   nonce: 'nonce-node-1234',
                   createdAt: new Date().toISOString(),
                 },
-                resources: options.resources ?? [],
+                resources: options?.resources ?? [],
                 endpoints: {
                   application: 'http://127.0.0.1:10001/',
                   storybook: 'http://127.0.0.1:10002/',
