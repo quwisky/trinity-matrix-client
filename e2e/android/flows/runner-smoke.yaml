@@ -1,5 +1,4 @@
 appId: eu.qwky.trinity
-androidWebViewHierarchy: devtools
 ---
 - extendedWaitUntil:
     visible:

@@ -1,3 +1,5 @@
+import WebSocket from 'ws';
+
 /** A single owned Chrome DevTools Protocol connection. */
 export interface DevtoolsConnection {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
@@ -23,8 +25,8 @@ function asError(reason: unknown, fallback: string): Error {
 
 /**
  * Connect to a CDP websocket without leaving requests pending when a host dies.
- * Node 24's global WebSocket is deliberately used so this helper has no second
- * websocket implementation or browser dependency.
+ * The ws client is used so owned diagnostic sockets can be forcefully
+ * terminated when a peer ignores the close handshake.
  */
 export async function openDevtoolsConnection(
   url: string,
@@ -54,7 +56,7 @@ export async function openDevtoolsConnection(
     closed = true;
     signal?.removeEventListener('abort', onAbort);
     rejectPending(reason);
-    socket.close();
+    socket.terminate();
   };
 
   socket.addEventListener('message', (event) => {
