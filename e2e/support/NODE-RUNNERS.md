@@ -13,7 +13,8 @@ pnpm e2e:runner:electron
 pnpm e2e:runner:android
 ```
 
-Install the pinned external tools into ignored `dist/.ci/runner-tools/` as needed:
+Install the pinned external tools into ignored `dist/runner-tools/` as needed.
+Keep downloaded binaries outside `dist/.ci/`, which CI uploads with diagnostics:
 
 ```bash
 node scripts/ci-runner-prerequisites.mjs chromium
@@ -25,10 +26,10 @@ The installer verifies Chrome and ChromeDriver `153.0.8010.36`, Electron ChromeD
 `150.0.7871.129`, and Maestro `2.10.0`. Locally, export the resulting paths explicitly:
 
 ```bash
-export TRINITY_CHROME_BINARY="$PWD/dist/.ci/runner-tools/chrome-linux64/chrome"
-export TRINITY_CHROMEDRIVER_BINARY="$PWD/dist/.ci/runner-tools/chromedriver-linux64/chromedriver"
-export TRINITY_ELECTRON_CHROMEDRIVER_BINARY="$PWD/dist/.ci/runner-tools/electron-chromedriver/chromedriver-linux64/chromedriver"
-export MAESTRO_CLI="$PWD/dist/.ci/runner-tools/maestro/maestro/bin/maestro"
+export TRINITY_CHROME_BINARY="$PWD/dist/runner-tools/chrome-linux64/chrome"
+export TRINITY_CHROMEDRIVER_BINARY="$PWD/dist/runner-tools/chromedriver-linux64/chromedriver"
+export TRINITY_ELECTRON_CHROMEDRIVER_BINARY="$PWD/dist/runner-tools/electron-chromedriver/chromedriver-linux64/chromedriver"
+export MAESTRO_CLI="$PWD/dist/runner-tools/maestro/maestro/bin/maestro"
 ```
 
 In GitHub Actions, the installer writes the applicable paths to `GITHUB_ENV`. Android also

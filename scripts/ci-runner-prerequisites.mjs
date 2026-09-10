@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 
 const exec = promisify(execFile);
 const root = resolve(import.meta.dirname, '..');
-const toolRoot = join(root, 'dist/.ci/runner-tools');
+const toolRoot = join(root, 'dist/runner-tools');
 const chromeVersion = '153.0.8010.36';
 const electronDriverVersion = '150.0.7871.129';
 const maestroVersion = '2.10.0';
