@@ -33,6 +33,7 @@ interface DevtoolsTarget {
 }
 
 function parseDescription(value: unknown): {
+  readonly attached?: unknown;
   readonly visible?: unknown;
   readonly empty?: unknown;
 } {
@@ -40,14 +41,22 @@ function parseDescription(value: unknown): {
     try {
       const parsed: unknown = JSON.parse(value);
       return typeof parsed === 'object' && parsed !== null
-        ? (parsed as { readonly visible?: unknown; readonly empty?: unknown })
+        ? (parsed as {
+            readonly attached?: unknown;
+            readonly visible?: unknown;
+            readonly empty?: unknown;
+          })
         : {};
     } catch {
       return {};
     }
   }
   return typeof value === 'object' && value !== null
-    ? (value as { readonly visible?: unknown; readonly empty?: unknown })
+    ? (value as {
+        readonly attached?: unknown;
+        readonly visible?: unknown;
+        readonly empty?: unknown;
+      })
     : {};
 }
 
@@ -67,16 +76,16 @@ function selectTarget(value: unknown): DevtoolsTarget | undefined {
       target.type === 'page' &&
       typeof target.url === 'string' &&
       target.url.startsWith('https://localhost/') &&
-      description.visible === true &&
       description.empty === false &&
-      // Even a laid-out startup document can be replaced on initial navigation.
-      // Bind the test TLS exception only after the app HTML has loaded.
+      // A backgrounded WebView is still the current app page. `attached` is
+      // the lifecycle signal that distinguishes it from a stale descriptor.
+      description.attached === true &&
       target.title === 'Trinity'
     );
   });
   if (candidates.length > 1) {
     throw new Error(
-      `Expected one visible Trinity WebView target; found ${candidates.length}`,
+      `Expected one attached Trinity WebView target; found ${candidates.length}`,
     );
   }
   return candidates[0];
@@ -85,9 +94,22 @@ function selectTarget(value: unknown): DevtoolsTarget | undefined {
 function websocketEndpoint(
   target: DevtoolsTarget | undefined,
 ): string | undefined {
-  return typeof target?.webSocketDebuggerUrl === 'string'
-    ? target.webSocketDebuggerUrl
-    : undefined;
+  if (typeof target?.webSocketDebuggerUrl !== 'string') return undefined;
+  try {
+    const endpoint = new URL(target.webSocketDebuggerUrl);
+    return endpoint.protocol === 'ws:' || endpoint.protocol === 'wss:'
+      ? target.webSocketDebuggerUrl
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function browserEndpoint(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  return websocketEndpoint(
+    value as { readonly webSocketDebuggerUrl?: unknown },
+  );
 }
 
 function abortError(signal: AbortSignal): Error {
@@ -161,7 +183,8 @@ export async function openMaestroWebview(
     AbortSignal.timeout(options.readinessTimeoutMs ?? 30_000),
   ]);
   let port: string | undefined;
-  let diagnostics: DevtoolsConnection | undefined;
+  let browser: DevtoolsConnection | undefined;
+  const pages = new Set<DevtoolsConnection>();
   let closing: Promise<void> | undefined;
   let forwarding: Promise<void> | undefined;
   const deadline = Date.now() + (options.readinessTimeoutMs ?? 30_000);
@@ -174,8 +197,16 @@ export async function openMaestroWebview(
     (closing ??= (async () => {
       attachController.abort(new Error('Android WebView closed during attach'));
       const failures: unknown[] = [];
+      for (const page of pages) {
+        try {
+          page.close(abortError(signal));
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      pages.clear();
       try {
-        diagnostics?.close();
+        browser?.close(abortError(signal));
       } catch (error) {
         failures.push(error);
       }
@@ -260,10 +291,10 @@ export async function openMaestroWebview(
     let endpoint: string | undefined;
     let lastReadError: unknown;
     while (Date.now() < deadline && !endpoint) {
-      let targets: unknown;
+      let version: unknown;
       try {
-        targets = await abortable(
-          fetchJson(`http://127.0.0.1:${port}/json`, {
+        version = await abortable(
+          fetchJson(`http://127.0.0.1:${port}/json/version`, {
             signal: readinessSignal,
           }).then((response) => response.json()),
           readinessSignal,
@@ -273,7 +304,7 @@ export async function openMaestroWebview(
         readinessSignal.throwIfAborted();
         lastReadError = error;
       }
-      endpoint = websocketEndpoint(selectTarget(targets));
+      endpoint = browserEndpoint(version);
       if (!endpoint)
         await delay(
           Math.min(
@@ -286,21 +317,115 @@ export async function openMaestroWebview(
     }
     assert(
       endpoint,
-      `Android WebView did not publish a visible DevTools target: ${String(lastReadError ?? 'no matching page')}`,
+      `Android WebView did not publish a browser DevTools endpoint: ${String(lastReadError ?? 'no endpoint')}`,
     );
-    diagnostics = await abortable(
+    browser = await abortable(
       connect(endpoint, { signal, timeoutMs: 5_000 }),
       readinessSignal,
       (lateConnection) => lateConnection.close(abortError(signal)),
     );
-    // Keep the owned Synapse TLS exception live through native login/callback exchange.
+    // Boot/theme updates can recreate the Activity and WebView in the same
+    // process. Keep the test TLS exception on that process's browser session.
     await abortable(
-      diagnostics.send('Security.setIgnoreCertificateErrors', {
+      browser.send('Security.setIgnoreCertificateErrors', {
         ignore: true,
       }),
       readinessSignal,
       () => undefined,
     );
+
+    const operationTimeoutMs = 5_000;
+    const readPageOnce = async (
+      operationSignal: AbortSignal,
+    ): Promise<DevtoolsTarget | undefined> => {
+      const response = await abortable(
+        fetchJson(`http://127.0.0.1:${port}/json`, {
+          signal: operationSignal,
+        }).then((result) => result.json()),
+        operationSignal,
+        () => undefined,
+      );
+      return selectTarget(response);
+    };
+    const readPage = async (
+      operationSignal: AbortSignal,
+    ): Promise<DevtoolsTarget> => {
+      while (!operationSignal.aborted) {
+        const target = await readPageOnce(operationSignal);
+        if (target) return target;
+        await delay(Math.min(options.pollIntervalMs ?? 100, 100), undefined, {
+          signal: operationSignal,
+        });
+      }
+      throw abortError(operationSignal);
+    };
+    const send = async (
+      method: string,
+      params: Record<string, unknown> = {},
+    ): Promise<unknown> => {
+      const operationSignal = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(operationTimeoutMs),
+      ]);
+      operationSignal.throwIfAborted();
+      const target = await readPage(operationSignal);
+      let page: DevtoolsConnection | undefined;
+      try {
+        const initialEndpoint = websocketEndpoint(target);
+        assert(
+          initialEndpoint,
+          'Current Trinity WebView target has no endpoint',
+        );
+        try {
+          page = await abortable(
+            connect(initialEndpoint, {
+              signal: operationSignal,
+              timeoutMs: 5_000,
+            }),
+            operationSignal,
+            (lateConnection) =>
+              lateConnection.close(abortError(operationSignal)),
+          );
+        } catch (error) {
+          // A recreation can replace the target after enumeration. Only retry
+          // when a fresh observation proves that exact endpoint is gone.
+          let replacement = await readPageOnce(operationSignal);
+          let replacementEndpoint = websocketEndpoint(replacement);
+          if (replacementEndpoint === initialEndpoint) throw error;
+          while (!replacementEndpoint && !operationSignal.aborted) {
+            await delay(
+              Math.min(options.pollIntervalMs ?? 100, 100),
+              undefined,
+              {
+                signal: operationSignal,
+              },
+            );
+            replacement = await readPageOnce(operationSignal);
+            replacementEndpoint = websocketEndpoint(replacement);
+            if (replacementEndpoint === initialEndpoint) throw error;
+          }
+          if (!replacementEndpoint) throw error;
+          page = await abortable(
+            connect(replacementEndpoint, {
+              signal: operationSignal,
+              timeoutMs: 5_000,
+            }),
+            operationSignal,
+            (lateConnection) =>
+              lateConnection.close(abortError(operationSignal)),
+          );
+        }
+        pages.add(page);
+        // Calling send marks the command dispatched; never replay after this.
+        return await page.send(method, params);
+      } finally {
+        if (page) {
+          pages.delete(page);
+          page.close(abortError(operationSignal));
+        }
+      }
+    };
+    const diagnostics: DevtoolsConnection = { send, close };
     return { pid, diagnostics, close };
   } catch (error) {
     try {
