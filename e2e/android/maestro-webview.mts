@@ -26,6 +26,7 @@ export interface MaestroWebviewOptions {
 
 interface DevtoolsTarget {
   readonly type?: unknown;
+  readonly title?: unknown;
   readonly url?: unknown;
   readonly description?: unknown;
   readonly webSocketDebuggerUrl?: unknown;
@@ -67,9 +68,10 @@ function selectTarget(value: unknown): DevtoolsTarget | undefined {
       typeof target.url === 'string' &&
       target.url.startsWith('https://localhost/') &&
       description.visible === true &&
-      // Startup can publish an empty target that is replaced before login.
-      // Its CDP session (including the test TLS exception) dies with it.
-      description.empty === false
+      description.empty === false &&
+      // Even a laid-out startup document can be replaced on initial navigation.
+      // Bind the test TLS exception only after the app HTML has loaded.
+      target.title === 'Trinity'
     );
   });
   if (candidates.length > 1) {
