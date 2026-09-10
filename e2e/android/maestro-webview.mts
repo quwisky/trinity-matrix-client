@@ -31,19 +31,22 @@ interface DevtoolsTarget {
   readonly webSocketDebuggerUrl?: unknown;
 }
 
-function parseDescription(value: unknown): { readonly visible?: unknown } {
+function parseDescription(value: unknown): {
+  readonly visible?: unknown;
+  readonly empty?: unknown;
+} {
   if (typeof value === 'string') {
     try {
       const parsed: unknown = JSON.parse(value);
       return typeof parsed === 'object' && parsed !== null
-        ? (parsed as { readonly visible?: unknown })
+        ? (parsed as { readonly visible?: unknown; readonly empty?: unknown })
         : {};
     } catch {
       return {};
     }
   }
   return typeof value === 'object' && value !== null
-    ? (value as { readonly visible?: unknown })
+    ? (value as { readonly visible?: unknown; readonly empty?: unknown })
     : {};
 }
 
@@ -63,7 +66,10 @@ function selectTarget(value: unknown): DevtoolsTarget | undefined {
       target.type === 'page' &&
       typeof target.url === 'string' &&
       target.url.startsWith('https://localhost/') &&
-      description.visible === true
+      description.visible === true &&
+      // Startup can publish an empty target that is replaced before login.
+      // Its CDP session (including the test TLS exception) dies with it.
+      description.empty === false
     );
   });
   if (candidates.length > 1) {

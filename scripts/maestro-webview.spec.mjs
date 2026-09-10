@@ -208,6 +208,39 @@ describe('Maestro WebView attachment', () => {
     expect(ambiguous.calls).toContainEqual(['removeForward', 'tcp:4711']);
   });
 
+  it('waits for the non-empty replacement before binding the TLS exception', async () => {
+    const f = fixture();
+    const startup = descriptor({
+      url: 'https://localhost/',
+      description: JSON.stringify({ visible: true, empty: true }),
+      webSocketDebuggerUrl: 'ws://127.0.0.1:4711/devtools/page/startup',
+    });
+    const ready = descriptor();
+    const connections = [];
+    let polls = 0;
+    const webview = await openMaestroWebview(f.device, {
+      pollIntervalMs: 0,
+      fetch: async () => ({
+        json: async () => [polls++ === 0 ? startup : ready],
+      }),
+      connect: async (endpoint) => {
+        connections.push(endpoint);
+        return f.diagnostics;
+      },
+    });
+    try {
+      expect(connections).toEqual([ready.webSocketDebuggerUrl]);
+      expect(polls).toBe(2);
+      expect(f.calls).toContainEqual([
+        'send',
+        'Security.setIgnoreCertificateErrors',
+        { ignore: true },
+      ]);
+    } finally {
+      await webview.close();
+    }
+  });
+
   it('cancels a pending connection and removes the owned forward', async () => {
     const controller = new AbortController();
     const connected = Promise.withResolvers();
