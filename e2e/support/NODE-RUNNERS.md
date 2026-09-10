@@ -39,10 +39,11 @@ dependencies and a display or Xvfb.
 The Chromium smoke builds the development renderer. Electron and Android verify and reuse
 the production renderer manifest; they do not build a second production renderer. All three
 join disposable Synapse, and Android additionally owns the emulator resource. Android uses
-Maestro for native input and an owned CDP connection to the visible app WebView for
-diagnostics. Maestro first observes the login form before diagnostics attach; the
-initial debug socket alone does not establish that the app WebView is ready. The
-connection and ADB forward close on cancellation, including during startup.
+Maestro for native input. An owned process-level CDP connection permits the disposable
+Synapse certificate across Android activity recreation. Each diagnostic command connects
+to the current attached app WebView, including while backgrounded, and closes that page
+connection afterward. Dispatched commands are never replayed. Connections and the ADB
+forward close on cancellation, including during startup.
 Node tests run
 serially because their test namespace is process-global. Each suite uses an isolated test
 account and cleans up its host resources through the shared invocation lifecycle.

@@ -41,8 +41,7 @@ void test(
           'android.permission.POST_NOTIFICATIONS',
         );
         await device.launch();
-        // The initial debug socket can belong to a startup WebView. Observe
-        // the native login form before binding diagnostics and its TLS exception.
+        // Observe the native login form before starting the sign-in flow.
         await device.runFlow(
           join(session.workspaceRoot, 'e2e/android/flows/runner-ready.yaml'),
         );
