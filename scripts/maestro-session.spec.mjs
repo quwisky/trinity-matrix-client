@@ -19,6 +19,19 @@ import {
 } from '../e2e/android/maestro-session.mts';
 import { writeSession } from '../e2e/support/session.mts';
 
+const nativeSecret = 'synthetic-native-access-token';
+const nativeReadSecret = 'synthetic-native-read-token';
+const nativeLog =
+  'V/Capacitor: callback: 42, pluginId: SecureStorage, methodName: internalSetItem, methodData: ' +
+  JSON.stringify({
+    prefixedKey: 'fixture.accessToken:account',
+    data: JSON.stringify(nativeSecret),
+    sync: false,
+  }) +
+  '\nV/Capacitor/Console: File:  - Line 333 - Msg: ' +
+  JSON.stringify({ data: nativeReadSecret }) +
+  '\nI/Capacitor: App resumed\n';
+
 const directories = [];
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -106,10 +119,11 @@ import { symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const args = process.argv.slice(2);
 const output = args[args.indexOf('--test-output-dir') + 1];
-const password = args[args.findIndex((arg) => arg.startsWith('PASSWORD='))].slice('PASSWORD='.length);
+const password = args.find((arg) => arg.startsWith('PASSWORD='))?.slice('PASSWORD='.length) ?? '';
 writeFileSync(join(output, 'commands.json'), JSON.stringify({ defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
 writeFileSync(join(output, 'maestro.log'), 'login started: ' + password + '\\n');
 writeFileSync(join(output, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
+writeFileSync(join(output, 'device-logcat.txt'), ${JSON.stringify(nativeLog)});
 ${failScrub ? "symlinkSync('missing.json', join(output, 'broken.json'));" : ''}
 ${sleepMs ? `await new Promise((resolve) => setTimeout(resolve, ${sleepMs}));` : ''}
 process.exit(${exitCode});
@@ -306,6 +320,52 @@ describe('Maestro device ownership', () => {
       'login started: [REDACTED]\n',
     );
     expect(readFileSync(join(output, 'screenshot.png'))).toEqual(png);
+  });
+
+  it('redacts native secrets before publishing a flow without secret variables', async () => {
+    const f = fixture();
+    configureMaestro(f);
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await device.runFlow('/flows/read.yaml');
+    const [output] = readdirSync(f.options.artifactDirectory);
+    const log = readFileSync(
+      join(f.options.artifactDirectory, output, 'device-logcat.txt'),
+      'utf8',
+    );
+    expect(log).not.toContain(nativeSecret);
+    expect(log).not.toContain(nativeReadSecret);
+    expect(log).toContain('Msg: [REDACTED]');
+    expect(log).toContain('methodData: [REDACTED]');
+    expect(log).toContain('App resumed');
+    await device.close();
+  });
+
+  it('redacts native secrets in final device diagnostics', async () => {
+    const f = fixture();
+    const run = f.commands.run;
+    f.commands.run = async (command, args) => {
+      const result = await run(command, args);
+      return args.includes('logcat') ? nativeLog : result;
+    };
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await device.close();
+    const log = readFileSync(
+      join(f.options.artifactDirectory, 'logcat.txt'),
+      'utf8',
+    );
+    expect(log).not.toContain(nativeSecret);
+    expect(log).not.toContain(nativeReadSecret);
+    expect(log).toContain('Msg: [REDACTED]');
+    expect(log).toContain('methodData: [REDACTED]');
+    expect(log).toContain('App resumed');
   });
 
   it('keeps raw artifacts private when redaction fails', async () => {
