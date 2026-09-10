@@ -658,6 +658,29 @@ describe('E2E suite registry runner', () => {
     expect(failures).toEqual(['public network discovery is unavailable']);
   });
 
+  it('allows the complete Android account batch and cleanup within its registry budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.accounts-workspace',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:accounts-workspace'],
+      expect.objectContaining({
+        timeout: 5_100_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(
