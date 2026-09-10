@@ -54,13 +54,24 @@ const redactText = (text: string, secrets: readonly string[]): string =>
     text,
   );
 
-/** Redact supplied secret flow variables from Maestro's text diagnostics. */
+// The native bridge logs storage arguments and anonymous JSON responses.
+const redactNativeLog = (text: string): string =>
+  text
+    .replace(
+      /(\bpluginId:[ \t]*SecureStorage\b[^\r\n]*?\bmethodData:[ \t]*)[^\r\n]*/gu,
+      `$1${redactedSecret}`,
+    )
+    .replace(
+      /(\bCapacitor\/Console\b[^\r\n]*?\bFile:[ \t]*-[ \t]*Line[ \t]+\d+[ \t]*-[ \t]*Msg:[ \t]*)[\[{][^\r\n]*/gu,
+      `$1${redactedSecret}`,
+    );
+
+/** Redact flow secrets and native storage payloads before publication. */
 export async function redactMaestroArtifacts(
   directory: string,
   variables: Readonly<Record<string, string>>,
 ): Promise<void> {
   const secrets = secretValues(variables);
-  if (!secrets.length) return;
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     const file = join(directory, entry.name);
@@ -70,10 +81,15 @@ export async function redactMaestroArtifacts(
     }
     if (!entry.isFile())
       throw new Error(`Cannot redact non-file Maestro artifact: ${entry.name}`);
-    if (!textArtifactExtensions.has(file.slice(file.lastIndexOf('.'))))
-      continue;
+    const extension = file.slice(file.lastIndexOf('.'));
+    if (!textArtifactExtensions.has(extension)) continue;
     const text = await readFile(file, 'utf8');
-    const redacted = redactText(text, secrets);
+    const redacted = redactText(
+      extension === '.txt' || extension === '.log'
+        ? redactNativeLog(text)
+        : text,
+      secrets,
+    );
     if (redacted !== text) await writeFile(file, redacted, 'utf8');
   }
 }
@@ -234,9 +250,10 @@ export async function openMaestroDevice(
           const output = await rawAdb(...args).catch(
             (error: unknown) => `Diagnostic unavailable: ${String(error)}`,
           );
-          await writeFile(join(options.artifactDirectory, file), output).catch(
-            (error: unknown) => failures.push(error),
-          );
+          await writeFile(
+            join(options.artifactDirectory, file),
+            redactNativeLog(output),
+          ).catch((error: unknown) => failures.push(error));
         }
         for (const installedApplicationId of installedApplicationIds) {
           await rawAdb(
