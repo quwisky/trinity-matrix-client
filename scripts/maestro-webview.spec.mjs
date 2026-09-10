@@ -48,6 +48,120 @@ function fixture({ targets = [descriptor()], connect } = {}) {
 }
 
 describe('Maestro WebView attachment', () => {
+  it('waits through a transient missing process before attaching the ready target', async () => {
+    const f = fixture();
+    let pidReads = 0;
+    f.device.adb = async (...args) => {
+      f.calls.push(['adb', ...args]);
+      if (args[0] === 'shell' && pidReads++ === 0)
+        throw Object.assign(new Error('pidof'), {
+          code: 1,
+          stdout: '',
+          stderr: '',
+        });
+      if (args[0] === 'shell') return '4321';
+      return '4711';
+    };
+    const webview = await openMaestroWebview(f.device, {
+      pollIntervalMs: 0,
+      fetch: f.fetch,
+      connect: f.connect,
+    });
+    expect(webview.pid).toBe('4321');
+    expect(
+      f.calls.filter((call) => call[0] === 'adb' && call[2] === 'pidof'),
+    ).toHaveLength(2);
+    await webview.close();
+  });
+
+  it('propagates a non-readiness ADB failure from the process probe', async () => {
+    const f = fixture();
+    const failure = Object.assign(new Error('offline'), {
+      code: 1,
+      stdout: '',
+      stderr: 'error: device offline',
+    });
+    f.device.adb = async (...args) => {
+      f.calls.push(['adb', ...args]);
+      if (args[0] === 'shell') throw failure;
+      return '4711';
+    };
+    await expect(
+      openMaestroWebview(f.device, {
+        readinessTimeoutMs: 1_000,
+        fetch: f.fetch,
+        connect: f.connect,
+      }),
+    ).rejects.toBe(failure);
+    expect(f.calls).not.toContainEqual([
+      'adb',
+      'forward',
+      'tcp:0',
+      expect.any(String),
+    ]);
+  });
+
+  it('cancels a pending process probe without waiting for the probe to resolve', async () => {
+    const controller = new AbortController();
+    const probing = Promise.withResolvers();
+    const f = fixture();
+    f.device.adb = async (...args) => {
+      f.calls.push(['adb', ...args]);
+      if (args[0] === 'shell') return probing.promise;
+      return '4711';
+    };
+    const opening = openMaestroWebview(f.device, {
+      signal: controller.signal,
+      fetch: f.fetch,
+      connect: f.connect,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort(new Error('cancel process readiness'));
+    await expect(opening).rejects.toThrow('cancel process readiness');
+    probing.resolve('4321');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it('keeps the attached connection alive after readiness expires until close', async () => {
+    const f = fixture();
+    let connectionSignal;
+    const webview = await openMaestroWebview(f.device, {
+      readinessTimeoutMs: 20,
+      fetch: f.fetch,
+      connect: async (_endpoint, options) => {
+        connectionSignal = options.signal;
+        return f.diagnostics;
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(connectionSignal.aborted).toBe(false);
+    await webview.close();
+    expect(connectionSignal.aborted).toBe(true);
+  });
+
+  it('binds diagnostics to the explicitly selected secondary app process', async () => {
+    const f = fixture();
+    const webview = await openMaestroWebview(f.device, {
+      applicationId: 'eu.qwky.trinity.secondary',
+      fetch: f.fetch,
+      connect: f.connect,
+    });
+    expect(f.calls).toContainEqual([
+      'adb',
+      'shell',
+      'pidof',
+      'eu.qwky.trinity.secondary',
+    ]);
+    expect(f.calls).not.toContainEqual([
+      'adb',
+      'shell',
+      'pidof',
+      'eu.qwky.trinity',
+    ]);
+    await webview.close();
+    expect(f.calls).toContainEqual(['removeForward', 'tcp:4711']);
+  });
+
   it('selects a visible page descriptor and returns a raw CDP connection', async () => {
     const f = fixture();
     const webview = await openMaestroWebview(f.device, {

@@ -314,7 +314,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    timeout-minutes: 75
+    timeout-minutes: 100
     strategy:
       fail-fast: false
       matrix:
@@ -374,6 +374,7 @@ jobs:
           script: |
             echo 'smoke-started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'critical-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:critical-journeys; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
 
@@ -389,6 +390,12 @@ jobs:
           surface: android-runner-smoke
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/runner.android/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.critical-started == 'true' }}
+        with:
+          surface: android-critical-journeys
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.critical-journeys/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}

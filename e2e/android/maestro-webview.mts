@@ -7,11 +7,13 @@ import {
 import type { MaestroDevice } from './maestro-session.mts';
 
 export interface MaestroWebview {
+  readonly pid: string;
   readonly diagnostics: DevtoolsConnection;
   close(): Promise<void>;
 }
 
 export interface MaestroWebviewOptions {
+  readonly applicationId?: 'eu.qwky.trinity' | 'eu.qwky.trinity.secondary';
   readonly readinessTimeoutMs?: number;
   readonly pollIntervalMs?: number;
   readonly signal?: AbortSignal;
@@ -124,6 +126,18 @@ function abortable<T>(
   });
 }
 
+function isTransientMissingProcess(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 1 &&
+    'stdout' in error &&
+    error.stdout === '' &&
+    'stderr' in error &&
+    error.stderr === ''
+  );
+}
+
 /** Observe the installed WebView through raw CDP; Maestro remains native input owner. */
 export async function openMaestroWebview(
   device: MaestroDevice,
@@ -134,10 +148,15 @@ export async function openMaestroWebview(
     ? AbortSignal.any([options.signal, attachController.signal])
     : attachController.signal;
   signal.throwIfAborted();
+  const readinessSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(options.readinessTimeoutMs ?? 30_000),
+  ]);
   let port: string | undefined;
   let diagnostics: DevtoolsConnection | undefined;
   let closing: Promise<void> | undefined;
   let forwarding: Promise<void> | undefined;
+  const deadline = Date.now() + (options.readinessTimeoutMs ?? 30_000);
   const removeForward = async (): Promise<void> => {
     const allocated = port;
     port = undefined;
@@ -177,12 +196,38 @@ export async function openMaestroWebview(
     })());
 
   try {
-    const pid = (await device.adb('shell', 'pidof', 'eu.qwky.trinity')).trim();
+    const applicationId = options.applicationId ?? 'eu.qwky.trinity';
+    let pid = '';
+    while (Date.now() < deadline && !pid) {
+      readinessSignal.throwIfAborted();
+      try {
+        pid = (
+          await abortable(
+            device.adb('shell', 'pidof', applicationId),
+            readinessSignal,
+            () => undefined,
+          )
+        ).trim();
+      } catch (error) {
+        readinessSignal.throwIfAborted();
+        if (!isTransientMissingProcess(error)) throw error;
+      }
+      if (!pid) {
+        await delay(
+          Math.min(
+            options.pollIntervalMs ?? 100,
+            Math.max(0, deadline - Date.now()),
+          ),
+          undefined,
+          { signal: readinessSignal },
+        );
+      }
+    }
     assert(
       /^\d+$/.test(pid),
-      'Exactly one Trinity process must own this WebView',
+      `Trinity process did not become ready: ${applicationId}`,
     );
-    signal.throwIfAborted();
+    readinessSignal.throwIfAborted();
     const socket = `localabstract:webview_devtools_remote_${pid}`;
     forwarding = device.adb('forward', 'tcp:0', socket).then(async (value) => {
       const allocated = value.trim();
@@ -193,7 +238,7 @@ export async function openMaestroWebview(
       port = allocated;
       if (signal.aborted) await removeForward();
     });
-    await abortable(forwarding, signal, () => undefined);
+    await abortable(forwarding, readinessSignal, () => undefined);
     const fetchJson =
       options.fetch ??
       ((input: string, init?: { readonly signal?: AbortSignal }) =>
@@ -204,26 +249,32 @@ export async function openMaestroWebview(
           ]),
         }));
     const connect = options.connect ?? openDevtoolsConnection;
-    const deadline = Date.now() + (options.readinessTimeoutMs ?? 30_000);
     let endpoint: string | undefined;
     let lastReadError: unknown;
     while (Date.now() < deadline && !endpoint) {
       let targets: unknown;
       try {
         targets = await abortable(
-          fetchJson(`http://127.0.0.1:${port}/json`, { signal }).then(
-            (response) => response.json(),
-          ),
-          signal,
+          fetchJson(`http://127.0.0.1:${port}/json`, {
+            signal: readinessSignal,
+          }).then((response) => response.json()),
+          readinessSignal,
           () => undefined,
         );
       } catch (error) {
-        signal.throwIfAborted();
+        readinessSignal.throwIfAborted();
         lastReadError = error;
       }
       endpoint = websocketEndpoint(selectTarget(targets));
       if (!endpoint)
-        await delay(options.pollIntervalMs ?? 100, undefined, { signal });
+        await delay(
+          Math.min(
+            options.pollIntervalMs ?? 100,
+            Math.max(0, deadline - Date.now()),
+          ),
+          undefined,
+          { signal: readinessSignal },
+        );
     }
     assert(
       endpoint,
@@ -231,14 +282,18 @@ export async function openMaestroWebview(
     );
     diagnostics = await abortable(
       connect(endpoint, { signal, timeoutMs: 5_000 }),
-      signal,
+      readinessSignal,
       (lateConnection) => lateConnection.close(abortError(signal)),
     );
     // Keep the owned Synapse TLS exception live through native login/callback exchange.
-    await diagnostics.send('Security.setIgnoreCertificateErrors', {
-      ignore: true,
-    });
-    return { diagnostics, close };
+    await abortable(
+      diagnostics.send('Security.setIgnoreCertificateErrors', {
+        ignore: true,
+      }),
+      readinessSignal,
+      () => undefined,
+    );
+    return { pid, diagnostics, close };
   } catch (error) {
     try {
       await close();
