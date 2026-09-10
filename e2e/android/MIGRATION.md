@@ -156,7 +156,18 @@ memberships before logging out their API sessions.
 pnpm nx run trinity-e2e-android:accounts-workspace
 ```
 
-The existing third Android CI shard runs the batch. Started-suite diagnostics live
+The existing third Android CI shard runs the batch. Its original hosted attempt
+completed twelve cases before reaching the former 55-minute test limit. Stable
+native-input probes measured approximately 15 seconds per warm fill; driver reuse
+and counted erasure did not materially improve that cost. The complete batch now
+allows 75 minutes in the Node test, 80 minutes in its resource-owning wrapper and
+85 minutes in both the registry and CI command supervisor. The existing third
+shard allows 180 minutes for smoke, this batch, its retained predecessor shard and
+setup/diagnostics. The other three shards retain their 100-minute limits. These
+budgets preserve all fourteen cases, native actions and assertions; they are not
+retries or acceptance evidence.
+
+Started-suite diagnostics live
 under `dist/.playwright/trinity-e2e-android/<run-id>/android.accounts-workspace/`;
 `accounts-workspace/journeys.json` records all started cases, original source
 ranges and first-attempt outcomes. Acceptance remains pending until the issue

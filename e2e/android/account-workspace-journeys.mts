@@ -19,7 +19,7 @@ function describeFailure(error: unknown): string {
   return error instanceof AggregateError ? `${message}\n${error.errors.map(describeFailure).join('\n')}` : message;
 }
 
-void test('Android account lifecycle and mixed workspace journeys', { timeout: 3_300_000 }, async context => {
+void test('Android account lifecycle and mixed workspace journeys', { timeout: 4_500_000 }, async context => {
   await withNodeTestResources({ testId: context.name, signal: context.signal }, async ({ matrixResources, signal }) => {
     const session = readSession();
     const output = join(process.env['TRINITY_E2E_REPORT_DIR'] ?? join(session.workspaceRoot, 'dist/.playwright'), 'accounts-workspace');

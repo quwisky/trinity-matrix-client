@@ -26,7 +26,8 @@ export type E2ECapability =
   | 'workspace';
 
 export type E2ECiTier = 'local-only' | 'pull-request' | 'scheduled';
-export type E2ETimeoutClass = 'short' | 'medium' | 'long' | 'host';
+export type E2ETimeoutClass =
+  'short' | 'medium' | 'long' | 'host' | 'host-extended';
 export type E2ERunner = 'playwright' | 'node-test';
 
 export type E2EPrerequisite =

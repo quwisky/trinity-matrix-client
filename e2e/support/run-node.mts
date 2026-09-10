@@ -17,6 +17,8 @@ import {
   webBundleWorkspaceRoot,
 } from './web-bundle-preparation.mts';
 
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
 export interface NodeRunnerArguments {
   readonly suite: string;
   readonly entrypoints: readonly string[];
@@ -24,6 +26,7 @@ export interface NodeRunnerArguments {
   readonly buildTarget?: string;
   readonly bundleManifest: boolean;
   readonly platform?: string;
+  readonly timeoutMs: number;
   readonly forwarded: readonly string[];
 }
 
@@ -38,6 +41,7 @@ function parseArguments(argv: readonly string[]): NodeRunnerArguments {
   let suite: string | undefined;
   let buildTarget: string | undefined;
   let platform: string | undefined;
+  let timeoutMs = 3_600_000;
   let bundleManifest = false;
   const entrypoints: string[] = [];
   const resources: string[] = [];
@@ -50,7 +54,19 @@ function parseArguments(argv: readonly string[]): NodeRunnerArguments {
       entrypoints.push(argument.slice(13));
     else if (argument.startsWith('--build=')) buildTarget = argument.slice(8);
     else if (argument.startsWith('--platform=')) platform = argument.slice(11);
-    else if (argument === '--bundle-manifest') bundleManifest = true;
+    else if (argument.startsWith('--timeout-ms=')) {
+      const value = Number(argument.slice(13));
+      if (
+        !Number.isSafeInteger(value) ||
+        value <= 0 ||
+        value > MAX_TIMEOUT_MS
+      ) {
+        throw new Error(
+          'E2E Node runner requires --timeout-ms=<positive integer <= 2147483647>',
+        );
+      }
+      timeoutMs = value;
+    } else if (argument === '--bundle-manifest') bundleManifest = true;
     else if (argument.startsWith('--resource='))
       resources.push(argument.slice(11));
     else forwarded.push(argument);
@@ -69,6 +85,7 @@ function parseArguments(argv: readonly string[]): NodeRunnerArguments {
     buildTarget,
     bundleManifest,
     platform,
+    timeoutMs,
     forwarded,
   };
 }
@@ -284,7 +301,7 @@ export async function runNode(
       {
         cwd: workspaceRoot,
         environment: invocationEnvironment,
-        timeout: 3_600_000,
+        timeout: options.timeoutMs,
         terminationSignal: 'SIGINT',
         terminationGraceMs: 10_000,
         cleanupProcessGroup: true,

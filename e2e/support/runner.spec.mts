@@ -105,6 +105,7 @@ describe('E2E runner boundaries', () => {
         ],
         expect.objectContaining({
           cwd: workspaceRoot,
+          timeout: 3_600_000,
           terminationGraceMs: 10_000,
           cleanupProcessGroup: true,
           environment: expect.objectContaining({
@@ -124,6 +125,130 @@ describe('E2E runner boundaries', () => {
       rmSync(workspaceRoot, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    { raw: '4800000', expected: 4_800_000 },
+    { raw: '2147483647', expected: 2_147_483_647 },
+  ])(
+    'uses an explicit timeout without forwarding the wrapper option to Node (%s)',
+    async ({ raw, expected }) => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'trinity-node-runner-'));
+      const close = vi.fn(async () => undefined);
+      const execute = vi.fn(async (_command, args, options) => {
+        expect(args).toEqual([
+          '--test',
+          '--test-concurrency=1',
+          '--test-reporter',
+          join(workspaceRoot, 'e2e/support/node-reporter.mts'),
+          '--test-reporter-destination',
+          'stdout',
+          '--test-name-pattern=smoke',
+          '--timeout-ms=1234',
+          'e2e/node.spec.mts',
+        ]);
+        expect(options.timeout).toBe(expected);
+        mkdirSync(
+          options.environment?.['TRINITY_E2E_REPORT_DIR'] ?? workspaceRoot,
+          { recursive: true },
+        );
+        writeFileSync(
+          join(
+            options.environment?.['TRINITY_E2E_REPORT_DIR'] ?? workspaceRoot,
+            'suite-summary.json',
+          ),
+          JSON.stringify({
+            schemaVersion: 1,
+            suiteId: 'node.explicit-timeout',
+            status: 'passed',
+            attempts: 1,
+            retries: 0,
+            durationMs: 1,
+            attemptDurationMs: 1,
+            attemptsByStatus: { passed: 1 },
+          }),
+        );
+        return { status: 0, timedOut: false };
+      });
+      const openInvocation = vi.fn(async (options) => ({
+        owned: true,
+        file: 'session.json',
+        descriptor: {
+          version: 1,
+          id: 'run-node-explicit-timeout',
+          workspaceRoot,
+          owner: {
+            pid: process.pid,
+            nonce: 'nonce-node-explicit-timeout',
+            createdAt: new Date().toISOString(),
+          },
+          resources: options?.resources ?? [],
+          endpoints: {
+            application: 'http://127.0.0.1:10001/',
+            storybook: 'http://127.0.0.1:10002/',
+            report: 'http://127.0.0.1:10003/',
+          },
+          artifactsRoot: join(workspaceRoot, 'artifacts'),
+        },
+        environment: {},
+        close,
+      }));
+      try {
+        await expect(
+          runNode(
+            [
+              '--suite=node.explicit-timeout',
+              '--entrypoint=e2e/node.spec.mts',
+              `--timeout-ms=${raw}`,
+              '--test-name-pattern=smoke',
+              '--',
+              '--timeout-ms=1234',
+            ],
+            {},
+            {
+              workspaceRoot,
+              openInvocation,
+              prepareBundle: vi.fn().mockResolvedValue(0),
+              executeCommand: execute,
+            },
+          ),
+        ).resolves.toBe(0);
+        expect(openInvocation).toHaveBeenCalledOnce();
+        expect(close).toHaveBeenCalledOnce();
+      } finally {
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    '--timeout-ms=0',
+    '--timeout-ms=-1',
+    '--timeout-ms=NaN',
+    '--timeout-ms=Infinity',
+    '--timeout-ms=1.5',
+    '--timeout-ms=9007199254740992',
+    '--timeout-ms=2147483648',
+  ])(
+    'rejects invalid timeout %s before opening the invocation',
+    async (timeout) => {
+      const openInvocation = vi.fn();
+      const executeCommand = vi.fn();
+
+      await expect(
+        runNode(
+          [
+            '--suite=node.invalid-timeout',
+            '--entrypoint=e2e/node.spec.mts',
+            timeout,
+          ],
+          {},
+          { openInvocation, executeCommand },
+        ),
+      ).rejects.toThrow(/positive integer <= 2147483647/);
+      expect(openInvocation).not.toHaveBeenCalled();
+      expect(executeCommand).not.toHaveBeenCalled();
+    },
+  );
 
   it('writes a failed terminal summary when bundle startup fails', async () => {
     const workspaceRoot = mkdtempSync(join(tmpdir(), 'trinity-node-runner-'));

@@ -151,7 +151,7 @@ export const RUNNER_E2E_SUITES = defineSuites([
     ciTier: 'pull-request',
     cachePolicy: 'never',
     serializationKeys: ['android-avd', 'synapse'],
-    timeoutClass: 'host',
+    timeoutClass: 'host-extended',
     canonicalScript: 'e2e:android:accounts',
     currentArtifactRoot: artifactRoot('trinity-e2e-android'),
     targetArtifactRoot: artifactRoot('trinity-e2e-android'),
