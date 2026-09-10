@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn: Add to message
+- extendedWaitUntil:
+    visible: Attach a file
+    timeout: 10000

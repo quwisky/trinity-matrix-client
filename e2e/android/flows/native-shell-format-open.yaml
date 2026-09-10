@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn: Format message
+- extendedWaitUntil:
+    visible: Italic
+    timeout: 10000

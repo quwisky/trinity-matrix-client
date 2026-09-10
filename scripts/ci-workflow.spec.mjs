@@ -44,7 +44,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(12);
+    expect(uploads.length).toBe(13);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -57,13 +57,18 @@ describe('CI execution contract', () => {
         (step) => step.with.surface === 'android-critical-journeys',
       ),
     ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-native-shell'),
+    ).toHaveLength(1);
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
           ? /!cancelled\(\).*outputs\.smoke-started == 'true'/
           : step.with.surface === 'android-critical-journeys'
             ? /!cancelled\(\).*outputs\.critical-started == 'true'/
-            : /!cancelled\(\).*outputs\.started == 'true'/;
+            : step.with.surface === 'android-native-shell'
+              ? /!cancelled\(\).*outputs\.native-shell-started == 'true'/
+              : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -128,7 +133,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(5);
+    expect(lines).toHaveLength(6);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }
