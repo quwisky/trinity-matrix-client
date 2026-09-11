@@ -32,9 +32,8 @@ concurrent child threads. Explicit user choices take precedence.
 | Researcher | [researcher.toml](../.codex/agents/researcher.toml) | Luna/medium; read-only research |
 | Reviewer | [reviewer.toml](../.codex/agents/reviewer.toml) | Astra/low; read-only independent review |
 
-The [astra-orchestrator skill](skills/astra-orchestrator/SKILL.md) supplies the
-role-selection and delegation workflow. Existing planner and implementer names
-remain available for existing handoffs. Named roles pin their own model and effort;
+Existing planner and implementer names remain available for existing handoffs.
+Named roles pin their own model and effort;
 update their TOMLs as well as generic defaults when changing routing. The separate
 review_model setting keeps built-in review on Astra.
 
@@ -47,14 +46,12 @@ available delegation interface and report any unsupported selection.
 
 ## Upstream installation and maintenance
 
-Installed from [donvito/codex-astra-luna-orchestrator](https://github.com/donvito/codex-astra-luna-orchestrator)
+The role defaults were adapted from [donvito/codex-astra-luna-orchestrator](https://github.com/donvito/codex-astra-luna-orchestrator)
 at commit `84a2d194b7c10c60c7ba67c8136130797bf47044` (Apache-2.0).
-The upstream license is retained beside the imported skill. This is a manually
-vendored integration, separate from CLI-managed skills-lock.json imports.
+The upstream [license](LICENSE.astra-luna) is retained for the role configurations.
 
-The skill and role defaults come from upstream. Trinity adds repository instruction
-pointers and publication ownership to the roles, retains planner and implementer
-compatibility, and merges orchestration guidance into AGENTS.md. For updates,
+Trinity adds repository instruction pointers and publication ownership to the roles
+and retains planner and implementer compatibility. For updates,
 compare the pinned revision with the desired upstream revision and merge only
 these files; the upstream installer would replace existing configuration and
 repository guidance. Update this revision and the changelog, parse every TOML,

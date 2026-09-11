@@ -47,13 +47,13 @@ requests when authorized.
 Skills are task-specific help; they do not replace the repository rules. The
 [catalog](../../.agents/README.md) lists available skills, while
 [overrides](../../.agents/skill-overrides.md) adapt planning, review, research,
-prototype, Ponytail, product-design, and Nx workflows to Trinity.
+prototype, product-design, and Nx workflows to Trinity.
 
 | Task                                                      | Start here                                                                                                     |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Scope a problem or split it into work                     | Planner role; `grill-me` / `grilling`, `domain-modeling`, `wayfinder`, or `to-tickets` when their triggers fit |
 | Implement Angular, UI, platform, or Matrix behavior       | Implementer role; [`AGENTS.md`](../../AGENTS.md)'s task-reference table and the matching local skill           |
-| Inspect a stable change                                   | Reviewer role and [`code-review`](../../.agents/skills/code-review/SKILL.md)                                   |
+| Inspect a stable change                                   | Reviewer role and [review guidance](../../.agents/roles.md#work-in-sequence)                                   |
 | Find a project, target, or dependency in the workspace    | [`nx-workspace`](../../.agents/skills/nx-workspace/SKILL.md), then [commands](commands.md)                     |
 | Maintain the skill catalog, managed imports, or overrides | [`.agents/README.md`](../../.agents/README.md) and its managed-skills guidance                                 |
 
@@ -66,10 +66,9 @@ tooling ownership.
 
 The [role definitions](../../.agents/roles.md#use-the-configured-defaults-deliberately)
 configure Astra for orchestration, planning and review, and Luna for execution.
-The project also includes explorer, worker, tester and researcher roles from the
-[astra-orchestrator skill](../../.agents/skills/astra-orchestrator/SKILL.md).
-Start a new Codex session in a trusted checkout to load project settings, or
-invoke `$astra-orchestrator` for its workflow. User model choices take precedence.
+The project also includes explorer, worker, tester and researcher roles.
+Start a new Codex session in a trusted checkout to load project settings.
+User model choices take precedence.
 See role routing for defaults, maintenance and runtime limitations.
 
 ## Keep evidence fresh

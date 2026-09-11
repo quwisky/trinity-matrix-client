@@ -25,7 +25,7 @@ Use repository-local skills in `.agents/skills`; `.claude/skills` shares that di
 Load the matching skill and its relevant supporting references once, then reuse them until
 changed. Read [the catalog](.agents/README.md) for selection or maintenance, and
 [Trinity overrides](.agents/skill-overrides.md) with planning, review, research, prototype,
-product-design, Ponytail or Nx skills. Keep CLI-managed files unchanged.
+product-design or Nx skills. Keep CLI-managed files unchanged.
 For agent-instruction edits, use `writing-for-agents`. If a Skill tool is unavailable,
 read the named `SKILL.md` and use the available tools.
 
@@ -48,14 +48,6 @@ and expand through their links as needed. Repository paths in their prose are re
 | Issues, labels or domain documentation                           | [Issue tracker](docs/agents/issue-tracker.md), [triage labels](docs/agents/triage-labels.md), or [domain layout](docs/agents/domain.md), as applicable                |
 | Changelog, versions or releases                                  | [Changelog and releases](docs/contributing/conventions.md#changelog-and-releases)                                                                                     |
 | Setup or an unfamiliar failure                                   | [Contributing](docs/contributing/index.md), [troubleshooting](docs/reference/troubleshooting.md)                                                                      |
-
-## Codex orchestration
-
-For complex multi-file work or explicit delegation requests, use the
-[astra-orchestrator skill](.agents/skills/astra-orchestrator/SKILL.md) together with
-[Trinity role routing](.agents/roles.md). The root owns architecture, integration,
-verification and authorized publication; assign bounded work with one writer per
-file set. Handle trivial edits directly. User instructions take precedence.
 
 ## Constraints to keep in view
 

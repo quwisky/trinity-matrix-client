@@ -1,6 +1,6 @@
 # Trinity skill overrides
 
-Read this with planning, review, simplification, research, prototype, product-design and Nx skills. These repository rules
+Read this with planning, review, research, prototype, product-design and Nx skills. These repository rules
 specialize the generic upstream workflows; maintain them here instead of editing installed
 skills. User instructions and accepted authorization govern the task.
 
@@ -63,18 +63,6 @@ skills. User instructions and accepted authorization govern the task.
   for the default base, temporary integration branches and authorization. A conflict-resolution
   skill does not authorize staging unrelated files or creating commits. Follow a request to stop
   or abort while preserving unrelated work.
-
-## Simplification (Ponytail)
-
-- Use Ponytail as optional implementation or review guidance: reuse existing code and remove
-  unnecessary complexity while completing the agreed requirements. Apply it to the active
-  coding task; its persistence rule does not make it an always-on repository policy.
-- Preserve capability ownership, public component boundaries, Account/Conversation lifetimes
-  and component file structure. Keep interfaces that enforce these boundaries even with one
-  implementation; file count and line count are secondary to correctness and maintainability.
-- Select checks using [Choose validation by the change](../docs/contributing/testing.md#choose-validation-by-the-change)
-  and the existing Nx, Vitest and Playwright targets. Ponytail's one-check and framework-free
-  examples do not replace repository validation. Report the checks run and material limitations.
 
 ## Nx and validation
 

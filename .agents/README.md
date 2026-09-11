@@ -12,17 +12,16 @@ no skill invocation tool, read the file with the tools it exposes.
 [skill overrides](skill-overrides.md) adapt upstream workflows to Trinity.
 Roles select work responsibilities and model defaults; skills supply task guidance.
 
-The checkout contains **22 CLI-managed skill imports and four local skill entrypoints, plus one manually vendored orchestration skill**.
+The checkout contains **19 CLI-managed skill imports and four local skill entrypoints**.
 The [lockfile](../skills-lock.json) records managed sources, source paths, and content
 hashes; it does not record immutable commit references. Keep managed files under CLI
 ownership and put Trinity-specific behavior in the overrides. The four local
 references below are maintained directly in this repository.
 
 `.claude/skills` and `.claude/rules` are directory symlinks to the canonical `.agents/`
-folders. Discovery and automatic loading depend on the client. In the inspected
-skills CLI 1.5.23, project `list --json` returned the 22 imports and `electron`, but
-omitted the three nested UX entrypoints. Use their explicit paths below; CLI listing
-alone does not prove that an agent loaded a skill.
+folders. Discovery and automatic loading depend on the client. Use the explicit
+paths below for the three nested UX entrypoints; CLI listing alone does not prove
+that an agent loaded a skill.
 
 ## Select a managed skill
 
@@ -35,9 +34,6 @@ alone does not prove that an agent loaded a skill.
 | [to-tickets](skills/to-tickets/SKILL.md)                                 | Publish approved implementation slices and dependencies.          |
 | [research](skills/research/SKILL.md)                                     | Investigate a question using primary sources.                     |
 | [prototype](skills/prototype/SKILL.md)                                   | Answer a design question with an ignored throwaway artifact.      |
-| [diagnosing-bugs](skills/diagnosing-bugs/SKILL.md)                       | Find a reproducible cause before changing a difficult bug.        |
-| [code-review](skills/code-review/SKILL.md)                               | Review a frozen artifact against standards and requirements.      |
-| [ponytail](skills/ponytail/SKILL.md)                                     | Simplify an accepted change while preserving its contracts.       |
 | [resolving-merge-conflicts](skills/resolving-merge-conflicts/SKILL.md)   | Resolve an authorized merge or rebase conflict.                   |
 | [nx-workspace](skills/nx-workspace/SKILL.md)                             | Find projects, resolved targets, and dependencies.                |
 | [nx-generate](skills/nx-generate/SKILL.md)                               | Inspect generators before scaffolding.                            |
@@ -56,12 +52,6 @@ marketing-page workflows, fixed visual presets, and generic reference sheets bel
 outside it. For product design, read the [design overrides](skill-overrides.md#product-design)
 and preserve Trinity tokens, public components, interaction models, and accessibility.
 A skill mentioning an external service does not require installing or paying for it.
-
-## Use the vendored orchestration skill
-
-[astra-orchestrator](skills/astra-orchestrator/SKILL.md) coordinates complex coding
-work with Astra and Luna. Its pinned source, local adaptations and update procedure
-are recorded in [role routing](roles.md#upstream-installation-and-maintenance).
 
 ## Use a repository-owned reference
 
