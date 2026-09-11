@@ -1,6 +1,6 @@
 # Planning, implementation, and review
 
-The coordinator uses the configured Astra default, preserves accepted decisions,
+The coordinator uses the active session configuration, preserves accepted decisions,
 integration, and authorized publication. Choose a role for substantive work;
 handle a short, unambiguous edit directly.
 
@@ -18,9 +18,10 @@ while that work proceeds, then routes material findings to the implementer.
 
 ## Use the configured defaults deliberately
 
-The project configuration in [`.codex/config.toml`](../.codex/config.toml) sets
-Astra/high for the root, Luna/medium for generic execution subagents, and six
-concurrent child threads. Explicit user choices take precedence.
+The tracked role files below set model and effort for named roles. This checkout
+does not ship `.codex/config.toml`: root defaults, generic subagent defaults and
+concurrency come from the active client configuration. Explicit user choices take
+precedence; the live tool schema and available slots determine what can run.
 
 | Role | Configuration | Default |
 | --- | --- | --- |
@@ -34,15 +35,50 @@ concurrent child threads. Explicit user choices take precedence.
 
 Existing planner and implementer names remain available for existing handoffs.
 Named roles pin their own model and effort;
-update their TOMLs as well as generic defaults when changing routing. The separate
-review_model setting keeps built-in review on Astra.
+update their TOMLs as well as generic defaults when changing routing. Built-in
+review uses the active client configuration, independently of the named reviewer role.
 
 Start a new Codex session from a trusted checkout to load project settings.
-The root uses upstream's workspace-write and on-request defaults; execution roles
-use workspace-write and exploration/research/review roles use read-only.
+The root retains the active session's permissions. Worker and tester roles declare
+workspace-write; explorer, researcher and reviewer roles declare read-only. Planner
+and implementer permissions inherit from the client.
 Personal configuration remains outside this installation. If the client does not
 expose named roles, supply the role instructions and configured model through its
 available delegation interface and report any unsupported selection.
+
+## Superpowers dispatch
+
+Use this mapping when a process skill requests a subagent; keep its task-specific
+brief and acceptance criteria alongside the [handoff](#handoffs).
+
+| Superpowers assignment | Trinity role |
+| --- | --- |
+| Requirements, architecture or plan investigation | `planner` |
+| Locate symbols, callers or existing tests | `explorer` |
+| Verify external APIs or version-specific facts | `researcher` |
+| Implement an accepted slice | `implementer` (`worker` for a narrow coding task) |
+| Reproduce a failure or run independent validation | `tester` |
+| Task spec compliance and code quality; final review | `reviewer` |
+
+With Codex, dispatch named roles using `agent_type` and `fork_turns: "none"`.
+Supply the exact worktree, bounded scope, owned files, accepted requirements,
+applicable references and evidence paths. Named roles already pin model and effort;
+use an explicit supported model/effort pair only when deliberately overriding the
+role or when the client lacks named roles. Never assume full-history forks accept
+the same parameters. The active tool schema is authoritative.
+
+Keep one writer per file set, and parallelize only independent work while the
+coordinator has useful work to do. Reuse the implementer for fix rounds with
+`followup_task` when exposed. Keep child assignments non-recursive and respect
+live capacity rather than a hardcoded thread count.
+
+A task reviewer checks both spec compliance and code quality on the same frozen
+artifact. Include base/head, staged and unstaged diff, relevant untracked contents,
+and validation evidence; commit-only review packages are insufficient for
+uncommitted work. The reviewer verifies implementation claims against the actual
+files, reports the two verdicts, and names anything it cannot verify. Follow-up
+review covers the fixes and affected behavior; final review covers integration.
+The coordinator handles authorized commits and publication after review.
 
 ## Upstream installation and maintenance
 

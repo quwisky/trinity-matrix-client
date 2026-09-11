@@ -47,7 +47,9 @@ requests when authorized.
 Skills are task-specific help; they do not replace the repository rules. The
 [catalog](../../.agents/README.md) lists available skills, while
 [overrides](../../.agents/skill-overrides.md) adapt planning, review, research,
-prototype, product-design, and Nx workflows to Trinity.
+prototype, product-design, and Nx workflows to Trinity. The installed Superpowers
+plugin supplies process skills; follow the [task-state mapping](../../.agents/skill-overrides.md#superpowers-integration)
+and [dispatch mapping](../../.agents/roles.md#superpowers-dispatch) without restarting accepted stages.
 
 | Task                                                      | Start here                                                                                                     |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |

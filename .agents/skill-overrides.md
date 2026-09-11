@@ -1,8 +1,45 @@
 # Trinity skill overrides
 
-Read this with planning, review, research, prototype, product-design and Nx skills. These repository rules
+Read this with Superpowers, planning, review, research, prototype, product-design and Nx skills. These repository rules
 specialize the generic upstream workflows; maintain them here instead of editing installed
 skills. User instructions and accepted authorization govern the task.
+
+## Superpowers integration
+
+Superpowers supplies the process skills from the active client's installed plugin.
+Trinity supplies domain skills, role routing and repository policy. Keep the plugin
+under its installer ownership; do not copy it into `.agents/skills` or `skills-lock.json`.
+Resolve skills from the active catalog, without hardcoding a plugin cache version.
+If a required skill is unavailable, report the missing capability; do not claim it ran.
+
+| Task state | Process skill |
+| --- | --- |
+| New feature or unresolved behavior/design | `superpowers:brainstorming` |
+| Accepted requirements need a multi-step plan | `superpowers:writing-plans` |
+| Accepted plan, independent slices in this session | `superpowers:subagent-driven-development` |
+| Existing plan executed in a separate session | `superpowers:executing-plans` |
+| Bug, failed test or unexpected behavior | `superpowers:systematic-debugging` |
+| Feature or bug implementation | `superpowers:test-driven-development`, using Trinity's validation policy |
+| Ready for independent review | `superpowers:requesting-code-review` |
+| Review findings received | `superpowers:receiving-code-review` |
+| Completion claim or authorized publication | `superpowers:verification-before-completion`; finishing workflow when applicable |
+
+Enter at the current task state. Reuse an accepted design, plan and authorization;
+loading a process skill does not reopen completed stages. Handle a small, unambiguous
+configuration or documentation edit directly. Ask only for unresolved decisions or
+material scope changes, and continue independent authorized work meanwhile.
+
+For delegated execution, use [role routing](roles.md#superpowers-dispatch).
+The coordinator owns dispatch and review; bounded children complete their assignment
+without restarting orchestration. Use the active tool schema for parameters and
+lifecycle operations when upstream examples differ from the available tools.
+
+Superpowers examples that commit each task, compare only commits, merge branches or
+delete a workspace remain subject to Trinity's publication and evidence rules.
+Review the complete working-tree artifact when work is uncommitted. Preserve plans,
+reports and review evidence until the handoff is complete; cleanup must not remove
+uncommitted work. Keep temporary execution artifacts under ignored `dist/`.
+Durable documentation belongs in the repository's existing domain layout.
 
 ## Investigation and output
 

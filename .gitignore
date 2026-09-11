@@ -110,6 +110,3 @@ storybook-static
 /e2e/**/*-snapshots/
 /e2e/support/synapse/data/
 /e2e/support/synapse/remote-data/
-
-# graft's local graph cache — regenerable, not committed (run `graft build`).
-/graft/

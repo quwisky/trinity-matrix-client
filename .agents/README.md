@@ -23,6 +23,15 @@ folders. Discovery and automatic loading depend on the client. Use the explicit
 paths below for the three nested UX entrypoints; CLI listing alone does not prove
 that an agent loaded a skill.
 
+## Superpowers process skills
+
+Use the active client's installed `superpowers:*` skills for planning, debugging,
+execution and review. They are separate from the repository-managed imports below.
+[Trinity overrides](skill-overrides.md#superpowers-integration) map task states to
+process skills; [role routing](roles.md#superpowers-dispatch) maps their delegated
+work to the configured roles. Load the process skill for the current stage plus
+only the domain skills needed by the task.
+
 ## Select a managed skill
 
 | Skill                                                                    | Task                                                              |
