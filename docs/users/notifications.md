@@ -1,6 +1,6 @@
 # Control notifications
 
-Matrix push rules decide **whether** an event should notify you. Trinity and the host decide
+Matrix push rules decide **whether** messages should notify you. Trinity and the host decide
 **how** to show it. A successful rule change does not prove that a browser, operating system or
 push gateway can deliver the alert.
 
@@ -15,6 +15,23 @@ the sound of a mobile operating-system push notification.
 
 Trinity has no voice or video calling UI. The **Call invitations** rule remains available because
 it is a standard Matrix account rule and can affect call events from another Matrix client.
+
+## Get notified about reactions
+
+Enable **When someone reacts to my message** in Settings → Notifications. It is off by default
+and follows your account across Trinity clients. While Trinity is running and connected, another
+person reacting to your message can produce an alert with the reaction and a preview of your
+message. Select the alert to open the original message.
+
+Reactions to the same message are grouped after a two-second pause, or after ten seconds of
+continuous reactions. The alert counts people once even when someone uses several emojis.
+Your own reactions, reactions to other people's messages, and ignored people do not notify you.
+
+The account's notifications switch, **Mute everything**, **Play a sound**, and focused-room
+suppression still apply. Reaction alerts remain enabled in **Mute except mentions & keywords**
+rooms when you opt in. Trinity must be able to load and decrypt the original message.
+This setting does not enable reaction alerts through mobile push when Trinity is closed or
+suspended.
 
 ## Add a keyword
 

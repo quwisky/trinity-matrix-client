@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Optional reaction notifications while Trinity is running, grouped by original message
+  with a preview and click-through to that message. The account setting defaults off and
+  respects account notification disable, room mute, sound and focused-room suppression.
+
 - A rootless Web container host packages the verified production renderer with tested
   deep-link routing, security and cache headers for every generated bundle, and offline
   PWA behavior. Local Nx targets build and check the image without rebuilding Angular

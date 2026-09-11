@@ -1,5 +1,5 @@
 /** A bounded, SDK-free event considered by notification delivery policy. */
-export interface NotificationEvent {
+interface NotificationEventContext {
   readonly accountId: string;
   readonly roomId: string;
   readonly eventId: string;
@@ -7,8 +7,17 @@ export interface NotificationEvent {
   readonly senderName: string;
   readonly roomName: string | null;
   readonly body: string | null;
-  readonly kind: 'message' | 'unsupported';
 }
+
+export interface ReactionNotificationEvent extends NotificationEventContext {
+  readonly kind: 'reaction';
+  readonly senderCount: number;
+  readonly reactionKeys: readonly string[];
+}
+
+export type NotificationEvent =
+  | (NotificationEventContext & { readonly kind: 'message' | 'unsupported' })
+  | ReactionNotificationEvent;
 
 /** The exact semantic destination carried through presentation and activation. */
 export interface NotificationDestination {

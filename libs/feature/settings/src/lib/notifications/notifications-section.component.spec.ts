@@ -2,16 +2,18 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { signal, type DebugElement } from '@angular/core';
-import { NEVER, of, throwError } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   KeywordRulesService,
   NotificationSoundService,
   PushRulesService,
+  ReactionNotificationSettingsService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
 import { TrnToastService } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { NotificationsSectionComponent } from './notifications-section.component';
 
 const TOGGLES = [
@@ -25,6 +27,11 @@ const soundEnabled = signal(true);
 const soundSetOn = vi.fn(() => of(undefined));
 const soundConnect = vi.fn();
 const soundDisconnect = vi.fn();
+const reactionEnabled = signal(false);
+const reactionSetOn = vi.fn(() => of(undefined));
+const reactionConnect = vi.fn();
+const reactionDisconnect = vi.fn();
+const activeAccount = signal<string | null>('@me:hs');
 
 beforeEach(() => {
   soundEnabled.set(true);
@@ -32,6 +39,12 @@ beforeEach(() => {
   soundSetOn.mockReturnValue(of(undefined));
   soundConnect.mockReset();
   soundDisconnect.mockReset();
+  reactionEnabled.set(false);
+  reactionSetOn.mockReset();
+  reactionSetOn.mockReturnValue(of(undefined));
+  reactionConnect.mockReset();
+  reactionDisconnect.mockReset();
+  activeAccount.set('@me:hs');
 });
 
 async function build(over: { setOn?: Mock } = {}) {
@@ -46,6 +59,15 @@ async function build(over: { setOn?: Mock } = {}) {
         setOn: soundSetOn,
         connect: soundConnect,
         disconnect: soundDisconnect,
+      }),
+      MockProvider(ReactionNotificationSettingsService, {
+        enabled: reactionEnabled.asReadonly(),
+        setOn: reactionSetOn,
+        connect: reactionConnect,
+        disconnect: reactionDisconnect,
+      }),
+      MockProvider(MatrixClientService, {
+        activeUserId: activeAccount.asReadonly(),
       }),
       // The section renders the keyword block, which would otherwise reach the real
       // MatrixClientService — harmless today only because it reports uninitialised.
@@ -86,6 +108,63 @@ describe('NotificationsSectionComponent', () => {
     const { cmp } = await build();
 
     expect(cmp.soundChecked()).toBe(false);
+  });
+
+  it('shows and persists the reaction notification preference', async () => {
+    reactionSetOn.mockReturnValue(
+      NEVER as unknown as ReturnType<typeof reactionSetOn>,
+    );
+    const { cmp, fixture } = await build();
+    expect(cmp.reactionChecked()).toBe(false);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="notif-reactions"]',
+      ),
+    ).not.toBeNull();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'When someone reacts to my message',
+    );
+
+    cmp.toggleReactions(true);
+
+    expect(reactionSetOn).toHaveBeenCalledWith(true);
+    expect(cmp.reactionChecked()).toBe(true);
+  });
+
+  it('does not let a stale successful write clear a new account’s pending reaction write', async () => {
+    const oldWrite = new Subject<undefined>();
+    const newWrite = new Subject<undefined>();
+    reactionSetOn.mockReturnValueOnce(oldWrite).mockReturnValueOnce(newWrite);
+    const { cmp, fixture } = await build();
+
+    cmp.toggleReactions(true);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+    cmp.toggleReactions(true);
+    expect(cmp.reactionPending()).toBe(true);
+
+    oldWrite.next(undefined);
+    oldWrite.complete();
+
+    expect(cmp.reactionPending()).toBe(true);
+    expect(cmp.reactionChecked()).toBe(true);
+  });
+
+  it('does not let a stale failed write revert a new account’s reaction state', async () => {
+    const oldWrite = new Subject<undefined>();
+    const newWrite = new Subject<undefined>();
+    reactionSetOn.mockReturnValueOnce(oldWrite).mockReturnValueOnce(newWrite);
+    const { cmp, fixture, toastShow } = await build();
+
+    cmp.toggleReactions(true);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+    cmp.toggleReactions(true);
+    oldWrite.error(new Error('old account failed'));
+
+    expect(cmp.reactionPending()).toBe(true);
+    expect(cmp.reactionChecked()).toBe(true);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('follows the account when the value arrives AFTER the page rendered', async () => {

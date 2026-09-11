@@ -67,6 +67,28 @@ transition, repairs an unavailable room to a safe destination, and projects the
 location. Do not derive activation authority from a Room component, route
 parameter, or shell store.
 
+### Reaction notifications while connected
+
+`ReactionNotificationSettingsService` stores the opt-in as
+`eu.qwky.trinity.reaction_notifications` account data (`{ enabled: boolean }`, default `false`).
+It does not alter server push rules or pusher registration. Each account's notification lifetime
+owns a `ReactionNotificationBatch` for live `m.reaction` annotation events. The original message
+must belong to that account; own reactions, ignored senders, redactions, history and backfill are
+excluded. The master disable and room mute are checked again before delivery; mentions-only room
+mode still permits opted-in reaction alerts. Existing sound and visibility policy applies.
+
+Batches are keyed by room and original message within the owning account. A two-second quiet
+window has a ten-second maximum burst duration. Each batch counts distinct people and reaction
+keys, with at most 100 pending batches, 100 reactions per batch and 500 deduplicated event IDs.
+Missing targets are fetched through the exact owning client and decrypted before previewing;
+lookup has a ten-second deadline and unavailable targets are suppressed. Detaching an account or
+presentation owner releases timers and subscriptions so late lookup results cannot present.
+
+The presentation tag distinguishes reactions from messages and includes the original target.
+Activation carries that original message ID through the existing Workspace contract. This is
+the running-app scope of [issue #486](https://github.com/quwisky/trinity-matrix-client/issues/486);
+closed-app reaction push and gateway/iOS filtering remain deferred.
+
 ## Configure and register mobile push
 
 Mobile push needs a gateway that can deliver to the platform service. Trinity

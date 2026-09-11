@@ -10,6 +10,7 @@ export type {
   NotificationRuleHealth,
 } from './lib/notification-health.models';
 export * from './lib/notification-sound.service';
+export * from './lib/reaction-notification-settings.service';
 export * from './lib/push-config';
 export * from './lib/push.service';
 export * from './lib/push-gateway-url';
