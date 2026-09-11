@@ -273,8 +273,10 @@ runs must establish that these bounds fit the complete suite.
 
 Started-suite diagnostics live under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.sidebar-filter/`.
-`sidebar-filter/journeys.json` records both stages, source ranges, assertions,
-first-attempt outcomes and owned cleanup. Acceptance remains pending until #676
+`sidebar-filter/journeys.json` records both stages, source ranges, first-attempt
+outcomes and artifact pointers. Stage-local JSON files retain each assertion's
+observation; the suite and progress reports cover the complete run, including
+registered fixture and device cleanup after the stage summary. Acceptance remains pending until #676
 records complete installed-host parity; effective accent-fold, empty-copy,
 clear-button and Escape fault controls; the exact two unchanged predecessors;
 three consecutive complete runs with frozen inputs; required quality checks;
