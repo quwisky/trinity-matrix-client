@@ -163,15 +163,76 @@ and counted erasure did not materially improve that cost. The complete batch now
 allows 75 minutes in the Node test, 80 minutes in its resource-owning wrapper and
 85 minutes in both the registry and CI command supervisor. The existing third
 shard allows 180 minutes for smoke, this batch, its retained predecessor shard and
-setup/diagnostics. The other three shards retain their 100-minute limits. These
+setup/diagnostics. Shards one and two retain their 100-minute limits; shard four
+allows 120 minutes for its Identity batch described below. These
 budgets preserve all fourteen cases, native actions and assertions; they are not
 retries or acceptance evidence.
 
 Started-suite diagnostics live
 under `dist/.playwright/trinity-e2e-android/<run-id>/android.accounts-workspace/`;
 `accounts-workspace/journeys.json` records all started cases, original source
-ranges and first-attempt outcomes. Acceptance remains pending until the issue
-records complete installed-host parity, effective negative controls, repeated
-first-attempt runs and current-revision CI evidence. Other Account journeys,
+ranges and first-attempt outcomes. Accepted installed-host parity, effective
+negative controls, repeated first-attempt runs and original hosted evidence are
+recorded in [the Accounts batch](https://github.com/quwisky/trinity-matrix-client/issues/672). Other Account journeys,
 physical Android acceptance and the full migration reliability gate retain their
 separate owners.
+
+
+## Identity avatar and ordinary presence batch
+
+[Android DM avatar and ordinary presence migration](https://github.com/quwisky/trinity-matrix-client/issues/674)
+owns these three definitions at `f90ff0e`. The `android.identity-presence` suite
+resets the installed app before each definition and uses the existing native
+Account login and input adapter with the predecessor's 1280×720 desktop viewport.
+All three definitions are mandatory in each complete invocation. Their Playwright
+predecessors remain enabled during coexistence.
+
+| Predecessor | Lines | Required parity |
+| --- | --- | --- |
+| [DM avatar](../browser/journeys/identity/dm-avatar.spec.mts) | 148–186 | Visible decoded partner image with a `blob:` URL in the unpictured DM; then a visible named group's avatar with no image in the same session. Both rooms have the same two members. |
+| [Member presence](../browser/journeys/identity/presence.spec.mts) | 153–182; helper 91–108 | Native room navigation; visible timeline; initially hidden member panel; native toggle and visible panel; exactly two seeded member rows; first presence dot visible with role `img` and an Online/Away/Offline label; reader's own online dot visible. |
+| DM presence | 184–202 | Visible presence indicator in the exact seeded counterpart's DM sidebar row. |
+
+These rows retain ten direct body assertions and three member-panel helper
+assertions, plus fixture and login readiness. Each login also verifies the exact
+account-qualified `/rooms` pathname. Observations read the installed WebView DOM;
+product actions use native input. The avatar check requires image completion and
+positive natural dimensions before checking the two-member group, preserving the
+predecessor's warmed-cache control.
+
+For the two Rooms navigation steps, the Maestro flow requests current native
+coordinates from a bounded local observation endpoint after the CLI has started.
+The retained viewport supplies the mapping, and a trusted-click observation
+verifies the selected target. This handles the observed startup banner shifting
+the rail while the CLI launches, without adding gesture retries. Other native
+actions retain the existing input adapter.
+
+Owned Matrix fixtures upload the canonical PNG to the partner's profile, create
+and join an unencrypted private DM, and record it in the reader's `m.direct`.
+Neither avatar-case room has a room avatar. The named group has the same two
+members and is absent from `m.direct`. Fixture requests are finite and abortable;
+cleanup leaves and forgets known memberships before logging out API sessions.
+
+```bash
+pnpm nx run trinity-e2e-android:identity-presence
+```
+
+The fourth existing Android CI shard runs the batch between runner smoke and its
+unchanged Playwright shard. The initial budgets are 15 minutes for the Node test,
+18 minutes for its resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. These are provisional bounds until measured
+installed-host evidence is recorded; budgets do not establish acceptance.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.identity-presence/`.
+`identity-presence/journeys.json` records the three stage identities, predecessor
+ranges, first-attempt outcomes and durations. Batch acceptance remains pending
+until #674 records complete installed-host parity, all five effective avatar and
+presence fault controls, the changed-fixture Accounts regression, exact predecessor
+comparison, three consecutive complete runs with frozen inputs and original-attempt
+hosted evidence.
+
+Presence recovery definitions beginning at `presence.spec.mts:246` explicitly
+exclude the production Android APK and remain with the browser migration owner.
+This batch does not transfer other Android journeys, physical push acceptance or
+the full migration reliability gate from their existing owners.

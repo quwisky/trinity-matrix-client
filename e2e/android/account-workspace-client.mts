@@ -12,6 +12,7 @@ import {
   startNativeShellClient,
   waitForNativeShellState,
 } from './native-shell-client.mts';
+import { openMaestroTargetPoint, type NativeTargetPoint } from './maestro-target-point.mts';
 import type { createNodeAccount } from '../support/node-account.mts';
 import type { createAccountFixtures } from './account-workspace-fixtures.mts';
 import type { MatrixTestResources } from '../support/test-resources.mts';
@@ -165,6 +166,10 @@ export class AccountWorkspaceClient {
     await this.nativeAction('accounts-point-tap', selector, filter);
   }
 
+  async tapCurrent(selector: string, filter: AccountElementFilter = {}): Promise<void> {
+    await this.nativeAction('accounts-current-point-tap', selector, filter, {}, true);
+  }
+
   async fill(selector: string, value: string): Promise<void> {
     await this.nativeAction('accounts-point-fill', selector, {}, { SECRET_TEXT: value });
     const matches = await evaluateNative(this.webview, `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`);
@@ -205,11 +210,36 @@ export class AccountWorkspaceClient {
     assert(row.unobstructedCenter, 'Native scrolling made the account row reachable');
   }
 
-  private async nativeAction(flow: string, selector: string, filter: AccountElementFilter, variables: Readonly<Record<string, string>> = {}): Promise<void> {
+  private async actionablePoint(
+    selector: string,
+    filter: AccountElementFilter,
+    operationSignal = this.signal,
+  ): Promise<NativeTargetPoint> {
+    operationSignal.throwIfAborted();
     await this.owner.apply();
-    const es = await this.waitElements(selector, es => es.length === 1 && es[0]!.visible && !es[0]!.disabled && es[0]!.unobstructedCenter, `one actionable ${selector}`, filter);
+    operationSignal.throwIfAborted();
+    const es = await waitForNativeShellState(
+      () => this.elements(selector, filter),
+      es => es.length === 1 && es[0]!.visible && !es[0]!.disabled && es[0]!.unobstructedCenter,
+      `one actionable ${selector}`,
+      operationSignal,
+      15_000,
+    );
+    operationSignal.throwIfAborted();
     const r = es[0]!.rect;
     const point = await this.owner.nativePoint({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
+    operationSignal.throwIfAborted();
+    return point;
+  }
+
+  private async nativeAction(
+    flow: string,
+    selector: string,
+    filter: AccountElementFilter,
+    variables: Readonly<Record<string, string>> = {},
+    currentPoint = false,
+  ): Promise<void> {
+    const initialPoint = await this.actionablePoint(selector, filter);
     const actionId = ++this.action;
     // Observe capture before application listeners can remove the clicked element.
     await evaluateNative(this.webview, `(() => {
@@ -222,17 +252,40 @@ export class AccountWorkspaceClient {
       return true;
     })()`);
     let actionError: unknown;
+    let pointEndpoint: Awaited<ReturnType<typeof openMaestroTargetPoint>> | undefined;
+    let trustedEvents: unknown = null;
     try {
       console.info(`[accounts] native action ${actionId}: ${flow} ${selector}`);
-      await this.device.runFlow(join(this.workspaceRoot, `e2e/android/flows/${flow}.yaml`), { APP_ID: 'eu.qwky.trinity', POINT: `${point.x},${point.y}`, ...variables });
+      const flowVariables: Record<string, string> = { APP_ID: 'eu.qwky.trinity', POINT: `${initialPoint.x},${initialPoint.y}`, ...variables };
+      if (currentPoint) {
+        pointEndpoint = await openMaestroTargetPoint({
+          signal: this.signal,
+          readPoint: async operationSignal => this.actionablePoint(selector, filter, operationSignal),
+        });
+        flowVariables.POINT_URL = pointEndpoint.url;
+      }
+      await this.device.runFlow(join(this.workspaceRoot, `e2e/android/flows/${flow}.yaml`), flowVariables);
       const events = await evaluateNative(this.webview, 'window.__trinityAccountTap?.events ?? []');
       assert(Array.isArray(events));
+      trustedEvents = events;
       assert(events.some(event => event && typeof event === 'object' && event.trusted === true && event.matched === true), `Native action ${actionId} activated ${selector}`);
       assert(events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
     } catch (error) {
       actionError = error;
     } finally {
       const failures: unknown[] = [];
+      if (pointEndpoint?.lastError !== undefined) failures.push(pointEndpoint.lastError);
+      try { await pointEndpoint?.close(); } catch (error) { failures.push(error); }
+      if (currentPoint) {
+        try {
+          await this.record(`current-point-${actionId}`, {
+            selector,
+            initialPoint,
+            freshPoint: pointEndpoint?.lastPoint ?? null,
+            trustedEvents,
+          });
+        } catch (error) { failures.push(error); }
+      }
       try { await evaluateNative(this.webview, "(() => {const state=window.__trinityAccountTap;if(state)document.removeEventListener('click',state.listener,true);delete window.__trinityAccountTap;return true})()"); } catch (error) { failures.push(error); }
       try { await this.owner.apply(); } catch (error) { failures.push(error); }
       if (actionError !== undefined) failures.unshift(actionError);

@@ -53,6 +53,11 @@ export function createAccountFixtures(
 ): {
   account(role: string, options?: WorkspaceAccountOptions): Promise<NodeWorkspaceAccount>;
   createRoom(account: NodeWorkspaceAccount, content: WorkspaceRoomContent): Promise<WorkspaceRoom>;
+  setProfileAvatar(account: NodeWorkspaceAccount, png: Uint8Array): Promise<string>;
+  createDirectRoom(
+    owner: NodeWorkspaceAccount,
+    partner: NodeWorkspaceAccount,
+  ): Promise<{ readonly id: string }>;
   setDisplayName(account: NodeWorkspaceAccount, name: string): Promise<void>;
   invite(account: NodeWorkspaceAccount, roomId: string, invitee: NodeWorkspaceAccount): Promise<void>;
   join(account: NodeWorkspaceAccount, roomId: string): Promise<void>;
@@ -191,6 +196,63 @@ export function createAccountFixtures(
     return { id, name: content.name };
   }
 
+  async function setProfileAvatar(
+    owner: NodeWorkspaceAccount,
+    png: Uint8Array,
+  ): Promise<string> {
+    const session = access(owner);
+    const response = await fetch(
+      `${SYNAPSE_HTTP}/_matrix/media/v3/upload?filename=avatar.png`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          'Content-Type': 'image/png',
+        },
+        body: new Blob([Uint8Array.from(png).buffer], { type: 'image/png' }),
+        signal: requestSignal(signal),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Matrix fixture avatar upload failed with HTTP ${response.status}`);
+    }
+    const uploaded = record(await response.json(), 'Matrix fixture avatar upload response');
+    const contentUri = stringField(
+      uploaded,
+      'content_uri',
+      'Matrix fixture avatar upload content uri',
+    );
+    assert(contentUri.startsWith('mxc://'), 'Matrix fixture avatar upload content uri must be MXC');
+    await request(
+      session,
+      `/profile/${encodeURIComponent(owner.userId)}/avatar_url`,
+      'PUT',
+      { avatar_url: contentUri },
+    );
+    return contentUri;
+  }
+
+  async function createDirectRoom(
+    owner: NodeWorkspaceAccount,
+    partner: NodeWorkspaceAccount,
+  ): Promise<{ readonly id: string }> {
+    const response = await request(access(owner), '/createRoom', 'POST', {
+      preset: 'private_chat',
+      invite: [partner.userId],
+      is_direct: true,
+    });
+    const id = stringField(response, 'room_id', 'Matrix fixture direct room id');
+    roomMembers.set(id, new Set([owner.userId]));
+    await join(partner, id);
+    await request(
+      access(owner),
+      `/user/${encodeURIComponent(owner.userId)}/account_data/m.direct`,
+      'PUT',
+      { [partner.userId]: [id] },
+    );
+    return { id };
+  }
+
   async function setDisplayName(owner: NodeWorkspaceAccount, name: string): Promise<void> {
     await request(
       access(owner),
@@ -234,5 +296,14 @@ export function createAccountFixtures(
     );
   }
 
-  return { account, createRoom, setDisplayName, invite, join, sendMessage };
+  return {
+    account,
+    createRoom,
+    setProfileAvatar,
+    createDirectRoom,
+    setDisplayName,
+    invite,
+    join,
+    sendMessage,
+  };
 }

@@ -26,7 +26,7 @@ describe('CI execution contract', () => {
       1, 2, 3, 4,
     ]);
     expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
-      '${{ matrix.shard == 3 && 180 || 100 }}',
+      '${{ matrix.shard == 3 && 180 || matrix.shard == 4 && 120 || 100 }}',
     );
   });
 
@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(14);
+    expect(uploads.length).toBe(15);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -72,6 +72,11 @@ describe('CI execution contract', () => {
         (step) => step.with.surface === 'android-accounts-workspace',
       ),
     ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-identity-presence',
+      ),
+    ).toHaveLength(1);
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
@@ -82,7 +87,9 @@ describe('CI execution contract', () => {
               ? /!cancelled\(\).*outputs\.native-shell-started == 'true'/
               : step.with.surface === 'android-accounts-workspace'
                 ? /!cancelled\(\).*outputs\.accounts-started == 'true'/
-                : /!cancelled\(\).*outputs\.started == 'true'/;
+                : step.with.surface === 'android-identity-presence'
+                  ? /!cancelled\(\).*outputs\.identity-started == 'true'/
+                  : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -147,7 +154,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(7);
+    expect(lines).toHaveLength(8);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }
