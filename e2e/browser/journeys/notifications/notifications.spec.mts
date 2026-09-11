@@ -803,6 +803,11 @@ test.describe('Reaction notifications', () => {
           record.title.includes('reacted'),
       );
     }, ownBody);
+    if (!notification) {
+      throw new Error(
+        'Expected a grouped reaction notification for the original message',
+      );
+    }
     expect(notification.title).toContain(fixture.reactorNames[0]);
     expect(notification.title).toContain('and 2 others reacted');
     expect(notification.title).toContain('👍');
@@ -865,7 +870,7 @@ test.describe('Reaction notifications', () => {
     await expect
       .poll(() => reactionNotificationCount(page), {
         timeout: 20_000,
-        polling: 250,
+        intervals: [250],
       })
       .toBe(1);
 

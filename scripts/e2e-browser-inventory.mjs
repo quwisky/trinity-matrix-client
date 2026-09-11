@@ -28,9 +28,9 @@ export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   testDefinitions: 311,
   assertionCalls: 2749,
   testFingerprint:
-    'da35b60280fcf33166259d2577a4e4572d5f3e3faa7194fc1136e02af39f830d',
+    'b93737e86b399c5fe3d55168e39a0c465272323504675681907ed8547dfb7c30',
   assertionFingerprint:
-    '04a041a4942fad7d20490cf48d5ce250c936583aee330b1c767a0e114c72475c',
+    'd06ffedc087016cfba93676dbb76f333a185a3baf7066399415293e539700162',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();
