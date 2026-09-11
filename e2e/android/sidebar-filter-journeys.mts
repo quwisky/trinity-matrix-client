@@ -13,6 +13,7 @@ import {
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
+import { ANDROID_KEYCODES } from './maestro-keyboard.mts';
 
 const FILTER = '[data-testid="sidebar-filter"]';
 const CLEAR = '[data-testid="sidebar-filter-clear"]';
@@ -139,6 +140,7 @@ const cases: readonly AccountWorkspaceCase[] = [
       await client.focused(FILTER);
       await client.record('escape.focused-precondition', { assertion: 'escape.focused-precondition', observation: await client.elements(FILTER) });
       await client.key('escape');
+      await client.record('escape.native-dispatch', { assertion: 'escape.native-dispatch', key: 'escape', keycode: ANDROID_KEYCODES.escape, completed: true });
       await filterValue(client, 'escape.empty-value', '');
       await rowCount(client, 'escape.two-rows', 2, 10_000);
       await exactNames(client, 'escape.exact-names-restored', [cafeName, warehouseName], true);
@@ -172,7 +174,7 @@ void test('Android sidebar filter journeys', { timeout: 900_000 }, async context
     matrixResources.cleanup('Sidebar filter Android WebView', async () => client?.close());
     await device.install(join(session.workspaceRoot, 'android/app/build/outputs/apk/debug/app-debug.apk'));
 
-    const stages: Array<{ id: string; source: string; status: 'running' | 'passed' | 'failed'; durationMs: number; artifact: string; error?: string }> = [];
+    const stages: Array<{ id: string; source: string; status: 'running' | 'passed' | 'failed'; durationMs: number; artifact: string; failureCount?: number; error?: string }> = [];
     const save = async (): Promise<void> => writeFile(join(output, 'journeys.json'), `${JSON.stringify({ expectedStages: cases.length, stages }, null, 2)}\n`);
     for (const entry of cases) {
       const directory = join(output, entry.id);
@@ -193,6 +195,7 @@ void test('Android sidebar filter journeys', { timeout: 900_000 }, async context
       } finally {
         try { await client.close(); } catch (error) { failures.push(error); }
         stage.status = failures.length ? 'failed' : 'passed';
+        stage.failureCount = failures.length;
         stage.durationMs = performance.now() - started;
         if (failures.length) stage.error = failures.map(describeFailure).join('\n');
         await save();
