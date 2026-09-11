@@ -314,9 +314,10 @@ jobs:
     permissions:
       contents: read
       actions: read
+    # Shard 1 allows 20 + 20 + 20 + 45 minutes for commands and 15 for setup/diagnostics.
     # Shard 3 allows 20 + 85 + 45 minutes for its commands and 30 for setup/diagnostics.
     # Shard 4 allows 20 + 20 + 45 minutes for commands and 35 for setup/diagnostics.
-    timeout-minutes: ${{ matrix.shard == 3 && 180 || matrix.shard == 4 && 120 || 100 }}
+    timeout-minutes: ${{ matrix.shard == 3 && 180 || (matrix.shard == 1 || matrix.shard == 4) && 120 || 100 }}
     strategy:
       fail-fast: false
       matrix:
@@ -377,6 +378,7 @@ jobs:
             echo 'smoke-started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'critical-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:critical-journeys; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-filter-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-filter; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'native-shell-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:native-shell; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
@@ -420,6 +422,13 @@ jobs:
           surface: android-identity-presence
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.identity-presence/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}
+        with:
+          surface: android-sidebar-filter
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.sidebar-filter/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}

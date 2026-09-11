@@ -163,8 +163,8 @@ and counted erasure did not materially improve that cost. The complete batch now
 allows 75 minutes in the Node test, 80 minutes in its resource-owning wrapper and
 85 minutes in both the registry and CI command supervisor. The existing third
 shard allows 180 minutes for smoke, this batch, its retained predecessor shard and
-setup/diagnostics. Shards one and two retain their 100-minute limits; shard four
-allows 120 minutes for its Identity batch described below. These
+setup/diagnostics. Shard two retains its 100-minute limit; shards one and four
+allow 120 minutes for the Sidebar and Identity batches described below. These
 budgets preserve all fourteen cases, native actions and assertions; they are not
 retries or acceptance evidence.
 
@@ -226,9 +226,9 @@ installed-host evidence is recorded; budgets do not establish acceptance.
 Started-suite diagnostics live under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.identity-presence/`.
 `identity-presence/journeys.json` records the three stage identities, predecessor
-ranges, first-attempt outcomes and durations. Batch acceptance remains pending
-until #674 records complete installed-host parity, all five effective avatar and
-presence fault controls, the changed-fixture Accounts regression, exact predecessor
+ranges, first-attempt outcomes and durations. [Accepted #674 evidence](https://github.com/quwisky/trinity-matrix-client/issues/674#issuecomment-5629058155)
+records complete installed-host parity, all five effective avatar and presence
+fault controls, the changed-fixture Accounts regression, exact predecessor
 comparison, three consecutive complete runs with frozen inputs and original-attempt
 hosted evidence.
 
@@ -236,3 +236,47 @@ Presence recovery definitions beginning at `presence.spec.mts:246` explicitly
 exclude the production Android APK and remain with the browser migration owner.
 This batch does not transfer other Android journeys, physical push acceptance or
 the full migration reliability gate from their existing owners.
+
+
+## Sidebar room filtering batch
+
+[Android sidebar filtering migration](https://github.com/quwisky/trinity-matrix-client/issues/676)
+owns exactly these two definitions at `738ef48`. The `android.sidebar-filter`
+suite resets the installed app for each definition and uses native Account login,
+Rooms navigation and text/key input at the predecessor's 1280×720 desktop viewport.
+Both definitions are mandatory. Their Playwright predecessors remain enabled.
+
+| Predecessor | Lines | Required parity |
+| --- | --- | --- |
+| [Sidebar filter](../browser/journeys/room-library/sidebar-filter.spec.mts) | 103–162 | Initially absent clear button; accent-folded `cafeteria` matches only the exact accented room and retains the query; `zzzz` leaves zero rows with the filtered-empty copy; native clear restores the empty value and exactly both original names. |
+| Sidebar filter | 164–196 | Exactly two initial rows; `warehouse` matches only the exact Warehouse room; focused native Escape empties the value, restores exactly both original names and leaves the filter visible. |
+
+The rows retain all sixteen direct assertions plus setup and native-action
+obligations. Each definition creates a fresh reader with two private, non-DM rooms,
+`Cafétéria <suffix>` and `Warehouse <suffix>`, and verifies the exact Account-qualified
+`/rooms` route. Initial room readiness keeps the 30-second deadline; filtering and
+restoration counts keep their 10-second deadlines. Complete rendered room-name
+arrays prove inclusion and exclusion. Read-only DOM observations record values,
+visibility and focus. Current-coordinate native taps select Rooms and clear;
+Android Escape keycode 111 acts on the focused filter. The Escape definition does
+not open a Conversation, so its retained final assertion proves filter visibility.
+
+```bash
+pnpm nx run trinity-e2e-android:sidebar-filter
+```
+
+The first existing Android CI shard runs the batch after critical journeys and
+before its unchanged Playwright shard. Provisional bounds are 15 minutes for the
+Node test, 18 minutes for the resource-owning wrapper, 20 minutes for the CI
+command and 120 minutes for the complete shard. Measured local and original hosted
+runs must establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.sidebar-filter/`.
+`sidebar-filter/journeys.json` records both stages, source ranges, assertions,
+first-attempt outcomes and owned cleanup. Acceptance remains pending until #676
+records complete installed-host parity; effective accent-fold, empty-copy,
+clear-button and Escape fault controls; the exact two unchanged predecessors;
+three consecutive complete runs with frozen inputs; required quality checks;
+and original-attempt hosted evidence. Other Room Library definitions, physical
+Android acceptance and the full migration reliability gate keep their existing owners.
