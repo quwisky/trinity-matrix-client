@@ -162,6 +162,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.accounts-workspace'],
   },
   {
+    name: 'e2e:android:identity',
+    command: 'nx run trinity-e2e-android:identity-presence',
+    kind: 'canonical',
+    suiteIds: ['android.identity-presence'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -368,6 +374,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'accounts-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:accounts-workspace; fi',
     tier: 'pull-request',
     suiteIds: ['android.accounts-workspace'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'identity-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:identity-presence; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.identity-presence'],
   },
   {
     command: 'pnpm e2e:scheduled',

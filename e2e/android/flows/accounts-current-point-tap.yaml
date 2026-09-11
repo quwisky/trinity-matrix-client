@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+- evalScript: ${output.pointResponse = http.get(POINT_URL)}
+- assertTrue: ${output.pointResponse.status === 200}
+- tapOn:
+    point: ${output.pointResponse.body}

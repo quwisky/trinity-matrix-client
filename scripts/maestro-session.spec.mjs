@@ -125,6 +125,7 @@ writeFileSync(join(output, 'maestro.log'), 'login started: ' + password + '\\n')
 writeFileSync(join(output, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
 writeFileSync(join(output, 'device-logcat.txt'), ${JSON.stringify(nativeLog)});
 ${failScrub ? "symlinkSync('missing.json', join(output, 'broken.json'));" : ''}
+writeFileSync(join(output, 'fixture-ready'), 'ready');
 ${sleepMs ? `await new Promise((resolve) => setTimeout(resolve, ${sleepMs}));` : ''}
 process.exit(${exitCode});
 `,
@@ -148,7 +149,7 @@ async function waitForPrivateCommands(f) {
       const [directory] = readdirSync(root);
       if (directory) {
         const commands = join(root, directory, 'commands.json');
-        if (existsSync(commands)) return commands;
+        if (existsSync(join(root, directory, 'fixture-ready'))) return commands;
       }
     }
     await delay(20);
