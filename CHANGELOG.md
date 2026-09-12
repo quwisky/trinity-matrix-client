@@ -24,6 +24,11 @@ All notable changes to this project are documented here. The format is based on
   sections, mobile Back focus, navigation history and the search during resizing are preserved.
   Shared Settings frames also return to side-by-side panes when a compact window is widened.
 
+### Fixed
+
+- Preserve Renovate's structured log across its container boundary so the scheduled health
+  check and failure artifact can inspect the completed dependency update run.
+
 ### Changed
 
 - Keep empty message inputs at one row even when a long room-name placeholder wraps,

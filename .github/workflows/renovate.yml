@@ -99,10 +99,11 @@ jobs:
           RENOVATE_REQUIRE_CONFIG: 'required'
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_DRY_RUN: ${{ inputs.dryRun && 'full' || '' }}
-          # Written into the workspace (the action mounts it), so the health check below
-          # can read what the run actually did. Without it this job's only success
-          # criterion is the action's exit code — see that step for why that is not one.
-          RENOVATE_LOG_FILE: renovate-log.ndjson
+          # The container action mounts the runner's /tmp, but not its workspace. Keep the
+          # log on that shared mount so the host-side health check can read what the run
+          # actually did. Without it this job's only success criterion is the action's exit
+          # code — see that step for why that is not one.
+          RENOVATE_LOG_FILE: /tmp/renovate-log.ndjson
           RENOVATE_LOG_FILE_LEVEL: info
 
       # THE health check. Renovate exits 0 on a per-repository abort — `repository-changed`,
@@ -126,9 +127,10 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dryRun }}
+          RENOVATE_LOG_FILE: /tmp/renovate-log.ndjson
         run: |
           set -euo pipefail
-          log=renovate-log.ndjson
+          log="$RENOVATE_LOG_FILE"
 
           if [ ! -s "$log" ]; then
             echo "::error::Renovate wrote no log file - it never reached the repository."
@@ -168,7 +170,7 @@ jobs:
         if: failure()
         with:
           name: renovate-log
-          path: renovate-log.ndjson
+          path: /tmp/renovate-log.ndjson
           if-no-files-found: ignore
           retention-days: 7
           overwrite: true
