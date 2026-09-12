@@ -264,13 +264,13 @@ importers:
         version: 4.3.3
       '@testing-library/angular':
         specifier: ^19.4.1
-        version: 19.4.1(35d03aa35ea36d96fb26a279deaf5f2d)
+        version: 19.4.2(35d03aa35ea36d96fb26a279deaf5f2d)
       '@testing-library/dom':
         specifier: ^10.4.1
         version: 10.4.1
       '@testing-library/jest-dom':
         specifier: ^7.0.0
-        version: 7.0.0(@testing-library/dom@10.4.1)
+        version: 7.0.1(@testing-library/dom@10.4.1)(vitest@4.1.10)
       '@types/luxon':
         specifier: ^3.7.2
         version: 3.7.3
@@ -4491,8 +4491,8 @@ packages:
   '@tailwindcss/postcss@4.3.3':
     resolution: {integrity: sha512-JTSZZGQi1AyKirbLN3azmjVzef92tcX7h+iSqPdaeStyFpGpDlKvvpxeOE8njhbUanbRwr3z8DyzhICWnMtQeg==}
 
-  '@testing-library/angular@19.4.1':
-    resolution: {integrity: sha512-C9gIfKf3cpkLqNoUy0pbz8/YpmxyFQTZP6Qzo9HrolQPyVSMdc0+ev3vewCouZDyQQwfRkJNlpgjaHHyhL9oqw==}
+  '@testing-library/angular@19.4.2':
+    resolution: {integrity: sha512-N8Xg2qb52WmqBMSK59YZ58Hmle3n7rjTc4x5dmSX2YFFuUNjBnFlTSroBPx7JWgtDbDxbnMhgRtATats9LIIJQ==}
     peerDependencies:
       '@angular/common': '>= 21.0.0'
       '@angular/core': '>= 21.0.0'
@@ -4508,11 +4508,15 @@ packages:
     resolution: {integrity: sha512-zIcONa+hVtVSSep9UT3jZ5rizo2BsxgyDYU7WFD5eICBE7no3881HGeb/QkGfsJs6JTkY1aQhT7rIPC7e+0nnA==}
     engines: {node: '>=14', npm: '>=6', yarn: '>=1'}
 
-  '@testing-library/jest-dom@7.0.0':
-    resolution: {integrity: sha512-HKAH9C6mBo5yBG6yRO5i43L2iisencAo5z+o5P/saHUoY+miC5ivXRxHBJcFyB5ypPNxHJdK3BoF/3O4DIptMg==}
+  '@testing-library/jest-dom@7.0.1':
+    resolution: {integrity: sha512-oMDTC3oA+6CXSO2JZnvOI7CA6oVub6kij5ggk9ohwye5slmkwxYDXcPOVxgMw/RQlticjtO0C1RZkR97HgrWMw==}
     engines: {node: '>=22', npm: '>=6', yarn: '>=1'}
     peerDependencies:
       '@testing-library/dom': '>=10 <11'
+      vitest: '>= 0.32'
+    peerDependenciesMeta:
+      vitest:
+        optional: true
 
   '@testing-library/user-event@14.6.5':
     resolution: {integrity: sha512-FhqjldLTpteueBaKflhNFlMT3+PM0O5fiBUivht6b9CZ1eesJyy7+g3Jr7XwJzt/Hip3ZG5hWwK1MX1FuDiE4w==}
@@ -14489,7 +14493,7 @@ snapshots:
       postcss: 8.5.25
       tailwindcss: 4.3.3
 
-  '@testing-library/angular@19.4.1(35d03aa35ea36d96fb26a279deaf5f2d)':
+  '@testing-library/angular@19.4.2(35d03aa35ea36d96fb26a279deaf5f2d)':
     dependencies:
       '@angular/common': 22.1.0(@angular/core@22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2))(rxjs@7.8.2)
       '@angular/core': 22.1.0(@angular/compiler@22.1.0)(rxjs@7.8.2)(zone.js@0.16.2)
@@ -14518,7 +14522,7 @@ snapshots:
       picocolors: 1.1.1
       redent: 3.0.0
 
-  '@testing-library/jest-dom@7.0.0(@testing-library/dom@10.4.1)':
+  '@testing-library/jest-dom@7.0.1(@testing-library/dom@10.4.1)(vitest@4.1.10)':
     dependencies:
       '@adobe/css-tools': 4.5.0
       '@testing-library/dom': 10.4.1
@@ -14527,6 +14531,8 @@ snapshots:
       dom-accessibility-api: 0.6.3
       picocolors: 1.1.1
       redent: 3.0.0
+    optionalDependencies:
+      vitest: 4.1.10(@types/node@24.13.3)(@vitest/coverage-v8@4.1.10)(jsdom@30.0.1)(vite@8.2.0(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(less@4.6.7)(sass-embedded@1.100.0)(sass@1.101.0)(terser@5.49.0)(yaml@2.9.0))
 
   '@testing-library/user-event@14.6.5(@testing-library/dom@10.4.1)':
     dependencies:
