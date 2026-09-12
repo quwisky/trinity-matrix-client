@@ -805,6 +805,37 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android unread-badges batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.unread-badges',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:unread-badges',
+        canonicalScript: 'e2e:android:unread-badges',
+        sourceEntrypoints: ['e2e/android/unread-badges-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:unread-badges'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(

@@ -198,6 +198,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-list'],
   },
   {
+    name: 'e2e:android:unread-badges',
+    command: 'nx run trinity-e2e-android:unread-badges',
+    kind: 'canonical',
+    suiteIds: ['android.unread-badges'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -440,6 +446,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'room-list-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-list; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-list'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'unread-badges-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:unread-badges; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.unread-badges'],
   },
   {
     command: 'pnpm e2e:scheduled',

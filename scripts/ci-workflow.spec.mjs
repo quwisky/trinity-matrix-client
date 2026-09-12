@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(20);
+    expect(uploads.length).toBe(21);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -92,6 +92,9 @@ describe('CI execution contract', () => {
     expect(
       uploads.filter((step) => step.with.surface === 'android-room-list'),
     ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-unread-badges'),
+    ).toHaveLength(1);
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
@@ -114,7 +117,9 @@ describe('CI execution contract', () => {
                           ? /!cancelled\(\).*outputs\.room-read-state-started == 'true'/
                           : step.with.surface === 'android-room-list'
                             ? /!cancelled\(\).*outputs\.room-list-started == 'true'/
-                            : /!cancelled\(\).*outputs\.started == 'true'/;
+                            : step.with.surface === 'android-unread-badges'
+                              ? /!cancelled\(\).*outputs\.unread-badges-started == 'true'/
+                              : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -139,7 +144,7 @@ describe('CI execution contract', () => {
     }
   });
 
-  it('runs room-list after read state and before retained Playwright on shard 1', () => {
+  it('runs unread badges after room-list and before retained Playwright on shard 1', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -148,19 +153,21 @@ describe('CI execution contract', () => {
     const roomTags = script.indexOf('trinity-e2e-android:room-tags');
     const readState = script.indexOf('trinity-e2e-android:room-read-state');
     const roomList = script.indexOf('trinity-e2e-android:room-list');
+    const unreadBadges = script.indexOf('trinity-e2e-android:unread-badges');
     const playwright = script.indexOf('pnpm e2e:android --');
-    const roomListLine = script
+    const unreadBadgesLine = script
       .split('\n')
-      .find((line) => line.includes('trinity-e2e-android:room-list'));
+      .find((line) => line.includes('trinity-e2e-android:unread-badges'));
 
     expect(filter).toBeGreaterThan(-1);
     expect(touch).toBeGreaterThan(filter);
     expect(roomTags).toBeGreaterThan(touch);
     expect(readState).toBeGreaterThan(roomTags);
     expect(roomList).toBeGreaterThan(readState);
-    expect(playwright).toBeGreaterThan(roomList);
-    expect(roomListLine).toContain('matrix.shard }}" = "1"');
-    expect(roomListLine).toContain('room-list-started=true');
+    expect(unreadBadges).toBeGreaterThan(roomList);
+    expect(playwright).toBeGreaterThan(unreadBadges);
+    expect(unreadBadgesLine).toContain('matrix.shard }}" = "1"');
+    expect(unreadBadgesLine).toContain('unread-badges-started=true');
   });
 
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
@@ -203,7 +210,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(13);
+    expect(lines).toHaveLength(14);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

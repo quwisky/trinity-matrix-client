@@ -498,3 +498,55 @@ complete first attempts, effective preview/structure/badge fault controls, both
 unchanged predecessors, required quality checks and original-attempt hosted
 evidence. Other Room Library definitions, physical Android acceptance and the
 full migration reliability gate stay with their existing owners.
+
+## Aggregate and platform unread-badge batch
+
+[Android unread-badges migration](https://github.com/quwisky/trinity-matrix-client/issues/691)
+owns both complete Android-relevant definitions in
+[Unread badges](../browser/journeys/room-library/unread-badges.spec.mts), lines
+133–160 and the explicit Android branch at 162–186 at `1f7afeb7`. The pinned
+source SHA-256 is
+`88717c4e01c304025b951a359b1cda79a775e92015be2f294639b39490adfae0`.
+`android.unread-badges` resets the installed app to the Playwright 1.62.1 Pixel
+5 profile for each definition and runs them as two mandatory stages. Both
+Playwright predecessors remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Aggregate Rooms-rail badge | `rail.badge-visible`, `rail.badge-positive-count` |
+| Native platform-badge lifecycle | `platform.badge-set-three`, `platform.badge-clear-zero` |
+
+These are exactly four direct predecessor assertions. Each stage creates a
+fresh reader and sender with one private, non-DM room and posts exactly three
+messages before the reader signs in. The aggregate stage proves that the Rooms
+rail item has one visible positive-integer badge, preferring exact text `3` but
+preserving the predecessor's documented notification-timing fallback.
+
+The platform stage installs the existing Capacitor Badge boundary recorder
+before app boot and proves its count reaches exactly `3` within 30 seconds. It
+then opens Rooms and the exact room through measured current-coordinate native
+taps and proves the count reaches exactly `0` within 15 seconds. That clear is
+mandatory because the predecessor explicitly requires it on Android. WebView
+access remains read-only; fixture setup uses Matrix APIs, and recorder removal,
+client/device cleanup and secret redaction remain registered on failures.
+
+```bash
+pnpm nx run trinity-e2e-android:unread-badges
+```
+
+Android CI shard 1 runs this batch after room-list and before its unchanged
+Playwright shard. Provisional bounds are 15 minutes for the Node test, 18
+minutes for the resource-owning wrapper, 20 minutes for the CI command and 120
+minutes for the complete shard. Measured local and hosted runs must establish
+that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.unread-badges/`.
+`unread-badges/journeys.json` records both stage sources, first-attempt outcomes
+and artifact pointers. Stage-local assertion records, screenshots and the suite
+progress report retain observations, provenance and registered cleanup.
+Acceptance remains pending until #691 records three complete first attempts,
+effective rail/native badge fault controls, both unchanged predecessors,
+required quality checks and original-attempt hosted evidence. Other Room
+Library definitions, physical Android acceptance and the full migration
+reliability gate stay with their existing owners.
