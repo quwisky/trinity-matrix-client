@@ -79,6 +79,20 @@ export function createAccountFixtures(
     childId: string,
     options?: { readonly suggested?: boolean },
   ): Promise<void>;
+  spaceChild(
+    account: NodeWorkspaceAccount,
+    spaceId: string,
+    childId: string,
+  ): Promise<MatrixRecord | undefined>;
+  spaceChildIds(
+    account: NodeWorkspaceAccount,
+    spaceId: string,
+  ): Promise<readonly string[]>;
+  roomCreateType(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<string | undefined>;
+  trackRoomMembership(account: NodeWorkspaceAccount, roomId: string): void;
 } {
   const sessions = new Map<string, AccessSession>();
   const accounts = new Map<string, Promise<NodeWorkspaceAccount>>();
@@ -147,6 +161,25 @@ export function createAccountFixtures(
       throw new Error(`Matrix fixture ${method} ${path} failed with HTTP ${response.status}`);
     }
     return record(await response.json(), `Matrix fixture ${method} ${path} response`);
+  }
+
+  async function get(
+    session: AccessSession,
+    path: string,
+    options: { readonly allowNotFound?: boolean } = {},
+  ): Promise<unknown | undefined> {
+    const response = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3${path}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: requestSignal(signal),
+    });
+    if (options.allowNotFound && response.status === 404) return undefined;
+    if (!response.ok) {
+      throw new Error(
+        `Matrix fixture GET ${path} failed with HTTP ${response.status}`,
+      );
+    }
+    return response.json();
   }
 
   async function login(account: NodeWorkspaceAccount): Promise<AccessSession> {
@@ -389,6 +422,60 @@ export function createAccountFixtures(
     );
   }
 
+  async function spaceChild(
+    owner: NodeWorkspaceAccount,
+    spaceId: string,
+    childId: string,
+  ): Promise<MatrixRecord | undefined> {
+    const path = `/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`;
+    const value = await get(access(owner), path, { allowNotFound: true });
+    return value === undefined
+      ? undefined
+      : record(value, 'Matrix fixture space-child response');
+  }
+
+  async function spaceChildIds(
+    owner: NodeWorkspaceAccount,
+    spaceId: string,
+  ): Promise<readonly string[]> {
+    const path = `/rooms/${encodeURIComponent(spaceId)}/state`;
+    const value = await get(access(owner), path);
+    assert(Array.isArray(value), 'Matrix fixture room-state response is an array');
+    return value.flatMap((candidate) => {
+      const event = record(candidate, 'Matrix fixture room-state event');
+      const content = record(
+        event['content'],
+        'Matrix fixture room-state event content',
+      );
+      return event['type'] === 'm.space.child' &&
+        typeof event['state_key'] === 'string' &&
+        Array.isArray(content['via']) &&
+        content['via'].length > 0
+        ? [event['state_key']]
+        : [];
+    });
+  }
+
+  async function roomCreateType(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<string | undefined> {
+    const path = `/rooms/${encodeURIComponent(roomId)}/state/m.room.create/`;
+    const value = await get(access(owner), path, { allowNotFound: true });
+    if (value === undefined) return undefined;
+    const content = record(value, 'Matrix fixture room-create response');
+    return typeof content['type'] === 'string' ? content['type'] : undefined;
+  }
+
+  function trackRoomMembership(
+    member: NodeWorkspaceAccount,
+    roomId: string,
+  ): void {
+    const members = roomMembers.get(roomId) ?? new Set<string>();
+    members.add(member.userId);
+    roomMembers.set(roomId, members);
+  }
+
   return {
     account,
     createRoom,
@@ -402,5 +489,9 @@ export function createAccountFixtures(
     setMarkedUnread,
     setRoomTag,
     setSpaceChild,
+    spaceChild,
+    spaceChildIds,
+    roomCreateType,
+    trackRoomMembership,
   };
 }

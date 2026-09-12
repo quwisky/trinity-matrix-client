@@ -698,3 +698,51 @@ quality checks and original-attempt hosted evidence. The source's computed
 radius, pseudo-element and mouse-hover checks remain browser-renderer coverage;
 other Room Library definitions, physical Android acceptance and the full
 migration reliability gate stay with their existing owners.
+
+## Space creation and join curation functional batch
+
+[Android space creation and join curation](https://github.com/quwisky/trinity-matrix-client/issues/695)
+owns the installed-Android functional guarantees in three definitions from
+[Space curation](../browser/journeys/room-library/space-curation.spec.mts),
+lines 92–140, 142–221 and 392–457 at `0ac64bed`. The pinned source SHA-256 is
+`35a2dd1726eef56c03288c64c23885703f3f1d06927870d4eeabac7bf3a51c7b`.
+`android.space-curation-create-join` resets the installed app to the Playwright
+1.62.1 Pixel 5 profile for three mandatory stages. All three complete
+Playwright predecessors remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Existing-room prompt is visible and writes a reachable child link | `add.dialog-visible`, `add.link-present`, `add.link-via-array`, `add.link-via-nonempty` |
+| Nested-space prompt creates and links an actual `m.space` child | `subspace.name-field-visible`, `subspace.link-present`, `subspace.child-type-space` |
+| Joining an offered child updates the live space view without reload | `join.action-visible`, `join.action-hidden`, `join.child-row-visible` |
+
+These are exactly ten direct assertions. Each stage uses fresh accounts and
+rooms. Matrix state reads remain inside the fixture closure so access tokens
+cannot enter diagnostics. Space selection, menus, room picks, creation and join
+actions use measured current-coordinate native taps; the nested-space name uses
+native input. WebView access is observation-only. UI-created membership is
+registered for leave/forget cleanup, and client/device cleanup plus secret
+redaction remain registered on failures.
+
+```bash
+pnpm nx run trinity-e2e-android:space-curation-create-join
+```
+
+Android CI shard 1 runs this batch after spaceless filtering and before its
+unchanged Playwright shard. Provisional bounds are 15 minutes for the Node test,
+18 minutes for the resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. Measured local and hosted runs must
+establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.space-curation-create-join/`.
+`space-curation-create-join/journeys.json` records each stage source,
+first-attempt outcome and artifact pointer. Stage-local assertion records,
+screenshots and the suite progress report retain observations, provenance and
+registered cleanup. Acceptance remains pending until #695 records three
+complete first attempts, effective link/type/join fault controls, all three
+unchanged predecessors, required quality checks and original-attempt hosted
+evidence. The source's computed dialog-opacity assertion and its write-fault,
+held-write, reorder and desktop-keyboard definition remain browser coverage;
+other Room Library definitions, physical Android acceptance and the full
+migration reliability gate stay with their existing owners.
