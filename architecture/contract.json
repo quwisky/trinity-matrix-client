@@ -49,6 +49,10 @@
       "reason": "Public documentation applications are outside the shipped application dependency model."
     },
     {
+      "project": "docs-e2e",
+      "reason": "Documentation browser checks are outside the shipped application dependency model."
+    },
+    {
       "project": "docs-site",
       "reason": "Documentation build tooling is outside the shipped application dependency model."
     },

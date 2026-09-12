@@ -244,6 +244,7 @@ const OUTSIDE_THE_VENDOR_BANS = [
   'e2e/android/project.json',
   'e2e/browser/project.json',
   'e2e/components/project.json',
+  'e2e/docs/project.json',
   'e2e/electron/project.json',
   'e2e/project.json',
   'e2e/protocol/project.json',

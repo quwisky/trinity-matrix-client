@@ -60,6 +60,15 @@
         "command": "node tools/docs/assemble-pages.mjs",
         "cwd": "{workspaceRoot}"
       }
+    },
+    "e2e": {
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/docs-site"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "playwright test --config=e2e/docs/playwright.config.ts",
+        "cwd": "{workspaceRoot}"
+      }
     }
   }
 }
