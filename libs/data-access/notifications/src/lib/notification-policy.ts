@@ -33,13 +33,31 @@ export class NotificationPolicy {
     }
 
     const body = event.body?.trim();
+    const reaction = event.kind === 'reaction';
+    let heading = event.senderName;
+    if (reaction) {
+      const others = event.senderCount - 1;
+      const people =
+        others > 0
+          ? `${heading} and ${others} ${others === 1 ? 'other' : 'others'}`
+          : heading;
+      const keys = event.reactionKeys
+        .slice(0, 3)
+        .map((key) => key.slice(0, 32))
+        .join(' ');
+      heading = `${people} reacted ${keys}${event.reactionKeys.length > 3 ? ' …' : ''}`;
+    }
     const intent: NotificationIntent = Object.freeze({
-      id: `${event.accountId} ${event.eventId}`,
-      title: event.roomName
-        ? `${event.senderName} · ${event.roomName}`
-        : event.senderName,
-      body: body ? body.slice(0, PREVIEW_LIMIT) : 'New message',
-      tag: `${event.accountId} ${event.roomId}`,
+      id: `${event.accountId} ${reaction ? 'reaction ' : ''}${event.eventId}`,
+      title: event.roomName ? `${heading} · ${event.roomName}` : heading,
+      body: reaction
+        ? body
+          ? `Your message: ${body.slice(0, PREVIEW_LIMIT)}`
+          : 'Your message'
+        : body
+          ? body.slice(0, PREVIEW_LIMIT)
+          : 'New message',
+      tag: `${event.accountId} ${event.roomId}${reaction ? ` reaction ${event.eventId}` : ''}`,
       silent: rules.silent,
       destination: Object.freeze({
         accountId: event.accountId,

@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import {
   ClientEvent,
+  EventType,
   MatrixEventEvent,
   RoomEvent,
   SyncState,
@@ -28,6 +29,13 @@ import type {
   CapabilityRecoveryOutcome,
 } from '@trinity/runtime/projection';
 import { NotificationPresentationHealthTracker } from './notification-presentation-health';
+import { ReactionNotificationBatch } from './reaction-notification-batch';
+import { ReactionNotificationSettingsService } from './reaction-notification-settings.service';
+import { RoomNotificationsService } from './room-notifications.service';
+import type {
+  NotificationIntent,
+  ReactionNotificationEvent,
+} from './notification-intent';
 
 /** One account's client plus its bound timeline / decrypted listeners. */
 interface AccountNotifier {
@@ -42,6 +50,7 @@ interface AccountNotifier {
   ) => void;
   readonly onDecrypted: (event: MatrixEvent) => void;
   readonly onSync: (state: SyncState) => void;
+  readonly reactions: ReactionNotificationBatch;
 }
 
 /**
@@ -63,8 +72,9 @@ interface AccountNotifier {
  * events (not backfill), from someone other than us, when the user isn't looking at
  * that room (the window is unfocused, a
  * different room is open, or the event is on a background account), and only when
- * that account's push rules say to notify (`getPushActionsForEvent().notify` —
- * respects mutes / mentions-only). Activation emits an exact semantic destination;
+ * ordinary messages pass that account's push rules (`getPushActionsForEvent().notify`
+ * respects mutes / mentions-only). Opted-in reactions use client-side target ownership
+ * checks instead, while retaining master-disable and room-mute rules. Activation emits an exact semantic destination;
  * the application Workspace owns account switching, repair, focus, and navigation.
  *
  * Because several accounts sync concurrently, listeners are attached per account and
@@ -86,6 +96,10 @@ interface AccountNotifier {
 export class NotificationService {
   private readonly matrix = inject(MatrixClientService);
   private readonly sound = inject(NotificationSoundService);
+  private readonly reactionSettings = inject(
+    ReactionNotificationSettingsService,
+  );
+  private readonly roomNotifications = inject(RoomNotificationsService);
   private readonly visibility = inject(NOTIFICATION_VISIBILITY);
   private readonly policy = inject(NotificationPolicy);
   private readonly presenter = inject(NotificationPresenterService);
@@ -349,9 +363,17 @@ export class NotificationService {
     let firstSyncCompleted =
       currentSyncState === SyncState.Prepared ||
       currentSyncState === SyncState.Syncing;
+    const reactions = new ReactionNotificationBatch({
+      accountId: userId,
+      client,
+      allowed: (room, senderId) =>
+        this.reactionAllowed(userId, client, room, senderId),
+      present: (event) => this.presentReaction(userId, client, event),
+    });
     return {
       userId,
       client,
+      reactions,
       onSync: (state): void => {
         if (state === SyncState.Prepared || state === SyncState.Syncing) {
           firstSyncCompleted = true;
@@ -366,6 +388,10 @@ export class NotificationService {
           if (!firstSyncCompleted) {
             // matrix-js-sdk labels the first /sync batch as live while it is still
             // applying stored room state and history. PREPARED is emitted afterwards.
+            return;
+          }
+          if (this.isReaction(event) && room) {
+            reactions.add(event, room);
             return;
           }
           if (this.isAwaitingDecryption(event)) {
@@ -402,6 +428,10 @@ export class NotificationService {
           }
           this.pendingDecryption.delete(key);
           const room = client.getRoom(event.getRoomId() ?? '') ?? undefined;
+          if (this.isReaction(event) && room) {
+            reactions.add(event, room);
+            return;
+          }
           this.maybeNotify(userId, client, event, room, /* force */ true);
         } catch {
           /* a notification failure is non-fatal */
@@ -417,6 +447,7 @@ export class NotificationService {
   }
 
   private detach(notifier: AccountNotifier): void {
+    notifier.reactions.dispose();
     notifier.client.off(ClientEvent.Sync, notifier.onSync);
     notifier.client.off(RoomEvent.Timeline, notifier.onTimeline);
     notifier.client.off(MatrixEventEvent.Decrypted, notifier.onDecrypted);
@@ -473,8 +504,31 @@ export class NotificationService {
     if (decision.kind === 'suppress') return;
     this.notified.add(key);
     this.evictOldest(this.notified, NotificationService.NOTIFIED_CAP);
+    this.presentIntent(decision.intent);
+  }
+
+  private presentReaction(
+    userId: string,
+    client: MatrixClient,
+    event: ReactionNotificationEvent,
+  ): void {
+    if (!this.reactionAllowed(userId, client, event.roomId, event.senderId)) {
+      return;
+    }
+    const decision = this.policy.decide({
+      event,
+      viewerId: client.getUserId() ?? userId,
+      rules: { notify: true, silent: !this.sound.isOn(userId) },
+      visibility: this.visibility.snapshot(),
+      duplicate: false,
+    });
+    if (decision.kind === 'suppress') return;
+    this.presentIntent(decision.intent);
+  }
+
+  private presentIntent(intent: NotificationIntent): void {
     const subscription = this.presenter
-      .present(decision.intent)
+      .present(intent)
       .pipe(take(1))
       .subscribe({
         next: (outcome) => {
@@ -492,6 +546,42 @@ export class NotificationService {
           ),
       });
     this.connection?.add(subscription);
+  }
+
+  private isReaction(event: MatrixEvent): boolean {
+    return event.getType?.() === EventType.Reaction;
+  }
+
+  private reactionAllowed(
+    userId: string,
+    client: MatrixClient,
+    room: Room | string | undefined,
+    senderId: string,
+  ): boolean {
+    return (
+      this.enabled &&
+      this.presentationReady &&
+      this.matrix.clientFor(userId) === client &&
+      this.reactionSettings.isOn(userId) &&
+      this.reactionAllowedForRoom(client, senderId) &&
+      (!room ||
+        this.roomNotifications.modeFor(
+          typeof room === 'string' ? room : room.roomId,
+          userId,
+        ) !== 'mute')
+    );
+  }
+
+  private reactionAllowedForRoom(
+    client: MatrixClient,
+    senderId: string,
+  ): boolean {
+    if (senderId === client.getUserId()) return false;
+    if (client.isUserIgnored?.(senderId) === true) return false;
+    const master = client.pushRules?.global?.override?.find(
+      (rule) => rule.rule_id === '.m.rule.master',
+    );
+    return master?.enabled !== true;
   }
 
   recoverPresentation(

@@ -4,15 +4,18 @@ import {
   DestroyRef,
   OnDestroy,
   OnInit,
+  effect,
   inject,
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   NotificationSoundService,
   PushRulesService,
+  ReactionNotificationSettingsService,
   type PushRuleToggle,
 } from '@trinity/data-access/notifications';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
@@ -41,6 +44,8 @@ import { SettingsToggleRowDirective } from '../shared/settings-toggle-row.direct
 export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly push = inject(PushRulesService);
   private readonly sound = inject(NotificationSoundService);
+  private readonly reactions = inject(ReactionNotificationSettingsService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -50,6 +55,8 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly state = signal<ReadonlyMap<string, boolean>>(new Map());
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
+  private reactionAccountId: string | null | undefined;
+  private reactionWriteGeneration = 0;
 
   /**
    * Key for the sound switch in the same optimistic state/pending maps as the rule toggles.
@@ -57,6 +64,31 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
    * it cannot borrow any single one of theirs.
    */
   protected readonly soundKey = 'trinity.notification-sound';
+  // Internal pending-map identity; the persisted account-data key belongs to the service.
+  protected readonly reactionsKey = 'reaction-notifications';
+
+  constructor() {
+    effect(() => {
+      const accountId = this.matrix.activeUserId();
+      if (
+        this.reactionAccountId !== undefined &&
+        this.reactionAccountId !== accountId
+      ) {
+        this.reactionWriteGeneration += 1;
+        this.state.update((current) => {
+          const next = new Map(current);
+          next.delete(this.reactionsKey);
+          return next;
+        });
+        this.pending.update((current) => {
+          const next = new Set(current);
+          next.delete(this.reactionsKey);
+          return next;
+        });
+      }
+      this.reactionAccountId = accountId;
+    });
+  }
 
   ngOnInit(): void {
     const seeded = new Map<string, boolean>();
@@ -67,10 +99,12 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     // Tracks account data, so a value that arrives after this page has rendered (a cold
     // load, or a change made on another device) still shows.
     this.sound.connect();
+    this.reactions.connect();
   }
 
   ngOnDestroy(): void {
     this.sound.disconnect();
+    this.reactions.disconnect();
   }
 
   /**
@@ -108,6 +142,55 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
           });
         },
       });
+  }
+
+  reactionChecked(): boolean {
+    return this.reactionPending()
+      ? (this.state().get(this.reactionsKey) ?? this.reactions.enabled())
+      : this.reactions.enabled();
+  }
+
+  reactionPending(): boolean {
+    return this.pending().has(this.reactionsKey);
+  }
+
+  toggleReactions(on: boolean): void {
+    if (this.reactionPending()) {
+      return;
+    }
+    this.setState(this.reactionsKey, on);
+    this.setPending(this.reactionsKey, true);
+    const accountId = this.matrix.activeUserId();
+    const generation = this.reactionWriteGeneration;
+    this.reactions
+      .setOn(on)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (this.isCurrentReactionWrite(accountId, generation)) {
+            this.setPending(this.reactionsKey, false);
+          }
+        },
+        error: () => {
+          if (this.isCurrentReactionWrite(accountId, generation)) {
+            this.setState(this.reactionsKey, !on);
+            this.setPending(this.reactionsKey, false);
+            this.toast.show('Could not update your notification settings.', {
+              variant: 'danger',
+            });
+          }
+        },
+      });
+  }
+
+  private isCurrentReactionWrite(
+    accountId: string | null,
+    generation: number,
+  ): boolean {
+    return (
+      this.reactionWriteGeneration === generation &&
+      this.matrix.activeUserId() === accountId
+    );
   }
 
   checked(toggle: PushRuleToggle): boolean {

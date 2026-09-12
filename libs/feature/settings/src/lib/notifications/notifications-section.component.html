@@ -15,6 +15,18 @@
     </label>
   }
 
+  <label trnSettingsToggleRow data-testid="notif-reactions">
+    <trn-switch
+      [checked]="reactionChecked()"
+      (checkedChange)="toggleReactions($event)"
+    />
+    When someone reacts to my message
+  </label>
+  <p class="px-4 pb-2 text-13 text-muted-foreground">
+    While Trinity is running, groups reactions to your messages into one
+    notification per message.
+  </p>
+
   <label trnSettingsToggleRow data-testid="notif-sound">
     <trn-switch
       [checked]="soundChecked()"

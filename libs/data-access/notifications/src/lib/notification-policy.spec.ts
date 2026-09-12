@@ -79,4 +79,30 @@ describe('NotificationPolicy', () => {
       intent: { body: 'New message' },
     });
   });
+
+  it('presents a grouped reaction with a target-specific tag and message destination', () => {
+    const input = base();
+    const decision = policy.decide({
+      ...input,
+      event: {
+        ...input.event,
+        kind: 'reaction',
+        senderCount: 5,
+        reactionKeys: ['👍'],
+      },
+    });
+    expect(decision).toMatchObject({
+      kind: 'present',
+      intent: {
+        title: 'Bob and 4 others reacted 👍 · General',
+        body: 'Your message: Hello',
+        tag: '@alice:example.org !room:example.org reaction $event',
+        destination: {
+          accountId: '@alice:example.org',
+          roomId: '!room:example.org',
+          eventId: '$event',
+        },
+      },
+    });
+  });
 });
