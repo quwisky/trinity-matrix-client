@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "docs-developers",
+  "projectType": "application",
+  "root": "apps/docs-developers",
+  "sourceRoot": "apps/docs-developers/src",
+  "tags": ["type:tool", "scope:shared"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "astro dev",
+        "cwd": "{workspaceRoot}/apps/docs-developers"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/docs/developers"],
+      "options": {
+        "command": "astro build",
+        "cwd": "{workspaceRoot}/apps/docs-developers"
+      }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "astro check",
+        "cwd": "{workspaceRoot}/apps/docs-developers"
+      }
+    }
+  }
+}

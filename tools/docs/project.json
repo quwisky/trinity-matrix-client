@@ -1,0 +1,9 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "docs-site",
+  "projectType": "library",
+  "root": "tools/docs",
+  "sourceRoot": "tools/docs",
+  "tags": ["type:tool", "scope:shared"],
+  "targets": {}
+}
