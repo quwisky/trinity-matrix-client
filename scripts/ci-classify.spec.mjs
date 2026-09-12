@@ -97,6 +97,7 @@ describe('CI change classifier', () => {
   it('uses canonical job sets', () => {
     expect(CODE_JOB_IDS).toEqual([
       'quality',
+      'docs-gate',
       'test',
       'renderer',
       'desktop',

@@ -10,11 +10,12 @@ public developer guide.
 
 ## Know what ran
 
-| Workflow                                               | Starts when                                                       | What it provides                                               |
-| ------------------------------------------------------ | ----------------------------------------------------------------- | -------------------------------------------------------------- |
-| [`ci.yml`](../../.github/workflows/ci.yml)             | A pull request, selected pushes, or its weekly schedule           | Branch checks and browser, desktop, and Android evidence       |
-| [`release.yml`](../../.github/workflows/release.yml)   | A stable `vX.Y.Z` tag push, or a manual dispatch with a tag input | Tag verification, desktop packages, and a draft GitHub release |
-| [`renovate.yml`](../../.github/workflows/renovate.yml) | Daily at 00:00 UTC or a manual dispatch                           | Dependency update maintenance through a GitHub App token       |
+| Workflow                                                   | Starts when                                                       | What it provides                                               |
+| ---------------------------------------------------------- | ----------------------------------------------------------------- | -------------------------------------------------------------- |
+| [`ci.yml`](../../.github/workflows/ci.yml)                 | A pull request, selected pushes, or its weekly schedule           | Branch checks and browser, desktop, and Android evidence       |
+| [`docs-pages.yml`](../../.github/workflows/docs-pages.yml) | A `develop` push or manual dispatch from `develop`                | Validated user and developer sites deployed to GitHub Pages    |
+| [`release.yml`](../../.github/workflows/release.yml)       | A stable `vX.Y.Z` tag push, or a manual dispatch with a tag input | Tag verification, desktop packages, and a draft GitHub release |
+| [`renovate.yml`](../../.github/workflows/renovate.yml)     | Daily at 00:00 UTC or a manual dispatch                           | Dependency update maintenance through a GitHub App token       |
 
 The branch workflow accepts pushes to `develop`, `master`, and
 `renovate/patch-**`; pull requests are its usual review path. A newer run for
@@ -34,6 +35,15 @@ The classifier emits its reason and expected jobs. The tested required-result
 evaluator rejects failed, cancelled, missing, or skipped expected jobs; wiring
 that aggregate status into branch rules belongs to the later protection slice
 of [#462](https://github.com/quwisky/trinity-matrix-client/issues/462).
+
+### Configure GitHub Pages
+
+In repository Settings → Pages, set the publishing source to **GitHub Actions**.
+Protect the `github-pages` environment so only the `develop` branch can deploy.
+The workflow also checks the exact branch ref before building or deploying, keeps
+the build job read-only, and grants `pages: write` plus `id-token: write` only to
+the deployment job. It uploads only `dist/docs-site`; pull-request CI validates
+the same site without uploading or deploying a Pages artifact.
 
 ### Diagnose setup and cache failures
 
@@ -288,6 +298,7 @@ reviewing an update branch or diagnosing why it did not merge.
 ## Source of truth
 
 The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),
+[`docs-pages.yml`](../../.github/workflows/docs-pages.yml),
 [`release.yml`](../../.github/workflows/release.yml),
 [`renovate.yml`](../../.github/workflows/renovate.yml),
 [`electron-builder.yml`](../../electron/electron-builder.yml), and the

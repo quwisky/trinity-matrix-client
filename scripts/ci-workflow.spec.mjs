@@ -14,7 +14,7 @@ describe('CI execution contract', () => {
     expect(workflow.jobs.classify.outputs.mode).toContain(
       'steps.classify.outputs.mode',
     );
-    for (const id of CODE_JOB_IDS) {
+    for (const id of CODE_JOB_IDS.filter((id) => id !== 'docs-gate')) {
       expect([workflow.jobs[id].needs].flat()).toContain('classify');
       expect(workflow.jobs[id].if).toContain('!cancelled()');
       expect(workflow.jobs[id].if).toContain(
@@ -26,12 +26,17 @@ describe('CI execution contract', () => {
     ]);
   });
 
-  it('keeps the docs gate limited to formatting and source contracts', () => {
+  it('runs the complete documentation gate for docs and code changes', () => {
     const job = workflow.jobs['docs-gate'];
-    expect(job.if).toContain("needs.classify.outputs.mode == 'docs'");
+    expect(job.if).toContain('!cancelled()');
+    expect(job.if).toContain("github.event_name != 'schedule'");
     expect(job.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual([
       'pnpm format:check',
       'pnpm nx test scripts',
+      'pnpm nx test docs-site',
+      'pnpm nx run docs-site:check',
+      'pnpm nx run docs-site:assemble',
+      'pnpm nx run docs-site:e2e',
     ]);
   });
 

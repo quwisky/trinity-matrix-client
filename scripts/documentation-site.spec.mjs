@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 
@@ -149,5 +150,70 @@ describe('legacy documentation replacement', () => {
       const source = readFileSync(join(workspaceRoot, projectPath), 'utf8');
       expect(source).not.toMatch(/docs-internal|\.agents|\.claude/);
     }
+  });
+});
+
+describe('GitHub Pages documentation publication', () => {
+  const workflowPath = join(workspaceRoot, '.github/workflows/docs-pages.yml');
+  const workflow = () => parse(readFileSync(workflowPath, 'utf8'));
+
+  it('defines a dedicated develop and manual Pages workflow', () => {
+    expect(existsSync(workflowPath)).toBe(true);
+    expect(workflow().on).toEqual({
+      push: { branches: ['develop'] },
+      workflow_dispatch: null,
+    });
+    expect(workflow().permissions).toEqual({ contents: 'read' });
+  });
+
+  it('validates, assembles, and uploads exactly one Pages artifact', () => {
+    const build = workflow().jobs.build;
+    expect(build.permissions).toEqual({ contents: 'read' });
+    expect(build.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual(
+      [
+        'pnpm format:check',
+        'pnpm nx test scripts',
+        'pnpm nx test docs-site',
+        'pnpm nx run docs-site:check',
+        'pnpm nx run docs-site:assemble',
+        'pnpm nx run docs-site:e2e',
+      ],
+    );
+
+    const configured = build.steps.filter((step) =>
+      step.uses?.startsWith('actions/configure-pages@'),
+    );
+    const uploads = build.steps.filter((step) =>
+      step.uses?.startsWith('actions/upload-pages-artifact@'),
+    );
+    expect(configured).toHaveLength(1);
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0].with).toEqual({ path: 'dist/docs-site' });
+    const remoteActions = build.steps.filter(
+      (step) => step.uses && !step.uses.startsWith('./'),
+    );
+    for (const step of remoteActions) {
+      expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+    }
+  });
+
+  it('deploys only develop through a least-privilege protected job', () => {
+    const deploy = workflow().jobs.deploy;
+    expect(deploy.needs).toBe('build');
+    expect(deploy.if).toContain("github.ref == 'refs/heads/develop'");
+    expect(deploy.permissions).toEqual({
+      pages: 'write',
+      'id-token': 'write',
+    });
+    expect(deploy.environment).toEqual({
+      name: 'github-pages',
+      url: '${{ steps.deployment.outputs.page_url }}',
+    });
+    const deployment = deploy.steps.filter((step) =>
+      step.uses?.startsWith('actions/deploy-pages@'),
+    );
+    expect(deployment).toHaveLength(1);
+    expect(deployment[0].id).toBe('deployment');
+    expect(deployment[0].uses).toMatch(/@[0-9a-f]{40}$/);
   });
 });

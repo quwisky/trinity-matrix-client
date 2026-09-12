@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 
 export const CODE_JOB_IDS = Object.freeze([
   'quality',
+  'docs-gate',
   'test',
   'renderer',
   'desktop',
