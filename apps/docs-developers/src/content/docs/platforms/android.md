@@ -33,7 +33,7 @@ The static verifier checks host contracts. Native verification runs Android unit
 The release target creates an AAB but remains unsigned unless external signing is configured. Keep credentials and publishing procedure out of public documentation.
 
 The pinned `@capacitor/browser` 8.0.4
-[Android patch](../../../../../../patches/@capacitor__browser@8.0.4.patch)
+[Android patch](https://github.com/quwisky/trinity-matrix-client/blob/develop/patches/%40capacitor__browser%408.0.4.patch)
 registers the controller-ready callback before launching its activity. The plugin
 handler and activity lifecycle run on different threads; launching first can leave
 the controller open without starting the Custom Tab during SSO or OIDC sign-in.
