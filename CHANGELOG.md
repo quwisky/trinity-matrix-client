@@ -38,6 +38,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Upgrade Nx and its first-party workspace plugins from 23.1.1 to 23.2.1,
+  applying all required workspace migrations.
+
 - Keep empty message inputs at one row even when a long room-name placeholder wraps,
   so the composer remains reachable on small screens with larger text.
 
