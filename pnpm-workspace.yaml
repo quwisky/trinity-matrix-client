@@ -34,3 +34,6 @@ allowBuilds:
 patchedDependencies:
   '@spartan-ng/brain@1.3.0': patches/@spartan-ng__brain@1.3.0.patch
   matrix-widget-api@1.17.0: patches/matrix-widget-api@1.17.0.patch
+minimumReleaseAgeExclude:
+  # Renovate security update: vitest@4.1.11
+  - vitest@4.1.11
