@@ -5,5 +5,13 @@
   "root": "tools/docs",
   "sourceRoot": "tools/docs",
   "tags": ["type:tool", "scope:shared"],
-  "targets": {}
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "{workspaceRoot}/tools/docs"
+      }
+    }
+  }
 }

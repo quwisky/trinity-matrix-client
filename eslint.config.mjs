@@ -37,6 +37,7 @@ export default defineConfig([
     '**/coverage',
     '**/node_modules',
     '**/.angular',
+    '**/.astro',
     'android',
     'ios',
     // `e2e` used to be listed here. It is not any more: the Playwright suite is the only
