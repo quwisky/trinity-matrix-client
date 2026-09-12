@@ -260,6 +260,56 @@ describe('account workspace fixtures', () => {
     expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(1);
   });
 
+  it('reads and writes marked-unread account data without exposing the access token', async () => {
+    createNodeAccount.mockResolvedValue(account('unread'));
+    let unread;
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-unread:test',
+          access_token: 'private-token',
+        });
+      }
+      if (init.method === 'GET') {
+        return unread === undefined ? response({}, 404) : response({ unread });
+      }
+      if (url.endsWith('/account_data/m.marked_unread')) {
+        unread = JSON.parse(init.body).unread;
+      }
+      return response({});
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const owner = await fixtures.account('unread');
+
+    await expect(fixtures.markedUnread(owner, '!room:test')).resolves.toBe(
+      undefined,
+    );
+    await expect(
+      fixtures.setMarkedUnread(owner, '!room:test', true),
+    ).resolves.toBe(true);
+    await expect(fixtures.markedUnread(owner, '!room:test')).resolves.toBe(
+      true,
+    );
+
+    const accountDataCalls = fetchCalls.slice(1);
+    expect(accountDataCalls.map(({ url }) => new URL(url).pathname)).toEqual([
+      '/_matrix/client/v3/user/%40user-unread%3Atest/rooms/!room%3Atest/account_data/m.marked_unread',
+      '/_matrix/client/v3/user/%40user-unread%3Atest/rooms/!room%3Atest/account_data/m.marked_unread',
+      '/_matrix/client/v3/user/%40user-unread%3Atest/rooms/!room%3Atest/account_data/m.marked_unread',
+    ]);
+    expect(
+      accountDataCalls.every(
+        ({ init }) => init.headers.Authorization === 'Bearer private-token',
+      ),
+    ).toBe(true);
+    expect(JSON.parse(accountDataCalls[1].init.body)).toEqual({ unread: true });
+    expect(owner).not.toHaveProperty('token');
+  });
+
   it('propagates an already-aborted invocation to the finite avatar upload and still logs out', async () => {
     createNodeAccount.mockResolvedValue(account('avatar'));
     const controller = new AbortController();

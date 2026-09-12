@@ -186,6 +186,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-tags'],
   },
   {
+    name: 'e2e:android:room-read-state',
+    command: 'nx run trinity-e2e-android:room-read-state',
+    kind: 'canonical',
+    suiteIds: ['android.room-read-state'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -416,6 +422,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'room-tags-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-tags; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-tags'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'room-read-state-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-read-state; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-read-state'],
   },
   {
     command: 'pnpm e2e:scheduled',

@@ -62,6 +62,12 @@ export function createAccountFixtures(
   invite(account: NodeWorkspaceAccount, roomId: string, invitee: NodeWorkspaceAccount): Promise<void>;
   join(account: NodeWorkspaceAccount, roomId: string): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<void>;
+  markedUnread(account: NodeWorkspaceAccount, roomId: string): Promise<boolean | undefined>;
+  setMarkedUnread(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    unread: boolean,
+  ): Promise<true>;
 } {
   const sessions = new Map<string, AccessSession>();
   const accounts = new Map<string, Promise<NodeWorkspaceAccount>>();
@@ -296,6 +302,50 @@ export function createAccountFixtures(
     );
   }
 
+  function markedUnreadPath(account: NodeWorkspaceAccount, roomId: string): string {
+    return `/user/${encodeURIComponent(account.userId)}/rooms/${encodeURIComponent(roomId)}/account_data/m.marked_unread`;
+  }
+
+  async function markedUnread(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<boolean | undefined> {
+    const session = access(owner);
+    const path = markedUnreadPath(owner, roomId);
+    const response = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3${path}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${session.token}` },
+      signal: requestSignal(signal),
+    });
+    if (response.status === 404) return undefined;
+    if (!response.ok) {
+      throw new Error(
+        `Matrix fixture GET ${path} failed with HTTP ${response.status}`,
+      );
+    }
+    const body = record(
+      await response.json(),
+      'Matrix fixture marked-unread response',
+    );
+    assert.equal(
+      typeof body['unread'],
+      'boolean',
+      'Matrix fixture marked-unread value is boolean',
+    );
+    return body['unread'] as boolean;
+  }
+
+  async function setMarkedUnread(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    unread: boolean,
+  ): Promise<true> {
+    await request(access(owner), markedUnreadPath(owner, roomId), 'PUT', {
+      unread,
+    });
+    return true;
+  }
+
   return {
     account,
     createRoom,
@@ -305,5 +355,7 @@ export function createAccountFixtures(
     invite,
     join,
     sendMessage,
+    markedUnread,
+    setMarkedUnread,
   };
 }

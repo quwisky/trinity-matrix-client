@@ -385,3 +385,62 @@ four effective fault controls, both unchanged predecessors, required quality
 checks and original-attempt hosted evidence. Other Room Library definitions,
 physical Android acceptance and the full migration reliability gate stay with
 their existing owners.
+
+## Room read-state batch
+
+[Android room read-state migration](https://github.com/quwisky/trinity-matrix-client/issues/689)
+owns the complete three definitions in
+[Mark as read](../browser/journeys/room-library/mark-read.spec.mts), lines
+48–102, and
+[Mark as unread](../browser/journeys/room-library/mark-unread.spec.mts), lines
+29–103 and 105–180 at `bdf4a7a7`. Their pinned SHA-256 values are
+`38d3d95524dcb03cbc36ba0891031e52014ed66a8ff7416df374aa7f2256828b`
+and
+`43165d7f4fc936d214d54e5410d7876d174e6e61c0c477ed6fa8d398e70963b6`.
+`android.room-read-state` resets the installed app to the Playwright 1.62.1
+Pixel 5 profile for each definition and runs them as three mandatory stages.
+All three Playwright predecessors remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Mark all as read | `mark-all.room-visible`, `mark-all.action-visible`, `mark-all.action-hidden` |
+| Local Mark as unread | `local.initial-flag-absent`, `local.initial-badge-absent`, `local.flag-round-trip`, `local.dot-visible`, `local.dot-empty`, `local.conversation-visible`, `local.flag-cleared`, `local.dot-cleared` |
+| Remote Mark as unread | `remote.initial-badge-absent`, `remote.write-accepted`, `remote.live-dot-visible`, `remote.reload-dot-visible`, `remote.flag-cleared`, `remote.dot-cleared` |
+
+These are exactly 17 direct predecessor assertions. Every stage creates a fresh
+account and a private, non-DM room, verifies the exact account-qualified
+`/rooms` route, opens Rooms with a native tap and waits up to 30 seconds for the
+exact room name. The Mark-all fixture adds a fresh sender, joins it to the room
+and sends the unread message before the reader signs in. Room kebabs use their
+exact accessible `Options for <room>` labels; menu and row actions use measured
+current-coordinate native taps.
+
+The local stage proves the initial server flag and UI badge are absent, the
+native menu action writes `m.marked_unread`, and the resulting empty-text dot
+clears both in the UI and on the server when the room is opened. The remote stage
+writes the flag through the private-token fixture boundary while the app is
+open, proves live projection and reload persistence, then proves the native Mark
+as read action clears both projections. WebView access remains read-only; app
+lifecycle and all product actions stay native. The predecessor's 30-second row,
+action and live-sync waits and 20-second round-trip waits are preserved.
+
+```bash
+pnpm nx run trinity-e2e-android:room-read-state
+```
+
+Android CI shard 1 runs this batch after room tags and before its unchanged
+Playwright shard. Provisional bounds are 15 minutes for the Node test, 18 minutes
+for the resource-owning wrapper, 20 minutes for the CI command and 120 minutes
+for the complete shard. Measured local and hosted runs must establish that these
+bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-read-state/`.
+`room-read-state/journeys.json` records all three stage sources, first-attempt
+outcomes and artifact pointers. Stage-local assertion records, screenshots and
+the suite progress report retain observations, provenance and registered
+cleanup. Acceptance remains pending until #689 records three complete first
+attempts, all four effective fault controls, all three unchanged predecessors,
+required quality checks and original-attempt hosted evidence. Other Room Library
+definitions, physical Android acceptance and the full migration reliability gate
+stay with their existing owners.
