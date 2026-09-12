@@ -210,6 +210,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.leave-room'],
   },
   {
+    name: 'e2e:android:recent-activity',
+    command: 'nx run trinity-e2e-android:recent-activity',
+    kind: 'canonical',
+    suiteIds: ['android.recent-activity'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -464,6 +470,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'leave-room-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:leave-room; fi',
     tier: 'pull-request',
     suiteIds: ['android.leave-room'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'recent-activity-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:recent-activity; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.recent-activity'],
   },
   {
     command: 'pnpm e2e:scheduled',

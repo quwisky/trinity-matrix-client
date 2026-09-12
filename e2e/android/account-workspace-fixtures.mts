@@ -68,6 +68,16 @@ export function createAccountFixtures(
     roomId: string,
     unread: boolean,
   ): Promise<true>;
+  setRoomTag(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    tag: 'm.favourite' | 'm.lowpriority',
+  ): Promise<void>;
+  setSpaceChild(
+    account: NodeWorkspaceAccount,
+    spaceId: string,
+    childId: string,
+  ): Promise<void>;
 } {
   const sessions = new Map<string, AccessSession>();
   const accounts = new Map<string, Promise<NodeWorkspaceAccount>>();
@@ -346,6 +356,32 @@ export function createAccountFixtures(
     return true;
   }
 
+  async function setRoomTag(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    tag: 'm.favourite' | 'm.lowpriority',
+  ): Promise<void> {
+    await request(
+      access(owner),
+      `/user/${encodeURIComponent(owner.userId)}/rooms/${encodeURIComponent(roomId)}/tags/${encodeURIComponent(tag)}`,
+      'PUT',
+      {},
+    );
+  }
+
+  async function setSpaceChild(
+    owner: NodeWorkspaceAccount,
+    spaceId: string,
+    childId: string,
+  ): Promise<void> {
+    await request(
+      access(owner),
+      `/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
+      'PUT',
+      { via: ['localhost'] },
+    );
+  }
+
   return {
     account,
     createRoom,
@@ -357,5 +393,7 @@ export function createAccountFixtures(
     sendMessage,
     markedUnread,
     setMarkedUnread,
+    setRoomTag,
+    setSpaceChild,
   };
 }

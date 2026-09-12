@@ -54,6 +54,7 @@
     "e2e:android:room-list": "node scripts/nx.mjs run trinity-e2e-android:room-list",
     "e2e:android:unread-badges": "node scripts/nx.mjs run trinity-e2e-android:unread-badges",
     "e2e:android:leave-room": "node scripts/nx.mjs run trinity-e2e-android:leave-room",
+    "e2e:android:recent-activity": "node scripts/nx.mjs run trinity-e2e-android:recent-activity",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

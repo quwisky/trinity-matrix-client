@@ -600,3 +600,53 @@ canvas-composited mouse-hover/media-emulation contrast definition remains
 browser-renderer coverage; other Room Library definitions, physical Android
 acceptance and the full migration reliability gate stay with their existing
 owners.
+
+## Recent Activity batch
+
+[Android Recent Activity migration](https://github.com/quwisky/trinity-matrix-client/issues/693)
+owns all four definitions in
+[Recent activity](../browser/journeys/room-library/recent-activity.spec.mts),
+lines 97–301 at `4dbf0ce5`. The pinned source SHA-256 is
+`c2b12540c8b45ace5a7d3e2111c3f00a61ba69555522b5b6212636cb0fc9243c`.
+`android.recent-activity` resets the installed app to the Playwright 1.62.1
+Pixel 5 profile for four mandatory stages. All four Playwright predecessors
+remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Default mixed list and Home/Rooms/Recent scoping | `scope.recent-current`, `scope.recent-dm-visible`, `scope.recent-room-visible`, `scope.home-recent-not-current`, `scope.home-dm-visible`, `scope.home-room-absent`, `scope.rooms-room-visible`, `scope.rooms-dm-absent`, `scope.return-dm-visible`, `scope.return-room-visible` |
+| Favourite partition and row order | `favourites.recent-current`, `favourites.section-visible`, `favourites.row-visible`, `favourites.dm-visible`, `favourites.index-present`, `favourites.before-dm` |
+| Space-child inclusion in Recent but not Rooms | `space.recent-current`, `space.free-visible`, `space.child-visible`, `space.rooms-free-visible`, `space.rooms-child-absent` |
+| Recent unread badge | `unread.badge-visible`, `unread.badge-numeric`, `unread.badge-positive` |
+
+These are exactly 24 direct assertions. Every stage uses fresh accounts and
+unique room names. Matrix APIs create the ordinary/direct rooms, favourite tag,
+space-child state and unread messages that the predecessors require. The
+installed client must open on the exact account-qualified `/rooms` route with
+Recent current. Home, Rooms and Recent transitions use measured
+current-coordinate native taps. Exact rows, current-state attributes, complete
+row order and badge text are read-only WebView observations. The unread stage
+seeds three messages and accepts the predecessor's exact preferred count or its
+positive numeric fallback. Client/device cleanup and secret redaction remain
+registered on failures.
+
+```bash
+pnpm nx run trinity-e2e-android:recent-activity
+```
+
+Android CI shard 1 runs this batch after leave-room and before its unchanged
+Playwright shard. Provisional bounds are 15 minutes for the Node test, 18
+minutes for the resource-owning wrapper, 20 minutes for the CI command and 120
+minutes for the complete shard. Measured local and hosted runs must establish
+that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.recent-activity/`.
+`recent-activity/journeys.json` records each stage source, first-attempt outcome
+and artifact pointer. Stage-local assertion records, screenshots and the suite
+progress report retain observations, provenance and registered cleanup.
+Acceptance remains pending until #693 records three complete first attempts,
+effective scoping/order/space/unread fault controls, all four unchanged
+predecessors, required quality checks and original-attempt hosted evidence.
+Other Room Library definitions, physical Android acceptance and the full
+migration reliability gate stay with their existing owners.
