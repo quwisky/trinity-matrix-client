@@ -77,6 +77,7 @@ export function createAccountFixtures(
     account: NodeWorkspaceAccount,
     spaceId: string,
     childId: string,
+    options?: { readonly suggested?: boolean },
   ): Promise<void>;
 } {
   const sessions = new Map<string, AccessSession>();
@@ -373,12 +374,18 @@ export function createAccountFixtures(
     owner: NodeWorkspaceAccount,
     spaceId: string,
     childId: string,
+    options: { readonly suggested?: boolean } = {},
   ): Promise<void> {
     await request(
       access(owner),
       `/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
       'PUT',
-      { via: ['localhost'] },
+      {
+        via: ['localhost'],
+        ...(options.suggested === undefined
+          ? {}
+          : { suggested: options.suggested }),
+      },
     );
   }
 

@@ -650,3 +650,51 @@ effective scoping/order/space/unread fault controls, all four unchanged
 predecessors, required quality checks and original-attempt hosted evidence.
 Other Room Library definitions, physical Android acceptance and the full
 migration reliability gate stay with their existing owners.
+
+## Spaceless room-filter functional batch
+
+[Android spaceless room filtering](https://github.com/quwisky/trinity-matrix-client/issues/694)
+owns the installed-Android functional guarantees in
+[Rooms view excludes space-owned rooms](../browser/journeys/room-library/room-filter-spaceless.spec.mts),
+lines 147–230 at `758e9f21`. The pinned source SHA-256 is
+`0f5d42072c018ef27e6e1c6276f72b209d43b927666149c8e7574c2bc4aefadc`.
+`android.room-filter-spaceless` resets the installed app to the Playwright
+1.62.1 Pixel 5 profile for one mandatory stage. The complete Playwright
+predecessor remains enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Flat Rooms includes the freestanding room and excludes the space child | `rooms.freestanding-visible`, `rooms.child-absent` |
+| Exact space pill is present, selectable and current | `space.pill-visible`, `space.pill-current` |
+| Selected space reveals the exact child | `space.child-visible`, `space.child-name-exact` |
+
+These are exactly six direct assertions. The stage creates a fresh reader, one
+private freestanding room, one private `m.space` and one private child linked by
+an `m.space.child` event with `via: ['localhost']` and `suggested: true`. The
+installed client must open on the exact account-qualified `/rooms` route. Rooms
+and the exact named space pill are activated through measured current-coordinate
+native taps. Exact rows, current state and channel-name text are read-only
+WebView observations. Client/device cleanup and secret redaction remain
+registered on failures.
+
+```bash
+pnpm nx run trinity-e2e-android:room-filter-spaceless
+```
+
+Android CI shard 1 runs this batch after Recent Activity and before its
+unchanged Playwright shard. Provisional bounds are 15 minutes for the Node test,
+18 minutes for the resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. Measured local and hosted runs must
+establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-filter-spaceless/`.
+`room-filter-spaceless/journeys.json` records the stage source, first-attempt
+outcome and artifact pointer. Stage-local assertion records, screenshots and the
+suite progress report retain observations, provenance and registered cleanup.
+Acceptance remains pending until #694 records three complete first attempts,
+effective Rooms/space/child fault controls, the unchanged predecessor, required
+quality checks and original-attempt hosted evidence. The source's computed
+radius, pseudo-element and mouse-hover checks remain browser-renderer coverage;
+other Room Library definitions, physical Android acceptance and the full
+migration reliability gate stay with their existing owners.
