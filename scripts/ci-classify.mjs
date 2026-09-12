@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 
 export const CODE_JOB_IDS = Object.freeze([
   'quality',
+  'docs-gate',
   'test',
   'renderer',
   'desktop',
@@ -15,9 +16,7 @@ export const DOCS_JOB_IDS = Object.freeze(['docs-gate']);
 const SHA = /^[0-9a-f]{40}$/i;
 const ZERO_SHA = /^0+$/;
 const ALLOWED_DOCS = [
-  /^docs\/(users|contributing|architecture|platforms)\/(?:[^/]+\/)*[^/]+\.md$/,
-  /^docs\/index\.md$/,
-  /^docs\/reference\/(push-notifications|troubleshooting)\.md$/,
+  /^apps\/docs-(users|developers)\/src\/content\/docs\/(?:[^/]+\/)*[^/]+\.md$/,
 ];
 
 export const expectedJobsForMode = (mode) => {

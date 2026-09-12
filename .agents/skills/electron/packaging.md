@@ -1,8 +1,8 @@
 # Trinity desktop packaging
 
-Use the [desktop guide](../../../docs/platforms/desktop.md) for local build,
+Use the [desktop guide](../../../apps/docs-developers/src/content/docs/platforms/electron.md) for local build,
 sync, launch, debug, package, and host prerequisites. Use
-[CI and releases](../../../docs/maintaining/ci-and-releases.md#releases) for
+[CI and releases](../../../docs-internal/maintenance/ci-and-releases.md#releases) for
 versioning, release verification, artifacts, signing names, draft review, and
 publication authorization.
 

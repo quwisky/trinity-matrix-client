@@ -132,7 +132,9 @@ describe('validation warning policy', () => {
     ).toEqual([
       "keepDebugSymbols += ['**/libdatastore_shared_counter.so', '**/libimage_processing_util_jni.so', '**/libsurface_util_jni.so']",
     ]);
-    const warningLedger = markdown('docs/maintaining/validation-warnings.md');
+    const warningLedger = markdown(
+      'docs-internal/maintenance/validation-warnings.md',
+    );
     expect(warningLedger).toContain('Classified upstream Android output');
     for (const owner of [
       '@capacitor/android',

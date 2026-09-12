@@ -52,7 +52,7 @@ afterEach(() => {
 // The split was worth making because that file measured 1298 MB against a ~950 MB floor,
 // NOT because it had 49 tests: peak RSS tracks the component a file mounts, not its test
 // count (a 24-test spec here costs the same as a 116-test one). See the measurements in
-// docs/reference/troubleshooting.md before splitting anything else — both halves of this
+// the developer diagnostics guide before splitting anything else — both halves of this
 // one landed on the floor, so there is nothing further to win here.
 
 describe('RoomsPage mixed-account view', () => {

@@ -1,7 +1,7 @@
 # Agent catalog and maintenance
 
-To give an agent a task, start with [Working with agents](../docs/agents/index.md).
-Use this catalog to select a skill or maintain its installation. Load the selected
+Start with [AGENTS.md](../AGENTS.md), then use this catalog to select a skill or
+maintain its installation. Load the selected
 `SKILL.md` and only the supporting references its task requires; if the client has
 no skill invocation tool, read the file with the tools it exposes.
 
@@ -72,7 +72,7 @@ CLI help are:
 
 ```bash
 pnpm dlx skills add angular/angular --skill angular-developer --agent codex --yes
-pnpm dlx skills update wayfinder to-tickets --project --yes
+pnpm dlx skills update angular-developer vitest --project --yes
 ```
 
 `add` defaults to project scope; `--project` makes update scope explicit. Use global

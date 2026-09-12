@@ -6,6 +6,7 @@ const classification = {
   reason: 'code changes',
   expectedJobs: [
     'quality',
+    'docs-gate',
     'test',
     'renderer',
     'desktop',

@@ -9,5 +9,5 @@ recommended: false
 # Branch Protection
 
 Use `develop` by default. Before branching, rebasing or publishing, follow
-[Branches and publication](../../../docs/contributing/conventions.md#branches-and-publication)
+[Branches and publication](../../../apps/docs-developers/src/content/docs/contributing/branches-and-commits.md)
 for temporary integration branches, worktree isolation, staging and authorization.

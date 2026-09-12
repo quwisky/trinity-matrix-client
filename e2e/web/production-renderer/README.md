@@ -2,8 +2,8 @@
 
 Use this suite for production Web renderer semantics, responsive geometry,
 contrast, and selected accessibility behavior. For target ownership and resource
-sequencing, read [E2E architecture](../../../docs/contributing/e2e-architecture.md);
-for choosing validation, read [Testing](../../../docs/contributing/testing.md).
+sequencing, read [E2E architecture](../../../apps/docs-developers/src/content/docs/testing/testing-strategy.md);
+for choosing validation, read [Testing](../../../apps/docs-developers/src/content/docs/testing/component-and-browser-tests.md).
 
 Run the registered target:
 

@@ -23,7 +23,12 @@ describe('CI change classifier', () => {
         {
           pull_request: { base: { sha: SHA_A }, head: { sha: SHA_B } },
         },
-        { diff: () => ['docs/users/guide.md', 'docs/index.md'] },
+        {
+          diff: () => [
+            'apps/docs-users/src/content/docs/index.md',
+            'apps/docs-developers/src/content/docs/index.md',
+          ],
+        },
       ),
     ).toEqual({
       mode: 'docs',
@@ -34,7 +39,10 @@ describe('CI change classifier', () => {
 
   it('classifies code mixed with docs as code', () => {
     expect(
-      classifyChangedPaths(['docs/index.md', 'libs/util/src/index.ts']).mode,
+      classifyChangedPaths([
+        'apps/docs-developers/src/content/docs/index.md',
+        'libs/util/src/index.ts',
+      ]).mode,
     ).toBe('code');
   });
 
@@ -79,13 +87,17 @@ describe('CI change classifier', () => {
       ).mode,
     ).toBe('code');
     expect(
-      classifyChangedPaths(['docs/users/guide.md', '../package.json']).mode,
+      classifyChangedPaths([
+        'apps/docs-users/src/content/docs/index.md',
+        '../package.json',
+      ]).mode,
     ).toBe('code');
   });
 
   it('uses canonical job sets', () => {
     expect(CODE_JOB_IDS).toEqual([
       'quality',
+      'docs-gate',
       'test',
       'renderer',
       'desktop',

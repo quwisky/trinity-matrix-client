@@ -1,5 +1,5 @@
 <!-- Keep this concise. Put breaking changes first and use a Conventional Commit title.
-See docs/contributing/conventions.md for contribution policy. Remove Notes when
+See the developer guide for contribution policy. Remove Notes when
 empty; do not add blanket checklists.
 Update relevant docs and the changelog before review. Never include access tokens,
 recovery keys or private message content. Coordinate vulnerability fixes privately
@@ -21,7 +21,7 @@ or related work. Write "None" if there is no issue. -->
 steps, outcomes, and tested platforms. Distinguish verified behavior from assumptions.
 State failed or skipped checks, missing prerequisites, and affected platforms not tested.
 For docs-only changes, report the relevant formatting, link or template checks.
-Select checks using docs/contributing/testing.md; unit tests do not replace
+Select checks using the developer validation guide; unit tests do not replace
 TypeScript checks or rendered browser/native validation. CSS and SCSS also have
 a separate stylelint gate. -->
 

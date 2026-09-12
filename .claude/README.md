@@ -1,6 +1,6 @@
 # Claude-specific configuration
 
-Start with [Working with agents](../docs/agents/index.md). Shared instructions live
+Start with [AGENTS.md](../AGENTS.md). Shared instructions live
 in [AGENTS.md](../AGENTS.md); the root [CLAUDE.md](../CLAUDE.md) is a regular forwarding
 file, not a symlink.
 
@@ -11,5 +11,5 @@ file, not a symlink.
 
 Which instructions or plugins a client loads depends on its runtime and configuration.
 Check the available tools; these paths alone do not prove discovery or plugin execution.
-There is no tracked session scratch document. Use the [compact handoff](../.agents/roles.md#handoffs)
-when transferring verified work.
+There is no tracked session scratch document. Pass verified context directly when work
+changes hands.

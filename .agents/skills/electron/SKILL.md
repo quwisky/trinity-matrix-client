@@ -7,9 +7,9 @@ allowed-tools: Read, Grep, Glob, Write, Edit
 # Trinity Electron
 
 Use this reference for the hand-rolled Electron shell in `electron/`. Start
-with the [desktop guide](../../../docs/platforms/desktop.md) for prerequisites,
+with the [desktop guide](../../../apps/docs-developers/src/content/docs/platforms/electron.md) for prerequisites,
 build, launch, debugging, and package commands. Use the
-[architecture guide](../../../docs/architecture/index.md) to keep host adapters
+[architecture guide](../../../apps/docs-developers/src/content/docs/architecture/host-capabilities.md) to keep host adapters
 and application capabilities in their owners.
 
 ## Choose the existing seam
@@ -22,7 +22,7 @@ and application capabilities in their owners.
 3. Keep the operation negotiated and typed. Unsupported operations are reported
    as unavailable; they are not a reason to add a broad desktop escape hatch.
 4. Select proof for the changed boundary. A unit contract does not prove a
-   launched shell; use the [desktop validation guidance](../../../docs/platforms/desktop.md#how-the-desktop-contract-is-tested)
+   launched shell; use the [desktop validation guidance](../../../apps/docs-developers/src/content/docs/testing/desktop-and-native-tests.md)
    and record unavailable host evidence.
 
 Use [IPC and bridge safety](ipc-security.md) for a bridge or permission change,

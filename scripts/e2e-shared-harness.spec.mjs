@@ -52,7 +52,7 @@ const EXEMPT = ['e2e/support/account.mts', 'e2e/support/synapse/'];
  *
  * The first version of this guard globbed only the canonical browser journey tree and claimed the
  * constants had "one definition" — while the former rooms and search protocol drivers, both
- * live and both documented in `docs/contributing/testing.md`, restated BOTH literals and
+ * live and both documented in the developer testing guide, restated BOTH literals and
  * carried a third `registerUser`. A guard narrower than the invariant it states is worse
  * than no guard: it reads as tree-wide and is not.
  */

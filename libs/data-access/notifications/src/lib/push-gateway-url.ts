@@ -21,7 +21,7 @@
  *
  * None of this is a security control. The client never fetches this URL — the
  * homeserver does — and any user can POST to `/pushers/set` directly, so these checks
- * exist to catch typos, not to constrain a determined operator. See docs/reference/push-notifications.md.
+ * exist to catch typos, not to constrain a determined operator. See docs-internal/maintenance/push-notifications.md.
  */
 
 /** The one path Synapse accepts on a pusher URL (exact match, no trailing slash). */

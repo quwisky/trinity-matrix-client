@@ -46,7 +46,10 @@ describe('Account Runtime authentication facade', () => {
 
   it('records the parity suite and removal issue in architecture documentation', () => {
     const architecture = readFileSync(
-      join(workspaceRoot, 'docs/architecture/matrix-and-encryption.md'),
+      join(
+        workspaceRoot,
+        'apps/docs-developers/src/content/docs/architecture/matrix-integration.md',
+      ),
       'utf8',
     );
     expect(architecture).toContain('AccountRuntimeService');

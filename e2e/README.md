@@ -4,9 +4,9 @@ This is the entry point for running Trinity's browser, host, and protocol journe
 repository commands rather than invoking Playwright or Docker directly: each registered
 target owns its build, services, credentials, teardown, and ignored artifacts.
 
-[End-to-end test architecture](../docs/contributing/e2e-architecture.md) explains that
-ownership model. [Commands](../docs/contributing/commands.md#end-to-end-and-protocol-checks)
-is the canonical command list; [Testing](../docs/contributing/testing.md) explains what a
+[End-to-end test architecture](../apps/docs-developers/src/content/docs/testing/testing-strategy.md) explains that
+ownership model. [Commands](../apps/docs-developers/src/content/docs/reference/commands.md)
+is the canonical command list; [Testing](../apps/docs-developers/src/content/docs/testing/component-and-browser-tests.md) explains what a
 result proves.
 
 ## Choose a task
@@ -62,7 +62,7 @@ contract type; add or move a spec with its `e2e/browser/journey-catalog.mts` ent
 dedicated emulator, and runs shared browser journeys in the app's WebView plus Android-only
 checks. It can clear the test application and change ADB reverse mappings. Set
 `TRINITY_ANDROID_SERIAL` only for a disposable dedicated emulator. See
-[E2E architecture](../docs/contributing/e2e-architecture.md#lifecycle-and-resource-ownership)
+[E2E architecture](../apps/docs-developers/src/content/docs/testing/testing-strategy.md)
 for ownership and cleanup limits.
 
 Shared message-action journeys must use Android's long-press action sheet through
@@ -107,10 +107,10 @@ a clean pass. For review, record command, exit status, host, and unavailable pre
 ## Where former detail moved
 
 - Suite ownership, fixed-port sequencing, and coverage catalog:
-  [E2E architecture](../docs/contributing/e2e-architecture.md).
+  [E2E architecture](../apps/docs-developers/src/content/docs/testing/testing-strategy.md).
 - Exact commands and focused protocol aliases:
-  [Commands](../docs/contributing/commands.md#end-to-end-and-protocol-checks).
+  [Commands](../apps/docs-developers/src/content/docs/reference/commands.md).
 - Validation choice, source-shape guards, and result limits:
-  [Testing](../docs/contributing/testing.md).
+  [Testing](../apps/docs-developers/src/content/docs/testing/component-and-browser-tests.md).
 - Web, desktop, Android, and iOS prerequisites:
-  [Platforms](../docs/platforms/index.md).
+  [Platforms](../apps/docs-developers/src/content/docs/platforms/web-and-pwa.md).

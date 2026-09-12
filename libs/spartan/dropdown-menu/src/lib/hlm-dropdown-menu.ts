@@ -16,7 +16,7 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  * so a lost override fails the suite rather than shipping.
  *
  *   1. HlmDropdownMenuSubTrigger — `_handleClick` shadowed so a sub-trigger click OPENS the
- *      submenu instead of toggling it closed under zoneless CD. See docs/architecture/state-and-reactivity.md.
+ *      submenu instead of toggling it closed under zoneless CD. See the developer state guide.
  *   2. HlmDropdownMenuSubTrigger — the shadowed `_handleClick` also re-does CDK's focus move,
  *      so keyboard Enter/Space lands in the submenu.
  *   3. HlmDropdownMenuSubTrigger — `side` defaults to 'right' rather than the root-menu
@@ -28,11 +28,11 @@ import { type BooleanInput, type NumberInput } from '@angular/cdk/coercion';
  *      value is a near-black maroon (hsl(0 62.8% 30.6%)); on the dark popover surface that
  *      measured 1.38:1, so "Leave room" read as an empty strip. The `bg-destructive/10`
  *      hover tints are left alone — that IS the sanctioned use of the token. See AGENTS.md
- *      ("never use Helm's --destructive as a foreground") and docs/architecture/ui-and-theming.md.
+ *      ("never use Helm's --destructive as a foreground") and the developer UI guide.
  *   6. HlmDropdownMenu / HlmDropdownMenuSub — use Trinity's semantic overlay elevation
  *      instead of Tailwind's open-ended default shadow scale.
  *
- * The register lives in docs/architecture/ui-and-theming.md. Note this file is already a fork in shape as
+ * The register lives in the developer UI and theming guide. Note this file is already a fork in shape as
  * well as content: the generator emits ~16 one-directive files, this is one module.
  *
  *   7. Every `hostDirectives` entry states its `inputs` and `outputs` explicitly, even when

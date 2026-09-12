@@ -16,7 +16,7 @@ const tailwindCssConfigPath = join(
 
 /** Shared by the two rules below, which police the same ban over different AST shapes. */
 const KIT_IMPORT_MESSAGE =
-  'Feature, ui and app code reaches for @trinity/components/* (the public tier), not the vendored kit. The tier owns the vendor API so a swap touches one library instead of every call site — see docs/architecture/ui-and-theming.md. If the component you need has no wrapper yet, add one there rather than importing @trinity/helm/* here.';
+  'Feature, ui and app code reaches for @trinity/components/* (the public tier), not the vendored kit. The tier owns the vendor API so a swap touches one library instead of every call site — see the developer UI and theming guide. If the component you need has no wrapper yet, add one there rather than importing @trinity/helm/* here.';
 
 const SDK_IMPORT_MESSAGE =
   'Only libs/data-access/* (and libs/util/matrix, which models the SDK types) may import matrix-js-sdk. Re-export what you need from the data-access lib that owns the domain.';
@@ -37,6 +37,7 @@ export default defineConfig([
     '**/coverage',
     '**/node_modules',
     '**/.angular',
+    '**/.astro',
     'android',
     'ios',
     // `e2e` used to be listed here. It is not any more: the Playwright suite is the only
@@ -217,7 +218,7 @@ export default defineConfig([
     // The allowed importers are deliberately absent from `files` below rather than
     // carved out here: `libs/data-access/**` owns all SDK access, and `libs/util/matrix`
     // is the sanctioned exception because it models the SDK's own types
-    // (docs/architecture/index.md). If a layer below genuinely needs an SDK symbol, the
+    // (developer dependency-boundaries guide). If a layer below genuinely needs an SDK symbol, the
     // fix is to re-export it from the lib that owns the domain — as
     // data-access/discovery does for JoinRule and util/matrix does for HTTPError — not to
     // widen this rule.

@@ -32,7 +32,7 @@ import type { ClassValue } from 'clsx';
  *
  * A regenerate drops this and restores the shorthand. `scripts/host-directives.spec.mjs`
  * fails when it does, rather than letting it ship. See "Registered vendored divergences"
- * in docs/architecture/ui-and-theming.md.
+ * in the developer UI and theming guide.
  * └──────────────────────────────────────────────────────────────────────────────────────┘
  */
 

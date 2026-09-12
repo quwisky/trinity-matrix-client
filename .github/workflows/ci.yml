@@ -47,15 +47,22 @@ jobs:
         run: node scripts/ci-classify.mjs
 
   docs-gate:
-    name: Documentation contracts
+    name: Documentation site
     needs: classify
-    if: needs.classify.outputs.mode == 'docs'
+    if: ${{ !cancelled() && github.event_name != 'schedule' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
       - run: pnpm format:check
       - run: pnpm nx test scripts
+      - run: pnpm nx test docs-site
+      - run: pnpm nx run docs-site:check
+      - run: pnpm nx run docs-site:assemble
+      - run: pnpm nx run docs-site:e2e
 
   # E2E tier contract: pull-request suites run in the existing host/browser jobs,
   # scheduled suites run only in scheduled-e2e, and local-only suites never run here.
@@ -177,7 +184,7 @@ jobs:
     # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
     # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
-    # (docs/contributing/testing.md); the 75-minute ceiling is hang containment, not an
+    # (developer testing guide); the 75-minute ceiling is hang containment, not an
     # expected duration. Keep this count synchronized with the executable E2E registry.
     timeout-minutes: 75
     steps:

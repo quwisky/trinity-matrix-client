@@ -9,5 +9,5 @@ recommended: true
 # Changelog Maintenance
 
 For features, fixes, breaking changes and release preparation, follow
-[Changelog and releases](../../../docs/contributing/conventions.md#changelog-and-releases).
+[private release guide](../../../docs-internal/maintenance/ci-and-releases.md).
 Record user impact in the appropriate Unreleased section before final validation.
