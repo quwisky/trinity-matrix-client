@@ -20,8 +20,16 @@ Begin with the [system overview](./architecture/system-overview/) and [capabilit
 
 ## Validate a change {#testing}
 
-Testing guides are being rewritten. Until they land, inspect the affected Nx project's targets and run the checks that observe the behavior you changed.
+Use the [testing strategy](./testing/testing-strategy/) to choose checks that observe the behavior and platform affected by your work.
 
 ## Prepare a contribution {#contributing}
 
-Contribution guides are being rewritten. Keep changes scoped and base work on `develop`.
+Follow [choose the change owner](./contributing/choose-the-change-owner/), then [prepare a pull request](./contributing/prepare-a-pull-request/) after validation.
+
+## Work on a platform {#platforms}
+
+Choose [Web and PWA](./platforms/web-and-pwa/), [Electron](./platforms/electron/), [Android](./platforms/android/), or [iOS](./platforms/ios/) when a change reaches a delivery host.
+
+## Look up exact facts {#reference}
+
+Use the [technology stack](./reference/technology-stack/), [commands](./reference/commands/), and [project catalog](./reference/project-and-library-catalog/) for current source-checked facts.

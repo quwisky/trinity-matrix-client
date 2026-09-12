@@ -145,6 +145,68 @@ export default defineConfig({
             },
           ],
         },
+        {
+          label: 'Platforms',
+          items: [
+            { label: 'Web and PWA', link: '/platforms/web-and-pwa/' },
+            { label: 'Electron', link: '/platforms/electron/' },
+            { label: 'Android', link: '/platforms/android/' },
+            { label: 'iOS', link: '/platforms/ios/' },
+          ],
+        },
+        {
+          label: 'Contributing',
+          items: [
+            {
+              label: 'Choose the change owner',
+              link: '/contributing/choose-the-change-owner/',
+            },
+            {
+              label: 'Coding conventions',
+              link: '/contributing/coding-conventions/',
+            },
+            {
+              label: 'Branches and commits',
+              link: '/contributing/branches-and-commits/',
+            },
+            {
+              label: 'Validate a change',
+              link: '/contributing/validate-a-change/',
+            },
+            {
+              label: 'Prepare a pull request',
+              link: '/contributing/prepare-a-pull-request/',
+            },
+            {
+              label: 'Write documentation',
+              link: '/contributing/write-documentation/',
+            },
+          ],
+        },
+        {
+          label: 'Reference',
+          items: [
+            {
+              label: 'Technology stack',
+              link: '/reference/technology-stack/',
+            },
+            { label: 'Commands', link: '/reference/commands/' },
+            {
+              label: 'Project and library catalog',
+              link: '/reference/project-and-library-catalog/',
+            },
+            {
+              label: 'Import aliases',
+              link: '/reference/import-aliases/',
+            },
+            { label: 'Configuration', link: '/reference/configuration/' },
+            { label: 'Diagnostics', link: '/reference/diagnostics/' },
+            {
+              label: 'Security invariants',
+              link: '/reference/security-invariants/',
+            },
+          ],
+        },
       ],
       components: {
         Banner: '@docs/shared-components/ChannelBanner.astro',

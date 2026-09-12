@@ -1,13 +1,21 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildSourceReference,
   serializeSourceReference,
+  validatePublishedSourceReference,
 } from './source-reference.mjs';
 
 const temporaryDirectories = [];
+const workspaceRoot = join(import.meta.dirname, '../../..');
 
 const fixture = () => {
   const root = mkdtempSync(join(tmpdir(), 'trinity-docs-source-'));
@@ -98,5 +106,35 @@ describe('source-derived documentation reference', () => {
       ],
       scripts: { alpha: 'a', zebra: 'z' },
     });
+  });
+
+  it('matches current workspace manifests, projects, and aliases', () => {
+    const packageManifest = JSON.parse(
+      readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
+    );
+    const tsconfig = JSON.parse(
+      readFileSync(join(workspaceRoot, 'tsconfig.base.json'), 'utf8'),
+    );
+    const first = buildSourceReference(workspaceRoot, {
+      commit: 'test-commit',
+    });
+    const second = buildSourceReference(workspaceRoot, {
+      commit: 'test-commit',
+    });
+
+    expect(serializeSourceReference(first)).toBe(
+      serializeSourceReference(second),
+    );
+    expect(first.node).toBe(packageManifest.engines.node);
+    expect(first.packageManager).toBe(packageManifest.packageManager);
+    expect(first.aliases).toEqual(tsconfig.compilerOptions.paths);
+    expect(first.projects.map(({ name }) => name)).toContain('trinity');
+    expect(first.projects.map(({ name }) => name)).toContain('docs-site');
+    expect(() =>
+      validatePublishedSourceReference(
+        join(workspaceRoot, 'apps/docs-developers/src/content/docs'),
+        first,
+      ),
+    ).not.toThrow();
   });
 });

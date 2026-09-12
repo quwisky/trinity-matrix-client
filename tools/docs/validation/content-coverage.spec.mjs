@@ -39,6 +39,23 @@ const routes = [
   'testing/matrix-e2e-tests',
   'testing/desktop-and-native-tests',
   'testing/diagnose-failures',
+  'platforms/web-and-pwa',
+  'platforms/electron',
+  'platforms/android',
+  'platforms/ios',
+  'contributing/choose-the-change-owner',
+  'contributing/coding-conventions',
+  'contributing/branches-and-commits',
+  'contributing/validate-a-change',
+  'contributing/prepare-a-pull-request',
+  'contributing/write-documentation',
+  'reference/technology-stack',
+  'reference/commands',
+  'reference/project-and-library-catalog',
+  'reference/import-aliases',
+  'reference/configuration',
+  'reference/diagnostics',
+  'reference/security-invariants',
 ];
 
 const proceduralTestingRoutes = [
