@@ -550,3 +550,53 @@ effective rail/native badge fault controls, both unchanged predecessors,
 required quality checks and original-attempt hosted evidence. Other Room
 Library definitions, physical Android acceptance and the full migration
 reliability gate stay with their existing owners.
+
+## Leave-room functional batch
+
+[Android leave-room migration](https://github.com/quwisky/trinity-matrix-client/issues/692)
+owns the complete functional definition in
+[Leave room](../browser/journeys/room-library/leave-room.spec.mts), lines 79–110
+at `4e4a80f5`. The pinned source SHA-256 is
+`3ff3a9e93bc430044062948c4e8e6bac67578f5588d68691ac540f46e41b390c`.
+`android.leave-room` resets the installed app to the Playwright 1.62.1 Pixel 5
+profile and runs one mandatory stage. The functional Playwright predecessor and
+the same file's browser-only contrast definition both remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Initial two-room list | `setup.leave-row-visible`, `setup.keep-row-visible` |
+| Destructive menu and dialog | `menu.leave-action-visible`, `dialog.confirm-visible` |
+| Membership-driven list update | `list.left-absent`, `list.keep-visible` |
+
+These are exactly six direct assertions. The stage creates one fresh reader
+joined to two private, non-DM rooms, verifies the exact account-qualified
+`/rooms` route and opens Rooms with a measured native tap. It targets the leave
+room's exact `Options for …` accessibility label, proves the destructive action
+and confirmation are visible, then activates both through measured
+current-coordinate native taps. Within 30 seconds the left room must be absent
+while the control room remains uniquely visible. WebView access remains
+read-only; fixture setup uses Matrix APIs, and client/device cleanup and secret
+redaction remain registered on failures.
+
+```bash
+pnpm nx run trinity-e2e-android:leave-room
+```
+
+Android CI shard 1 runs this batch after unread badges and before its unchanged
+Playwright shard. Provisional bounds are 15 minutes for the Node test, 18
+minutes for the resource-owning wrapper, 20 minutes for the CI command and 120
+minutes for the complete shard. Measured local and hosted runs must establish
+that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.leave-room/`.
+`leave-room/journeys.json` records the stage source, first-attempt outcome and
+artifact pointer. Stage-local assertion records, screenshots and the suite
+progress report retain observations, provenance and registered cleanup.
+Acceptance remains pending until #692 records three complete first attempts,
+effective menu/membership fault controls, the unchanged functional predecessor,
+required quality checks and original-attempt hosted evidence. The source's
+canvas-composited mouse-hover/media-emulation contrast definition remains
+browser-renderer coverage; other Room Library definitions, physical Android
+acceptance and the full migration reliability gate stay with their existing
+owners.
