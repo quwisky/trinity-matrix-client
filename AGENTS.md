@@ -33,8 +33,7 @@ Load the matching skill and relevant references once; reuse them until changed.
 Without a Skill tool, read its `SKILL.md`. The active tool schema determines available
 capabilities and parameters; examples below do not establish tool availability.
 
-Follow [role routing and compact handoffs](.agents/roles.md) for planning,
-implementation and review. Delegate bounded work only when useful work can proceed
+Delegate bounded work only when useful work can proceed
 alongside it; keep one writer per file set. The coordinator owns user decisions,
 integration and publication. Handle small, unambiguous edits directly.
 

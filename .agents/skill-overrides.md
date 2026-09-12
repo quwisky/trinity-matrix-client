@@ -12,17 +12,17 @@ under its installer ownership; do not copy it into `.agents/skills` or `skills-l
 Resolve skills from the active catalog, without hardcoding a plugin cache version.
 If a required skill is unavailable, report the missing capability; do not claim it ran.
 
-| Task state | Process skill |
-| --- | --- |
-| New feature or unresolved behavior/design | `superpowers:brainstorming` |
-| Accepted requirements need a multi-step plan | `superpowers:writing-plans` |
-| Accepted plan, independent slices in this session | `superpowers:subagent-driven-development` |
-| Existing plan executed in a separate session | `superpowers:executing-plans` |
-| Bug, failed test or unexpected behavior | `superpowers:systematic-debugging` |
-| Feature or bug implementation | `superpowers:test-driven-development`, using Trinity's validation policy |
-| Ready for independent review | `superpowers:requesting-code-review` |
-| Review findings received | `superpowers:receiving-code-review` |
-| Completion claim or authorized publication | `superpowers:verification-before-completion`; finishing workflow when applicable |
+| Task state                                        | Process skill                                                                    |
+|---------------------------------------------------|----------------------------------------------------------------------------------|
+| New feature or unresolved behavior/design         | `superpowers:brainstorming`                                                      |
+| Accepted requirements need a multi-step plan      | `superpowers:writing-plans`                                                      |
+| Accepted plan, independent slices in this session | `superpowers:subagent-driven-development`                                        |
+| Existing plan executed in a separate session      | `superpowers:executing-plans`                                                    |
+| Bug, failed test or unexpected behavior           | `superpowers:systematic-debugging`                                               |
+| Feature or bug implementation                     | `superpowers:test-driven-development`, using Trinity's validation policy         |
+| Ready for independent review                      | `superpowers:requesting-code-review`                                             |
+| Review findings received                          | `superpowers:receiving-code-review`                                              |
+| Completion claim or authorized publication        | `superpowers:verification-before-completion`; finishing workflow when applicable |
 
 Enter at the current task state. Reuse an accepted design, plan and authorization;
 loading a process skill does not reopen completed stages. Handle a small, unambiguous

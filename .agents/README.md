@@ -8,7 +8,6 @@ no skill invocation tool, read the file with the tools it exposes.
 ## Ownership and discovery
 
 [AGENTS.md](../AGENTS.md) provides shared instructions and conditional references.
-[Role routing](roles.md) owns delegation and the compact handoff;
 [skill overrides](skill-overrides.md) adapt upstream workflows to Trinity.
 Roles select work responsibilities and model defaults; skills supply task guidance.
 
@@ -28,22 +27,14 @@ that an agent loaded a skill.
 Use the active client's installed `superpowers:*` skills for planning, debugging,
 execution and review. They are separate from the repository-managed imports below.
 [Trinity overrides](skill-overrides.md#superpowers-integration) map task states to
-process skills; [role routing](roles.md#superpowers-dispatch) maps their delegated
-work to the configured roles. Load the process skill for the current stage plus
+process skills; Load the process skill for the current stage plus
 only the domain skills needed by the task.
 
 ## Select a managed skill
 
 | Skill                                                                    | Task                                                              |
 | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| [grill-me](skills/grill-me/SKILL.md)                                     | Resolve a design interview request; routes to `grilling`.         |
-| [grilling](skills/grilling/SKILL.md)                                     | Work through unresolved product decisions.                        |
-| [domain-modeling](skills/domain-modeling/SKILL.md)                       | Clarify domain vocabulary or a significant decision.              |
-| [wayfinder](skills/wayfinder/SKILL.md)                                   | Chart or advance an agreed issue map.                             |
-| [to-tickets](skills/to-tickets/SKILL.md)                                 | Publish approved implementation slices and dependencies.          |
 | [research](skills/research/SKILL.md)                                     | Investigate a question using primary sources.                     |
-| [prototype](skills/prototype/SKILL.md)                                   | Answer a design question with an ignored throwaway artifact.      |
-| [resolving-merge-conflicts](skills/resolving-merge-conflicts/SKILL.md)   | Resolve an authorized merge or rebase conflict.                   |
 | [nx-workspace](skills/nx-workspace/SKILL.md)                             | Find projects, resolved targets, and dependencies.                |
 | [nx-generate](skills/nx-generate/SKILL.md)                               | Inspect generators before scaffolding.                            |
 | [nx-run-tasks](skills/nx-run-tasks/SKILL.md)                             | Run the resolved Nx targets needed by the change.                 |
@@ -52,9 +43,6 @@ only the domain skills needed by the task.
 | [vitest](skills/vitest/SKILL.md)                                         | Write or diagnose unit tests.                                     |
 | [playwright-best-practices](skills/playwright-best-practices/SKILL.md)   | Write or diagnose meaningful browser journeys.                    |
 | [playwright-cli](skills/playwright-cli/SKILL.md)                         | Drive an available browser interaction tool.                      |
-| [redesign-existing-projects](skills/redesign-existing-projects/SKILL.md) | Audit an existing product surface and make targeted improvements. |
-| [imagegen-frontend-mobile](skills/imagegen-frontend-mobile/SKILL.md)     | Create a mobile screen or flow mockup.                            |
-| [writing-for-agents](skills/writing-for-agents/SKILL.md)                 | Edit agent guidance or a repository-owned skill.                  |
 
 Keep the catalog focused on building and maintaining the Trinity client. Branding,
 marketing-page workflows, fixed visual presets, and generic reference sheets belong
@@ -67,9 +55,6 @@ A skill mentioning an external service does not require installing or paying for
 | Reference                                                   | Task                                                                  |
 | ----------------------------------------------------------- | --------------------------------------------------------------------- |
 | [Electron](skills/electron/SKILL.md)                        | Trace desktop host capabilities, IPC, storage, packaging, or signing. |
-| [Design systems](skills/ux/design-systems/SKILL.md)         | Change shared UI, Theme Foundation, or Appearance contracts.          |
-| [Interaction design](skills/ux/interaction-design/SKILL.md) | Check focus, overlays, loading, input models, motion, or touch.       |
-| [Visual hierarchy](skills/ux/visual-hierarchy/SKILL.md)     | Improve readable order, grouping, typography, or density.             |
 
 ## Maintain managed imports
 
@@ -99,10 +84,9 @@ for this guide; add/update examples were inspected, not executed. The unpinned
 
 ## Maintain local rules and configuration
 
-Edit local guidance through normal review. Use [writing-for-agents](skills/writing-for-agents/SKILL.md)
+Edit local guidance through normal review.
 and put detailed conditional guidance behind the existing task pointers rather than
-expanding always-loaded instructions. For model changes, follow the
-[role configuration reference](roles.md#use-the-configured-defaults-deliberately).
+expanding always-loaded instructions.
 
 | Rule                                                      | When it applies                                                   |
 | --------------------------------------------------------- | ----------------------------------------------------------------- |
