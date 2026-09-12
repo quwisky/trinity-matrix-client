@@ -15,6 +15,7 @@ type ReleaseManifest =
 
 const commonPageFields = {
   description: z.string().trim().min(1),
+  canonicalTopic: z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
   pageType: z.enum(PAGE_TYPES),
   platforms: z.array(z.enum(PLATFORMS)).min(1),
 };

@@ -3,6 +3,7 @@ title: Develop Trinity
 description: Start contributing to the current Trinity develop branch.
 audience: developer
 contentChannel: develop
+canonicalTopic: developer-home
 pageType: tutorial
 platforms: [web, desktop, android, ios]
 ---
@@ -11,16 +12,16 @@ This guide describes the current `develop` branch. It can change before Trinity'
 
 ## Set up your workspace {#set-up}
 
-Install the required tools, dependencies, and local services before making a change.
+Follow [Prerequisites](./start/prerequisites/) and [Clone and install](./start/clone-and-install/) to prepare a checkout.
 
 ## Understand the architecture {#architecture}
 
-Learn how application, feature, data-access, component, and host code divide ownership.
+Begin with the [system overview](./architecture/system-overview/) and [capability ownership](./architecture/capability-ownership/) before crossing a library boundary.
 
 ## Validate a change {#testing}
 
-Choose checks that exercise the behavior and platform affected by your work.
+Testing guides are being rewritten. Until they land, inspect the affected Nx project's targets and run the checks that observe the behavior you changed.
 
 ## Prepare a contribution {#contributing}
 
-Follow the branch, commit, validation, and pull-request conventions used by the repository.
+Contribution guides are being rewritten. Keep changes scoped and base work on `develop`.

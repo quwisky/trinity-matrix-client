@@ -36,6 +36,17 @@ describe('public content boundaries', () => {
     expect(() => validateContentBoundaries(roots)).not.toThrow();
   });
 
+  it('allows relative links when the checkout path is itself hidden', () => {
+    const roots = fixture();
+    writeFileSync(
+      join(roots.developerRoot, 'index.md'),
+      '[State](./architecture/state-and-reactivity/)\n',
+      'utf8',
+    );
+
+    expect(() => validateContentBoundaries(roots)).not.toThrow();
+  });
+
   it('rejects a public link into internal documentation', () => {
     const roots = fixture();
     writeFileSync(

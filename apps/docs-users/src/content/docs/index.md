@@ -3,6 +3,7 @@ title: Trinity is still in development
 description: Release documentation will be published when Trinity reaches its first public release.
 audience: user
 contentChannel: release
+canonicalTopic: user-home
 pageType: explanation
 platforms: [web, desktop, android, ios]
 ---

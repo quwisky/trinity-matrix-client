@@ -85,6 +85,7 @@ describe('release manifest', () => {
 describe('public page frontmatter', () => {
   const common = {
     description: 'A useful description.',
+    canonicalTopic: 'example-topic',
     pageType: 'how-to',
     platforms: ['web'],
   };
@@ -142,6 +143,15 @@ describe('public page frontmatter', () => {
         audience: 'user',
         contentChannel: 'release',
         platforms: ['watch'],
+      },
+    ],
+    [
+      'invalid canonical topic',
+      {
+        ...common,
+        audience: 'user',
+        contentChannel: 'release',
+        canonicalTopic: 'Example Topic',
       },
     ],
     [

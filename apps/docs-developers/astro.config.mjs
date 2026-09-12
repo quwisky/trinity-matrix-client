@@ -27,6 +27,62 @@ export default defineConfig({
       },
       customCss: ['@trinity/docs/shared-theme/trinity.css'],
       disable404Route: true,
+      sidebar: [
+        {
+          label: 'Start',
+          items: [
+            { label: 'Prerequisites', link: '/start/prerequisites/' },
+            { label: 'Clone and install', link: '/start/clone-and-install/' },
+            { label: 'Run Trinity', link: '/start/run-trinity/' },
+            { label: 'Repository tour', link: '/start/repository-tour/' },
+            {
+              label: 'Make your first change',
+              link: '/start/make-your-first-change/',
+            },
+          ],
+        },
+        {
+          label: 'Architecture',
+          items: [
+            {
+              label: 'System overview',
+              link: '/architecture/system-overview/',
+            },
+            {
+              label: 'Capability ownership',
+              link: '/architecture/capability-ownership/',
+            },
+            {
+              label: 'Dependency boundaries',
+              link: '/architecture/dependency-boundaries/',
+            },
+            {
+              label: 'State and reactivity',
+              link: '/architecture/state-and-reactivity/',
+            },
+            {
+              label: 'Matrix integration',
+              link: '/architecture/matrix-integration/',
+            },
+            {
+              label: 'Encryption and trust',
+              link: '/architecture/encryption-and-trust/',
+            },
+            {
+              label: 'Workspace and navigation',
+              link: '/architecture/workspace-and-navigation/',
+            },
+            {
+              label: 'Host capabilities',
+              link: '/architecture/host-capabilities/',
+            },
+            {
+              label: 'UI and theming',
+              link: '/architecture/ui-and-theming/',
+            },
+          ],
+        },
+      ],
       components: {
         Banner: '@trinity/docs/shared-components/ChannelBanner.astro',
         Footer: '@trinity/docs/shared-components/SiteFooter.astro',

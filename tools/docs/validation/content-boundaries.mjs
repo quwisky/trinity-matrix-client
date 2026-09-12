@@ -33,8 +33,7 @@ const within = (parent, candidate) => {
 const assertPublicTarget = (sourcePath, rawTarget) => {
   if (EXTERNAL_URL.test(rawTarget)) return;
   const pathname = decodeURIComponent(rawTarget.split(/[?#]/, 1)[0]);
-  const resolved = resolve(join(sourcePath, '..'), pathname);
-  if (FORBIDDEN_PATH.test(pathname) || FORBIDDEN_PATH.test(resolved)) {
+  if (FORBIDDEN_PATH.test(pathname)) {
     throw new Error(
       `${sourcePath} links to internal documentation: ${rawTarget}.`,
     );
