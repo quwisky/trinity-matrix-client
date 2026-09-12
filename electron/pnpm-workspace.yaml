@@ -16,3 +16,6 @@ minimumReleaseAge: 1440
 # block it explicitly so the install stays clean instead of erroring.
 allowBuilds:
   electron-winstaller: false
+minimumReleaseAgeExclude:
+  # Renovate security update: vitest@4.1.11
+  - vitest@4.1.11

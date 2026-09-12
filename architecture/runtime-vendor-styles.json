@@ -3,7 +3,7 @@
     {
       "id": "cdk-overlay-static",
       "package": "@angular/cdk",
-      "version": "22.1.0",
+      "version": "22.1.5",
       "source": "../../../node_modules/@angular/cdk/overlay-prebuilt.css",
       "layer": "vendor"
     },
@@ -43,7 +43,7 @@
     {
       "id": "cdk-overlay-loader",
       "package": "@angular/cdk",
-      "version": "22.1.0",
+      "version": "22.1.5",
       "mechanism": "CDK creates global overlay and visually-hidden style-loader components and writes overlay geometry inline",
       "seam": "libs/components/overlay/src/index.ts",
       "importPrefixes": [

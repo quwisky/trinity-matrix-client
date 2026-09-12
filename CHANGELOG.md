@@ -36,6 +36,11 @@ All notable changes to this project are documented here. The format is based on
 - Preserve Renovate's structured log across its container boundary so the scheduled health
   check and failure artifact can inspect the completed dependency update run.
 
+### Security
+
+- Update Angular to the patched 22.1.5 line and Vitest to 4.1.11 in both dependency trees,
+  addressing the current Angular transfer-cache and Vitest mocker advisories.
+
 ### Changed
 
 - Upgrade Nx and its first-party workspace plugins from 23.1.1 to 23.2.1,
