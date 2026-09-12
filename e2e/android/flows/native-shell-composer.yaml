@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn:
+    id: composer-input
+- eraseText
+- inputText: ${MESSAGE}

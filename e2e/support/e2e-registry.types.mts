@@ -26,7 +26,9 @@ export type E2ECapability =
   | 'workspace';
 
 export type E2ECiTier = 'local-only' | 'pull-request' | 'scheduled';
-export type E2ETimeoutClass = 'short' | 'medium' | 'long' | 'host';
+export type E2ETimeoutClass =
+  'short' | 'medium' | 'long' | 'host' | 'host-extended';
+export type E2ERunner = 'playwright' | 'node-test';
 
 export type E2EPrerequisite =
   | 'android-avd'
@@ -35,6 +37,11 @@ export type E2EPrerequisite =
   | 'electron'
   | 'java-21'
   | 'kvm'
+  | 'chrome'
+  | 'chromedriver'
+  | 'electron-chromedriver'
+  | 'maestro'
+  | 'node-24'
   | 'network'
   | 'playwright-chromium'
   | 'playwright-firefox'
@@ -46,6 +53,7 @@ export interface E2ESuiteDefinition {
   readonly environment: E2EEnvironment;
   readonly capabilities: readonly E2ECapability[];
   readonly contractTypes: readonly E2EContractType[];
+  readonly runner: E2ERunner;
   readonly currentTarget: `${string}:${string}`;
   readonly delegatingTargets?: readonly `${string}:${string}`[];
   readonly targetProject: string;

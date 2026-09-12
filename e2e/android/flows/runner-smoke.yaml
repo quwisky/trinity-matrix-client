@@ -1,0 +1,31 @@
+appId: eu.qwky.trinity
+---
+- extendedWaitUntil:
+    visible:
+      id: homeserver
+    timeout: 60000
+- tapOn:
+    id: homeserver
+- eraseText
+- inputText: ${HOMESERVER}
+- hideKeyboard
+- tapOn: Continue
+- extendedWaitUntil:
+    visible:
+      id: username
+    timeout: 30000
+- tapOn:
+    id: username
+- eraseText
+- inputText: ${USERNAME}
+- tapOn:
+    id: password
+- eraseText
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn: Sign in
+- extendedWaitUntil:
+    visible: Recent activity
+    timeout: 60000
+- waitForAnimationToEnd
+- takeScreenshot: rooms

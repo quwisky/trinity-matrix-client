@@ -63,8 +63,8 @@ describe('managed E2E commands', () => {
         [
           '-e',
           `const { writeFileSync } = require('node:fs');
-           writeFileSync(${JSON.stringify(ready)}, 'ready');
            process.on('SIGINT', () => { writeFileSync(${JSON.stringify(flushed)}, 'flushed'); process.exit(0); });
+           writeFileSync(${JSON.stringify(ready)}, 'ready');
            setInterval(() => undefined, 1000);`,
         ],
         {
@@ -85,6 +85,90 @@ describe('managed E2E commands', () => {
         timedOut: false,
       });
       expect(readFileSync(flushed, 'utf8')).toBe('flushed');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('cleans descendants that survive a normally exiting Node child', async () => {
+    if (process.platform === 'win32') return;
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-managed-group-'));
+    const pidFile = join(directory, 'grandchild.pid');
+    try {
+      const result = await runManagedCommand(
+        process.execPath,
+        [
+          '-e',
+          `const { spawn } = require('node:child_process');
+           const { writeFileSync } = require('node:fs');
+           const grandchild = spawn(process.execPath, ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"], { stdio: 'ignore' });
+           writeFileSync(${JSON.stringify(pidFile)}, String(grandchild.pid));
+           setTimeout(() => process.exit(0), 100);`,
+        ],
+        {
+          cleanupProcessGroup: true,
+          terminationGraceMs: 100,
+          stdio: 'ignore',
+        },
+      );
+      expect(result.status).toBe(0);
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        try {
+          process.kill(pid, 0);
+        } catch {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('cleans descendants on the forced cancellation path', async () => {
+    if (process.platform === 'win32') return;
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-managed-cancel-'));
+    const pidFile = join(directory, 'grandchild.pid');
+    try {
+      const controller = new AbortController();
+      const result = runManagedCommand(
+        process.execPath,
+        [
+          '-e',
+          `const { spawn } = require('node:child_process');
+           const { writeFileSync } = require('node:fs');
+           const grandchild = spawn(process.execPath, ['-e', "process.on('SIGINT', () => {}); process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);"], { stdio: 'ignore' });
+           writeFileSync(${JSON.stringify(pidFile)}, String(grandchild.pid));
+           process.on('SIGINT', () => process.exit(0));
+           setInterval(() => {}, 1000);`,
+        ],
+        {
+          cleanupProcessGroup: true,
+          terminationSignal: 'SIGINT',
+          terminationGraceMs: 100,
+          stdio: 'ignore',
+          signal: controller.signal,
+        },
+      );
+      for (let attempt = 0; attempt < 100 && !existsSync(pidFile); attempt += 1)
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      controller.abort(new Error('forced cancellation'));
+      await expect(result).resolves.toMatchObject({
+        status: 1,
+        timedOut: false,
+      });
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        try {
+          process.kill(pid, 0);
+        } catch {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(() => process.kill(pid, 0)).toThrow();
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -1,0 +1,4 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- inputText: s

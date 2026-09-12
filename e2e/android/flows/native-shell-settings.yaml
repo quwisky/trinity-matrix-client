@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn: Settings
+- extendedWaitUntil:
+    visible: Appearance
+    timeout: 30000

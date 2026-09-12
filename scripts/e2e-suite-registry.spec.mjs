@@ -467,6 +467,43 @@ describe('E2E suite registry runner', () => {
     expect(failures).toEqual(['Docker daemon is unavailable']);
   });
 
+  it('checks node-test toolchains without probing Playwright binaries', async () => {
+    const calls = [];
+    const failures = await checkPrerequisites(
+      [{ prerequisites: ['chrome', 'chromedriver', 'maestro', 'node-24'] }],
+      {
+        execute: (command, args) => {
+          calls.push([command, args]);
+          return {
+            status: 0,
+            stdout:
+              command === 'chrome'
+                ? 'Google Chrome 153.0.8010.36'
+                : command === 'chromedriver'
+                  ? 'ChromeDriver 153.0.8010.36'
+                  : command === 'maestro'
+                    ? '1.0.0 Maestro 2.10.0'
+                    : 'v24.20.0',
+          };
+        },
+        environment: {
+          TRINITY_NODE_BINARY: 'node',
+          TRINITY_CHROME_BINARY: 'chrome',
+          TRINITY_CHROMEDRIVER_BINARY: 'chromedriver',
+          MAESTRO_CLI: 'maestro',
+        },
+      },
+    );
+
+    expect(failures).toEqual([]);
+    expect(calls).toEqual([
+      ['chrome', ['--version']],
+      ['chromedriver', ['--version']],
+      ['maestro', ['--version']],
+      ['node', ['--version']],
+    ]);
+  });
+
   it('accepts only the canonical local AVD unless a serial is explicit', async () => {
     const androidSuite = [{ prerequisites: ['android-avd'] }];
     const executeWith = (
@@ -621,6 +658,153 @@ describe('E2E suite registry runner', () => {
     expect(failures).toEqual(['public network discovery is unavailable']);
   });
 
+  it('allows the complete Android account batch and cleanup within its registry budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.accounts-workspace',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:accounts-workspace'],
+      expect.objectContaining({
+        timeout: 5_100_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android sidebar touch batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.sidebar-touch',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:sidebar-touch',
+        canonicalScript: 'e2e:android:sidebar-touch',
+        sourceEntrypoints: ['e2e/android/sidebar-touch-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:sidebar-touch'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room tags batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-tags',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-tags',
+        canonicalScript: 'e2e:android:room-tags',
+        sourceEntrypoints: ['e2e/android/room-tags-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-tags'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room read-state batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-read-state',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-read-state',
+        canonicalScript: 'e2e:android:room-read-state',
+        sourceEntrypoints: ['e2e/android/room-read-state-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-read-state'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room-list batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-list',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-list',
+        canonicalScript: 'e2e:android:room-list',
+        sourceEntrypoints: ['e2e/android/room-list-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-list'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(
@@ -750,6 +934,83 @@ describe('E2E suite registry runner', () => {
       }),
     ).toBe(1);
     expect(executeSuite).not.toHaveBeenCalled();
+  });
+
+  it('persists a terminal failure and remaining not-run suites when invocation setup throws', async () => {
+    const first = runnerSuite();
+    const second = runnerSuite({
+      id: 'components.styling',
+      currentTarget: 'trinity-e2e-components:styling',
+    });
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-components', {
+        validate: () => [],
+        select: () => [first, second],
+        preflight: async () => [],
+        openInvocation: async () => {
+          throw new Error('resource setup broke');
+        },
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          outcome: 'failure',
+          detail: 'invocation setup failed: resource setup broke',
+        }),
+        expect.objectContaining({
+          id: second.id,
+          outcome: 'not-run',
+        }),
+      ]),
+    );
+  });
+
+  it('persists a terminal failure and remaining not-run suites when an adapter throws', async () => {
+    const first = runnerSuite();
+    const second = runnerSuite({
+      id: 'components.styling',
+      currentTarget: 'trinity-e2e-components:styling',
+    });
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-components', {
+        validate: () => [],
+        select: () => [first, second],
+        preflight: async () => [],
+        executeSuite: async () => {
+          throw new Error('adapter broke');
+        },
+        openInvocation: async () => ({
+          descriptor: { id: 'run-12345678' },
+          environment: {},
+          close: async () => undefined,
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          outcome: 'failure',
+          detail: 'suite execution failed: adapter broke',
+        }),
+        expect.objectContaining({
+          id: second.id,
+          outcome: 'not-run',
+        }),
+      ]),
+    );
   });
 
   it('rejects any remote protocol aggregate before preflight or invocation', async () => {

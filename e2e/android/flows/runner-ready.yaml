@@ -1,0 +1,7 @@
+appId: eu.qwky.trinity
+# Keep readiness native so the TLS fixture cannot rely on earlier page inspection.
+---
+- extendedWaitUntil:
+    visible:
+      id: homeserver
+    timeout: 60000

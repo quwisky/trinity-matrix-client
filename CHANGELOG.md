@@ -99,6 +99,10 @@ All notable changes to this project are documented here. The format is based on
   status indicators, grouped account actions, and explicit account-removal wording.
   Settings and System Status remain directly available across desktop and mobile.
 
+- E2E artifacts preserve test progress before suite shutdown and expose Android
+  failure-time logs as standalone files, making timeout and native handoff failures
+  easier to diagnose.
+
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
   production renderer journey consume the validated artifact. Restoration verifies the
@@ -1211,6 +1215,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Keep Android test-server TLS handling active before page inspection and across
+  WebView recreation, preventing false certificate failures in native login smoke tests.
+
 - Older-history loading indicators preserve the reader's latest timeline position even
   when the browser has not yet delivered its scroll event.
 
@@ -1223,6 +1230,9 @@ All notable changes to this project are documented here. The format is based on
 - Loading older timeline history preserves deliberate reading offsets even near the bottom.
   Jumping to the latest message cancels pending history corrections so they cannot pull the
   reader back to an older message.
+
+- Android sign-in can no longer lose the Custom Tab launch when the browser controller
+  starts before the native plugin registers its callback.
 
 - Tooltips no longer open from touch-generated focus or disappear when the pointer
   leaves while their trigger retains keyboard focus, preventing blocked navigation

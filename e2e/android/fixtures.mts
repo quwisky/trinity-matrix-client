@@ -699,9 +699,18 @@ async function attachFailureArtifacts(
   diagnostics.forEach((result, index) => {
     const [name] = diagnosticCommands[index]!;
     if (result.status === 'fulfilled') {
+      let attachment: { path: string } | { body: Buffer };
+      try {
+        const path = testInfo.outputPath(name);
+        writeFileSync(path, result.value);
+        attachment = { path };
+      } catch (error) {
+        collectionErrors.push(`${name} file: ${String(error)}`);
+        attachment = { body: Buffer.from(result.value) };
+      }
       attachments.push(
         testInfo.attach(name, {
-          body: Buffer.from(result.value),
+          ...attachment,
           contentType: 'text/plain',
         }),
       );

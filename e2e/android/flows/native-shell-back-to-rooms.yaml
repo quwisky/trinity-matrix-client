@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn: Back to rooms
+- extendedWaitUntil:
+    visible: Settings
+    timeout: 10000

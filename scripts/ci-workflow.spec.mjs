@@ -1,4 +1,5 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -24,6 +25,9 @@ describe('CI execution contract', () => {
     expect(workflow.jobs['android-e2e'].strategy.matrix.shard).toEqual([
       1, 2, 3, 4,
     ]);
+    expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
+      '${{ matrix.shard == 3 && 180 || (matrix.shard == 1 || matrix.shard == 4) && 120 || 100 }}',
+    );
   });
 
   it('runs the complete documentation gate for docs and code changes', () => {
@@ -47,9 +51,71 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(8);
+    expect(uploads.length).toBe(20);
+    const uploadIdentities = uploads.map((step) =>
+      [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
+    );
+    expect(new Set(uploadIdentities).size).toBe(uploads.length);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-runner-smoke'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-critical-journeys',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-native-shell'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-accounts-workspace',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-identity-presence',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-sidebar-filter'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-sidebar-touch'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-tags'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-read-state'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-list'),
+    ).toHaveLength(1);
     for (const step of uploads) {
-      expect(step.if).toMatch(/!cancelled\(\).*outputs.started == 'true'/);
+      const gate =
+        step.with.surface === 'android-runner-smoke'
+          ? /!cancelled\(\).*outputs\.smoke-started == 'true'/
+          : step.with.surface === 'android-critical-journeys'
+            ? /!cancelled\(\).*outputs\.critical-started == 'true'/
+            : step.with.surface === 'android-native-shell'
+              ? /!cancelled\(\).*outputs\.native-shell-started == 'true'/
+              : step.with.surface === 'android-accounts-workspace'
+                ? /!cancelled\(\).*outputs\.accounts-started == 'true'/
+                : step.with.surface === 'android-identity-presence'
+                  ? /!cancelled\(\).*outputs\.identity-started == 'true'/
+                  : step.with.surface === 'android-sidebar-filter'
+                    ? /!cancelled\(\).*outputs\.sidebar-filter-started == 'true'/
+                    : step.with.surface === 'android-sidebar-touch'
+                      ? /!cancelled\(\).*outputs\.sidebar-touch-started == 'true'/
+                      : step.with.surface === 'android-room-tags'
+                        ? /!cancelled\(\).*outputs\.room-tags-started == 'true'/
+                        : step.with.surface === 'android-room-read-state'
+                          ? /!cancelled\(\).*outputs\.room-read-state-started == 'true'/
+                          : step.with.surface === 'android-room-list'
+                            ? /!cancelled\(\).*outputs\.room-list-started == 'true'/
+                            : /!cancelled\(\).*outputs\.started == 'true'/;
+      expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
     }
@@ -71,6 +137,30 @@ describe('CI execution contract', () => {
     ]) {
       expect(upload.with.name).toContain(field);
     }
+  });
+
+  it('runs room-list after read state and before retained Playwright on shard 1', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const filter = script.indexOf('trinity-e2e-android:sidebar-filter');
+    const touch = script.indexOf('trinity-e2e-android:sidebar-touch');
+    const roomTags = script.indexOf('trinity-e2e-android:room-tags');
+    const readState = script.indexOf('trinity-e2e-android:room-read-state');
+    const roomList = script.indexOf('trinity-e2e-android:room-list');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const roomListLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-list'));
+
+    expect(filter).toBeGreaterThan(-1);
+    expect(touch).toBeGreaterThan(filter);
+    expect(roomTags).toBeGreaterThan(touch);
+    expect(readState).toBeGreaterThan(roomTags);
+    expect(roomList).toBeGreaterThan(readState);
+    expect(playwright).toBeGreaterThan(roomList);
+    expect(roomListLine).toContain('matrix.shard }}" = "1"');
+    expect(roomListLine).toContain('room-list-started=true');
   });
 
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
@@ -101,5 +191,21 @@ describe('CI execution contract', () => {
           !step.with.path.includes('.gradle'),
       ),
     ).toBe(true);
+  });
+
+  it('keeps emulator-runner script commands valid as standalone shell lines', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
+
+    expect(lines).toHaveLength(13);
+    for (const line of lines) {
+      expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
+    }
   });
 });

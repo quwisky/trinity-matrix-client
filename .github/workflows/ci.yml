@@ -136,6 +136,8 @@ jobs:
           artifact-name: ${{ needs.renderer.outputs.artifact-name }}
           manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
           destination: dist/renderer-download
+      - name: Install pinned Node runner prerequisites
+        run: node scripts/ci-runner-prerequisites.mjs electron
       # The binary download is NOT skipped any more, and that is the point of this job.
       # It used to be, on the reasoning that "nothing here launches Electron" — which was
       # true and was the problem: a two-major Chromium bump had no gate at all, and the
@@ -162,11 +164,20 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm nx run trinity-e2e-electron:full-prebuilt
+      - id: electron-runner-smoke
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm nx run trinity-e2e-electron:runner-smoke
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.electron.outputs.started == 'true' }}
         with:
           surface: electron
           report-path: dist/.playwright/trinity-e2e-electron/*/electron.full/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.electron-runner-smoke.outputs.started == 'true' }}
+        with:
+          surface: electron-runner-smoke
+          report-path: dist/.playwright/trinity-e2e-electron/*/runner.electron/**
 
       # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
       - name: Verify Desktop left the worktree unchanged
@@ -197,6 +208,8 @@ jobs:
       - uses: ./.github/actions/setup-playwright
         with:
           install: 'false'
+      - name: Install pinned Chromium runner prerequisites
+        run: node scripts/ci-runner-prerequisites.mjs chromium
       - name: Prepare e2e prerequisites
         id: prerequisites
         run: node scripts/ci-prerequisites.mjs
@@ -262,11 +275,20 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - id: chromium-runner-smoke
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:runner-smoke
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
         with:
           surface: browser
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.chromium-runner-smoke.outputs.started == 'true' }}
+        with:
+          surface: chromium-runner-smoke
+          report-path: dist/.playwright/trinity-e2e-browser/*/runner.chromium/**
 
       # The QR protocol harness owns the same fixed Synapse stack, so run it only after
       # the main suite has completed and torn its stack down. Its synthetic camera feeds
@@ -292,7 +314,10 @@ jobs:
     permissions:
       contents: read
       actions: read
-    timeout-minutes: 75
+    # Shard 1 allows 20 + 20 + 20 + 45 minutes for commands and 15 for setup/diagnostics.
+    # Shard 3 allows 20 + 85 + 45 minutes for its commands and 30 for setup/diagnostics.
+    # Shard 4 allows 20 + 20 + 45 minutes for commands and 35 for setup/diagnostics.
+    timeout-minutes: ${{ matrix.shard == 3 && 180 || (matrix.shard == 1 || matrix.shard == 4) && 120 || 100 }}
     strategy:
       fail-fast: false
       matrix:
@@ -307,6 +332,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: ./.github/actions/setup
+      - name: Install pinned Maestro prerequisite
+        run: node scripts/ci-runner-prerequisites.mjs maestro
       - uses: ./.github/actions/restore-verified-renderer
         with:
           sha: ${{ needs.renderer.outputs.sha }}
@@ -348,6 +375,17 @@ jobs:
           avd-name: trinity_api_36_ci
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
+            echo 'smoke-started=true' >> "$GITHUB_OUTPUT"
+            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'critical-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:critical-journeys; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-filter-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-filter; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-touch-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-touch; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-tags-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-tags; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-read-state-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-read-state; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-list-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-list; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'native-shell-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:native-shell; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
 
@@ -357,6 +395,72 @@ jobs:
           surface: android
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.installed-webview/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.smoke-started == 'true' }}
+        with:
+          surface: android-runner-smoke
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/runner.android/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.critical-started == 'true' }}
+        with:
+          surface: android-critical-journeys
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.critical-journeys/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.native-shell-started == 'true' }}
+        with:
+          surface: android-native-shell
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.native-shell/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.accounts-started == 'true' }}
+        with:
+          surface: android-accounts-workspace
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.accounts-workspace/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.identity-started == 'true' }}
+        with:
+          surface: android-identity-presence
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.identity-presence/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}
+        with:
+          surface: android-sidebar-filter
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.sidebar-filter/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.sidebar-touch-started == 'true' }}
+        with:
+          surface: android-sidebar-touch
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.sidebar-touch/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-tags-started == 'true' }}
+        with:
+          surface: android-room-tags
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-tags/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-read-state-started == 'true' }}
+        with:
+          surface: android-room-read-state
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-read-state/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-list-started == 'true' }}
+        with:
+          surface: android-room-list
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-list/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}
