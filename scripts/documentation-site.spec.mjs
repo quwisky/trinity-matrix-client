@@ -42,11 +42,26 @@ describe('documentation site projects', () => {
   );
 
   it('registers shared documentation tooling separately from public content', () => {
-    expect(json('tools/docs/project.json')).toMatchObject({
+    const project = json('tools/docs/project.json');
+
+    expect(project).toMatchObject({
       name: 'docs-site',
       projectType: 'library',
       root: 'tools/docs',
       tags: ['type:tool', 'scope:shared'],
+    });
+    expect(project.targets.check).toMatchObject({
+      executor: 'nx:run-commands',
+      dependsOn: [
+        { projects: ['docs-users', 'docs-developers'], target: 'check' },
+      ],
+    });
+    expect(project.targets.assemble).toMatchObject({
+      executor: 'nx:run-commands',
+      outputs: ['{workspaceRoot}/dist/docs-site'],
+      dependsOn: expect.arrayContaining([
+        { projects: ['docs-users', 'docs-developers'], target: 'build' },
+      ]),
     });
   });
 

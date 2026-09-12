@@ -12,6 +12,54 @@
         "command": "vitest run",
         "cwd": "{workspaceRoot}/tools/docs"
       }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "projects": ["docs-users", "docs-developers"],
+          "target": "check"
+        }
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/apps/docs-users/src/content/**/*",
+        "{workspaceRoot}/apps/docs-developers/src/content/**/*",
+        "{workspaceRoot}/package.json",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        "{workspaceRoot}/tsconfig.base.json",
+        "{workspaceRoot}/**/project.json"
+      ],
+      "options": {
+        "commands": [
+          "node tools/docs/validation/content-boundaries.mjs",
+          "node tools/docs/validation/markdown-links.mjs",
+          "node tools/docs/validation/source-reference.mjs"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "check",
+        {
+          "projects": ["docs-users", "docs-developers"],
+          "target": "build"
+        }
+      ],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/tools/docs/portal/**/*",
+        "{workspaceRoot}/dist/docs/users/**/*",
+        "{workspaceRoot}/dist/docs/developers/**/*"
+      ],
+      "outputs": ["{workspaceRoot}/dist/docs-site"],
+      "options": {
+        "command": "node tools/docs/assemble-pages.mjs",
+        "cwd": "{workspaceRoot}"
+      }
     }
   }
 }
