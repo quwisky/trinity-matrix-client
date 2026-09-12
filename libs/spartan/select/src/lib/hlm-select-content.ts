@@ -24,7 +24,7 @@ import { HlmSelectScrollUp } from './hlm-select-scroll-up';
  *
  * A regenerate drops this and restores the shorthand. `scripts/host-directives.spec.mjs`
  * fails when it does, rather than letting it ship. See "Registered vendored divergences"
- * in docs/architecture/ui-and-theming.md.
+ * in the developer UI and theming guide.
  *
  * 3. The panel uses Trinity's semantic overlay elevation instead of Tailwind's open-ended
  * default shadow scale. Pinned by scripts/theme-foundation-contract.spec.mjs.

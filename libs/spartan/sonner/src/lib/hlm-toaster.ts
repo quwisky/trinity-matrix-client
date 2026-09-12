@@ -33,7 +33,7 @@ import type { ClassValue } from 'clsx';
  * keeps the list structure and moves the live region to its containing
  * section after each toast render.
  *
- * The override is registered in docs/architecture/ui-and-theming.md and pinned
+ * The override is registered in the developer UI and theming guide and pinned
  * by the real public toaster render test.
  * └──────────────────────────────────────────────────────────────────────────┘
  */

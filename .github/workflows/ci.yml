@@ -177,7 +177,7 @@ jobs:
     # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
     # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
-    # (docs/contributing/testing.md); the 75-minute ceiling is hang containment, not an
+    # (developer testing guide); the 75-minute ceiling is hang containment, not an
     # expected duration. Keep this count synchronized with the executable E2E registry.
     timeout-minutes: 75
     steps:

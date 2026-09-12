@@ -2,109 +2,61 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-/**
- * Keeps docs/reference/stack.md honest about versions.
- *
- * AGENTS.md points readers at that page as the pinned-versions reference, and its heading
- * claims the rows are "as installed" — a claim a reader can check and therefore one the
- * repo should not break. It broke repeatedly: the table drifted after four separate
- * dependency waves and was corrected by hand each time, once with the correction itself
- * leaving another row stale.
- *
- * Deliberately narrow. Only rows whose version cell is a single, complete semver are
- * checked; rows that abbreviate on purpose ("4.3 / 1.4", "8 / 6 / 25", "42 / 26", "—") are
- * skipped, because forcing those into exact versions would make the table worse to read.
- * The floor assertion at the bottom is what stops the skip list quietly swallowing
- * everything and leaving a spec that verifies nothing.
- */
-
 const workspaceRoot = join(import.meta.dirname, '..');
+const rootManifest = JSON.parse(
+  readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
+);
+const electronManifest = JSON.parse(
+  readFileSync(join(workspaceRoot, 'electron/package.json'), 'utf8'),
+);
+const stackPath =
+  'apps/docs-developers/src/content/docs/reference/technology-stack.md';
+const stackDoc = readFileSync(join(workspaceRoot, stackPath), 'utf8');
 
-/**
- * Every doc carrying a version table. `stack.md` is the canonical one; the architecture
- * page has a second, smaller table for the two Matrix packages that used to write its
- * cells as `` `^41.9.0` (41.9.0 resolves) ``. That is not a complete semver, so the
- * filter below skipped it and the page drifted silently through several bumps while
- * stack.md stayed honest. Both are read here so neither can.
- */
-const VERSION_DOCS = [
-  'docs/reference/stack.md',
-  'docs/architecture/matrix-and-encryption.md',
-];
+const documentedVersions = new Map(
+  stackDoc
+    .split('\n')
+    .map((line) => line.match(/^\|\s*`?([^|`]+?)`?\s*\|\s*`([^`]+)`\s*\|$/))
+    .filter(Boolean)
+    .map(([, name, version]) => [name.trim(), version]),
+);
 
-const stackDoc = VERSION_DOCS.map((rel) =>
-  readFileSync(join(workspaceRoot, rel), 'utf8'),
-).join('\n');
+const rootVersion = (name) =>
+  rootManifest.dependencies?.[name] ?? rootManifest.devDependencies?.[name];
+const electronVersion = (name) =>
+  electronManifest.dependencies?.[name] ??
+  electronManifest.devDependencies?.[name];
 
-/** A row like: | `@angular/core` | 22.1.0 | Standalone + signals … | */
-const ROW = /^\|\s*`([^`]+)`\s*\|\s*([^|]+?)\s*\|/;
-const COMPLETE_SEMVER = /^\d+\.\d+\.\d+$/;
-
-/** Installed version, read off disk so `exports` restrictions cannot hide it. */
-const installedVersion = (packageName) => {
-  try {
-    const manifest = join(
-      workspaceRoot,
-      'node_modules',
-      packageName,
-      'package.json',
-    );
-    return JSON.parse(readFileSync(manifest, 'utf8')).version;
-  } catch {
-    return null;
-  }
+const expectedVersions = {
+  'Node.js': rootManifest.engines.node,
+  pnpm: rootManifest.packageManager.replace(/^pnpm@/, ''),
+  Nx: rootVersion('nx'),
+  TypeScript: rootVersion('typescript'),
+  Angular: rootVersion('@angular/core'),
+  'matrix-js-sdk': rootVersion('matrix-js-sdk'),
+  RxJS: rootVersion('rxjs'),
+  'Capacitor Core': rootVersion('@capacitor/core'),
+  Electron: electronVersion('electron'),
+  Astro: rootVersion('astro'),
+  Starlight: rootVersion('@astrojs/starlight'),
+  Vitest: rootVersion('vitest'),
+  Playwright: rootVersion('@playwright/test'),
 };
 
-const checkableRows = stackDoc
-  .split('\n')
-  .map((line) => line.match(ROW))
-  .filter(Boolean)
-  .map(([, packageName, documented]) => ({ packageName, documented }))
-  .filter(({ documented }) => COMPLETE_SEMVER.test(documented))
-  .map((row) => ({ ...row, installed: installedVersion(row.packageName) }))
-  .filter(({ installed }) => installed !== null);
-
-describe('docs/reference/stack.md version table', () => {
-  it.each(checkableRows)(
-    '$packageName is documented as the version actually installed',
-    ({ packageName, documented, installed }) => {
+describe('developer technology stack reference', () => {
+  it.each(Object.entries(expectedVersions))(
+    'documents the declared %s version',
+    (name, version) => {
       expect(
-        documented,
-        `docs/reference/stack.md lists ${packageName} as ${documented}`,
-      ).toBe(installed);
+        documentedVersions.get(name),
+        `${stackPath} must match the owning manifest`,
+      ).toBe(version);
     },
   );
 
-  // Without this the suite passes just as happily when a table rewrite, a formatting
-  // change or a stricter regex leaves nothing to check at all.
-  it('checks a meaningful number of rows', () => {
-    expect(checkableRows.length).toBeGreaterThanOrEqual(12);
-  });
-
-  it('leaves no package row behind, whatever else is in the cell', () => {
-    // The floor above is too coarse to notice ONE row going dark, which is exactly what
-    // happened: adding an inline `<!-- … -->` note after the backticked name made `ROW`
-    // stop matching, and `@ctrl/ngx-emoji-mart` silently left the guard while all the
-    // other rows kept it green. Nothing failed, so nothing said the coverage had shrunk.
-    //
-    // So this asks the sharper question: is anything SHAPED like a package row not being
-    // parsed as one? That is measured against the document rather than a hand-tuned count,
-    // so it stays honest as the table grows.
-    // "Shaped like a package row" is judged on the SECOND cell being a complete semver,
-    // not merely on the first being a code span: both of these documents also carry API
-    // and ordering tables whose first cell is `someSymbol()` and whose second is prose.
-    const unparsed = stackDoc
-      .split('\n')
-      .filter((line) => {
-        const cells = line.split('|');
-        return (
-          /`[^`]+`/.test(cells[1] ?? '') &&
-          COMPLETE_SEMVER.test((cells[2] ?? '').trim()) &&
-          !ROW.test(line)
-        );
-      })
-      .map((line) => line.slice(0, 80));
-
-    expect(unparsed).toEqual([]);
+  it('covers every declared reference row', () => {
+    expect([...documentedVersions.keys()].sort()).toEqual(
+      Object.keys(expectedVersions).sort(),
+    );
   });
 });

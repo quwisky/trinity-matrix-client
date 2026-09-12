@@ -163,7 +163,7 @@ interface AccountClient {
  * **active**. {@link instance} returns the active account's client, so the ~78
  * `this.matrix.instance` readers stay scoped to whichever account is in view.
  *
- * Lifecycle per account (see docs/architecture/matrix-and-encryption.md):
+ * Lifecycle per account (see apps/docs-developers/src/content/docs/architecture/matrix-integration.md):
  *   createClient -> initRustCrypto({ cryptoDatabasePrefix }) -> startClient()
  *
  * Components must NOT import matrix-js-sdk directly — go through this service and

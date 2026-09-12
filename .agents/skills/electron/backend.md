@@ -29,7 +29,7 @@ The desktop secure store is a narrow main-process service:
 The platform adapter chooses the secure-store capability and reports support to
 application code. Follow
 [`host-capability.adapters.ts`](../../../libs/platform-native/src/lib/host-capabilities/host-capability.adapters.ts)
-and the [Matrix persistence contract](../../../docs/architecture/matrix-and-encryption.md#secure-storage-backend-selection)
+and the [encryption persistence contract](../../../apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md#secret-storage)
 before changing a fallback or error path.
 
 ## Finish safely

@@ -654,9 +654,9 @@ export const validateDurableE2ENames = (errors, workspaceRoot) => {
     ...globSync('e2e/**/*.{json,md,mjs,mts}', { cwd: workspaceRoot }),
     ...globSync('scripts/*e2e*.{mjs,mts}', { cwd: workspaceRoot }),
     '.github/workflows/ci.yml',
-    'docs/contributing/commands.md',
-    'docs/contributing/e2e-architecture.md',
-    'docs/contributing/testing.md',
+    'apps/docs-developers/src/content/docs/reference/commands.md',
+    'apps/docs-developers/src/content/docs/testing/component-and-browser-tests.md',
+    'apps/docs-developers/src/content/docs/testing/testing-strategy.md',
   ].filter(
     (path) =>
       path !== 'scripts/e2e-suite-registry-validator.mjs' &&

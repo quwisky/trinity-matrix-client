@@ -22,6 +22,7 @@
         "{workspaceRoot}/architecture/*.json",
         "{workspaceRoot}/CONTEXT.md",
         "{workspaceRoot}/docs/**/*.md",
+        "{workspaceRoot}/docs-internal/**/*.md",
         "{workspaceRoot}/libs/**/*.ts",
         "{workspaceRoot}/libs/**/*.html",
         "{workspaceRoot}/libs/**/*.scss",

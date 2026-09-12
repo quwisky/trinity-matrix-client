@@ -16,7 +16,7 @@ import type { ClassValue } from 'clsx';
  * element, so either attribute placed on `hlm-select-trigger` lands on a
  * role-less host instead.
  *
- * The override is registered in docs/architecture/ui-and-theming.md and pinned
+ * The override is registered in the developer UI and theming guide and pinned
  * by the public select wrapper test.
  * └──────────────────────────────────────────────────────────────────────────┘
  */

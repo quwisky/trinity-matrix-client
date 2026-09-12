@@ -119,3 +119,35 @@ describe('documentation site presentation', () => {
     expect(portal).toContain('Trinity documentation');
   });
 });
+
+describe('legacy documentation replacement', () => {
+  it.each([
+    'README.md',
+    'AGENTS.md',
+    'CONTEXT.md',
+    '.agents/README.md',
+    '.agents/skill-overrides.md',
+    '.claude/CLAUDE.md',
+    '.claude/README.md',
+    'e2e/README.md',
+    'e2e/web/production-renderer/README.md',
+    'libs/components/storybook-host/README.md',
+  ])('does not route %s through the superseded docs tree', (path) => {
+    const source = readFileSync(join(workspaceRoot, path), 'utf8');
+
+    expect(source).not.toMatch(
+      /(?:^|[\s(])(?:\.\.\/)*docs\/(?:users|contributing|architecture|platforms|reference|agents|maintaining|adr)(?:\/|\))/m,
+    );
+  });
+
+  it('keeps internal and instruction roots out of public build inputs', () => {
+    for (const projectPath of [
+      'apps/docs-users/project.json',
+      'apps/docs-developers/project.json',
+      'tools/docs/project.json',
+    ]) {
+      const source = readFileSync(join(workspaceRoot, projectPath), 'utf8');
+      expect(source).not.toMatch(/docs-internal|\.agents|\.claude/);
+    }
+  });
+});

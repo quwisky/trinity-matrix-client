@@ -33,7 +33,7 @@ describe('architecture contract', () => {
     expect(output).toContain('Architecture contract is valid');
 
     const dependencyMap = readFileSync(
-      join(workspaceRoot, 'docs/architecture/generated/dependency-map.md'),
+      join(workspaceRoot, 'docs-internal/architecture/dependency-map.md'),
       'utf8',
     );
     expect(dependencyMap).toMatch(/\d+ Nx projects/);

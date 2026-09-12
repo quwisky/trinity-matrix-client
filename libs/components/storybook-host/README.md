@@ -2,13 +2,13 @@
 
 This project hosts one Storybook for Trinity's five public component categories. Use it to
 select a public control, inspect its states and verify an appearance change before exercising
-the feature that uses it. Follow [UI contribution guidance](../../../docs/architecture/ui-and-theming.md)
+the feature that uses it. Follow [UI contribution guidance](../../../apps/docs-developers/src/content/docs/architecture/ui-and-theming.md)
 for component APIs, tokens, responsive behavior and the vendor boundary.
 
 ## Open the catalog
 
 From the repository root, install the pinned dependencies using
-[contributor setup](../../../docs/contributing/getting-started.md), then run:
+[contributor setup](../../../apps/docs-developers/src/content/docs/start/clone-and-install.md), then run:
 
 ```bash
 pnpm storybook
@@ -104,7 +104,7 @@ Room flows or platform behavior outside the canvas.
 
 For actual application CSS, run `trinity-e2e-components:styling`. Application scrollbar checks
 use `trinity-e2e-components:scrollbars` and require the disposable Synapse resource. Follow
-[validation selection](../../../docs/contributing/testing.md) and the
+[validation selection](../../../apps/docs-developers/src/content/docs/contributing/validate-a-change.md) and the
 [E2E task guide](../../../e2e/README.md) for filters, prerequisites, output and cleanup ownership.
 Keep screenshots/traces under ignored test output and use them as review evidence rather than
 committing them to this host.

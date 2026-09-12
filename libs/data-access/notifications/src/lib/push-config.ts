@@ -18,7 +18,7 @@ export interface PushConfig {
   /**
    * Base app id the gateway keys its credentials by. Optional: omit it and
    * {@link DEFAULT_APP_ID} — the app's own bundle id — is used, which is what a gateway
-   * following the setup in docs/reference/push-notifications.md expects. Only set it for a gateway that
+   * following docs-internal/maintenance/push-notifications.md expects. Only set it for a gateway that
    * registered this app under some other key.
    */
   appId?: string;

@@ -58,7 +58,7 @@ const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
  * and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
  * (the CryptoApi) so components never touch matrix-js-sdk directly.
  *
- * Two entry flows (see docs/architecture/matrix-and-encryption.md):
+ * Two entry flows (see apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md):
  * - {@link setUp}: first device — generate a recovery key, set up cross-signing,
  *   secret storage and a server key backup. Needs UIA (the user's password) to
  *   upload the new device-signing keys.

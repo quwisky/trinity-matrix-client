@@ -189,7 +189,7 @@ describe('Workspace semantic navigation boundary', () => {
 
   it('records the contracted boundary in the Workspace ADR', () => {
     const adr = source(
-      'docs/adr/0004-workspace-authority-and-url-projection.md',
+      'docs-internal/decisions/0004-workspace-authority-and-url-projection.md',
     );
 
     expect(adr).toContain('application-owned `WorkspaceNavigationService`');

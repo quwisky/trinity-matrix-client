@@ -127,7 +127,7 @@ export function showOsNotification(
       console.error(
         `[notification] display failed (room ${payload.destination.roomId}): ${error}. On macOS this ` +
           'usually means the app is unsigned or ad-hoc-signed — Electron 42 needs a stable ' +
-          'code signature to post notifications. See docs/platforms/desktop.md (macOS signing).',
+          'code signature to post notifications. See the developer Electron platform guide (macOS signing).',
       );
       finish({
         kind: 'rejected',
@@ -184,7 +184,7 @@ export function maybeSendStartupTestNotification(): void {
     notification.on('failed', (_event, error) =>
       console.error(
         `[notify-test] FAILED: ${error}. On macOS this means the app lacks a stable code ` +
-          'signature — sign it (docs/platforms/desktop.md, macOS signing).',
+          'signature — sign it (developer Electron platform guide, macOS signing).',
       ),
     );
     notification.show();

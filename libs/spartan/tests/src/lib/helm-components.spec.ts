@@ -185,7 +185,7 @@ describe('aria-describedby on helm form controls', () => {
     // Exposing the input fixes the static and bound forms but not this one: the composed
     // directive's host binding runs after the template's attribute binding and overwrites it.
     // Pinned rather than left to prose so that if a future Angular or brain release changes
-    // it, this fails and the rule in docs/architecture/ui-and-theming.md gets revisited.
+    // it, this fails and the rule in the developer UI and theming guide gets revisited.
     @Component({
       imports: [HlmInput],
       template: `<input

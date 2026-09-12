@@ -9,5 +9,5 @@ recommended: true
 # Semantic Versioning
 
 Keep versions unchanged in ordinary work. For an authorized release, follow
-[Changelog and releases](../../../docs/contributing/conventions.md#changelog-and-releases)
+[private release guide](../../../docs-internal/maintenance/ci-and-releases.md)
 for bump selection, both version manifests, changelog rollover and the matching tag.

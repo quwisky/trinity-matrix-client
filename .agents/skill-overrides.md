@@ -7,7 +7,7 @@ skills. User instructions and accepted authorization govern the task.
 ## Superpowers integration
 
 Superpowers supplies the process skills from the active client's installed plugin.
-Trinity supplies domain skills, role routing and repository policy. Keep the plugin
+Trinity supplies domain skills and repository policy. Keep the plugin
 under its installer ownership; do not copy it into `.agents/skills` or `skills-lock.json`.
 Resolve skills from the active catalog, without hardcoding a plugin cache version.
 If a required skill is unavailable, report the missing capability; do not claim it ran.
@@ -29,10 +29,9 @@ loading a process skill does not reopen completed stages. Handle a small, unambi
 configuration or documentation edit directly. Ask only for unresolved decisions or
 material scope changes, and continue independent authorized work meanwhile.
 
-For delegated execution, use [role routing](roles.md#superpowers-dispatch).
-The coordinator owns dispatch and review; bounded children complete their assignment
-without restarting orchestration. Use the active tool schema for parameters and
-lifecycle operations when upstream examples differ from the available tools.
+The coordinator owns any authorized dispatch and review; bounded children complete
+their assignment without restarting orchestration. Use the active tool schema for
+parameters and lifecycle operations when upstream examples differ from available tools.
 
 Superpowers examples that commit each task, compare only commits, merge branches or
 delete a workspace remain subject to Trinity's publication and evidence rules.
@@ -52,29 +51,23 @@ Durable documentation belongs in the repository's existing domain layout.
 
 - Reuse accepted decisions and confirmation from the conversation. Ask again only for an
   unresolved decision or material scope change; invoking another skill does not restart a quiz.
-- Reuse verified investigation through the [compact handoff](roles.md#handoffs), refreshing
-  evidence when an affected input changes or an unresolved question needs further investigation.
+- Reuse verified investigation when work changes hands, refreshing evidence when an
+  affected input changes or an unresolved question needs further investigation.
 - Preserve parents by default. When the user authorizes a parent-map update, perform that
   update and verify its native graph and readable index together. Close a parent only when
   its destination is achieved and closure is authorized.
-- For Wayfinder, read `docs/agents/issue-tracker.md`. Older maps may use `Goal` and
-  `Program rules` for `Destination` and `Notes`. Preserve an explicitly approved execution
-  destination and record the mode in Notes when authorized to update the map. A task label
-  alone does not authorize implementation. Resolve one non-research ticket per session.
 - Use native dependencies, preserve existing issue identities, and verify published bodies,
   labels and relationships by read-back. Use frontier labels when the agreed map requires them.
 
 ## Product design
 
-- Use `redesign-existing-projects` for its audit and targeted-fix workflow. Preserve Trinity's
-  existing tokens, typography, public components and platform interaction models. Generic
+- Preserve Trinity's existing tokens, typography, public components and platform interaction
+  models during design audits and targeted fixes. Generic
   prescriptions for font swaps, palette replacements, decorative textures or cinematic motion
   do not authorize replacing the product's design system.
-- Use `design-systems`, `visual-hierarchy` and `interaction-design` as conceptual references.
-  Implement through Trinity's Angular and Spartan boundaries; generic React or shadcn examples
-  do not establish a new stack or component API.
-- Use `imagegen-frontend-mobile` for mobile screen and flow mockups. For desktop product
-  concepts, use the available general image-generation capability and existing Trinity references.
+- Implement product design through Trinity's Angular and Spartan boundaries; generic React or
+  shadcn examples do not establish a new stack or component API. Use an available image-generation
+  capability for screen and flow mockups when it materially helps.
   Preserve agreed behavior, cross-screen consistency and accessibility in every mockup.
 
 ## Prototypes and research
@@ -96,7 +89,7 @@ Durable documentation belongs in the repository's existing domain layout.
 - Complete the first independent review against that stable artifact. Follow-up review covers
   material changes and their affected behavior; retain the complete evidence while reporting
   compact summaries.
-- Follow [Branches and publication](../docs/contributing/conventions.md#branches-and-publication)
+- Follow [Branches and publication](../apps/docs-developers/src/content/docs/contributing/branches-and-commits.md)
   for the default base, temporary integration branches and authorization. A conflict-resolution
   skill does not authorize staging unrelated files or creating commits. Follow a request to stop
   or abort while preserving unrelated work.
@@ -104,15 +97,15 @@ Durable documentation belongs in the repository's existing domain layout.
 ## Nx and validation
 
 - Use `pnpm nx`, the repository wrapper, with options verified against the installed CLI.
-  See the [canonical commands](../docs/contributing/commands.md) and
-  [validation warnings](../docs/maintaining/validation-warnings.md). Discover generators and
+  See the [canonical commands](../apps/docs-developers/src/content/docs/reference/commands.md) and
+  [validation warnings](../docs-internal/maintenance/validation-warnings.md). Discover generators and
   inspect their schema, implementation, file placement and side effects before writing files.
   Prefer a dry run; if unsupported, inspect the writes and stay within the authorized scope.
 - Match the existing integrated workspace: Angular, standalone components, SCSS, Vitest,
   `@trinity/*` aliases and Nx boundary tags. Internal libraries are source-consumed unless the
   task needs a separate build. Generic workspace-package advice must not replace those aliases.
 - Inspect resolved targets with `nx-workspace`, then follow
-  [Choose validation by the change](../docs/contributing/testing.md#choose-validation-by-the-change).
+  [Choose validation by the change](../apps/docs-developers/src/content/docs/contributing/validate-a-change.md).
   This policy governs test selection and exceptions to generic skills' blanket test requirements.
 - Record required checks with their command/target, checked revision or working-tree state,
   relevant environment, exit status and log/artifact location. Reuse a pass only for unchanged

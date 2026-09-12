@@ -1,6 +1,6 @@
 # Trinity domain language
 
-Trinity lets a person participate in Matrix communication from several saved identities and host applications. This glossary names the concepts that cross product-capability boundaries. For implementation ownership and lifetimes, use the [architecture guides](docs/architecture/index.md); for the reasons behind the boundaries, use the [decision history](docs/architecture/target-architecture.md#decisions).
+Trinity lets a person participate in Matrix communication from several saved identities and host applications. This glossary names the concepts that cross product-capability boundaries. For implementation ownership and lifetimes, use the [architecture guides](apps/docs-developers/src/content/docs/architecture/system-overview.md); for the reasons behind the boundaries, use the [private decision history](docs-internal/decisions/).
 
 ## Accounts
 

@@ -2,18 +2,18 @@
 
 Trinity is an end-to-end encrypted Matrix client for Web/PWA, iOS, Android and
 Electron, built with Angular, signals, Spartan, Tailwind, Capacitor and Nx.
-`CLAUDE.md` points here. Check `package.json` and the [stack reference](docs/reference/stack.md)
+`CLAUDE.md` points here. Check `package.json` and the [stack reference](apps/docs-developers/src/content/docs/reference/technology-stack.md)
 when version compatibility matters.
 
 ## Working agreement
 
 - Continue authorized work and reuse accepted plans and current evidence. Ask only
   for unresolved decisions or material scope changes; refresh evidence when its inputs change.
-- Before editing or publishing, read [branch and publication policy](docs/contributing/conventions.md#branches-and-publication).
+- Before editing or publishing, read [branch and publication policy](apps/docs-developers/src/content/docs/contributing/branches-and-commits.md).
   Use `develop` as the default base; temporary integration bases require task instructions.
   Isolate unrelated work in a separate worktree. Stage only task-owned files;
   commits, pushes and PRs require authorization, and merging belongs to the user.
-- Select checks from [validation policy](docs/contributing/testing.md#choose-validation-by-the-change).
+- Select checks from [validation policy](apps/docs-developers/src/content/docs/contributing/validate-a-change.md).
   Report commands, exit status and unavailable checks. Unit tests do not prove type
   safety or browser layout; run those checks separately. Read failing source-shape
   guards before changing them. Run Synapse-backed E2E sequentially because ports are shared.
@@ -42,17 +42,17 @@ integration and publication. Handle small, unambiguous edits directly.
 Read the relevant sections before acting; expand through their links as needed.
 Repository paths in reference prose are relative to the root.
 
-| Task                                           | Required references                                                                                                                                 |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source changes, styling or platform predicates | [Angular/TypeScript](.claude/CLAUDE.md), [code quality](.agents/rules/code-quality.md), [conventions](docs/agents/conventions.md)                   |
-| Ownership, state, SDK, dependencies or routing | [Capability map and runtime constraints](docs/agents/architecture.md), then the relevant [architecture document](docs/architecture/index.md)        |
-| Commands, tests, builds or E2E                 | [Commands and validation](docs/agents/commands.md); [platform guides](docs/platforms/index.md) for host checks                                      |
-| UI, themes or appearance                       | [UI and theming](docs/architecture/ui-and-theming.md)                                                                                               |
-| Matrix, authentication or encryption           | [Matrix and encryption](docs/architecture/matrix-and-encryption.md)                                                                                 |
-| Push notifications                             | [Push reference](docs/reference/push-notifications.md)                                                                                              |
-| Issues, labels or domain docs                  | [Issue tracker](docs/agents/issue-tracker.md), [triage labels](docs/agents/triage-labels.md), [domain layout](docs/agents/domain.md), as applicable |
-| Changelog, versions or releases                | [Changelog and releases](docs/contributing/conventions.md#changelog-and-releases)                                                                   |
-| Setup or unfamiliar failures                   | [Contributing](docs/contributing/index.md), [troubleshooting](docs/reference/troubleshooting.md)                                                    |
+| Task                                           | Required references                                                                                                                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source changes, styling or platform predicates | [Angular/TypeScript](.claude/CLAUDE.md), [code quality](.agents/rules/code-quality.md), [conventions](apps/docs-developers/src/content/docs/contributing/coding-conventions.md)             |
+| Ownership, state, SDK, dependencies or routing | [Architecture](apps/docs-developers/src/content/docs/architecture/system-overview.md), then the relevant architecture topic                                                                 |
+| Commands, tests, builds or E2E                 | [Commands](apps/docs-developers/src/content/docs/reference/commands.md), [testing](apps/docs-developers/src/content/docs/testing/testing-strategy.md), and the relevant platform guide      |
+| UI, themes or appearance                       | [UI and theming](apps/docs-developers/src/content/docs/architecture/ui-and-theming.md)                                                                                                      |
+| Matrix, authentication or encryption           | [Matrix integration](apps/docs-developers/src/content/docs/architecture/matrix-integration.md) and [encryption](apps/docs-developers/src/content/docs/architecture/encryption-and-trust.md) |
+| Push notifications                             | [Private push reference](docs-internal/maintenance/push-notifications.md)                                                                                                                   |
+| Issues, labels or domain docs                  | [Domain language](CONTEXT.md) and the issue tracker                                                                                                                                         |
+| Changelog, versions or releases                | [Branches and commits](apps/docs-developers/src/content/docs/contributing/branches-and-commits.md) and [private release guide](docs-internal/maintenance/ci-and-releases.md)                |
+| Setup or unfamiliar failures                   | [Clone and install](apps/docs-developers/src/content/docs/start/clone-and-install.md) and [diagnostics](apps/docs-developers/src/content/docs/reference/diagnostics.md)                     |
 
 ## Runtime constraints
 

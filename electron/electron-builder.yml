@@ -92,7 +92,7 @@ mac:
   # when the app is signed with a Developer ID identity.
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # Signing + notarization (full guide: docs/platforms/desktop.md, "macOS signing and
+  # Signing + notarization (full guide: apps/docs-developers/src/content/docs/platforms/electron.md, "macOS signing and
   # notarization"). NOTE: `identity` is intentionally NOT pinned here, so electron-builder
   # auto-discovers the "Developer ID Application" cert and signs when one is available.
   #   - Cert source: the login keychain, OR CSC_LINK (path/base64 of a .p12) +

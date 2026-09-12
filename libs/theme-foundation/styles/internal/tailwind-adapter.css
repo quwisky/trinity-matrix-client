@@ -210,7 +210,7 @@
    * `text-danger` for alert TEXT. `text-destructive` reads --destructive, which is a
    * fill-only token paired with --destructive-foreground. It is not a supported promise
    * for standalone copy, even when one Theme happens to make it readable. This maps to
-   * the measured text role instead. See docs/architecture/ui-and-theming.md.
+   * the measured text role instead. See the developer UI and theming guide.
    */
   --color-danger: var(--trinity-danger);
 
@@ -350,7 +350,7 @@
  *   pnpm nx build trinity
  *   tr '}' '\n' < www/styles-*.css | grep 'text-destructive.*color:var(--destructive)'
  *
- * See docs/architecture/ui-and-theming.md.
+ * See the developer UI and theming guide.
  */
   .text-destructive,
   [data-invalid='true'].data-\[invalid\=true\]\:text-destructive,
