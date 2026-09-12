@@ -83,7 +83,7 @@ Attachment encryption is implemented in `attachment-crypto.ts` in `@trinity/util
 | Package                         | Version | Notes                                                                                               |
 | ------------------------------- | ------- | --------------------------------------------------------------------------------------------------- |
 | `@angular/build`                | 22.1.2  | The `application` builder and `dev-server`. `@angular-devkit/build-angular` is not installed at all |
-| `nx`                            | 23.1.1  | Task graph, caching, module boundaries. The `@nx/*` plugins track this version                      |
+| `nx`                            | 23.2.1  | Task graph, caching, module boundaries. The `@nx/*` plugins track this version                      |
 | `typescript`                    | 6.0.3   | `moduleResolution: bundler`; `@trinity/*` aliases in `tsconfig.base.json`                           |
 | `@types/node`                   | 24.13.3 | Tracks the runtime major, not the newest release                                                    |
 | `vitest`                        | 4.1.10  | Unit tests, run through an `nx:run-commands` target so Vitest args come after `--`                  |
