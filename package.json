@@ -48,6 +48,7 @@
     "e2e:android:accounts": "node scripts/nx.mjs run trinity-e2e-android:accounts-workspace",
     "e2e:android:identity": "node scripts/nx.mjs run trinity-e2e-android:identity-presence",
     "e2e:android:sidebar-filter": "node scripts/nx.mjs run trinity-e2e-android:sidebar-filter",
+    "e2e:android:sidebar-touch": "node scripts/nx.mjs run trinity-e2e-android:sidebar-touch",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

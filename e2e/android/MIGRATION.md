@@ -282,3 +282,54 @@ clear-button and Escape fault controls; the exact two unchanged predecessors;
 three consecutive complete runs with frozen inputs; required quality checks;
 and original-attempt hosted evidence. Other Room Library definitions, physical
 Android acceptance and the full migration reliability gate keep their existing owners.
+
+## Sidebar touch targets and identity dock batch
+
+[Android sidebar touch migration](https://github.com/quwisky/trinity-matrix-client/issues/687)
+owns the complete `keeps the rail, room, menu and identity-dock controls
+touch-sized` definition in
+[Sidebar touch](../browser/journeys/room-library/sidebar-touch.spec.mts), lines
+32–164 at `1e3f8a45`. The pinned source SHA-256 is
+`8b09cba85b29db3e4819462e45b0f074f516198dca8f1733c195722c492f6ebb`.
+`android.sidebar-touch` resets the installed app to the predecessor's exact
+Playwright 1.62.1 Pixel 5 profile and runs the single definition as one mandatory
+stage. Its Playwright predecessor remains enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Touch media profile | `touch.media-profile` records both no-hover and coarse-pointer results as one composite assertion. |
+| Account menu hierarchy and viewport | `account-menu.visible`, `account-menu.switch-account-copy`, `account-menu.add-account-copy`, `account-menu.remove-account-copy`, `account-menu.within-viewport` |
+| Escape focus restoration | `account-menu.escape-focus-restored` after recorded native Android Escape keycode 111 dispatch |
+| Narrow identity dock | `identity-dock.position`, `identity-dock.display`, `identity-dock.flow`; the flow observation throws when either required node is missing. |
+| Rail and identity actions | Width and height identities under `touch-target.rail-rooms`, `touch-target.user-menu-trigger`, and `touch-target.open-settings`, each retaining the 44 px floor. |
+| Room row and kebab | `room-row.height`, `room-menu.opacity`, `room-menu.width`, `room-menu.height`, `room-menu.low-priority-visible` |
+
+These are exactly 21 direct predecessor assertions. Setup creates a fresh
+account and exactly one private `Touch <suffix>` room, then verifies the exact
+account-qualified `/rooms` route. The room-row readiness wait retains the
+30-second deadline. Menu activation and Rooms navigation use current-coordinate
+native taps; Escape is a native Android key dispatch. Media state, menu text,
+focus, computed CSS and geometry are read-only WebView observations. The kebab
+opacity and final action retain 10-second bounds, and geometry is measured only
+after opacity reaches exactly 1.
+
+```bash
+pnpm nx run trinity-e2e-android:sidebar-touch
+```
+
+Android CI shard 1 runs this batch after sidebar filtering and before its
+unchanged Playwright shard. Provisional bounds are 15 minutes for the Node test,
+18 minutes for the resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. Measured local and hosted runs must establish
+that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.sidebar-touch/`.
+`sidebar-touch/journeys.json` records the stage source, first-attempt outcome and
+artifact pointer. Stage-local assertion records, menu/device screenshots and the
+suite progress report retain the observations, provenance and registered cleanup.
+Acceptance remains pending until #687 records three complete first attempts, all
+four effective fault controls, the unchanged predecessor, required quality checks
+and original-attempt hosted evidence. Other Room Library definitions, physical
+Android acceptance and the full migration reliability gate stay with their
+existing owners.
