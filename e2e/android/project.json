@@ -154,6 +154,20 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "room-list": {
+      "//": "Room-row preview structure and muted unread-count behavior against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-list --timeout-ms=1080000 --entrypoint=e2e/android/room-list-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

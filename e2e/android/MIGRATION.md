@@ -444,3 +444,57 @@ attempts, all four effective fault controls, all three unchanged predecessors,
 required quality checks and original-attempt hosted evidence. Other Room Library
 definitions, physical Android acceptance and the full migration reliability gate
 stay with their existing owners.
+
+## Room-list preview and unread-row batch
+
+[Android room-list migration](https://github.com/quwisky/trinity-matrix-client/issues/690)
+owns both complete definitions in
+[Room list](../browser/journeys/room-library/room-list.spec.mts), lines 185–217
+and 219–269 at `9edd3a22`. The pinned source SHA-256 is
+`122c617df290018bd59fcb57a08ad962e78dbba1230ae87d16d9d3c684112654`.
+`android.room-list` resets the installed app to the Playwright 1.62.1 Pixel 5
+profile for each definition and runs them as two mandatory stages. Both
+Playwright predecessors remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Preview row structure | `preview.latest-body`, `preview.room-name`, `preview.avatar-count`, `preview.legacy-hash-absent` |
+| Muted unread row badge | `unread.muted-badge-visible`, `unread.muted-badge-count` |
+
+These are exactly six direct predecessor assertions. Each stage creates a fresh
+reader and sender with one private, non-DM room, verifies the exact
+account-qualified `/rooms` route, opens Rooms with a native tap and waits up to
+30 seconds for the exact room name. The sender joins and posts all messages
+before the reader signs in so preview and unread state arrive through initial
+sync. Product navigation and room opening use measured current-coordinate
+native taps; row structure and state remain read-only WebView observations.
+
+The preview stage proves the exact latest non-typing message body, exact room
+name, one row avatar and absence of the retired hash element. The unread stage
+posts exactly three plain messages and proves one visible muted badge with text
+`3`. It then opens the row and records
+`unread.badge-clear-observation`: whether the badge disappears within 15
+seconds. The source intentionally catches that read-receipt round-trip timeout,
+so the replacement preserves it as explicit diagnostics rather than promoting
+it to a mandatory assertion.
+
+```bash
+pnpm nx run trinity-e2e-android:room-list
+```
+
+Android CI shard 1 runs this batch after room read-state and before its
+unchanged Playwright shard. Provisional bounds are 15 minutes for the Node test,
+18 minutes for the resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. Measured local and hosted runs must
+establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-list/`.
+`room-list/journeys.json` records both stage sources, first-attempt outcomes and
+artifact pointers. Stage-local assertion records, the best-effort observation,
+screenshots and the suite progress report retain observations, provenance and
+registered cleanup. Acceptance remains pending until #690 records three
+complete first attempts, effective preview/structure/badge fault controls, both
+unchanged predecessors, required quality checks and original-attempt hosted
+evidence. Other Room Library definitions, physical Android acceptance and the
+full migration reliability gate stay with their existing owners.
