@@ -44,10 +44,10 @@ the browser list before accepting new floors.
 
 | Package                               | Version | Notes                                                                                                                                        |
 | ------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@angular/core`                       | 22.1.0  | Standalone components, signals, zoneless. `polyfills.ts` is empty on purpose: no zone.js                                                     |
-| `@angular/forms`                      | 22.1.0  | Signal Forms (`@angular/forms/signals`) only. No `FormControl`, `FormGroup` or `ngModel` anywhere                                            |
-| `@angular/cdk`                        | 22.1.0  | Overlay and Dialog behind the public component tier                                                                                          |
-| `@angular/service-worker`             | 22.1.0  | PWA service worker, production web build only. Off in the Electron shell                                                                     |
+| `@angular/core`                       | 22.1.5  | Standalone components, signals, zoneless. `polyfills.ts` is empty on purpose: no zone.js                                                     |
+| `@angular/forms`                      | 22.1.5  | Signal Forms (`@angular/forms/signals`) only. No `FormControl`, `FormGroup` or `ngModel` anywhere                                            |
+| `@angular/cdk`                        | 22.1.5  | Overlay and Dialog behind the public component tier                                                                                          |
+| `@angular/service-worker`             | 22.1.5  | PWA service worker, production web build only. Off in the Electron shell                                                                     |
 | `@spartan-ng/brain`                   | 1.3.0   | Headless UI primitives. The styled Helm layer is copied into `libs/spartan/*` and aliased `@trinity/helm/*`                                  |
 | `tailwindcss`                         | 4.3.3   | v4, configured from CSS. Theme Foundation exposes one aggregate stylesheet and keeps semantic values plus framework wiring internal          |
 | `tw-animate-css`                      | 1.4.0   | Animation utilities the Helm components expect                                                                                               |
@@ -82,11 +82,11 @@ Attachment encryption is implemented in `attachment-crypto.ts` in `@trinity/util
 
 | Package                         | Version | Notes                                                                                               |
 | ------------------------------- | ------- | --------------------------------------------------------------------------------------------------- |
-| `@angular/build`                | 22.1.2  | The `application` builder and `dev-server`. `@angular-devkit/build-angular` is not installed at all |
+| `@angular/build`                | 22.1.7  | The `application` builder and `dev-server`. `@angular-devkit/build-angular` is not installed at all |
 | `nx`                            | 23.2.1  | Task graph, caching, module boundaries. The `@nx/*` plugins track this version                      |
 | `typescript`                    | 6.0.3   | `moduleResolution: bundler`; `@trinity/*` aliases in `tsconfig.base.json`                           |
 | `@types/node`                   | 24.13.3 | Tracks the runtime major, not the newest release                                                    |
-| `vitest`                        | 4.1.10  | Unit tests, run through an `nx:run-commands` target so Vitest args come after `--`                  |
+| `vitest`                        | 4.1.11  | Unit tests, run through an `nx:run-commands` target so Vitest args come after `--`                  |
 | `vite`                          | 8.2.0   | Shared config in `vite.base.config.ts`                                                              |
 | `@analogjs/vite-plugin-angular` | 2.6.4   | Compiles Angular for Vite. `@analogjs/vitest-angular` moves with it                                 |
 | `jsdom`                         | 30.0.1  | DOM environment for unit tests                                                                      |
@@ -156,7 +156,7 @@ assuming a configuration flag changes its renderer build. See the
 
 ### Angular framework and CLI versions differ on purpose
 
-Framework packages are on 22.1.0; the builder and CLI are on 22.1.2. Treat the installed
+Framework packages are on 22.1.5; the builder and CLI are on 22.1.7. Treat the installed
 peer requirements and tested package groups as the compatibility constraints, rather than
 requiring every Angular-related package to share an identical patch number.
 
