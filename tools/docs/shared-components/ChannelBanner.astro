@@ -1,0 +1,53 @@
+---
+type PublicPageData = {
+  audience?: 'user' | 'developer';
+  productVersion?: string;
+};
+
+const page = Astro.locals.starlightRoute.entry.data as PublicPageData;
+const isUserGuide = page.audience === 'user';
+const label = isUserGuide
+  ? page.productVersion
+    ? `Release ${page.productVersion}`
+    : 'Work in progress'
+  : 'Develop branch';
+const detail = isUserGuide
+  ? page.productVersion
+    ? 'Documentation for the latest published Trinity release.'
+    : 'Trinity does not have a published release yet.'
+  : 'Documentation tracks the current develop branch and may change.';
+---
+
+<aside class:list={['channel-banner', { 'is-develop': !isUserGuide }]} aria-label="Documentation channel" data-pagefind-ignore>
+  <strong>{label}</strong>
+  <span>{detail}</span>
+</aside>
+
+<style>
+  @layer starlight.components {
+    .channel-banner {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.4rem 0.75rem;
+      padding: 0.65rem var(--sl-nav-pad-x);
+      border-block-end: 1px solid oklch(66% 0.12 82deg);
+      background: oklch(31% 0.07 82deg);
+      color: oklch(96% 0.02 82deg);
+      font-size: var(--sl-text-sm);
+      line-height: 1.4;
+      text-align: center;
+      text-wrap: balance;
+    }
+
+    .channel-banner.is-develop {
+      border-color: oklch(64% 0.13 278deg);
+      background: oklch(29% 0.08 278deg);
+      color: oklch(96% 0.02 278deg);
+    }
+
+    .channel-banner strong {
+      letter-spacing: 0.02em;
+    }
+  }
+</style>

@@ -153,6 +153,7 @@
     "@angular/compiler-cli": "22.1.5",
     "@angular/language-service": "22.1.5",
     "@astrojs/check": "0.9.10",
+    "@astrojs/markdown-remark": "7.3.1",
     "@astrojs/starlight": "0.42.0",
     "@capacitor/cli": "8.5.0",
     "@commitlint/cli": "^21.2.1",

@@ -1,0 +1,27 @@
+@layer starlight.components {
+  :root {
+    --sl-font:
+      ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+      sans-serif;
+    --sl-font-mono:
+      ui-monospace, 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+    --sl-color-accent-low: oklch(25% 0.07 278deg);
+    --sl-color-accent: oklch(72% 0.16 278deg);
+    --sl-color-accent-high: oklch(92% 0.035 278deg);
+  }
+
+  :root[data-theme='light'] {
+    --sl-color-accent-low: oklch(94% 0.03 278deg);
+    --sl-color-accent: oklch(48% 0.2 278deg);
+    --sl-color-accent-high: oklch(28% 0.11 278deg);
+  }
+
+  :where(a, button, input, summary):focus-visible {
+    outline: 0.2rem solid var(--sl-color-accent);
+    outline-offset: 0.2rem;
+  }
+
+  .sl-markdown-content a {
+    text-underline-offset: 0.18em;
+  }
+}

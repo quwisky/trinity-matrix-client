@@ -55,8 +55,56 @@ describe('documentation site projects', () => {
 
     expect(manifest.devDependencies).toMatchObject({
       '@astrojs/check': '0.9.10',
+      '@astrojs/markdown-remark': '7.3.1',
       '@astrojs/starlight': '0.42.0',
       astro: '7.3.2',
     });
+  });
+});
+
+describe('documentation site presentation', () => {
+  const userConfig = readFileSync(
+    join(workspaceRoot, 'apps/docs-users/astro.config.mjs'),
+    'utf8',
+  );
+  const developerConfig = readFileSync(
+    join(workspaceRoot, 'apps/docs-developers/astro.config.mjs'),
+    'utf8',
+  );
+
+  it('shares presentation without sharing public content', () => {
+    for (const config of [userConfig, developerConfig]) {
+      expect(config).toContain('@trinity/docs/shared-theme/trinity.css');
+      expect(config).toContain(
+        '@trinity/docs/shared-components/ChannelBanner.astro',
+      );
+      expect(config).toContain(
+        '@trinity/docs/shared-components/SiteFooter.astro',
+      );
+      expect(config).toContain('@trinity/docs/shared-assets/trinity-mark.svg');
+    }
+
+    expect(userConfig).toContain("title: 'Trinity User Guide'");
+    expect(userConfig).toContain("base: '/trinity-matrix-client/users'");
+    expect(userConfig).not.toContain('apps/docs-developers/src/content');
+
+    expect(developerConfig).toContain("title: 'Trinity Developer Guide'");
+    expect(developerConfig).toContain(
+      "base: '/trinity-matrix-client/developers'",
+    );
+    expect(developerConfig).not.toContain('apps/docs-users/src/content');
+  });
+
+  it('provides only the two audience destinations at the Pages root', () => {
+    const portal = readFileSync(
+      join(workspaceRoot, 'tools/docs/portal/index.html'),
+      'utf8',
+    );
+    const destinations = [...portal.matchAll(/href="([^"]+)"/g)].map(
+      ([, href]) => href,
+    );
+
+    expect(destinations).toEqual(['./users/', './developers/']);
+    expect(portal).toContain('Trinity documentation');
   });
 });

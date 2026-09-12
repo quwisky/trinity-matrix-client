@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Choose the Trinity documentation for your role."
+    />
+    <title>Trinity documentation</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        background: oklch(18% 0.025 278deg);
+        color: oklch(96% 0.012 278deg);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        display: grid;
+        min-block-size: 100vh;
+        margin: 0;
+        padding: clamp(1.5rem, 5vw, 4rem);
+        place-items: center;
+      }
+
+      main {
+        inline-size: min(60rem, 100%);
+      }
+
+      .mark {
+        inline-size: 4.5rem;
+        block-size: 4.5rem;
+        margin-block-end: 1rem;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.25rem, 7vw, 4.5rem);
+        letter-spacing: -0.04em;
+        line-height: 1;
+      }
+
+      .intro {
+        max-inline-size: 42rem;
+        margin-block: 1.25rem 2rem;
+        color: oklch(78% 0.025 278deg);
+        font-size: 1.125rem;
+        line-height: 1.65;
+      }
+
+      .choices {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+        gap: 1rem;
+      }
+
+      a {
+        display: block;
+        padding: 1.5rem;
+        border: 1px solid oklch(41% 0.05 278deg);
+        border-radius: 1rem;
+        background: oklch(23% 0.035 278deg);
+        color: inherit;
+        text-decoration: none;
+      }
+
+      a:hover {
+        border-color: oklch(72% 0.16 278deg);
+        background: oklch(27% 0.055 278deg);
+      }
+
+      a:focus-visible {
+        outline: 0.2rem solid oklch(79% 0.14 278deg);
+        outline-offset: 0.25rem;
+      }
+
+      strong {
+        display: block;
+        margin-block-end: 0.4rem;
+        font-size: 1.25rem;
+      }
+
+      a span {
+        color: oklch(78% 0.025 278deg);
+        line-height: 1.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg class="mark" viewBox="0 0 1024 1024" aria-hidden="true">
+        <g stroke="#7882ff" stroke-width="44" stroke-linecap="round">
+          <line x1="512" y1="222" x2="262" y2="652" />
+          <line x1="512" y1="222" x2="762" y2="652" />
+          <line x1="262" y1="652" x2="762" y2="652" />
+        </g>
+        <g fill="#7882ff">
+          <circle cx="512" cy="222" r="104" />
+          <circle cx="262" cy="652" r="104" />
+          <circle cx="762" cy="652" r="104" />
+        </g>
+      </svg>
+      <h1>Trinity documentation</h1>
+      <p class="intro">
+        Choose the guide that matches what you want to do. Product guidance
+        follows published releases; contributor guidance follows active
+        development.
+      </p>
+      <nav class="choices" aria-label="Documentation audiences">
+        <a href="./users/">
+          <strong>Use Trinity</strong>
+          <span>Learn about the latest published release.</span>
+        </a>
+        <a href="./developers/">
+          <strong>Develop Trinity</strong>
+          <span>Build and contribute against the develop branch.</span>
+        </a>
+      </nav>
+    </main>
+  </body>
+</html>

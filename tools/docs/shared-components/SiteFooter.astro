@@ -1,0 +1,58 @@
+---
+import EditLink from 'virtual:starlight/components/EditLink';
+import LastUpdated from 'virtual:starlight/components/LastUpdated';
+import Pagination from 'virtual:starlight/components/Pagination';
+
+type PublicPageData = {
+  audience?: 'user' | 'developer';
+  productVersion?: string;
+};
+
+const page = Astro.locals.starlightRoute.entry.data as PublicPageData;
+const commit = process.env.GITHUB_SHA?.trim();
+const shortCommit = commit && /^[0-9a-f]{7,40}$/i.test(commit) ? commit.slice(0, 8) : undefined;
+const channel =
+  page.audience === 'user'
+    ? page.productVersion
+      ? `Latest release: ${page.productVersion}`
+      : 'Release documentation: work in progress'
+    : shortCommit
+      ? `Develop branch · ${shortCommit}`
+      : 'Develop branch';
+---
+
+<footer>
+  <div class="standard-meta">
+    <EditLink />
+    <LastUpdated />
+  </div>
+  <Pagination />
+  <p class="channel-meta" data-pagefind-ignore>{channel}</p>
+</footer>
+
+<style>
+  @layer starlight.components {
+    footer {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .standard-meta {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 0.75rem 3rem;
+      margin-block-start: 3rem;
+      color: var(--sl-color-gray-3);
+      font-size: var(--sl-text-sm);
+    }
+
+    .channel-meta {
+      margin: 0;
+      color: var(--sl-color-gray-3);
+      font-size: var(--sl-text-xs);
+      text-align: center;
+    }
+  }
+</style>
