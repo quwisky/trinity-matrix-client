@@ -92,7 +92,9 @@ and optional Docker pre-pull concurrently, retaining each exit code and labeled
 logs under `dist/.ci/`. Browser/build failure is fatal; Docker pre-pull failure is
 a warning because suite setup can pull again. Android waits for udev to settle
 before checking KVM access. Its Playwright download cache is separate from Gradle.
-A failed Renovate run separately uploads `renovate-log.ndjson` for seven days.
+A failed Renovate run separately uploads `renovate-log.ndjson` for seven days. Renovate writes
+that file through the runner's `/tmp` mount because its container does not share the checked-out
+workspace with the host-side health check.
 
 To exercise diagnostic failure handling explicitly after installing Chromium, run
 `node scripts/ci-diagnostics-proof.mjs` with `always-fail`, `retry`, `soft-timeout`,
