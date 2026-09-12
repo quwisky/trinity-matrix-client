@@ -18,7 +18,7 @@ If a control has product meaning, keep it with the owning feature. Move it into 
 
 ## Style with semantic tokens {#semantic-tokens}
 
-The root theme foundation defines color, spacing, shape, typography, motion, and surface tokens for light and dark appearance. Product styles consume those meanings instead of hard-coded palette values or vendor custom properties.
+The root theme foundation defines color, spacing, shape, typography, motion, and surface tokens for light and dark appearance. Product styles consume those meanings instead of hard-coded color values or vendor custom properties.
 
 Global CSS owns resets, app-wide document behavior, and explicitly registered vendor surfaces. Component geometry stays in the component stylesheet. Avoid selectors that reach into another component's private DOM.
 

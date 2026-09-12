@@ -239,6 +239,8 @@ const UI_BOUNDARY = [
  * targets. The module-boundary rule stays active for its authored TypeScript.
  */
 const OUTSIDE_THE_VENDOR_BANS = [
+  'apps/docs-developers/project.json',
+  'apps/docs-users/project.json',
   'e2e/android/project.json',
   'e2e/browser/project.json',
   'e2e/components/project.json',

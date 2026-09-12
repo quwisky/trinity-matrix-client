@@ -89,14 +89,10 @@ describe('documentation site presentation', () => {
 
   it('shares presentation without sharing public content', () => {
     for (const config of [userConfig, developerConfig]) {
-      expect(config).toContain('@trinity/docs/shared-theme/trinity.css');
-      expect(config).toContain(
-        '@trinity/docs/shared-components/ChannelBanner.astro',
-      );
-      expect(config).toContain(
-        '@trinity/docs/shared-components/SiteFooter.astro',
-      );
-      expect(config).toContain('@trinity/docs/shared-assets/trinity-mark.svg');
+      expect(config).toContain('@docs/shared-theme/trinity.css');
+      expect(config).toContain('@docs/shared-components/ChannelBanner.astro');
+      expect(config).toContain('@docs/shared-components/SiteFooter.astro');
+      expect(config).toContain('@docs/shared-assets/trinity-mark.svg');
     }
 
     expect(userConfig).toContain("title: 'Trinity User Guide'");

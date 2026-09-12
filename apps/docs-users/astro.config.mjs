@@ -1,6 +1,6 @@
 import { unified } from '@astrojs/markdown-remark';
 import starlight from '@astrojs/starlight';
-import explicitHeadingIds from '@trinity/docs/markdown/explicit-heading-ids.mjs';
+import explicitHeadingIds from '@docs/markdown/explicit-heading-ids.mjs';
 import { defineConfig } from 'astro/config';
 import { fileURLToPath } from 'node:url';
 
@@ -14,20 +14,20 @@ export default defineConfig({
     processor: unified({ remarkPlugins: [explicitHeadingIds] }),
   },
   vite: {
-    resolve: { alias: { '@trinity/docs': docsRoot } },
+    resolve: { alias: { '@docs': docsRoot } },
   },
   integrations: [
     starlight({
       title: 'Trinity User Guide',
       logo: {
-        src: '@trinity/docs/shared-assets/trinity-mark.svg',
+        src: '@docs/shared-assets/trinity-mark.svg',
         alt: 'Trinity',
       },
-      customCss: ['@trinity/docs/shared-theme/trinity.css'],
+      customCss: ['@docs/shared-theme/trinity.css'],
       disable404Route: true,
       components: {
-        Banner: '@trinity/docs/shared-components/ChannelBanner.astro',
-        Footer: '@trinity/docs/shared-components/SiteFooter.astro',
+        Banner: '@docs/shared-components/ChannelBanner.astro',
+        Footer: '@docs/shared-components/SiteFooter.astro',
       },
     }),
   ],

@@ -1,11 +1,11 @@
 import { defineCollection } from 'astro:content';
 import { docsLoader, i18nLoader } from '@astrojs/starlight/loaders';
 import { docsSchema, i18nSchema } from '@astrojs/starlight/schema';
-import { publicPageSchema } from '@trinity/docs/validation/frontmatter';
+import { publicPageSchema } from '@docs/validation/frontmatter';
 import {
   readReleaseManifest,
   validateUserContentState,
-} from '@trinity/docs/validation/release-manifest.mjs';
+} from '@docs/validation/release-manifest.mjs';
 
 const release = readReleaseManifest(
   new URL('../release.json', import.meta.url),

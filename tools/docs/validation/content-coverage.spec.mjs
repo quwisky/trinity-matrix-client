@@ -25,6 +25,28 @@ const routes = [
   'architecture/workspace-and-navigation',
   'architecture/host-capabilities',
   'architecture/ui-and-theming',
+  'development/angular-components',
+  'development/signals-and-rxjs',
+  'development/forms-and-validation',
+  'development/data-access-services',
+  'development/public-ui-components',
+  'development/styling-and-responsive-ui',
+  'development/matrix-features',
+  'development/platform-integrations',
+  'testing/testing-strategy',
+  'testing/unit-tests',
+  'testing/component-and-browser-tests',
+  'testing/matrix-e2e-tests',
+  'testing/desktop-and-native-tests',
+  'testing/diagnose-failures',
+];
+
+const proceduralTestingRoutes = [
+  'testing/unit-tests',
+  'testing/component-and-browser-tests',
+  'testing/matrix-e2e-tests',
+  'testing/desktop-and-native-tests',
+  'testing/diagnose-failures',
 ];
 
 const page = (route) => {
@@ -48,4 +70,11 @@ describe('developer documentation coverage', () => {
 
     expect(new Set(topics).size).toBe(topics.length);
   });
+
+  it.each(proceduralTestingRoutes)(
+    'provides a runnable command on %s',
+    (route) => {
+      expect(page(route).source).toMatch(/```bash\n[^`]+\n```/);
+    },
+  );
 });

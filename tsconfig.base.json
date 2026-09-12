@@ -119,7 +119,7 @@
         "./libs/components/generic-content/src/index.ts"
       ],
       "@trinity/theme-foundation": ["./libs/theme-foundation/src/index.ts"],
-      "@trinity/docs/*": ["./tools/docs/*"]
+      "@docs/*": ["./tools/docs/*"]
     },
     "noUncheckedSideEffectImports": false,
     "types": ["*"]
