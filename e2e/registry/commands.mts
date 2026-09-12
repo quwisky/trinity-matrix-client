@@ -180,6 +180,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.sidebar-touch'],
   },
   {
+    name: 'e2e:android:room-tags',
+    command: 'nx run trinity-e2e-android:room-tags',
+    kind: 'canonical',
+    suiteIds: ['android.room-tags'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -404,6 +410,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'sidebar-touch-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:sidebar-touch; fi',
     tier: 'pull-request',
     suiteIds: ['android.sidebar-touch'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'room-tags-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-tags; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-tags'],
   },
   {
     command: 'pnpm e2e:scheduled',

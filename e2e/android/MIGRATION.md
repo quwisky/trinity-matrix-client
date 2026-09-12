@@ -333,3 +333,55 @@ four effective fault controls, the unchanged predecessor, required quality check
 and original-attempt hosted evidence. Other Room Library definitions, physical
 Android acceptance and the full migration reliability gate stay with their
 existing owners.
+
+## Room favourite and low-priority tags batch
+
+[Android room tag migration](https://github.com/quwisky/trinity-matrix-client/issues/688)
+owns both definitions in
+[Favourite rooms](../browser/journeys/room-library/favourite-rooms.spec.mts),
+lines 130–196 and 198–275 at `a4197c4e`. The pinned source SHA-256 is
+`35b1ba6d96033782dfb66e31a67821cb97a81c7bf98d4d729cbab5fd3313a228`.
+`android.room-tags` resets the installed app to the Playwright 1.62.1 Pixel 5
+profile for each definition and runs them as two mandatory stages. Both
+Playwright predecessors remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Favourite and unfavourite | `favourite.initial-section-absent`, `favourite.menu-label`, `favourite.first-room`, `unfavourite.menu-label`, `unfavourite.section-absent` |
+| Low priority and double tag | `low-priority.initial-section-absent`, `low-priority.initial-first-room`, `low-priority.menu-label`, `low-priority.last-room`, `low-priority.first-room`, `double-tag.low-priority-section-absent`, `double-tag.favourites-section-visible`, `double-tag.first-room`, `double-tag.restore-label` |
+
+These are exactly 14 direct predecessor assertions. Each stage creates a fresh
+account and exactly two private, non-DM rooms in Alpha-then-Bravo order, verifies
+the exact account-qualified `/rooms` route, opens Rooms with a native tap and
+waits up to 30 seconds for both exact room names. Room kebabs are targeted by
+their exact accessible `Options for <room>` labels. Dropdown items are activated
+with current-coordinate native taps. Menu copy, category visibility and complete
+room order are read-only WebView observations.
+
+The first stage proves the Favourite label and partition/order round trip, then
+the Unfavourite label and section removal. The second proves the initial
+activity order, Low priority label and demoted order, then the double-tag rule:
+favourite wins the partition and sort while the retained low-priority tag changes
+the menu copy to Restore to list. Tag round trips retain 30-second deadlines and
+menu readiness/copy retain 10-second deadlines.
+
+```bash
+pnpm nx run trinity-e2e-android:room-tags
+```
+
+Android CI shard 1 runs this batch after sidebar touch and before its unchanged
+Playwright shard. Provisional bounds are 15 minutes for the Node test, 18 minutes
+for the resource-owning wrapper, 20 minutes for the CI command and 120 minutes
+for the complete shard. Measured local and hosted runs must establish that these
+bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-tags/`.
+`room-tags/journeys.json` records both stage sources, first-attempt outcomes and
+artifact pointers. Stage-local assertion records, screenshots and the suite
+progress report retain observations, provenance and registered cleanup.
+Acceptance remains pending until #688 records three complete first attempts, all
+four effective fault controls, both unchanged predecessors, required quality
+checks and original-attempt hosted evidence. Other Room Library definitions,
+physical Android acceptance and the full migration reliability gate stay with
+their existing owners.

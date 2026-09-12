@@ -712,6 +712,37 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android room tags batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-tags',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-tags',
+        canonicalScript: 'e2e:android:room-tags',
+        sourceEntrypoints: ['e2e/android/room-tags-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-tags'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(
