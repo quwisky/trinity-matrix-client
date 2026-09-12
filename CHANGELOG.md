@@ -26,6 +26,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Keep Renovate's repository configuration schema-valid so dependency processing reaches
+  extraction instead of aborting on an explanatory, unsupported option.
+
 - Preserve Renovate's structured log across its container boundary so the scheduled health
   check and failure artifact can inspect the completed dependency update run.
 

@@ -7,7 +7,10 @@
   ],
   "description": [
     "prConcurrentLimit and prHourlyLimit are 0, which is Renovate's spelling of 'no limit'. They are NOT redundant lines to tidy away: deleting them restores the defaults of 10 concurrent and 2 per hour, so the throttle would come back silently.",
-    "What replaced them is the dashboard gate — for everything EXCEPT patches, which are exempt from both and never become pull requests at all (see the patch rule below). So patches are the one unbounded category: they land on their own, in whatever quantity a given day produces, each firing the full CI matrix against a renovate/patch-* branch. That is the deliberate shape of this config, not an oversight, but it is the thing to change first if the runners ever suffer for it."
+    "What replaced them is the dashboard gate — for everything EXCEPT patches, which are exempt from both and never become pull requests at all (see the patch rule below). So patches are the one unbounded category: they land on their own, in whatever quantity a given day produces, each firing the full CI matrix against a renovate/patch-* branch. That is the deliberate shape of this config, not an oversight, but it is the thing to change first if the runners ever suffer for it.",
+    "Generated build output ONLY. `android/**` and `ios/**` used to be listed wholesale, and that removed two of the four shipped platforms from dependency automation entirely: the AGP and google-services pins in android/build.gradle, the eleven androidx/Cordova versions in android/variables.gradle, the Gradle wrapper, and the iOS SPM graph — none of it watched by anything.",
+    "The reason that mattered more than a missed minor: ignorePaths is evaluated BEFORE package rules, so the vulnerabilityAlerts block below — the one category deliberately exempt from the dashboard gate — could not reach these files either. An advisory against androidx.webkit, which backs the WebView rendering an E2EE client, produced no branch, no PR and no dashboard row. Silent by construction.",
+    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product."
   ],
   "baseBranchPatterns": ["develop"],
   "timezone": "Europe/Berlin",
@@ -20,11 +23,6 @@
   "prHourlyLimit": 0,
   "rebaseWhen": "conflicted",
   "minimumReleaseAge": "3 days",
-  "ignorePathsDescription": [
-    "Generated build output ONLY. `android/**` and `ios/**` used to be listed wholesale, and that removed two of the four shipped platforms from dependency automation entirely: the AGP and google-services pins in android/build.gradle, the eleven androidx/Cordova versions in android/variables.gradle, the Gradle wrapper, and the iOS SPM graph — none of it watched by anything.",
-    "The reason that mattered more than a missed minor: ignorePaths is evaluated BEFORE package rules, so the vulnerabilityAlerts block below — the one category deliberately exempt from the dashboard gate — could not reach these files either. An advisory against androidx.webkit, which backs the WebView rendering an E2EE client, produced no branch, no PR and no dashboard row. Silent by construction.",
-    "What remains here is the copy of the web build each native shell embeds. Those trees are `pnpm build` output committed into the platform projects; a lockfile or manifest found inside one is a stale artefact, not a dependency, and updating it would be updating a build product."
-  ],
   "ignorePaths": [
     "android/app/src/main/assets/**",
     "ios/App/App/public/**",
