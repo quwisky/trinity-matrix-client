@@ -230,6 +230,49 @@ describe('account workspace fixtures', () => {
     expect(fetchCalls[1].url).toContain('/_matrix/media/v3/upload');
   });
 
+  it('reads exact room state and alias resolution without exposing the access token', async () => {
+    createNodeAccount.mockResolvedValue(account('observer'));
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-observer:test',
+          access_token: 'secret-observer-token',
+        });
+      }
+      if (url.includes('/state/m.room.topic')) {
+        return response({ topic: 'Persisted topic' });
+      }
+      if (url.includes('/directory/room/')) {
+        return response({ room_id: '!space:test' });
+      }
+      return response({}, 404);
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const observer = await fixtures.account('observer');
+
+    const state = await fixtures.roomState(
+      observer,
+      '!space:test',
+      'm.room.topic',
+    );
+    const alias = await fixtures.resolveRoomAlias(observer, '#space:test');
+    expect(state).toEqual({ topic: 'Persisted topic' });
+    expect(alias).toBe('!space:test');
+    expect(fetchCalls.slice(1).map(({ url }) => new URL(url).pathname)).toEqual(
+      [
+        '/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+        '/_matrix/client/v3/directory/room/%23space%3Atest',
+      ],
+    );
+    expect(JSON.stringify({ state, alias })).not.toContain(
+      'secret-observer-token',
+    );
+  });
+
   it('rejects an HTTP upload failure without updating the profile and still logs out', async () => {
     createNodeAccount.mockResolvedValue(account('avatar'));
     globalThis.fetch = vi.fn(async (url, init) => {

@@ -4,6 +4,11 @@ import type { DevtoolsEventConnection } from '../support/devtools-connection.mts
 
 export type MatrixRequestKind = 'invite' | 'join';
 
+export interface MatrixRoomStateTarget {
+  readonly roomId: string;
+  readonly eventType: 'm.room.name' | 'm.room.topic';
+}
+
 interface FetchRequestPaused {
   readonly requestId: string;
   readonly networkId?: string;
@@ -18,14 +23,22 @@ interface FetchRequest {
   readonly url: string;
 }
 
-export interface MatrixHttpFaultOptions {
-  readonly kind: MatrixRequestKind;
-  readonly status: number;
-}
+export type MatrixHttpFaultOptions =
+  | {
+      readonly kind: MatrixRequestKind;
+      readonly status: number;
+      readonly responseError?: string;
+    }
+  | (MatrixRoomStateTarget & {
+      readonly kind: 'room-state';
+      readonly status: number;
+      readonly responseError?: string;
+    });
 
 export interface MatrixHttpFault {
   readonly attempts: number;
   readonly firstOutcome: MatrixHttpOutcome | undefined;
+  roomStateAttempts(eventType: MatrixRoomStateTarget['eventType']): number;
   waitForAttempts(expected: number, signal: AbortSignal): Promise<number>;
   close(): Promise<void>;
 }
@@ -39,6 +52,14 @@ export interface MatrixHttpOutcome {
   readonly bodyMatchesInjected?: boolean;
   readonly bodyReadFailed?: true;
   readonly handlerReported?: true;
+}
+
+export interface MatrixHttpDelay {
+  readonly attempts: number;
+  readonly released: boolean;
+  waitForAttempts(expected: number, signal: AbortSignal): Promise<number>;
+  release(): Promise<void>;
+  close(): Promise<void>;
 }
 
 function fetchRequest(value: unknown): FetchRequest | undefined {
@@ -88,21 +109,68 @@ export function matrixRequestKind(value: unknown): MatrixRequestKind | undefined
     : undefined;
 }
 
-function fetchPattern(kind: MatrixRequestKind): string {
-  return kind === 'invite'
-    ? '*/_matrix/client/*/rooms/*/invite'
-    : '*/_matrix/client/*/join/*';
+/** Match one empty-state-key room state write without catching adjacent rooms or event types. */
+export function isMatrixRoomStateRequest(
+  value: unknown,
+  target: MatrixRoomStateTarget,
+): boolean {
+  const request = fetchRequest(value);
+  if (!request || request.method !== 'PUT') return false;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return false;
+  }
+  const match = pathname.match(
+    /^\/_matrix\/client\/[^/]+\/rooms\/([^/]+)\/state\/([^/]+)\/?$/,
+  );
+  if (!match) return false;
+  try {
+    return (
+      decodeURIComponent(match[1]!) === target.roomId &&
+      decodeURIComponent(match[2]!) === target.eventType
+    );
+  } catch {
+    return false;
+  }
 }
 
-function failurePayload(): string {
-  return JSON.stringify({
-    errcode: 'M_UNKNOWN',
-    error: 'synthetic upstream failure',
+function fetchPattern(options: MatrixHttpFaultOptions | MatrixRoomStateTarget): string {
+  if ('eventType' in options && !('kind' in options)) {
+    return '*/_matrix/client/*/rooms/*/state/*';
+  }
+  return options.kind === 'invite'
+    ? '*/_matrix/client/*/rooms/*/invite'
+    : options.kind === 'join'
+      ? '*/_matrix/client/*/join/*'
+      : '*/_matrix/client/*/rooms/*/state/*';
+}
+
+function matchesFaultRequest(
+  value: unknown,
+  options: MatrixHttpFaultOptions,
+): boolean {
+  if (options.kind !== 'room-state') {
+    return matrixRequestKind(value) === options.kind;
+  }
+  assert(options.roomId, 'Room-state fault requires an exact room id');
+  assert(options.eventType, 'Room-state fault requires an exact event type');
+  return isMatrixRoomStateRequest(value, {
+    roomId: options.roomId,
+    eventType: options.eventType,
   });
 }
 
-function failureBody(): string {
-  return Buffer.from(failurePayload()).toString('base64');
+function failurePayload(responseError = 'synthetic upstream failure'): string {
+  return JSON.stringify({
+    errcode: 'M_UNKNOWN',
+    error: responseError,
+  });
+}
+
+function failureBody(responseError?: string): string {
+  return Buffer.from(failurePayload(responseError)).toString('base64');
 }
 
 /**
@@ -120,12 +188,17 @@ export async function installFirstMatrixHttpFailure(
       options.status <= 599,
     'Injected Matrix HTTP status must be a 4xx or 5xx integer',
   );
+  if (options.kind === 'room-state') {
+    assert(options.roomId, 'Room-state fault requires an exact room id');
+    assert(options.eventType, 'Room-state fault requires an exact event type');
+  }
   let attempts = 0;
   let closed = false;
   let eventFailure: unknown;
   let work = Promise.resolve();
   let firstNetworkId: string | undefined;
   let firstOutcome: MatrixHttpOutcome | undefined;
+  const roomStateAttempts = new Map<MatrixRoomStateTarget['eventType'], number>();
 
   const networkEvent = (
     value: unknown,
@@ -180,7 +253,7 @@ export async function installFirstMatrixHttpFailure(
           firstOutcome = {
             ...firstOutcome,
             bodyBytes: Buffer.byteLength(body),
-            bodyMatchesInjected: body === failurePayload(),
+            bodyMatchesInjected: body === failurePayload(options.responseError),
           };
         } catch {
           firstOutcome = { ...firstOutcome, bodyReadFailed: true };
@@ -229,7 +302,22 @@ export async function installFirstMatrixHttpFailure(
   const handle = async (value: unknown): Promise<void> => {
     const paused = pausedRequest(value);
     if (!paused) throw new Error('Fetch.requestPaused payload is malformed');
-    if (matrixRequestKind(paused) !== options.kind) {
+    if (options.kind === 'room-state') {
+      for (const eventType of ['m.room.name', 'm.room.topic'] as const) {
+        if (
+          isMatrixRoomStateRequest(paused, {
+            roomId: options.roomId,
+            eventType,
+          })
+        ) {
+          roomStateAttempts.set(
+            eventType,
+            (roomStateAttempts.get(eventType) ?? 0) + 1,
+          );
+        }
+      }
+    }
+    if (!matchesFaultRequest(paused, options)) {
       await connection.send('Fetch.continueRequest', {
         requestId: paused.requestId,
       });
@@ -242,7 +330,11 @@ export async function installFirstMatrixHttpFailure(
         requestId: paused.requestId,
         responseCode: options.status,
         responsePhrase:
-          options.status === 503 ? 'Service Unavailable' : 'Bad Gateway',
+          options.status === 500
+            ? 'Internal Server Error'
+            : options.status === 503
+              ? 'Service Unavailable'
+              : 'Bad Gateway',
         responseHeaders: [
           { name: 'Content-Type', value: 'application/json' },
           { name: 'Access-Control-Allow-Origin', value: '*' },
@@ -252,7 +344,7 @@ export async function installFirstMatrixHttpFailure(
           },
           { name: 'Cache-Control', value: 'no-store' },
         ],
-        body: failureBody(),
+        body: failureBody(options.responseError),
       });
       return;
     }
@@ -272,7 +364,7 @@ export async function installFirstMatrixHttpFailure(
     await connection.send('Network.enable');
     await connection.send('Fetch.enable', {
       patterns: [
-        { urlPattern: fetchPattern(options.kind), requestStage: 'Request' },
+        { urlPattern: fetchPattern(options), requestStage: 'Request' },
       ],
     });
   } catch (error) {
@@ -303,6 +395,9 @@ export async function installFirstMatrixHttpFailure(
     },
     get firstOutcome() {
       return firstOutcome ? { ...firstOutcome } : undefined;
+    },
+    roomStateAttempts(eventType) {
+      return roomStateAttempts.get(eventType) ?? 0;
     },
     async waitForAttempts(expected, signal): Promise<number> {
       assert(expected >= 0, 'Expected Matrix attempt count must be nonnegative');
@@ -350,6 +445,117 @@ export async function installFirstMatrixHttpFailure(
         throw new AggregateError(
           failures,
           'Matrix HTTP fault instrumentation cleanup failed',
+        );
+      }
+    },
+  };
+}
+
+/**
+ * Hold the first exact room-state write until the caller releases it. Adjacent
+ * state writes and every later exact write continue immediately. Closing the
+ * controller releases a pending request before disabling Fetch interception.
+ */
+export async function installMatrixRoomStateDelay(
+  connection: DevtoolsEventConnection,
+  target: MatrixRoomStateTarget,
+): Promise<MatrixHttpDelay> {
+  assert(target.roomId, 'Room-state delay requires an exact room id');
+  assert(target.eventType, 'Room-state delay requires an exact event type');
+  let attempts = 0;
+  let closed = false;
+  let released = false;
+  let pendingRequestId: string | undefined;
+  let eventFailure: unknown;
+  let work = Promise.resolve();
+
+  const continueRequest = async (requestId: string): Promise<void> => {
+    await connection.send('Fetch.continueRequest', { requestId });
+  };
+  const handle = async (value: unknown): Promise<void> => {
+    const paused = pausedRequest(value);
+    if (!paused) throw new Error('Fetch.requestPaused payload is malformed');
+    if (!isMatrixRoomStateRequest(paused, target)) {
+      await continueRequest(paused.requestId);
+      return;
+    }
+    attempts += 1;
+    if (attempts === 1 && !released) {
+      pendingRequestId = paused.requestId;
+      return;
+    }
+    await continueRequest(paused.requestId);
+  };
+  const unsubscribe = connection.on('Fetch.requestPaused', (params) => {
+    if (closed) return;
+    work = work.then(() => handle(params)).catch((error: unknown) => {
+      eventFailure ??= error;
+    });
+  });
+
+  try {
+    await connection.send('Fetch.enable', {
+      patterns: [
+        { urlPattern: fetchPattern(target), requestStage: 'Request' },
+      ],
+    });
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
+
+  const throwIfFailed = (): void => {
+    if (eventFailure !== undefined) throw eventFailure;
+  };
+  const release = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    await work;
+    throwIfFailed();
+    const requestId = pendingRequestId;
+    pendingRequestId = undefined;
+    if (requestId) await continueRequest(requestId);
+  };
+
+  return {
+    get attempts() {
+      return attempts;
+    },
+    get released() {
+      return released;
+    },
+    async waitForAttempts(expected, signal): Promise<number> {
+      assert(expected >= 0, 'Expected Matrix attempt count must be nonnegative');
+      while (attempts < expected) {
+        signal.throwIfAborted();
+        throwIfFailed();
+        await delay(25, undefined, { signal });
+      }
+      await work;
+      throwIfFailed();
+      return attempts;
+    },
+    release,
+    async close(): Promise<void> {
+      if (closed) return;
+      closed = true;
+      unsubscribe();
+      const failures: unknown[] = [];
+      try {
+        await release();
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await connection.send('Fetch.disable');
+      } catch (error) {
+        failures.push(error);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length) {
+        throw new AggregateError(
+          failures,
+          'Matrix room-state delay cleanup failed',
         );
       }
     },

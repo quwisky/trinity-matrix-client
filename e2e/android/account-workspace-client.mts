@@ -167,13 +167,36 @@ export class AccountWorkspaceClient {
   }
 
   async tapCurrent(selector: string, filter: AccountElementFilter = {}): Promise<void> {
-    await this.nativeAction('accounts-current-point-tap', selector, filter, {}, true);
+    await this.nativeAction('accounts-current-point-tap', selector, filter, {}, {
+      currentPoint: true,
+    });
   }
 
   async fill(selector: string, value: string): Promise<void> {
-    await this.nativeAction('accounts-point-fill', selector, {}, { SECRET_TEXT: value });
+    await this.nativeAction(
+      'accounts-point-fill',
+      selector,
+      {},
+      { SECRET_TEXT: value },
+      { allowFocusedInput: true },
+    );
     const matches = await evaluateNative(this.webview, `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`);
     assert.equal(matches, true, `Native input reached ${selector}`);
+  }
+
+  /** Replace a prefilled value after moving the native caret to its exact end. */
+  async replace(selector: string, value: string): Promise<void> {
+    await this.tap(selector);
+    await this.key('end');
+    await this.device.runFlow(
+      join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
+      { APP_ID: 'eu.qwky.trinity', SECRET_TEXT: value },
+    );
+    const matches = await evaluateNative(
+      this.webview,
+      `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`,
+    );
+    assert.equal(matches, true, `Native replacement reached ${selector}`);
   }
 
   async scrollIntoViewIfNeeded(selector: string, container: string): Promise<void> {
@@ -237,8 +260,13 @@ export class AccountWorkspaceClient {
     selector: string,
     filter: AccountElementFilter,
     variables: Readonly<Record<string, string>> = {},
-    currentPoint = false,
+    options: {
+      readonly currentPoint?: boolean;
+      readonly allowFocusedInput?: boolean;
+    } = {},
   ): Promise<void> {
+    const currentPoint = options.currentPoint ?? false;
+    const allowFocusedInput = options.allowFocusedInput ?? false;
     const initialPoint = await this.actionablePoint(selector, filter);
     const actionId = ++this.action;
     // Observe capture before application listeners can remove the clicked element.
@@ -268,7 +296,22 @@ export class AccountWorkspaceClient {
       const events = await evaluateNative(this.webview, 'window.__trinityAccountTap?.events ?? []');
       assert(Array.isArray(events));
       trustedEvents = events;
-      assert(events.some(event => event && typeof event === 'object' && event.trusted === true && event.matched === true), `Native action ${actionId} activated ${selector}`);
+      const activated = events.some(
+        event =>
+          event &&
+          typeof event === 'object' &&
+          event.trusted === true &&
+          event.matched === true,
+      );
+      if (!activated && allowFocusedInput) {
+        const target = await this.elements(selector, filter);
+        assert(
+          target.length === 1 && target[0]!.focused,
+          `Native input ${actionId} focused ${selector}`,
+        );
+      } else {
+        assert(activated, `Native action ${actionId} activated ${selector}`);
+      }
       assert(events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
     } catch (error) {
       actionError = error;

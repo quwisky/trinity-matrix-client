@@ -252,6 +252,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.space-settings-mobile'],
   },
   {
+    name: 'e2e:android:space-settings-resilience',
+    command: 'nx run trinity-e2e-android:space-settings-resilience',
+    kind: 'canonical',
+    suiteIds: ['android.space-settings-resilience'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -476,6 +482,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'space-settings-mobile-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-settings-mobile'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'space-settings-resilience-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.space-settings-resilience'],
   },
   {
     command:

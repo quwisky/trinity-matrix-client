@@ -97,6 +97,15 @@ export function createAccountFixtures(
     roomId: string,
     member: NodeWorkspaceAccount,
   ): Promise<string | undefined>;
+  roomState(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventType: 'm.room.name' | 'm.room.topic',
+  ): Promise<MatrixRecord | undefined>;
+  resolveRoomAlias(
+    observer: NodeWorkspaceAccount,
+    alias: string,
+  ): Promise<string | undefined>;
   trackRoomMembership(account: NodeWorkspaceAccount, roomId: string): void;
 } {
   const sessions = new Map<string, AccessSession>();
@@ -487,6 +496,31 @@ export function createAccountFixtures(
       : undefined;
   }
 
+  async function roomState(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventType: 'm.room.name' | 'm.room.topic',
+  ): Promise<MatrixRecord | undefined> {
+    const path = `/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(eventType)}`;
+    const value = await get(access(observer), path, { allowNotFound: true });
+    return value === undefined
+      ? undefined
+      : record(value, 'Matrix fixture room-state response');
+  }
+
+  async function resolveRoomAlias(
+    observer: NodeWorkspaceAccount,
+    alias: string,
+  ): Promise<string | undefined> {
+    const path = `/directory/room/${encodeURIComponent(alias)}`;
+    const value = await get(access(observer), path, { allowNotFound: true });
+    if (value === undefined) return undefined;
+    const content = record(value, 'Matrix fixture room-alias response');
+    return typeof content['room_id'] === 'string'
+      ? content['room_id']
+      : undefined;
+  }
+
   function trackRoomMembership(
     member: NodeWorkspaceAccount,
     roomId: string,
@@ -513,6 +547,8 @@ export function createAccountFixtures(
     spaceChildIds,
     roomCreateType,
     roomMembership,
+    roomState,
+    resolveRoomAlias,
     trackRoomMembership,
   };
 }
