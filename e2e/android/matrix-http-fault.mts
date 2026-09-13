@@ -129,14 +129,14 @@ export function isMatrixRoomStateRequest(
   );
   if (!match) return false;
   try {
-    const stateKey = match[3] === undefined ? undefined : decodeURIComponent(match[3]);
+    const stateKey = match[3] === undefined ? '' : decodeURIComponent(match[3]);
     return (
       decodeURIComponent(match[1]!) === target.roomId &&
       decodeURIComponent(match[2]!) === target.eventType &&
       (target.stateKey === undefined
-        ? stateKey === undefined
+        ? stateKey === ''
         : target.stateKey === '*'
-          ? stateKey !== undefined && stateKey.length > 0
+          ? stateKey.length > 0
           : stateKey === target.stateKey)
     );
   } catch {

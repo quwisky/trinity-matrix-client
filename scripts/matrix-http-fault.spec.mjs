@@ -256,6 +256,22 @@ describe('Matrix HTTP fault instrumentation', () => {
     }
   });
 
+  it('matches explicit empty state keys with both Matrix empty-route spellings', () => {
+    const target = {
+      roomId: '!space:test',
+      eventType: 'm.room.topic',
+      stateKey: '',
+    };
+    for (const url of [
+      'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+      'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic/',
+    ]) {
+      expect(
+        isMatrixRoomStateRequest({ request: { method: 'PUT', url } }, target),
+      ).toBe(true);
+    }
+  });
+
   it('matches a wildcard child state key only beneath its exact parent', () => {
     const target = {
       roomId: '!parent:localhost',
