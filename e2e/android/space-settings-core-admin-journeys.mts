@@ -40,7 +40,9 @@ export const spaceSettingsCoreAdminCases: readonly AccountWorkspaceCase[] = [
         preset: 'private_chat',
       });
       const newName = `Renamed ${runId}`;
-      const newTopic = `Where team ${runId} works`;
+      // A following word can make Android's IME autocorrect the generated
+      // lowercase android-… suite token. Keep this exact Topic payload stable.
+      const newTopic = 'Where the team works';
       await fixtures.setSpaceChild(owner, space.id, room.id, {
         suggested: true,
       });
