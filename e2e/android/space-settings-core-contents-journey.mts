@@ -4,6 +4,7 @@ import {
   type AccountWorkspaceCase,
   type AccountWorkspaceCaseContext,
 } from './account-workspace-client.mts';
+import type { NodeWorkspaceAccount } from './account-workspace-fixtures.mts';
 import {
   installFirstMatrixHttpFailure,
   type MatrixHttpFault,
@@ -23,6 +24,30 @@ import {
   visibleOne,
 } from './space-settings-core-observations.mts';
 import { withSpaceSettingsVisualFixture } from './space-settings-visual-fixture.mts';
+
+/** Register before native creation; discovery must not depend on successful UI assertions. */
+export async function registerCreatedContentsCleanup(
+  {
+    fixtures,
+    resources,
+  }: Pick<AccountWorkspaceCaseContext, 'fixtures' | 'resources'>,
+  owner: NodeWorkspaceAccount,
+): Promise<void> {
+  const existingIds = new Set(await fixtures.joinedRoomIds(owner));
+  resources.cleanup(
+    'discover UI-created Space contents memberships',
+    async () => {
+      // LIFO cleanup runs this before the fixture's leave/forget/logout, even on cancellation.
+      const currentIds = await fixtures.joinedRoomIds(
+        owner,
+        AbortSignal.timeout(15_000),
+      );
+      for (const id of currentIds) {
+        if (!existingIds.has(id)) fixtures.trackRoomMembership(owner, id);
+      }
+    },
+  );
+}
 
 /** The new child ID is allocated by createRoom; only this parent's keyed links match. */
 async function withChildLinkFailure(
@@ -196,6 +221,7 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
       (value) => Array.isArray(value?.['via']),
     );
 
+    await registerCreatedContentsCleanup(context, owner);
     const childrenBeforeCreate = await fixtures.spaceChildIds(owner, space.id);
     await client.scrollIntoViewIfNeeded(
       '[data-testid="space-contents-create-space"]',

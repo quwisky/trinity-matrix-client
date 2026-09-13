@@ -273,6 +273,160 @@ describe('account workspace fixtures', () => {
     );
   });
 
+  it('reads joined room IDs through an authenticated GET without returning token fields', async () => {
+    createNodeAccount.mockResolvedValue(account('owner'));
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login'))
+        return response({
+          user_id: '@user-owner:test',
+          access_token: 'secret-owner-token',
+        });
+      return response({
+        joined_rooms: [
+          '!parent:test',
+          '!created-space:test',
+          '!recovered-room:test',
+        ],
+        access_token: 'secret-owner-token',
+      });
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const owner = await fixtures.account('owner');
+
+    const ids = await fixtures.joinedRoomIds(owner);
+
+    expect(ids).toEqual([
+      '!parent:test',
+      '!created-space:test',
+      '!recovered-room:test',
+    ]);
+    expect(fetchCalls[1].url).toBe(
+      'http://synapse.test/_matrix/client/v3/joined_rooms',
+    );
+    expect(fetchCalls[1].init.method).toBe('GET');
+    expect(fetchCalls[1].init.headers).toEqual({
+      Authorization: 'Bearer secret-owner-token',
+    });
+    expect(fetchCalls[1].init.signal).toBeInstanceOf(AbortSignal);
+    expect(JSON.stringify({ owner, ids })).not.toContain('secret-owner-token');
+  });
+
+  it('allows a separately bounded joined-room cleanup read after invocation cancellation', async () => {
+    createNodeAccount.mockResolvedValue(account('owner'));
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (init.signal.aborted) throw new DOMException('aborted', 'AbortError');
+      if (url.endsWith('/login'))
+        return response({
+          user_id: '@user-owner:test',
+          access_token: 'secret-owner-token',
+        });
+      return response({ joined_rooms: ['!unlinked-created-room:test'] });
+    });
+    const invocation = new AbortController();
+    const fixtures = createAccountFixtures(resources(), invocation.signal);
+    const owner = await fixtures.account('owner');
+    invocation.abort();
+
+    await expect(fixtures.joinedRoomIds(owner)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await expect(
+      fixtures.joinedRoomIds(owner, AbortSignal.timeout(15_000)),
+    ).resolves.toEqual(['!unlinked-created-room:test']);
+    expect(fetchCalls.at(-1).init.signal.aborted).toBe(false);
+  });
+
+  it.each([
+    ['missing list', {}],
+    ['non-array list', { joined_rooms: 'secret-response' }],
+    ['invalid room id', { joined_rooms: [42] }],
+  ])(
+    'rejects %s in joined-room discovery without revealing response fields',
+    async (_label, body) => {
+      createNodeAccount.mockResolvedValue(account('owner'));
+      globalThis.fetch = vi.fn(async (url) =>
+        url.endsWith('/login')
+          ? response({
+              user_id: '@user-owner:test',
+              access_token: 'secret-owner-token',
+            })
+          : response(body),
+      );
+      const fixtures = createAccountFixtures(
+        resources(),
+        new AbortController().signal,
+      );
+      const owner = await fixtures.account('owner');
+
+      await expect(fixtures.joinedRoomIds(owner)).rejects.toThrow(
+        'Matrix fixture joined-room IDs must be strings',
+      );
+    },
+  );
+
+  it.each([
+    ['Space link failure', ['!created-space:test']],
+    [
+      'recovery observation failure',
+      ['!created-space:test', '!recovered-room:test'],
+    ],
+  ])(
+    'discovers native creations after %s before leave/forget/logout despite cancellation',
+    async (_label, createdIds) => {
+      const { registerCreatedContentsCleanup } =
+        await import('../e2e/android/space-settings-core-contents-journey.mts');
+      createNodeAccount.mockResolvedValue(account('owner'));
+      let joinedIds = ['!existing:test'];
+      globalThis.fetch = vi.fn(async (url, init) => {
+        fetchCalls.push({ url, init });
+        if (init.signal.aborted)
+          throw new DOMException('aborted', 'AbortError');
+        if (url.endsWith('/login'))
+          return response({
+            user_id: '@user-owner:test',
+            access_token: 'secret-owner-token',
+          });
+        if (url.endsWith('/joined_rooms'))
+          return response({ joined_rooms: joinedIds });
+        return response({});
+      });
+      const cleanups = [];
+      const ownedResources = resources(cleanups);
+      const invocation = new AbortController();
+      const fixtures = createAccountFixtures(ownedResources, invocation.signal);
+      const owner = await fixtures.account('owner');
+      await registerCreatedContentsCleanup(
+        { fixtures, resources: ownedResources },
+        owner,
+      );
+
+      // Matrix has accepted creation, but no UI observation or explicit tracking succeeds.
+      joinedIds = ['!existing:test', ...createdIds];
+      invocation.abort();
+      for (const cleanup of cleanups.toReversed()) await cleanup();
+
+      const expectedCleanup = createdIds.flatMap((id) => [
+        `/_matrix/client/v3/rooms/${encodeURIComponent(id)}/leave`,
+        `/_matrix/client/v3/rooms/${encodeURIComponent(id)}/forget`,
+      ]);
+      expect(
+        fetchCalls.slice(2).map(({ url }) => new URL(url).pathname),
+      ).toEqual([
+        '/_matrix/client/v3/joined_rooms',
+        ...expectedCleanup,
+        '/_matrix/client/v3/logout',
+      ]);
+      expect(
+        fetchCalls.slice(2).every(({ init }) => !init.signal.aborted),
+      ).toBe(true);
+    },
+  );
+
   it('writes keyed room state, preserves power levels, and reads extended state without tokens', async () => {
     createNodeAccount.mockResolvedValue(account('owner'));
     globalThis.fetch = vi.fn(async (url, init) => {
