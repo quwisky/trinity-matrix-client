@@ -91,6 +91,12 @@ function device({ flowFailure } = {}) {
   return {
     calls,
     device: {
+      async stageFile(localPath, remotePath) {
+        calls.push(['adb', 'push', localPath, remotePath]);
+        return async () => {
+          calls.push(['adb', 'shell', 'rm', '-f', remotePath]);
+        };
+      },
       adb: vi.fn(async (...args) => {
         calls.push(['adb', ...args]);
         return args[0] === 'exec-out' ? pickerHierarchy : '';

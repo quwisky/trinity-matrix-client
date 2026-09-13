@@ -163,8 +163,8 @@ and counted erasure did not materially improve that cost. The complete batch now
 allows 75 minutes in the Node test, 80 minutes in its resource-owning wrapper and
 85 minutes in both the registry and CI command supervisor. The existing third
 shard allows 180 minutes for smoke, this batch, its retained predecessor shard and
-setup/diagnostics. Shard two retains its 100-minute limit; shards one and four
-allow 120 minutes for the Sidebar and Identity batches described below. These
+setup/diagnostics. Shard two allows 120 minutes including core Space Settings;
+shards one and four allow 120 minutes for the Sidebar and Identity batches below. These
 budgets preserve all fourteen cases, native actions and assertions; they are not
 retries or acceptance evidence.
 

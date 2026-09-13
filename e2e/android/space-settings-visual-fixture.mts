@@ -29,9 +29,10 @@ export async function withSpaceSettingsVisualFixture(
   )) as DocumentRootFixtureState;
   const fixture = JSON.stringify(options);
 
-  await evaluateNative(
-    client.webview,
-    `(() => {
+  try {
+    await evaluateNative(
+      client.webview,
+      `(() => {
       const fixture = ${fixture};
       const root = document.documentElement;
       if (fixture.fontSize !== undefined) root.style.fontSize = fixture.fontSize;
@@ -41,10 +42,8 @@ export async function withSpaceSettingsVisualFixture(
         else root.setAttribute('data-theme', fixture.theme);
       }
       return true;
-    })()`,
-  );
-
-  try {
+      })()`,
+    );
     await operation();
   } finally {
     await evaluateNative(

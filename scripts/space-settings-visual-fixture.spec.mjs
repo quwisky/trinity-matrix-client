@@ -21,13 +21,16 @@ function documentRoot({ fontSize, dark, theme }) {
   return { document: { documentElement: root }, root };
 }
 
-function client(document) {
+function client(document, { failResponseAt, failure } = {}) {
+  let responses = 0;
   return {
     webview: {
       diagnostics: {
         async send(_method, { expression }) {
+          const value = runInNewContext(expression, { document });
+          if (++responses === failResponseAt) throw failure;
           return {
-            result: { value: runInNewContext(expression, { document }) },
+            result: { value },
           };
         },
       },
@@ -44,6 +47,56 @@ function rootState(root) {
 }
 
 describe('Space Settings visual fixture', () => {
+  it('restores the root when application succeeds but its CDP response fails', async () => {
+    const fixture = documentRoot({
+      fontSize: '100%',
+      dark: false,
+      theme: 'onyx',
+    });
+    const failure = new Error('application response lost');
+    let operated = false;
+
+    await expect(
+      withSpaceSettingsVisualFixture(
+        client(fixture.document, { failResponseAt: 2, failure }),
+        { fontSize: '125%', dark: true, theme: null },
+        async () => {
+          operated = true;
+        },
+      ),
+    ).rejects.toBe(failure);
+
+    expect(operated).toBe(false);
+    expect(rootState(fixture.root)).toEqual({
+      fontSize: '100%',
+      dark: false,
+      theme: 'onyx',
+    });
+  });
+
+  it('reports a failed restoration response after restoring the root', async () => {
+    const fixture = documentRoot({
+      fontSize: '100%',
+      dark: false,
+      theme: null,
+    });
+    const failure = new Error('restoration response lost');
+
+    await expect(
+      withSpaceSettingsVisualFixture(
+        client(fixture.document, { failResponseAt: 3, failure }),
+        { fontSize: '125%', dark: true, theme: 'amethyst' },
+        async () => {},
+      ),
+    ).rejects.toBe(failure);
+
+    expect(rootState(fixture.root)).toEqual({
+      fontSize: '100%',
+      dark: false,
+      theme: null,
+    });
+  });
+
   it('removes an existing data-theme for a null fixture and restores it', async () => {
     const fixture = documentRoot({
       fontSize: '100%',

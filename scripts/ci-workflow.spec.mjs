@@ -26,7 +26,7 @@ describe('CI execution contract', () => {
       1, 2, 3, 4,
     ]);
     expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
-      '${{ matrix.shard == 3 && 180 || (matrix.shard == 1 || matrix.shard == 4) && 120 || 100 }}',
+      '${{ matrix.shard == 3 && 180 || 120 }}',
     );
   });
 
