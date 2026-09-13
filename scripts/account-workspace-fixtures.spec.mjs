@@ -273,6 +273,126 @@ describe('account workspace fixtures', () => {
     );
   });
 
+  it('writes keyed room state, preserves power levels, and reads extended state without tokens', async () => {
+    createNodeAccount.mockResolvedValue(account('owner'));
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-owner:test',
+          access_token: 'secret-owner-token',
+        });
+      }
+      if (init.method === 'GET' && url.endsWith('/state/m.room.power_levels')) {
+        return response({
+          ban: 50,
+          events: { 'm.room.name': 50 },
+          events_default: 0,
+          invite: 0,
+          kick: 50,
+          redact: 50,
+          state_default: 50,
+          users: { '@owner:localhost': 100 },
+          users_default: 0,
+        });
+      }
+      if (init.method === 'GET' && url.endsWith('/state/m.room.avatar')) {
+        return response({ url: 'mxc://localhost/avatar' });
+      }
+      if (init.method === 'GET' && url.endsWith('/state/m.room.join_rules')) {
+        return response({ join_rule: 'invite' });
+      }
+      if (
+        init.method === 'GET' &&
+        url.endsWith('/state/m.space.parent/!parent%3Alocalhost')
+      ) {
+        return response({ canonical: true, via: ['localhost'] });
+      }
+      return response({});
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const owner = await fixtures.account('owner');
+
+    await fixtures.setRoomState(owner, '!space:localhost', 'm.room.topic', {
+      topic: 'Seed topic',
+    });
+    await fixtures.setRoomPower(
+      owner,
+      '!space:localhost',
+      '@member:localhost',
+      50,
+    );
+    const avatar = await fixtures.roomState(
+      owner,
+      '!space:localhost',
+      'm.room.avatar',
+    );
+    const joinRules = await fixtures.roomState(
+      owner,
+      '!space:localhost',
+      'm.room.join_rules',
+    );
+    const powerLevels = await fixtures.roomState(
+      owner,
+      '!space:localhost',
+      'm.room.power_levels',
+    );
+    const parent = await fixtures.roomState(
+      owner,
+      '!space:localhost',
+      'm.space.parent',
+      '!parent:localhost',
+    );
+
+    expect([avatar, joinRules, powerLevels, parent]).toEqual([
+      { url: 'mxc://localhost/avatar' },
+      { join_rule: 'invite' },
+      {
+        ban: 50,
+        events: { 'm.room.name': 50 },
+        events_default: 0,
+        invite: 0,
+        kick: 50,
+        redact: 50,
+        state_default: 50,
+        users: { '@owner:localhost': 100 },
+        users_default: 0,
+      },
+      { canonical: true, via: ['localhost'] },
+    ]);
+    expect(fetchCalls.slice(1).map(({ url }) => new URL(url).pathname)).toEqual(
+      [
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.room.topic',
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.room.power_levels',
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.room.power_levels',
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.room.avatar',
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.room.join_rules',
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.room.power_levels',
+        '/_matrix/client/v3/rooms/!space%3Alocalhost/state/m.space.parent/!parent%3Alocalhost',
+      ],
+    );
+    expect(JSON.parse(fetchCalls[1].init.body)).toEqual({
+      topic: 'Seed topic',
+    });
+    expect(JSON.parse(fetchCalls[3].init.body)).toEqual({
+      ban: 50,
+      events: { 'm.room.name': 50 },
+      events_default: 0,
+      invite: 0,
+      kick: 50,
+      redact: 50,
+      state_default: 50,
+      users: { '@owner:localhost': 100, '@member:localhost': 50 },
+      users_default: 0,
+    });
+    expect(
+      JSON.stringify({ avatar, joinRules, powerLevels, parent }),
+    ).not.toContain('secret-owner-token');
+  });
+
   it('rejects an HTTP upload failure without updating the profile and still logs out', async () => {
     createNodeAccount.mockResolvedValue(account('avatar'));
     globalThis.fetch = vi.fn(async (url, init) => {
