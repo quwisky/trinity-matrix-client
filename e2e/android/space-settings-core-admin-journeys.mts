@@ -162,7 +162,10 @@ export const spaceSettingsCoreAdminCases: readonly AccountWorkspaceCase[] = [
           'base64',
         ),
       );
-      await client.tapCurrent('[data-testid="space-settings-avatar"]');
+      await client.tapDocumentTrigger(
+        '[data-testid="space-settings-avatar"]',
+        'trn-avatar-field:has([data-testid="space-settings-avatar"]) input[type="file"]',
+      );
       await pickAndroidDocument(
         client.device,
         client.workspaceRoot,
@@ -187,7 +190,7 @@ export const spaceSettingsCoreAdminCases: readonly AccountWorkspaceCase[] = [
           typeof value?.['url'] === 'string' && /^mxc:\/\//.test(value['url']),
       );
 
-      await client.fill('[data-testid="space-settings-name"]', newName);
+      await client.replace('[data-testid="space-settings-name"]', newName);
       await client.fill('[data-testid="space-settings-topic"]', newTopic);
       await client.tapCurrent('[data-testid="space-settings-save"]');
       await observedElements(
