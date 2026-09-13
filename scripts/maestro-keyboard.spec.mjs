@@ -11,6 +11,7 @@ describe('native Android keyboard adapter', () => {
     ['arrowRight', 22],
     ['home', 122],
     ['end', 123],
+    ['enter', 66],
     ['space', 62],
     ['tab', 61],
     ['escape', 111],
