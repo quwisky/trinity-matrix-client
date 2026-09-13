@@ -4,7 +4,7 @@ import { evaluateNative } from './native-shell-client.mts';
 export interface SpaceSettingsVisualFixtureOptions {
   readonly fontSize?: string;
   readonly dark?: boolean;
-  readonly theme?: string;
+  readonly theme?: string | null;
 }
 
 interface DocumentRootFixtureState {
@@ -36,7 +36,10 @@ export async function withSpaceSettingsVisualFixture(
       const root = document.documentElement;
       if (fixture.fontSize !== undefined) root.style.fontSize = fixture.fontSize;
       if (fixture.dark !== undefined) root.classList.toggle('dark', fixture.dark);
-      if (fixture.theme !== undefined) root.setAttribute('data-theme', fixture.theme);
+      if (fixture.theme !== undefined) {
+        if (fixture.theme === null) root.removeAttribute('data-theme');
+        else root.setAttribute('data-theme', fixture.theme);
+      }
       return true;
     })()`,
   );
