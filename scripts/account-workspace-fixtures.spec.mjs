@@ -310,6 +310,49 @@ describe('account workspace fixtures', () => {
     expect(owner).not.toHaveProperty('token');
   });
 
+  it('reads real room membership state without exposing the access token', async () => {
+    createNodeAccount.mockResolvedValue(account('member'));
+    let membership;
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-member:test',
+          access_token: 'private-token',
+        });
+      }
+      return membership === undefined
+        ? response({}, 404)
+        : response({ membership });
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const observer = await fixtures.account('member');
+    const target = account('target');
+
+    await expect(
+      fixtures.roomMembership(observer, '!room:test', target),
+    ).resolves.toBeUndefined();
+    membership = 'invite';
+    await expect(
+      fixtures.roomMembership(observer, '!room:test', target),
+    ).resolves.toBe('invite');
+
+    const stateCalls = fetchCalls.slice(1);
+    expect(stateCalls.map(({ url }) => new URL(url).pathname)).toEqual([
+      '/_matrix/client/v3/rooms/!room%3Atest/state/m.room.member/%40user-target%3Atest',
+      '/_matrix/client/v3/rooms/!room%3Atest/state/m.room.member/%40user-target%3Atest',
+    ]);
+    expect(
+      stateCalls.every(
+        ({ init }) => init.headers.Authorization === 'Bearer private-token',
+      ),
+    ).toBe(true);
+    expect(observer).not.toHaveProperty('token');
+  });
+
   it('propagates an already-aborted invocation to the finite avatar upload and still logs out', async () => {
     createNodeAccount.mockResolvedValue(account('avatar'));
     const controller = new AbortController();

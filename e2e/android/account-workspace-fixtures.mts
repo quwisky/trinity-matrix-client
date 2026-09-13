@@ -92,6 +92,11 @@ export function createAccountFixtures(
     account: NodeWorkspaceAccount,
     roomId: string,
   ): Promise<string | undefined>;
+  roomMembership(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    member: NodeWorkspaceAccount,
+  ): Promise<string | undefined>;
   trackRoomMembership(account: NodeWorkspaceAccount, roomId: string): void;
 } {
   const sessions = new Map<string, AccessSession>();
@@ -468,6 +473,20 @@ export function createAccountFixtures(
     return typeof content['type'] === 'string' ? content['type'] : undefined;
   }
 
+  async function roomMembership(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    member: NodeWorkspaceAccount,
+  ): Promise<string | undefined> {
+    const path = `/rooms/${encodeURIComponent(roomId)}/state/m.room.member/${encodeURIComponent(member.userId)}`;
+    const value = await get(access(observer), path, { allowNotFound: true });
+    if (value === undefined) return undefined;
+    const content = record(value, 'Matrix fixture room-membership response');
+    return typeof content['membership'] === 'string'
+      ? content['membership']
+      : undefined;
+  }
+
   function trackRoomMembership(
     member: NodeWorkspaceAccount,
     roomId: string,
@@ -493,6 +512,7 @@ export function createAccountFixtures(
     spaceChild,
     spaceChildIds,
     roomCreateType,
+    roomMembership,
     trackRoomMembership,
   };
 }

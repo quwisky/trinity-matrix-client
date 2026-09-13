@@ -3,12 +3,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   openDevtoolsConnection,
   type DevtoolsConnection,
+  type DevtoolsEventConnection,
 } from '../support/devtools-connection.mts';
 import type { MaestroDevice } from './maestro-session.mts';
 
 export interface MaestroWebview {
   readonly pid: string;
   readonly diagnostics: DevtoolsConnection;
+  openSession(): Promise<DevtoolsEventConnection>;
   close(): Promise<void>;
 }
 
@@ -184,7 +186,7 @@ export async function openMaestroWebview(
   ]);
   let port: string | undefined;
   let browser: DevtoolsConnection | undefined;
-  const pages = new Set<DevtoolsConnection>();
+  const pages = new Set<DevtoolsEventConnection>();
   let closing: Promise<void> | undefined;
   let forwarding: Promise<void> | undefined;
   const deadline = Date.now() + (options.readinessTimeoutMs ?? 30_000);
@@ -366,6 +368,68 @@ export async function openMaestroWebview(
       }
       throw abortError(operationSignal);
     };
+    const connectPage = async (
+      operationSignal: AbortSignal,
+      connectionSignal: AbortSignal,
+    ): Promise<DevtoolsEventConnection> => {
+      const target = await readPage(operationSignal);
+      const initialEndpoint = websocketEndpoint(target);
+      assert(initialEndpoint, 'Current Trinity WebView target has no endpoint');
+      try {
+        return await abortable(
+          connect(initialEndpoint, {
+            signal: connectionSignal,
+            timeoutMs: 5_000,
+          }),
+          operationSignal,
+          (lateConnection) =>
+            lateConnection.close(abortError(operationSignal)),
+        );
+      } catch (error) {
+        // A recreation can replace the target after enumeration. Only retry
+        // when a fresh observation proves that exact endpoint is gone.
+        let replacement = await readPageOnce(operationSignal);
+        let replacementEndpoint = websocketEndpoint(replacement);
+        if (replacementEndpoint === initialEndpoint) throw error;
+        while (!replacementEndpoint && !operationSignal.aborted) {
+          await delay(
+            Math.min(options.pollIntervalMs ?? 100, 100),
+            undefined,
+            { signal: operationSignal },
+          );
+          replacement = await readPageOnce(operationSignal);
+          replacementEndpoint = websocketEndpoint(replacement);
+          if (replacementEndpoint === initialEndpoint) throw error;
+        }
+        if (!replacementEndpoint) throw error;
+        return abortable(
+          connect(replacementEndpoint, {
+            signal: connectionSignal,
+            timeoutMs: 5_000,
+          }),
+          operationSignal,
+          (lateConnection) =>
+            lateConnection.close(abortError(operationSignal)),
+        );
+      }
+    };
+    const ownPage = (
+      page: DevtoolsEventConnection,
+    ): DevtoolsEventConnection => {
+      let released = false;
+      const owned: DevtoolsEventConnection = {
+        send: (method, params) => page.send(method, params),
+        on: (method, listener) => page.on(method, listener),
+        close(reason = new Error('DevTools page session closed')): void {
+          if (released) return;
+          released = true;
+          pages.delete(owned);
+          page.close(reason);
+        },
+      };
+      pages.add(owned);
+      return owned;
+    };
     const send = async (
       method: string,
       params: Record<string, unknown> = {},
@@ -375,65 +439,26 @@ export async function openMaestroWebview(
         AbortSignal.timeout(operationTimeoutMs),
       ]);
       operationSignal.throwIfAborted();
-      const target = await readPage(operationSignal);
-      let page: DevtoolsConnection | undefined;
+      const page = ownPage(
+        await connectPage(operationSignal, operationSignal),
+      );
       try {
-        const initialEndpoint = websocketEndpoint(target);
-        assert(
-          initialEndpoint,
-          'Current Trinity WebView target has no endpoint',
-        );
-        try {
-          page = await abortable(
-            connect(initialEndpoint, {
-              signal: operationSignal,
-              timeoutMs: 5_000,
-            }),
-            operationSignal,
-            (lateConnection) =>
-              lateConnection.close(abortError(operationSignal)),
-          );
-        } catch (error) {
-          // A recreation can replace the target after enumeration. Only retry
-          // when a fresh observation proves that exact endpoint is gone.
-          let replacement = await readPageOnce(operationSignal);
-          let replacementEndpoint = websocketEndpoint(replacement);
-          if (replacementEndpoint === initialEndpoint) throw error;
-          while (!replacementEndpoint && !operationSignal.aborted) {
-            await delay(
-              Math.min(options.pollIntervalMs ?? 100, 100),
-              undefined,
-              {
-                signal: operationSignal,
-              },
-            );
-            replacement = await readPageOnce(operationSignal);
-            replacementEndpoint = websocketEndpoint(replacement);
-            if (replacementEndpoint === initialEndpoint) throw error;
-          }
-          if (!replacementEndpoint) throw error;
-          page = await abortable(
-            connect(replacementEndpoint, {
-              signal: operationSignal,
-              timeoutMs: 5_000,
-            }),
-            operationSignal,
-            (lateConnection) =>
-              lateConnection.close(abortError(operationSignal)),
-          );
-        }
-        pages.add(page);
         // Calling send marks the command dispatched; never replay after this.
         return await page.send(method, params);
       } finally {
-        if (page) {
-          pages.delete(page);
-          page.close(abortError(operationSignal));
-        }
+        page.close(abortError(operationSignal));
       }
     };
+    const openSession = async (): Promise<DevtoolsEventConnection> => {
+      const operationSignal = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(operationTimeoutMs),
+      ]);
+      operationSignal.throwIfAborted();
+      return ownPage(await connectPage(operationSignal, signal));
+    };
     const diagnostics: DevtoolsConnection = { send, close };
-    return { pid, diagnostics, close };
+    return { pid, diagnostics, openSession, close };
   } catch (error) {
     try {
       await close();

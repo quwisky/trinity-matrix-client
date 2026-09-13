@@ -6,6 +6,15 @@ export interface DevtoolsConnection {
   close(reason?: Error): void;
 }
 
+export type DevtoolsEventListener = (
+  params: Readonly<Record<string, unknown>>,
+) => void;
+
+/** A CDP connection that can also observe protocol events for its owned lifetime. */
+export interface DevtoolsEventConnection extends DevtoolsConnection {
+  on(method: string, listener: DevtoolsEventListener): () => void;
+}
+
 export interface DevtoolsConnectionOptions {
   readonly signal?: AbortSignal;
   readonly timeoutMs?: number;
@@ -31,12 +40,13 @@ function asError(reason: unknown, fallback: string): Error {
 export async function openDevtoolsConnection(
   url: string,
   { signal, timeoutMs = 5_000 }: DevtoolsConnectionOptions = {},
-): Promise<DevtoolsConnection> {
+): Promise<DevtoolsEventConnection> {
   if (signal?.aborted) {
     throw asError(signal.reason, 'DevTools connection cancelled before start');
   }
   const socket = new WebSocket(url);
   const pending = new Map<number, PendingRequest>();
+  const listeners = new Map<string, Set<DevtoolsEventListener>>();
   let nextId = 1;
   let closed = false;
   let opened = false;
@@ -56,6 +66,7 @@ export async function openDevtoolsConnection(
     closed = true;
     signal?.removeEventListener('abort', onAbort);
     rejectPending(reason);
+    listeners.clear();
     socket.terminate();
   };
 
@@ -66,7 +77,19 @@ export async function openDevtoolsConnection(
     } catch {
       return;
     }
-    if (!message || typeof message !== 'object' || !('id' in message)) return;
+    if (!message || typeof message !== 'object') return;
+    if (!('id' in message)) {
+      const record = message as { method?: unknown; params?: unknown };
+      if (typeof record.method !== 'string') return;
+      const params =
+        typeof record.params === 'object' && record.params !== null
+          ? (record.params as Readonly<Record<string, unknown>>)
+          : {};
+      for (const listener of [...(listeners.get(record.method) ?? [])]) {
+        listener(params);
+      }
+      return;
+    }
     const id = (message as { id?: unknown }).id;
     if (typeof id !== 'number') return;
     const request = pending.get(id);
@@ -133,6 +156,19 @@ export async function openDevtoolsConnection(
         pending.set(id, { resolve, reject, timer });
         socket.send(JSON.stringify({ id, method, params }));
       });
+    },
+    on(method, listener): () => void {
+      if (closed) throw new Error('DevTools connection is closed');
+      const current = listeners.get(method) ?? new Set<DevtoolsEventListener>();
+      current.add(listener);
+      listeners.set(method, current);
+      let subscribed = true;
+      return () => {
+        if (!subscribed) return;
+        subscribed = false;
+        current.delete(listener);
+        if (current.size === 0) listeners.delete(method);
+      };
     },
     close,
   };

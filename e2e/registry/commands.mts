@@ -234,6 +234,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.space-room-order'],
   },
   {
+    name: 'e2e:android:room-http-error-recovery',
+    command: 'nx run trinity-e2e-android:room-http-error-recovery',
+    kind: 'canonical',
+    suiteIds: ['android.room-http-error-recovery'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -512,6 +518,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'space-room-order-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-room-order; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-room-order'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'room-http-error-recovery-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-http-error-recovery; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-http-error-recovery'],
   },
   {
     command: 'pnpm e2e:scheduled',

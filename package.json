@@ -58,6 +58,7 @@
     "e2e:android:room-filter-spaceless": "node scripts/nx.mjs run trinity-e2e-android:room-filter-spaceless",
     "e2e:android:space-curation-create-join": "node scripts/nx.mjs run trinity-e2e-android:space-curation-create-join",
     "e2e:android:space-room-order": "node scripts/nx.mjs run trinity-e2e-android:space-room-order",
+    "e2e:android:room-http-error-recovery": "node scripts/nx.mjs run trinity-e2e-android:room-http-error-recovery",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

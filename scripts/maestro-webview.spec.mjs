@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { openMaestroWebview } from '../e2e/android/maestro-webview.mts';
 
 const descriptor = (overrides = {}) => ({
@@ -58,6 +58,41 @@ function fixture({ targets = [descriptor()], connect } = {}) {
 }
 
 describe('Maestro WebView attachment', () => {
+  it('owns a persistent page session until the lease or WebView closes', async () => {
+    const f = fixture();
+    const browserEndpoint = 'ws://127.0.0.1:44663/devtools/browser/persistent';
+    const pageEndpoint = descriptor().webSocketDebuggerUrl;
+    const browser = {
+      close: vi.fn(),
+      send: vi.fn().mockResolvedValue({}),
+    };
+    const page = {
+      close: vi.fn(),
+      send: vi.fn().mockResolvedValue({}),
+      on: vi.fn().mockReturnValue(() => undefined),
+    };
+    const webview = await openMaestroWebview(f.device, {
+      fetch: async (input) =>
+        input.endsWith('/json/version')
+          ? { json: async () => ({ webSocketDebuggerUrl: browserEndpoint }) }
+          : { json: async () => [descriptor()] },
+      connect: async (endpoint) => (endpoint === pageEndpoint ? page : browser),
+    });
+
+    const session = await webview.openSession();
+    await session.send('Fetch.enable', {});
+    expect(page.close).not.toHaveBeenCalled();
+    session.close();
+    expect(page.close).toHaveBeenCalledTimes(1);
+
+    const sessionOwnedByWebview = await webview.openSession();
+    await webview.close();
+    expect(page.close).toHaveBeenCalledTimes(2);
+    sessionOwnedByWebview.close();
+    expect(page.close).toHaveBeenCalledTimes(2);
+    expect(browser.close).toHaveBeenCalledTimes(1);
+  });
+
   it('leases TLS from the browser endpoint before opening finite page diagnostics', async () => {
     const f = fixture();
     const browser = {

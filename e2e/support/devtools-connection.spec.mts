@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer, type Socket } from 'node:net';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WebSocketServer } from 'ws';
 import { openDevtoolsConnection } from './devtools-connection.mts';
 
 const sockets = new Set<Socket>();
@@ -61,6 +62,53 @@ afterEach(() => {
 });
 
 describe('DevTools connection', () => {
+  it('dispatches subscribed events without replay and honors unsubscribe', async () => {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise<void>((resolve, reject) => {
+      server.once('listening', resolve);
+      server.once('error', reject);
+    });
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('No test port');
+    const peer = new Promise<import('ws').WebSocket>((resolve) => {
+      server.once('connection', resolve);
+    });
+    const connection = await openDevtoolsConnection(
+      `ws://127.0.0.1:${address.port}`,
+    );
+    const socket = await peer;
+    try {
+      const first: unknown[] = [];
+      const unsubscribe = connection.on('Fetch.requestPaused', (params) =>
+        first.push(params),
+      );
+      socket.send(
+        JSON.stringify({
+          method: 'Fetch.requestPaused',
+          params: { requestId: 'one' },
+        }),
+      );
+      await vi.waitFor(() => expect(first).toEqual([{ requestId: 'one' }]));
+
+      const late: unknown[] = [];
+      connection.on('Fetch.requestPaused', (params) => late.push(params));
+      expect(late).toEqual([]);
+      unsubscribe();
+      socket.send(
+        JSON.stringify({
+          method: 'Fetch.requestPaused',
+          params: { requestId: 'two' },
+        }),
+      );
+      await vi.waitFor(() => expect(late).toEqual([{ requestId: 'two' }]));
+      expect(first).toEqual([{ requestId: 'one' }]);
+    } finally {
+      connection.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('terminates when an unresponsive peer ignores the close handshake', async () => {
     const { server, url } = await listenUnresponsivePeer();
     const modulePath = fileURLToPath(

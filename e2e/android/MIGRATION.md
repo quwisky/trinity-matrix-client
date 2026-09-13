@@ -797,3 +797,53 @@ keyboard activation, browser request interception and both header-geometry
 definitions remain browser coverage; other Room Library definitions, physical
 Android acceptance and the full migration reliability gate stay with their
 existing owners.
+
+## Room HTTP-error recovery functional batch
+
+[Android room HTTP-error recovery](https://github.com/quwisky/trinity-matrix-client/issues/697)
+owns the installed-Android functional guarantees in both definitions from
+[Room HTTP error recovery](../browser/journeys/room-library/room-http-error-recovery.spec.mts),
+lines 73–127 and 129–192 at `9aa0cfcd`. The pinned source SHA-256 is
+`a9fd9a2f48a03061ceed67a94a2e81104472144683e65650099dba6074042fe6`.
+`android.room-http-error-recovery` resets the installed app to the exact Pixel
+5 profile for two mandatory stages. Both complete Playwright predecessors
+remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| An HTTP 503 invite failure shows exact guidance, releases the native invite action and lets a second request reach Synapse | `invite.failure-feedback`, `invite.action-reenabled`, `invite.success-feedback`, `invite.two-transport-attempts`, `invite.real-membership` |
+| A visible invite survives an HTTP 502 join failure, releases the native accept action and lets a second request join through Synapse | `join.invite-visible`, `join.failure-feedback`, `join.action-reenabled`, `join.room-visible`, `join.two-transport-attempts`, `join.real-membership` |
+
+These are exactly eleven direct assertions. Each stage uses fresh Accounts and
+a real room. A test-owned persistent CDP `Fetch` session fulfills only the first
+matching Matrix transport request with the pinned HTTP failure and continues
+the second request to disposable Synapse. It cannot dispatch DOM events, focus
+controls or navigate the product. Room selection, menus, picker entry, invite,
+accept, retry and Android Back actions use measured native Maestro input;
+WebView access is read-only observation. Matrix membership state proves the
+successful retry changed the real server. Event subscription, controller,
+page-session, client/device and room/account cleanup plus secret redaction
+remain owned and abortable on every exit.
+
+```bash
+pnpm nx run trinity-e2e-android:room-http-error-recovery
+```
+
+Android CI shard 1 runs this batch after space room ordering and before its
+unchanged Playwright shard. Provisional bounds are 15 minutes for the Node test,
+18 minutes for the resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. Measured local and hosted runs must
+establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-http-error-recovery/`.
+`room-http-error-recovery/journeys.json` records both source mappings,
+first-attempt outcomes and artifact pointers. Stage-local assertion and
+transport records, screenshots and the suite progress report retain exact
+request counts, membership proof, provenance and registered cleanup.
+Acceptance remains pending until #697 records three complete first attempts,
+effective invite-release/join-release/membership controls, both unchanged
+predecessors, required quality checks and original-attempt hosted evidence.
+Other request-interception definitions, unrelated Room Library definitions,
+physical Android acceptance and the full migration reliability gate stay with
+their existing owners.

@@ -389,6 +389,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-filter-spaceless-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-filter-spaceless; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-curation-create-join-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-curation-create-join; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-room-order-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-room-order; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-http-error-recovery-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-http-error-recovery; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'native-shell-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:native-shell; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
@@ -509,6 +510,13 @@ jobs:
           surface: android-space-room-order
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.space-room-order/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-http-error-recovery-started == 'true' }}
+        with:
+          surface: android-room-http-error-recovery
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-http-error-recovery/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}
