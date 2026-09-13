@@ -18,6 +18,7 @@ import {
   redactMaestroArtifacts,
 } from '../e2e/android/maestro-session.mts';
 import { writeSession } from '../e2e/support/session.mts';
+import { pickAndroidDocument } from '../e2e/android/maestro-document-picker.mts';
 
 const nativeSecret = 'synthetic-native-access-token';
 const nativeReadSecret = 'synthetic-native-read-token';
@@ -288,6 +289,97 @@ describe('Maestro device ownership', () => {
     const started = Date.now();
     await device.close();
     expect(Date.now() - started).toBeLessThan(5_000);
+    expect(f.closed()).toBe(1);
+  });
+
+  it.each(['selection', 'push'])(
+    'removes a staged document before device teardown when %s is cancelled',
+    async (cancelDuring) => {
+      const f = fixture();
+      const controller = new AbortController();
+      const cancellation = new Error('invocation cancelled');
+      const flowFailure = new Error('selection interrupted');
+      const staged = new Set();
+      const removalOptions = [];
+      const commands = {
+        ...f.commands,
+        async run(command, args, options) {
+          options?.signal?.throwIfAborted();
+          const operation = args.slice(2);
+          if (operation[0] === 'push') {
+            staged.add(operation[2]);
+            if (cancelDuring === 'push') {
+              controller.abort(cancellation);
+              throw cancellation;
+            }
+          }
+          if (operation[0] === 'exec-out') {
+            return '<hierarchy><node text="Photos" package="com.google.android.photopicker" bounds="[10,10][30,30]"/><node text="Albums" package="com.google.android.photopicker" bounds="[40,10][60,30]"/><node clickable="true" enabled="true" package="com.google.android.photopicker" bounds="[70,10][90,30]"/></hierarchy>';
+          }
+          if (operation[0] === 'shell' && operation[1] === 'rm') {
+            expect(f.closed()).toBe(0);
+            removalOptions.push(options);
+            staged.delete(operation[3]);
+          }
+          return f.commands.run(command, args, options);
+        },
+      };
+      const device = await openMaestroDevice(
+        { ...f.options, signal: controller.signal },
+        commands,
+      );
+      const result = await pickAndroidDocument(
+        {
+          ...device,
+          async runFlow() {
+            controller.abort(cancellation);
+            throw flowFailure;
+          },
+        },
+        f.options.workspaceRoot,
+        '/fixture/photo.png',
+        'space-photo.png',
+      ).catch((error) => error);
+      await device.close();
+
+      expect([...staged]).toEqual([]);
+      expect(result).toBe(cancelDuring === 'push' ? cancellation : flowFailure);
+      expect(removalOptions).toHaveLength(1);
+      expect(removalOptions[0].timeout).toBe(2_000);
+      expect(removalOptions[0].signal).not.toBe(controller.signal);
+      expect(removalOptions[0].signal.aborted).toBe(false);
+      expect(f.closed()).toBe(1);
+    },
+  );
+
+  it('preserves selection and document cleanup failures together', async () => {
+    const f = fixture();
+    const flowFailure = new Error('selection failed');
+    const cleanupFailure = new Error('document removal failed');
+    const device = await openMaestroDevice(f.options, {
+      ...f.commands,
+      async run(command, args, options) {
+        if (args.includes('exec-out'))
+          return '<hierarchy><node text="Photos" package="com.google.android.photopicker" bounds="[10,10][30,30]"/><node text="Albums" package="com.google.android.photopicker" bounds="[40,10][60,30]"/><node clickable="true" enabled="true" package="com.google.android.photopicker" bounds="[70,10][90,30]"/></hierarchy>';
+        if (args.includes('rm')) throw cleanupFailure;
+        return f.commands.run(command, args, options);
+      },
+    });
+    const result = await pickAndroidDocument(
+      {
+        ...device,
+        async runFlow() {
+          throw flowFailure;
+        },
+      },
+      f.options.workspaceRoot,
+      '/fixture/photo.png',
+      'space-photo.png',
+    ).catch((error) => error);
+    await device.close();
+
+    expect(result).toBeInstanceOf(AggregateError);
+    expect(result.errors).toEqual([flowFailure, cleanupFailure]);
     expect(f.closed()).toBe(1);
   });
 

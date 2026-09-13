@@ -87,8 +87,9 @@ export async function pickAndroidDocument(
     throw new Error('Android document name must not contain a path separator');
 
   const remotePath = `${downloadDirectory}/${remoteName}`;
+  const remove = await device.stageFile(localPath, remotePath);
+  const failures: unknown[] = [];
   try {
-    await device.adb('push', localPath, remotePath);
     const overflow = photoPickerOverflowPoint(
       await device.adb('exec-out', 'uiautomator', 'dump', '/dev/tty'),
     );
@@ -100,7 +101,19 @@ export async function pickAndroidDocument(
         OVERFLOW_POINT: `${overflow.x},${overflow.y}`,
       },
     );
+  } catch (error) {
+    failures.push(error);
   } finally {
-    await device.adb('shell', 'rm', '-f', remotePath);
+    try {
+      await remove();
+    } catch (error) {
+      failures.push(error);
+    }
   }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length)
+    throw new AggregateError(
+      failures,
+      'Android document selection and cleanup failed',
+    );
 }

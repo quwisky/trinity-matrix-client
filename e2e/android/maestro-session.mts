@@ -193,6 +193,11 @@ export interface MaestroDevice {
   readonly serial: string;
   readonly artifactDirectory: string;
   adb(...args: string[]): Promise<string>;
+  /** Stage a file whose idempotent removal also runs before device teardown. */
+  stageFile(
+    localPath: string,
+    remotePath: string,
+  ): Promise<() => Promise<void>>;
   removeForward(local: string): Promise<void>;
   install(apk: string, applicationId?: MaestroApplicationId): Promise<void>;
   launch(): Promise<void>;
@@ -226,6 +231,7 @@ export async function openMaestroDevice(
   let lock: ProcessLock | undefined;
   const installedApplicationIds = new Set<MaestroApplicationId>();
   const reverses: Array<{ local: string; previous: string | undefined }> = [];
+  const stagedFiles = new Set<() => Promise<void>>();
   let closing: Promise<void> | undefined;
   const rawAdb = (...args: string[]): Promise<string> =>
     commands.run(adbBinary, ['-s', serial, ...args], {
@@ -242,6 +248,9 @@ export async function openMaestroDevice(
     (closing ??= (async () => {
       options.signal?.removeEventListener('abort', abort);
       const failures: unknown[] = [];
+      for (const remove of [...stagedFiles].reverse()) {
+        await remove().catch((error: unknown) => failures.push(error));
+      }
       if (serial && lock) {
         for (const [file, args] of [
           ['logcat.txt', ['logcat', '-d', '-t', '2000']],
@@ -373,6 +382,36 @@ export async function openMaestroDevice(
       artifactDirectory: options.artifactDirectory,
       adb,
       close,
+      async stageFile(localPath, remotePath) {
+        options.signal?.throwIfAborted();
+        if (closing) throw new Error('Cannot stage a file on a closing device');
+        // Register before push can run or cancellation can begin closing the lease.
+        const pushing = Promise.resolve().then(() =>
+          adb('push', localPath, remotePath),
+        );
+        let removal: Promise<void> | undefined;
+        const remove = (): Promise<void> =>
+          (removal ??= (async () => {
+            // An interrupted push may still have created a partial remote file.
+            await pushing.catch(() => undefined);
+            await rawAdb('shell', 'rm', '-f', remotePath);
+          })().finally(() => stagedFiles.delete(remove)));
+        stagedFiles.add(remove);
+        try {
+          await pushing;
+        } catch (error) {
+          try {
+            await remove();
+          } catch (cleanupError) {
+            throw new AggregateError(
+              [error, cleanupError],
+              'Android file staging and cleanup failed',
+            );
+          }
+          throw error;
+        }
+        return remove;
+      },
       async removeForward(local) {
         await rawAdb('forward', '--remove', local);
       },
