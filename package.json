@@ -62,6 +62,7 @@
     "e2e:android:room-settings-mobile": "node scripts/nx.mjs run trinity-e2e-android:room-settings-mobile",
     "e2e:android:space-settings-mobile": "node scripts/nx.mjs run trinity-e2e-android:space-settings-mobile",
     "e2e:android:space-settings-resilience": "node scripts/nx.mjs run trinity-e2e-android:space-settings-resilience",
+    "e2e:android:space-settings-core": "node scripts/nx.mjs run trinity-e2e-android:space-settings-core",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

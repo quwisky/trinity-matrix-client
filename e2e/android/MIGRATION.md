@@ -76,16 +76,16 @@ the critical milestone's login coverage does not replace the unauthenticated rou
 guard or Settings Back assertions. Existing Playwright execution remains enabled
 while this batch is verified.
 
-| Stage | Predecessor definition at `877925dd` | Required parity |
-| --- | --- | --- |
-| `unauthenticated-shell` | [App shell](app-shell.spec.mts), lines 8–14, and `expectLoginScreen` / `expectProtectedRouteRedirect` | Visible Homeserver and Continue; unauthenticated Settings navigation redirects to login. |
-| `settings-touch-back` | [Navigation](navigation.spec.mts), lines 78–88 | Account-qualified Rooms, native touch opens Settings and its sections, hardware Back restores the rendered Rooms surface. |
-| `authenticated-process-restart` | [Navigation](navigation.spec.mts), lines 90–101 | Native process restart restores the authenticated Rooms route and visible surface at this batch's revision. |
-| `settings-section-back` | [Navigation](navigation.spec.mts), lines 103–140 | Retained 390×844 mobile/touch viewport; target ≥44px; Appearance heading focus; Back restores directory focus, overflow ≤1px, then Rooms. |
-| `composer-keyboard-insert-back` | [Navigation](navigation.spec.mts), lines 166–244 | Actual IME resize and native text input; insert tray dismisses IME, stays within the restored viewport, and Back restores focus and collapsed ARIA state. |
-| `members-back-order` | [Navigation](navigation.spec.mts), lines 246–299 | Focused Members filter and IME; ordered Back dismisses keyboard, Members, then Conversation. |
-| `composer-formatting` | [Native formatting](composer-format-native.spec.mts), lines 48–98 | Native Aa/italic activation produces `say *hello*`, selection [5,10], editor focus and shown IME; sheet geometry and Back cancellation preserve content. |
-| `native-appearance` | [Appearance](appearance.spec.mts), lines 75–219 | Android/coarse pointer, light Amethyst/Cosy and dark Onyx/Compact/Larger projections, native StatusBar state, 20px font, target/overflow/inset geometry and paired device/WebView proof. |
+| Stage                           | Predecessor definition at `877925dd`                                                                  | Required parity                                                                                                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unauthenticated-shell`         | [App shell](app-shell.spec.mts), lines 8–14, and `expectLoginScreen` / `expectProtectedRouteRedirect` | Visible Homeserver and Continue; unauthenticated Settings navigation redirects to login.                                                                                                 |
+| `settings-touch-back`           | [Navigation](navigation.spec.mts), lines 78–88                                                        | Account-qualified Rooms, native touch opens Settings and its sections, hardware Back restores the rendered Rooms surface.                                                                |
+| `authenticated-process-restart` | [Navigation](navigation.spec.mts), lines 90–101                                                       | Native process restart restores the authenticated Rooms route and visible surface at this batch's revision.                                                                              |
+| `settings-section-back`         | [Navigation](navigation.spec.mts), lines 103–140                                                      | Retained 390×844 mobile/touch viewport; target ≥44px; Appearance heading focus; Back restores directory focus, overflow ≤1px, then Rooms.                                                |
+| `composer-keyboard-insert-back` | [Navigation](navigation.spec.mts), lines 166–244                                                      | Actual IME resize and native text input; insert tray dismisses IME, stays within the restored viewport, and Back restores focus and collapsed ARIA state.                                |
+| `members-back-order`            | [Navigation](navigation.spec.mts), lines 246–299                                                      | Focused Members filter and IME; ordered Back dismisses keyboard, Members, then Conversation.                                                                                             |
+| `composer-formatting`           | [Native formatting](composer-format-native.spec.mts), lines 48–98                                     | Native Aa/italic activation produces `say *hello*`, selection [5,10], editor focus and shown IME; sheet geometry and Back cancellation preserve content.                                 |
+| `native-appearance`             | [Appearance](appearance.spec.mts), lines 75–219                                                       | Android/coarse pointer, light Amethyst/Cosy and dark Onyx/Compact/Larger projections, native StatusBar state, 20px font, target/overflow/inset geometry and paired device/WebView proof. |
 
 The Settings viewport has a retained CDP owner; it is released before native IME
 checks so Android's real keyboard resize remains observable. Other CDP reads
@@ -121,22 +121,22 @@ The `android.accounts-workspace` suite runs every definition, resets the install
 app before each case and records a separate outcome for each. The predecessors
 remain enabled during coexistence.
 
-| Predecessor | Lines | Required parity |
-| --- | --- | --- |
-| [Account lifecycle](../browser/journeys/accounts/account-lifecycle.spec.mts) | 25–83 | Add second Account; encryption banner; menu labels and exact count; Escape focus; switch back. |
-| Account lifecycle | 85–130 | Three Accounts, repeated switches, active-row no-op and absence of switch errors. |
-| Account lifecycle | 132–191 | Two unread messages contribute to the recorded Badge total before and after an active Account switch. |
-| Account lifecycle | 193–220 | Removing the active Account preserves the surviving Account and exact menu count. |
-| Account lifecycle | 222–260 | Remove and re-add the same Account through the real persistent crypto-store lifecycle. |
-| Account lifecycle | 262–283 | Remove the only Account, reach login and reconnect. |
-| Account lifecycle | 285–300 | Cancel adding an Account and preserve the current Account and menu count. |
-| Account lifecycle | 302–330 | Reconnect guidance, prefilled locked username, password entry and restored Account. |
-| [Mixed workspace](../browser/journeys/accounts/mixed-account-workspace.spec.mts) | 16–71 | Mixed room visibility, owning-Account badge, active-row constraints and correct acting identity. |
-| Mixed workspace | 73–128 | Mixed Space pills, owning-Account badge and correct acting identity. |
-| Mixed workspace | 132–322 | Persist selection across reload; desktop keyboard navigation, focus restoration and geometry in both themes at 125% font size. |
-| Mixed workspace | 339–478 | Pixel 5 profile; long Account names; both themes; actual short-list overflow, visible Done action, retained selection and focus. |
-| Mixed workspace | 481–529 | Quick switcher excludes another Account's room until mixed in, then shows its badge and opens it as its owner. |
-| Mixed workspace | 534–636 | Mixed invite visibility, distinct hydrated display names and the acting-identity header without an MXID fallback. |
+| Predecessor                                                                      | Lines   | Required parity                                                                                                                  |
+| -------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| [Account lifecycle](../browser/journeys/accounts/account-lifecycle.spec.mts)     | 25–83   | Add second Account; encryption banner; menu labels and exact count; Escape focus; switch back.                                   |
+| Account lifecycle                                                                | 85–130  | Three Accounts, repeated switches, active-row no-op and absence of switch errors.                                                |
+| Account lifecycle                                                                | 132–191 | Two unread messages contribute to the recorded Badge total before and after an active Account switch.                            |
+| Account lifecycle                                                                | 193–220 | Removing the active Account preserves the surviving Account and exact menu count.                                                |
+| Account lifecycle                                                                | 222–260 | Remove and re-add the same Account through the real persistent crypto-store lifecycle.                                           |
+| Account lifecycle                                                                | 262–283 | Remove the only Account, reach login and reconnect.                                                                              |
+| Account lifecycle                                                                | 285–300 | Cancel adding an Account and preserve the current Account and menu count.                                                        |
+| Account lifecycle                                                                | 302–330 | Reconnect guidance, prefilled locked username, password entry and restored Account.                                              |
+| [Mixed workspace](../browser/journeys/accounts/mixed-account-workspace.spec.mts) | 16–71   | Mixed room visibility, owning-Account badge, active-row constraints and correct acting identity.                                 |
+| Mixed workspace                                                                  | 73–128  | Mixed Space pills, owning-Account badge and correct acting identity.                                                             |
+| Mixed workspace                                                                  | 132–322 | Persist selection across reload; desktop keyboard navigation, focus restoration and geometry in both themes at 125% font size.   |
+| Mixed workspace                                                                  | 339–478 | Pixel 5 profile; long Account names; both themes; actual short-list overflow, visible Done action, retained selection and focus. |
+| Mixed workspace                                                                  | 481–529 | Quick switcher excludes another Account's room until mixed in, then shows its badge and opens it as its owner.                   |
+| Mixed workspace                                                                  | 534–636 | Mixed invite visibility, distinct hydrated display names and the acting-identity header without an MXID fallback.                |
 
 The retained viewport owner preserves the predecessor's desktop 1280×720 profile
 and Pixel 5 viewport, user agent and pixel ratio, including its explicit 390×844
@@ -177,7 +177,6 @@ recorded in [the Accounts batch](https://github.com/quwisky/trinity-matrix-clien
 physical Android acceptance and the full migration reliability gate retain their
 separate owners.
 
-
 ## Identity avatar and ordinary presence batch
 
 [Android DM avatar and ordinary presence migration](https://github.com/quwisky/trinity-matrix-client/issues/674)
@@ -187,11 +186,11 @@ Account login and input adapter with the predecessor's 1280×720 desktop viewpor
 All three definitions are mandatory in each complete invocation. Their Playwright
 predecessors remain enabled during coexistence.
 
-| Predecessor | Lines | Required parity |
-| --- | --- | --- |
-| [DM avatar](../browser/journeys/identity/dm-avatar.spec.mts) | 148–186 | Visible decoded partner image with a `blob:` URL in the unpictured DM; then a visible named group's avatar with no image in the same session. Both rooms have the same two members. |
+| Predecessor                                                       | Lines                  | Required parity                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [DM avatar](../browser/journeys/identity/dm-avatar.spec.mts)      | 148–186                | Visible decoded partner image with a `blob:` URL in the unpictured DM; then a visible named group's avatar with no image in the same session. Both rooms have the same two members.                                                                     |
 | [Member presence](../browser/journeys/identity/presence.spec.mts) | 153–182; helper 91–108 | Native room navigation; visible timeline; initially hidden member panel; native toggle and visible panel; exactly two seeded member rows; first presence dot visible with role `img` and an Online/Away/Offline label; reader's own online dot visible. |
-| DM presence | 184–202 | Visible presence indicator in the exact seeded counterpart's DM sidebar row. |
+| DM presence                                                       | 184–202                | Visible presence indicator in the exact seeded counterpart's DM sidebar row.                                                                                                                                                                            |
 
 These rows retain ten direct body assertions and three member-panel helper
 assertions, plus fixture and login readiness. Each login also verifies the exact
@@ -237,7 +236,6 @@ exclude the production Android APK and remain with the browser migration owner.
 This batch does not transfer other Android journeys, physical push acceptance or
 the full migration reliability gate from their existing owners.
 
-
 ## Sidebar room filtering batch
 
 [Android sidebar filtering migration](https://github.com/quwisky/trinity-matrix-client/issues/676)
@@ -246,10 +244,10 @@ suite resets the installed app for each definition and uses native Account login
 Rooms navigation and text/key input at the predecessor's 1280×720 desktop viewport.
 Both definitions are mandatory. Their Playwright predecessors remain enabled.
 
-| Predecessor | Lines | Required parity |
-| --- | --- | --- |
+| Predecessor                                                                | Lines   | Required parity                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Sidebar filter](../browser/journeys/room-library/sidebar-filter.spec.mts) | 103–162 | Initially absent clear button; accent-folded `cafeteria` matches only the exact accented room and retains the query; `zzzz` leaves zero rows with the filtered-empty copy; native clear restores the empty value and exactly both original names. |
-| Sidebar filter | 164–196 | Exactly two initial rows; `warehouse` matches only the exact Warehouse room; focused native Escape empties the value, restores exactly both original names and leaves the filter visible. |
+| Sidebar filter                                                             | 164–196 | Exactly two initial rows; `warehouse` matches only the exact Warehouse room; focused native Escape empties the value, restores exactly both original names and leaves the filter visible.                                                         |
 
 The rows retain all sixteen direct assertions plus setup and native-action
 obligations. Each definition creates a fresh reader with two private, non-DM rooms,
@@ -295,14 +293,14 @@ touch-sized` definition in
 Playwright 1.62.1 Pixel 5 profile and runs the single definition as one mandatory
 stage. Its Playwright predecessor remains enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Touch media profile | `touch.media-profile` records both no-hover and coarse-pointer results as one composite assertion. |
-| Account menu hierarchy and viewport | `account-menu.visible`, `account-menu.switch-account-copy`, `account-menu.add-account-copy`, `account-menu.remove-account-copy`, `account-menu.within-viewport` |
-| Escape focus restoration | `account-menu.escape-focus-restored` after recorded native Android Escape keycode 111 dispatch |
-| Narrow identity dock | `identity-dock.position`, `identity-dock.display`, `identity-dock.flow`; the flow observation throws when either required node is missing. |
-| Rail and identity actions | Width and height identities under `touch-target.rail-rooms`, `touch-target.user-menu-trigger`, and `touch-target.open-settings`, each retaining the 44 px floor. |
-| Room row and kebab | `room-row.height`, `room-menu.opacity`, `room-menu.width`, `room-menu.height`, `room-menu.low-priority-visible` |
+| Predecessor obligation              | Replacement assertion identities                                                                                                                                 |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Touch media profile                 | `touch.media-profile` records both no-hover and coarse-pointer results as one composite assertion.                                                               |
+| Account menu hierarchy and viewport | `account-menu.visible`, `account-menu.switch-account-copy`, `account-menu.add-account-copy`, `account-menu.remove-account-copy`, `account-menu.within-viewport`  |
+| Escape focus restoration            | `account-menu.escape-focus-restored` after recorded native Android Escape keycode 111 dispatch                                                                   |
+| Narrow identity dock                | `identity-dock.position`, `identity-dock.display`, `identity-dock.flow`; the flow observation throws when either required node is missing.                       |
+| Rail and identity actions           | Width and height identities under `touch-target.rail-rooms`, `touch-target.user-menu-trigger`, and `touch-target.open-settings`, each retaining the 44 px floor. |
+| Room row and kebab                  | `room-row.height`, `room-menu.opacity`, `room-menu.width`, `room-menu.height`, `room-menu.low-priority-visible`                                                  |
 
 These are exactly 21 direct predecessor assertions. Setup creates a fresh
 account and exactly one private `Touch <suffix>` room, then verifies the exact
@@ -345,9 +343,9 @@ lines 130–196 and 198–275 at `a4197c4e`. The pinned source SHA-256 is
 profile for each definition and runs them as two mandatory stages. Both
 Playwright predecessors remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Favourite and unfavourite | `favourite.initial-section-absent`, `favourite.menu-label`, `favourite.first-room`, `unfavourite.menu-label`, `unfavourite.section-absent` |
+| Predecessor obligation      | Replacement assertion identities                                                                                                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Favourite and unfavourite   | `favourite.initial-section-absent`, `favourite.menu-label`, `favourite.first-room`, `unfavourite.menu-label`, `unfavourite.section-absent`                                                                                                                                                       |
 | Low priority and double tag | `low-priority.initial-section-absent`, `low-priority.initial-first-room`, `low-priority.menu-label`, `low-priority.last-room`, `low-priority.first-room`, `double-tag.low-priority-section-absent`, `double-tag.favourites-section-visible`, `double-tag.first-room`, `double-tag.restore-label` |
 
 These are exactly 14 direct predecessor assertions. Each stage creates a fresh
@@ -401,11 +399,11 @@ and
 Pixel 5 profile for each definition and runs them as three mandatory stages.
 All three Playwright predecessors remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Mark all as read | `mark-all.room-visible`, `mark-all.action-visible`, `mark-all.action-hidden` |
-| Local Mark as unread | `local.initial-flag-absent`, `local.initial-badge-absent`, `local.flag-round-trip`, `local.dot-visible`, `local.dot-empty`, `local.conversation-visible`, `local.flag-cleared`, `local.dot-cleared` |
-| Remote Mark as unread | `remote.initial-badge-absent`, `remote.write-accepted`, `remote.live-dot-visible`, `remote.reload-dot-visible`, `remote.flag-cleared`, `remote.dot-cleared` |
+| Predecessor obligation | Replacement assertion identities                                                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mark all as read       | `mark-all.room-visible`, `mark-all.action-visible`, `mark-all.action-hidden`                                                                                                                        |
+| Local Mark as unread   | `local.initial-flag-absent`, `local.initial-badge-absent`, `local.flag-round-trip`, `local.dot-visible`, `local.dot-empty`, `local.conversation-visible`, `local.flag-cleared`, `local.dot-cleared` |
+| Remote Mark as unread  | `remote.initial-badge-absent`, `remote.write-accepted`, `remote.live-dot-visible`, `remote.reload-dot-visible`, `remote.flag-cleared`, `remote.dot-cleared`                                         |
 
 These are exactly 17 direct predecessor assertions. Every stage creates a fresh
 account and a private, non-DM room, verifies the exact account-qualified
@@ -456,10 +454,10 @@ and 219–269 at `9edd3a22`. The pinned source SHA-256 is
 profile for each definition and runs them as two mandatory stages. Both
 Playwright predecessors remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Preview row structure | `preview.latest-body`, `preview.room-name`, `preview.avatar-count`, `preview.legacy-hash-absent` |
-| Muted unread row badge | `unread.muted-badge-visible`, `unread.muted-badge-count` |
+| Predecessor obligation | Replacement assertion identities                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------------ |
+| Preview row structure  | `preview.latest-body`, `preview.room-name`, `preview.avatar-count`, `preview.legacy-hash-absent` |
+| Muted unread row badge | `unread.muted-badge-visible`, `unread.muted-badge-count`                                         |
 
 These are exactly six direct predecessor assertions. Each stage creates a fresh
 reader and sender with one private, non-DM room, verifies the exact
@@ -511,9 +509,9 @@ source SHA-256 is
 5 profile for each definition and runs them as two mandatory stages. Both
 Playwright predecessors remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Aggregate Rooms-rail badge | `rail.badge-visible`, `rail.badge-positive-count` |
+| Predecessor obligation          | Replacement assertion identities                        |
+| ------------------------------- | ------------------------------------------------------- |
+| Aggregate Rooms-rail badge      | `rail.badge-visible`, `rail.badge-positive-count`       |
 | Native platform-badge lifecycle | `platform.badge-set-three`, `platform.badge-clear-zero` |
 
 These are exactly four direct predecessor assertions. Each stage creates a
@@ -562,11 +560,11 @@ at `4e4a80f5`. The pinned source SHA-256 is
 profile and runs one mandatory stage. The functional Playwright predecessor and
 the same file's browser-only contrast definition both remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Initial two-room list | `setup.leave-row-visible`, `setup.keep-row-visible` |
-| Destructive menu and dialog | `menu.leave-action-visible`, `dialog.confirm-visible` |
-| Membership-driven list update | `list.left-absent`, `list.keep-visible` |
+| Predecessor obligation        | Replacement assertion identities                      |
+| ----------------------------- | ----------------------------------------------------- |
+| Initial two-room list         | `setup.leave-row-visible`, `setup.keep-row-visible`   |
+| Destructive menu and dialog   | `menu.leave-action-visible`, `dialog.confirm-visible` |
+| Membership-driven list update | `list.left-absent`, `list.keep-visible`               |
 
 These are exactly six direct assertions. The stage creates one fresh reader
 joined to two private, non-DM rooms, verifies the exact account-qualified
@@ -612,12 +610,12 @@ lines 97–301 at `4dbf0ce5`. The pinned source SHA-256 is
 Pixel 5 profile for four mandatory stages. All four Playwright predecessors
 remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
+| Predecessor obligation                           | Replacement assertion identities                                                                                                                                                                                                                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Default mixed list and Home/Rooms/Recent scoping | `scope.recent-current`, `scope.recent-dm-visible`, `scope.recent-room-visible`, `scope.home-recent-not-current`, `scope.home-dm-visible`, `scope.home-room-absent`, `scope.rooms-room-visible`, `scope.rooms-dm-absent`, `scope.return-dm-visible`, `scope.return-room-visible` |
-| Favourite partition and row order | `favourites.recent-current`, `favourites.section-visible`, `favourites.row-visible`, `favourites.dm-visible`, `favourites.index-present`, `favourites.before-dm` |
-| Space-child inclusion in Recent but not Rooms | `space.recent-current`, `space.free-visible`, `space.child-visible`, `space.rooms-free-visible`, `space.rooms-child-absent` |
-| Recent unread badge | `unread.badge-visible`, `unread.badge-numeric`, `unread.badge-positive` |
+| Favourite partition and row order                | `favourites.recent-current`, `favourites.section-visible`, `favourites.row-visible`, `favourites.dm-visible`, `favourites.index-present`, `favourites.before-dm`                                                                                                                |
+| Space-child inclusion in Recent but not Rooms    | `space.recent-current`, `space.free-visible`, `space.child-visible`, `space.rooms-free-visible`, `space.rooms-child-absent`                                                                                                                                                     |
+| Recent unread badge                              | `unread.badge-visible`, `unread.badge-numeric`, `unread.badge-positive`                                                                                                                                                                                                         |
 
 These are exactly 24 direct assertions. Every stage uses fresh accounts and
 unique room names. Matrix APIs create the ordinary/direct rooms, favourite tag,
@@ -662,11 +660,11 @@ lines 147–230 at `758e9f21`. The pinned source SHA-256 is
 1.62.1 Pixel 5 profile for one mandatory stage. The complete Playwright
 predecessor remains enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
+| Predecessor obligation                                                 | Replacement assertion identities                   |
+| ---------------------------------------------------------------------- | -------------------------------------------------- |
 | Flat Rooms includes the freestanding room and excludes the space child | `rooms.freestanding-visible`, `rooms.child-absent` |
-| Exact space pill is present, selectable and current | `space.pill-visible`, `space.pill-current` |
-| Selected space reveals the exact child | `space.child-visible`, `space.child-name-exact` |
+| Exact space pill is present, selectable and current                    | `space.pill-visible`, `space.pill-current`         |
+| Selected space reveals the exact child                                 | `space.child-visible`, `space.child-name-exact`    |
 
 These are exactly six direct assertions. The stage creates a fresh reader, one
 private freestanding room, one private `m.space` and one private child linked by
@@ -710,11 +708,11 @@ lines 92–140, 142–221 and 392–457 at `0ac64bed`. The pinned source SHA-256
 1.62.1 Pixel 5 profile for three mandatory stages. All three complete
 Playwright predecessors remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| Existing-room prompt is visible and writes a reachable child link | `add.dialog-visible`, `add.link-present`, `add.link-via-array`, `add.link-via-nonempty` |
-| Nested-space prompt creates and links an actual `m.space` child | `subspace.name-field-visible`, `subspace.link-present`, `subspace.child-type-space` |
-| Joining an offered child updates the live space view without reload | `join.action-visible`, `join.action-hidden`, `join.child-row-visible` |
+| Predecessor obligation                                              | Replacement assertion identities                                                        |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Existing-room prompt is visible and writes a reachable child link   | `add.dialog-visible`, `add.link-present`, `add.link-via-array`, `add.link-via-nonempty` |
+| Nested-space prompt creates and links an actual `m.space` child     | `subspace.name-field-visible`, `subspace.link-present`, `subspace.child-type-space`     |
+| Joining an offered child updates the live space view without reload | `join.action-visible`, `join.action-hidden`, `join.child-row-visible`                   |
 
 These are exactly ten direct assertions. Each stage uses fresh accounts and
 rooms. Matrix state reads remain inside the fixture closure so access tokens
@@ -758,10 +756,10 @@ lines 237–347 and 428–464 at `40820c19`. The pinned source SHA-256 is
 Pixel 5 profile for two mandatory stages. Both complete Playwright predecessors
 remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
+| Predecessor obligation                                                                                                         | Replacement assertion identities                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Default recency, a durable per-Space override, unchanged shared hierarchy, Account-default precedence and the sidebar shortcut | `preference.default-recency-order`, `preference.form-visible`, `preference.space-order-checked`, `preference.saved-feedback`, `preference.hierarchy-unchanged`, `preference.curated-order`, `preference.reload-curated-order`, `preference.account-default-curated-order`, `preference.default-saved-feedback`, `preference.alphabetical-order`, `preference.shortcut-recency-order` |
-| A newly synchronized message reorders the already-open Space | `live.initial-recency-order`, `live.reordered-recency-order` |
+| A newly synchronized message reorders the already-open Space                                                                   | `live.initial-recency-order`, `live.reordered-recency-order`                                                                                                                                                                                                                                                                                                                         |
 
 These are exactly thirteen direct assertions. Each stage uses a fresh Account,
 one Space and three uniquely named children whose curated, alphabetical and
@@ -809,9 +807,9 @@ lines 73–127 and 129–192 at `9aa0cfcd`. The pinned source SHA-256 is
 5 profile for two mandatory stages. Both complete Playwright predecessors
 remain enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| An HTTP 503 invite failure shows exact guidance, releases the native invite action and lets a second request reach Synapse | `invite.failure-feedback`, `invite.action-reenabled`, `invite.success-feedback`, `invite.two-transport-attempts`, `invite.real-membership` |
+| Predecessor obligation                                                                                                               | Replacement assertion identities                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An HTTP 503 invite failure shows exact guidance, releases the native invite action and lets a second request reach Synapse           | `invite.failure-feedback`, `invite.action-reenabled`, `invite.success-feedback`, `invite.two-transport-attempts`, `invite.real-membership`          |
 | A visible invite survives an HTTP 502 join failure, releases the native accept action and lets a second request join through Synapse | `join.invite-visible`, `join.failure-feedback`, `join.action-reenabled`, `join.room-visible`, `join.two-transport-attempts`, `join.real-membership` |
 
 These are exactly eleven direct assertions. Each stage uses fresh Accounts and
@@ -862,9 +860,9 @@ and `aec529aaa1769eddfa28f9f423d93825bb46ebd689e448036b1c168b5db3c310`.
 profile for two mandatory stages. Both complete Playwright predecessors remain
 enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| An ordinary member opens For you, stages Mute and Favourite, keeps both through the discard guard and saves them for the opening Account | `for-you.settings-visible`, `for-you.directory-visible`, `for-you.form-visible`, `for-you.mute-enabled`, `for-you.favourite-enabled`, `for-you.mute-retained`, `for-you.favourite-retained`, `for-you.saved-feedback` |
+| Predecessor obligation                                                                                                                                                         | Replacement assertion identities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An ordinary member opens For you, stages Mute and Favourite, keeps both through the discard guard and saves them for the opening Account                                       | `for-you.settings-visible`, `for-you.directory-visible`, `for-you.form-visible`, `for-you.mute-enabled`, `for-you.favourite-enabled`, `for-you.mute-retained`, `for-you.favourite-retained`, `for-you.saved-feedback`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | The full-screen directory opens before General, protects and discards a draft, preserves geometry and touch targets, navigates pristine Access and closes back to the composer | `general.settings-visible`, `general.full-width`, `general.full-height`, `general.directory-visible`, `general.panel-initially-hidden`, `general.panel-visible`, `general.heading-focused`, `general.account-contained`, `general.pristine-actions-hidden`, `general.draft-actions-visible`, `general.actions-sticky`, `general.discard-visible`, `general.save-visible`, `general.draft-retained`, `general.discard-directory-visible`, `general.room-name-contained`, `general-tab.touch-target`, `addresses-tab.touch-target`, `access.panel-visible`, `access.heading-focused`, `access.actions-hidden`, `access.back-directory-visible`, `general.reopened-visible`, `general.settings-closed`, `general.composer-visible` |
 
 These are exactly thirty-three direct assertions. Fresh Accounts and real
@@ -909,11 +907,11 @@ source SHA-256 is
 profile for three mandatory stages. The complete Playwright predecessor stays
 enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
+| Predecessor obligation                                                                                                                                                                                                      | Replacement assertion identities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | An opening admin traverses full-screen General, For you, Access and Contents; protects/discards drafts; preserves containment/focus/44px targets; adds, cancels and removes exact child Rooms; then closes back to the Room | `opening.composer-visible`, `settings.visible`, `settings.full-width`, `settings.full-height`, `directory.visible`, `general.initially-hidden`, `general.panel-visible`, `general.heading-focused`, `general.account-contained`, `general.pristine-actions-hidden`, `general.draft-actions-visible`, `general.actions-sticky`, `general.discard-visible`, `general.save-visible`, `general.draft-retained`, `general.discard-directory-visible`, `directory.space-name-contained`, `general-tab.touch-target`, `for-you-tab.touch-target`, `for-you.panel-visible`, `for-you.heading-focused`, `for-you.alphabetical-touch-target`, `for-you.alphabetical-retained`, `for-you.back-directory-visible`, `access-tab.touch-target`, `access.panel-visible`, `access.heading-focused`, `access.explainer-visible`, `access.actions-hidden`, `access.back-directory-visible`, `contents-tab.touch-target`, `contents.heading-focused`, `contents.room-visible`, `contents.create-room-touch-target`, `contents.create-room-contained`, `contents.suggested-touch-target`, `contents.suggested-checked`, `contents.move-up-touch-target`, `contents.move-up-disabled`, `contents.move-down-disabled`, `contents.suggested-cleared`, `contents.candidate-pick-visible`, `contents.add-selected-enabled`, `contents.candidate-visible`, `contents.candidate-link-created`, `contents.create-cancelled`, `contents.remove-cancel-retained`, `contents.candidate-link-removed`, `contents.candidate-membership-retained`, `contents.back-directory-visible`, `general.reopened-visible`, `settings.closed`, `space-pill.visible`, `room.composer-visible`, `room.heading-named` |
-| The Space Members shortcut opens its detail directly and returns to focused directory navigation | `members.panel-visible`, `members.directory-hidden`, `members.heading-named`, `members.back-visible`, `members.directory-tab-visible`, `members.directory-tab-focused` |
-| An ordinary member reads exact General values as paragraph content without writable actions | `readonly.name-visible`, `readonly.topic-visible`, `readonly.name-paragraph`, `readonly.topic-paragraph`, `readonly.actions-hidden`, `readonly.surface-visible` |
+| The Space Members shortcut opens its detail directly and returns to focused directory navigation                                                                                                                            | `members.panel-visible`, `members.directory-hidden`, `members.heading-named`, `members.back-visible`, `members.directory-tab-visible`, `members.directory-tab-focused`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| An ordinary member reads exact General values as paragraph content without writable actions                                                                                                                                 | `readonly.name-visible`, `readonly.topic-visible`, `readonly.name-paragraph`, `readonly.topic-paragraph`, `readonly.actions-hidden`, `readonly.surface-visible`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 These are exactly sixty-seven direct assertions. Fresh Accounts, a real Space,
 Rooms, child links and memberships establish state through Matrix. All product
@@ -951,9 +949,9 @@ including shared readiness at lines 69–82 and definitions at lines 88–143 an
 5 profile for two mandatory stages. The complete Playwright predecessor stays
 enabled.
 
-| Predecessor obligation | Replacement assertion identities |
-| --- | --- |
-| General saves the valid name through an exact first-topic 500 response, reports the partial failure, and retries only the unsaved topic | `partial.failure-feedback`, `partial.name-first-attempts`, `partial.topic-first-attempts`, `partial.retry-feedback`, `partial.name-total-attempts`, `partial.topic-total-attempts` |
+| Predecessor obligation                                                                                                                                                 | Replacement assertion identities                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| General saves the valid name through an exact first-topic 500 response, reports the partial failure, and retries only the unsaved topic                                | `partial.failure-feedback`, `partial.name-first-attempts`, `partial.topic-first-attempts`, `partial.retry-feedback`, `partial.name-total-attempts`, `partial.topic-total-attempts`                                                                                                                                                                           |
 | An in-flight name save and all later General, address, invite and child-link writes remain on the opening owner after the active Account changes to an ordinary member | `continuity.opening-account`, `continuity.name-saving`, `continuity.active-member`, `continuity.account-retained`, `continuity.name-saved`, `continuity.topic-saved`, `continuity.topic-persisted`, `continuity.alias-visible`, `continuity.alias-resolves`, `continuity.invite-persisted`, `continuity.child-link-created`, `continuity.child-link-removed` |
 
 These are exactly eighteen direct assertions. Fresh Accounts, a shared Space,
@@ -990,3 +988,134 @@ controls, quality checks and original-attempt hosted evidence. The seven core
 Space Settings definitions, member/address layout, widget iframe coverage,
 physical Android acceptance and complete migration reliability stay with their
 existing owners.
+
+## Core Space Settings administration batch
+
+[Android core Space Settings](https://github.com/quwisky/trinity-matrix-client/issues/701)
+owns all seven definitions and 85 direct assertions in
+[Space Settings](../browser/journeys/room-administration/space-settings.spec.mts),
+pinned to consolidated base `cb8959d70f9e5c1b61e651bb2048f17a0b66ff9e` and source
+SHA-256 `662f0fc7c62ba206aa1bd344c1d9ecf913162424c486b97059d252ff7ea30a3a`.
+Shared Matrix, readiness and navigation helpers occupy lines 29–181. All seven
+Playwright predecessors remain enabled with their assertions unchanged.
+
+`android.space-settings-core` runs the following stages sequentially in one
+invocation, using one installed debug APK built from the verified production
+renderer. Every stage clears app data and resets its declared desktop profile
+(1280 × 720, scale 1, no mobile/touch emulation) before login. Native input still
+acts on the installed Android host. The first stage temporarily resizes to
+700 × 800 and restores the original profile before continuing.
+
+| Stage                      | Source lines | Direct assertions |
+| -------------------------- | ------------ | ----------------- |
+| `admin-general-and-access` | 186–360      | 21                |
+| `seeded-values`            | 362–411      | 3                 |
+| `exact-contents-lifecycle` | 413–670      | 33                |
+| `readonly-member`          | 672–775      | 13                |
+| `permission-loss-draft`    | 777–851      | 7                 |
+| `address-via-enter`        | 853–904      | 4                 |
+| `owner-admin-roster`       | 906–1000     | 4                 |
+
+The exact replacement identities are centralized in
+`space-settings-core-contract.mts` and grouped below by source stage:
+
+- Administration: `admin.conversation-visible`, `admin.conversation-heading`,
+  `admin.name-field-visible`, `admin.directory-visible`, `admin.account-owner`,
+  `admin.heading-focused`, `admin.desktop-width`, `admin.compact-directory-hidden`,
+  `admin.compact-back-visible`, `admin.desktop-directory-restored`,
+  `admin.scaled-cancel-visible`, `admin.scaled-actions-hidden`,
+  `admin.photo-feedback`, `admin.photo-persisted`, `admin.general-feedback`,
+  `admin.name-persisted`, `admin.topic-persisted`, `admin.join-rule-persisted`,
+  `admin.dialog-closed`, `admin.conversation-retained`, `admin.heading-retained`.
+- Seeded values: `seed.name`, `seed.topic`, `seed.join-rule`.
+- Contents: `contents.panel-visible`, `contents.linked-name`,
+  `contents.linked-type-room`, `contents.scaled-create-space-visible`,
+  `contents.scaled-no-overflow`, `contents.candidate-room-linked`,
+  `contents.candidate-space-linked`, `contents.created-space-linked`,
+  `contents.created-space-type`, `contents.recovery-visible`,
+  `contents.recovery-name`, `contents.recovered-id`, `contents.create-first-count`,
+  `contents.recovery-dismissed`, `contents.recovered-linked`,
+  `contents.create-retry-count`, `contents.no-child-parent-governance`,
+  `contents.remove-room-name`, `contents.remove-room-parent-name`,
+  `contents.remove-room-not-deleted`, `contents.cancel-keeps-room-linked`,
+  `contents.room-unlinked`, `contents.room-membership-retained`,
+  `contents.remove-space-name`, `contents.remove-space-parent-name`,
+  `contents.space-unlinked`, `contents.space-membership-retained`,
+  `contents.demote-write`, `contents.actions-hidden`,
+  `contents.candidate-space-visible`, `contents.unlink-hidden`,
+  `contents.suggest-hidden`, `contents.move-up-hidden`.
+- Readonly membership: `readonly.name`, `readonly.no-topic`,
+  `readonly.name-paragraph`, `readonly.topic-paragraph`,
+  `readonly.general-actions-hidden`, `readonly.join-rule-disabled`,
+  `readonly.permission-explanation`, `readonly.access-policy`,
+  `readonly.access-actions-hidden`, `readonly.child-visible`,
+  `readonly.contents-actions-hidden`, `readonly.unlink-hidden`,
+  `readonly.contents-explanation`.
+- Permission loss: `permission.topic-editable`, `permission.actions-visible`,
+  `permission.topic-readonly`, `permission.draft-retained`,
+  `permission.draft-explanation`, `permission.discard-visible`,
+  `permission.save-disabled`.
+- Addresses: `address.panel-visible`, `address.dialog-retained`,
+  `address.visible`, `address.resolves`.
+- Members: `members.dialog-visible`, `members.heading`, `members.owner-row`,
+  `members.admin-row`.
+
+Login, Space/settings navigation, edits, save/cancel, join-rule selection,
+contents linking/creation/removal, recovery retry and dialog confirmation use
+native Maestro taps and text input. Photo upload uses Android DocumentsUI to
+choose the exact pushed `space-photo.png`; address creation uses native Android
+Enter. WebView/CDP reads observe visible DOM, focus, geometry and values. They
+do not click, focus, fill, submit forms, dispatch product events, change history
+or location, or replace native document selection. The only style mutation is
+the source-pinned visual fixture for root font size `125%` and root theme/dark
+state; it restores those values on every exit. Viewport emulation is scoped to
+the declared profile and the source's compact-layout check.
+
+Finite Matrix fixtures seed Accounts, Spaces, rooms, membership, existing state
+and power levels. Server reads prove persisted avatar, name, topic, join rules,
+exact child links, retained membership, alias resolution and roster powers. The
+contents transport fixture fails only the opening parent's first nonempty keyed
+`m.space.child` write with HTTP 403 and `link rejected`. It separately counts
+`POST /createRoom`, proving that retry links the recovered room ID without a
+second room creation or child-parent governance. Cleanup discovers UI-created
+joined rooms even if an assertion fails before their IDs are observed, then
+leaves/forgets memberships and logs out the fixture sessions.
+
+```bash
+pnpm nx run trinity-e2e-android:space-settings-core --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:space-settings-core
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the existing Node invocation. It
+verifies the renderer manifest before and after Capacitor copies the renderer
+into Android assets and before the Node test starts. Android CI shard 2 starts
+this batch after `native-shell` and before the retained
+`pnpm e2e:android --` Playwright command. Its single `android-space-settings-core`
+diagnostic upload runs only after the suite's started marker, including ordinary
+failures. The existing Playwright command and diagnostics remain unchanged.
+
+Diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.space-settings-core/`.
+`space-settings-core/journeys.json` records the expected seven stages and 85
+assertions, each source span, running and terminal transitions, duration,
+failure count and artifact pointer. Per-identity JSON observations, native
+command records and pass/failure captures accompany it. WebView and device
+cleanup, transport release, secret redaction and invocation teardown run on
+success, failure and interruption; cleanup failures remain part of the failed
+result.
+
+Provisional bounds are 30 minutes for the Node test, 33 minutes for its resource
+wrapper, 35 minutes for the hosted command and 120 minutes for the complete
+shard, inside the registry's 60-minute host budget. They remain unmeasured until
+the installed-host acceptance work in #701. Acceptance requires three complete
+first attempts with seven passed stages, all 85 assertion identities, zero
+retries, completed native commands, exact profile/renderer/APK provenance,
+redacted diagnostics and clean Synapse/device teardown. Deliberate failing
+controls must prove the source hash, assertion inventory, keyed fault target,
+DocumentsUI filename, persisted Matrix state and redaction/cleanup boundaries.
+The unchanged seven-definition Playwright source, required quality gates and
+original-attempt green browser and Android shard-2 jobs with an audited immutable
+artifact are also required. Static integration checks alone do not establish
+installed-host parity or authorize predecessor retirement.

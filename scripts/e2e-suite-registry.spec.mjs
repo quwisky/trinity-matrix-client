@@ -1119,6 +1119,47 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android core Space Settings batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.space-settings-core',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-settings-core',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:space-settings-core',
+        sourceEntrypoints: ['e2e/android/space-settings-core-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:space-settings-core',
+        command: 'nx run trinity-e2e-android:space-settings-core',
+        suiteIds: ['android.space-settings-core'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-settings-core'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(

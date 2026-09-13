@@ -4,11 +4,7 @@
   "projectType": "application",
   "sourceRoot": "e2e/android",
   "tags": ["type:e2e", "scope:trinity", "environment:android"],
-  "implicitDependencies": [
-    "trinity",
-    "trinity-android",
-    "trinity-e2e-support"
-  ],
+  "implicitDependencies": ["trinity", "trinity-android", "trinity-e2e-support"],
   "targets": {
     "e2e": {
       "//": "Owns the API 36 emulator, installed applications, adb bridge and support-owned disposable Synapse lifecycle.",
@@ -305,6 +301,20 @@
       "executor": "nx:run-commands",
       "options": {
         "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-settings-resilience --timeout-ms=1380000 --entrypoint=e2e/android/space-settings-resilience-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-settings-core": {
+      "//": "All seven core Space Settings definitions and 85 assertion identities against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-settings-core --timeout-ms=1980000 --entrypoint=e2e/android/space-settings-core-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
         "cwd": "{workspaceRoot}"
       }
     },

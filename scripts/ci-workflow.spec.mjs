@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(30);
+    expect(uploads.length).toBe(31);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -136,6 +136,15 @@ describe('CI execution contract', () => {
         (step) => step.with.surface === 'android-space-settings-resilience',
       ),
     ).toHaveLength(1);
+    const coreUploads = uploads.filter(
+      (step) => step.with.surface === 'android-space-settings-core',
+    );
+    expect(coreUploads).toHaveLength(1);
+    expect(coreUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.space-settings-core/**',
+    });
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
@@ -186,7 +195,10 @@ describe('CI execution contract', () => {
                                               : step.with.surface ===
                                                   'android-space-settings-resilience'
                                                 ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
-                                                : /!cancelled\(\).*outputs\.started == 'true'/;
+                                                : step.with.surface ===
+                                                    'android-space-settings-core'
+                                                  ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
+                                                  : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -318,6 +330,24 @@ describe('CI execution contract', () => {
     expect(playwright).toBeGreaterThan(resilience);
   });
 
+  it('runs core Space Settings after native shell and before retained Playwright on shard 2', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const nativeShell = script.indexOf('trinity-e2e-android:native-shell');
+    const core = script.indexOf('trinity-e2e-android:space-settings-core');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const coreLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-settings-core'));
+
+    expect(nativeShell).toBeGreaterThan(-1);
+    expect(core).toBeGreaterThan(nativeShell);
+    expect(playwright).toBeGreaterThan(core);
+    expect(coreLine).toContain('matrix.shard }}" = "2"');
+    expect(coreLine).toContain('space-settings-core-started=true');
+  });
+
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
     const steps = workflow.jobs['android-e2e'].steps;
     const kvm = steps.find(
@@ -358,7 +388,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(23);
+    expect(lines).toHaveLength(24);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }
