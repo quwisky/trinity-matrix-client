@@ -117,6 +117,10 @@ export function createAccountFixtures(
     roomId: string,
     member: NodeWorkspaceAccount,
   ): Promise<string | undefined>;
+  joinedRoomIds(
+    account: NodeWorkspaceAccount,
+    parentSignal?: AbortSignal,
+  ): Promise<readonly string[]>;
   roomState(
     observer: NodeWorkspaceAccount,
     roomId: string,
@@ -202,11 +206,12 @@ export function createAccountFixtures(
     session: AccessSession,
     path: string,
     options: { readonly allowNotFound?: boolean } = {},
+    parentSignal: AbortSignal = signal,
   ): Promise<unknown | undefined> {
     const response = await fetch(`${SYNAPSE_HTTP}/_matrix/client/v3${path}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${session.token}` },
-      signal: requestSignal(signal),
+      signal: requestSignal(parentSignal),
     });
     if (options.allowNotFound && response.status === 404) return undefined;
     if (!response.ok) {
@@ -565,6 +570,23 @@ export function createAccountFixtures(
       : record(value, 'Matrix fixture room-state response');
   }
 
+  /** Cleanup may supply its own bounded signal after the invocation is cancelled. */
+  async function joinedRoomIds(
+    observer: NodeWorkspaceAccount,
+    parentSignal: AbortSignal = signal,
+  ): Promise<readonly string[]> {
+    const content = record(
+      await get(access(observer), '/joined_rooms', {}, parentSignal),
+      'Matrix fixture joined-rooms response',
+    );
+    const ids = content['joined_rooms'];
+    assert(
+      Array.isArray(ids) && ids.every((id) => typeof id === 'string'),
+      'Matrix fixture joined-room IDs must be strings',
+    );
+    return ids;
+  }
+
   async function resolveRoomAlias(
     observer: NodeWorkspaceAccount,
     alias: string,
@@ -606,6 +628,7 @@ export function createAccountFixtures(
     spaceChildIds,
     roomCreateType,
     roomMembership,
+    joinedRoomIds,
     roomState,
     resolveRoomAlias,
     trackRoomMembership,
