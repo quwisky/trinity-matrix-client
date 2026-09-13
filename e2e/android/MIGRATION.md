@@ -896,3 +896,45 @@ predecessors, required quality checks and original-attempt hosted evidence. The
 widget iframe predecessor remains browser coverage; unrelated Room Settings,
 physical Android acceptance and the full migration reliability gate stay with
 their existing owners.
+
+## Mobile Space Settings functional batch
+
+[Android mobile Space Settings](https://github.com/quwisky/trinity-matrix-client/issues/699)
+owns the installed-Android guarantees in
+[Space settings on a phone](../browser/journeys/room-administration/space-settings-mobile.spec.mts),
+definitions at lines 105–433, 435–471 and 473–536, at `27f09caf`. The pinned
+source SHA-256 is
+`fd8dcdd0305cdc1ffa2412cf61779c7775cfe7583563be801ba5be5342fdaaf4`.
+`android.space-settings-mobile` resets the installed app to the exact Pixel 5
+profile for three mandatory stages. The complete Playwright predecessor stays
+enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| An opening admin traverses full-screen General, For you, Access and Contents; protects/discards drafts; preserves containment/focus/44px targets; adds, cancels and removes exact child Rooms; then closes back to the Room | `opening.composer-visible`, `settings.visible`, `settings.full-width`, `settings.full-height`, `directory.visible`, `general.initially-hidden`, `general.panel-visible`, `general.heading-focused`, `general.account-contained`, `general.pristine-actions-hidden`, `general.draft-actions-visible`, `general.actions-sticky`, `general.discard-visible`, `general.save-visible`, `general.draft-retained`, `general.discard-directory-visible`, `directory.space-name-contained`, `general-tab.touch-target`, `for-you-tab.touch-target`, `for-you.panel-visible`, `for-you.heading-focused`, `for-you.alphabetical-touch-target`, `for-you.alphabetical-retained`, `for-you.back-directory-visible`, `access-tab.touch-target`, `access.panel-visible`, `access.heading-focused`, `access.explainer-visible`, `access.actions-hidden`, `access.back-directory-visible`, `contents-tab.touch-target`, `contents.heading-focused`, `contents.room-visible`, `contents.create-room-touch-target`, `contents.create-room-contained`, `contents.suggested-touch-target`, `contents.suggested-checked`, `contents.move-up-touch-target`, `contents.move-up-disabled`, `contents.move-down-disabled`, `contents.suggested-cleared`, `contents.candidate-pick-visible`, `contents.add-selected-enabled`, `contents.candidate-visible`, `contents.candidate-link-created`, `contents.create-cancelled`, `contents.remove-cancel-retained`, `contents.candidate-link-removed`, `contents.candidate-membership-retained`, `contents.back-directory-visible`, `general.reopened-visible`, `settings.closed`, `space-pill.visible`, `room.composer-visible`, `room.heading-named` |
+| The Space Members shortcut opens its detail directly and returns to focused directory navigation | `members.panel-visible`, `members.directory-hidden`, `members.heading-named`, `members.back-visible`, `members.directory-tab-visible`, `members.directory-tab-focused` |
+| An ordinary member reads exact General values as paragraph content without writable actions | `readonly.name-visible`, `readonly.topic-visible`, `readonly.name-paragraph`, `readonly.topic-paragraph`, `readonly.actions-hidden`, `readonly.surface-visible` |
+
+These are exactly sixty-seven direct assertions. Fresh Accounts, a real Space,
+Rooms, child links and memberships establish state through Matrix. All product
+navigation, form entry, radio/checkbox changes and dialog choices use measured
+native Maestro input. Matrix reads observe persisted child and membership state;
+the owned WebView connection only observes UI state and geometry. Client/device
+cleanup and secret redaction remain registered on every exit.
+
+```bash
+pnpm nx run trinity-e2e-android:space-settings-mobile
+```
+
+Android CI shard 4 runs this batch after mobile Room Settings and before its
+unchanged Playwright shard. Provisional bounds are 18 minutes for the Node test,
+23 minutes for the resource-owning target, 25 minutes for the CI command and
+120 minutes for the complete shard; measured runs must prove those bounds.
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.space-settings-mobile/`.
+`space-settings-mobile/journeys.json` records all stage sources, outcomes and
+artifact pointers. Acceptance remains pending until #699 records three complete
+first attempts, the unchanged predecessor, effective controls, quality checks
+and original-attempt hosted evidence. Desktop/fault Space Settings, widget
+iframes, physical Android acceptance and full migration reliability remain with
+their existing owners.
