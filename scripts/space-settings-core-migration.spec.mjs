@@ -335,6 +335,17 @@ describe('Android core Space Settings migration', () => {
     for (const mutation of mutations) expect(text).not.toMatch(mutation);
     expect(text).not.toContain('documentElement.style');
   });
+
+  it('keeps nested suite timeouts above the measured hosted runtime', () => {
+    const entrypoint = readAndroid('space-settings-core-journeys');
+    const project = JSON.parse(
+      readFileSync(resolve(root, 'e2e/android/project.json'), 'utf8'),
+    );
+    const command = project.targets['space-settings-core'].options.command;
+
+    expect(entrypoint).toContain('{ timeout: 2_400_000 }');
+    expect(command).toContain('--timeout-ms=2520000');
+  });
 });
 
 function observationClient(read, recordFailure) {

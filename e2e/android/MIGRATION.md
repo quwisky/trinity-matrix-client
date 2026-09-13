@@ -1106,10 +1106,13 @@ cleanup, transport release, secret redaction and invocation teardown run on
 success, failure and interruption; cleanup failures remain part of the failed
 result.
 
-Provisional bounds are 30 minutes for the Node test, 33 minutes for its resource
-wrapper, 35 minutes for the hosted command and 120 minutes for the complete
-shard, inside the registry's 60-minute host budget. They remain unmeasured until
-the installed-host acceptance work in #701. Acceptance requires three complete
+Hosted run `34784705746` completed the first six stages in 27 minutes 41 seconds,
+then reached `owner-admin-roster` and hit the original 30-minute Node-test bound
+while that final stage was still making native progress. The evidence raised the
+nested hang-containment bounds to 40 minutes for the Node test, 42 minutes for
+its resource wrapper and 45 minutes for the hosted command; the complete shard
+retains its 120-minute ceiling, and the suite remains inside the registry's
+60-minute host budget. Acceptance requires three complete
 first attempts with seven passed stages, all 85 assertion identities, zero
 retries, completed native commands, exact profile/renderer/APK provenance,
 redacted diagnostics and clean Synapse/device teardown. Deliberate failing

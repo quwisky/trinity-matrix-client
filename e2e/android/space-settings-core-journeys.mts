@@ -42,7 +42,7 @@ function describeFailure(error: unknown): string {
 
 void test(
   'Android core Space Settings administration journeys',
-  { timeout: 1_800_000 },
+  { timeout: 2_400_000 },
   async (context) => {
     await withNodeTestResources(
       { testId: context.name, signal: context.signal },

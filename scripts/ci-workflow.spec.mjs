@@ -346,6 +346,7 @@ describe('CI execution contract', () => {
     expect(playwright).toBeGreaterThan(core);
     expect(coreLine).toContain('matrix.shard }}" = "2"');
     expect(coreLine).toContain('space-settings-core-started=true');
+    expect(coreLine).toContain('--timeout-ms 2700000');
   });
 
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
