@@ -246,6 +246,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-settings-mobile'],
   },
   {
+    name: 'e2e:android:space-settings-mobile',
+    command: 'nx run trinity-e2e-android:space-settings-mobile',
+    kind: 'canonical',
+    suiteIds: ['android.space-settings-mobile'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -464,6 +470,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'room-settings-mobile-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-settings-mobile'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'space-settings-mobile-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.space-settings-mobile'],
   },
   {
     command:

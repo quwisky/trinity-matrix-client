@@ -394,6 +394,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'room-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
 
@@ -441,6 +442,13 @@ jobs:
           surface: android-room-settings-mobile
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.room-settings-mobile/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-settings-mobile-started == 'true' }}
+        with:
+          surface: android-space-settings-mobile
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-settings-mobile/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}
