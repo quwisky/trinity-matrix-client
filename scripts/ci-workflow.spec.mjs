@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(25);
+    expect(uploads.length).toBe(26);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -111,6 +111,11 @@ describe('CI execution contract', () => {
         (step) => step.with.surface === 'android-space-curation-create-join',
       ),
     ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-room-order',
+      ),
+    ).toHaveLength(1);
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
@@ -146,7 +151,10 @@ describe('CI execution contract', () => {
                                     : step.with.surface ===
                                         'android-space-curation-create-join'
                                       ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
-                                      : /!cancelled\(\).*outputs\.started == 'true'/;
+                                      : step.with.surface ===
+                                          'android-space-room-order'
+                                        ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
+                                        : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -171,7 +179,7 @@ describe('CI execution contract', () => {
     }
   });
 
-  it('runs space creation and join curation after spaceless filtering and before retained Playwright on shard 1', () => {
+  it('runs space room ordering after space curation and before retained Playwright on shard 1', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -191,12 +199,13 @@ describe('CI execution contract', () => {
     const spaceCurationCreateJoin = script.indexOf(
       'trinity-e2e-android:space-curation-create-join',
     );
+    const spaceRoomOrder = script.indexOf(
+      'trinity-e2e-android:space-room-order',
+    );
     const playwright = script.indexOf('pnpm e2e:android --');
-    const spaceCurationCreateJoinLine = script
+    const spaceRoomOrderLine = script
       .split('\n')
-      .find((line) =>
-        line.includes('trinity-e2e-android:space-curation-create-join'),
-      );
+      .find((line) => line.includes('trinity-e2e-android:space-room-order'));
 
     expect(filter).toBeGreaterThan(-1);
     expect(touch).toBeGreaterThan(filter);
@@ -208,11 +217,10 @@ describe('CI execution contract', () => {
     expect(recentActivity).toBeGreaterThan(leaveRoom);
     expect(roomFilterSpaceless).toBeGreaterThan(recentActivity);
     expect(spaceCurationCreateJoin).toBeGreaterThan(roomFilterSpaceless);
-    expect(playwright).toBeGreaterThan(spaceCurationCreateJoin);
-    expect(spaceCurationCreateJoinLine).toContain('matrix.shard }}" = "1"');
-    expect(spaceCurationCreateJoinLine).toContain(
-      'space-curation-create-join-started=true',
-    );
+    expect(spaceRoomOrder).toBeGreaterThan(spaceCurationCreateJoin);
+    expect(playwright).toBeGreaterThan(spaceRoomOrder);
+    expect(spaceRoomOrderLine).toContain('matrix.shard }}" = "1"');
+    expect(spaceRoomOrderLine).toContain('space-room-order-started=true');
   });
 
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
@@ -255,7 +263,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(18);
+    expect(lines).toHaveLength(19);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

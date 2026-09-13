@@ -746,3 +746,54 @@ evidence. The source's computed dialog-opacity assertion and its write-fault,
 held-write, reorder and desktop-keyboard definition remain browser coverage;
 other Room Library definitions, physical Android acceptance and the full
 migration reliability gate stay with their existing owners.
+
+## Space room-order functional batch
+
+[Android space room ordering](https://github.com/quwisky/trinity-matrix-client/issues/696)
+owns the installed-Android functional guarantees in two definitions from
+[Space room order](../browser/journeys/room-library/space-room-order.spec.mts),
+lines 237–347 and 428–464 at `40820c19`. The pinned source SHA-256 is
+`b26ae29366d8d470a1f813da9bf9e6b501ec4f49d77d432f1ba7e77606c96705`.
+`android.space-room-order` resets the installed app to the Playwright 1.62.1
+Pixel 5 profile for two mandatory stages. Both complete Playwright predecessors
+remain enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| Default recency, a durable per-Space override, unchanged shared hierarchy, Account-default precedence and the sidebar shortcut | `preference.default-recency-order`, `preference.form-visible`, `preference.space-order-checked`, `preference.saved-feedback`, `preference.hierarchy-unchanged`, `preference.curated-order`, `preference.reload-curated-order`, `preference.account-default-curated-order`, `preference.default-saved-feedback`, `preference.alphabetical-order`, `preference.shortcut-recency-order` |
+| A newly synchronized message reorders the already-open Space | `live.initial-recency-order`, `live.reordered-recency-order` |
+
+These are exactly thirteen direct assertions. Each stage uses a fresh Account,
+one Space and three uniquely named children whose curated, alphabetical and
+recency orders disagree pairwise. Matrix APIs create the rooms, explicit
+`m.space.child` order values and messages; before/after content snapshots prove
+the device-local preference never rewrites the shared hierarchy. Space,
+settings, radio, select, save, close, sidebar-sort and Android Back actions use
+measured native Maestro input. A read-only WebView owner observes exact row
+order, checked state and feedback and performs the predecessor's explicit
+document reload. Client/device cleanup and secret redaction remain registered on
+failures.
+
+```bash
+pnpm nx run trinity-e2e-android:space-room-order
+```
+
+Android CI shard 1 runs this batch after space creation/join curation and before
+its unchanged Playwright shard. Provisional bounds are 15 minutes for the Node
+test, 18 minutes for the resource-owning wrapper, 20 minutes for the CI command
+and 120 minutes for the complete shard. Measured local and hosted runs must
+establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.space-room-order/`.
+`space-room-order/journeys.json` records both stage sources, first-attempt
+outcomes and artifact pointers. Stage-local assertion records, screenshots and
+the suite progress report retain observations, provenance and registered
+cleanup. Acceptance remains pending until #696 records three complete first
+attempts, effective preference/hierarchy/live-order fault controls, both
+unchanged predecessors, required quality checks and original-attempt hosted
+evidence. Computed menu-indicator styling, theme/font screenshots, desktop
+keyboard activation, browser request interception and both header-geometry
+definitions remain browser coverage; other Room Library definitions, physical
+Android acceptance and the full migration reliability gate stay with their
+existing owners.

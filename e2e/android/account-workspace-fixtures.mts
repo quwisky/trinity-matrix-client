@@ -77,7 +77,7 @@ export function createAccountFixtures(
     account: NodeWorkspaceAccount,
     spaceId: string,
     childId: string,
-    options?: { readonly suggested?: boolean },
+    options?: { readonly order?: string; readonly suggested?: boolean },
   ): Promise<void>;
   spaceChild(
     account: NodeWorkspaceAccount,
@@ -407,7 +407,7 @@ export function createAccountFixtures(
     owner: NodeWorkspaceAccount,
     spaceId: string,
     childId: string,
-    options: { readonly suggested?: boolean } = {},
+    options: { readonly order?: string; readonly suggested?: boolean } = {},
   ): Promise<void> {
     await request(
       access(owner),
@@ -415,6 +415,7 @@ export function createAccountFixtures(
       'PUT',
       {
         via: ['localhost'],
+        ...(options.order === undefined ? {} : { order: options.order }),
         ...(options.suggested === undefined
           ? {}
           : { suggested: options.suggested }),

@@ -228,6 +228,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.space-curation-create-join'],
   },
   {
+    name: 'e2e:android:space-room-order',
+    command: 'nx run trinity-e2e-android:space-room-order',
+    kind: 'canonical',
+    suiteIds: ['android.space-room-order'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -500,6 +506,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'space-curation-create-join-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-curation-create-join; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-curation-create-join'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'space-room-order-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-room-order; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.space-room-order'],
   },
   {
     command: 'pnpm e2e:scheduled',
