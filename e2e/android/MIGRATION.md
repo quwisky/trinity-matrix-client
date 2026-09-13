@@ -847,3 +847,52 @@ predecessors, required quality checks and original-attempt hosted evidence.
 Other request-interception definitions, unrelated Room Library definitions,
 physical Android acceptance and the full migration reliability gate stay with
 their existing owners.
+
+## Mobile Room Settings functional batch
+
+[Android mobile Room Settings](https://github.com/quwisky/trinity-matrix-client/issues/698)
+owns the installed-Android functional guarantees in
+[Room Settings · For you on a phone](../browser/journeys/room-administration/room-settings-for-you-mobile.spec.mts),
+lines 18–115, and
+[Room Settings on a phone](../browser/journeys/room-administration/room-settings-general-mobile.spec.mts),
+lines 18–149, at `d976c05a`. Their pinned SHA-256 values are
+`749dc05f43e01cfcc972bf639b8f83241ed3054220a32d8f32eb5be197cf62c0`
+and `aec529aaa1769eddfa28f9f423d93825bb46ebd689e448036b1c168b5db3c310`.
+`android.room-settings-mobile` resets the installed app to the exact Pixel 5
+profile for two mandatory stages. Both complete Playwright predecessors remain
+enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| An ordinary member opens For you, stages Mute and Favourite, keeps both through the discard guard and saves them for the opening Account | `for-you.settings-visible`, `for-you.directory-visible`, `for-you.form-visible`, `for-you.mute-enabled`, `for-you.favourite-enabled`, `for-you.mute-retained`, `for-you.favourite-retained`, `for-you.saved-feedback` |
+| The full-screen directory opens before General, protects and discards a draft, preserves geometry and touch targets, navigates pristine Access and closes back to the composer | `general.settings-visible`, `general.full-width`, `general.full-height`, `general.directory-visible`, `general.panel-initially-hidden`, `general.panel-visible`, `general.heading-focused`, `general.account-contained`, `general.pristine-actions-hidden`, `general.draft-actions-visible`, `general.actions-sticky`, `general.discard-visible`, `general.save-visible`, `general.draft-retained`, `general.discard-directory-visible`, `general.room-name-contained`, `general-tab.touch-target`, `addresses-tab.touch-target`, `access.panel-visible`, `access.heading-focused`, `access.actions-hidden`, `access.back-directory-visible`, `general.reopened-visible`, `general.settings-closed`, `general.composer-visible` |
+
+These are exactly thirty-three direct assertions. Fresh Accounts and real
+private rooms establish ordinary-member and room-owner state through Matrix.
+Room selection, overflow and settings controls, tabs, radio and checkbox,
+textarea entry, guarded Back choices, save and close all use measured native
+Maestro input. The owned WebView connection is read-only: it observes visible,
+enabled, checked, focused and draft state plus viewport, containment, sticky
+position and 44-pixel target geometry. Client/device cleanup and secret
+redaction remain registered on every exit.
+
+```bash
+pnpm nx run trinity-e2e-android:room-settings-mobile
+```
+
+Android CI shard 4 runs this batch after Identity presence and before its
+unchanged Playwright shard. Provisional bounds are 15 minutes for the Node test,
+18 minutes for the resource-owning wrapper, 20 minutes for the CI command and
+120 minutes for the complete shard. Measured local and hosted runs must
+establish that these bounds fit the complete suite.
+
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-settings-mobile/`.
+`room-settings-mobile/journeys.json` records both stage sources, first-attempt
+outcomes and artifact pointers. Stage-local assertion records and screenshots
+retain the 33 observations, provenance and registered cleanup. Acceptance
+remains pending until #698 records three complete first attempts, both unchanged
+predecessors, required quality checks and original-attempt hosted evidence. The
+widget iframe predecessor remains browser coverage; unrelated Room Settings,
+physical Android acceptance and the full migration reliability gate stay with
+their existing owners.

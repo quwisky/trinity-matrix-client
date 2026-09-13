@@ -240,6 +240,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-http-error-recovery'],
   },
   {
+    name: 'e2e:android:room-settings-mobile',
+    command: 'nx run trinity-e2e-android:room-settings-mobile',
+    kind: 'canonical',
+    suiteIds: ['android.room-settings-mobile'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -452,6 +458,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'identity-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:identity-presence; fi',
     tier: 'pull-request',
     suiteIds: ['android.identity-presence'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'room-settings-mobile-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-settings-mobile'],
   },
   {
     command:

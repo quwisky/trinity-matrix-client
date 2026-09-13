@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(27);
+    expect(uploads.length).toBe(28);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -121,6 +121,11 @@ describe('CI execution contract', () => {
         (step) => step.with.surface === 'android-room-http-error-recovery',
       ),
     ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-settings-mobile',
+      ),
+    ).toHaveLength(1);
     for (const step of uploads) {
       const gate =
         step.with.surface === 'android-runner-smoke'
@@ -162,7 +167,10 @@ describe('CI execution contract', () => {
                                         : step.with.surface ===
                                             'android-room-http-error-recovery'
                                           ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
-                                          : /!cancelled\(\).*outputs\.started == 'true'/;
+                                          : step.with.surface ===
+                                              'android-room-settings-mobile'
+                                            ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
+                                            : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -244,6 +252,28 @@ describe('CI execution contract', () => {
     );
   });
 
+  it('runs mobile Room Settings after identity and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const identity = script.indexOf('trinity-e2e-android:identity-presence');
+    const roomSettings = script.indexOf(
+      'trinity-e2e-android:room-settings-mobile',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const roomSettingsLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-settings-mobile'),
+      );
+
+    expect(identity).toBeGreaterThan(-1);
+    expect(roomSettings).toBeGreaterThan(identity);
+    expect(playwright).toBeGreaterThan(roomSettings);
+    expect(roomSettingsLine).toContain('matrix.shard }}" = "4"');
+    expect(roomSettingsLine).toContain('room-settings-mobile-started=true');
+  });
+
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
     const steps = workflow.jobs['android-e2e'].steps;
     const kvm = steps.find(
@@ -284,7 +314,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(20);
+    expect(lines).toHaveLength(21);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }
