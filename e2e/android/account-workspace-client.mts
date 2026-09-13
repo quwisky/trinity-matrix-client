@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { MaestroDevice } from './maestro-session.mts';
 import { openMaestroViewport, type MaestroViewport, type MaestroViewportOptions } from './maestro-viewport.mts';
 import { pressAndroidKeyboardKey, type AndroidKeyboardKey } from './maestro-keyboard.mts';
+import { assertNativeDocumentActivation } from './maestro-document-picker.mts';
 import {
   captureNativeShellProof,
   evaluateNative,
@@ -172,6 +173,13 @@ export class AccountWorkspaceClient {
     });
   }
 
+  async tapDocumentTrigger(selector: string, fileInputSelector: string): Promise<void> {
+    await this.nativeAction('accounts-current-point-tap', selector, {}, {}, {
+      currentPoint: true,
+      fileInputSelector,
+    });
+  }
+
   async fill(selector: string, value: string): Promise<void> {
     await this.nativeAction(
       'accounts-point-fill',
@@ -263,19 +271,24 @@ export class AccountWorkspaceClient {
     options: {
       readonly currentPoint?: boolean;
       readonly allowFocusedInput?: boolean;
+      readonly fileInputSelector?: string;
     } = {},
   ): Promise<void> {
     const currentPoint = options.currentPoint ?? false;
     const allowFocusedInput = options.allowFocusedInput ?? false;
+    const fileInputSelector = options.fileInputSelector;
     const initialPoint = await this.actionablePoint(selector, filter);
     const actionId = ++this.action;
     // Observe capture before application listeners can remove the clicked element.
     await evaluateNative(this.webview, `(() => {
-      const {selector,filter}=${JSON.stringify({ selector, filter })};
+      const {selector,filter,fileInputSelector}=${JSON.stringify({ selector, filter, fileInputSelector })};
       const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
       if(es.length!==1)throw new Error('Native target changed before dispatch');
       const element=es[0];
-      window.__trinityAccountTap={events:[],listener:e=>window.__trinityAccountTap.events.push({trusted:e.isTrusted,matched:element.contains(e.target)})};
+      const inputs=fileInputSelector===undefined?[]:[...document.querySelectorAll(fileInputSelector)];
+      if(fileInputSelector!==undefined&&(inputs.length!==1||!(inputs[0] instanceof HTMLInputElement)||inputs[0].type!=='file'||!inputs[0].hidden))throw new Error('Native document target requires one exact hidden file input');
+      const fileInput=inputs[0];
+      window.__trinityAccountTap={events:[],listener:e=>window.__trinityAccountTap.events.push({trusted:e.isTrusted,matched:element.contains(e.target),...(fileInputSelector===undefined?{}:{fileInputMatched:e.target===fileInput})})};
       document.addEventListener('click',window.__trinityAccountTap.listener,true);
       return true;
     })()`);
@@ -312,7 +325,8 @@ export class AccountWorkspaceClient {
       } else {
         assert(activated, `Native action ${actionId} activated ${selector}`);
       }
-      assert(events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
+      if (fileInputSelector !== undefined) assertNativeDocumentActivation(events);
+      else assert(events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
     } catch (error) {
       actionError = error;
     } finally {
@@ -323,6 +337,7 @@ export class AccountWorkspaceClient {
         try {
           await this.record(`current-point-${actionId}`, {
             selector,
+            ...(fileInputSelector === undefined ? {} : { fileInputSelector }),
             initialPoint,
             freshPoint: pointEndpoint?.lastPoint ?? null,
             trustedEvents,

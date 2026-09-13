@@ -1,3 +1,9 @@
 appId: ${APP_ID}
 ---
+- tapOn:
+    point: ${OVERFLOW_POINT}
+- tapOn: Browse…
+- tapOn: Show roots
+- tapOn: Downloads
+- tapOn: List view
 - tapOn: ${FILE_NAME}
