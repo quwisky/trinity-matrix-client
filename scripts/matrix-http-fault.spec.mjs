@@ -256,6 +256,73 @@ describe('Matrix HTTP fault instrumentation', () => {
     }
   });
 
+  it('matches a wildcard child state key only beneath its exact parent', () => {
+    const target = {
+      roomId: '!parent:localhost',
+      eventType: 'm.space.child',
+      stateKey: '*',
+    };
+    for (const { url, matches } of [
+      {
+        url: 'https://localhost/_matrix/client/v3/rooms/!parent%3Alocalhost/state/m.space.child/!child%3Alocalhost',
+        matches: true,
+      },
+      {
+        url: 'https://localhost/_matrix/client/v3/rooms/!parent%3Alocalhost/state/m.space.child/',
+        matches: false,
+      },
+      {
+        url: 'https://localhost/_matrix/client/v3/rooms/!other%3Alocalhost/state/m.space.child/!child%3Alocalhost',
+        matches: false,
+      },
+      {
+        url: 'https://localhost/_matrix/client/v3/rooms/!parent%3Alocalhost/state/m.space.parent/!child%3Alocalhost',
+        matches: false,
+      },
+    ]) {
+      expect(
+        isMatrixRoomStateRequest({ request: { method: 'PUT', url } }, target),
+      ).toBe(matches);
+    }
+  });
+
+  it('counts create-room requests independently of a failed child write', async () => {
+    const fixture = connectionFixture();
+    const fault = await installFirstMatrixHttpFailure(fixture.connection, {
+      kind: 'room-state',
+      roomId: '!parent:localhost',
+      eventType: 'm.space.child',
+      stateKey: '*',
+      status: 500,
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'create-room',
+      request: {
+        method: 'POST',
+        url: 'https://localhost/_matrix/client/v3/createRoom',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'child',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!parent%3Alocalhost/state/m.space.child/!child%3Alocalhost',
+      },
+    });
+
+    await vi.waitFor(() => expect(fault.createRoomAttempts).toBe(1));
+    expect(fault.attempts).toBe(1);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.fulfillRequest',
+      expect.objectContaining({ requestId: 'child', responseCode: 500 }),
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'create-room' },
+    ]);
+    await fault.close();
+  });
+
   it('fails only the first exact room-state request and releases its retry', async () => {
     const fixture = connectionFixture();
     const fault = await installFirstMatrixHttpFailure(fixture.connection, {

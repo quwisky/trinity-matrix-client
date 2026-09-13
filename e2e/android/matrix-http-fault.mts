@@ -6,7 +6,8 @@ export type MatrixRequestKind = 'invite' | 'join';
 
 export interface MatrixRoomStateTarget {
   readonly roomId: string;
-  readonly eventType: 'm.room.name' | 'm.room.topic';
+  readonly eventType: 'm.room.name' | 'm.room.topic' | 'm.space.child';
+  readonly stateKey?: '' | '*' | string;
 }
 
 interface FetchRequestPaused {
@@ -37,6 +38,7 @@ export type MatrixHttpFaultOptions =
 
 export interface MatrixHttpFault {
   readonly attempts: number;
+  readonly createRoomAttempts: number;
   readonly firstOutcome: MatrixHttpOutcome | undefined;
   roomStateAttempts(eventType: MatrixRoomStateTarget['eventType']): number;
   waitForAttempts(expected: number, signal: AbortSignal): Promise<number>;
@@ -109,7 +111,7 @@ export function matrixRequestKind(value: unknown): MatrixRequestKind | undefined
     : undefined;
 }
 
-/** Match one empty-state-key room state write without catching adjacent rooms or event types. */
+/** Match one exact or wildcard-keyed room state write without catching adjacent rooms or event types. */
 export function isMatrixRoomStateRequest(
   value: unknown,
   target: MatrixRoomStateTarget,
@@ -123,13 +125,31 @@ export function isMatrixRoomStateRequest(
     return false;
   }
   const match = pathname.match(
-    /^\/_matrix\/client\/[^/]+\/rooms\/([^/]+)\/state\/([^/]+)\/?$/,
+    /^\/_matrix\/client\/[^/]+\/rooms\/([^/]+)\/state\/([^/]+)(?:\/([^/]+))?\/?$/,
   );
   if (!match) return false;
   try {
+    const stateKey = match[3] === undefined ? undefined : decodeURIComponent(match[3]);
     return (
       decodeURIComponent(match[1]!) === target.roomId &&
-      decodeURIComponent(match[2]!) === target.eventType
+      decodeURIComponent(match[2]!) === target.eventType &&
+      (target.stateKey === undefined
+        ? stateKey === undefined
+        : target.stateKey === '*'
+          ? stateKey !== undefined && stateKey.length > 0
+          : stateKey === target.stateKey)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isMatrixCreateRoomRequest(value: unknown): boolean {
+  const request = fetchRequest(value);
+  if (!request || request.method !== 'POST') return false;
+  try {
+    return /^\/_matrix\/client\/[^/]+\/createRoom$/.test(
+      new URL(request.url).pathname,
     );
   } catch {
     return false;
@@ -156,10 +176,7 @@ function matchesFaultRequest(
   }
   assert(options.roomId, 'Room-state fault requires an exact room id');
   assert(options.eventType, 'Room-state fault requires an exact event type');
-  return isMatrixRoomStateRequest(value, {
-    roomId: options.roomId,
-    eventType: options.eventType,
-  });
+  return isMatrixRoomStateRequest(value, options);
 }
 
 function failurePayload(responseError = 'synthetic upstream failure'): string {
@@ -198,6 +215,7 @@ export async function installFirstMatrixHttpFailure(
   let work = Promise.resolve();
   let firstNetworkId: string | undefined;
   let firstOutcome: MatrixHttpOutcome | undefined;
+  let createRoomAttempts = 0;
   const roomStateAttempts = new Map<MatrixRoomStateTarget['eventType'], number>();
 
   const networkEvent = (
@@ -302,12 +320,18 @@ export async function installFirstMatrixHttpFailure(
   const handle = async (value: unknown): Promise<void> => {
     const paused = pausedRequest(value);
     if (!paused) throw new Error('Fetch.requestPaused payload is malformed');
+    if (isMatrixCreateRoomRequest(paused)) createRoomAttempts += 1;
     if (options.kind === 'room-state') {
-      for (const eventType of ['m.room.name', 'm.room.topic'] as const) {
+      for (const eventType of [
+        'm.room.name',
+        'm.room.topic',
+        'm.space.child',
+      ] as const) {
         if (
           isMatrixRoomStateRequest(paused, {
             roomId: options.roomId,
             eventType,
+            ...(eventType === 'm.space.child' ? { stateKey: '*' } : {}),
           })
         ) {
           roomStateAttempts.set(
@@ -365,6 +389,7 @@ export async function installFirstMatrixHttpFailure(
     await connection.send('Fetch.enable', {
       patterns: [
         { urlPattern: fetchPattern(options), requestStage: 'Request' },
+        { urlPattern: '*/_matrix/client/*/createRoom', requestStage: 'Request' },
       ],
     });
   } catch (error) {
@@ -392,6 +417,9 @@ export async function installFirstMatrixHttpFailure(
   return {
     get attempts() {
       return attempts;
+    },
+    get createRoomAttempts() {
+      return createRoomAttempts;
     },
     get firstOutcome() {
       return firstOutcome ? { ...firstOutcome } : undefined;

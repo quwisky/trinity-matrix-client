@@ -30,6 +30,14 @@ interface MatrixRecord {
   readonly [key: string]: unknown;
 }
 
+type WorkspaceRoomStateEventType =
+  | 'm.room.avatar'
+  | 'm.room.join_rules'
+  | 'm.room.name'
+  | 'm.room.power_levels'
+  | 'm.room.topic'
+  | 'm.space.parent';
+
 const REQUEST_TIMEOUT_MS = 15_000;
 const LONG_ACCOUNT_SUFFIX = '-long-display-account-name';
 
@@ -59,6 +67,18 @@ export function createAccountFixtures(
     partner: NodeWorkspaceAccount,
   ): Promise<{ readonly id: string }>;
   setDisplayName(account: NodeWorkspaceAccount, name: string): Promise<void>;
+  setRoomState(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    eventType: WorkspaceRoomStateEventType,
+    content: MatrixRecord,
+  ): Promise<void>;
+  setRoomPower(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    memberId: string,
+    power: number,
+  ): Promise<void>;
   invite(account: NodeWorkspaceAccount, roomId: string, invitee: NodeWorkspaceAccount): Promise<void>;
   join(account: NodeWorkspaceAccount, roomId: string): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<void>;
@@ -100,7 +120,8 @@ export function createAccountFixtures(
   roomState(
     observer: NodeWorkspaceAccount,
     roomId: string,
-    eventType: 'm.room.name' | 'm.room.topic',
+    eventType: WorkspaceRoomStateEventType,
+    stateKey?: string,
   ): Promise<MatrixRecord | undefined>;
   resolveRoomAlias(
     observer: NodeWorkspaceAccount,
@@ -326,6 +347,41 @@ export function createAccountFixtures(
     );
   }
 
+  async function setRoomState(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    eventType: WorkspaceRoomStateEventType,
+    content: MatrixRecord,
+  ): Promise<void> {
+    await request(
+      access(owner),
+      `/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(eventType)}`,
+      'PUT',
+      content,
+    );
+  }
+
+  async function setRoomPower(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    memberId: string,
+    power: number,
+  ): Promise<void> {
+    const path = `/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`;
+    const current = record(
+      await get(access(owner), path),
+      'Matrix fixture room-power response',
+    );
+    const users = current['users'];
+    const currentUsers = users === undefined
+      ? {}
+      : record(users, 'Matrix fixture room-power users');
+    await request(access(owner), path, 'PUT', {
+      ...current,
+      users: { ...currentUsers, [memberId]: power },
+    });
+  }
+
   async function invite(
     owner: NodeWorkspaceAccount,
     roomId: string,
@@ -499,9 +555,10 @@ export function createAccountFixtures(
   async function roomState(
     observer: NodeWorkspaceAccount,
     roomId: string,
-    eventType: 'm.room.name' | 'm.room.topic',
+    eventType: WorkspaceRoomStateEventType,
+    stateKey?: string,
   ): Promise<MatrixRecord | undefined> {
-    const path = `/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(eventType)}`;
+    const path = `/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(eventType)}${stateKey === undefined ? '' : `/${encodeURIComponent(stateKey)}`}`;
     const value = await get(access(observer), path, { allowNotFound: true });
     return value === undefined
       ? undefined
@@ -536,6 +593,8 @@ export function createAccountFixtures(
     setProfileAvatar,
     createDirectRoom,
     setDisplayName,
+    setRoomState,
+    setRoomPower,
     invite,
     join,
     sendMessage,
