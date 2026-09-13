@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   installFirstMatrixHttpFailure,
+  installMatrixRoomStateDelay,
+  isMatrixRoomStateRequest,
   matrixRequestKind,
 } from '../e2e/android/matrix-http-fault.mts';
 
@@ -197,6 +199,177 @@ describe('Matrix HTTP fault instrumentation', () => {
     expect(fixture.sends).not.toContainEqual([
       'Fetch.continueRequest',
       { requestId: 'late' },
+    ]);
+  });
+
+  it('matches only the exact PUT room-state target', () => {
+    const target = { roomId: '!space:test', eventType: 'm.room.topic' };
+    expect(
+      isMatrixRoomStateRequest(
+        {
+          request: {
+            method: 'PUT',
+            url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+          },
+        },
+        target,
+      ),
+    ).toBe(true);
+    expect(
+      isMatrixRoomStateRequest(
+        {
+          request: {
+            method: 'PUT',
+            url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic/',
+          },
+        },
+        target,
+      ),
+    ).toBe(true);
+    for (const candidate of [
+      {
+        request: {
+          method: 'POST',
+          url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/rooms/!other%3Atest/state/m.room.topic',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.name',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic/nonempty',
+        },
+      },
+    ]) {
+      expect(isMatrixRoomStateRequest(candidate, target)).toBe(false);
+    }
+  });
+
+  it('fails only the first exact room-state request and releases its retry', async () => {
+    const fixture = connectionFixture();
+    const fault = await installFirstMatrixHttpFailure(fixture.connection, {
+      kind: 'room-state',
+      roomId: '!space:test',
+      eventType: 'm.room.topic',
+      status: 500,
+      responseError: 'retry me',
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'name',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.name',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'topic-first',
+      networkId: 'topic-network',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'topic-retry',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+      },
+    });
+
+    await expect(
+      fault.waitForAttempts(2, AbortSignal.timeout(1_000)),
+    ).resolves.toBe(2);
+    expect(fault.roomStateAttempts('m.room.name')).toBe(1);
+    expect(fault.roomStateAttempts('m.room.topic')).toBe(2);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.fulfillRequest',
+      expect.objectContaining({
+        requestId: 'topic-first',
+        responseCode: 500,
+        body: Buffer.from(
+          JSON.stringify({ errcode: 'M_UNKNOWN', error: 'retry me' }),
+        ).toString('base64'),
+      }),
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'topic-retry' },
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'name' },
+    ]);
+    await fault.close();
+  });
+
+  it('holds the first exact room-state request until release and cleans it on close', async () => {
+    const fixture = connectionFixture();
+    const delay = await installMatrixRoomStateDelay(fixture.connection, {
+      roomId: '!space:test',
+      eventType: 'm.room.name',
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'topic',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'name',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.name',
+      },
+    });
+
+    await expect(
+      delay.waitForAttempts(1, AbortSignal.timeout(1_000)),
+    ).resolves.toBe(1);
+    expect(fixture.sends).not.toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'name' },
+    ]);
+    await delay.release();
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'name' },
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'topic' },
+    ]);
+    await delay.close();
+
+    const cleanupFixture = connectionFixture();
+    const cleanupDelay = await installMatrixRoomStateDelay(
+      cleanupFixture.connection,
+      { roomId: '!space:test', eventType: 'm.room.name' },
+    );
+    cleanupFixture.emit('Fetch.requestPaused', {
+      requestId: 'held-on-close',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/rooms/!space%3Atest/state/m.room.name',
+      },
+    });
+    await cleanupDelay.waitForAttempts(1, AbortSignal.timeout(1_000));
+    await cleanupDelay.close();
+    expect(cleanupFixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'held-on-close' },
     ]);
   });
 });

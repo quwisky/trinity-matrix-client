@@ -938,3 +938,55 @@ first attempts, the unchanged predecessor, effective controls, quality checks
 and original-attempt hosted evidence. Desktop/fault Space Settings, widget
 iframes, physical Android acceptance and full migration reliability remain with
 their existing owners.
+
+## Space Settings resilience batch
+
+[Android Space Settings resilience](https://github.com/quwisky/trinity-matrix-client/issues/700)
+owns the installed-Android guarantees in
+[Space Settings resilience](../browser/journeys/room-administration/space-settings-resilience.spec.mts),
+including shared readiness at lines 69–82 and definitions at lines 88–143 and
+145–305, on consolidated base `2042fc56`. The pinned source SHA-256 is
+`97bf56cb47ac1f74911fa73df01d582f1cec4c37f8547e4d609f168fbb9a3091`.
+`android.space-settings-resilience` resets the installed app to the exact Pixel
+5 profile for two mandatory stages. The complete Playwright predecessor stays
+enabled.
+
+| Predecessor obligation | Replacement assertion identities |
+| --- | --- |
+| General saves the valid name through an exact first-topic 500 response, reports the partial failure, and retries only the unsaved topic | `partial.failure-feedback`, `partial.name-first-attempts`, `partial.topic-first-attempts`, `partial.retry-feedback`, `partial.name-total-attempts`, `partial.topic-total-attempts` |
+| An in-flight name save and all later General, address, invite and child-link writes remain on the opening owner after the active Account changes to an ordinary member | `continuity.opening-account`, `continuity.name-saving`, `continuity.active-member`, `continuity.account-retained`, `continuity.name-saved`, `continuity.topic-saved`, `continuity.topic-persisted`, `continuity.alias-visible`, `continuity.alias-resolves`, `continuity.invite-persisted`, `continuity.child-link-created`, `continuity.child-link-removed` |
+
+These are exactly eighteen direct assertions. Fresh Accounts, a shared Space,
+an exact candidate child Space and invitation/membership state are seeded through
+Matrix. Login, Account addition and opening-owner selection, Space/settings
+entry, General edits/save/retry, Addresses, Members invite, Contents add/remove
+and confirmation use native Android input. Server-side reads prove the exact
+persisted topic, alias, membership and child state.
+
+The predecessor's pointer-blocked Account transition at lines 199–205 is the
+single CDP user-action exception: the source-pinned helper invokes only the
+exact user-menu and target Account-row click handlers, then separately proves
+that the active Account changed. All other WebView/CDP access is observational;
+it does not focus, fill, dispatch product events, mutate application state or
+styles, or navigate. The exact room-state transport controller counts the name
+and topic writes, injects the first topic's precise 500 payload, and holds then
+releases the opening owner's name request. Pending requests, interception,
+client/device state and secrets are cleaned on every exit.
+
+```bash
+pnpm nx run trinity-e2e-android:space-settings-resilience
+```
+
+Android CI shard 4 runs this batch after mobile Space Settings and before its
+unchanged Playwright shard. Provisional bounds are 18 minutes for the Node test,
+23 minutes for the resource-owning target, 25 minutes for the CI command and
+120 minutes for the complete shard; measured runs must prove those bounds.
+Started-suite diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.space-settings-resilience/`.
+`space-settings-resilience/journeys.json` records both stage sources, outcomes
+and artifact pointers. Acceptance remains pending until #700 records three
+complete first attempts, both unchanged predecessor definitions, deliberate
+controls, quality checks and original-attempt hosted evidence. The seven core
+Space Settings definitions, member/address layout, widget iframe coverage,
+physical Android acceptance and complete migration reliability stay with their
+existing owners.
