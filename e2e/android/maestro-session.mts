@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { closeSync, openSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { createServer } from 'node:net';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -33,6 +34,24 @@ const textArtifactExtensions = new Set([
   '.xml',
 ]);
 const redactedSecret = '[REDACTED]';
+
+const allocateHostPort = (): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Could not allocate a TCP port')));
+        return;
+      }
+      server.close((error) => {
+        if (error) reject(error);
+        else resolve(address.port);
+      });
+    });
+  });
 
 const secretValues = (
   variables: Readonly<Record<string, string>>,
@@ -230,6 +249,7 @@ export async function openMaestroDevice(
   let processLease: EmulatorProcess | undefined;
   let lock: ProcessLock | undefined;
   const installedApplicationIds = new Set<MaestroApplicationId>();
+  const maestroDriverPorts = new Set<number>();
   const reverses: Array<{ local: string; previous: string | undefined }> = [];
   const stagedFiles = new Set<() => Promise<void>>();
   let closing: Promise<void> | undefined;
@@ -429,6 +449,11 @@ export async function openMaestroDevice(
         );
       },
       async runFlow(file, variables = {}) {
+        let driverHostPort: number;
+        do {
+          driverHostPort = await allocateHostPort();
+        } while (maestroDriverPorts.has(driverHostPort));
+        maestroDriverPorts.add(driverHostPort);
         const output = join(
           options.artifactDirectory,
           `${basename(file, '.yaml')}-${randomUUID()}`,
@@ -447,6 +472,12 @@ export async function openMaestroDevice(
             const result = await runManagedCommand(
               environment['MAESTRO_CLI'] ?? 'maestro',
               [
+                // Maestro's default ephemeral-port selection can immediately
+                // reuse a port whose device-side driver socket is still
+                // tearing down after the preceding CLI process. Keep every
+                // flow on a distinct port for the lifetime of this emulator.
+                '--driver-host-port',
+                String(driverHostPort),
                 '--device',
                 serial,
                 'test',

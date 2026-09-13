@@ -121,7 +121,7 @@ import { join } from 'node:path';
 const args = process.argv.slice(2);
 const output = args[args.indexOf('--test-output-dir') + 1];
 const password = args.find((arg) => arg.startsWith('PASSWORD='))?.slice('PASSWORD='.length) ?? '';
-writeFileSync(join(output, 'commands.json'), JSON.stringify({ defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
+writeFileSync(join(output, 'commands.json'), JSON.stringify({ cliArgs: args, defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
 writeFileSync(join(output, 'maestro.log'), 'login started: ' + password + '\\n');
 writeFileSync(join(output, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
 writeFileSync(join(output, 'device-logcat.txt'), ${JSON.stringify(nativeLog)});
@@ -434,6 +434,39 @@ describe('Maestro device ownership', () => {
     expect(log).toContain('Msg: [REDACTED]');
     expect(log).toContain('methodData: [REDACTED]');
     expect(log).toContain('App resumed');
+    await device.close();
+  });
+
+  it('uses a distinct driver port for each flow in one device lease', async () => {
+    const f = fixture();
+    configureMaestro(f);
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await device.runFlow('/flows/first.yaml');
+    await device.runFlow('/flows/second.yaml');
+
+    const ports = readdirSync(f.options.artifactDirectory)
+      .filter((name) => name.startsWith('first-') || name.startsWith('second-'))
+      .map((name) => {
+        const { cliArgs } = JSON.parse(
+          readFileSync(
+            join(f.options.artifactDirectory, name, 'commands.json'),
+            'utf8',
+          ),
+        );
+        const option = cliArgs.indexOf('--driver-host-port');
+        expect(option).toBeGreaterThanOrEqual(0);
+        expect(option).toBeLessThan(cliArgs.indexOf('test'));
+        return Number(cliArgs[option + 1]);
+      });
+    expect(ports).toHaveLength(2);
+    expect(new Set(ports).size).toBe(2);
+    expect(ports.every((port) => Number.isInteger(port) && port > 0)).toBe(
+      true,
+    );
     await device.close();
   });
 
