@@ -171,6 +171,17 @@ const mutations = [
 ];
 
 describe('Android core Space Settings migration', () => {
+  it('keeps the native Topic payload independent of generated suite tokens', () => {
+    const source = readAndroid('space-settings-core-admin-journeys');
+    expect(source.match(/const newTopic = (.+);/)?.[1]).toBe(
+      "'Where the team works'",
+    );
+    expect(source).toContain(
+      'await client.fill(\'[data-testid="space-settings-topic"]\', newTopic)',
+    );
+    expect(source).toContain("(value) => value?.['topic'] === newTopic");
+  });
+
   it('pins the unchanged seven-definition predecessor and helper span', () => {
     const source = readFileSync(resolve(root, sourcePath));
     expect(createHash('sha256').update(source).digest('hex')).toBe(
