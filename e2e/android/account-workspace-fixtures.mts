@@ -42,6 +42,16 @@ type WorkspaceRoomStateEventType =
 const REQUEST_TIMEOUT_MS = 15_000;
 const LONG_ACCOUNT_SUFFIX = '-long-display-account-name';
 
+class MatrixFixtureHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, method: string, path: string) {
+    super(`Matrix fixture ${method} ${path} failed with HTTP ${status}`);
+    this.name = 'MatrixFixtureHttpError';
+    this.status = status;
+  }
+}
+
 function record(value: unknown, description: string): MatrixRecord {
   assert(value !== null && typeof value === 'object' && !Array.isArray(value), description);
   return value as MatrixRecord;
@@ -132,11 +142,13 @@ export function createAccountFixtures(
     observer: NodeWorkspaceAccount,
     alias: string,
   ): Promise<string | undefined>;
+  allowEndedMembershipCleanup(account: NodeWorkspaceAccount, roomId: string): void;
   trackRoomMembership(account: NodeWorkspaceAccount, roomId: string): void;
 } {
   const sessions = new Map<string, AccessSession>();
   const accounts = new Map<string, Promise<NodeWorkspaceAccount>>();
   const roomMembers = new Map<string, Set<string>>();
+  const endedRoomMembers = new Map<string, Set<string>>();
 
   resources.cleanup('cleanup fixture rooms and accounts', async () => {
     const failures: unknown[] = [];
@@ -154,6 +166,14 @@ export function createAccountFixtures(
               AbortSignal.timeout(REQUEST_TIMEOUT_MS),
             );
           } catch (error) {
+            if (
+              action === 'leave' &&
+              error instanceof MatrixFixtureHttpError &&
+              error.status === 403 &&
+              endedRoomMembers.get(roomId)?.has(userId)
+            ) {
+              continue;
+            }
             failures.push(error);
           }
         }
@@ -198,7 +218,7 @@ export function createAccountFixtures(
       signal: requestSignal(parentSignal),
     });
     if (!response.ok) {
-      throw new Error(`Matrix fixture ${method} ${path} failed with HTTP ${response.status}`);
+      throw new MatrixFixtureHttpError(response.status, method, path);
     }
     return record(await response.json(), `Matrix fixture ${method} ${path} response`);
   }
@@ -610,6 +630,19 @@ export function createAccountFixtures(
     roomMembers.set(roomId, members);
   }
 
+  function allowEndedMembershipCleanup(
+    member: NodeWorkspaceAccount,
+    roomId: string,
+  ): void {
+    assert(
+      roomMembers.get(roomId)?.has(member.userId),
+      `Cannot allow cleanup for untracked Matrix fixture membership ${member.userId} in ${roomId}`,
+    );
+    const members = endedRoomMembers.get(roomId) ?? new Set<string>();
+    members.add(member.userId);
+    endedRoomMembers.set(roomId, members);
+  }
+
   return {
     account,
     createRoom,
@@ -632,6 +665,7 @@ export function createAccountFixtures(
     joinedRoomIds,
     roomState,
     resolveRoomAlias,
+    allowEndedMembershipCleanup,
     trackRoomMembership,
   };
 }

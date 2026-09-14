@@ -1291,3 +1291,82 @@ native first attempts, both unchanged predecessors, at least four effective
 failing controls, all required static gates, original-attempt green Android
 hosted evidence, exact hosted predecessor passes and an audited immutable
 artifact. This mapping does not authorize predecessor retirement.
+
+## Member moderation batch
+
+[Android member Block, Kick, and Ban](https://github.com/quwisky/trinity-matrix-client/issues/709)
+owns the three Android-applicable definitions and all 22 direct assertion sites
+in
+[Block member](../browser/journeys/room-administration/block-member.spec.mts)
+and
+[Kick/Ban member](../browser/journeys/room-administration/kick-member.spec.mts),
+pinned to consolidated base `1610f3ca0872e8144be657b63d0e183b0a1284b0`.
+The Block source SHA-256 is
+`792a6e1d021c5e09661c5847e4fb577044cab1635673151cefd026cf57acfa84`
+(helper lines 47–55, definition lines 60–123). The generated Kick/Ban source
+SHA-256 is
+`e7ab22e420abf9f545c7ad1bb9b637b435cbc9a754759167070ebb38550d2a86`
+(helper lines 68–76, generator lines 81–94, generated definitions lines
+95–165). Its stale-roster fault at lines 168–291 remains browser-owned because
+it requires Angular development hooks unavailable in the production APK. All
+Playwright predecessors remain enabled and unchanged.
+
+`android.member-moderation` resets one installed Android invocation to the
+exact Pixel 5 profile for each of three stages. Finite Matrix fixtures create
+fresh admin/member accounts and invited private Rooms, set the target display
+name, and join the lower-power member. Login, Rooms and Room selection, compact
+overflow/Members navigation, member selection, moderation activation, and
+confirmation use measured Maestro native input. WebView/CDP access is read-only
+observation and coordinate measurement; it does not click, focus, fill, submit
+forms, dispatch product events, mutate application state or styles, or navigate.
+
+| Predecessor obligation                    | Replacement assertion identity       |
+| ----------------------------------------- | ------------------------------------ |
+| Block Room timeline is visible            | `block.room-timeline-visible`        |
+| Block member list starts hidden           | `block.members-initially-hidden`     |
+| Block member list opens visibly           | `block.members-panel-visible`        |
+| Block member info is visible              | `block.member-info-visible`          |
+| Initial Block action is visible           | `block.action-block-visible`         |
+| Account-data round trip shows Unblock     | `block.action-unblock-visible`       |
+| Kick Room timeline is visible             | `kick.room-timeline-visible`         |
+| Kick member list starts hidden            | `kick.members-initially-hidden`      |
+| Kick member list opens visibly            | `kick.members-panel-visible`         |
+| Kick member info is visible               | `kick.member-info-visible`           |
+| Kick closes member info                   | `kick.member-info-closed`            |
+| Kick restores the visible roster          | `kick.roster-visible`                |
+| Kicked target row is absent               | `kick.member-row-absent`             |
+| Kicked target has Matrix membership leave | `kick.server-membership`             |
+| Ban Room timeline is visible              | `ban.room-timeline-visible`          |
+| Ban member list starts hidden             | `ban.members-initially-hidden`       |
+| Ban member list opens visibly             | `ban.members-panel-visible`          |
+| Ban member info is visible                | `ban.member-info-visible`            |
+| Ban closes member info                    | `ban.member-info-closed`             |
+| Ban restores the visible roster           | `ban.roster-visible`                 |
+| Banned target row is absent               | `ban.member-row-absent`              |
+| Banned target has Matrix membership ban   | `ban.server-membership`              |
+
+```bash
+pnpm nx run trinity-e2e-android:member-moderation --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:member-moderation
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the Node invocation. Its
+provisional bounds are 25 minutes for the Node test, 28 minutes for the
+resource-owning target and 30 minutes for the hosted command. Android CI shard 3
+runs it after `message-moderation` and before retained Playwright. Started-only
+diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.member-moderation/`;
+`member-moderation/journeys.json` records all three stages, source, running and
+terminal state, duration, failure count and artifact pointer, accompanied by 22
+per-identity records, native-command evidence, renderer/APK/profile provenance
+and pass/failure captures. Device, WebView, Matrix and secret-redaction cleanup
+run on every exit.
+
+Acceptance remains pending until #709 records three complete unchanged-input
+native first attempts, all three unchanged predecessors, at least five effective
+failing controls, all required static gates, original-attempt green Android
+hosted evidence, exact hosted predecessor passes and an audited immutable
+artifact. This mapping does not authorize predecessor retirement or claim the
+browser-only stale-roster fault.

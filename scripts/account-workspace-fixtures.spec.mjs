@@ -163,6 +163,85 @@ describe('account workspace fixtures', () => {
     expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(2);
   });
 
+  it('tolerates an explicitly ended membership while still forgetting and logging out', async () => {
+    createNodeAccount.mockImplementation(async (_resources, _signal, role) =>
+      account(role),
+    );
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        const body = JSON.parse(init.body);
+        return response({
+          user_id: `@${body.identifier.user}:test`,
+          access_token: body.identifier.user,
+        });
+      }
+      if (url.endsWith('/createRoom'))
+        return response({ room_id: '!room:test' });
+      if (
+        url.endsWith('/leave') &&
+        init.headers.Authorization === 'Bearer user-bob'
+      )
+        return response({ errcode: 'M_FORBIDDEN' }, 403);
+      return response({});
+    });
+    const cleanups = [];
+    const fixtures = createAccountFixtures(
+      resources(cleanups),
+      new AbortController().signal,
+    );
+    const alice = await fixtures.account('alice');
+    await fixtures.createRoom(alice, { name: 'Room' });
+    const bob = await fixtures.account('bob');
+    await fixtures.join(bob, '!room:test');
+    fixtures.allowEndedMembershipCleanup(bob, '!room:test');
+
+    await expect(cleanups[0]()).resolves.toBeUndefined();
+    const paths = fetchCalls.map(({ url }) => new URL(url).pathname);
+    expect(paths.filter((path) => path.endsWith('/leave'))).toHaveLength(2);
+    expect(paths.filter((path) => path.endsWith('/forget'))).toHaveLength(2);
+    expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(2);
+  });
+
+  it('aggregates a leave 403 when the membership was not explicitly ended', async () => {
+    createNodeAccount.mockImplementation(async (_resources, _signal, role) =>
+      account(role),
+    );
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        const body = JSON.parse(init.body);
+        return response({
+          user_id: `@${body.identifier.user}:test`,
+          access_token: body.identifier.user,
+        });
+      }
+      if (url.endsWith('/createRoom'))
+        return response({ room_id: '!room:test' });
+      if (
+        url.endsWith('/leave') &&
+        init.headers.Authorization === 'Bearer user-bob'
+      )
+        return response({ errcode: 'M_FORBIDDEN' }, 403);
+      return response({});
+    });
+    const cleanups = [];
+    const fixtures = createAccountFixtures(
+      resources(cleanups),
+      new AbortController().signal,
+    );
+    const alice = await fixtures.account('alice');
+    await fixtures.createRoom(alice, { name: 'Room' });
+    const bob = await fixtures.account('bob');
+    await fixtures.join(bob, '!room:test');
+
+    await expect(cleanups[0]()).rejects.toBeInstanceOf(AggregateError);
+    const paths = fetchCalls.map(({ url }) => new URL(url).pathname);
+    expect(paths.filter((path) => path.endsWith('/leave'))).toHaveLength(2);
+    expect(paths.filter((path) => path.endsWith('/forget'))).toHaveLength(2);
+    expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(2);
+  });
+
   it('uploads the supplied PNG bytes before updating the profile with the MXC URI', async () => {
     createNodeAccount.mockResolvedValue(account('avatar'));
     globalThis.fetch = vi.fn(async (url, init) => {
