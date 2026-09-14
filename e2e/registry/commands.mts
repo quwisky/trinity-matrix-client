@@ -264,6 +264,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.space-settings-core'],
   },
   {
+    name: 'e2e:android:space-leave',
+    command: 'nx run trinity-e2e-android:space-leave',
+    kind: 'canonical',
+    suiteIds: ['android.space-leave'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -470,6 +476,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'space-settings-core-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-core; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-settings-core'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'space-leave-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-leave; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.space-leave'],
   },
   {
     command:
