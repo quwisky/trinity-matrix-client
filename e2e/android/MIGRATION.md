@@ -1364,9 +1364,16 @@ per-identity records, native-command evidence, renderer/APK/profile provenance
 and pass/failure captures. Device, WebView, Matrix and secret-redaction cleanup
 run on every exit.
 
-Acceptance remains pending until #709 records three complete unchanged-input
-native first attempts, all three unchanged predecessors, at least five effective
-failing controls, all required static gates, original-attempt green Android
-hosted evidence, exact hosted predecessor passes and an audited immutable
-artifact. This mapping does not authorize predecessor retirement or claim the
-browser-only stale-roster fault.
+Accepted on hosted run `34867886690` at source head `6fd03a32` (hosted merge
+`5d022ff3`). Android shard 3 passed on attempt 1. Immutable artifact
+`10362633783` records one suite attempt, zero retries, all three stages and 22
+identities passed, 172/172 completed Maestro commands, native Block/Kick/Ban and
+confirmation actions, exact `leave`/`ban` server memberships, verified
+renderer/installed-package/Pixel 5 provenance, no bearer/password findings, and
+complete Synapse teardown. Browser artifact `10358997011` records all three
+exact predecessors and the browser-owned stale-roster case passed at retry 0.
+Together with three complete unchanged-input local native first attempts, all
+three unchanged local predecessors, five effective failing controls, the full
+static gates, and an independent review with no unresolved findings, this
+accepts #709. The Playwright predecessors remain enabled; this mapping does not
+authorize their retirement or claim the browser-only stale-roster fault.
