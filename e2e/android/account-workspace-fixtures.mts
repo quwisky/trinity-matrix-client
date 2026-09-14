@@ -35,6 +35,7 @@ type WorkspaceRoomStateEventType =
   | 'm.room.join_rules'
   | 'm.room.name'
   | 'm.room.power_levels'
+  | 'm.room.tombstone'
   | 'm.room.topic'
   | 'm.space.parent';
 
