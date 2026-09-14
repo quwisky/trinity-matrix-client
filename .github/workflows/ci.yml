@@ -397,6 +397,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'space-leave-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-leave; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'room-tombstone-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-tombstone; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'member-details-promotion-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:member-details-promotion; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'member-role-classification-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-classification; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:message-moderation; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'member-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:member-moderation; fi
@@ -455,6 +456,12 @@ jobs:
           surface: android-member-details-promotion
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.member-details-promotion/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.member-role-classification-started == 'true' }}
+        with:
+          surface: android-member-role-classification
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.member-role-classification/**
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.accounts-started == 'true' }}
         with:

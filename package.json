@@ -66,6 +66,7 @@
     "e2e:android:space-leave": "node scripts/nx.mjs run trinity-e2e-android:space-leave",
     "e2e:android:room-tombstone": "node scripts/nx.mjs run trinity-e2e-android:room-tombstone",
     "e2e:android:member-details-promotion": "node scripts/nx.mjs run trinity-e2e-android:member-details-promotion",
+    "e2e:android:member-role-classification": "node scripts/nx.mjs run trinity-e2e-android:member-role-classification",
     "e2e:android:message-moderation": "node scripts/nx.mjs run trinity-e2e-android:message-moderation",
     "e2e:android:member-moderation": "node scripts/nx.mjs run trinity-e2e-android:member-moderation",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
