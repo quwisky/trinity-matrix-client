@@ -160,6 +160,6 @@ remains unchanged at SHA-256
 
 Commit and push `test/711-android-member-role-classification`, cherry-pick onto `test/676-android-sidebar-filter`, verify the identical tree, and push. Never merge PR #677.
 
-- [ ] **Step 5: Audit original-attempt hosted evidence before closing #711**
+- [x] **Step 5: Audit original-attempt hosted evidence before closing #711**
 
 Require green owned Android shard evidence and exact hosted predecessor passes at retry 0. Audit the immutable suite artifact for four stages, 27 identities, completed native commands, exact classification/geometry receipts, renderer/APK/profile provenance, secret redaction, and teardown. Track unrelated job-level reliability separately on #665, then update #711, #660, #653, and PR #677.
