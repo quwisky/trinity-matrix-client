@@ -162,6 +162,6 @@ Run `git diff --check`, inspect the complete worktree against `b6678027`, and ad
 
 Stage only #708-owned files, inspect the cached diff, commit `test(e2e): migrate Android message moderation`, push `test/708-android-message-moderation`, cherry-pick onto `test/676-android-sidebar-filter`, verify, and push. Do not merge PR #677.
 
-- [ ] **Step 5: Audit hosted evidence before closing #708**
+- [x] **Step 5: Audit hosted evidence before closing #708**
 
 Require original-attempt green Android shard evidence and exact hosted predecessor passes at retry 0. Audit the immutable suite artifact for two stages, five identities, native long-press/action proof, renderer/APK/profile provenance, secret redaction, and teardown. Track unrelated job-level reliability separately on #665, then update #708, #660, #653, and PR #677.
