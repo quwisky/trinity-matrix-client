@@ -288,6 +288,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.member-role-classification'],
   },
   {
+    name: 'e2e:android:member-role-live-updates',
+    command: 'nx run trinity-e2e-android:member-role-live-updates',
+    kind: 'canonical',
+    suiteIds: ['android.member-role-live-updates'],
+  },
+  {
     name: 'e2e:android:message-moderation',
     command: 'nx run trinity-e2e-android:message-moderation',
     kind: 'canonical',
@@ -530,6 +536,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'member-role-classification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-role-classification; fi',
     tier: 'pull-request',
     suiteIds: ['android.member-role-classification'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'member-role-live-updates-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.member-role-live-updates'],
   },
   {
     command:

@@ -1558,3 +1558,90 @@ renderer contains 49 files / 15,302,528 bytes and matches the hosted merge.
 Together with the three unchanged local native passes, five effective failing
 controls, static gates, and independent review, this completes #711 without
 authorizing predecessor retirement.
+
+### Member role live updates batch
+
+[Android member role live updates](https://github.com/quwisky/trinity-matrix-client/issues/712)
+owns four Android-applicable definitions in
+[Member role sections](../browser/journeys/room-administration/member-roles.spec.mts),
+pinned to consolidated base `4f8e1a99884acbd1389a69b0f8235b2af4a7846d`
+and source SHA-256
+`58f0cacf00feb7a2587545b8261164632af83b24e0b839cc4be889af6a52b20f`.
+The definitions span lines 435–480, 482–543, 545–583 and 590–626 and own
+exactly 25 direct assertion sites. The shared helper at lines 173–193 remains
+owned by #711; this batch imports its three identities as runtime prerequisites
+without reclaiming them. All four Playwright predecessors remain enabled and
+unchanged.
+
+`android.member-role-live-updates` resets one installed Android invocation to
+the exact Pixel 5 profile for each of four stages. Finite Matrix fixtures keep
+the member roster or settings surface open while server-side power events apply
+the predecessor's exact invite threshold of 50 and the exact 0→50 promotion or
+100→0 viewer demotion. Login, Room selection,
+compact overflow/Members and settings navigation, row selection, hardware Back,
+focus traversal, Enter, Space and touch use measured Maestro-native input. WebView/CDP
+is limited to read-only observation and coordinate measurement; it does not
+click, focus, fill, dispatch product events, navigate, inject DOM, or mutate
+application state or styles.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Two live-promotion member rows | `live-promotion.member-count` |
+| Initial Owner / Member labels | `live-promotion.initial-section-labels` |
+| Final Owner / Moderator labels | `live-promotion.final-section-labels` |
+| Promoted member moves to Moderator | `live-promotion.moderator-member` |
+| Kick begins enabled | `permission-loss.kick-initially-enabled` |
+| Kick disables live | `permission-loss.kick-disabled` |
+| Kick description is exact | `permission-loss.kick-description` |
+| Focused Kick tooltip is exact | `permission-loss.tooltip` |
+| Enter and Space open no removal dialog | `permission-loss.remove-dialog-absent` |
+| Compact Invite disables live | `permission-loss.invite-disabled` |
+| Enter and Space open no invite dialog | `permission-loss.invite-dialog-absent` |
+| Room Settings opens | `settings-demotion.surface-visible` |
+| Name begins enabled | `settings-demotion.name-initially-enabled` |
+| Demoted name text is exact | `settings-demotion.name-text` |
+| Demoted name renders as a paragraph | `settings-demotion.name-paragraph` |
+| General mutation actions are absent | `settings-demotion.general-actions-absent` |
+| Address restriction copy is exact | `settings-demotion.aliases-read-only` |
+| Alias input is absent | `settings-demotion.alias-input-absent` |
+| Alias add is absent | `settings-demotion.alias-add-absent` |
+| Alias set-main is absent | `settings-demotion.alias-set-main-absent` |
+| Alias remove is absent | `settings-demotion.alias-remove-absent` |
+| Touch-stage Kick is disabled | `touch-feedback.kick-disabled` |
+| Touch-stage Kick remains visible | `touch-feedback.kick-visible` |
+| Blocked-touch feedback is exact | `touch-feedback.exact-copy` |
+| Blocked touch opens no removal dialog | `touch-feedback.remove-dialog-absent` |
+
+Every stage also records the inherited
+`open-members.room-timeline-visible`,
+`open-members.roster-initially-hidden` and
+`open-members.roster-visible` prerequisites. The immutable artifact therefore
+contains 37 stage-local assertion records and 28 unique identities: 25 direct
+plus three inherited.
+
+```bash
+pnpm nx run trinity-e2e-android:member-role-live-updates --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:member-role-live-updates
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, and owns `android-avd` plus `synapse`. Its
+provisional bounds are 30 minutes for the Node test, 33 minutes for the target,
+and 35 minutes for the hosted wrapper. Shard 4 runs it after
+`space-settings-resilience` and before retained Playwright. That placement
+uses the latest comparable timing evidence: shard 4 completed in about 90
+minutes while shards 1 and 3 remained active beyond 104 minutes, and shard 2
+now owns #711. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.member-role-live-updates/`;
+`member-role-live-updates/journeys.json` records all four stages and their
+terminal state. Transition receipts, completed native commands,
+renderer/APK/Pixel 5 provenance, pass/failure captures, secret redaction, and
+device, WebView and Matrix teardown are retained.
+
+Acceptance remains pending until #712 records three unchanged-input native
+first attempts, all four unchanged Playwright predecessors at retry 0, at least
+five effective failing controls, required static gates, independent review,
+original-attempt green owned hosted evidence, exact hosted predecessor passes,
+and an audited immutable artifact. This mapping does not authorize predecessor
+retirement.
