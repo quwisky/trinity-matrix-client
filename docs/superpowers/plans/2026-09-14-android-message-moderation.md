@@ -158,7 +158,7 @@ Run each pinned file with `--workers=1 --retries=0` and a title grep. Require on
 
 Run `git diff --check`, inspect the complete worktree against `b6678027`, and address findings through focused red/green cycles.
 
-- [ ] **Step 4: Commit and push after fresh verification**
+- [x] **Step 4: Commit and push after fresh verification**
 
 Stage only #708-owned files, inspect the cached diff, commit `test(e2e): migrate Android message moderation`, push `test/708-android-message-moderation`, cherry-pick onto `test/676-android-sidebar-filter`, verify, and push. Do not merge PR #677.
 
