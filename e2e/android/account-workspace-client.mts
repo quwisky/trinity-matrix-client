@@ -63,7 +63,9 @@ interface LongPressTarget {
     readonly tagName: string;
     readonly className: string;
     readonly testId: string | null;
+    readonly userSelect: string;
   };
+  readonly selectionSafe: boolean;
   readonly textRectCount: number;
   readonly blockingRectCount: number;
 }
@@ -323,23 +325,20 @@ export class AccountWorkspaceClient {
           }
           const blockerSelector='a,button,img,video,audio,input,textarea,select';
           const blockingRects=[...element.querySelectorAll(blockerSelector)].flatMap(node=>[...node.getClientRects()].map(r=>({left:r.left,top:r.top,right:r.right,bottom:r.bottom})));
-          const inside=(r,x,y,padding=0)=>x>=r.left-padding&&x<=r.right+padding&&y>=r.top-padding&&y<=r.bottom+padding;
-          const xs=[];
-          for(let x=Math.min(rect.right-8,innerWidth-8);x>=Math.max(rect.left+8,8);x-=8)xs.push(x);
-          const ys=[];
-          for(let y=Math.max(rect.top+6,6);y<=Math.min(rect.bottom-6,innerHeight-6);y+=6)ys.push(y);
-          for(const y of ys)for(const x of xs){
+          const candidates=[...element.querySelectorAll('*')].filter(node=>getComputedStyle(node).userSelect==='none'&&!node.closest(blockerSelector)).flatMap(node=>[...node.getClientRects()].map(r=>({x:r.left+r.width/2,y:r.top+r.height/2})));
+          for(const {x,y} of candidates){
+            if(x<0||y<0||x>=innerWidth||y>=innerHeight)continue;
             const hit=document.elementFromPoint(x,y);
             if(!(hit instanceof Element)||!element.contains(hit))continue;
             if(hit.closest(blockerSelector))continue;
-            if(textRects.some(r=>inside(r,x,y,6)))continue;
-            if(blockingRects.some(r=>inside(r,x,y,4)))continue;
-            return {cssPoint:{x,y},hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid')},textRectCount:textRects.length,blockingRectCount:blockingRects.length};
+            const userSelect=getComputedStyle(hit).userSelect;
+            if(userSelect!=='none')continue;
+            return {cssPoint:{x,y},hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid'),userSelect},selectionSafe:true,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
           }
           return null;
         })()`),
       (value) => value !== null,
-      `blank native long-press point inside ${selector}`,
+      `non-selectable native long-press point inside ${selector}`,
       this.signal,
       15_000,
     );

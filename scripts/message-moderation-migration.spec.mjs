@@ -117,11 +117,13 @@ describe('Android message moderation migration', () => {
     );
     expect(client).toContain('private async longPressTarget(');
     expect(client).toContain(
-      'document.createTreeWalker(element,NodeFilter.SHOW_TEXT)',
-    );
-    expect(client).toContain('range.getClientRects()');
-    expect(client).toContain(
       "'a,button,img,video,audio,input,textarea,select'",
+    );
+    expect(client).toContain("getComputedStyle(node).userSelect==='none'");
+    expect(client).toContain("if(userSelect!=='none')continue");
+    expect(client).toContain('selectionSafe:true');
+    expect(client).toContain(
+      'non-selectable native long-press point inside ${selector}',
     );
     expect(client).toMatch(
       /Math\.max\(\.\.\.samePointerEvents\.map\(\(event\) => event\.timeStamp\)\)/,
