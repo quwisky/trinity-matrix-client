@@ -270,6 +270,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.space-leave'],
   },
   {
+    name: 'e2e:android:room-tombstone',
+    command: 'nx run trinity-e2e-android:room-tombstone',
+    kind: 'canonical',
+    suiteIds: ['android.room-tombstone'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -482,6 +488,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'space-leave-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-leave; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-leave'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'room-tombstone-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-tombstone; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-tombstone'],
   },
   {
     command:

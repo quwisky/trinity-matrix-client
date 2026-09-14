@@ -1178,3 +1178,56 @@ native first attempts, the unchanged predecessor, at least four effective
 failing controls, all required static gates, and original-attempt green browser
 and Android shard-2 hosted jobs with an audited immutable artifact. This mapping
 does not authorize predecessor retirement.
+
+## Room tombstone batch
+
+[Android Room tombstone](https://github.com/quwisky/trinity-matrix-client/issues/707)
+owns the single definition and all six direct assertions in
+[Room tombstone](../browser/journeys/room-administration/tombstone.spec.mts),
+pinned to consolidated base `f46e2751da6bfa3ff784f253da1360491e28e53d`
+and source SHA-256
+`ca5563f9d5a4f84db23d7fb7a889da28682fffabf3dedd3b42b2f529d936472b`.
+The shared room-opening helper occupies lines 15–23 and the definition occupies
+lines 28–113. The Playwright predecessor remains enabled and unchanged.
+
+`android.room-tombstone` resets one installed Android invocation to the exact
+Pixel 5 profile. A fresh Account and distinctly named old and successor private
+Rooms are seeded through finite Matrix fixtures; the old Room receives the exact
+`m.room.tombstone` body and successor ID. Login, Rooms-rail selection, old-Room
+selection and successor activation use measured Maestro native input. WebView/CDP
+access is read-only observation and coordinate measurement; it does not click,
+focus, fill, submit forms, dispatch product events, mutate application state or
+styles, or navigate.
+
+| Predecessor obligation                         | Replacement assertion identity |
+| ---------------------------------------------- | ------------------------------ |
+| Old Room composer is visible                   | `old.composer-visible`         |
+| Old Room upgrade banner is visible             | `old.banner-visible`           |
+| Banner is outside and above the chat row       | `layout.banner-above-chat-row` |
+| Timeline retains more than half the chat width | `layout.timeline-share`        |
+| Successor Room has no tombstone banner         | `successor.banner-hidden`      |
+| Successor Room composer remains visible        | `successor.composer-visible`   |
+
+```bash
+pnpm nx run trinity-e2e-android:room-tombstone --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-tombstone
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the Node invocation. Its provisional
+bounds are 15 minutes for the Node test, 18 minutes for the resource-owning
+target and 20 minutes for the hosted command. Android CI shard 2 runs it after
+`space-leave` and before retained Playwright. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-tombstone/`; the
+`room-tombstone/journeys.json` lifecycle records its source, running and terminal
+state, duration, failure count and artifact pointer, accompanied by six
+per-identity records, native-command evidence, renderer/APK/profile provenance
+and pass/failure captures. Device, WebView, Matrix and secret-redaction cleanup
+run on every exit.
+
+Acceptance remains pending until #707 records three complete unchanged-input
+native first attempts, the unchanged predecessor, at least four effective
+failing controls, all required static gates, and original-attempt green browser
+and Android shard-2 hosted jobs with an audited immutable artifact. This mapping
+does not authorize predecessor retirement.
