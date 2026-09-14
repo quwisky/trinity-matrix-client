@@ -161,10 +161,19 @@ Run each pinned file with `--workers=1 --retries=0`. Require both first-attempt 
 
 Run `git diff --check`, inspect the complete worktree against `02de1669`, and address findings through focused red/green cycles.
 
-- [ ] **Step 4: Commit and push after fresh verification**
+- [x] **Step 4: Commit and push after fresh verification**
 
 Stage only #710-owned files, inspect the cached diff, commit `test(e2e): migrate Android member details and promotion`, push `test/710-android-member-details-promotion`, cherry-pick onto `test/676-android-sidebar-filter`, verify, and push. Do not merge PR #677.
 
-- [ ] **Step 5: Audit hosted evidence before closing #710**
+- [x] **Step 5: Audit hosted evidence before closing #710**
 
 Require original-attempt green Android shard evidence and exact hosted predecessor passes at retry 0. Audit the immutable suite artifact for two stages, 25 identities, native clipboard/promotion proof, exact power level, renderer/APK/profile provenance, secret redaction, and teardown. Track unrelated job-level reliability separately on #665, then update #710, #660, #653, and PR #677.
+
+Accepted from hosted run `34888697076`, Android shard-2 job `104126448383`,
+artifact `playwright-34888697076-1-e0f9545eedbbf273c36942ea54862a9815d9f702-android-e2e-android-member-details-promotion-2`.
+The owned suite passed its original attempt with zero retries; both native stages
+and both exact Playwright predecessors passed. The audited artifact contains all
+25 assertion identities, 27 completed native-command files, exact clipboard MXID
+and server power 50 observations, Pixel 5 geometry, renderer/APK provenance,
+redacted credentials, and clean teardown. Unrelated aggregate-shard execution
+does not alter this owned-suite acceptance.
