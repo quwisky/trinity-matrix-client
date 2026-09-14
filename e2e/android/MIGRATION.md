@@ -1452,9 +1452,14 @@ per-identity records, completed native-command evidence, renderer/APK/Pixel 5
 provenance, exact Matrix power evidence, and pass/failure captures. Device,
 WebView, Matrix and secret-redaction cleanup run on every exit.
 
-Acceptance remains pending until #710 records three complete unchanged-input
-native first attempts, both unchanged Playwright predecessors at retry 0, at
-least five effective failing controls, all required static gates, independent
-review, original-attempt green Android shard-2 hosted evidence, exact hosted
-predecessor passes, and an audited immutable artifact. This mapping does not
-authorize predecessor retirement.
+Acceptance completed on hosted run `34888697076`, Android shard-2 job
+`104126448383`, from merge commit
+`e0f9545eedbbf273c36942ea54862a9815d9f702`. The original owned attempt passed
+with zero retries: both native stages and both exact Playwright predecessors were
+green. Its immutable artifact contains all 25 assertion identities, 27 native
+command files with 136 completed entries, exact clipboard MXID and server power
+50 observations, 34 px section-header and 44 px member-row geometry, Pixel 5 and
+renderer/APK provenance, redacted secrets, and clean teardown. The renderer tree
+matches the hosted merge tree exactly. Unrelated aggregate-shard execution is
+tracked separately and does not change this owned-suite acceptance. This mapping
+does not authorize predecessor retirement.
