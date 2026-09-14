@@ -191,10 +191,12 @@ Run: `git status --short`
 
 Review the complete working-tree artifact against `f46e2751`, including untracked files. Address findings through focused red/green cycles and re-run affected gates.
 
-- [ ] **Step 4: Commit and push only after fresh verification**
+- [x] **Step 4: Commit and push only after fresh verification**
 
 Stage only #707-owned files, inspect `git diff --cached`, commit as `test(e2e): migrate Android Room tombstone`, push `test/707-android-room-tombstone`, cherry-pick onto `test/676-android-sidebar-filter`, verify again, and push the consolidated branch. Do not merge PR #677.
 
-- [ ] **Step 5: Audit hosted shard 2 before closing #707**
+- [x] **Step 5: Audit hosted shard 2 and the exact hosted predecessor before closing #707**
 
-Require original-attempt green browser and Android shard-2 jobs. Download the immutable suite artifact and audit one stage, six identities, layout/successor evidence, native commands, renderer/APK/profile provenance, secret redaction, and teardown before updating #707, #660, #653, and PR #677.
+Require an original-attempt green Android shard-2 job and an exact Playwright predecessor pass at retry 0. Download the immutable suite artifacts and audit one stage, six identities, layout/successor evidence, native commands, renderer/APK/profile provenance, secret redaction, and teardown before updating #707, #660, #653, and PR #677. Record any unrelated job-level browser timeout on #665 without rerunning or attributing it to this migration.
+
+Completed on hosted run `34820476620`: Android shard 2 passed on its original attempt; artifact `10340791826` passed all owned audit gates; the exact predecessor passed at retry 0 in browser artifact `10338819253`. The later unrelated full-browser-suite timeout is recorded on #665.
