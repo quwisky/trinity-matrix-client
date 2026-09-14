@@ -1535,9 +1535,21 @@ applicable ordinary-Room stages. Completed native-command evidence,
 renderer/APK/Pixel 5 provenance, pass/failure captures, and device, WebView,
 Matrix and secret-redaction cleanup are retained on every exit.
 
-Acceptance remains pending until #711 records three complete unchanged-input
-native first attempts, all four unchanged Playwright predecessors at retry 0,
-at least five effective failing controls, all required static gates, independent
-review, original-attempt green owned Android hosted evidence, exact hosted
-predecessor passes, and an audited immutable artifact. This mapping does not
-authorize predecessor retirement.
+Acceptance completed on original-attempt hosted run
+[34900885420](https://github.com/quwisky/trinity-matrix-client/actions/runs/34900885420).
+Android shard 2 passed from exact source head
+`4f8e1a99884acbd1389a69b0f8235b2af4a7846d` through hosted merge
+`c441d7d542d2d36bf2124586f8aa31d879c99cc1`. Immutable
+[artifact 10374106048](https://github.com/quwisky/trinity-matrix-client/actions/runs/34900885420/artifacts/10374106048)
+contains four passed stages, one attempt, zero retries, all 33 stage-local
+records / 27 unique identities, 37 native-command files / 181 completed Maestro
+entries, zero failed-command or secret-field findings, exact Owner/Admin/
+Moderator/Member classification, 34 px section headers, 44 px member rows,
+Pixel 5 viewport and installed-package evidence, pass captures, and clean
+Synapse teardown. The same run's immutable
+[browser artifact 10371646373](https://github.com/quwisky/trinity-matrix-client/actions/runs/34900885420/artifacts/10371646373)
+records all four exact predecessors passed at retry 0. The verified production
+renderer contains 49 files / 15,302,528 bytes and matches the hosted merge.
+Together with the three unchanged local native passes, five effective failing
+controls, static gates, and independent review, this completes #711 without
+authorizing predecessor retirement.
