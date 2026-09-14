@@ -185,10 +185,10 @@ Run: `git status --short`
 
 Review the complete working-tree artifact against `b23a2474`, including untracked files. Address findings through focused red/green cycles and re-run affected gates.
 
-- [ ] **Step 4: Commit and push only after fresh verification**
+- [x] **Step 4: Commit and push only after fresh verification**
 
 Stage only #706-owned files, inspect `git diff --cached`, commit as `test(e2e): migrate Android Space leave`, push `test/706-android-space-leave`, cherry-pick onto `test/676-android-sidebar-filter`, verify again, and push the consolidated branch. Do not merge PR #677.
 
-- [ ] **Step 5: Audit hosted shard 2 before closing #706**
+- [x] **Step 5: Audit hosted shard 2 before closing #706**
 
 Require original-attempt green browser and Android shard-2 jobs. Download the immutable suite artifact and audit one stage, seven identities, Matrix membership evidence, native commands, renderer/APK/profile provenance, secret redaction, and teardown before updating #706, #660, #653, and PR #677.
