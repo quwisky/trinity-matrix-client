@@ -145,7 +145,11 @@ export class AccountWorkspaceClient {
         return {
           text: e.textContent?.trim() ?? '', visible: r.width > 0 && r.height > 0 && style.visibility === 'visible',
           focused: document.activeElement === e, disabled: e.matches(':disabled'),
-          value: e instanceof HTMLInputElement && e.type !== 'password' ? e.value : null,
+          value:
+            e instanceof HTMLTextAreaElement ||
+            (e instanceof HTMLInputElement && e.type !== 'password')
+              ? e.value
+              : null,
           attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'role', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded'].includes(a.name)).map(a => [a.name,a.value])),
           rect: {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom},
           style: {display:style.display,opacity:style.opacity,overflowY:style.overflowY},
@@ -189,6 +193,20 @@ export class AccountWorkspaceClient {
     await this.nativeAction('accounts-current-point-tap', selector, filter, {}, {
       currentPoint: true,
     });
+  }
+
+  /** Tap a measured visible point when an overlay partially covers the target. */
+  async tapCurrentExposed(
+    selector: string,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
+    await this.nativeAction(
+      'accounts-current-point-tap',
+      selector,
+      filter,
+      {},
+      { currentPoint: true, exposedPoint: true },
+    );
   }
 
   async longPressCurrent(
@@ -383,6 +401,65 @@ export class AccountWorkspaceClient {
     assert.equal(matches, true, `Native replacement reached ${selector}`);
   }
 
+  /** Paste Android's system clipboard through the focused input's native context menu. */
+  async pasteSystemClipboardFocused(
+    selector: string,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
+    this.signal.throwIfAborted();
+    await this.focused(selector, filter);
+    const actionId = ++this.action;
+    const pointEndpoint = await openMaestroTargetPoint({
+      signal: this.signal,
+      readPoint: (operationSignal) =>
+        this.actionablePoint(selector, filter, operationSignal),
+    });
+    const failures: unknown[] = [];
+    try {
+      console.info(
+        `[accounts] native action ${actionId}: system clipboard paste ${selector}`,
+      );
+      await this.device.runFlow(
+        join(
+          this.workspaceRoot,
+          'e2e/android/flows/accounts-focused-paste.yaml',
+        ),
+        { APP_ID: 'eu.qwky.trinity', POINT_URL: pointEndpoint.url },
+      );
+    } catch (error) {
+      failures.push(error);
+    } finally {
+      if (pointEndpoint.lastError !== undefined) {
+        failures.push(pointEndpoint.lastError);
+      }
+      try {
+        await pointEndpoint.close();
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await this.record(`system-paste-${actionId}`, {
+          selector,
+          point: pointEndpoint.lastPoint ?? null,
+        });
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await this.owner.apply();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length) {
+      throw new AggregateError(
+        failures,
+        'Native system clipboard paste and cleanup failed',
+      );
+    }
+  }
+
   async scrollIntoViewIfNeeded(selector: string, container: string): Promise<void> {
     for (let gesture = 0; gesture < 8; gesture++) {
       await this.owner.apply();
@@ -439,6 +516,47 @@ export class AccountWorkspaceClient {
     return point;
   }
 
+  private async exposedActionablePoint(
+    selector: string,
+    filter: AccountElementFilter,
+    operationSignal = this.signal,
+  ): Promise<NativeTargetPoint> {
+    operationSignal.throwIfAborted();
+    await this.owner.apply();
+    operationSignal.throwIfAborted();
+    const cssPoint = await waitForNativeShellState(
+      () =>
+        evaluateNative(this.webview, `(() => {
+          const {selector,filter}=${JSON.stringify({ selector, filter })};
+          const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+          if(es.length!==1)return null;
+          const element=es[0],rect=element.getBoundingClientRect(),style=getComputedStyle(element);
+          if(rect.width<=0||rect.height<=0||style.visibility!=='visible'||element.matches(':disabled'))return null;
+          const xs=[rect.left+Math.min(24,rect.width/4),rect.left+rect.width/2,rect.right-Math.min(24,rect.width/4)];
+          const ys=[rect.top+Math.min(24,rect.height/4),rect.top+rect.height/2,rect.bottom-Math.min(24,rect.height/4)];
+          for(const y of ys)for(const x of xs){
+            if(x<0||y<0||x>=innerWidth||y>=innerHeight)continue;
+            const hit=document.elementFromPoint(x,y);
+            if(hit instanceof Element&&element.contains(hit))return {x,y};
+          }
+          return null;
+        })()`),
+      (value) => value !== null,
+      `one exposed actionable point inside ${selector}`,
+      operationSignal,
+      15_000,
+    );
+    assert(
+      cssPoint &&
+        typeof cssPoint === 'object' &&
+        typeof (cssPoint as { x?: unknown }).x === 'number' &&
+        typeof (cssPoint as { y?: unknown }).y === 'number',
+      `Measured an exposed point inside ${selector}`,
+    );
+    operationSignal.throwIfAborted();
+    return this.owner.nativePoint(cssPoint as { x: number; y: number });
+  }
+
   private async nativeAction(
     flow: string,
     selector: string,
@@ -448,12 +566,18 @@ export class AccountWorkspaceClient {
       readonly currentPoint?: boolean;
       readonly allowFocusedInput?: boolean;
       readonly fileInputSelector?: string;
+      readonly exposedPoint?: boolean;
     } = {},
   ): Promise<void> {
     const currentPoint = options.currentPoint ?? false;
     const allowFocusedInput = options.allowFocusedInput ?? false;
     const fileInputSelector = options.fileInputSelector;
-    const initialPoint = await this.actionablePoint(selector, filter);
+    const resolvePoint = options.exposedPoint
+      ? (operationSignal?: AbortSignal) =>
+          this.exposedActionablePoint(selector, filter, operationSignal)
+      : (operationSignal?: AbortSignal) =>
+          this.actionablePoint(selector, filter, operationSignal);
+    const initialPoint = await resolvePoint();
     const actionId = ++this.action;
     // Observe capture before application listeners can remove the clicked element.
     await evaluateNative(this.webview, `(() => {
@@ -477,7 +601,7 @@ export class AccountWorkspaceClient {
       if (currentPoint) {
         pointEndpoint = await openMaestroTargetPoint({
           signal: this.signal,
-          readPoint: async operationSignal => this.actionablePoint(selector, filter, operationSignal),
+          readPoint: resolvePoint,
         });
         flowVariables.POINT_URL = pointEndpoint.url;
       }

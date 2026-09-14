@@ -1,0 +1,9 @@
+appId: ${APP_ID}
+---
+- hideKeyboard
+- evalScript: ${output.pointResponse = http.get(POINT_URL)}
+- assertTrue: ${output.pointResponse.status === 200}
+- longPressOn:
+    point: ${output.pointResponse.body}
+- tapOn: Paste
+- hideKeyboard
