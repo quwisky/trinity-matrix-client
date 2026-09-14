@@ -1463,3 +1463,86 @@ renderer/APK provenance, redacted secrets, and clean teardown. The renderer tree
 matches the hosted merge tree exactly. Unrelated aggregate-shard execution is
 tracked separately and does not change this owned-suite acceptance. This mapping
 does not authorize predecessor retirement.
+
+## Member role classification batch
+
+[Android member role classification](https://github.com/quwisky/trinity-matrix-client/issues/711)
+owns the shared open-Room helper and four Android-applicable definitions in
+[Member role sections](../browser/journeys/room-administration/member-roles.spec.mts),
+pinned to consolidated base `d45ae933d41687f5b0b52ca36f9ac80cbbb9b931`
+and source SHA-256
+`58f0cacf00feb7a2587545b8261164632af83b24e0b839cc4be889af6a52b20f`.
+The shared helper spans lines 173–193; the grouping, trusted-DM, owner-panel,
+and owner/admin definitions span lines 205–281, 283–361, 363–393 and 395–433.
+Together they contain exactly 27 unique source assertion sites: three shared
+helper sites plus 24 direct sites. The four Playwright predecessors remain
+enabled and unchanged.
+
+`android.member-role-classification` resets one installed Android invocation to
+the exact Pixel 5 profile for each of four stages. Finite Matrix fixtures create
+fresh accounts and Rooms, set display names before membership events, join all
+participants, and assign exact 100/50/0 powers. The direct-message stage uses a
+real `trusted_private_chat` and publishes `m.direct`, preserving the canonical
+equal-admin case. Login, Rooms and Room selection, compact overflow/Members
+navigation, and member-row selection use measured Maestro native input.
+WebView/CDP is limited to read-only observation and coordinate measurement; it
+does not click, focus, fill, dispatch product events, submit forms, navigate,
+inject DOM, or mutate application state or styles.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Shared Room timeline is visible | `open-members.room-timeline-visible` |
+| Shared roster starts hidden | `open-members.roster-initially-hidden` |
+| Shared roster opens visibly | `open-members.roster-visible` |
+| Grouping has exactly three member rows | `grouping.member-count` |
+| Grouping labels are ordered Owner / Moderator / Member | `grouping.section-labels` |
+| All grouping headers are exactly 34 px | `grouping.header-heights` |
+| All grouping rows are exactly 44 px | `grouping.row-heights` |
+| All three section accessibility names are exact | `grouping.group-labels` |
+| The creator is in Owner | `grouping.owner-member` |
+| The power-50 participant is in Moderator | `grouping.moderator-member` |
+| The power-0 participant is in Member | `grouping.plain-member` |
+| Moderator row shows the exact display name | `grouping.moderator-name` |
+| DM Room timeline is visible | `direct-message.room-timeline-visible` |
+| DM roster starts hidden | `direct-message.roster-initially-hidden` |
+| DM roster opens visibly | `direct-message.roster-visible` |
+| DM has exactly two member rows | `direct-message.member-count` |
+| DM renders one exact `Admin — 2` section | `direct-message.admin-section` |
+| DM renders no Owner section | `direct-message.owner-absent` |
+| DM member-info panel opens visibly | `direct-message.panel-visible` |
+| DM member-info role is exactly Admin | `direct-message.role-admin` |
+| Owner-panel Room has exactly two rows | `owner-panel.member-count` |
+| Creator member-info panel opens visibly | `owner-panel.panel-visible` |
+| Creator member-info role is exactly Owner | `owner-panel.role-owner` |
+| Owner/admin Room has exactly two rows | `owner-admin.member-count` |
+| Owner/admin labels are ordered Owner then Admin | `owner-admin.section-labels` |
+| Creator appears in the Owner section | `owner-admin.owner-member` |
+| Power-100 peer appears in the Admin section | `owner-admin.admin-member` |
+
+```bash
+pnpm nx run trinity-e2e-android:member-role-classification --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:member-role-classification
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the Node invocation. Its provisional
+bounds are 30 minutes for the Node test, 33 minutes for the resource-owning
+target, and 35 minutes for the hosted command. Android CI shard 2 runs it after
+`member-details-promotion` and before retained Playwright. Started-only
+diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.member-role-classification/`;
+`member-role-classification/journeys.json` records all four stages, source,
+running and terminal state, duration, failure count and artifact pointer. The
+artifact contains all 27 unique identities and 33 stage-local assertion records
+because the three shared helper identities are exercised in all three
+applicable ordinary-Room stages. Completed native-command evidence,
+renderer/APK/Pixel 5 provenance, pass/failure captures, and device, WebView,
+Matrix and secret-redaction cleanup are retained on every exit.
+
+Acceptance remains pending until #711 records three complete unchanged-input
+native first attempts, all four unchanged Playwright predecessors at retry 0,
+at least five effective failing controls, all required static gates, independent
+review, original-attempt green owned Android hosted evidence, exact hosted
+predecessor passes, and an audited immutable artifact. This mapping does not
+authorize predecessor retirement.

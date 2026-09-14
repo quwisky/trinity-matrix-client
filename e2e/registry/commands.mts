@@ -282,6 +282,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.member-details-promotion'],
   },
   {
+    name: 'e2e:android:member-role-classification',
+    command: 'nx run trinity-e2e-android:member-role-classification',
+    kind: 'canonical',
+    suiteIds: ['android.member-role-classification'],
+  },
+  {
     name: 'e2e:android:message-moderation',
     command: 'nx run trinity-e2e-android:message-moderation',
     kind: 'canonical',
@@ -518,6 +524,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'member-details-promotion-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-details-promotion; fi',
     tier: 'pull-request',
     suiteIds: ['android.member-details-promotion'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'member-role-classification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-role-classification; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.member-role-classification'],
   },
   {
     command:

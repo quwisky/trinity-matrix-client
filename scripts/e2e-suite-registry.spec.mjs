@@ -1079,6 +1079,50 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android member role classification batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.member-role-classification',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:member-role-classification',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:member-role-classification',
+        sourceEntrypoints: [
+          'e2e/android/member-role-classification-journeys.mts',
+        ],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:member-role-classification',
+        command: 'nx run trinity-e2e-android:member-role-classification',
+        suiteIds: ['android.member-role-classification'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:member-role-classification'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android Recent Activity batch with the host budget', async () => {
     const suite = registrySnapshot().suites.find(
       (entry) => entry.id === 'android.recent-activity',

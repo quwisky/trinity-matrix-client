@@ -21,6 +21,10 @@ export interface WorkspaceRoom {
   readonly name: string;
 }
 
+export interface WorkspaceDirectRoomOptions {
+  readonly preset?: 'private_chat' | 'trusted_private_chat';
+}
+
 interface AccessSession {
   readonly account: NodeWorkspaceAccount;
   readonly token: string;
@@ -76,6 +80,7 @@ export function createAccountFixtures(
   createDirectRoom(
     owner: NodeWorkspaceAccount,
     partner: NodeWorkspaceAccount,
+    options?: WorkspaceDirectRoomOptions,
   ): Promise<{ readonly id: string }>;
   setDisplayName(account: NodeWorkspaceAccount, name: string): Promise<void>;
   setRoomState(
@@ -346,9 +351,10 @@ export function createAccountFixtures(
   async function createDirectRoom(
     owner: NodeWorkspaceAccount,
     partner: NodeWorkspaceAccount,
+    options: WorkspaceDirectRoomOptions = {},
   ): Promise<{ readonly id: string }> {
     const response = await request(access(owner), '/createRoom', 'POST', {
-      preset: 'private_chat',
+      preset: options.preset ?? 'private_chat',
       invite: [partner.userId],
       is_direct: true,
     });
