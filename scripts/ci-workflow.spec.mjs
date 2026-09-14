@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(34);
+    expect(uploads.length).toBe(35);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -124,6 +124,15 @@ describe('CI execution contract', () => {
       shard: '${{ matrix.shard }}',
       'report-path':
         'dist/.playwright/trinity-e2e-android/*/android.message-moderation/**',
+    });
+    const memberModerationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-moderation',
+    );
+    expect(memberModerationUploads).toHaveLength(1);
+    expect(memberModerationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-moderation/**',
     });
     expect(
       uploads.filter((step) => step.with.surface === 'android-recent-activity'),
@@ -207,33 +216,36 @@ describe('CI execution contract', () => {
                                         'android-message-moderation'
                                       ? /!cancelled\(\).*outputs\.message-moderation-started == 'true'/
                                       : step.with.surface ===
-                                          'android-recent-activity'
-                                        ? /!cancelled\(\).*outputs\.recent-activity-started == 'true'/
+                                          'android-member-moderation'
+                                        ? /!cancelled\(\).*outputs\.member-moderation-started == 'true'/
                                         : step.with.surface ===
-                                            'android-room-filter-spaceless'
-                                          ? /!cancelled\(\).*outputs\.room-filter-spaceless-started == 'true'/
+                                            'android-recent-activity'
+                                          ? /!cancelled\(\).*outputs\.recent-activity-started == 'true'/
                                           : step.with.surface ===
-                                              'android-space-curation-create-join'
-                                            ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
+                                              'android-room-filter-spaceless'
+                                            ? /!cancelled\(\).*outputs\.room-filter-spaceless-started == 'true'/
                                             : step.with.surface ===
-                                                'android-space-room-order'
-                                              ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
+                                                'android-space-curation-create-join'
+                                              ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
                                               : step.with.surface ===
-                                                  'android-room-http-error-recovery'
-                                                ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
+                                                  'android-space-room-order'
+                                                ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
                                                 : step.with.surface ===
-                                                    'android-room-settings-mobile'
-                                                  ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
+                                                    'android-room-http-error-recovery'
+                                                  ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
                                                   : step.with.surface ===
-                                                      'android-space-settings-mobile'
-                                                    ? /!cancelled\(\).*outputs\.space-settings-mobile-started == 'true'/
+                                                      'android-room-settings-mobile'
+                                                    ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
                                                     : step.with.surface ===
-                                                        'android-space-settings-resilience'
-                                                      ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
+                                                        'android-space-settings-mobile'
+                                                      ? /!cancelled\(\).*outputs\.space-settings-mobile-started == 'true'/
                                                       : step.with.surface ===
-                                                          'android-space-settings-core'
-                                                        ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
-                                                        : /!cancelled\(\).*outputs\.started == 'true'/;
+                                                          'android-space-settings-resilience'
+                                                        ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
+                                                        : step.with.surface ===
+                                                            'android-space-settings-core'
+                                                          ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
+                                                          : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -419,6 +431,29 @@ describe('CI execution contract', () => {
     expect(moderationLine).toContain('--timeout-ms 1500000');
   });
 
+  it('runs member moderation after message moderation and before retained Playwright on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const messageModeration = script.indexOf(
+      'trinity-e2e-android:message-moderation',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberModerationLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:member-moderation'));
+
+    expect(messageModeration).toBeGreaterThan(-1);
+    expect(memberModeration).toBeGreaterThan(messageModeration);
+    expect(playwright).toBeGreaterThan(memberModeration);
+    expect(memberModerationLine).toContain('matrix.shard }}" = "3"');
+    expect(memberModerationLine).toContain('member-moderation-started=true');
+    expect(memberModerationLine).toContain('--timeout-ms 1800000');
+  });
+
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
     const steps = workflow.jobs['android-e2e'].steps;
     const kvm = steps.find(
@@ -459,7 +494,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(27);
+    expect(lines).toHaveLength(28);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }
