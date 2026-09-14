@@ -276,6 +276,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-tombstone'],
   },
   {
+    name: 'e2e:android:message-moderation',
+    command: 'nx run trinity-e2e-android:message-moderation',
+    kind: 'canonical',
+    suiteIds: ['android.message-moderation'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -500,6 +506,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'accounts-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:accounts-workspace; fi',
     tier: 'pull-request',
     suiteIds: ['android.accounts-workspace'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'message-moderation-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-moderation; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-moderation'],
   },
   {
     command:

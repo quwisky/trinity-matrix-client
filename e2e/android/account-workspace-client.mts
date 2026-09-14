@@ -32,6 +32,10 @@ export const PIXEL_5_ACCOUNT_PROFILE: AccountViewportProfile = {
   userAgent: 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.7922.34 Mobile Safari/537.36',
 };
 
+const LONG_PRESS_DURATION_MS = 750;
+const LONG_PRESS_DRIFT_PX = 2;
+const LONG_PRESS_THRESHOLD_MS = 500;
+
 export interface AccountElement {
   readonly text: string;
   readonly visible: boolean;
@@ -50,6 +54,18 @@ export interface AccountElement {
 export interface AccountElementFilter {
   readonly text?: string;
   readonly exactText?: string;
+}
+
+interface LongPressTarget {
+  readonly point: NativeTargetPoint;
+  readonly cssPoint: { readonly x: number; readonly y: number };
+  readonly hit: {
+    readonly tagName: string;
+    readonly className: string;
+    readonly testId: string | null;
+  };
+  readonly textRectCount: number;
+  readonly blockingRectCount: number;
 }
 
 export interface AccountWorkspaceCaseContext {
@@ -171,6 +187,167 @@ export class AccountWorkspaceClient {
     await this.nativeAction('accounts-current-point-tap', selector, filter, {}, {
       currentPoint: true,
     });
+  }
+
+  async longPressCurrent(
+    selector: string,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
+    const target = await this.longPressTarget(selector, filter);
+    const point = target.point;
+    const actionId = ++this.action;
+    // Maestro's longPressOn has no configurable duration and races Trinity's exact
+    // 500 ms threshold. A two-native-pixel horizontal drift keeps Maestro on its
+    // duration-controlled swipe path while remaining far below Trinity's 10 CSS px
+    // cancellation slop.
+    const flow = join(this.output, `accounts-point-long-press-${actionId}.yaml`);
+    await writeFile(
+      flow,
+      `appId: eu.qwky.trinity\n---\n- swipe:\n    start: "${point.x},${point.y}"\n    end: "${point.x + LONG_PRESS_DRIFT_PX},${point.y}"\n    duration: ${LONG_PRESS_DURATION_MS}\n`,
+    );
+    await evaluateNative(this.webview, `(() => {
+      const {selector,filter}=${JSON.stringify({ selector, filter })};
+      const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+      if(es.length!==1)throw new Error('Native long-press target changed before dispatch');
+      const element=es[0],types=['pointerdown','pointermove','pointerup','pointercancel'];
+      const state={events:[],types,listener:e=>state.events.push({type:e.type,trusted:e.isTrusted,matched:element.contains(e.target),targetTag:e.target instanceof Element?e.target.tagName:null,targetClass:e.target instanceof Element?e.target.className:null,pointerId:e.pointerId,timeStamp:e.timeStamp,clientX:e.clientX,clientY:e.clientY})};
+      window.__trinityAccountLongPress=state;
+      for(const type of types)document.addEventListener(type,state.listener,true);
+      return true;
+    })()`);
+    let actionError: unknown;
+    let trustedEvents: unknown = null;
+    let durationMs: number | null = null;
+    try {
+      console.info(`[accounts] native action ${actionId}: 750 ms long press ${selector}`);
+      await this.device.runFlow(flow, {});
+      const events = await evaluateNative(
+        this.webview,
+        'window.__trinityAccountLongPress?.events ?? []',
+      );
+      assert(Array.isArray(events), 'Native long-press events are an array');
+      trustedEvents = events;
+      const down = events.find(
+        (event) =>
+          event?.type === 'pointerdown' &&
+          event.trusted === true &&
+          event.matched === true,
+      );
+      assert(down, `Native long press ${actionId} started on ${selector}`);
+      const terminal = events.find(
+        (event) =>
+          (event?.type === 'pointerup' ||
+            event?.type === 'pointercancel') &&
+          event.trusted === true &&
+          event.pointerId === down.pointerId,
+      );
+      assert(
+        terminal,
+        `Native long press ${actionId} completed with pointerup or pointercancel`,
+      );
+      const samePointerEvents = events.filter(
+        (event) =>
+          event?.trusted === true &&
+          event.pointerId === down.pointerId &&
+          Number.isFinite(event.timeStamp),
+      );
+      durationMs =
+        Math.max(...samePointerEvents.map((event) => event.timeStamp)) -
+        down.timeStamp;
+      assert(
+        durationMs >= LONG_PRESS_THRESHOLD_MS,
+        `Native long press ${actionId} held for at least ${LONG_PRESS_THRESHOLD_MS} ms (observed ${durationMs} ms)`,
+      );
+    } catch (error) {
+      actionError = error;
+    } finally {
+      const failures: unknown[] = [];
+      try {
+        await this.record(`long-press-${actionId}`, {
+          selector,
+          point,
+          target,
+          requestedDurationMs: LONG_PRESS_DURATION_MS,
+          requestedDriftPx: LONG_PRESS_DRIFT_PX,
+          observedDurationMs: durationMs,
+          trustedEvents,
+        });
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await evaluateNative(
+          this.webview,
+          "(() => {const state=window.__trinityAccountLongPress;if(state)for(const type of state.types)document.removeEventListener(type,state.listener,true);delete window.__trinityAccountLongPress;return true})()",
+        );
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await this.owner.apply();
+      } catch (error) {
+        failures.push(error);
+      }
+      if (actionError !== undefined) failures.unshift(actionError);
+      if (failures.length === 1) throw failures[0];
+      if (failures.length) {
+        throw new AggregateError(
+          failures,
+          'Native account long press and cleanup failed',
+        );
+      }
+    }
+  }
+
+  private async longPressTarget(
+    selector: string,
+    filter: AccountElementFilter,
+  ): Promise<LongPressTarget> {
+    this.signal.throwIfAborted();
+    await this.owner.apply();
+    this.signal.throwIfAborted();
+    const measured = await waitForNativeShellState(
+      () =>
+        evaluateNative(this.webview, `(() => {
+          const {selector,filter}=${JSON.stringify({ selector, filter })};
+          const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+          if(es.length!==1)return null;
+          const element=es[0],rect=element.getBoundingClientRect();
+          if(rect.width<=0||rect.height<=0||getComputedStyle(element).visibility!=='visible')return null;
+          const textRects=[],walker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT);
+          for(let node=walker.nextNode();node;node=walker.nextNode()){
+            if(!(node.textContent??'').trim())continue;
+            const range=document.createRange();
+            range.selectNodeContents(node);
+            for(const r of range.getClientRects())textRects.push({left:r.left,top:r.top,right:r.right,bottom:r.bottom});
+          }
+          const blockerSelector='a,button,img,video,audio,input,textarea,select';
+          const blockingRects=[...element.querySelectorAll(blockerSelector)].flatMap(node=>[...node.getClientRects()].map(r=>({left:r.left,top:r.top,right:r.right,bottom:r.bottom})));
+          const inside=(r,x,y,padding=0)=>x>=r.left-padding&&x<=r.right+padding&&y>=r.top-padding&&y<=r.bottom+padding;
+          const xs=[];
+          for(let x=Math.min(rect.right-8,innerWidth-8);x>=Math.max(rect.left+8,8);x-=8)xs.push(x);
+          const ys=[];
+          for(let y=Math.max(rect.top+6,6);y<=Math.min(rect.bottom-6,innerHeight-6);y+=6)ys.push(y);
+          for(const y of ys)for(const x of xs){
+            const hit=document.elementFromPoint(x,y);
+            if(!(hit instanceof Element)||!element.contains(hit))continue;
+            if(hit.closest(blockerSelector))continue;
+            if(textRects.some(r=>inside(r,x,y,6)))continue;
+            if(blockingRects.some(r=>inside(r,x,y,4)))continue;
+            return {cssPoint:{x,y},hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid')},textRectCount:textRects.length,blockingRectCount:blockingRects.length};
+          }
+          return null;
+        })()`),
+      (value) => value !== null,
+      `blank native long-press point inside ${selector}`,
+      this.signal,
+      15_000,
+    );
+    assert(measured && typeof measured === 'object');
+    const value = measured as Omit<LongPressTarget, 'point'>;
+    const point = await this.owner.nativePoint(value.cssPoint);
+    this.signal.throwIfAborted();
+    return { ...value, point };
   }
 
   async tapDocumentTrigger(selector: string, fileInputSelector: string): Promise<void> {

@@ -1231,3 +1231,63 @@ native first attempts, the unchanged predecessor, at least four effective
 failing controls, all required static gates, and original-attempt green browser
 and Android shard-2 hosted jobs with an audited immutable artifact. This mapping
 does not authorize predecessor retirement.
+
+## Message moderation batch
+
+[Android message reporting and moderator redaction](https://github.com/quwisky/trinity-matrix-client/issues/708)
+owns two definitions and all five direct assertions in
+[Report message](../browser/journeys/room-administration/report-message.spec.mts)
+and
+[Redact others](../browser/journeys/room-administration/redact-others.spec.mts),
+pinned to consolidated base `b667802795d7cd7fd19cc99292ee1d8e30eaf4e1`.
+The report source SHA-256 is
+`3f8e9051936b66e5b6ab1112d52f29f95826866bc4277e7ba6d5bdd9ca312b7c`
+(helper lines 19–25, definition lines 30–80). The redaction source SHA-256 is
+`b7bb891ccdde3bb829044b6378247971555be539a6a8cd190f7ace323fa78b57`
+(helper lines 57–63, definition lines 68–143). Both Playwright predecessors
+remain enabled and unchanged.
+
+`android.message-moderation` resets one installed Android invocation to the
+exact Pixel 5 profile for each of two stages. Finite Matrix fixtures create the
+fresh accounts and unencrypted Rooms, invite and join the member, and seed the
+source messages. Login, Rooms and Room selection, message-row long press, sheet
+action selection and confirmation use measured Maestro native input. The long
+press resolves a blank point inside the exact message row, outside rendered text
+and interactive/media rectangles, then executes a 750 ms near-static Maestro
+swipe with trusted pointer-duration proof. This prevents Android text selection
+from competing with Trinity's 500 ms row gesture. WebView/CDP access is read-only
+observation and coordinate measurement; it does not click, focus, fill, submit
+forms, dispatch product events, mutate application state or styles, or navigate.
+
+| Predecessor obligation                | Replacement assertion identity       |
+| ------------------------------------- | ------------------------------------ |
+| Report Room timeline is visible       | `report.timeline-visible`            |
+| Exact report-success toast is visible | `report.success-toast-visible`       |
+| Redaction Room timeline is visible    | `redact.timeline-visible`            |
+| Deleted-message marker is visible     | `redact.deleted-marker-visible`      |
+| Original member message body is absent | `redact.original-body-absent`       |
+
+```bash
+pnpm nx run trinity-e2e-android:message-moderation --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-moderation
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the Node invocation. Its provisional
+bounds are 20 minutes for the Node test, 23 minutes for the resource-owning
+target and 25 minutes for the hosted command. Android CI shard 3 runs it after
+`accounts-workspace` and before retained Playwright. Started-only diagnostics
+live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.message-moderation/`;
+`message-moderation/journeys.json` records both stages, source, running and
+terminal state, duration, failure count and artifact pointer, accompanied by
+five per-identity records, native-command evidence, renderer/APK/profile
+provenance and pass/failure captures. Device, WebView, Matrix and
+secret-redaction cleanup run on every exit.
+
+Acceptance remains pending until #708 records three complete unchanged-input
+native first attempts, both unchanged predecessors, at least four effective
+failing controls, all required static gates, original-attempt green Android
+hosted evidence, exact hosted predecessor passes and an audited immutable
+artifact. This mapping does not authorize predecessor retirement.

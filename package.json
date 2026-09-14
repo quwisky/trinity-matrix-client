@@ -65,6 +65,7 @@
     "e2e:android:space-settings-core": "node scripts/nx.mjs run trinity-e2e-android:space-settings-core",
     "e2e:android:space-leave": "node scripts/nx.mjs run trinity-e2e-android:space-leave",
     "e2e:android:room-tombstone": "node scripts/nx.mjs run trinity-e2e-android:room-tombstone",
+    "e2e:android:message-moderation": "node scripts/nx.mjs run trinity-e2e-android:message-moderation",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",
