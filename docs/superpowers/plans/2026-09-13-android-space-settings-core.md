@@ -368,10 +368,10 @@ Expected: no whitespace errors; only #701-owned files are changed.
 
 Review the complete working-tree artifact against `cb8959d7`, including untracked files. Re-run affected checks after every material change.
 
-- [ ] **Step 6: Commit and push only after fresh verification**
+- [x] **Step 6: Commit and push only after fresh verification**
 
 Stage only #701-owned files, inspect `git diff --cached`, commit as `test(e2e): migrate Android core Space Settings`, push `test/701-android-space-settings-core`, cherry-pick onto `test/676-android-sidebar-filter`, verify again, and push the consolidated branch. Do not merge PR #677.
 
-- [ ] **Step 7: Audit hosted shard 2 before closing #701**
+- [x] **Step 7: Audit hosted shard 2 before closing #701**
 
 Require original-attempt green browser and Android shard-2 jobs. Download the immutable suite artifact and audit seven stages, 85 identities, exact fault/count evidence, native commands, renderer/APK/profile provenance, secret redaction, and teardown before updating #701, #660, and PR #677.
