@@ -1377,3 +1377,84 @@ three unchanged local predecessors, five effective failing controls, the full
 static gates, and an independent review with no unresolved findings, this
 accepts #709. The Playwright predecessors remain enabled; this mapping does not
 authorize their retirement or claim the browser-only stale-roster fault.
+
+## Member details and promotion batch
+
+[Android member details and promotion](https://github.com/quwisky/trinity-matrix-client/issues/710)
+owns two Android-applicable definitions and all 25 direct assertion sites in
+[Member info](../browser/journeys/room-administration/member-info.spec.mts) and
+[Promote member](../browser/journeys/room-administration/promote-member.spec.mts),
+pinned to consolidated base `02de1669419235fdeff4b0614f00ee1e5b2af862`.
+The member-info source SHA-256 is
+`cca86e8d3c5925ff2358e6efbcf229ca4f32095379385d9539698dedd1c2200d`
+(Room helper lines 49–57, Members helper lines 59–68, definition lines 73–218).
+The promotion source SHA-256 is
+`649c05090a92bf48036530ea3738c55ad40f0ebc06a0200745e48b3b6903f7c3`
+(Room helper lines 49–57, definition lines 62–134). Both Playwright
+predecessors remain enabled and unchanged.
+
+`android.member-details-promotion` resets one installed Android invocation to
+the exact Pixel 5 profile for each of two stages. Finite Matrix fixtures create
+fresh admin/member accounts and invited private Rooms, set the target display
+name, and join the lower-power member. Login, Rooms and Room selection, compact
+overflow/Members navigation, member selection, Copy user ID, panel and drawer
+close, composer focus, clipboard paste, role selection, and confirmation use
+measured Maestro native input. The paste flow consumes the current foreground
+Android clipboard and never uses `setClipboard` or a DOM probe. WebView/CDP is
+limited to read-only observation and coordinate measurement; it does not click,
+focus, fill, dispatch product events, submit forms, navigate, inject DOM, or
+mutate application state or styles.
+
+| Predecessor obligation                           | Replacement assertion identity              |
+| ------------------------------------------------ | ------------------------------------------- |
+| Member-info Room timeline is visible             | `member-info.room-timeline-visible`         |
+| Member-info roster opens visibly                 | `member-info.members-panel-visible`         |
+| Member-info roster starts hidden                 | `member-info.members-initially-hidden`      |
+| Target member row is exactly 44 px                | `member-info.row-height`                    |
+| Roster section header is exactly 34 px            | `member-info.header-height`                 |
+| Member-info panel is visible                     | `member-info.panel-visible`                 |
+| Exact display name is shown                      | `member-info.name`                          |
+| Exact Matrix user ID is shown                    | `member-info.handle`                        |
+| Member role is shown                             | `member-info.role`                          |
+| Message action is visible                        | `member-info.message-action-visible`        |
+| Panel host uses flex layout                      | `member-info.surface-display`               |
+| Panel host paints an opaque background           | `member-info.surface-opaque`                |
+| Shared chat row has positive height              | `member-info.surface-row-positive`          |
+| Compact drawer matches the viewport within one pixel | `member-info.surface-full-height`        |
+| Exact copy-success toast is visible              | `member-info.copy-toast`                    |
+| Native paste yields the exact target MXID        | `member-info.clipboard-mxid`                |
+| Closing hides member info                        | `member-info.panel-closed`                  |
+| Closing restores the visible roster              | `member-info.roster-restored`               |
+| Promotion Room timeline is visible               | `promotion.room-timeline-visible`           |
+| Promotion roster starts hidden                   | `promotion.members-initially-hidden`        |
+| Promotion roster opens visibly                   | `promotion.members-panel-visible`           |
+| Moderator section is initially absent            | `promotion.moderator-absent`                |
+| Promotion member-info panel is visible           | `promotion.member-info-visible`             |
+| Moderator section becomes visible                | `promotion.moderator-section-visible`       |
+| Target is regrouped and has exact server power 50 | `promotion.member-row-and-server-power`     |
+
+```bash
+pnpm nx run trinity-e2e-android:member-details-promotion --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:member-details-promotion
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the Node invocation. Its provisional
+bounds are 20 minutes for the Node test, 23 minutes for the resource-owning
+target, and 25 minutes for the hosted command. Android CI shard 2 runs it after
+`room-tombstone` and before retained Playwright. Started-only diagnostics live
+under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.member-details-promotion/`;
+`member-details-promotion/journeys.json` records both stages, source, running and
+terminal state, duration, failure count and artifact pointer, accompanied by 25
+per-identity records, completed native-command evidence, renderer/APK/Pixel 5
+provenance, exact Matrix power evidence, and pass/failure captures. Device,
+WebView, Matrix and secret-redaction cleanup run on every exit.
+
+Acceptance remains pending until #710 records three complete unchanged-input
+native first attempts, both unchanged Playwright predecessors at retry 0, at
+least five effective failing controls, all required static gates, independent
+review, original-attempt green Android shard-2 hosted evidence, exact hosted
+predecessor passes, and an audited immutable artifact. This mapping does not
+authorize predecessor retirement.
