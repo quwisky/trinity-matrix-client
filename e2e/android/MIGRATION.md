@@ -1122,3 +1122,59 @@ The unchanged seven-definition Playwright source, required quality gates and
 original-attempt green browser and Android shard-2 jobs with an audited immutable
 artifact are also required. Static integration checks alone do not establish
 installed-host parity or authorize predecessor retirement.
+
+## Space leave batch
+
+[Android Space leave](https://github.com/quwisky/trinity-matrix-client/issues/706)
+owns the single definition and all seven direct assertions in
+[Space leave](../browser/journeys/room-administration/space-leave.spec.mts),
+pinned to consolidated base `b23a2474eb366c1d714f8a8d20f1563242003678`
+and source SHA-256
+`a895c51a4a586f80d1399c31d1a3780d0c20c42534c926e9e53cf41f3fe8ed54`.
+The shared token/menu/membership helpers occupy lines 17–53 and the definition
+occupies lines 58–125. The Playwright predecessor remains enabled and unchanged.
+
+`android.space-leave` resets one installed Android invocation to the exact Pixel
+5 profile. A fresh Account, private Space, private child Room and suggested
+`m.space.child` link are seeded through finite Matrix fixtures. Login, Space-pill
+selection, overflow, Leave, Cancel and confirmed Leave use measured Maestro
+native input. WebView/CDP access is read-only observation and coordinate
+measurement; it does not click, focus, fill, submit forms, dispatch product
+events, mutate application state or styles, or navigate. Finite Matrix
+`joined_rooms` reads prove both memberships survive cancellation, the Space is
+left after confirmation and the child Room remains joined.
+
+| Predecessor obligation                                    | Replacement assertion identity      |
+| --------------------------------------------------------- | ----------------------------------- |
+| Confirmation names the exact Space                        | `dialog.space-name`                 |
+| Confirmation names the exact Account                      | `dialog.account-name`               |
+| Confirmation explains that child Room memberships remain | `dialog.child-membership-copy`      |
+| Cancel retains both Space and child Room memberships      | `cancel.memberships-retained`       |
+| Cancel leaves the exact Space pill visible                | `cancel.space-pill-visible`         |
+| Confirm removes the Space from joined rooms               | `confirm.space-left`                |
+| Confirm retains the child Room in joined rooms            | `confirm.child-membership-retained` |
+
+```bash
+pnpm nx run trinity-e2e-android:space-leave --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:space-leave
+```
+
+The target is uncached and serial, depends on `trinity-android:build-prebuilt`,
+and owns `android-avd` and `synapse` through the Node invocation. Its provisional
+bounds are 15 minutes for the Node test, 18 minutes for the resource-owning
+target and 20 minutes for the hosted command. Android CI shard 2 runs it after
+`space-settings-core` and before retained Playwright. Started-only diagnostics
+live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.space-leave/`; the
+`space-leave/journeys.json` lifecycle records its source, running and terminal
+state, duration, failure count and artifact pointer, accompanied by seven
+per-identity records, native-command evidence, renderer/APK/profile provenance
+and pass/failure captures. Device, WebView, Matrix and secret-redaction cleanup
+run on every exit.
+
+Acceptance remains pending until #706 records three complete unchanged-input
+native first attempts, the unchanged predecessor, at least four effective
+failing controls, all required static gates, and original-attempt green browser
+and Android shard-2 hosted jobs with an audited immutable artifact. This mapping
+does not authorize predecessor retirement.

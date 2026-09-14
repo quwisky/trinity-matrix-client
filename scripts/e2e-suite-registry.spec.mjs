@@ -867,6 +867,48 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android Space leave batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.space-leave',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-leave',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:space-leave',
+        sourceEntrypoints: ['e2e/android/space-leave-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:space-leave',
+        command: 'nx run trinity-e2e-android:space-leave',
+        suiteIds: ['android.space-leave'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-leave'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android Recent Activity batch with the host budget', async () => {
     const suite = registrySnapshot().suites.find(
       (entry) => entry.id === 'android.recent-activity',
