@@ -167,10 +167,12 @@ Run the pinned Block file once and the generated Kick/Ban definitions with title
 
 Run `git diff --check`, inspect the complete worktree against `1610f3ca`, and address findings through focused red/green cycles.
 
-- [ ] **Step 4: Commit and push after fresh verification**
+- [x] **Step 4: Commit and push after fresh verification**
 
 Stage only #709-owned files, inspect the cached diff, commit `test(e2e): migrate Android member moderation`, push `test/709-android-member-moderation`, cherry-pick onto `test/676-android-sidebar-filter`, verify, and push. Do not merge PR #677.
 
-- [ ] **Step 5: Audit hosted evidence before closing #709**
+- [x] **Step 5: Audit hosted evidence before closing #709**
 
 Require original-attempt green Android shard evidence and exact hosted predecessor passes at retry 0. Audit the immutable suite artifact for three stages, 22 identities, native action proof, exact server memberships, renderer/APK/profile provenance, secret redaction, and teardown. Track unrelated job-level reliability separately on #665, then update #709, #660, #653, and PR #677.
+
+Completed on hosted run `34867886690` at source head `6fd03a32` (hosted merge `5d022ff3`). Android shard 3 passed on attempt 1. Immutable artifact `10362633783` records one suite attempt, zero retries, three passed stages, all 22 identities, 172/172 completed Maestro commands, native Block/Kick/Ban and confirmation actions, exact `leave`/`ban` server memberships, the verified renderer and installed package, the Pixel 5 viewport, no bearer/password findings, and complete Synapse teardown. Browser artifact `10358997011` records all three exact predecessors and the browser-owned stale-roster case passed at retry 0. The run's unrelated documentation/unit CodeMirror audit mismatch is tracked and fixed under #665.
