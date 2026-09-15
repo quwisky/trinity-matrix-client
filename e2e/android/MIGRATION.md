@@ -2031,14 +2031,37 @@ completed native commands, exact UI/server outcomes, renderer/APK/profile
 provenance, named visual and pass/failure captures, secret redaction, and
 device, WebView and Matrix teardown.
 
-Acceptance for #716 requires five effective failing controls, three unchanged
-native first attempts, all four exact unchanged Playwright predecessors at
-retry 0, the full static gates, review with no unresolved findings, and an
-original-attempt hosted artifact audit. Until those gates pass, this ledger
-entry is pending acceptance and does not authorize predecessor retirement.
-Hosted runs 34962657727 and 34966016331 both ended before this suite's started
-flag: the first lost the Maestro device server during runner smoke, and the
-second failed the unchanged `accounts-workspace` prerequisite after 12 passed
-stages. Their browser and renderer prerequisites passed, but neither run is
-#716 Android evidence. The suite was therefore moved ahead of the retained
-shard-3 chain for the next original-attempt audit.
+Acceptance is recorded from original-attempt hosted run
+[34973431105](https://github.com/quwisky/trinity-matrix-client/actions/runs/34973431105),
+head `c8a5a5b3c5548dec93c42df21f91d33600023241`, hosted merge
+`34d0db139b20b5fc3a1486a3ef252603e5e742e5`. The shard-3 job
+[104395734369](https://github.com/quwisky/trinity-matrix-client/actions/runs/34973431105/job/104395734369)
+ran `android.room-access-policy` first: all four stages and all 29 unique
+stage-local identities passed in one suite attempt with zero retries. Its
+[immutable native artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/34973431105/artifacts/10402179732),
+ID `10402179732`, has digest
+`sha256:a74e6342bfb97fd2f9cf080fd1a5c7ea41682c3a21c0429111179d08677ded73`.
+The audit found 46 successful native-action JUnits, all 226 recorded Maestro
+commands completed, exact UI/server outcomes, installed/resumed
+`eu.qwky.trinity/.MainActivity`, desktop-profile captures, 24 redacted
+`SECRET_TEXT` occurrences and no access token, bearer token, Matrix token or
+password assignment. Synapse, device and WebView cleanup completed, and the
+hosted worktree diff gate passed.
+
+The same original attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/34973431105/artifacts/10399861379),
+ID `10399861379`, digest
+`sha256:9da1b74bd489cae1465ce82d0b34358c2891601a5acce3008f5503fbb9505023`,
+records all four exact predecessors passing at retry 0. Its
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/34973431105/artifacts/10397819593),
+ID `10397819593`, digest
+`sha256:8ce74f00bd5c54ca2a193d1786961eb0d982b5dd7ef7946ba73d224dc3918e51`,
+has a valid manifest receipt and all 49 files match their declared sizes and
+hashes for hosted merge `34d0db139b20b5fc3a1486a3ef252603e5e742e5`.
+Together with three unchanged-input local first attempts, five effective
+failing controls, the required static gates and review with no unresolved
+findings, this accepts #716. The shard later failed in the unchanged
+`message-moderation` suite when Maestro's device server died while starting a
+swipe; that infrastructure failure is tracked on #665 and does not invalidate
+the already-passed, independently uploaded #716 evidence. The four Playwright
+predecessors remain enabled; this mapping does not authorize their retirement.

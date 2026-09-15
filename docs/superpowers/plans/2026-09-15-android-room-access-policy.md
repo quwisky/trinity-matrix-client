@@ -167,6 +167,6 @@ Run `pnpm nx run trinity-e2e-android:room-access-policy --skipNxCache` three tim
 
 Run each exact title from the pinned definition sequentially with `--workers=1 --retries=0`. Require first-attempt passes and clean Synapse teardown.
 
-- [ ] **Step 6: Review, publish, and audit hosted evidence**
+- [x] **Step 6: Review, publish, and audit hosted evidence**
 
 Require no unresolved review findings. Commit/push `test/716-android-room-access-policy`, cherry-pick the verified commit onto `test/676-android-sidebar-filter`, re-run composed-tree gates, push, and audit the original-attempt hosted Android/browser/renderer artifacts before closing #716 and updating #660, #653, and PR #677. Never merge PR #677.
