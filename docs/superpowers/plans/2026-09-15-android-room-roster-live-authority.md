@@ -134,10 +134,14 @@ Run the exact title with `--workers=1 --retries=0`; require one first-attempt pa
 
 Require no unresolved findings and confirm all three pinned predecessor/helper sources remain unchanged.
 
-- [ ] **Step 4: Publish after fresh composed-tree verification**
+- [x] **Step 4: Publish after fresh composed-tree verification**
 
 Commit/push the issue-named feature branch, cherry-pick onto `test/676-android-sidebar-filter`, verify the composed tree, and push. Never merge PR #677.
 
-- [ ] **Step 5: Audit original-attempt hosted evidence before closing the child**
+- [x] **Step 5: Audit original-attempt hosted evidence before closing the child**
 
 Require green owned Android evidence and the exact hosted predecessor at retry 0. Audit the immutable suite artifact for the stage, all 35 records, exact UI/server outcomes, completed native commands, renderer/APK/profile provenance, secret redaction, and teardown; then update the child, #660, #653, and PR #677.
+
+Hosted acceptance is recorded by original-attempt [run 34932186969](https://github.com/quwisky/trinity-matrix-client/actions/runs/34932186969) from consolidated source `7864731f2464b1c452ead0fb8fa0c7ad99bc5f5b` and hosted merge `e5db94e94a8f7013a6f083f8b13ef9f80a452148`. Owned Android shard 3 [job 104262819521](https://github.com/quwisky/trinity-matrix-client/actions/runs/34932186969/job/104262819521) passed on run attempt 1. Immutable [native artifact 10385576752](https://github.com/quwisky/trinity-matrix-client/actions/runs/34932186969/artifacts/10385576752), digest `cb225fbcd17087db59c3ed0de26f9ae621d996005de74f0746c0f9cb19b18cc3`, records one passed stage in 311,535 ms, one suite attempt, zero retries, all 35 assertion identities, 19 successful native action files and 91 of 91 completed command entries. It preserves exact role, kick, ban and unban dialogs; the controller-authored admin 100→0→100 transitions; blocked moderation actions while demoted; exact kick, ban, unban and rejoin membership outcomes; Escape, Conversation roster/detail continuity and final member-filter focus; pass captures; installed APK/device/profile and renderer provenance; zero targeted secret matches; and successful device, WebView, Matrix and Synapse teardown.
+
+The audited [renderer artifact 10382172118](https://github.com/quwisky/trinity-matrix-client/actions/runs/34932186969/artifacts/10382172118), artifact digest `89fac69d4d73108001707a111aa8498c441b4dce2d29c2c7e6a2868352f80b14`, contains 49 individually verified files whose recomputed manifest digest is `c7c73787c08c14e0ac6ff15a9af66c5ebe04825837eaf7a59ab4803fb2e764cc`. [Browser artifact 10382492300](https://github.com/quwisky/trinity-matrix-client/actions/runs/34932186969/artifacts/10382492300), digest `377c0a306d46f9e6b7d7eb59223f68651236e3291f9db5dfd8245e5cd4c28b59`, records the exact unchanged predecessor passing once at retry 0 in 10,231 ms; its full suite records 317 passes, one skip and zero retries. The overall run's unrelated unchanged shard-2 native-shell timeout is tracked on #665; every #714-owned gate passed. No rerun was used, and predecessor retirement remains unauthorized.
