@@ -286,10 +286,14 @@ Run the exact title from the pinned definition with `--workers=1 --retries=0`. R
 
 Local evidence: invocation `mu2bhdmw-ff1ad4cd-390a-405e-8b49-1ce042dd62b4` passed the exact title once in 8.3 seconds with one worker, zero retries, and clean Synapse teardown.
 
-- [ ] **Step 6: Review and publish only after #714 acceptance**
+- [x] **Step 6: Review and publish only after #714 acceptance**
 
 Require no unresolved review findings. Commit/push `test/715-android-room-address-lifecycle`, cherry-pick the verified commit onto `test/676-android-sidebar-filter`, re-run composed-tree script/static gates, and push the consolidated branch. Never merge PR #677.
 
-- [ ] **Step 7: Audit original-attempt hosted evidence**
+Publication evidence: #714 was accepted first; review completed with no unresolved findings. Feature branch `test/715-android-room-address-lifecycle` and consolidated branch `test/676-android-sidebar-filter` were pushed at exact source head `8c9b41f3812a62c6dd7a36bc7b1df40e3d2f2330`. Fresh composed-tree script tests, Android/browser typecheck and lint, docs-site checks, formatting, diff checks, and all three pinned hashes passed before publication. PR #677 remained open, draft, and unmerged.
+
+- [x] **Step 7: Audit original-attempt hosted evidence**
 
 Require the exact consolidated source head, green hosted predecessor at retry 0, and immutable Android artifact proving one passed stage, all 17 identity records, completed native commands, exact UI/server/fault outcomes, desktop renderer/APK/profile provenance, redaction, and teardown. Record run/job/artifact IDs and digest in the ledger; update and close #715 only then; update #660, #653, and PR #677 without merging it.
+
+Hosted evidence: original run `34943024129` used exact source head `8c9b41f3812a62c6dd7a36bc7b1df40e3d2f2330` (hosted merge `26dc0f8b3ad1988b7f4dac38dea00965f595aee0`). Owned shard-3 job `104296347394` passed on attempt 1. Immutable Android artifact `10389934587`, digest `sha256:72f43a185dcfa2ed200a9b6d023d0f4c1b604f4f5825ac79df6d1e9b8996f896`, records one 256,484 ms passed suite attempt, zero retries, one passed stage, all 17 identities, and 14/14 successful native action files. It proves the exact alias row, directory target, primary marker and canonical state; `1152 <= 1280` settings geometry; hidden primary toast; exact removal explanation, cancellation and confirmed directory/canonical clearing; exact rejected-add toast with one HTTP 500 response and injected body match; retained retry draft; verified renderer/APK/desktop profile; zero literal bearer/token findings; and clean device, WebView, Matrix, transport and Synapse teardown. Browser artifact `10386962978`, digest `sha256:4e36381c0b446999f8af4aeb729d028245c281ebafa2ad259edcfaf68a84dc2b`, records the exact predecessor passing once at retry 0 in 10,028 ms. Renderer artifact `10386112391`, digest `sha256:cf37d16f7af41d2385629f15953109f3f1522c92ed756bd89c4116bb08e79733`, contains 49 independently verified files and recomputed manifest digest `95d89c3ac2333632cc75ffa53d5626e08fa431d51f778b5cc4105c8e93a84f6e`. The unrelated unchanged shard-2 native homeserver failure is tracked on #665 and did not affect any #715-owned gate.

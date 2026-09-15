@@ -1920,8 +1920,32 @@ canonical-state and transport outcomes, renderer/APK/desktop-profile
 provenance, pass/failure captures, secret redaction, and device, WebView,
 transport-session and Matrix teardown.
 
-Acceptance for #715 requires three unchanged-input native first attempts, the
-unchanged exact Playwright predecessor at retry 0, at least five effective
-failing controls, required static gates, review, original-attempt green owned
-hosted evidence, and immutable-artifact audit. This mapping does not authorize
-predecessor retirement.
+Accepted on original hosted run `34943024129` at exact source head
+`8c9b41f3812a62c6dd7a36bc7b1df40e3d2f2330` (hosted merge
+`26dc0f8b3ad1988b7f4dac38dea00965f595aee0`). Owned shard-3 job
+`104296347394` passed on attempt 1. Immutable Android artifact `10389934587`,
+digest `72f43a185dcfa2ed200a9b6d023d0f4c1b604f4f5825ac79df6d1e9b8996f896`,
+records one passed stage in 256,484 ms, one suite attempt, zero retries, all 17
+identity records, and 14/14 successful native action files. It preserves the
+exact alias row and directory target, primary marker and canonical state,
+`1152 <= 1280` desktop geometry, hidden primary toast, exact removal copy,
+cancelled and confirmed removal outcomes, cleared directory and canonical
+state, exact rejected-add toast with one HTTP 500 response and injected-body
+match, retained retry draft, renderer/APK/desktop-profile provenance, zero
+literal bearer/token findings, and successful device, WebView, Matrix,
+transport-session and Synapse teardown.
+
+Browser artifact `10386962978`, digest
+`4e36381c0b446999f8af4aeb729d028245c281ebafa2ad259edcfaf68a84dc2b`, records
+the exact unchanged predecessor passing once at retry 0 in 10,028 ms; the full
+browser suite records 317 passes, one skip and zero retries. Renderer artifact
+`10386112391`, artifact digest
+`cf37d16f7af41d2385629f15953109f3f1522c92ed756bd89c4116bb08e79733`, contains
+49 independently verified files whose recomputed manifest digest is
+`95d89c3ac2333632cc75ffa53d5626e08fa431d51f778b5cc4105c8e93a84f6e`.
+Together with three unchanged-input native first attempts, the unchanged local
+predecessor, five effective failing controls, the full static gates, and review
+with no unresolved findings, this accepts #715. The run's unrelated unchanged
+shard-2 native homeserver failure is tracked on #665; every #715-owned gate
+passed without a rerun. The Playwright predecessor remains enabled; this
+mapping does not authorize its retirement.
