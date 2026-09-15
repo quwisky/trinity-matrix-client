@@ -1,0 +1,28 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- scrollUntilVisible:
+    element: Dark
+    direction: UP
+- tapOn: Dark
+- scrollUntilVisible:
+    element:
+      id: ${THEME_TRIGGER_ID}
+    direction: DOWN
+- tapOn:
+    id: ${THEME_TRIGGER_ID}
+- tapOn: Onyx
+- scrollUntilVisible:
+    element:
+      id: ${DENSITY_TRIGGER_ID}
+    direction: DOWN
+- tapOn:
+    id: ${DENSITY_TRIGGER_ID}
+- tapOn: Compact
+- scrollUntilVisible:
+    element:
+      id: ${TEXT_SCALE_TRIGGER_ID}
+    direction: DOWN
+- tapOn:
+    id: ${TEXT_SCALE_TRIGGER_ID}
+- tapOn: Larger

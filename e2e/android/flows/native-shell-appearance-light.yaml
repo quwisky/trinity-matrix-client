@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- scrollUntilVisible:
+    element: Light
+    direction: DOWN
+- tapOn: Light
+- scrollUntilVisible:
+    element:
+      id: ${THEME_TRIGGER_ID}
+    direction: DOWN
+- tapOn:
+    id: ${THEME_TRIGGER_ID}
+- tapOn: Amethyst

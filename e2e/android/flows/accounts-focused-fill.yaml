@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+- eraseText
+- eraseText
+- inputText: ${SECRET_TEXT}
+- hideKeyboard

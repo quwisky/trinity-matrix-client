@@ -1,0 +1,5 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn:
+    id: Send message

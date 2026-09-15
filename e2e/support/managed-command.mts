@@ -1,4 +1,5 @@
-import { spawn, type StdioOptions } from 'node:child_process';
+import { spawn, spawnSync, type StdioOptions } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
 
 export interface ManagedCommandResult {
   readonly status: number;
@@ -45,6 +46,8 @@ export interface ManagedCommandOptions {
   readonly platform?: NodeJS.Platform;
   readonly stdio?: StdioOptions;
   readonly signal?: AbortSignal;
+  /** Clean up descendants that remain after a detached child exits. */
+  readonly cleanupProcessGroup?: boolean;
 }
 
 function processGroupIsAlive(
@@ -58,6 +61,51 @@ function processGroupIsAlive(
   } catch {
     return false;
   }
+}
+
+function processGroupHasLiveMembers(
+  pid: number | undefined,
+  platform: NodeJS.Platform,
+): boolean {
+  if (!pid || platform === 'win32') return false;
+  if (platform === 'linux') {
+    try {
+      return readdirSync('/proc', { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && /^\d+$/u.test(entry.name))
+        .some((entry) => {
+          try {
+            const stat = readFileSync(`/proc/${entry.name}/stat`, 'utf8');
+            const closingParen = stat.lastIndexOf(')');
+            const fields = stat.slice(closingParen + 2).split(' ');
+            return (
+              fields[0] !== 'Z' &&
+              fields[0] !== 'X' &&
+              Number(fields[2]) === pid
+            );
+          } catch {
+            return false;
+          }
+        });
+    } catch {
+      // Fall through to the portable process-group probe.
+    }
+  } else if (platform === 'darwin') {
+    try {
+      const result = spawnSync('ps', ['-eo', 'pgid=,state='], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      if (result.status === 0) {
+        return result.stdout.split('\n').some((line) => {
+          const [group, state] = line.trim().split(/\s+/u);
+          return Number(group) === pid && state !== 'Z' && state !== 'X';
+        });
+      }
+    } catch {
+      // Fall through to the portable process-group probe.
+    }
+  }
+  return processGroupIsAlive(pid, platform);
 }
 
 function signalProcessTree(
@@ -105,6 +153,7 @@ export function runManagedCommand(
     platform = process.platform,
     stdio = 'inherit',
     signal,
+    cleanupProcessGroup = false,
   }: ManagedCommandOptions = {},
 ): Promise<ManagedCommandResult> {
   if (signal?.aborted) {
@@ -128,6 +177,7 @@ export function runManagedCommand(
     let terminating = false;
     let timedOut = false;
     let terminationTimer: NodeJS.Timeout | undefined;
+    let verificationTimer: NodeJS.Timeout | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
 
     const finish = (result: ManagedCommandResult): void => {
@@ -135,6 +185,7 @@ export function runManagedCommand(
       settled = true;
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (terminationTimer) clearTimeout(terminationTimer);
+      if (verificationTimer) clearTimeout(verificationTimer);
       signal?.removeEventListener('abort', cancel);
       resolve(result);
     };
@@ -142,24 +193,83 @@ export function runManagedCommand(
       if (terminating) return;
       terminating = true;
       timedOut = becauseTimeout;
+      if (cleanupProcessGroup && platform !== 'win32') {
+        cleanupExitedGroup(
+          { status: 1, signal: terminationSignal, timedOut },
+          terminationSignal,
+        );
+        return;
+      }
       signalProcessTree(child, terminationSignal, platform);
       terminationTimer = setTimeout(() => {
         signalProcessTree(child, 'SIGKILL', platform);
-        finish({ status: 1, signal: 'SIGKILL', timedOut });
+        verificationTimer = setTimeout(
+          () => finish({ status: 1, signal: 'SIGKILL', timedOut }),
+          25,
+        );
       }, terminationGraceMs);
     };
     const cancel = (): void => terminate(false);
 
-    child.once('error', (error) => finish({ status: 1, error, timedOut }));
+    const cleanupExitedGroup = (
+      result: ManagedCommandResult,
+      initialSignal: NodeJS.Signals = 'SIGTERM',
+    ): void => {
+      if (
+        !cleanupProcessGroup ||
+        platform === 'win32' ||
+        !processGroupHasLiveMembers(child.pid, platform)
+      ) {
+        finish(result);
+        return;
+      }
+      signalProcessTree(child, initialSignal, platform);
+      const deadline = Date.now() + terminationGraceMs;
+      const verifyGracefulExit = (): void => {
+        if (!processGroupHasLiveMembers(child.pid, platform)) {
+          finish(result);
+          return;
+        }
+        if (Date.now() < deadline) {
+          verificationTimer = setTimeout(verifyGracefulExit, 10);
+          return;
+        }
+        signalProcessTree(child, 'SIGKILL', platform);
+        const killDeadline = Date.now() + 250;
+        const verifyKill = (): void => {
+          if (!processGroupHasLiveMembers(child.pid, platform)) {
+            finish(result);
+            return;
+          }
+          if (Date.now() < killDeadline) {
+            verificationTimer = setTimeout(verifyKill, 10);
+            return;
+          }
+          finish({
+            ...result,
+            status: 1,
+            error: new Error(
+              `Process group ${child.pid ?? 'unknown'} survived cleanup`,
+            ),
+          });
+        };
+        verificationTimer = setTimeout(verifyKill, 10);
+      };
+      verificationTimer = setTimeout(verifyGracefulExit, 0);
+    };
+
+    child.once('error', (error) =>
+      cleanupExitedGroup({ status: 1, error, timedOut }),
+    );
     child.once('exit', (code, exitSignal) => {
       if (
         terminating &&
         processGroupIsAlive(child.pid, platform) &&
-        terminationTimer
+        (terminationTimer || verificationTimer)
       ) {
         return;
       }
-      finish({
+      cleanupExitedGroup({
         status: terminating ? 1 : (code ?? 1),
         signal: exitSignal,
         timedOut,

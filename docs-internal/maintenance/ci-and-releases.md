@@ -88,6 +88,16 @@ seven-day retention. HTML, blob, JUnit and GitHub reporting remain enabled in CI
 failed attempts retain traces and screenshots. CI allows one diagnostic retry
 and rejects pass-on-retry results.
 
+`test-progress.jsonl` records test starts and finishes as they happen, including
+the browser project, retry, worker and elapsed test duration. After a timeout,
+use starts without matching finishes to identify interrupted attempts; the
+progress log does not replace the suite's final status or required reports.
+Android failed-test directories also contain `logcat.txt`, `activity.txt` and
+`package.txt`, attached to the Playwright report. Inspect these for the failure
+interval; `host-output/logcat-final.txt` is a separate suite-end snapshot.
+Older reports may embed the failed-test text directly inside their blob or HTML
+attachments rather than expose standalone files.
+
 Uploads run after ordinary failures and managed suite timeouts. A soft timeout
 terminates the owned process group before the job deadline, leaving time for
 report flushing and upload. Superseded-run cancellation skips uploads. A suite

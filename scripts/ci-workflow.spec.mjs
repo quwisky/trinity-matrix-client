@@ -1,4 +1,5 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'yaml';
@@ -24,6 +25,9 @@ describe('CI execution contract', () => {
     expect(workflow.jobs['android-e2e'].strategy.matrix.shard).toEqual([
       1, 2, 3, 4,
     ]);
+    expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
+      '${{ matrix.shard == 3 && 240 || 120 }}',
+    );
   });
 
   it('runs the complete documentation gate for docs and code changes', () => {
@@ -47,9 +51,322 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(8);
+    expect(uploads.length).toBe(44);
+    const uploadIdentities = uploads.map((step) =>
+      [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
+    );
+    expect(new Set(uploadIdentities).size).toBe(uploads.length);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-runner-smoke'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-critical-journeys',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-native-shell'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-accounts-workspace',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-identity-presence',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-sidebar-filter'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-sidebar-touch'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-tags'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-read-state'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-list'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-unread-badges'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-leave-room'),
+    ).toHaveLength(1);
+    const spaceLeaveUploads = uploads.filter(
+      (step) => step.with.surface === 'android-space-leave',
+    );
+    expect(spaceLeaveUploads).toHaveLength(1);
+    expect(spaceLeaveUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.space-leave/**',
+    });
+    const roomTombstoneUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-tombstone',
+    );
+    expect(roomTombstoneUploads).toHaveLength(1);
+    expect(roomTombstoneUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-tombstone/**',
+    });
+    const messageModerationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-message-moderation',
+    );
+    expect(messageModerationUploads).toHaveLength(1);
+    expect(messageModerationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.message-moderation/**',
+    });
+    const memberModerationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-moderation',
+    );
+    expect(memberModerationUploads).toHaveLength(1);
+    expect(memberModerationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-moderation/**',
+    });
+    const memberDetailsPromotionUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-details-promotion',
+    );
+    expect(memberDetailsPromotionUploads).toHaveLength(1);
+    expect(memberDetailsPromotionUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-details-promotion/**',
+    });
+    const memberRoleClassificationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-role-classification',
+    );
+    expect(memberRoleClassificationUploads).toHaveLength(1);
+    expect(memberRoleClassificationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-role-classification/**',
+    });
+    const memberRoleLiveUpdatesUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-role-live-updates',
+    );
+    expect(memberRoleLiveUpdatesUploads).toHaveLength(1);
+    expect(memberRoleLiveUpdatesUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-role-live-updates/**',
+    });
+    const roomUnbanUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-unban',
+    );
+    expect(roomUnbanUploads).toHaveLength(1);
+    expect(roomUnbanUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-unban/**',
+    });
+    const roomRosterLiveAuthorityUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-roster-live-authority',
+    );
+    expect(roomRosterLiveAuthorityUploads).toHaveLength(1);
+    expect(roomRosterLiveAuthorityUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-roster-live-authority/**',
+    });
+    const roomAddressLifecycleUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-address-lifecycle',
+    );
+    expect(roomAddressLifecycleUploads).toHaveLength(1);
+    expect(roomAddressLifecycleUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-address-lifecycle/**',
+    });
+    const roomAccessPolicyUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-access-policy',
+    );
+    expect(roomAccessPolicyUploads).toHaveLength(1);
+    expect(roomAccessPolicyUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-access-policy/**',
+    });
+    const roomProfileSettingsUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-profile-settings',
+    );
+    expect(roomProfileSettingsUploads).toHaveLength(1);
+    expect(roomProfileSettingsUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-profile-settings/**',
+    });
+    const roomForYouUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-for-you',
+    );
+    expect(roomForYouUploads).toHaveLength(1);
+    expect(roomForYouUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-for-you/**',
+    });
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-recent-activity'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-filter-spaceless',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-curation-create-join',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-room-order',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-http-error-recovery',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-settings-mobile',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-settings-mobile',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-settings-resilience',
+      ),
+    ).toHaveLength(1);
+    const coreUploads = uploads.filter(
+      (step) => step.with.surface === 'android-space-settings-core',
+    );
+    expect(coreUploads).toHaveLength(1);
+    expect(coreUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.space-settings-core/**',
+    });
     for (const step of uploads) {
-      expect(step.if).toMatch(/!cancelled\(\).*outputs.started == 'true'/);
+      const gate =
+        step.with.surface === 'android-runner-smoke'
+          ? /!cancelled\(\).*outputs\.smoke-started == 'true'/
+          : step.with.surface === 'android-critical-journeys'
+            ? /!cancelled\(\).*outputs\.critical-started == 'true'/
+            : step.with.surface === 'android-native-shell'
+              ? /!cancelled\(\).*outputs\.native-shell-started == 'true'/
+              : step.with.surface === 'android-accounts-workspace'
+                ? /!cancelled\(\).*outputs\.accounts-started == 'true'/
+                : step.with.surface === 'android-identity-presence'
+                  ? /!cancelled\(\).*outputs\.identity-started == 'true'/
+                  : step.with.surface === 'android-sidebar-filter'
+                    ? /!cancelled\(\).*outputs\.sidebar-filter-started == 'true'/
+                    : step.with.surface === 'android-sidebar-touch'
+                      ? /!cancelled\(\).*outputs\.sidebar-touch-started == 'true'/
+                      : step.with.surface === 'android-room-tags'
+                        ? /!cancelled\(\).*outputs\.room-tags-started == 'true'/
+                        : step.with.surface === 'android-room-read-state'
+                          ? /!cancelled\(\).*outputs\.room-read-state-started == 'true'/
+                          : step.with.surface === 'android-room-list'
+                            ? /!cancelled\(\).*outputs\.room-list-started == 'true'/
+                            : step.with.surface === 'android-unread-badges'
+                              ? /!cancelled\(\).*outputs\.unread-badges-started == 'true'/
+                              : step.with.surface === 'android-leave-room'
+                                ? /!cancelled\(\).*outputs\.leave-room-started == 'true'/
+                                : step.with.surface === 'android-space-leave'
+                                  ? /!cancelled\(\).*outputs\.space-leave-started == 'true'/
+                                  : step.with.surface ===
+                                      'android-room-tombstone'
+                                    ? /!cancelled\(\).*outputs\.room-tombstone-started == 'true'/
+                                    : step.with.surface ===
+                                        'android-message-moderation'
+                                      ? /!cancelled\(\).*outputs\.message-moderation-started == 'true'/
+                                      : step.with.surface ===
+                                          'android-member-moderation'
+                                        ? /!cancelled\(\).*outputs\.member-moderation-started == 'true'/
+                                        : step.with.surface ===
+                                            'android-member-details-promotion'
+                                          ? /!cancelled\(\).*outputs\.member-details-promotion-started == 'true'/
+                                          : step.with.surface ===
+                                              'android-member-role-classification'
+                                            ? /!cancelled\(\).*outputs\.member-role-classification-started == 'true'/
+                                            : step.with.surface ===
+                                                'android-member-role-live-updates'
+                                              ? /!cancelled\(\).*outputs\.member-role-live-updates-started == 'true'/
+                                              : step.with.surface ===
+                                                  'android-room-unban'
+                                                ? /!cancelled\(\).*outputs\.room-unban-started == 'true'/
+                                                : step.with.surface ===
+                                                    'android-room-roster-live-authority'
+                                                  ? /!cancelled\(\).*outputs\.room-roster-live-authority-started == 'true'/
+                                                  : step.with.surface ===
+                                                      'android-room-address-lifecycle'
+                                                    ? /!cancelled\(\).*outputs\.room-address-lifecycle-started == 'true'/
+                                                    : step.with.surface ===
+                                                        'android-room-access-policy'
+                                                      ? /!cancelled\(\).*outputs\.room-access-policy-started == 'true'/
+                                                      : step.with.surface ===
+                                                          'android-room-profile-settings'
+                                                        ? /!cancelled\(\).*outputs\.room-profile-settings-started == 'true'/
+                                                        : step.with.surface ===
+                                                            'android-room-for-you'
+                                                          ? /!cancelled\(\).*outputs\.room-for-you-started == 'true'/
+                                                          : step.with
+                                                                .surface ===
+                                                              'android-recent-activity'
+                                                            ? /!cancelled\(\).*outputs\.recent-activity-started == 'true'/
+                                                            : step.with
+                                                                  .surface ===
+                                                                'android-room-filter-spaceless'
+                                                              ? /!cancelled\(\).*outputs\.room-filter-spaceless-started == 'true'/
+                                                              : step.with
+                                                                    .surface ===
+                                                                  'android-space-curation-create-join'
+                                                                ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
+                                                                : step.with
+                                                                      .surface ===
+                                                                    'android-space-room-order'
+                                                                  ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
+                                                                  : step.with
+                                                                        .surface ===
+                                                                      'android-room-http-error-recovery'
+                                                                    ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
+                                                                    : step.with
+                                                                          .surface ===
+                                                                        'android-room-settings-mobile'
+                                                                      ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
+                                                                      : step
+                                                                            .with
+                                                                            .surface ===
+                                                                          'android-space-settings-mobile'
+                                                                        ? /!cancelled\(\).*outputs\.space-settings-mobile-started == 'true'/
+                                                                        : step
+                                                                              .with
+                                                                              .surface ===
+                                                                            'android-space-settings-resilience'
+                                                                          ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
+                                                                          : step
+                                                                                .with
+                                                                                .surface ===
+                                                                              'android-space-settings-core'
+                                                                            ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
+                                                                            : /!cancelled\(\).*outputs\.started == 'true'/;
+      expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
     }
@@ -71,6 +388,419 @@ describe('CI execution contract', () => {
     ]) {
       expect(upload.with.name).toContain(field);
     }
+  });
+
+  it('runs room HTTP recovery after space ordering and before retained Playwright on shard 1', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const filter = script.indexOf('trinity-e2e-android:sidebar-filter');
+    const touch = script.indexOf('trinity-e2e-android:sidebar-touch');
+    const roomTags = script.indexOf('trinity-e2e-android:room-tags');
+    const readState = script.indexOf('trinity-e2e-android:room-read-state');
+    const roomList = script.indexOf('trinity-e2e-android:room-list');
+    const unreadBadges = script.indexOf('trinity-e2e-android:unread-badges');
+    const leaveRoom = script.indexOf('trinity-e2e-android:leave-room');
+    const recentActivity = script.indexOf(
+      'trinity-e2e-android:recent-activity',
+    );
+    const roomFilterSpaceless = script.indexOf(
+      'trinity-e2e-android:room-filter-spaceless',
+    );
+    const spaceCurationCreateJoin = script.indexOf(
+      'trinity-e2e-android:space-curation-create-join',
+    );
+    const spaceRoomOrder = script.indexOf(
+      'trinity-e2e-android:space-room-order',
+    );
+    const roomHttpErrorRecovery = script.indexOf(
+      'trinity-e2e-android:room-http-error-recovery',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const spaceRoomOrderLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-room-order'));
+    const roomHttpErrorRecoveryLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-http-error-recovery'),
+      );
+
+    expect(filter).toBeGreaterThan(-1);
+    expect(touch).toBeGreaterThan(filter);
+    expect(roomTags).toBeGreaterThan(touch);
+    expect(readState).toBeGreaterThan(roomTags);
+    expect(roomList).toBeGreaterThan(readState);
+    expect(unreadBadges).toBeGreaterThan(roomList);
+    expect(leaveRoom).toBeGreaterThan(unreadBadges);
+    expect(recentActivity).toBeGreaterThan(leaveRoom);
+    expect(roomFilterSpaceless).toBeGreaterThan(recentActivity);
+    expect(spaceCurationCreateJoin).toBeGreaterThan(roomFilterSpaceless);
+    expect(spaceRoomOrder).toBeGreaterThan(spaceCurationCreateJoin);
+    expect(roomHttpErrorRecovery).toBeGreaterThan(spaceRoomOrder);
+    expect(playwright).toBeGreaterThan(roomHttpErrorRecovery);
+    expect(spaceRoomOrderLine).toContain('matrix.shard }}" = "1"');
+    expect(spaceRoomOrderLine).toContain('space-room-order-started=true');
+    expect(roomHttpErrorRecoveryLine).toContain('matrix.shard }}" = "1"');
+    expect(roomHttpErrorRecoveryLine).toContain(
+      'room-http-error-recovery-started=true',
+    );
+  });
+
+  it('runs mobile Room Settings after identity and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const identity = script.indexOf('trinity-e2e-android:identity-presence');
+    const roomSettings = script.indexOf(
+      'trinity-e2e-android:room-settings-mobile',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const roomSettingsLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-settings-mobile'),
+      );
+
+    expect(identity).toBeGreaterThan(-1);
+    expect(roomSettings).toBeGreaterThan(identity);
+    expect(playwright).toBeGreaterThan(roomSettings);
+    expect(roomSettingsLine).toContain('matrix.shard }}" = "4"');
+    expect(roomSettingsLine).toContain('room-settings-mobile-started=true');
+  });
+
+  it('runs mobile Space Settings after mobile Room Settings and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomSettings = script.indexOf(
+      'trinity-e2e-android:room-settings-mobile',
+    );
+    const spaceSettings = script.indexOf(
+      'trinity-e2e-android:space-settings-mobile',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    expect(spaceSettings).toBeGreaterThan(roomSettings);
+    expect(playwright).toBeGreaterThan(spaceSettings);
+  });
+
+  it('runs Space Settings resilience after mobile Space Settings and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const mobile = script.indexOf('trinity-e2e-android:space-settings-mobile');
+    const resilience = script.indexOf(
+      'trinity-e2e-android:space-settings-resilience',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    expect(resilience).toBeGreaterThan(mobile);
+    expect(playwright).toBeGreaterThan(resilience);
+  });
+
+  it('runs Room tombstone after Space leave and before retained Playwright on shard 2', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const nativeShell = script.indexOf('trinity-e2e-android:native-shell');
+    const core = script.indexOf('trinity-e2e-android:space-settings-core');
+    const spaceLeave = script.indexOf('trinity-e2e-android:space-leave');
+    const roomTombstone = script.indexOf('trinity-e2e-android:room-tombstone');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const coreLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-settings-core'));
+    const spaceLeaveLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-leave'));
+    const roomTombstoneLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-tombstone'));
+
+    expect(nativeShell).toBeGreaterThan(-1);
+    expect(core).toBeGreaterThan(nativeShell);
+    expect(spaceLeave).toBeGreaterThan(core);
+    expect(roomTombstone).toBeGreaterThan(spaceLeave);
+    expect(playwright).toBeGreaterThan(roomTombstone);
+    expect(coreLine).toContain('matrix.shard }}" = "2"');
+    expect(coreLine).toContain('space-settings-core-started=true');
+    expect(coreLine).toContain('--timeout-ms 2700000');
+    expect(spaceLeaveLine).toContain('matrix.shard }}" = "2"');
+    expect(spaceLeaveLine).toContain('space-leave-started=true');
+    expect(spaceLeaveLine).toContain('--timeout-ms 1200000');
+    expect(roomTombstoneLine).toContain('matrix.shard }}" = "2"');
+    expect(roomTombstoneLine).toContain('room-tombstone-started=true');
+    expect(roomTombstoneLine).toContain('--timeout-ms 1200000');
+  });
+
+  it('runs member details and promotion after Room tombstone and before retained Playwright on shard 2', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomTombstone = script.indexOf('trinity-e2e-android:room-tombstone');
+    const memberDetailsPromotion = script.indexOf(
+      'trinity-e2e-android:member-details-promotion',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberDetailsPromotionLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:member-details-promotion'),
+      );
+
+    expect(roomTombstone).toBeGreaterThan(-1);
+    expect(memberDetailsPromotion).toBeGreaterThan(roomTombstone);
+    expect(playwright).toBeGreaterThan(memberDetailsPromotion);
+    expect(memberDetailsPromotionLine).toContain('matrix.shard }}" = "2"');
+    expect(memberDetailsPromotionLine).toContain(
+      'member-details-promotion-started=true',
+    );
+    expect(memberDetailsPromotionLine).toContain('--timeout-ms 1500000');
+  });
+
+  it('runs member role classification after member details and promotion and before retained Playwright on shard 2', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const memberDetailsPromotion = script.indexOf(
+      'trinity-e2e-android:member-details-promotion',
+    );
+    const memberRoleClassification = script.indexOf(
+      'trinity-e2e-android:member-role-classification',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberRoleClassificationLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:member-role-classification'),
+      );
+
+    expect(memberDetailsPromotion).toBeGreaterThan(-1);
+    expect(memberRoleClassification).toBeGreaterThan(memberDetailsPromotion);
+    expect(playwright).toBeGreaterThan(memberRoleClassification);
+    expect(memberRoleClassificationLine).toContain('matrix.shard }}" = "2"');
+    expect(memberRoleClassificationLine).toContain(
+      'member-role-classification-started=true',
+    );
+    expect(memberRoleClassificationLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs member role live updates after Space Settings resilience and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const spaceSettingsResilience = script.indexOf(
+      'trinity-e2e-android:space-settings-resilience',
+    );
+    const memberRoleLiveUpdates = script.indexOf(
+      'trinity-e2e-android:member-role-live-updates',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberRoleLiveUpdatesLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:member-role-live-updates'),
+      );
+
+    expect(spaceSettingsResilience).toBeGreaterThan(-1);
+    expect(memberRoleLiveUpdates).toBeGreaterThan(spaceSettingsResilience);
+    expect(playwright).toBeGreaterThan(memberRoleLiveUpdates);
+    expect(memberRoleLiveUpdatesLine).toContain('matrix.shard }}" = "4"');
+    expect(memberRoleLiveUpdatesLine).toContain(
+      'member-role-live-updates-started=true',
+    );
+    expect(memberRoleLiveUpdatesLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs message moderation after Accounts and before retained Playwright on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const accounts = script.indexOf('trinity-e2e-android:accounts-workspace');
+    const moderation = script.indexOf('trinity-e2e-android:message-moderation');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const moderationLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:message-moderation'));
+
+    expect(accounts).toBeGreaterThan(-1);
+    expect(moderation).toBeGreaterThan(accounts);
+    expect(playwright).toBeGreaterThan(moderation);
+    expect(moderationLine).toContain('matrix.shard }}" = "3"');
+    expect(moderationLine).toContain('message-moderation-started=true');
+    expect(moderationLine).toContain('--timeout-ms 1500000');
+  });
+
+  it('runs member moderation after message moderation and before retained Playwright on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const messageModeration = script.indexOf(
+      'trinity-e2e-android:message-moderation',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberModerationLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:member-moderation'));
+
+    expect(messageModeration).toBeGreaterThan(-1);
+    expect(memberModeration).toBeGreaterThan(messageModeration);
+    expect(playwright).toBeGreaterThan(memberModeration);
+    expect(memberModerationLine).toContain('matrix.shard }}" = "3"');
+    expect(memberModerationLine).toContain('member-moderation-started=true');
+    expect(memberModerationLine).toContain('--timeout-ms 1800000');
+  });
+
+  it('runs Room unban after message moderation and before member moderation on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const messageModeration = script.indexOf(
+      'trinity-e2e-android:message-moderation',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const roomUnban = script.indexOf('trinity-e2e-android:room-unban');
+    const roomUnbanLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-unban'));
+
+    expect(messageModeration).toBeGreaterThan(-1);
+    expect(roomUnban).toBeGreaterThan(messageModeration);
+    expect(memberModeration).toBeGreaterThan(roomUnban);
+    expect(roomUnbanLine).toContain('matrix.shard }}" = "3"');
+    expect(roomUnbanLine).toContain('room-unban-started=true');
+    expect(roomUnbanLine).toContain('--timeout-ms 900000');
+  });
+
+  it('runs Room roster live authority after Room unban and before member moderation on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomUnban = script.indexOf('trinity-e2e-android:room-unban');
+    const roomRosterLiveAuthority = script.indexOf(
+      'trinity-e2e-android:room-roster-live-authority',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const roomRosterLiveAuthorityLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-roster-live-authority'),
+      );
+
+    expect(roomUnban).toBeGreaterThan(-1);
+    expect(roomRosterLiveAuthority).toBeGreaterThan(roomUnban);
+    expect(memberModeration).toBeGreaterThan(roomRosterLiveAuthority);
+    expect(roomRosterLiveAuthorityLine).toContain('matrix.shard }}" = "3"');
+    expect(roomRosterLiveAuthorityLine).toContain(
+      'room-roster-live-authority-started=true',
+    );
+    expect(roomRosterLiveAuthorityLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs Room address lifecycle after Room roster and before member moderation on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomRosterLiveAuthority = script.indexOf(
+      'trinity-e2e-android:room-roster-live-authority',
+    );
+    const roomAddressLifecycle = script.indexOf(
+      'trinity-e2e-android:room-address-lifecycle',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const roomAddressLifecycleLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-address-lifecycle'),
+      );
+
+    expect(roomRosterLiveAuthority).toBeGreaterThan(-1);
+    expect(roomAddressLifecycle).toBeGreaterThan(roomRosterLiveAuthority);
+    expect(memberModeration).toBeGreaterThan(roomAddressLifecycle);
+    expect(roomAddressLifecycleLine).toContain('matrix.shard }}" = "3"');
+    expect(roomAddressLifecycleLine).toContain(
+      'room-address-lifecycle-started=true',
+    );
+    expect(roomAddressLifecycleLine).toContain('--timeout-ms 900000');
+  });
+
+  it('runs Room access policy before Accounts on shard 3 so predecessor failures cannot suppress its evidence', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomAccessPolicy = script.indexOf(
+      'trinity-e2e-android:room-access-policy',
+    );
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
+    );
+    const roomAccessPolicyLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-access-policy'));
+
+    expect(roomAccessPolicy).toBeGreaterThan(-1);
+    expect(accountsWorkspace).toBeGreaterThan(roomAccessPolicy);
+    expect(roomAccessPolicyLine).toContain('matrix.shard }}" = "3"');
+    expect(roomAccessPolicyLine).toContain('room-access-policy-started=true');
+    expect(roomAccessPolicyLine).toContain('--timeout-ms 2400000');
+  });
+
+  it('runs Room profile settings after Room access policy and before Accounts on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomAccessPolicy = script.indexOf(
+      'trinity-e2e-android:room-access-policy',
+    );
+    const roomProfileSettings = script.indexOf(
+      'trinity-e2e-android:room-profile-settings',
+    );
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
+    );
+    const roomProfileSettingsLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-profile-settings'),
+      );
+
+    expect(roomProfileSettings).toBeGreaterThan(roomAccessPolicy);
+    expect(accountsWorkspace).toBeGreaterThan(roomProfileSettings);
+    expect(roomProfileSettingsLine).toContain('matrix.shard }}" = "3"');
+    expect(roomProfileSettingsLine).toContain(
+      'room-profile-settings-started=true',
+    );
+    expect(roomProfileSettingsLine).toContain('--timeout-ms 2400000');
+  });
+
+  it('runs Room For-you after Room profile settings and before Accounts on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomProfileSettings = script.indexOf(
+      'trinity-e2e-android:room-profile-settings',
+    );
+    const roomForYou = script.indexOf('trinity-e2e-android:room-for-you');
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
+    );
+    const roomForYouLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-for-you'));
+
+    expect(roomForYou).toBeGreaterThan(roomProfileSettings);
+    expect(accountsWorkspace).toBeGreaterThan(roomForYou);
+    expect(roomForYouLine).toContain('matrix.shard }}" = "3"');
+    expect(roomForYouLine).toContain('room-for-you-started=true');
+    expect(roomForYouLine).toContain('--timeout-ms 2100000');
   });
 
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
@@ -101,5 +831,21 @@ describe('CI execution contract', () => {
           !step.with.path.includes('.gradle'),
       ),
     ).toBe(true);
+  });
+
+  it('keeps emulator-runner script commands valid as standalone shell lines', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
+
+    expect(lines).toHaveLength(37);
+    for (const line of lines) {
+      expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
+    }
   });
 });

@@ -17,6 +17,17 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "runner-smoke": {
+      "//": "Node test runner smoke against the development browser bundle and support-owned Synapse lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-browser"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-browser node e2e/support/run-node.mts --suite=runner.chromium --entrypoint=e2e/browser/runner-smoke.mts --build=trinity:build:development --platform=browser --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

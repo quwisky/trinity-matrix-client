@@ -1,0 +1,12 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 30000
+- tapOn:
+    id: composer-input
+- eraseText
+- inputText: ${MESSAGE}
+- hideKeyboard

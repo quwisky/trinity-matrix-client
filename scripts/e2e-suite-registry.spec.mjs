@@ -467,6 +467,43 @@ describe('E2E suite registry runner', () => {
     expect(failures).toEqual(['Docker daemon is unavailable']);
   });
 
+  it('checks node-test toolchains without probing Playwright binaries', async () => {
+    const calls = [];
+    const failures = await checkPrerequisites(
+      [{ prerequisites: ['chrome', 'chromedriver', 'maestro', 'node-24'] }],
+      {
+        execute: (command, args) => {
+          calls.push([command, args]);
+          return {
+            status: 0,
+            stdout:
+              command === 'chrome'
+                ? 'Google Chrome 153.0.8010.36'
+                : command === 'chromedriver'
+                  ? 'ChromeDriver 153.0.8010.36'
+                  : command === 'maestro'
+                    ? '1.0.0 Maestro 2.10.0'
+                    : 'v24.20.0',
+          };
+        },
+        environment: {
+          TRINITY_NODE_BINARY: 'node',
+          TRINITY_CHROME_BINARY: 'chrome',
+          TRINITY_CHROMEDRIVER_BINARY: 'chromedriver',
+          MAESTRO_CLI: 'maestro',
+        },
+      },
+    );
+
+    expect(failures).toEqual([]);
+    expect(calls).toEqual([
+      ['chrome', ['--version']],
+      ['chromedriver', ['--version']],
+      ['maestro', ['--version']],
+      ['node', ['--version']],
+    ]);
+  });
+
   it('accepts only the canonical local AVD unless a serial is explicit', async () => {
     const androidSuite = [{ prerequisites: ['android-avd'] }];
     const executeWith = (
@@ -621,6 +658,1062 @@ describe('E2E suite registry runner', () => {
     expect(failures).toEqual(['public network discovery is unavailable']);
   });
 
+  it('allows the complete Android account batch and cleanup within its registry budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.accounts-workspace',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:accounts-workspace'],
+      expect.objectContaining({
+        timeout: 5_100_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android sidebar touch batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.sidebar-touch',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:sidebar-touch',
+        canonicalScript: 'e2e:android:sidebar-touch',
+        sourceEntrypoints: ['e2e/android/sidebar-touch-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:sidebar-touch'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room tags batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-tags',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-tags',
+        canonicalScript: 'e2e:android:room-tags',
+        sourceEntrypoints: ['e2e/android/room-tags-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-tags'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room read-state batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-read-state',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-read-state',
+        canonicalScript: 'e2e:android:room-read-state',
+        sourceEntrypoints: ['e2e/android/room-read-state-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-read-state'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room-list batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-list',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-list',
+        canonicalScript: 'e2e:android:room-list',
+        sourceEntrypoints: ['e2e/android/room-list-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-list'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android unread-badges batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.unread-badges',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:unread-badges',
+        canonicalScript: 'e2e:android:unread-badges',
+        sourceEntrypoints: ['e2e/android/unread-badges-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:unread-badges'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android leave-room batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.leave-room',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:leave-room',
+        canonicalScript: 'e2e:android:leave-room',
+        sourceEntrypoints: ['e2e/android/leave-room-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:leave-room'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Space leave batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.space-leave',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-leave',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:space-leave',
+        sourceEntrypoints: ['e2e/android/space-leave-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:space-leave',
+        command: 'nx run trinity-e2e-android:space-leave',
+        suiteIds: ['android.space-leave'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-leave'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room tombstone batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-tombstone',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-tombstone',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-tombstone',
+        sourceEntrypoints: ['e2e/android/room-tombstone-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-tombstone',
+        command: 'nx run trinity-e2e-android:room-tombstone',
+        suiteIds: ['android.room-tombstone'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-tombstone'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android message moderation batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.message-moderation',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:message-moderation',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:message-moderation',
+        sourceEntrypoints: ['e2e/android/message-moderation-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:message-moderation',
+        command: 'nx run trinity-e2e-android:message-moderation',
+        suiteIds: ['android.message-moderation'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:message-moderation'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android member moderation batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.member-moderation',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:member-moderation',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:member-moderation',
+        sourceEntrypoints: ['e2e/android/member-moderation-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:member-moderation',
+        command: 'nx run trinity-e2e-android:member-moderation',
+        suiteIds: ['android.member-moderation'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:member-moderation'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android member details and promotion batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.member-details-promotion',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:member-details-promotion',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:member-details-promotion',
+        sourceEntrypoints: [
+          'e2e/android/member-details-promotion-journeys.mts',
+        ],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:member-details-promotion',
+        command: 'nx run trinity-e2e-android:member-details-promotion',
+        suiteIds: ['android.member-details-promotion'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:member-details-promotion'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android member role classification batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.member-role-classification',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:member-role-classification',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:member-role-classification',
+        sourceEntrypoints: [
+          'e2e/android/member-role-classification-journeys.mts',
+        ],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:member-role-classification',
+        command: 'nx run trinity-e2e-android:member-role-classification',
+        suiteIds: ['android.member-role-classification'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:member-role-classification'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android member role live updates batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.member-role-live-updates',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:member-role-live-updates',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:member-role-live-updates',
+        sourceEntrypoints: [
+          'e2e/android/member-role-live-updates-journeys.mts',
+        ],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:member-role-live-updates',
+        command: 'nx run trinity-e2e-android:member-role-live-updates',
+        suiteIds: ['android.member-role-live-updates'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:member-role-live-updates'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room unban batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-unban',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-unban',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-unban',
+        sourceEntrypoints: ['e2e/android/room-unban-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-unban',
+        command: 'nx run trinity-e2e-android:room-unban',
+        suiteIds: ['android.room-unban'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-unban'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room roster live-authority batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-roster-live-authority',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-roster-live-authority',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-roster-live-authority',
+        sourceEntrypoints: [
+          'e2e/android/room-roster-live-authority-journeys.mts',
+        ],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-roster-live-authority',
+        command: 'nx run trinity-e2e-android:room-roster-live-authority',
+        suiteIds: ['android.room-roster-live-authority'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-roster-live-authority'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room address lifecycle batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-address-lifecycle',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-address-lifecycle',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-address-lifecycle',
+        sourceEntrypoints: ['e2e/android/room-address-lifecycle-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-address-lifecycle',
+        command: 'nx run trinity-e2e-android:room-address-lifecycle',
+        suiteIds: ['android.room-address-lifecycle'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-address-lifecycle'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room access policy batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-access-policy',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-access-policy',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-access-policy',
+        sourceEntrypoints: ['e2e/android/room-access-policy-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-access-policy',
+        command: 'nx run trinity-e2e-android:room-access-policy',
+        suiteIds: ['android.room-access-policy'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-access-policy'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room profile settings batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-profile-settings',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-profile-settings',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-profile-settings',
+        sourceEntrypoints: ['e2e/android/room-profile-settings-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-profile-settings',
+        command: 'nx run trinity-e2e-android:room-profile-settings',
+        suiteIds: ['android.room-profile-settings'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-profile-settings'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Room For-you batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-for-you',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-for-you',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-for-you',
+        sourceEntrypoints: ['e2e/android/room-for-you-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-for-you',
+        command: 'nx run trinity-e2e-android:room-for-you',
+        suiteIds: ['android.room-for-you'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-for-you'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Recent Activity batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.recent-activity',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:recent-activity',
+        canonicalScript: 'e2e:android:recent-activity',
+        sourceEntrypoints: ['e2e/android/recent-activity-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:recent-activity'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android spaceless room-filter batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-filter-spaceless',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-filter-spaceless',
+        canonicalScript: 'e2e:android:room-filter-spaceless',
+        sourceEntrypoints: ['e2e/android/room-filter-spaceless-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-filter-spaceless'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android space creation and join curation batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.space-curation-create-join',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-curation-create-join',
+        canonicalScript: 'e2e:android:space-curation-create-join',
+        sourceEntrypoints: [
+          'e2e/android/space-curation-create-join-journeys.mts',
+        ],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-curation-create-join'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android space room-order batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.space-room-order',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-room-order',
+        canonicalScript: 'e2e:android:space-room-order',
+        sourceEntrypoints: ['e2e/android/space-room-order-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-room-order'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android room HTTP-error recovery batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-http-error-recovery',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-http-error-recovery',
+        canonicalScript: 'e2e:android:room-http-error-recovery',
+        sourceEntrypoints: [
+          'e2e/android/room-http-error-recovery-journeys.mts',
+        ],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-http-error-recovery'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android mobile Room Settings batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.room-settings-mobile',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-settings-mobile',
+        canonicalScript: 'e2e:android:room-settings-mobile',
+        sourceEntrypoints: ['e2e/android/room-settings-mobile-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-settings-mobile'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android mobile Space Settings batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.space-settings-mobile',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-settings-mobile',
+        canonicalScript: 'e2e:android:space-settings-mobile',
+        sourceEntrypoints: ['e2e/android/space-settings-mobile-journeys.mts'],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-settings-mobile'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android Space Settings resilience batch with the host budget', async () => {
+    const suite = registrySnapshot().suites.find(
+      (entry) => entry.id === 'android.space-settings-resilience',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-settings-resilience',
+        canonicalScript: 'e2e:android:space-settings-resilience',
+        sourceEntrypoints: [
+          'e2e/android/space-settings-resilience-journeys.mts',
+        ],
+        timeoutClass: 'host',
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-settings-resilience'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
+  it('registers the Android core Space Settings batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.space-settings-core',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:space-settings-core',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:space-settings-core',
+        sourceEntrypoints: ['e2e/android/space-settings-core-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:space-settings-core',
+        command: 'nx run trinity-e2e-android:space-settings-core',
+        suiteIds: ['android.space-settings-core'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:space-settings-core'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(
@@ -750,6 +1843,83 @@ describe('E2E suite registry runner', () => {
       }),
     ).toBe(1);
     expect(executeSuite).not.toHaveBeenCalled();
+  });
+
+  it('persists a terminal failure and remaining not-run suites when invocation setup throws', async () => {
+    const first = runnerSuite();
+    const second = runnerSuite({
+      id: 'components.styling',
+      currentTarget: 'trinity-e2e-components:styling',
+    });
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-components', {
+        validate: () => [],
+        select: () => [first, second],
+        preflight: async () => [],
+        openInvocation: async () => {
+          throw new Error('resource setup broke');
+        },
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          outcome: 'failure',
+          detail: 'invocation setup failed: resource setup broke',
+        }),
+        expect.objectContaining({
+          id: second.id,
+          outcome: 'not-run',
+        }),
+      ]),
+    );
+  });
+
+  it('persists a terminal failure and remaining not-run suites when an adapter throws', async () => {
+    const first = runnerSuite();
+    const second = runnerSuite({
+      id: 'components.styling',
+      currentTarget: 'trinity-e2e-components:styling',
+    });
+    const writeReport = vi.fn(() => undefined);
+
+    expect(
+      await runSelection('e2e-components', {
+        validate: () => [],
+        select: () => [first, second],
+        preflight: async () => [],
+        executeSuite: async () => {
+          throw new Error('adapter broke');
+        },
+        openInvocation: async () => ({
+          descriptor: { id: 'run-12345678' },
+          environment: {},
+          close: async () => undefined,
+        }),
+        writeReport,
+        reportError: () => undefined,
+        reportOutput: () => undefined,
+      }),
+    ).toBe(1);
+    expect(writeReport.mock.calls[0][1].suites).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          outcome: 'failure',
+          detail: 'suite execution failed: adapter broke',
+        }),
+        expect.objectContaining({
+          id: second.id,
+          outcome: 'not-run',
+        }),
+      ]),
+    );
   });
 
   it('rejects any remote protocol aggregate before preflight or invocation', async () => {
