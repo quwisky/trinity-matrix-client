@@ -704,26 +704,22 @@ describe('CI execution contract', () => {
     expect(roomAddressLifecycleLine).toContain('--timeout-ms 900000');
   });
 
-  it('runs Room access policy after Room address lifecycle and before member moderation on shard 3', () => {
+  it('runs Room access policy before Accounts on shard 3 so predecessor failures cannot suppress its evidence', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
-    const roomAddressLifecycle = script.indexOf(
-      'trinity-e2e-android:room-address-lifecycle',
-    );
     const roomAccessPolicy = script.indexOf(
       'trinity-e2e-android:room-access-policy',
     );
-    const memberModeration = script.indexOf(
-      'trinity-e2e-android:member-moderation',
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
     );
     const roomAccessPolicyLine = script
       .split('\n')
       .find((line) => line.includes('trinity-e2e-android:room-access-policy'));
 
-    expect(roomAddressLifecycle).toBeGreaterThan(-1);
-    expect(roomAccessPolicy).toBeGreaterThan(roomAddressLifecycle);
-    expect(memberModeration).toBeGreaterThan(roomAccessPolicy);
+    expect(roomAccessPolicy).toBeGreaterThan(-1);
+    expect(accountsWorkspace).toBeGreaterThan(roomAccessPolicy);
     expect(roomAccessPolicyLine).toContain('matrix.shard }}" = "3"');
     expect(roomAccessPolicyLine).toContain('room-access-policy-started=true');
     expect(roomAccessPolicyLine).toContain('--timeout-ms 2400000');
