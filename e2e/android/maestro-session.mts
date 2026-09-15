@@ -34,6 +34,7 @@ const textArtifactExtensions = new Set([
   '.xml',
 ]);
 const redactedSecret = '[REDACTED]';
+const maestroDriverPortAttempts = 3;
 
 const allocateHostPort = (): Promise<number> =>
   new Promise((resolve, reject) => {
@@ -87,6 +88,19 @@ const redactNativeLog = (text: string): string =>
 
 const isMissingAdbListener = (error: unknown): boolean =>
   /\badb: error: listener 'tcp:\d+' not found(?:\r?\n|$)/u.test(String(error));
+
+const isPreStartDriverPortRejection = async (
+  directory: string,
+  port: number,
+): Promise<boolean> => {
+  const entries = await readdir(directory);
+  if (entries.length !== 1 || entries[0] !== 'maestro.log') return false;
+  const log = await readFile(join(directory, 'maestro.log'), 'utf8');
+  return new RegExp(
+    `(?:^|\\r?\\n)Requested driver host port ${port} is not available(?:\\r?\\n|$)`,
+    'u',
+  ).test(log);
+};
 
 /** Redact flow secrets and native storage payloads before publication. */
 export async function redactMaestroArtifacts(
@@ -462,11 +476,6 @@ export async function openMaestroDevice(
         );
       },
       async runFlow(file, variables = {}) {
-        let driverHostPort: number;
-        do {
-          driverHostPort = await allocateHostPort();
-        } while (maestroDriverPorts.has(driverHostPort));
-        maestroDriverPorts.add(driverHostPort);
         const output = join(
           options.artifactDirectory,
           `${basename(file, '.yaml')}-${randomUUID()}`,
@@ -477,53 +486,75 @@ export async function openMaestroDevice(
           randomUUID(),
         );
         await mkdir(privateOutput, { recursive: true, mode: 0o700 });
-        const descriptor = openSync(join(privateOutput, 'maestro.log'), 'w');
         let commandStatus: number | string | undefined;
         let descriptorFailure: unknown;
-        try {
+        for (let attempt = 1; attempt <= maestroDriverPortAttempts; attempt++) {
+          let driverHostPort: number;
+          do {
+            driverHostPort = await allocateHostPort();
+          } while (maestroDriverPorts.has(driverHostPort));
+          maestroDriverPorts.add(driverHostPort);
+          const descriptor = openSync(join(privateOutput, 'maestro.log'), 'w');
+          commandStatus = undefined;
+          descriptorFailure = undefined;
           try {
-            const result = await runManagedCommand(
-              environment['MAESTRO_CLI'] ?? 'maestro',
-              [
-                // Maestro's default ephemeral-port selection can immediately
-                // reuse a port whose device-side driver socket is still
-                // tearing down after the preceding CLI process. Keep every
-                // flow on a distinct port for the lifetime of this emulator.
-                '--driver-host-port',
-                String(driverHostPort),
-                '--device',
-                serial,
-                'test',
-                '--test-output-dir',
-                privateOutput,
-                '--format',
-                'JUNIT',
-                '--output',
-                join(privateOutput, 'junit.xml'),
-                ...Object.entries(variables).flatMap(([key, value]) => [
-                  '-e',
-                  `${key}=${value}`,
-                ]),
-                file,
-              ],
-              {
-                cwd: options.workspaceRoot,
-                environment,
-                signal: options.signal,
-                timeout: 300_000,
-                stdio: ['ignore', descriptor, descriptor],
-              },
-            );
-            if (result.status !== 0) commandStatus = result.status ?? 'unknown';
-          } catch {
-            commandStatus = 'unknown';
+            try {
+              const result = await runManagedCommand(
+                environment['MAESTRO_CLI'] ?? 'maestro',
+                [
+                  // Maestro's default ephemeral-port selection can immediately
+                  // reuse a port whose device-side driver socket is still
+                  // tearing down after the preceding CLI process. Keep every
+                  // flow on a distinct port for the lifetime of this emulator.
+                  '--driver-host-port',
+                  String(driverHostPort),
+                  '--device',
+                  serial,
+                  'test',
+                  '--test-output-dir',
+                  privateOutput,
+                  '--format',
+                  'JUNIT',
+                  '--output',
+                  join(privateOutput, 'junit.xml'),
+                  ...Object.entries(variables).flatMap(([key, value]) => [
+                    '-e',
+                    `${key}=${value}`,
+                  ]),
+                  file,
+                ],
+                {
+                  cwd: options.workspaceRoot,
+                  environment,
+                  signal: options.signal,
+                  timeout: 300_000,
+                  stdio: ['ignore', descriptor, descriptor],
+                },
+              );
+              if (result.status !== 0)
+                commandStatus = result.status ?? 'unknown';
+            } catch {
+              commandStatus = 'unknown';
+            }
+          } finally {
+            try {
+              closeSync(descriptor);
+            } catch (error) {
+              descriptorFailure = error;
+            }
           }
-        } finally {
-          try {
-            closeSync(descriptor);
-          } catch (error) {
-            descriptorFailure = error;
-          }
+
+          if (
+            attempt === maestroDriverPortAttempts ||
+            commandStatus === undefined ||
+            descriptorFailure ||
+            options.signal?.aborted ||
+            !(await isPreStartDriverPortRejection(
+              privateOutput,
+              driverHostPort,
+            ))
+          )
+            break;
         }
         let redactionFailure = false;
         try {
