@@ -14,6 +14,9 @@ export interface WorkspaceRoomContent {
   readonly preset?: string;
   readonly invite?: readonly string[];
   readonly creation_content?: { readonly type: 'm.space' };
+  readonly power_level_content_override?: {
+    readonly users?: Readonly<Record<string, number>>;
+  };
 }
 
 export interface WorkspaceRoom {
@@ -312,6 +315,12 @@ export function createAccountFixtures(
       ...(content.preset ? { preset: content.preset } : {}),
       ...(content.invite ? { invite: content.invite } : {}),
       ...(content.creation_content ? { creation_content: content.creation_content } : {}),
+      ...(content.power_level_content_override
+        ? {
+            power_level_content_override:
+              content.power_level_content_override,
+          }
+        : {}),
     });
     const id = stringField(response, 'room_id', 'Matrix fixture room id');
     roomMembers.set(id, new Set([owner.userId]));
