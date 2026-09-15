@@ -1717,3 +1717,21 @@ unchanged exact Playwright predecessor at retry 0, at least five effective
 failing controls, required static gates, review, original-attempt green owned
 hosted evidence, and immutable-artifact audit. This mapping does not authorize
 predecessor retirement.
+
+Original-attempt hosted [run 34919262884](https://github.com/quwisky/trinity-matrix-client/actions/runs/34919262884), from consolidated source
+`86ebd1022d16da39d07d4e1defd160ac0ee36653` and hosted merge
+`9f6e49a26e3e967d55faa392aa43a361a6c462fc`, accepted #713. Owned Android
+shard 3 job `104223764913` passed on run attempt 1. Native artifact
+`10379458816` records one passed stage, one suite attempt, zero retries, all
+nine identities, 13 native command files, and 64 of 64 completed command
+entries. It preserves the exact target/Room/Account confirmation, exact
+`Unbanned <target>.` toast, final server membership `leave`, pass captures,
+installed `eu.qwky.trinity` APK and hosted API 36 / Pixel 6 provenance,
+renderer identity, zero targeted secret matches, and successful device,
+WebView, Matrix and Synapse teardown. Browser artifact `10378565873` records
+the exact unchanged predecessor passing once at retry 0 in 6,067 ms. Renderer
+artifact `10377771152` contains 49 individually verified files with digest
+`9ad995de220185e6e44bdcadd4ab989aae5e0fb75bf2e65d6efa75436c824c9b`.
+The run's unrelated unchanged shard-1 `android.space-room-order` timeout is
+tracked on #665; all #713-owned gates passed without a rerun. This mapping does
+not authorize predecessor retirement.
