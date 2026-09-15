@@ -2163,3 +2163,46 @@ failing controls, three unchanged-input native first attempts, all four exact
 unchanged Playwright predecessors at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
 This mapping does not authorize predecessor retirement or merging PR #677.
+
+Acceptance completed on original-attempt hosted
+[run 34997349842](https://github.com/quwisky/trinity-matrix-client/actions/runs/34997349842)
+at source head `37af1042301d955bc78e368b73b329e22b3f4ae3` and hosted
+merge `033588e404894acd53a625a6396273bc4f7722e5`. Android shard-3
+[job 104477625076](https://github.com/quwisky/trinity-matrix-client/actions/runs/34997349842/job/104477625076)
+uploaded the passing
+[Room profile settings artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/34997349842/artifacts/10411410578),
+ID `10411410578`, digest
+`sha256:ddd6a373db81a2b9722df562370543e0f59e6577489b04b06cf0f6b533954a4b`.
+Its one 937915 ms invocation passed all four stages with zero retries: rename
+249700 ms, photo 155995 ms, partial retry 204158 ms and opening-Account
+continuity 326744 ms. The audit found every one of the 41 contract identities
+exactly once, 62 successful native-action JUnits and 305 completed Maestro
+commands with no failed, cancelled or pending command. The document picker
+selected `room-photo.png` through Downloads; the partial-save controller
+recorded the exact first `m.room.topic` 500 and one topic-only retry; the
+continuity controller released exactly one delayed `m.room.name` write; and
+the captured UI and authoritative server outcomes were exact. All 40
+`SECRET_TEXT` assignments were redacted, no credential assignment was exposed,
+the installed `eu.qwky.trinity/.MainActivity` and API 36 emulator provenance
+were present, all six audited desktop/light/dark captures were complete and
+unclipped, Synapse/device/WebView/controller/document cleanup completed, and
+the hosted worktree diff gate passed.
+
+The same attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/34997349842/artifacts/10409282811),
+ID `10409282811`, digest
+`sha256:cb3fb6d8b3a39578d97fa56420e06995800d0764c355f283870e7e864a189236`,
+records all four exact predecessors passing at retry 0. Its
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/34997349842/artifacts/10408442154),
+ID `10408442154`, digest
+`sha256:bc548b1e6623b0f0e6683692a31bac33faa0895d65ff216f020f943ef74fad33`,
+contains 49 verified files / 15,302,528 bytes and manifest digest
+`e938ec050b0ee7d59381f15dd973d3d0ea47955c2f95dcb810d21665f7cad749`
+for the hosted merge. Together with three unchanged-input local first
+attempts, six effective negative controls, required static gates and review
+with no unresolved findings, this accepts #717. The shard later failed in the
+unchanged Accounts/Workspace suite because Maestro rejected an unavailable
+driver host port before starting a `fill()` flow. The only #717 shared-client
+change is confined to `replace()`, and 27 earlier password fills passed in the
+same job; the independent host reliability failure is tracked on #665. All
+four Playwright predecessors remain enabled.
