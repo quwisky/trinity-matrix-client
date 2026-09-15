@@ -85,6 +85,9 @@ const redactNativeLog = (text: string): string =>
       `$1${redactedSecret}`,
     );
 
+const isMissingAdbListener = (error: unknown): boolean =>
+  /\badb: error: listener 'tcp:\d+' not found(?:\r?\n|$)/u.test(String(error));
+
 /** Redact flow secrets and native storage payloads before publication. */
 export async function redactMaestroArtifacts(
   directory: string,
@@ -258,6 +261,16 @@ export async function openMaestroDevice(
       timeout: 2_000,
       signal: AbortSignal.timeout(2_000),
     });
+  const removeAdbListener = async (
+    direction: 'forward' | 'reverse',
+    local: string,
+  ): Promise<void> => {
+    try {
+      await rawAdb(direction, '--remove', local);
+    } catch (error) {
+      if (!isMissingAdbListener(error)) throw error;
+    }
+  };
   const adb = (...args: string[]): Promise<string> =>
     commands.run(adbBinary, ['-s', serial, ...args], {
       signal: options.signal,
@@ -295,7 +308,7 @@ export async function openMaestroDevice(
         for (const { local, previous } of [...reverses].reverse()) {
           try {
             if (previous) await rawAdb('reverse', local, previous);
-            else await rawAdb('reverse', '--remove', local);
+            else await removeAdbListener('reverse', local);
           } catch (error) {
             failures.push(error);
           }
@@ -433,7 +446,7 @@ export async function openMaestroDevice(
         return remove;
       },
       async removeForward(local) {
-        await rawAdb('forward', '--remove', local);
+        await removeAdbListener('forward', local);
       },
       async install(apk, installedApplicationId = applicationId) {
         installedApplicationIds.add(installedApplicationId);

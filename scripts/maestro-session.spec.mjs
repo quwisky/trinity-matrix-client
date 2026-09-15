@@ -292,6 +292,64 @@ describe('Maestro device ownership', () => {
     expect(f.closed()).toBe(1);
   });
 
+  it('treats already-missing forward and reverse listeners as idempotent cleanup', async () => {
+    const f = fixture();
+    const commands = {
+      ...f.commands,
+      async run(command, args, options) {
+        const operation = args.slice(args[0] === '-s' ? 2 : 0).join(' ');
+        if (operation === 'reverse --list') return '';
+        if (
+          operation === 'forward --remove tcp:4711' ||
+          operation === 'reverse --remove tcp:8448'
+        ) {
+          throw new Error(
+            `adb: error: listener '${operation.split(' ').at(-1)}' not found`,
+          );
+        }
+        return f.commands.run(command, args, options);
+      },
+    };
+    const device = await openMaestroDevice(
+      {
+        ...f.options,
+        serial: 'emulator-5554',
+        reversePorts: [8448],
+      },
+      commands,
+    );
+
+    await expect(device.removeForward('tcp:4711')).resolves.toBeUndefined();
+    await expect(device.close()).resolves.toBeUndefined();
+    expect(f.calls).toContainEqual([
+      '/sdk/platform-tools/adb',
+      '-s',
+      'emulator-5554',
+      'reverse',
+      'tcp:8448',
+      'tcp:8448',
+    ]);
+  });
+
+  it('preserves non-idempotent ADB forward-removal failures', async () => {
+    const f = fixture();
+    const failure = new Error('adb: error: device offline');
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      {
+        ...f.commands,
+        async run(command, args, options) {
+          const operation = args.slice(args[0] === '-s' ? 2 : 0).join(' ');
+          if (operation === 'forward --remove tcp:4711') throw failure;
+          return f.commands.run(command, args, options);
+        },
+      },
+    );
+
+    await expect(device.removeForward('tcp:4711')).rejects.toBe(failure);
+    await device.close();
+  });
+
   it.each(['selection', 'push'])(
     'removes a staged document before device teardown when %s is cancelled',
     async (cancelDuring) => {
