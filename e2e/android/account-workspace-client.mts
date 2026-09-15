@@ -150,7 +150,7 @@ export class AccountWorkspaceClient {
             (e instanceof HTMLInputElement && e.type !== 'password')
               ? e.value
               : null,
-          attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'role', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded'].includes(a.name)).map(a => [a.name,a.value])),
+          attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'role', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
           rect: {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom},
           style: {display:style.display,opacity:style.opacity,overflowY:style.overflowY},
           scrollHeight:e.scrollHeight,scrollTop:e.scrollTop,clientHeight:e.clientHeight,

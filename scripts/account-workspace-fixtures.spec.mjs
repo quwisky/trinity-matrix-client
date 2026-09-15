@@ -831,6 +831,111 @@ describe('account workspace fixtures', () => {
     expect(fetchCalls.at(-1).url).toContain('/_matrix/client/v3/logout');
   });
 
+  it('sets an exact Account-and-Room notification mode without exposing its token', async () => {
+    createNodeAccount.mockResolvedValue(account('preferences'));
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-preferences:test',
+          access_token: 'private-preferences-token',
+        });
+      }
+      return response({});
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const owner = await fixtures.account('preferences');
+
+    await expect(
+      fixtures.setRoomNotificationMode(owner, '!Room / one:test', 'mentions'),
+    ).resolves.toBeUndefined();
+
+    const write = fetchCalls[1];
+    expect(new URL(write.url).pathname).toBe(
+      '/_matrix/client/v3/pushrules/global/room/!Room%20%2F%20one%3Atest',
+    );
+    expect(write.init.method).toBe('PUT');
+    expect(JSON.parse(write.init.body)).toEqual({ actions: [] });
+    expect(write.init.headers.Authorization).toBe(
+      'Bearer private-preferences-token',
+    );
+    expect(JSON.stringify(owner)).not.toMatch(
+      /private-preferences-token|Bearer/,
+    );
+  });
+
+  it('reads exact per-Account notification modes and Room tags', async () => {
+    createNodeAccount.mockResolvedValue(account('preferences'));
+    const pushRules = [
+      {
+        global: {
+          override: [{ rule_id: '!room:test', enabled: true, actions: [] }],
+          room: [],
+        },
+      },
+      {
+        global: {
+          override: [],
+          room: [{ rule_id: '!room:test', enabled: true, actions: [] }],
+        },
+      },
+      { global: { override: [], room: [] } },
+    ];
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-preferences:test',
+          access_token: 'private-preferences-token',
+        });
+      }
+      if (new URL(url).pathname.endsWith('/pushrules/')) {
+        return response(pushRules.shift());
+      }
+      return response({
+        tags: { 'm.favourite': {}, 'm.lowpriority': { order: 0.5 } },
+      });
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const owner = await fixtures.account('preferences');
+
+    await expect(
+      fixtures.roomNotificationMode(owner, '!room:test'),
+    ).resolves.toBe('mute');
+    await expect(
+      fixtures.roomNotificationMode(owner, '!room:test'),
+    ).resolves.toBe('mentions');
+    await expect(
+      fixtures.roomNotificationMode(owner, '!room:test'),
+    ).resolves.toBe('all');
+    await expect(fixtures.roomTags(owner, '!room:test')).resolves.toEqual({
+      'm.favourite': {},
+      'm.lowpriority': { order: 0.5 },
+    });
+
+    expect(fetchCalls.slice(1).map(({ url }) => new URL(url).pathname)).toEqual(
+      [
+        '/_matrix/client/v3/pushrules/',
+        '/_matrix/client/v3/pushrules/',
+        '/_matrix/client/v3/pushrules/',
+        '/_matrix/client/v3/user/%40user-preferences%3Atest/rooms/!room%3Atest/tags',
+      ],
+    );
+    expect(
+      fetchCalls
+        .slice(1)
+        .every(({ init }) =>
+          init.headers.Authorization.includes('private-preferences-token'),
+        ),
+    ).toBe(true);
+  });
+
   it('creates and registers a direct room before joining and publishing m.direct', async () => {
     createNodeAccount.mockImplementation(async (_resources, _signal, role) =>
       account(role),

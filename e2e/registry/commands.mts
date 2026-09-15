@@ -336,6 +336,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-profile-settings'],
   },
   {
+    name: 'e2e:android:room-for-you',
+    command: 'nx run trinity-e2e-android:room-for-you',
+    kind: 'canonical',
+    suiteIds: ['android.room-for-you'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -620,6 +626,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-profile-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-profile-settings; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-profile-settings'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-for-you-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-for-you; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-for-you'],
   },
   {
     command:

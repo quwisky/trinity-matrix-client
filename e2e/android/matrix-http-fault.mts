@@ -14,6 +14,18 @@ export interface MatrixRoomAliasTarget {
   readonly alias: string;
 }
 
+export interface MatrixPushRulesTarget {
+  readonly method: 'GET' | 'PUT' | 'DELETE';
+  readonly roomId?: string;
+}
+
+export interface MatrixRoomTagTarget {
+  readonly method: 'PUT' | 'DELETE';
+  readonly userId: string;
+  readonly roomId: string;
+  readonly tag: 'm.favourite' | 'm.lowpriority';
+}
+
 interface FetchRequestPaused {
   readonly requestId: string;
   readonly networkId?: string;
@@ -43,6 +55,16 @@ export type MatrixHttpFaultOptions =
       readonly kind: 'room-alias';
       readonly status: number;
       readonly responseError?: string;
+    })
+  | (MatrixPushRulesTarget & {
+      readonly kind: 'push-rules';
+      readonly status: number;
+      readonly responseError?: string;
+    })
+  | (MatrixRoomTagTarget & {
+      readonly kind: 'room-tag';
+      readonly status: number;
+      readonly responseError?: string;
     });
 
 export interface MatrixHttpFault {
@@ -50,6 +72,8 @@ export interface MatrixHttpFault {
   readonly createRoomAttempts: number;
   readonly firstOutcome: MatrixHttpOutcome | undefined;
   roomStateAttempts(eventType: MatrixRoomStateTarget['eventType']): number;
+  pushRulesAttempts(target: MatrixPushRulesTarget): number;
+  roomTagAttempts(target: MatrixRoomTagTarget): number;
   waitForAttempts(expected: number, signal: AbortSignal): Promise<number>;
   close(): Promise<void>;
 }
@@ -177,6 +201,63 @@ export function isMatrixRoomAliasRequest(
   }
 }
 
+/** Match either the exact push-rules collection read or one Room-scoped rule write. */
+export function isMatrixPushRulesRequest(
+  value: unknown,
+  target: MatrixPushRulesTarget,
+): boolean {
+  const request = fetchRequest(value);
+  if (!request || request.method !== target.method) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return false;
+  }
+  if (target.method === 'GET') {
+    return target.roomId === undefined &&
+      /^\/_matrix\/client\/[^/]+\/pushrules\/?$/.test(pathname);
+  }
+  if (!target.roomId) return false;
+  const match = pathname.match(
+    /^\/_matrix\/client\/[^/]+\/pushrules\/global\/(?:room|override)\/([^/]+)(?:\/enabled)?\/?$/,
+  );
+  if (!match) return false;
+  try {
+    return decodeURIComponent(match[1]!) === target.roomId;
+  } catch {
+    return false;
+  }
+}
+
+/** Match one exact personal Room-tag write without catching adjacent Accounts or tags. */
+export function isMatrixRoomTagRequest(
+  value: unknown,
+  target: MatrixRoomTagTarget,
+): boolean {
+  const request = fetchRequest(value);
+  if (!request || request.method !== target.method) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return false;
+  }
+  const match = pathname.match(
+    /^\/_matrix\/client\/[^/]+\/user\/([^/]+)\/rooms\/([^/]+)\/tags\/([^/]+)\/?$/,
+  );
+  if (!match) return false;
+  try {
+    return (
+      decodeURIComponent(match[1]!) === target.userId &&
+      decodeURIComponent(match[2]!) === target.roomId &&
+      decodeURIComponent(match[3]!) === target.tag
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isMatrixCreateRoomRequest(value: unknown): boolean {
   const request = fetchRequest(value);
   if (!request || request.method !== 'POST') return false;
@@ -199,7 +280,11 @@ function fetchPattern(options: MatrixHttpFaultOptions | MatrixRoomStateTarget): 
       ? '*/_matrix/client/*/join/*'
       : options.kind === 'room-alias'
         ? '*/_matrix/client/*/directory/room/*'
-        : '*/_matrix/client/*/rooms/*/state/*';
+        : options.kind === 'push-rules'
+          ? '*/_matrix/client/*/pushrules*'
+          : options.kind === 'room-tag'
+            ? '*/_matrix/client/*/user/*/rooms/*/tags/*'
+            : '*/_matrix/client/*/rooms/*/state/*';
 }
 
 function matchesFaultRequest(
@@ -214,6 +299,12 @@ function matchesFaultRequest(
     assert(options.roomId, 'Room-state fault requires an exact room id');
     assert(options.eventType, 'Room-state fault requires an exact event type');
     return isMatrixRoomStateRequest(value, options);
+  }
+  if (options.kind === 'push-rules') {
+    return isMatrixPushRulesRequest(value, options);
+  }
+  if (options.kind === 'room-tag') {
+    return isMatrixRoomTagRequest(value, options);
   }
   return matrixRequestKind(value) === options.kind;
 }
@@ -251,6 +342,17 @@ export async function installFirstMatrixHttpFailure(
   if (options.kind === 'room-alias') {
     assert(options.alias, 'Room-alias fault requires an exact alias');
   }
+  if (options.kind === 'push-rules') {
+    assert(
+      options.method === 'GET' || options.roomId,
+      'Push-rules write fault requires an exact room id',
+    );
+  }
+  if (options.kind === 'room-tag') {
+    assert(options.userId, 'Room-tag fault requires an exact user id');
+    assert(options.roomId, 'Room-tag fault requires an exact room id');
+    assert(options.tag, 'Room-tag fault requires an exact tag');
+  }
   let attempts = 0;
   let closed = false;
   let eventFailure: unknown;
@@ -259,6 +361,7 @@ export async function installFirstMatrixHttpFailure(
   let firstOutcome: MatrixHttpOutcome | undefined;
   let createRoomAttempts = 0;
   const roomStateAttempts = new Map<MatrixRoomStateTarget['eventType'], number>();
+  const observedRequests: FetchRequest[] = [];
 
   const networkEvent = (
     value: unknown,
@@ -362,6 +465,7 @@ export async function installFirstMatrixHttpFailure(
   const handle = async (value: unknown): Promise<void> => {
     const paused = pausedRequest(value);
     if (!paused) throw new Error('Fetch.requestPaused payload is malformed');
+    observedRequests.push(paused.request);
     if (isMatrixCreateRoomRequest(paused)) createRoomAttempts += 1;
     if (options.kind === 'room-state') {
       for (const eventType of [
@@ -431,6 +535,14 @@ export async function installFirstMatrixHttpFailure(
     await connection.send('Fetch.enable', {
       patterns: [
         { urlPattern: fetchPattern(options), requestStage: 'Request' },
+        ...(options.kind === 'room-tag'
+          ? [
+              {
+                urlPattern: '*/_matrix/client/*/pushrules*',
+                requestStage: 'Request',
+              },
+            ]
+          : []),
         { urlPattern: '*/_matrix/client/*/createRoom', requestStage: 'Request' },
       ],
     });
@@ -468,6 +580,16 @@ export async function installFirstMatrixHttpFailure(
     },
     roomStateAttempts(eventType) {
       return roomStateAttempts.get(eventType) ?? 0;
+    },
+    pushRulesAttempts(target) {
+      return observedRequests.filter((request) =>
+        isMatrixPushRulesRequest({ request }, target),
+      ).length;
+    },
+    roomTagAttempts(target) {
+      return observedRequests.filter((request) =>
+        isMatrixRoomTagRequest({ request }, target),
+      ).length;
     },
     async waitForAttempts(expected, signal): Promise<number> {
       assert(expected >= 0, 'Expected Matrix attempt count must be nonnegative');
