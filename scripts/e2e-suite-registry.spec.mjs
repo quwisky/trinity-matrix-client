@@ -1379,6 +1379,48 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android Room For-you batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-for-you',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-for-you',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-for-you',
+        sourceEntrypoints: ['e2e/android/room-for-you-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-for-you',
+        command: 'nx run trinity-e2e-android:room-for-you',
+        suiteIds: ['android.room-for-you'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-for-you'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android Recent Activity batch with the host budget', async () => {
     const suite = registrySnapshot().suites.find(
       (entry) => entry.id === 'android.recent-activity',

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   installFirstMatrixHttpFailure,
   installMatrixRoomStateDelay,
+  isMatrixPushRulesRequest,
+  isMatrixRoomTagRequest,
   isMatrixRoomStateRequest,
   matrixRequestKind,
 } from '../e2e/android/matrix-http-fault.mts';
@@ -35,6 +37,228 @@ function connectionFixture() {
 }
 
 describe('Matrix HTTP fault instrumentation', () => {
+  it('matches only an exact push-rules read or exact Room-scoped rule write', () => {
+    expect(
+      isMatrixPushRulesRequest(
+        {
+          request: {
+            method: 'GET',
+            url: 'https://localhost/_matrix/client/v3/pushrules/',
+          },
+        },
+        { method: 'GET' },
+      ),
+    ).toBe(true);
+    expect(
+      isMatrixPushRulesRequest(
+        {
+          request: {
+            method: 'PUT',
+            url: 'https://localhost/_matrix/client/v3/pushrules/global/override/!room%3Alocalhost',
+          },
+        },
+        { method: 'PUT', roomId: '!room:localhost' },
+      ),
+    ).toBe(true);
+    for (const [candidate, target] of [
+      [
+        {
+          request: {
+            method: 'POST',
+            url: 'https://localhost/_matrix/client/v3/pushrules/',
+          },
+        },
+        { method: 'GET' },
+      ],
+      [
+        {
+          request: {
+            method: 'GET',
+            url: 'https://localhost/_matrix/client/v3/pushrules/global/',
+          },
+        },
+        { method: 'GET' },
+      ],
+      [
+        {
+          request: {
+            method: 'PUT',
+            url: 'https://localhost/_matrix/client/v3/pushrules/global/room/!other%3Alocalhost',
+          },
+        },
+        { method: 'PUT', roomId: '!room:localhost' },
+      ],
+      [
+        {
+          request: {
+            method: 'GET',
+            url: 'https://localhost/not-matrix/v3/pushrules/',
+          },
+        },
+        { method: 'GET' },
+      ],
+    ]) {
+      expect(isMatrixPushRulesRequest(candidate, target)).toBe(false);
+    }
+  });
+
+  it('matches only the exact user, Room, tag, and method', () => {
+    const target = {
+      method: 'PUT',
+      userId: '@owner:localhost',
+      roomId: '!room:localhost',
+      tag: 'm.lowpriority',
+    };
+    expect(
+      isMatrixRoomTagRequest(
+        {
+          request: {
+            method: 'PUT',
+            url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!room%3Alocalhost/tags/m.lowpriority',
+          },
+        },
+        target,
+      ),
+    ).toBe(true);
+    for (const candidate of [
+      {
+        request: {
+          method: 'DELETE',
+          url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!room%3Alocalhost/tags/m.lowpriority',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/user/%40member%3Alocalhost/rooms/!room%3Alocalhost/tags/m.lowpriority',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!other%3Alocalhost/tags/m.lowpriority',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!room%3Alocalhost/tags/m.favourite',
+        },
+      },
+    ]) {
+      expect(isMatrixRoomTagRequest(candidate, target)).toBe(false);
+    }
+  });
+
+  it('fails only the first exact push-rules read and records its retry', async () => {
+    const fixture = connectionFixture();
+    const fault = await installFirstMatrixHttpFailure(fixture.connection, {
+      kind: 'push-rules',
+      method: 'GET',
+      status: 500,
+      responseError: 'offline',
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'wrong',
+      request: {
+        method: 'GET',
+        url: 'https://localhost/_matrix/client/v3/pushrules/global/',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'first',
+      request: {
+        method: 'GET',
+        url: 'https://localhost/_matrix/client/v3/pushrules/',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'retry',
+      request: {
+        method: 'GET',
+        url: 'https://localhost/_matrix/client/v3/pushrules',
+      },
+    });
+
+    await expect(
+      fault.waitForAttempts(2, AbortSignal.timeout(1_000)),
+    ).resolves.toBe(2);
+    expect(fault.pushRulesAttempts({ method: 'GET' })).toBe(2);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.fulfillRequest',
+      expect.objectContaining({
+        requestId: 'first',
+        responseCode: 500,
+        body: Buffer.from(
+          JSON.stringify({ errcode: 'M_UNKNOWN', error: 'offline' }),
+        ).toString('base64'),
+      }),
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'retry' },
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'wrong' },
+    ]);
+    await fault.close();
+  });
+
+  it('fails only the first exact low-priority write and counts adjacent preference writes', async () => {
+    const fixture = connectionFixture();
+    const target = {
+      method: 'PUT',
+      userId: '@owner:localhost',
+      roomId: '!room:localhost',
+      tag: 'm.lowpriority',
+    };
+    const fault = await installFirstMatrixHttpFailure(fixture.connection, {
+      kind: 'room-tag',
+      ...target,
+      status: 500,
+      responseError: 'retry me',
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'notification',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/pushrules/global/override/!room%3Alocalhost',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'favourite',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!room%3Alocalhost/tags/m.favourite',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'first-low',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!room%3Alocalhost/tags/m.lowpriority',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'retry-low',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/user/%40owner%3Alocalhost/rooms/!room%3Alocalhost/tags/m.lowpriority',
+      },
+    });
+
+    await expect(
+      fault.waitForAttempts(2, AbortSignal.timeout(1_000)),
+    ).resolves.toBe(2);
+    expect(
+      fault.pushRulesAttempts({ method: 'PUT', roomId: '!room:localhost' }),
+    ).toBe(1);
+    expect(fault.roomTagAttempts({ ...target, tag: 'm.favourite' })).toBe(1);
+    expect(fault.roomTagAttempts(target)).toBe(2);
+    await fault.close();
+  });
+
   it('matches only the exact PUT room-alias directory target', async () => {
     const module = await import('../e2e/android/matrix-http-fault.mts');
     expect(module.isMatrixRoomAliasRequest).toBeTypeOf('function');

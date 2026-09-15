@@ -29,6 +29,8 @@ export interface WorkspaceDirectRoomOptions {
   readonly preset?: 'private_chat' | 'trusted_private_chat';
 }
 
+export type WorkspaceRoomNotificationMode = 'all' | 'mentions' | 'mute';
+
 interface AccessSession {
   readonly account: NodeWorkspaceAccount;
   readonly token: string;
@@ -121,6 +123,19 @@ export function createAccountFixtures(
     roomId: string,
     tag: 'm.favourite' | 'm.lowpriority',
   ): Promise<void>;
+  setRoomNotificationMode(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    mode: Exclude<WorkspaceRoomNotificationMode, 'all'>,
+  ): Promise<void>;
+  roomNotificationMode(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<WorkspaceRoomNotificationMode>;
+  roomTags(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<Readonly<Record<string, unknown>>>;
   setSpaceChild(
     account: NodeWorkspaceAccount,
     spaceId: string,
@@ -545,6 +560,71 @@ export function createAccountFixtures(
     );
   }
 
+  async function setRoomNotificationMode(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    mode: Exclude<WorkspaceRoomNotificationMode, 'all'>,
+  ): Promise<void> {
+    const kind = mode === 'mentions' ? 'room' : 'override';
+    await request(
+      access(owner),
+      `/pushrules/global/${kind}/${encodeURIComponent(roomId)}`,
+      'PUT',
+      mode === 'mentions'
+        ? { actions: [] }
+        : {
+            actions: [],
+            conditions: [
+              { kind: 'event_match', key: 'room_id', pattern: roomId },
+            ],
+          },
+    );
+  }
+
+  function pushRuleList(
+    global: MatrixRecord,
+    kind: 'override' | 'room',
+  ): readonly MatrixRecord[] {
+    const value = global[kind];
+    if (value === undefined) return [];
+    assert(Array.isArray(value), `Matrix fixture push-rule ${kind} list`);
+    return value.map((entry) =>
+      record(entry, `Matrix fixture push-rule ${kind} entry`),
+    );
+  }
+
+  async function roomNotificationMode(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<WorkspaceRoomNotificationMode> {
+    const content = record(
+      await get(access(owner), '/pushrules/'),
+      'Matrix fixture push-rules response',
+    );
+    const global = record(
+      content['global'] ?? {},
+      'Matrix fixture global push-rules response',
+    );
+    const enabled = (rule: MatrixRecord): boolean =>
+      rule['rule_id'] === roomId && rule['enabled'] !== false;
+    if (pushRuleList(global, 'override').some(enabled)) return 'mute';
+    return pushRuleList(global, 'room').some(enabled) ? 'mentions' : 'all';
+  }
+
+  async function roomTags(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const content = record(
+      await get(
+        access(owner),
+        `/user/${encodeURIComponent(owner.userId)}/rooms/${encodeURIComponent(roomId)}/tags`,
+      ),
+      'Matrix fixture Room-tags response',
+    );
+    return record(content['tags'] ?? {}, 'Matrix fixture Room-tags map');
+  }
+
   async function setSpaceChild(
     owner: NodeWorkspaceAccount,
     spaceId: string,
@@ -704,6 +784,9 @@ export function createAccountFixtures(
     markedUnread,
     setMarkedUnread,
     setRoomTag,
+    setRoomNotificationMode,
+    roomNotificationMode,
+    roomTags,
     setSpaceChild,
     spaceChild,
     spaceChildIds,

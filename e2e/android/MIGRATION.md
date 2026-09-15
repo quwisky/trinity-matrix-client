@@ -2206,3 +2206,96 @@ driver host port before starting a `fill()` flow. The only #717 shared-client
 change is confined to `replace()`, and 27 earlier password fills passed in the
 same job; the independent host reliability failure is tracked on #665. All
 four Playwright predecessors remain enabled.
+
+## Room For-you preferences batch
+
+The [Android Room For-you preferences batch](https://github.com/quwisky/trinity-matrix-client/issues/718)
+owns the two canonical definitions in
+[Room For-you settings](../browser/journeys/room-administration/room-settings-for-you.spec.mts),
+source SHA-256
+`923fe4053badf040b9deaf9beba7da74bc27bf19277af4bb570462fed2c24f88`:
+`shows a failed preference read and retries into the editable form` at lines
+150–225 and `isolates staged preferences to the opening Account and retries
+only a failed field` at lines 227–391. It also owns three stage-local timeline
+obligations from [`openRoom`](../browser/support/room-settings-journey.mts),
+source SHA-256
+`bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
+lines 36–44. The mapping contains exactly 35 direct plus three inherited
+identities. Both predecessor definitions and their helpers remain enabled and
+byte-for-byte unchanged.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Failed-read Room timeline is visible | `load.room-timeline-visible` |
+| Failed-read settings dialog is visible | `load.settings-visible` |
+| Exact preference-read error heading is visible | `load.error-heading-visible` |
+| Error alert does not use a live region | `load.alert-not-live` |
+| Retry remains enabled | `load.retry-enabled` |
+| Alert geometry is present | `load.alert-box-present` |
+| Retry geometry is present | `load.retry-box-present` |
+| Retry left edge is contained by the alert | `load.retry-left-contained` |
+| Retry top edge is contained by the alert | `load.retry-top-contained` |
+| Retry right edge is contained by the alert | `load.retry-right-contained` |
+| Retry bottom edge is contained by the alert | `load.retry-bottom-contained` |
+| Retry recovers the editable form | `load.form-visible` |
+| Push-rules read is attempted at least twice | `load.read-attempts-minimum` |
+| Owner Room timeline is visible | `preferences.owner-room-timeline-visible` |
+| Member Room timeline is visible | `preferences.member-room-timeline-visible` |
+| Preference settings dialog is visible | `preferences.settings-visible` |
+| For-you form is visible | `preferences.form-visible` |
+| For-you heading owns focus | `preferences.heading-focused` |
+| Expected notification mode is checked | `preferences.expected-mode-checked` |
+| Other notification modes are unchecked | `preferences.other-modes-unchecked` |
+| Opening Account is exact | `preferences.opening-account` |
+| Favourite starts unchecked | `preferences.initial-favourite-unchecked` |
+| Partial-save feedback is exact | `preferences.partial-feedback` |
+| Notification writes occur before retry | `preferences.notification-first-writes` |
+| Favourite is written exactly once before retry | `preferences.favourite-first-writes` |
+| Low priority is attempted before retry | `preferences.low-priority-first-writes` |
+| Retry success feedback is exact | `preferences.retry-feedback` |
+| Notification is not retried | `preferences.notification-total-writes` |
+| Favourite is not retried | `preferences.favourite-total-writes` |
+| Owner notification mode persists | `preferences.owner-mode-persisted` |
+| Owner favourite and low-priority tags persist | `preferences.owner-tags-persisted` |
+| Member notification mode remains isolated | `preferences.member-mode-persisted` |
+| Member tags remain isolated | `preferences.member-tags-persisted` |
+| Form remains visible across theme captures | `preferences.theme-form-visible` |
+| Form remains visible at 125% text scale | `preferences.scaled-form-visible` |
+| Member Account becomes active | `preferences.member-account` |
+| Member favourite remains checked | `preferences.member-favourite-checked` |
+| Member low priority remains unchecked | `preferences.member-low-priority-unchecked` |
+
+`android.room-for-you` uses finite Matrix REST fixtures to create its Accounts
+and private Room, seed and observe exact notification modes and Room tags, and
+clean all resources. Installed-app login, Account addition and switching, Room
+and Room Settings navigation, radio and checkbox changes, retry, cancellation
+and keyboard focus use Maestro-native input. WebView/CDP is read-only except
+for bounded default/Amethyst/Onyx light/dark and 125%-text document-root
+fixtures and exact first push-rules-read and low-priority-write fault
+instrumentation. Those fixtures, transport controllers and WebView sessions
+are restored or closed in `finally`.
+
+```bash
+pnpm nx run trinity-e2e-android:room-for-you --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-for-you
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+30-minute Node timeout. Shard 3 runs it immediately after
+`room-profile-settings` and before `accounts-workspace` under a 35-minute
+wrapper. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-for-you/` and must
+preserve both desktop-profile stages, all 38 unique identity records,
+completed native commands, exact UI/server/transport outcomes,
+renderer/APK/profile provenance, named visual and pass/failure captures,
+secret redaction, and device, WebView, document, transport and Matrix teardown.
+
+Acceptance requires the focused and full contract gates, Android and browser
+typecheck/lint, formatting and documentation gates, at least six effective
+failing controls, three unchanged-input native first attempts, both exact
+unchanged Playwright predecessors at retry 0, review with no unresolved
+findings, and original-attempt hosted Android/browser/renderer artifact audit.
+This mapping does not authorize predecessor retirement.
+It does not authorize merging PR #677.
