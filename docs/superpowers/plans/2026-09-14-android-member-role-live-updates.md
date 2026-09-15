@@ -135,10 +135,10 @@ Run the four exact titles with `--workers=1 --retries=0`; require one first-atte
 
 Require no unresolved findings and confirm the canonical Playwright source remains unchanged.
 
-- [ ] **Step 4: Publish only after #711 hosted acceptance and fresh verification**
+- [x] **Step 4: Publish only after #711 hosted acceptance and fresh verification**
 
 Commit and push `test/712-android-live-role-updates`, cherry-pick onto `test/676-android-sidebar-filter`, verify the composed tree, and push. Never merge PR #677.
 
-- [ ] **Step 5: Audit original-attempt hosted evidence before closing #712**
+- [x] **Step 5: Audit original-attempt hosted evidence before closing #712**
 
 Require green owned Android shard evidence and exact hosted predecessor passes at retry 0. Audit the immutable suite artifact for four stages, all direct and inherited records, exact live transitions and blocked-action results, completed native commands, renderer/APK/profile provenance, secret redaction, and teardown. Track unrelated job-level reliability separately on #665, then update #712, #660, #653, and PR #677.
