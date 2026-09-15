@@ -2021,7 +2021,9 @@ pnpm e2e:android:room-access-policy
 The target is uncached and serial, depends on
 `trinity-android:build-prebuilt`, and owns `android-avd` plus `synapse`. Its
 bounds are 35 minutes for the Node test and 40 minutes for the hosted wrapper.
-Shard 3 runs it after `room-address-lifecycle` and before `member-moderation`.
+Shard 3 runs it as the first dedicated suite, before `accounts-workspace`, so a
+failure in the long retained suite chain cannot suppress this batch's started-only
+artifact. The retained shard-3 suites otherwise keep their established order.
 Started-only diagnostics live under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.room-access-policy/`
 and must preserve four desktop-profile stages, all 29 identity records,
@@ -2034,3 +2036,9 @@ native first attempts, all four exact unchanged Playwright predecessors at
 retry 0, the full static gates, review with no unresolved findings, and an
 original-attempt hosted artifact audit. Until those gates pass, this ledger
 entry is pending acceptance and does not authorize predecessor retirement.
+Hosted runs 34962657727 and 34966016331 both ended before this suite's started
+flag: the first lost the Maestro device server during runner smoke, and the
+second failed the unchanged `accounts-workspace` prerequisite after 12 passed
+stages. Their browser and renderer prerequisites passed, but neither run is
+#716 Android evidence. The suite was therefore moved ahead of the retained
+shard-3 chain for the next original-attempt audit.

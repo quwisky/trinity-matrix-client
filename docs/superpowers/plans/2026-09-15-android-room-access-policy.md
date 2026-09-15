@@ -129,7 +129,7 @@ Run: `pnpm nx test scripts -- room-access-policy-migration.spec.mjs account-work
 
 - [x] **Step 1: Add failing registry/workflow assertions**
 
-Require target/script/entrypoint, exact suite ID, no-cache one-attempt runner, serialized resources, bounded timeouts, shard-3 ordering after `room-address-lifecycle` and before `member-moderation`, started flag, exact report path `android.room-access-policy/**`, artifact surface, and upload-count increment.
+Require target/script/entrypoint, exact suite ID, no-cache one-attempt runner, serialized resources, bounded timeouts, first-suite shard-3 ordering before `accounts-workspace`, started flag, exact report path `android.room-access-policy/**`, artifact surface, and upload-count increment. The original after-`room-address-lifecycle` placement was revised after two original-attempt hosted runs ended in unchanged prerequisites before this batch could start; running the new batch first preserves independent evidence without changing any retained suite.
 
 - [x] **Step 2: Verify registration RED**
 
