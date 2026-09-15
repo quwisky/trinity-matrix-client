@@ -1295,6 +1295,48 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android Room access policy batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.room-access-policy',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:room-access-policy',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:room-access-policy',
+        sourceEntrypoints: ['e2e/android/room-access-policy-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:room-access-policy',
+        command: 'nx run trinity-e2e-android:room-access-policy',
+        suiteIds: ['android.room-access-policy'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:room-access-policy'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android Recent Activity batch with the host budget', async () => {
     const suite = registrySnapshot().suites.find(
       (entry) => entry.id === 'android.recent-activity',

@@ -12,6 +12,7 @@ export interface WorkspaceAccountOptions {
 export interface WorkspaceRoomContent {
   readonly name: string;
   readonly preset?: string;
+  readonly roomVersion?: '9';
   readonly invite?: readonly string[];
   readonly creation_content?: { readonly type: 'm.space' };
   readonly power_level_content_override?: {
@@ -40,6 +41,7 @@ interface MatrixRecord {
 type WorkspaceRoomStateEventType =
   | 'm.room.avatar'
   | 'm.room.canonical_alias'
+  | 'm.room.history_visibility'
   | 'm.room.join_rules'
   | 'm.room.name'
   | 'm.room.power_levels'
@@ -314,6 +316,9 @@ export function createAccountFixtures(
     const response = await request(access(owner), '/createRoom', 'POST', {
       name: content.name,
       ...(content.preset ? { preset: content.preset } : {}),
+      ...(content.roomVersion
+        ? { room_version: content.roomVersion }
+        : {}),
       ...(content.invite ? { invite: content.invite } : {}),
       ...(content.creation_content ? { creation_content: content.creation_content } : {}),
       ...(content.power_level_content_override
