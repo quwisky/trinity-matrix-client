@@ -97,6 +97,12 @@ export function createAccountFixtures(
   ): Promise<void>;
   invite(account: NodeWorkspaceAccount, roomId: string, invitee: NodeWorkspaceAccount): Promise<void>;
   join(account: NodeWorkspaceAccount, roomId: string): Promise<void>;
+  ban(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    member: NodeWorkspaceAccount,
+    reason: string,
+  ): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<void>;
   markedUnread(account: NodeWorkspaceAccount, roomId: string): Promise<boolean | undefined>;
   setMarkedUnread(
@@ -434,6 +440,25 @@ export function createAccountFixtures(
     members.add(member.userId);
   }
 
+  async function ban(
+    owner: NodeWorkspaceAccount,
+    roomId: string,
+    member: NodeWorkspaceAccount,
+    reason: string,
+  ): Promise<void> {
+    assert(
+      roomMembers.get(roomId)?.has(member.userId),
+      `Cannot ban untracked Matrix fixture membership ${member.userId} in ${roomId}`,
+    );
+    await request(
+      access(owner),
+      `/rooms/${encodeURIComponent(roomId)}/ban`,
+      'POST',
+      { user_id: member.userId, reason },
+    );
+    allowEndedMembershipCleanup(member, roomId);
+  }
+
   async function sendMessage(
     sender: NodeWorkspaceAccount,
     roomId: string,
@@ -659,6 +684,7 @@ export function createAccountFixtures(
     setRoomPower,
     invite,
     join,
+    ban,
     sendMessage,
     markedUnread,
     setMarkedUnread,

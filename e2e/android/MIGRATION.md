@@ -1654,3 +1654,66 @@ digest `e0e4b57a301e141e0aec237a8cabead24094d8e9711b922a301d46f889a59a96`.
 The run's unrelated failures in unchanged Android shards 1 and 3 are tracked on
 #665; all #712-owned gates passed. This mapping does not authorize predecessor
 retirement.
+
+## Room unban batch
+
+The [Android Room unban batch](https://github.com/quwisky/trinity-matrix-client/issues/713)
+owns the canonical
+`an admin unbans a member from the banned list` definition in
+[Room members and addresses](../browser/journeys/room-administration/room-members-and-addresses.spec.mts),
+source SHA-256
+`f306f5bfffca9f7a476966d7d2ff678a227fa7b2fae6e2f4934fb46c6c218ff5`,
+lines 75–170. It also owns the transitive visible-Room obligation from
+[`openRoom`](../browser/support/room-settings-journey.mts), SHA-256
+`bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
+lines 36–44, and the visible Members-panel obligation from
+[`openSettingsTab`](../support/app.mts), SHA-256
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+lines 228–248. This is exactly seven direct plus two helper assertion sites.
+All predecessor sources remain enabled and unchanged.
+
+`android.room-unban` uses finite Matrix fixtures to create an admin and target,
+set the target display name before membership events, create an invited private
+Room, join and ban the target with reason `spam`, and prove exact initial `ban`
+membership. The installed app is reset to the exact Pixel 5 profile. Login,
+Rooms and Room selection, compact Room Settings navigation, Members and Banned
+selection, Unban activation, and confirmation use measured Maestro-native
+input. WebView/CDP is limited to read-only observation and coordinate
+measurement; it does not click, focus, fill, dispatch product events, submit
+forms, navigate, inject DOM, or mutate application state or styles.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Shared Room timeline is visible | `unban.room-timeline-visible` |
+| Shared Members panel is visible | `unban.members-panel-visible` |
+| Banned-members surface is visible | `unban.banned-surface-visible` |
+| Exact target row is visible | `unban.target-row-visible` |
+| Confirmation names the target | `unban.confirm-target` |
+| Confirmation names the Room | `unban.confirm-room` |
+| Confirmation names the opening Account | `unban.confirm-account` |
+| Exact success toast is visible | `unban.toast-visible` |
+| Target has exact server membership `leave` | `unban.server-membership` |
+
+```bash
+pnpm nx run trinity-e2e-android:room-unban --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-unban
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, and owns `android-avd` plus `synapse`. Its
+bounds are 10 minutes for the Node test, 13 minutes for the target, and 15
+minutes for the hosted wrapper. Shard 3 runs it after `message-moderation` and
+before `member-moderation`, so a later unrelated moderation failure cannot
+prevent the owned artifact while the accepted #709 suite and diagnostics stay
+unchanged. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-unban/` and preserve
+all nine records, completed native commands, exact confirmation/toast/server
+outcomes, renderer/APK/Pixel 5 provenance, pass/failure captures, secret
+redaction, and device, WebView and Matrix teardown.
+
+Acceptance for #713 requires three unchanged-input native first attempts, the
+unchanged exact Playwright predecessor at retry 0, at least five effective
+failing controls, required static gates, review, original-attempt green owned
+hosted evidence, and immutable-artifact audit. This mapping does not authorize
+predecessor retirement.
