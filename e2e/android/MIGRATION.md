@@ -2065,3 +2065,101 @@ findings, this accepts #716. The shard later failed in the unchanged
 swipe; that infrastructure failure is tracked on #665 and does not invalidate
 the already-passed, independently uploaded #716 evidence. The four Playwright
 predecessors remain enabled; this mapping does not authorize their retirement.
+
+## Room profile settings batch
+
+The [Android Room profile settings batch](https://github.com/quwisky/trinity-matrix-client/issues/717)
+owns four canonical definitions in
+[Room profile settings](../browser/journeys/room-administration/room-profile-settings.spec.mts),
+source SHA-256
+`f6ab33a1fc7160efb206c66f064ab158cea1c3969ad6ee5a55b8eb39299d1f96`:
+`an admin renames a room from the settings dialog` at lines 16–151,
+`an admin changes the room photo` at lines 153–197,
+`keeps partial General saves retryable` at lines 199–256, and
+`keeps the opening account for in-flight General saves` at lines 258–358.
+It also owns five stage-local timeline obligations from
+[`openRoom`](../browser/support/room-settings-journey.mts), source SHA-256
+`bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
+lines 36–44. The mapping contains exactly 36 direct plus five inherited
+identities. All four predecessor definitions and their helper remain enabled
+and byte-for-byte unchanged.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Prior Room timeline is visible | `rename.prior-room-timeline-visible` |
+| Original Room timeline is visible | `rename.original-room-timeline-visible` |
+| Rename settings dialog is visible | `rename.settings-visible` |
+| Desktop settings directory is visible | `rename.directory-visible` |
+| Opening Account is exact | `rename.opening-account` |
+| General heading owns focus | `rename.heading-focused` |
+| Desktop dialog meets its minimum width | `rename.desktop-width-minimum` |
+| Desktop dialog stays within its maximum width | `rename.desktop-width-maximum` |
+| Compact directory is hidden | `rename.compact-directory-hidden` |
+| Compact Back control is visible | `rename.compact-back-visible` |
+| Compact General panel remains visible | `rename.compact-general-visible` |
+| Desktop directory returns after resize restoration | `rename.desktop-directory-restored` |
+| Desktop Back control is hidden after restoration | `rename.desktop-back-hidden` |
+| Cancel remains visible at 125% text scale | `rename.scaled-cancel-visible` |
+| Scaled action layout does not overflow | `rename.scaled-actions-absent` |
+| Android Back opens the discard dialog | `rename.back-discard-visible` |
+| Cancelling Back discard retains the exact draft | `rename.back-draft-retained` |
+| General-tab navigation opens the discard dialog | `rename.tab-discard-visible` |
+| Cancelling tab discard retains the exact draft | `rename.tab-draft-retained` |
+| General panel remains selected after discard cancellation | `rename.general-panel-retained` |
+| Renamed Room appears in the channel list | `rename.new-channel-visible` |
+| Old Room name disappears from the channel list | `rename.old-channel-absent` |
+| Photo Room timeline is visible | `photo.room-timeline-visible` |
+| Photo settings dialog is visible | `photo.settings-visible` |
+| Exact success toast and authoritative MXC avatar state are present | `photo.updated` |
+| Partial-save Room timeline is visible | `partial.room-timeline-visible` |
+| First topic failure feedback is exact | `partial.failure-feedback` |
+| Name is attempted exactly once before retry | `partial.name-first-attempts` |
+| Topic is attempted exactly once before retry | `partial.topic-first-attempts` |
+| Retry feedback is exact | `partial.retry-feedback` |
+| Name is not retried | `partial.name-total-attempts` |
+| Topic is retried exactly once | `partial.topic-total-attempts` |
+| Continuity Room timeline is visible | `continuity.room-timeline-visible` |
+| Opening owner Account is exact | `continuity.opening-account` |
+| Delayed Room name reports Saving | `continuity.name-saving` |
+| Target member Account row is visible | `continuity.member-row-visible` |
+| Target member becomes active | `continuity.active-member` |
+| In-flight save retains the opening owner Account | `continuity.account-retained` |
+| Delayed Room name reports Name saved | `continuity.name-saved` |
+| Subsequent topic reports Topic saved | `continuity.topic-saved` |
+| Member observer reads the exact persisted topic | `continuity.topic-persisted` |
+
+`android.room-profile-settings` uses finite Matrix REST fixtures to create
+Rooms and accounts and to observe exact name, topic and avatar state. Installed
+app login, Room and Room Settings navigation, responsive Back behavior, text
+entry, save/retry actions, photo activation and Android DocumentsUI selection
+use Maestro-native input. WebView/CDP is read-only except for bounded
+light/dark/125%-text document-root fixtures, exact first-topic failure and
+first-name delay transport controllers, and the predecessor-required Account
+switch behind the pointer-blocking save modal. That Room-specific exception is
+confined to the exact two source-pinned clicks at predecessor lines 324–335.
+The document root, transport controllers and staged document are restored or
+closed in `finally`.
+
+```bash
+pnpm nx run trinity-e2e-android:room-profile-settings --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-profile-settings
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+35-minute Node timeout. Shard 3 runs it immediately after
+`room-access-policy` and before `accounts-workspace` under a 40-minute wrapper.
+Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-profile-settings/`
+and must preserve four desktop-profile stages, all 41 unique identity records,
+completed native commands, exact UI/server/transport outcomes,
+renderer/APK/profile provenance, named visual and pass/failure captures,
+secret redaction, and device, WebView, document, transport and Matrix teardown.
+
+Acceptance requires the focused and full contract gates, Android and browser
+typecheck/lint, formatting and documentation gates, at least five effective
+failing controls, three unchanged-input native first attempts, all four exact
+unchanged Playwright predecessors at retry 0, review with no unresolved
+findings, and original-attempt hosted Android/browser/renderer artifact audit.
+This mapping does not authorize predecessor retirement or merging PR #677.
