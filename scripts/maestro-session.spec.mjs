@@ -110,16 +110,22 @@ function fixture({ resources = ['android-avd'], rejectReverse = false } = {}) {
 
 function configureMaestro(
   f,
-  { exitCode = 0, failScrub = false, sleepMs = 0 } = {},
+  { driverPortFailures = 0, exitCode = 0, failScrub = false, sleepMs = 0 } = {},
 ) {
   const cli = join(f.options.workspaceRoot, 'maestro-fixture.mjs');
   writeFileSync(
     cli,
     `#!/usr/bin/env node
-import { symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const args = process.argv.slice(2);
 const output = args[args.indexOf('--test-output-dir') + 1];
+const driverPort = args[args.indexOf('--driver-host-port') + 1];
+const attemptsFile = join(process.cwd(), 'maestro-driver-port-attempts.json');
+const attempts = existsSync(attemptsFile) ? JSON.parse(readFileSync(attemptsFile, 'utf8')) : [];
+attempts.push(driverPort);
+writeFileSync(attemptsFile, JSON.stringify(attempts));
+${driverPortFailures ? `if (attempts.length <= ${driverPortFailures}) { console.error('Requested driver host port ' + driverPort + ' is not available'); process.exit(1); }` : ''}
 const password = args.find((arg) => arg.startsWith('PASSWORD='))?.slice('PASSWORD='.length) ?? '';
 writeFileSync(join(output, 'commands.json'), JSON.stringify({ cliArgs: args, defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
 writeFileSync(join(output, 'maestro.log'), 'login started: ' + password + '\\n');
@@ -525,6 +531,50 @@ describe('Maestro device ownership', () => {
     expect(ports.every((port) => Number.isInteger(port) && port > 0)).toBe(
       true,
     );
+    await device.close();
+  });
+
+  it('retries a pre-start driver-port rejection with a fresh port', async () => {
+    const f = fixture();
+    configureMaestro(f, { driverPortFailures: 1 });
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await expect(device.runFlow('/flows/read.yaml')).resolves.toBeUndefined();
+
+    const ports = JSON.parse(
+      readFileSync(
+        join(f.options.workspaceRoot, 'maestro-driver-port-attempts.json'),
+        'utf8',
+      ),
+    );
+    expect(ports).toHaveLength(2);
+    expect(new Set(ports).size).toBe(2);
+    await device.close();
+  });
+
+  it('bounds repeated pre-start driver-port retries', async () => {
+    const f = fixture();
+    configureMaestro(f, { driverPortFailures: 4 });
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+
+    await expect(device.runFlow('/flows/read.yaml')).rejects.toThrow(
+      'Maestro read.yaml failed (1)',
+    );
+
+    const ports = JSON.parse(
+      readFileSync(
+        join(f.options.workspaceRoot, 'maestro-driver-port-attempts.json'),
+        'utf8',
+      ),
+    );
+    expect(ports).toHaveLength(3);
+    expect(new Set(ports).size).toBe(3);
     await device.close();
   });
 
