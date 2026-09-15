@@ -388,7 +388,7 @@ export class AccountWorkspaceClient {
 
   /** Replace a prefilled value after moving the native caret to its exact end. */
   async replace(selector: string, value: string): Promise<void> {
-    await this.tap(selector);
+    await this.tapCurrent(selector);
     await this.key('end');
     await this.device.runFlow(
       join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
