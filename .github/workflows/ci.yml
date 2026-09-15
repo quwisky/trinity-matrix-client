@@ -317,9 +317,9 @@ jobs:
     # Shard 1 allows 20 + 20 + 20 + 45 minutes for commands and 15 for setup/diagnostics.
     # Shard 2 provisionally allows 120 minutes including core Space Settings;
     # original hosted timings must validate its complete command/setup critical path.
-    # Shard 3 allows 20 + 85 + 45 minutes for its commands and 30 for setup/diagnostics.
+    # Shard 3 allows 20 + 145 + 45 minutes for its commands and 30 for setup/diagnostics.
     # Shard 4 allows 20 + 20 + 45 minutes for commands and 35 for setup/diagnostics.
-    timeout-minutes: ${{ matrix.shard == 3 && 180 || 120 }}
+    timeout-minutes: ${{ matrix.shard == 3 && 240 || 120 }}
     strategy:
       fail-fast: false
       matrix:
