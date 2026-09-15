@@ -306,6 +306,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.member-moderation'],
   },
   {
+    name: 'e2e:android:room-unban',
+    command: 'nx run trinity-e2e-android:room-unban',
+    kind: 'canonical',
+    suiteIds: ['android.room-unban'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -560,6 +566,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'member-moderation-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-moderation; fi',
     tier: 'pull-request',
     suiteIds: ['android.member-moderation'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-unban-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-unban; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-unban'],
   },
   {
     command:
