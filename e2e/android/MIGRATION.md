@@ -1627,9 +1627,18 @@ terminal state. Transition receipts, completed native commands,
 renderer/APK/Pixel 5 provenance, pass/failure captures, secret redaction, and
 device, WebView and Matrix teardown are retained.
 
-Acceptance remains pending until #712 records three unchanged-input native
-first attempts, all four unchanged Playwright predecessors at retry 0, at least
-five effective failing controls, required static gates, independent review,
-original-attempt green owned hosted evidence, exact hosted predecessor passes,
-and an audited immutable artifact. This mapping does not authorize predecessor
+Accepted hosted evidence is recorded by
+[run 34909929186](https://github.com/quwisky/trinity-matrix-client/actions/runs/34909929186).
+The original attempt in shard 4 job `104195532491` passed all four stages with
+one attempt and no retries. Native artifact `10376287433` contains 37
+stage-local records for all 28 unique identities and 226 of 226 completed
+command entries. It records the exact 0→50 promotion, each 100→0 demotion,
+disabled and absent action results, exact blocked-action copy, installed APK and
+Pixel 5 provenance, renderer digest verification, pass captures, secret
+redaction, and successful device, WebView, Matrix and Synapse teardown. Browser
+artifact `10375030956` records all four unchanged predecessors passing at retry
+0. The audited renderer artifact `10373827842` contains 49 verified files with
+digest `e0e4b57a301e141e0aec237a8cabead24094d8e9711b922a301d46f889a59a96`.
+The run's unrelated failures in unchanged Android shards 1 and 3 are tracked on
+#665; all #712-owned gates passed. This mapping does not authorize predecessor
 retirement.
