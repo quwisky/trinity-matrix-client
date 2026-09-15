@@ -312,6 +312,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-unban'],
   },
   {
+    name: 'e2e:android:room-roster-live-authority',
+    command: 'nx run trinity-e2e-android:room-roster-live-authority',
+    kind: 'canonical',
+    suiteIds: ['android.room-roster-live-authority'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -572,6 +578,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-unban-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-unban; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-unban'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-roster-live-authority-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-roster-live-authority; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-roster-live-authority'],
   },
   {
     command:

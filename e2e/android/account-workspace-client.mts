@@ -468,8 +468,13 @@ export class AccountWorkspaceClient {
       const center = row.rect.y + row.rect.height / 2;
       if (row.unobstructedCenter && center >= list.rect.y && center <= list.rect.bottom) return;
       assert(list.scrollHeight > list.clientHeight, 'Clipped account row needs a scrollable list');
-      const top = list.rect.y + list.rect.height * 0.2;
-      const bottom = list.rect.bottom - list.rect.height * 0.2;
+      const viewport = await this.visible('html');
+      const visibleTop = Math.max(list.rect.y, 0);
+      const visibleBottom = Math.min(list.rect.bottom, viewport.clientHeight);
+      const visibleHeight = visibleBottom - visibleTop;
+      assert(visibleHeight >= 8, 'Account list has a visible native scroll region');
+      const top = visibleTop + visibleHeight * 0.2;
+      const bottom = visibleBottom - visibleHeight * 0.2;
       assert(bottom - top >= 8, 'Account list has enough room for a native scroll gesture');
       const x = list.rect.x + list.rect.width / 2;
       const down = center > list.rect.y + list.rect.height / 2;
@@ -654,6 +659,30 @@ export class AccountWorkspaceClient {
 
   async key(key: AndroidKeyboardKey): Promise<void> {
     await pressAndroidKeyboardKey(this.device, key);
+  }
+
+  async hideKeyboard(): Promise<void> {
+    const actionId = ++this.action;
+    const flow = join(this.output, `accounts-hide-keyboard-${actionId}.yaml`);
+    await writeFile(flow, 'appId: eu.qwky.trinity\n---\n- hideKeyboard\n');
+    console.info(`[accounts] native action ${actionId}: hide keyboard`);
+    let failure: unknown;
+    try {
+      await this.device.runFlow(flow, {});
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      await this.owner.apply();
+    } catch (error) {
+      if (failure !== undefined)
+        throw new AggregateError(
+          [failure, error],
+          'Native keyboard dismissal and viewport restoration failed',
+        );
+      throw error;
+    }
+    if (failure !== undefined) throw failure;
   }
 
   installDocumentScript(source: string): Promise<() => Promise<void>> {

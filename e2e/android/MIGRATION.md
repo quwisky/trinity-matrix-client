@@ -1735,3 +1735,94 @@ artifact `10377771152` contains 49 individually verified files with digest
 The run's unrelated unchanged shard-1 `android.space-room-order` timeout is
 tracked on #665; all #713-owned gates passed without a rerun. This mapping does
 not authorize predecessor retirement.
+
+## Room roster and live-authority batch
+
+The [Android Room roster and live-authority batch](https://github.com/quwisky/trinity-matrix-client/issues/714)
+owns the canonical
+`keeps Room roster, member detail, role changes and live authority in one destination`
+definition in
+[Room members and addresses](../browser/journeys/room-administration/room-members-and-addresses.spec.mts),
+source SHA-256
+`f306f5bfffca9f7a476966d7d2ff678a227fa7b2fae6e2f4934fb46c6c218ff5`,
+lines 172–401. It also owns the transitive visible-Room obligation from
+[`openRoom`](../browser/support/room-settings-journey.mts), SHA-256
+`bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
+lines 36–44, and the visible Members-panel obligation from
+[`openSettingsTab`](../support/app.mts), SHA-256
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+lines 228–248. This is exactly 33 direct plus two helper assertion sites.
+All predecessor sources remain enabled and unchanged.
+
+`android.room-roster-live-authority` uses finite Matrix fixtures to create a
+controller, opening admin and member, set the member display name before
+membership, and create one invited private Room with exact controller power
+101, admin power 100 and member power 0. Controller-authored 100→0→100 live
+authority changes, reinvites/rejoins and authoritative membership observations
+are the only post-setup REST operations. Installed-app login, Room and Room
+Settings navigation, Members selection, role 50, kick, ban, banned-list unban,
+Escape, Conversation roster, member detail and final focus use Maestro-native
+input. WebView/CDP is limited to read-only observation and coordinate
+measurement; it does not click, focus, fill, dispatch product events, submit
+forms, navigate, inject DOM, or mutate application state or styles.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Shared Room timeline is visible | `roster.room-timeline-visible` |
+| Shared Members panel is visible | `roster.members-panel-visible` |
+| Room Settings roster is visible | `roster.roster-visible` |
+| Exact member row is visible | `roster.target-row-visible` |
+| Selected detail names the member | `roster.detail-target` |
+| Role confirmation names the Room | `roster.role-confirm-room` |
+| Role confirmation names the opening Account | `roster.role-confirm-account` |
+| Roster returns after the role change | `roster.after-role-visible` |
+| Moderator group contains the exact member | `roster.moderator-group-target` |
+| Selected detail shows Moderator | `roster.detail-moderator` |
+| Kick disappears after live admin demotion | `roster.kick-absent-after-demotion` |
+| Ban disappears after live admin demotion | `roster.ban-absent-after-demotion` |
+| Selected detail retains the exact member after demotion | `roster.detail-target-after-demotion` |
+| Selected detail retains Moderator after demotion | `roster.detail-moderator-after-demotion` |
+| Kick returns after live admin restoration | `roster.kick-visible-after-restore` |
+| Kick confirmation names the member | `roster.kick-confirm-target` |
+| Kick confirmation names the Room | `roster.kick-confirm-room` |
+| Kick confirmation names the opening Account | `roster.kick-confirm-account` |
+| Kicked row disappears with server membership `leave` | `roster.row-absent-after-kick` |
+| Rejoined member row returns | `roster.row-visible-after-rejoin` |
+| Ban action is visible | `roster.ban-visible` |
+| Ban confirmation names the member | `roster.ban-confirm-target` |
+| Ban confirmation names the Room | `roster.ban-confirm-room` |
+| Ban confirmation names the opening Account | `roster.ban-confirm-account` |
+| Banned row disappears with server membership `ban` | `roster.row-absent-after-ban` |
+| Banned destination contains the exact member | `roster.banned-row-visible` |
+| Unban confirmation names the member | `roster.unban-confirm-target` |
+| Unban confirmation names the Room | `roster.unban-confirm-room` |
+| Unban confirmation names the opening Account | `roster.unban-confirm-account` |
+| Unbanned row disappears with server membership `leave` | `roster.banned-row-absent` |
+| Native Escape closes Room Settings | `roster.settings-closed-after-escape` |
+| Conversation roster contains the rejoined member | `roster.conversation-row-visible` |
+| Conversation member detail names the member | `roster.conversation-detail-target` |
+| Conversation row remains after detail closes | `roster.conversation-row-after-close-visible` |
+| Conversation member filter regains focus | `roster.member-filter-focused` |
+
+```bash
+pnpm nx run trinity-e2e-android:room-roster-live-authority --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-roster-live-authority
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, and owns `android-avd` plus `synapse`. Its
+bounds are 30 minutes for the Node test, 33 minutes for the target, and 35
+minutes for the hosted wrapper. Shard 3 runs it after `room-unban` and before
+`member-moderation`, so a later unrelated moderation failure cannot prevent
+the owned artifact. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-roster-live-authority/`
+and preserve all 35 records, completed native commands, exact UI/server
+outcomes, renderer/APK/Pixel 5 provenance, pass/failure captures, secret
+redaction, and device, WebView and Matrix teardown.
+
+Acceptance for #714 requires three unchanged-input native first attempts, the
+unchanged exact Playwright predecessor at retry 0, at least five effective
+failing controls, required static gates, review, original-attempt green owned
+hosted evidence, and immutable-artifact audit. This mapping does not authorize
+predecessor retirement.
