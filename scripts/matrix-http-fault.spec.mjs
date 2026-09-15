@@ -35,6 +35,111 @@ function connectionFixture() {
 }
 
 describe('Matrix HTTP fault instrumentation', () => {
+  it('matches only the exact PUT room-alias directory target', async () => {
+    const module = await import('../e2e/android/matrix-http-fault.mts');
+    expect(module.isMatrixRoomAliasRequest).toBeTypeOf('function');
+    const target = { alias: '#retry:localhost' };
+    expect(
+      module.isMatrixRoomAliasRequest(
+        {
+          request: {
+            method: 'PUT',
+            url: 'https://localhost/_matrix/client/v3/directory/room/%23retry%3Alocalhost',
+          },
+        },
+        target,
+      ),
+    ).toBe(true);
+    for (const candidate of [
+      {
+        request: {
+          method: 'GET',
+          url: 'https://localhost/_matrix/client/v3/directory/room/%23retry%3Alocalhost',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/directory/room/%23other%3Alocalhost',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/directory/room/%23retry%3Alocalhost/extra',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/not-matrix/v3/directory/room/%23retry%3Alocalhost',
+        },
+      },
+      {
+        request: {
+          method: 'PUT',
+          url: 'https://localhost/_matrix/client/v3/directory/room/%E0%A4%A',
+        },
+      },
+    ]) {
+      expect(module.isMatrixRoomAliasRequest(candidate, target)).toBe(false);
+    }
+  });
+
+  it('fails only the first exact room-alias write and releases its retry', async () => {
+    const fixture = connectionFixture();
+    const fault = await installFirstMatrixHttpFailure(fixture.connection, {
+      kind: 'room-alias',
+      alias: '#retry:localhost',
+      status: 500,
+      responseError: 'retry me',
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'other',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/directory/room/%23other%3Alocalhost',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'alias-first',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/directory/room/%23retry%3Alocalhost',
+      },
+    });
+    fixture.emit('Fetch.requestPaused', {
+      requestId: 'alias-retry',
+      request: {
+        method: 'PUT',
+        url: 'https://localhost/_matrix/client/v3/directory/room/%23retry%3Alocalhost',
+      },
+    });
+
+    await expect(
+      fault.waitForAttempts(2, AbortSignal.timeout(1_000)),
+    ).resolves.toBe(2);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.fulfillRequest',
+      expect.objectContaining({
+        requestId: 'alias-first',
+        responseCode: 500,
+        body: Buffer.from(
+          JSON.stringify({ errcode: 'M_UNKNOWN', error: 'retry me' }),
+        ).toString('base64'),
+      }),
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'alias-retry' },
+    ]);
+    expect(fixture.sends).toContainEqual([
+      'Fetch.continueRequest',
+      { requestId: 'other' },
+    ]);
+    await fault.close();
+  });
+
   it('classifies only the exact POST invite and join request paths', () => {
     expect(
       matrixRequestKind({

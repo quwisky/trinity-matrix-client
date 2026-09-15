@@ -1853,3 +1853,75 @@ contains 49 individually verified files whose recomputed manifest digest is
 The run's unrelated unchanged shard-2 native-shell timeout is tracked on #665;
 all #714-owned gates passed without a rerun. This mapping does not authorize
 predecessor retirement.
+
+The [Android Room address lifecycle batch](https://github.com/quwisky/trinity-matrix-client/issues/715)
+owns the canonical `an admin adds a room address and makes it the main one`
+definition in
+[Room members and addresses](../browser/journeys/room-administration/room-members-and-addresses.spec.mts),
+source SHA-256
+`f306f5bfffca9f7a476966d7d2ff678a227fa7b2fae6e2f4934fb46c6c218ff5`,
+lines 403–536. It also owns the transitive visible-Room obligation from
+[`openRoom`](../browser/support/room-settings-journey.mts), SHA-256
+`bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
+lines 36–44, and the visible Addresses-panel obligation from
+[`openSettingsTab`](../support/app.mts), SHA-256
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+lines 228–248. This is exactly 15 direct plus two helper assertion sites. All
+predecessor sources remain enabled and unchanged.
+
+`android.room-address-lifecycle` uses finite Matrix fixtures to create one
+owner and one private Room, derive invocation-unique accepted and rejected
+local aliases, resolve directory state, and observe canonical-alias state.
+Installed-app login, Room and Room Settings navigation, Addresses selection,
+alias entry, native Enter submission, primary selection, removal cancellation,
+removal confirmation, and rejected-draft entry all use Maestro-native input.
+WebView/CDP is limited to read-only observation, coordinate measurement, and
+failing the first exact rejected-alias
+`PUT /_matrix/client/<version>/directory/room/<encoded-alias>` with HTTP 500;
+it does not click, focus, fill, dispatch product events, submit forms, navigate,
+inject DOM, or mutate application state or styles.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Shared Room timeline is visible | `address.room-timeline-visible` |
+| Shared Addresses panel is visible | `address.addresses-panel-visible` |
+| Room address editor is visible | `address.panel-visible` |
+| Exact new alias row is visible | `address.row-visible` |
+| Directory resolves the alias to the exact Room | `address.directory-resolves` |
+| Exact alias shows the Primary marker | `address.primary-visible` |
+| Canonical-alias state names the exact alias | `address.canonical-state` |
+| Room Settings stays within the desktop viewport | `address.settings-within-viewport` |
+| Exact primary-address toast is hidden | `address.primary-toast-hidden` |
+| Removal explains the exact joining and linking effect | `address.remove-joining-effect` |
+| Removal states that the Room is retained | `address.remove-room-retained` |
+| Cancelling removal keeps the exact alias row | `address.cancel-keeps-row` |
+| Confirming removal removes the exact alias row | `address.row-removed` |
+| Confirming removal clears directory resolution | `address.directory-removed` |
+| Confirming removal clears canonical alias state | `address.canonical-cleared` |
+| Exact rejected-add toast is visible with HTTP 500 transport evidence | `address.rejected-toast-visible` |
+| Rejected localpart remains in the input | `address.retry-draft-retained` |
+
+```bash
+pnpm nx run trinity-e2e-android:room-address-lifecycle --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-address-lifecycle
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, and owns `android-avd` plus `synapse`. Its
+bounds are 10 minutes for the Node test, 13 minutes for the target, and 15
+minutes for the hosted wrapper. Shard 3 runs it after
+`room-roster-live-authority` and before `member-moderation`, so a later
+unrelated moderation failure cannot prevent the owned artifact. Started-only
+diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-address-lifecycle/`
+and preserve all 17 records, completed native commands, exact UI, directory,
+canonical-state and transport outcomes, renderer/APK/desktop-profile
+provenance, pass/failure captures, secret redaction, and device, WebView,
+transport-session and Matrix teardown.
+
+Acceptance for #715 requires three unchanged-input native first attempts, the
+unchanged exact Playwright predecessor at retry 0, at least five effective
+failing controls, required static gates, review, original-attempt green owned
+hosted evidence, and immutable-artifact audit. This mapping does not authorize
+predecessor retirement.

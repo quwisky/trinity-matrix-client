@@ -39,6 +39,7 @@ interface MatrixRecord {
 
 type WorkspaceRoomStateEventType =
   | 'm.room.avatar'
+  | 'm.room.canonical_alias'
   | 'm.room.join_rules'
   | 'm.room.name'
   | 'm.room.power_levels'

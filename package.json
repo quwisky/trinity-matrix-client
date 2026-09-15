@@ -72,6 +72,7 @@
     "e2e:android:member-moderation": "node scripts/nx.mjs run trinity-e2e-android:member-moderation",
     "e2e:android:room-unban": "node scripts/nx.mjs run trinity-e2e-android:room-unban",
     "e2e:android:room-roster-live-authority": "node scripts/nx.mjs run trinity-e2e-android:room-roster-live-authority",
+    "e2e:android:room-address-lifecycle": "node scripts/nx.mjs run trinity-e2e-android:room-address-lifecycle",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

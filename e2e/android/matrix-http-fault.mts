@@ -10,6 +10,10 @@ export interface MatrixRoomStateTarget {
   readonly stateKey?: '' | '*' | string;
 }
 
+export interface MatrixRoomAliasTarget {
+  readonly alias: string;
+}
+
 interface FetchRequestPaused {
   readonly requestId: string;
   readonly networkId?: string;
@@ -32,6 +36,11 @@ export type MatrixHttpFaultOptions =
     }
   | (MatrixRoomStateTarget & {
       readonly kind: 'room-state';
+      readonly status: number;
+      readonly responseError?: string;
+    })
+  | (MatrixRoomAliasTarget & {
+      readonly kind: 'room-alias';
       readonly status: number;
       readonly responseError?: string;
     });
@@ -144,6 +153,30 @@ export function isMatrixRoomStateRequest(
   }
 }
 
+/** Match one exact room-alias directory write without catching adjacent aliases. */
+export function isMatrixRoomAliasRequest(
+  value: unknown,
+  target: MatrixRoomAliasTarget,
+): boolean {
+  const request = fetchRequest(value);
+  if (!request || request.method !== 'PUT') return false;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return false;
+  }
+  const match = pathname.match(
+    /^\/_matrix\/client\/[^/]+\/directory\/room\/([^/]+)\/?$/,
+  );
+  if (!match) return false;
+  try {
+    return decodeURIComponent(match[1]!) === target.alias;
+  } catch {
+    return false;
+  }
+}
+
 function isMatrixCreateRoomRequest(value: unknown): boolean {
   const request = fetchRequest(value);
   if (!request || request.method !== 'POST') return false;
@@ -164,19 +197,25 @@ function fetchPattern(options: MatrixHttpFaultOptions | MatrixRoomStateTarget): 
     ? '*/_matrix/client/*/rooms/*/invite'
     : options.kind === 'join'
       ? '*/_matrix/client/*/join/*'
-      : '*/_matrix/client/*/rooms/*/state/*';
+      : options.kind === 'room-alias'
+        ? '*/_matrix/client/*/directory/room/*'
+        : '*/_matrix/client/*/rooms/*/state/*';
 }
 
 function matchesFaultRequest(
   value: unknown,
   options: MatrixHttpFaultOptions,
 ): boolean {
-  if (options.kind !== 'room-state') {
-    return matrixRequestKind(value) === options.kind;
+  if (options.kind === 'room-alias') {
+    assert(options.alias, 'Room-alias fault requires an exact alias');
+    return isMatrixRoomAliasRequest(value, options);
   }
-  assert(options.roomId, 'Room-state fault requires an exact room id');
-  assert(options.eventType, 'Room-state fault requires an exact event type');
-  return isMatrixRoomStateRequest(value, options);
+  if (options.kind === 'room-state') {
+    assert(options.roomId, 'Room-state fault requires an exact room id');
+    assert(options.eventType, 'Room-state fault requires an exact event type');
+    return isMatrixRoomStateRequest(value, options);
+  }
+  return matrixRequestKind(value) === options.kind;
 }
 
 function failurePayload(responseError = 'synthetic upstream failure'): string {
@@ -208,6 +247,9 @@ export async function installFirstMatrixHttpFailure(
   if (options.kind === 'room-state') {
     assert(options.roomId, 'Room-state fault requires an exact room id');
     assert(options.eventType, 'Room-state fault requires an exact event type');
+  }
+  if (options.kind === 'room-alias') {
+    assert(options.alias, 'Room-alias fault requires an exact alias');
   }
   let attempts = 0;
   let closed = false;

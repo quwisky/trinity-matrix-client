@@ -318,6 +318,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-roster-live-authority'],
   },
   {
+    name: 'e2e:android:room-address-lifecycle',
+    command: 'nx run trinity-e2e-android:room-address-lifecycle',
+    kind: 'canonical',
+    suiteIds: ['android.room-address-lifecycle'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -584,6 +590,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-roster-live-authority-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-roster-live-authority; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-roster-live-authority'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'room-address-lifecycle-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-address-lifecycle; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.room-address-lifecycle'],
   },
   {
     command:

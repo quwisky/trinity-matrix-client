@@ -322,6 +322,9 @@ describe('account workspace fixtures', () => {
       if (url.includes('/state/m.room.topic')) {
         return response({ topic: 'Persisted topic' });
       }
+      if (url.includes('/state/m.room.canonical_alias')) {
+        return response({ alias: '#space:test' });
+      }
       if (url.includes('/directory/room/')) {
         return response({ room_id: '!space:test' });
       }
@@ -339,15 +342,22 @@ describe('account workspace fixtures', () => {
       'm.room.topic',
     );
     const alias = await fixtures.resolveRoomAlias(observer, '#space:test');
+    const canonical = await fixtures.roomState(
+      observer,
+      '!space:test',
+      'm.room.canonical_alias',
+    );
     expect(state).toEqual({ topic: 'Persisted topic' });
     expect(alias).toBe('!space:test');
+    expect(canonical).toEqual({ alias: '#space:test' });
     expect(fetchCalls.slice(1).map(({ url }) => new URL(url).pathname)).toEqual(
       [
         '/_matrix/client/v3/rooms/!space%3Atest/state/m.room.topic',
         '/_matrix/client/v3/directory/room/%23space%3Atest',
+        '/_matrix/client/v3/rooms/!space%3Atest/state/m.room.canonical_alias',
       ],
     );
-    expect(JSON.stringify({ state, alias })).not.toContain(
+    expect(JSON.stringify({ state, alias, canonical })).not.toContain(
       'secret-observer-token',
     );
   });
