@@ -1949,3 +1949,88 @@ with no unresolved findings, this accepts #715. The run's unrelated unchanged
 shard-2 native homeserver failure is tracked on #665; every #715-owned gate
 passed without a rerun. The Playwright predecessor remains enabled; this
 mapping does not authorize its retirement.
+
+## Room access policy batch
+
+The [Android Room access policy batch](https://github.com/quwisky/trinity-matrix-client/issues/716)
+owns four canonical definitions in
+[Room access settings](../browser/journeys/room-administration/room-access-settings.spec.mts),
+source SHA-256
+`3ae190d7814f8e3e2fda6640bcbfb77e089b1da8605b11645b7e79c2df0bcb6c`:
+`an admin changes who can join and read history` at lines 20–137,
+`an admin lets a space’s members join the room` at lines 139–215,
+`an admin revokes a space’s access by unticking it` at lines 217–314, and
+`a member reads Room policy without a disabled Save footer` at lines 316–390.
+It also owns six unique helper obligations from [`openRoom`](../browser/support/room-settings-journey.mts),
+SHA-256 `bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
+lines 36–44, and [`openSettingsTab`](../support/app.mts), SHA-256
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+lines 228–248. The stage-one Addresses-panel helper outcome is identical to
+direct assertion line 134 and is deliberately folded into
+`admin.addresses-visible`. The mapping therefore contains exactly 23 direct
+plus six helper identities, with all predecessor sources enabled and unchanged.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Admin Room timeline is visible | `admin.room-timeline-visible` |
+| Admin Access panel is visible | `admin.access-panel-visible` |
+| Room Settings is visible | `admin.settings-visible` |
+| Access panel is initially absent | `admin.access-panel-initially-absent` |
+| General panel is absent after Access opens | `admin.general-panel-absent` |
+| Access heading owns focus | `admin.section-heading-focused` |
+| Alias controls are absent from Access | `admin.aliases-absent` |
+| Save remains visible at 125% text scale | `admin.save-visible-scaled` |
+| Native Tab focuses Save | `admin.save-focused` |
+| Server join rule is exactly public | `admin.join-rule-public` |
+| Server history visibility is exactly world-readable | `admin.history-world-readable` |
+| Addresses panel is visible | `admin.addresses-visible` |
+| Restricted Room timeline is visible | `restricted.timeline-visible` |
+| Restricted Room Settings is visible | `restricted.settings-visible` |
+| Restricted Access panel is visible | `restricted.access-panel-visible` |
+| Exact parent Space option is visible | `restricted.space-option-visible` |
+| Server join rule is exactly restricted | `restricted.join-rule` |
+| Allow list contains exactly the parent Space | `restricted.allow` |
+| Revocation Room timeline is visible | `revoke.timeline-visible` |
+| Revocation Access panel is visible | `revoke.access-panel-visible` |
+| Exact dropped Space option is visible | `revoke.dropped-option-visible` |
+| Allow list retains the kept Space and unknown rule only | `revoke.allow` |
+| Member Room timeline is visible | `member.room-timeline-visible` |
+| Member Access panel is visible | `member.access-panel-visible` |
+| Member sees exact Invite-only policy | `member.join-rule-text` |
+| Member sees exact joined-history policy | `member.history-text` |
+| Member sees the exact join-rule role warning | `member.join-rule-read-only-message` |
+| Member sees the exact history role warning | `member.history-read-only-message` |
+| Member sees no Access action footer | `member.actions-absent` |
+
+`android.room-access-policy` uses finite Matrix REST fixtures to create its
+accounts, version-9 Rooms, Spaces, child links, membership, history and exact
+restricted allow-list state, and to observe final server state. Installed-app
+login, Room/Space navigation, Room Settings and Access selection, radio and
+checkbox changes, native Tab focus, Enter submission and Addresses navigation
+all use Maestro-native input. WebView/CDP is read-only except for the two
+source-pinned light/125%-text and dark/amethyst visual captures; that document
+root fixture restores every temporary style value in `finally`. It never
+clicks, focuses, submits, navigates, or otherwise mutates product state.
+
+```bash
+pnpm nx run trinity-e2e-android:room-access-policy --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-access-policy
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, and owns `android-avd` plus `synapse`. Its
+bounds are 35 minutes for the Node test and 40 minutes for the hosted wrapper.
+Shard 3 runs it after `room-address-lifecycle` and before `member-moderation`.
+Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-access-policy/`
+and must preserve four desktop-profile stages, all 29 identity records,
+completed native commands, exact UI/server outcomes, renderer/APK/profile
+provenance, named visual and pass/failure captures, secret redaction, and
+device, WebView and Matrix teardown.
+
+Acceptance for #716 requires five effective failing controls, three unchanged
+native first attempts, all four exact unchanged Playwright predecessors at
+retry 0, the full static gates, review with no unresolved findings, and an
+original-attempt hosted artifact audit. Until those gates pass, this ledger
+entry is pending acceptance and does not authorize predecessor retirement.

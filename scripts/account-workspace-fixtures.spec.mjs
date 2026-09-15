@@ -42,6 +42,45 @@ describe('account workspace fixtures', () => {
     fetchCalls.length = 0;
   });
 
+  it('forwards the bounded version-9 Room option without exposing credentials', async () => {
+    createNodeAccount.mockResolvedValue(account('owner'));
+    globalThis.fetch = vi.fn(async (url, init) => {
+      fetchCalls.push({ url, init });
+      if (url.endsWith('/login')) {
+        return response({
+          user_id: '@user-owner:test',
+          access_token: 'secret-owner-token',
+        });
+      }
+      if (url.endsWith('/createRoom')) {
+        return response({ room_id: '!version-nine:test' });
+      }
+      return response({});
+    });
+    const fixtures = createAccountFixtures(
+      resources(),
+      new AbortController().signal,
+    );
+    const owner = await fixtures.account('owner');
+
+    const room = await fixtures.createRoom(owner, {
+      name: 'Version nine',
+      preset: 'private_chat',
+      roomVersion: '9',
+    });
+
+    const create = fetchCalls.find(({ url }) => url.endsWith('/createRoom'));
+    expect(JSON.parse(create.init.body)).toEqual({
+      name: 'Version nine',
+      preset: 'private_chat',
+      room_version: '9',
+    });
+    expect(room).toEqual({ id: '!version-nine:test', name: 'Version nine' });
+    expect(JSON.stringify(room)).not.toMatch(
+      /secret-owner-token|password-owner/,
+    );
+  });
+
   it('shares one registration and waits for login across concurrent account callers', async () => {
     createNodeAccount.mockResolvedValue(account('alice'));
     let releaseLogin;
