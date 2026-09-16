@@ -348,6 +348,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.room-widget-settings'],
   },
   {
+    name: 'e2e:android:account-password-change',
+    command: 'nx run trinity-e2e-android:account-password-change',
+    kind: 'canonical',
+    suiteIds: ['android.account-password-change'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -668,6 +674,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'room-widget-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-widget-settings; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-widget-settings'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'account-password-change-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:account-password-change; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.account-password-change'],
   },
   {
     command:
