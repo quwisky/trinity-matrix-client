@@ -88,7 +88,7 @@ and GitHub Actions.
   Expected: the contract section passes; missing implementation/wiring remains
   RED.
 
-- [ ] **Step 5: Commit the reviewable contract slice**
+- [x] **Step 5: Commit the reviewable contract slice**
 
   Stage only the contract, guard, design and plan and commit with
   `test(e2e): define Android clear-data contract`.
@@ -110,6 +110,7 @@ and GitHub Actions.
   interface ClearAllDataSnapshot {
     readonly preferenceKeys: readonly string[];
     readonly databases: readonly string[];
+    readonly documentTimeOrigin: number;
   }
   interface ClearAllDataVisualObservation {
     readonly applied: { readonly dark: boolean; readonly theme: string | null };
@@ -122,40 +123,40 @@ and GitHub Actions.
   }
   snapshot(client): Promise<ClearAllDataSnapshot>;
   seedPreference(client, key, value): Promise<void>;
-  waitForRestartedEmptyState(client, previousDatabases): Promise<ClearAllDataSnapshot>;
+  waitForRestartedEmptyState(client, previousDatabases, previousTimeOrigin): Promise<ClearAllDataSnapshot>;
   observeVisual(client): Promise<ClearAllDataVisualObservation>;
   ```
 
-- [ ] **Step 1: Extend the guard with observer restrictions**
+- [x] **Step 1: Extend the guard with observer restrictions**
 
   Require `run-as eu.qwky.trinity cat shared_prefs/CapacitorStorage.xml`,
   `indexedDB.databases()`, Capacitor `Preferences.set`, canvas colour
   resolution/compositing and WCAG luminance. Reject DOM action/navigation and
   localStorage evidence.
 
-- [ ] **Step 2: Run focused guard and preserve observer RED**
+- [x] **Step 2: Run focused guard and preserve observer RED**
 
   Expected: fail on missing observer.
 
-- [ ] **Step 3: Implement authoritative preference parsing and snapshots**
+- [x] **Step 3: Implement authoritative preference parsing and snapshots**
 
   Parse XML `<string name="…">` keys from the host, return an empty namespace
   for a missing file, enumerate only non-empty IndexedDB names, and poll both
   channels across the document replacement with a finite timeout.
 
-- [ ] **Step 4: Implement setup-only bridge seeding**
+- [x] **Step 4: Implement setup-only bridge seeding**
 
   Call `window.Capacitor.Plugins.Preferences.set({key, value})`, then reattach by
   reloading through the existing bounded WebView lifecycle seam. Never mutate
   storage directly.
 
-- [ ] **Step 5: Implement rest-state visual observation**
+- [x] **Step 5: Implement rest-state visual observation**
 
   Resolve the label and token through a 1×1 canvas, composite backgrounds to
   the first opaque ancestor, calculate WCAG 2.1 contrast, and return media
   queries plus applied root state.
 
-- [ ] **Step 6: Run focused guard and Android typecheck/lint**
+- [x] **Step 6: Run focused guard and Android typecheck/lint**
 
   Run:
 
@@ -180,7 +181,7 @@ and GitHub Actions.
 - Produces: one Node test named `Android clear-all-data journeys` that records
   every identity exactly once and writes redacted pass/failure artifacts.
 
-- [ ] **Step 1: Guard native action ownership and exact stage count**
+- [x] **Step 1: Guard native action ownership and exact stage count**
 
   Require `client.openMenu()`, `client.tap('[data-testid="add-account"]')`,
   `client.tapCurrent('[data-testid="clear-all-data"]')`,
@@ -188,7 +189,7 @@ and GitHub Actions.
   `client.tapCurrent('[data-testid="alert-confirm"]')`. Reject direct
   navigation and DOM action mutations.
 
-- [ ] **Step 2: Implement the signed-in stage**
+- [x] **Step 2: Implement the signed-in stage**
 
   Register/sign in a disposable account; prove the native account preference,
   sync DB and crypto DB. Open Add account natively, prove the escape hatch,
@@ -197,27 +198,27 @@ and GitHub Actions.
   document swap and prove empty preferences, removal of every prior DB and the
   visible Homeserver field.
 
-- [ ] **Step 3: Implement the signed-out wedged stage**
+- [x] **Step 3: Implement the signed-out wedged stage**
 
   Reset the app, seed
   `trinity.push.gateway=https://dead.example/_matrix/push/v1/notify` through the
   Capacitor bridge, prove the key on disk, confirm with uppercase
   `RESET TRINITY`, reattach, and prove the full native namespace empty.
 
-- [ ] **Step 4: Implement four isolated visual stages**
+- [x] **Step 4: Implement four isolated visual stages**
 
   For each Trinity/Amethyst × light/dark pair, reset the app, seed exact mode
   and theme descriptors, observe the escape hatch at rest, require applied
   root state, `hover: none`, `pointer: coarse`, exact danger-token equality and
   contrast `>= 4.5`.
 
-- [ ] **Step 5: Add artifact, teardown and assertion accounting**
+- [x] **Step 5: Add artifact, teardown and assertion accounting**
 
   Capture pass/failure proof, redact secrets, close the WebView/device under
   aggregate-error cleanup, and assert the recorded identity set equals all 25
   contract values with no duplicates.
 
-- [ ] **Step 6: Run focused guard and static checks**
+- [x] **Step 6: Run focused guard and static checks**
 
   Expected: contract, observer and journey sections GREEN; only registry/CI or
   documentation sections may remain RED.

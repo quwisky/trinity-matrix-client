@@ -38,6 +38,28 @@ const visualAssertionIds = ['trinity', 'amethyst'].flatMap((theme) =>
   ),
 );
 const assertionIds = [...functionalAssertionIds, ...visualAssertionIds];
+const forbiddenObserverMutations = [
+  /\.click\s*\(/u,
+  /\.focus\s*\(/u,
+  /\.dispatchEvent\s*\(/u,
+  /\.(?:requestSubmit|submit)\s*\(/u,
+  /\blocalStorage\b/u,
+  /\bPage\.(?:navigate|reload)\b/u,
+  /\blocation\.(?:assign|replace|reload)\s*\(/u,
+  /\bhistory\.(?:back|forward|go|pushState|replaceState)\s*\(/u,
+  /\bwindow\.open\s*\(/u,
+];
+const forbiddenJourneyMutations = [
+  /\.click\s*\(/u,
+  /\.focus\s*\(/u,
+  /\.dispatchEvent\s*\(/u,
+  /\.(?:requestSubmit|submit)\s*\(/u,
+  /(?:\b(?:document|window)\.)?\blocation(?:\.(?:href|pathname|search|hash))?\s*=(?!=)/u,
+  /\blocation\.(?:assign|replace|reload)\s*\(/u,
+  /\bhistory\.(?:back|forward|go|pushState|replaceState)\s*\(/u,
+  /\bwindow\.open\s*\(/u,
+  /client\.(?:focusFixture|navigate)\s*\(/u,
+];
 
 function sourceLines(path, expectedHash) {
   const contents = readFileSync(resolve(root, path));
@@ -137,6 +159,111 @@ describe('Android clear-all-data migration', () => {
       readIfPresent(journeyPath),
       'clear-all-data-journeys.mts must exist',
     ).not.toBe('');
+  });
+
+  it('keeps setup and observation authoritative, finite and action-free', () => {
+    const observer = readIfPresent(observerPath);
+    expect(observer, 'clear-all-data-observer.mts must exist').not.toBe('');
+    expect(observer).toContain("'run-as'");
+    expect(observer).toContain("'eu.qwky.trinity'");
+    expect(observer).toContain("'shared_prefs/CapacitorStorage.xml'");
+    expect(observer).toContain('indexedDB.databases()');
+    expect(observer).toContain('Capacitor?.Plugins?.Preferences');
+    expect(observer).toContain(
+      'preferences.set({ key: preferenceKey, value })',
+    );
+    expect(observer).toContain("matchMedia('(hover: none)').matches");
+    expect(observer).toContain("matchMedia('(pointer: coarse)').matches");
+    expect(observer).toContain(
+      "getContext('2d', { willReadFrequently: true })",
+    );
+    expect(observer).toContain('0.2126 * channel(r)');
+    expect(observer).toContain('AA_NORMAL_TEXT = 4.5');
+    expect(observer).toContain('waitForNativeShellState');
+    for (const mutation of forbiddenObserverMutations) {
+      expect(observer).not.toMatch(mutation);
+    }
+  });
+
+  it('parses authoritative Android preference keys without values', async () => {
+    expect(existsSync(observerPath)).toBe(true);
+    if (!existsSync(observerPath)) return;
+    const observer = await import(observerPath);
+    expect(
+      observer.parseNativePreferenceKeys(`<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+  <string name="trinity.push.gateway">https://secret.example</string>
+  <string name="matrix.accounts">{&quot;activeUserId&quot;:&quot;@alice:localhost&quot;}</string>
+</map>`),
+    ).toEqual(['matrix.accounts', 'trinity.push.gateway']);
+  });
+
+  it('implements six native stages through every identity', () => {
+    const journey = readIfPresent(journeyPath);
+    expect(journey, 'clear-all-data-journeys.mts must exist').not.toBe('');
+    expect(journey).toContain('clear-all-data-contract.mts');
+    expect(journey).toContain('clear-all-data-observer.mts');
+    expect(journey).toContain('CLEAR_ALL_DATA_SOURCES.signedIn');
+    expect(journey).toContain('CLEAR_ALL_DATA_SOURCES.signedOut');
+    expect(journey).toContain('CLEAR_ALL_DATA_SOURCES.visual');
+    expect(journey).toContain('PIXEL_5_ACCOUNT_PROFILE');
+    expect(journey).toContain('client.login(account)');
+    expect(journey).toContain('client.openMenu()');
+    expect(journey).toContain('client.tap(\'[data-testid="add-account"]\')');
+    expect(journey).toContain(
+      'client.tapCurrent(\'[data-testid="clear-all-data"]\')',
+    );
+    expect(journey).toContain(
+      "client.fill('trn-alert-dialog input', confirmation)",
+    );
+    expect(journey).toContain(
+      'client.tapCurrent(\'[data-testid="alert-confirm"]\')',
+    );
+    expect(journey).toContain("await confirmErase(client, 'yes please')");
+    expect(journey).toContain("await confirmErase(client, 'reset trinity')");
+    expect(journey).toContain("await confirmErase(client, 'RESET TRINITY')");
+    expect(journey).toContain('waitForRestartedEmptyState(');
+    expect(journey).toContain('redactMaestroArtifacts(output, secrets)');
+    expect(journey).toContain('assert.equal(cases.length, 6');
+    expect(journey).toContain('expectedAssertions: 25');
+    expect(journey).toContain('new Set<ClearAllDataAssertion>()');
+    for (const identity of assertionIds) {
+      expect(journey).not.toContain(`'${identity}'`);
+    }
+    for (const key of [
+      'signedInSecureTokenWebviewExclusion',
+      'signedInNativeAccountPreferencePresent',
+      'signedInSyncDatabasePresent',
+      'signedInCryptoDatabasePresent',
+      'signedInEscapeHatchVisible',
+      'signedInMistypeFeedback',
+      'signedInMistypePreservesState',
+      'signedInNativePreferencesEmpty',
+      'signedInDatabaseEnumerationReady',
+      'signedInDatabasesRemoved',
+      'signedInSignedOutSurfaceVisible',
+      'signedOutDeadPushPreferencePresent',
+      'signedOutNativePreferencesEmpty',
+      'trinityLightApplied',
+      'trinityLightDangerToken',
+      'trinityLightAaContrast',
+      'trinityDarkApplied',
+      'trinityDarkDangerToken',
+      'trinityDarkAaContrast',
+      'amethystLightApplied',
+      'amethystLightDangerToken',
+      'amethystLightAaContrast',
+      'amethystDarkApplied',
+      'amethystDarkDangerToken',
+      'amethystDarkAaContrast',
+    ]) {
+      expect(journey).toMatch(
+        new RegExp(`recordAssertion\\([\\s\\S]*?assertions\\.${key}[,\\)]`),
+      );
+    }
+    for (const mutation of forbiddenJourneyMutations) {
+      expect(journey).not.toMatch(mutation);
+    }
   });
 
   it('keeps every exact predecessor enabled', () => {
