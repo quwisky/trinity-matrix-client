@@ -108,6 +108,6 @@ Run `pnpm nx run trinity-e2e-android:room-for-you --skipNxCache` three times wit
 
 Run each title sequentially with `--workers=1 --retries=0`; require retry-zero passes and clean Synapse teardown.
 
-- [ ] **Step 6: Review, publish and audit hosted evidence**
+- [x] **Step 6: Review, publish and audit hosted evidence**
 
 Require no unresolved review findings. Commit and push `test/718-android-room-for-you`, cherry-pick the verified commit onto `test/676-android-sidebar-filter`, re-run composed-tree gates, push, and audit original-attempt Android/browser/renderer artifacts before closing #718 and updating #660, #653 and PR #677. Never merge PR #677.

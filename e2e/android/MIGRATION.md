@@ -2299,3 +2299,49 @@ unchanged Playwright predecessors at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
 This mapping does not authorize predecessor retirement.
 It does not authorize merging PR #677.
+
+Acceptance completed on original-attempt hosted
+[run 35035908519](https://github.com/quwisky/trinity-matrix-client/actions/runs/35035908519)
+at exact consolidated source head
+`d8751f1aeee22d58fd7b32af28f5b669e91736e0` and hosted merge
+`229aacd262ad7a15173f303d757925a38c455774`. Android shard 3
+[job 104605348465](https://github.com/quwisky/trinity-matrix-client/actions/runs/35035908519/job/104605348465)
+uploaded the passing
+[Room For-you artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35035908519/artifacts/10428021795),
+ID `10428021795`, digest
+`sha256:5a91dc598fabfc333b7fa75ec7c6ba3c02827e0c697521b1edd29236b8be3cb2`.
+Its one 677788 ms invocation passed both stages with zero retries: failed
+preference read and recovery in 175014 ms, then opening-Account preference
+isolation and partial retry in 501315 ms. The immutable audit found all 38
+contract identities exactly once, 42 successful native-action JUnits and 197
+completed Maestro commands with no failure, cancellation or pending command.
+The read controller recorded the exact first push-rules GET 500/`offline` and
+at least two reads. The write controller recorded the exact first
+opening-owner low-priority tag PUT 500/`retry me`, exactly one notification
+write, one favourite write and a low-priority-only retry. Final owner state was
+Mute plus favourite and low priority; member state remained Mentions plus
+favourite. Exact feedback, radio, Account and retry-containment observations
+were present.
+
+All seven default/Amethyst/Onyx light/dark and 125%-text captures were
+complete, visible and contained in the 1280x720 installed WebView. All 27
+`SECRET_TEXT` occurrences were redacted across 18 environment values and nine
+evaluated inputs. Synapse teardown and emulator shutdown completed after both
+stage passes, and the hosted worktree diff gate passed.
+
+The same attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35035908519/artifacts/10424246571),
+ID `10424246571`, digest
+`sha256:3a7d7293214e49390c26a8ef71cfd3a4aff5c9743a1d2880aae12106d2181f85`,
+records the failed-read and Account-isolation predecessors passing at retry 0
+in 7534 ms and 10997 ms. Its
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35035908519/artifacts/10422853271),
+ID `10422853271`, digest
+`sha256:cbeebd4dc6c97dd42126187ec4788a0c7d5d3daee2961847044af57f5b681f3c`,
+contains 49 verified files / 15,302,528 bytes and manifest digest
+`5c77b7d4181e5532cbcc29c2786db1fc78ca48370abf4ab0bd6315af508474e6`
+for the hosted merge. Together with three unchanged-input local first
+attempts, seven effective negative controls, required static/documentation
+gates, review with no unresolved findings and the all-green exact-head hosted
+run, this accepts #718. Both Playwright predecessors remain enabled. PR #677
+remains draft/open and is not merged.
