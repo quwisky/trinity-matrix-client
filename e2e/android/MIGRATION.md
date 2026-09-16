@@ -2470,3 +2470,75 @@ attempts, seven effective negative controls, required static/documentation
 gates and review with no unresolved findings, this accepts #719. All four
 Playwright predecessors remain enabled. PR #677 remains draft/open and is not
 merged.
+
+## Account password-change journey
+
+`android.account-password-change` preserves the canonical Playwright account
+password definition pinned by issue #720 at
+`e2e/browser/journeys/accounts/change-password.spec.mts:52-94`, its local
+Account-form readiness helper at lines 42–47, the Android navigation helper at
+`e2e/support/journeys/navigation.mts:11-60`, and the pinned app helper. The
+executable contract contains exactly five direct plus three inherited
+identities (eight unique identities total). The predecessor and helpers remain
+enabled and byte-for-byte unchanged.
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| Rooms URL is Account-qualified | `password-change.rooms-account-qualified` |
+| Settings navigation is visible | `password-change.settings-navigation-visible` |
+| Settings detail is non-empty | `password-change.settings-detail-non-empty` |
+| Current-password form is ready | `password-change.form-ready` |
+| Wrong current password shows exact feedback and retains new credentials | `password-change.wrong-current-feedback` |
+| Successful change shows the exact toast | `password-change.success-toast` |
+| New password login returns 200 | `password-change.new-password-login-status` |
+| Old password login returns 403 | `password-change.old-password-login-status` |
+
+The stage registers a disposable password account and drives installed-app
+login, Settings navigation, Account-section selection, password entry and both
+submissions through Maestro-native input. WebView/CDP is read-only: it observes
+route, visibility, feedback and a one-way hash comparison proving both new
+credential fields remain exact after the rejected submission. Finite Matrix
+REST probes observe the final 200/403 credential statuses; every successful
+probe session is immediately logged out in `finally` with an independent
+timeout. Diagnostics store only UI observations, booleans and status codes.
+
+```bash
+pnpm nx run trinity-e2e-android:account-password-change --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:account-password-change
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+15-minute Node timeout. Shard 4 runs it after `room-widget-settings` and before
+retained Playwright under a 20-minute wrapper. Started-only diagnostics live
+under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.account-password-change/`
+and must preserve the stage, all eight identities exactly once, completed
+native commands, exact UI/REST outcomes, renderer/APK/profile provenance,
+pass/failure captures, credential redaction and device, WebView, probe and
+Synapse teardown.
+
+Acceptance requires the focused and full contract gates, Android and browser
+typecheck/lint, formatting and documentation gates, at least six effective
+negative controls, three unchanged-input native first attempts, the exact
+unchanged Playwright predecessor at retry 0, review with no unresolved findings
+and original-attempt hosted Android/browser/renderer artifact audit. Do not
+retire the predecessor. This mapping does not authorize merging PR #677.
+
+Local acceptance used three unchanged-input original attempts:
+`mu41m232-551a1a7c-8b88-45f9-b0f3-414192dbab09` (201696 ms suite,
+169401 ms stage), `mu41rd63-119dc158-6dac-4e5a-9532-bb63b0a17c09`
+(200485 ms suite, 166506 ms stage), and
+`mu41w8op-101dfa84-a672-4a2f-b7df-baec17a9e2fb` (198536 ms suite,
+166338 ms stage). Each recorded one attempt, zero retries, all eight identities
+exactly once, 13 passing native-action JUnit files, 68 completed Maestro
+commands, and no failures. The final artifact records exact wrong-password
+feedback, both retained-field booleans, the exact success toast, new-password
+HTTP 200 and old-password HTTP 403; all 14 secret environment values, seven
+evaluated inputs and seven input logs are redacted. The retained Playwright
+predecessor passed in invocation
+`mu4274mt-0f42ed01-dc6f-4b87-bb26-efcd1e52b0d0` in 4910 ms on retry 0 with
+clean Synapse teardown. Seven effective negative controls covered direct and
+inherited identities, exact error/toast text, retained-field comparison, old
+password status, exact logout endpoint and wrong-password redaction.
