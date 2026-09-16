@@ -155,5 +155,12 @@ Synapse Matrix REST fixtures, Nx/Vitest, GitHub Actions.
       `mu3wz7iy-67782616-d349-4f8a-a1db-74c981ee5c6e`,
       `mu3wzuc8-69724043-c87f-43e6-ac45-962e2a990fc5` and
       `mu3x0gm1-d7421f55-adb4-4b0c-9b6c-6182bfac00d0`.
-- [ ] Publish the reviewed issue commit and consolidated cherry-pick, then
-      audit the original-attempt hosted Android/browser/renderer artifacts.
+- [x] Published reviewed commits `79dce9e3` and `2e19ad0d` to the issue branch
+      and consolidated commits `d8bc8e1d` and `224292a5` to
+      `test/676-android-sidebar-filter`. Original-attempt hosted run
+      `35082714400` passed the owned Android shard and retained browser gate.
+      Immutable Android artifact `10444606111` contains all four stage passes,
+      93/93 unique identities, 72 passing native JUnits, 337 completed Maestro
+      commands and complete redaction/teardown evidence. Browser artifact
+      `10442695083` preserves all four exact predecessors at retry 0, and
+      renderer artifact `10441126716` verifies hosted merge `9636717d`.

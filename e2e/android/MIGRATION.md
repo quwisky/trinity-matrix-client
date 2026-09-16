@@ -2425,3 +2425,48 @@ sequentially with one worker and zero retries in invocations
 `mu3wz7iy-67782616-d349-4f8a-a1db-74c981ee5c6e`,
 `mu3wzuc8-69724043-c87f-43e6-ac45-962e2a990fc5` and
 `mu3x0gm1-d7421f55-adb4-4b0c-9b6c-6182bfac00d0`.
+
+Acceptance completed on original-attempt hosted
+[run 35082714400](https://github.com/quwisky/trinity-matrix-client/actions/runs/35082714400)
+at exact consolidated source head
+`224292a53f78e0bec6633a3cc76bdbb710e932a1` and hosted merge
+`9636717d384f7ee009042020240f888033e20ada`. Android shard 4
+[job 104750787806](https://github.com/quwisky/trinity-matrix-client/actions/runs/35082714400/job/104750787806)
+uploaded the passing
+[Room widget artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35082714400/artifacts/10444606111),
+ID `10444606111`, digest
+`sha256:a3f48e2eccd54e17b3adf6fd777f4429c5f2a69e8318c4cb62ab1c663e4c3a7e`.
+Its one 888167 ms invocation passed all four stages with zero retries: mobile
+layout in 280371 ms, restricted bridge in 165649 ms, opening-admin management
+in 325841 ms and live authority in 115053 ms. The immutable audit found all 93
+contract identities exactly once, 72 successful native-action JUnits and 337
+completed Maestro commands with no failed, cancelled or pending command. It
+also verified the three legitimate Widget API requests with null referrers,
+the sandbox/referrer/denied-capability policy, rejected sibling and
+changed-origin replies, blocked mixed content, exact first widget-state-write
+500, exact declaration and empty tombstone, and live grant/revocation outcomes.
+
+All six default/Amethyst/Onyx light/dark captures, the 125%-text capture and
+four stage-pass captures were present, visible and readable on the installed
+Android surface. All 38 `SECRET_TEXT` environment occurrences and 19 evaluated
+inputs were redacted. Synapse data was removed after the stage passes, and the
+artifact retained the installed `eu.qwky.trinity` activity plus verified
+renderer manifest evidence.
+
+The same attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35082714400/artifacts/10442695083),
+ID `10442695083`, digest
+`sha256:dbff806658633ee5d49a9e124dfb046fa9c1d02e9794ae84d0d8352c891478ce`,
+records all 317 retained browser tests passing and one skip with zero retries.
+The four exact widget predecessors passed in 6770 ms, 7940 ms, 9534 ms and
+7098 ms. Its Synapse data was removed during teardown. The
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35082714400/artifacts/10441126716),
+ID `10441126716`, digest
+`sha256:9ec340ca292fc35ab6f841b63b138dd64a91284f4c89cb20a53b7c3acda43378`,
+contains 49 verified files / 15,302,528 bytes and manifest digest
+`111dba0e9d4eb0e537c48e6a5503523b4b5b418a5e9bb748e043277f09ead555`
+for the hosted merge. Together with three unchanged-input local first
+attempts, seven effective negative controls, required static/documentation
+gates and review with no unresolved findings, this accepts #719. All four
+Playwright predecessors remain enabled. PR #677 remains draft/open and is not
+merged.
