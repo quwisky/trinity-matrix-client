@@ -114,4 +114,4 @@ observation, disposable Synapse Matrix REST, Nx/Vitest and GitHub Actions.
 - [x] Three unchanged-input Android runs and the exact predecessor pass at retry 0.
 - [x] Static, documentation, format and full-script gates pass.
 - [x] Review has no unresolved findings.
-- [ ] Original-attempt hosted Android/browser/renderer evidence is audited.
+- [x] Original-attempt hosted Android/browser/renderer evidence is audited.
