@@ -2542,3 +2542,47 @@ predecessor passed in invocation
 clean Synapse teardown. Seven effective negative controls covered direct and
 inherited identities, exact error/toast text, retained-field comparison, old
 password status, exact logout endpoint and wrong-password redaction.
+
+Owned acceptance completed on original-attempt hosted
+[run 35128020025](https://github.com/quwisky/trinity-matrix-client/actions/runs/35128020025)
+at exact consolidated source head
+`8623769bbf070222cb0cb853f029733b080f38a9` and hosted merge
+`806483ea8ed4c0e55b63b939d0584fce1cbd76fa`. Android shard 4
+[job 104902253017](https://github.com/quwisky/trinity-matrix-client/actions/runs/35128020025/job/104902253017)
+passed on its original attempt after the shard's bounded timeout was extended
+to cover its measured Room-widget, password-change and retained-Playwright
+workload. Its passing
+[password-change artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35128020025/artifacts/10464044648),
+ID `10464044648`, digest
+`sha256:8f9b4be953da75ffed94c7e7ce3ebbf92312bd418c675c60826b9cd94796df05`,
+records invocation `mu4g1fwr-1ad2342c-27f0-456f-b967-081707a29471`: one
+211553 ms attempt, zero retries, and the 210771 ms stage. The immutable audit
+found all eight identities exactly once, 13 passing native-action JUnits, one
+passing suite JUnit and 68 completed Maestro commands with no other command
+status. It verified the exact wrong-current-password feedback, both retained
+credential booleans, the exact success toast, new-password HTTP 200 and
+old-password HTTP 403. All 14 secret environment values, seven evaluated
+inputs and seven input logs are redacted. The installed activity and final
+Account route were present, and Synapse data was removed after the stage pass.
+
+The same original attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35128020025/artifacts/10461327546),
+ID `10461327546`, digest
+`sha256:3caa9bff1d43505b300c2d2f55725f4ae404d23c05223149f03ad4a04a71f439`,
+records 317 retained browser tests passing, one skip and zero retries. The exact
+password-change predecessor passed in 9372 ms at retry 0, followed by clean
+Synapse teardown. The
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35128020025/artifacts/10459698930),
+ID `10459698930`, digest
+`sha256:5001b160a6f7cc579c0e9072bc34a334e48a521b7b0596b0e42bfd6e2cb68ccf`,
+contains 49 verified files / 15,302,528 bytes and manifest digest
+`4f6c5f47ec57ecd925de67008563cca3c1844db270e23ea14c036c2b4e6b8ca3`
+for the hosted merge. Shards 1 and 4 passed on the original attempt. The two
+unrelated original-attempt failures were classified as emulator infrastructure:
+shard 2 lost all ADB commands during `android.native-shell`, while shard 3's
+Maestro device server closed its TCP connection before a login helper could
+run. Targeted attempt-2 reruns were requested for PR-level confirmation; their
+outcome does not alter the owned original-attempt acceptance. Together with the
+local evidence, required quality gates and review with no unresolved findings,
+the owned original-attempt evidence accepts #720. The Playwright predecessor
+remains enabled. PR #677 remains draft/open and is not merged.
