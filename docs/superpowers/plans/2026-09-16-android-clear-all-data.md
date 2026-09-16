@@ -326,11 +326,11 @@ and GitHub Actions.
 - Produces identical verified trees on `test/721-android-clear-all-data` and
   `test/676-android-sidebar-filter`, issue/PR evidence and closed issue #721.
 
-- [ ] **Step 1: Push the feature branch**
+- [x] **Step 1: Push the feature branch**
 
   Push `test/721-android-clear-all-data` without rewriting history.
 
-- [ ] **Step 2: Integrate the verified commits into the consolidated branch**
+- [x] **Step 2: Integrate the verified commits into the consolidated branch**
 
   Cherry-pick only the #721 commits into `test/676-android-sidebar-filter`,
   prove identical trees, and push. Do not merge PR #677.
@@ -341,6 +341,17 @@ and GitHub Actions.
   predecessors and renderer verification. Audit artifacts, assertion ledger,
   provenance, redaction and teardown logs; route infrastructure-only failures
   separately.
+
+  Exact-head run `35153211229` stopped before this suite when unchanged Space
+  Settings login hit the now-fixed Maestro wildcard-port mismatch. Replacement
+  run `35156372765` verified the renderer and all six clear-all-data browser
+  predecessors at retry zero, but shard 4 stopped before this suite in unchanged
+  `android.member-role-live-updates`: its first three stages passed and the
+  touch-feedback stage never produced transition copy after a trusted native
+  tap. Artifact `10472873279`, digest
+  `sha256:306b3a754dcb95be49d3dab389f930cdc97dc7a1a4b4319b365f8e7fd98072a8`,
+  records that independently tracked failure. A fresh original-attempt Android
+  artifact remains required.
 
 - [ ] **Step 4: Record and publish acceptance**
 
