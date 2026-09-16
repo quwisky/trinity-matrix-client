@@ -68,12 +68,21 @@ async function waitForSnapshot(
 async function confirmErase(
   client: AccountWorkspaceClient,
   confirmation: string,
+  replacesDocument = false,
 ): Promise<void> {
   await client.visible('trn-alert-dialog', {
     text: 'Erase all Trinity data',
   });
-  await client.fill('trn-alert-dialog input', confirmation);
-  await client.tapCurrent('[data-testid="alert-confirm"]');
+  await client.fillFocused('trn-alert-dialog input', confirmation);
+  if (!replacesDocument) {
+    await client.tapCurrent('[data-testid="alert-confirm"]');
+  } else {
+    const immediatelyBefore = await snapshot(client);
+    await client.tapCurrentReplacingDocument(
+      '[data-testid="alert-confirm"]',
+      immediatelyBefore.documentTimeOrigin,
+    );
+  }
 }
 
 async function signedInWipe(
@@ -199,7 +208,7 @@ async function signedInWipe(
   );
 
   await client.tapCurrent('[data-testid="clear-all-data"]');
-  await confirmErase(client, 'reset trinity');
+  await confirmErase(client, 'reset trinity', true);
   const after = await waitForRestartedEmptyState(
     client,
     before.databases,
@@ -267,7 +276,7 @@ async function signedOutWipe(
   );
 
   await client.tapCurrent('[data-testid="clear-all-data"]');
-  await confirmErase(client, 'RESET TRINITY');
+  await confirmErase(client, 'RESET TRINITY', true);
   const after = await waitForRestartedEmptyState(
     client,
     before.databases,

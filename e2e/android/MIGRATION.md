@@ -2586,3 +2586,89 @@ outcome does not alter the owned original-attempt acceptance. Together with the
 local evidence, required quality gates and review with no unresolved findings,
 the owned original-attempt evidence accepts #720. The Playwright predecessor
 remains enabled. PR #677 remains draft/open and is not merged.
+
+## Clear-all-data journeys
+
+`android.clear-all-data` preserves issue #721's two functional and four
+generated visual definitions from
+`e2e/browser/journeys/accounts/clear-all-data.spec.mts`, pinned at SHA-256
+`271c63f2e49f27d7c99d4d0d75c7b844d466d70afe69afda71d1335bcc0b1e9c`.
+Its storage/confirmation helpers are pinned at lines 37–80, the signed-in
+definition at lines 85–151, the signed-out definition at lines 153–176 and the
+four Trinity/Amethyst × light/dark definitions at lines 193–253. The app helper
+is pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and the contrast helper at
+`5c5561a7cd599679a95735fe82cbe14b95faf93c359f3f4ef7e85aa386b2b7f3`.
+The executable contract expands the 14 direct sites plus two functional-helper
+uses into exactly 11 signed-in, two signed-out and 12 visual stage-local
+identities (25 unique identities total).
+
+The signed-in stage creates and signs in a disposable account, proves the
+authoritative native `matrix.accounts` preference plus live sync and crypto
+IndexedDB databases, then reaches `/login?add` through the native Account menu.
+It proves the exact mistype feedback, all observed state surviving that failed
+confirmation, lower-case confirmation acceptance, a new document, an empty
+native preference namespace, removal of every observed database and the final
+signed-out Homeserver surface. The secure access-token assertion is an explicit
+Android boundary: native secure storage is authoritative, and this suite makes
+no WebView-storage claim.
+
+The signed-out stage writes the exact dead push gateway through Capacitor's
+real Preferences bridge, proves its key exists on disk, confirms with uppercase
+`RESET TRINITY`, then proves a new signed-out document with an empty native
+namespace. Host observation reads only key names from
+`shared_prefs/CapacitorStorage.xml` through `run-as`; renderer observation only
+enumerates IndexedDB names. Neither invokes product handlers or uses WebView
+storage as native-preference evidence.
+
+Each visual stage seeds the exact mode and theme descriptors through the same
+bridge, reloads setup state, and measures the installed WebView's untouched
+rest state. It proves the root theme/mode, exact rendered equality with
+`--trinity-danger`, and WCAG AA normal-text contrast of at least 4.5:1 using
+the pinned canvas/compositing algorithm. The real Android media profile proves
+`hover: none` and `pointer: coarse`; Android has no supported persistent native
+hover path, so hover remains an explicit browser-only exclusion. No DOM pointer
+event, tap or long-press is counterfeited as hover.
+
+```bash
+pnpm nx run trinity-e2e-android:clear-all-data --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:clear-all-data
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+20-minute Node timeout. The latest completed hosted timing placed it on shard 4
+after `account-password-change` and before retained Playwright under a
+25-minute wrapper. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.clear-all-data/` and must
+preserve six stages, all 25 identities exactly once, native action evidence,
+authoritative preference/database and document-restart observations, all four
+visual measurements, renderer/APK/profile provenance, pass/failure captures,
+secret redaction and WebView/device/Synapse teardown.
+
+Local acceptance on 2026-09-16 used unchanged relevant inputs and produced
+three consecutive uncached, retry-zero native passes:
+
+- `mu4lrabx-177abff7-6fc1-4c8e-be5c-d18890d1dddb` — 224.392 seconds;
+- `mu4lwpd8-9874f0cf-ddf8-4352-8403-4a965f6a905b` — 218.599 seconds;
+- `mu4m237u-f06564c9-b2c4-461f-903e-797440b881a7` — 217.738 seconds.
+
+Every invocation recorded six passed stages and all 25 unique identities once,
+with zero retries and clean WebView/device/Synapse teardown. Eight reversible
+negative controls independently proved the guards reject vacuous pre-state,
+lost mistype preservation, missing native-preference or IndexedDB erasure,
+missing document replacement, danger-token drift, sub-AA contrast and lost
+artifact redaction. Browser invocation
+`mu4lhq5x-290298e9-35fa-43d2-b782-8c28d02fdaeb` then ran the exact two
+functional and four generated visual predecessors sequentially with one worker
+and `--retries=0`; all six passed in 11.204 seconds.
+
+Acceptance requires focused and full contract gates, Android and browser
+typecheck/lint, formatting and documentation gates, eight effective negative
+controls, three unchanged-input native first attempts, all six exact unchanged
+Playwright predecessors sequentially at retry 0, review with no unresolved
+findings, and original-attempt hosted Android/browser/renderer artifact audit.
+Do not retire or edit the predecessors. This mapping does not authorize merging
+PR #677.

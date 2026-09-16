@@ -9,6 +9,7 @@ export const ANDROID_KEYCODES = {
   end: 123,
   enter: 66,
   escape: 111,
+  forwardDelete: 112,
   home: 122,
   space: 62,
   tab: 61,

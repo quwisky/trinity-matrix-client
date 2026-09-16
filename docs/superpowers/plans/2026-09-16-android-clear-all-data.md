@@ -223,7 +223,7 @@ and GitHub Actions.
   Expected: contract, observer and journey sections GREEN; only registry/CI or
   documentation sections may remain RED.
 
-- [ ] **Step 7: Commit the implementation slice**
+- [x] **Step 7: Commit the implementation slice**
 
   Stage the contract/observer/journey/guard/design/plan files and commit with
   `test(e2e): migrate Android clear-all-data journeys`.
@@ -247,23 +247,23 @@ and GitHub Actions.
   script `e2e:android:clear-all-data`, serialized resources and a started-only
   `android-clear-all-data` diagnostic upload.
 
-- [ ] **Step 1: Add RED registry/workflow expectations**
+- [x] **Step 1: Add RED registry/workflow expectations**
 
   Require uncached/non-parallel execution, Android build dependency, a bounded
   timeout, AVD + Synapse resources, shortest-shard registration and the exact
   started-output artifact condition.
 
-- [ ] **Step 2: Run focused registry/workflow guards and preserve RED**
+- [x] **Step 2: Run focused registry/workflow guards and preserve RED**
 
   Run focused Vitest for the migration, suite registry and CI workflow guards.
 
-- [ ] **Step 3: Add Nx/package/registry/workflow wiring**
+- [x] **Step 3: Add Nx/package/registry/workflow wiring**
 
   Wire the exact names above and place the suite on the shortest suitable shard
   from the latest completed hosted timing evidence without reordering unrelated
   suites.
 
-- [ ] **Step 4: Re-run focused registry/workflow guards**
+- [x] **Step 4: Re-run focused registry/workflow guards**
 
   Expected: GREEN.
 
@@ -279,36 +279,36 @@ and GitHub Actions.
 - Produces a reviewable parity ledger with source hashes, 25 identities,
   boundaries, exclusion, invocations, artifacts and exact validation evidence.
 
-- [ ] **Step 1: Document the suite and predecessor retention**
+- [x] **Step 1: Document the suite and predecessor retention**
 
   Record the 11 + 2 + 12 identity split, authoritative preference boundary,
   hover exclusion, command, one-attempt policy and pass/failure evidence paths.
 
-- [ ] **Step 2: Run effective negative controls**
+- [x] **Step 2: Run effective negative controls**
 
   Deliberately prove guard failures for: vacuous signed-in pre-state, weakened
   mistype preservation, missing native preference erasure, missing IndexedDB
   erasure, missing signed-out restart, visual token drift, contrast drift, and
   cleanup/redaction loss. Restore each mutation and re-run GREEN.
 
-- [ ] **Step 3: Run three unchanged installed-Android first attempts**
+- [x] **Step 3: Run three unchanged installed-Android first attempts**
 
   Run `pnpm nx run trinity-e2e-android:clear-all-data` three times sequentially.
   Require zero retries, all six stages, all 25 identities exactly once,
   provenance/redaction and clean teardown.
 
-- [ ] **Step 4: Run all six exact Playwright predecessors sequentially**
+- [x] **Step 4: Run all six exact Playwright predecessors sequentially**
 
   Run the two functional and four generated visual tests at retry zero using
   the repository browser target and its documented name filter.
 
-- [ ] **Step 5: Run the full selected validation set**
+- [x] **Step 5: Run the full selected validation set**
 
   Run focused/full script guards, E2E registry guards, Android/browser
   typecheck and lint, format check, documentation gates and the source-selected
   Nx validation from `docs/contributing/testing.md`.
 
-- [ ] **Step 6: Review and commit**
+- [x] **Step 6: Review and commit**
 
   Review the complete diff, resolve all findings, check the plan's local
   acceptance items, and commit remaining task-owned files with
@@ -354,11 +354,11 @@ and GitHub Actions.
 
 ## Acceptance evidence
 
-- [ ] Focused contract starts RED and ends GREEN.
-- [ ] All eight effective negative controls fail their intended guard and are
+- [x] Focused contract starts RED and ends GREEN.
+- [x] All eight effective negative controls fail their intended guard and are
       restored.
-- [ ] Three unchanged-input Android runs and all six exact predecessors pass at
+- [x] Three unchanged-input Android runs and all six exact predecessors pass at
       retry zero.
-- [ ] Static, documentation, format and full-script gates pass.
-- [ ] Review has no unresolved findings.
+- [x] Static, documentation, format and full-script gates pass.
+- [x] Review has no unresolved findings.
 - [ ] Original-attempt hosted Android/browser/renderer evidence is audited.

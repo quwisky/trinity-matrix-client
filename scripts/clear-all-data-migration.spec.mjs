@@ -11,6 +11,10 @@ const contrastSource = 'e2e/browser/support/contrast.mts';
 const contractPath = resolve(root, 'e2e/android/clear-all-data-contract.mts');
 const observerPath = resolve(root, 'e2e/android/clear-all-data-observer.mts');
 const journeyPath = resolve(root, 'e2e/android/clear-all-data-journeys.mts');
+const accountClientPath = resolve(
+  root,
+  'e2e/android/account-workspace-client.mts',
+);
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
@@ -164,9 +168,15 @@ describe('Android clear-all-data migration', () => {
   it('keeps setup and observation authoritative, finite and action-free', () => {
     const observer = readIfPresent(observerPath);
     expect(observer, 'clear-all-data-observer.mts must exist').not.toBe('');
-    expect(observer).toContain("'run-as'");
+    expect(observer).toContain('run-as');
     expect(observer).toContain("'eu.qwky.trinity'");
     expect(observer).toContain("'shared_prefs/CapacitorStorage.xml'");
+    expect(observer).toMatch(
+      /device\.adb\(\s*'shell',\s*`run-as \$\{APPLICATION_ID\} cat \$\{PREFERENCE_FILE\} 2>\/dev\/null \|\| true`,\s*\)/u,
+    );
+    expect(observer).not.toMatch(
+      /device\.adb\(\s*'shell',\s*'run-as',\s*APPLICATION_ID,\s*'sh',\s*'-c'/u,
+    );
     expect(observer).toContain('indexedDB.databases()');
     expect(observer).toContain('Capacitor?.Plugins?.Preferences');
     expect(observer).toContain(
@@ -200,6 +210,7 @@ describe('Android clear-all-data migration', () => {
 
   it('implements six native stages through every identity', () => {
     const journey = readIfPresent(journeyPath);
+    const accountClient = readIfPresent(accountClientPath);
     expect(journey, 'clear-all-data-journeys.mts must exist').not.toBe('');
     expect(journey).toContain('clear-all-data-contract.mts');
     expect(journey).toContain('clear-all-data-observer.mts');
@@ -214,14 +225,32 @@ describe('Android clear-all-data migration', () => {
       'client.tapCurrent(\'[data-testid="clear-all-data"]\')',
     );
     expect(journey).toContain(
-      "client.fill('trn-alert-dialog input', confirmation)",
+      "client.fillFocused('trn-alert-dialog input', confirmation)",
     );
+    expect(accountClient).toContain('SECRET_TEXT: `x${value}`');
+    expect(accountClient).toContain("await this.key('home')");
+    expect(accountClient).toContain("await this.key('forwardDelete')");
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="alert-confirm"]\')',
     );
     expect(journey).toContain("await confirmErase(client, 'yes please')");
-    expect(journey).toContain("await confirmErase(client, 'reset trinity')");
-    expect(journey).toContain("await confirmErase(client, 'RESET TRINITY')");
+    expect(journey).toContain(
+      "await confirmErase(client, 'reset trinity', true)",
+    );
+    expect(journey).toContain(
+      "await confirmErase(client, 'RESET TRINITY', true)",
+    );
+    expect(journey).toContain(
+      'const immediatelyBefore = await snapshot(client)',
+    );
+    expect(journey).toContain('immediatelyBefore.documentTimeOrigin');
+    expect(accountClient).toContain('async tapCurrentReplacingDocument(');
+    expect(accountClient).toContain(
+      'allowDocumentReplacementFrom: previousTimeOrigin',
+    );
+    expect(accountClient).toContain(
+      'documentTimeOrigin !== allowDocumentReplacementFrom',
+    );
     expect(journey).toContain('waitForRestartedEmptyState(');
     expect(journey).toContain('redactMaestroArtifacts(output, secrets)');
     expect(journey).toContain('assert.equal(cases.length, 6');
@@ -266,8 +295,99 @@ describe('Android clear-all-data migration', () => {
     }
   });
 
+  it('rejects vacuous wipe, restart, visual and cleanup evidence', () => {
+    const observer = readIfPresent(observerPath);
+    const journey = readIfPresent(journeyPath);
+    expect(journey).toContain(
+      "value.preferenceKeys.includes('matrix.accounts')",
+    );
+    expect(journey).toContain(
+      "assert(preferencesPreserved, 'Mistyped confirmation preserves preferences')",
+    );
+    expect(journey).toContain(
+      "assert(databasesPreserved, 'Mistyped confirmation preserves databases')",
+    );
+    expect(observer).toContain('value.preferenceKeys.length === 0');
+    expect(observer).toContain(
+      'previousDatabases.every((name) => !value.databases.includes(name))',
+    );
+    expect(observer).toMatch(
+      /waitForNativeShellState\(\s*\(\) => snapshot\(client\),/u,
+    );
+    expect(observer).not.toMatch(
+      /waitForNativeShellState\(\s*async \(\) => \{[\s\S]*?catch/u,
+    );
+    expect(observer).toContain(
+      'value.documentTimeOrigin !== previousTimeOrigin',
+    );
+    expect(journey).toMatch(
+      /assert\.deepEqual\(\s*observation\.text,\s*observation\.danger,/u,
+    );
+    expect(journey).toContain('observation.ratio >= AA_NORMAL_TEXT');
+    expect(journey).toContain('redactMaestroArtifacts(output, secrets)');
+    expect(journey).toContain('device.close()');
+    expect(journey).toContain('client?.close()');
+  });
+
+  it('registers one bounded uncached Nx suite and started-only hosted artifact', () => {
+    const project = JSON.parse(read('e2e/android/project.json'));
+    const target = project.targets['clear-all-data'];
+    expect(target).toMatchObject({
+      cache: false,
+      parallelism: false,
+      dependsOn: [{ projects: ['trinity-android'], target: 'build-prebuilt' }],
+    });
+    expect(target.options.command).toContain('--suite=android.clear-all-data');
+    expect(target.options.command).toContain('--timeout-ms=1200000');
+    expect(target.options.command).toContain(
+      '--entrypoint=e2e/android/clear-all-data-journeys.mts',
+    );
+    expect(target.options.command).toContain('--resource=android-avd');
+    expect(target.options.command).toContain('--resource=synapse');
+
+    const pkg = JSON.parse(read('package.json'));
+    expect(pkg.scripts['e2e:android:clear-all-data']).toBe(
+      'node scripts/nx.mjs run trinity-e2e-android:clear-all-data',
+    );
+
+    const runners = read('e2e/registry/suites/runners.mts');
+    const commands = read('e2e/registry/commands.mts');
+    const workflow = read('.github/workflows/ci.yml');
+    expect(runners).toContain("id: 'android.clear-all-data'");
+    expect(runners).toContain(
+      "currentTarget: 'trinity-e2e-android:clear-all-data'",
+    );
+    expect(runners).toContain("canonicalScript: 'e2e:android:clear-all-data'");
+    expect(runners).toContain(
+      "sourceEntrypoints: ['e2e/android/clear-all-data-journeys.mts']",
+    );
+    expect(commands).toContain("name: 'e2e:android:clear-all-data'");
+    expect(commands).toContain("suiteIds: ['android.clear-all-data']");
+    expect(workflow).toContain('clear-all-data-started=true');
+    expect(workflow).toContain(
+      'pnpm exec nx run trinity-e2e-android:clear-all-data',
+    );
+    expect(workflow).toContain('surface: android-clear-all-data');
+    expect(workflow).toContain(
+      'report-path: dist/.playwright/trinity-e2e-android/*/android.clear-all-data/**',
+    );
+    expect(workflow).toMatch(
+      /!cancelled\(\).*steps\.android\.outputs\.clear-all-data-started == 'true'/u,
+    );
+  });
+
   it('keeps every exact predecessor enabled', () => {
+    const migration = read('e2e/android/MIGRATION.md');
     const catalog = read('e2e/browser/journey-catalog.mts');
+    expect(migration).toContain('## Clear-all-data journeys');
+    expect(migration).toContain('`android.clear-all-data`');
+    expect(migration).toContain('11 signed-in, two signed-out and 12 visual');
+    expect(migration).toContain('`shared_prefs/CapacitorStorage.xml`');
+    expect(migration).toContain('`hover: none` and `pointer: coarse`');
+    expect(migration).toContain(
+      '271c63f2e49f27d7c99d4d0d75c7b844d466d70afe69afda71d1335bcc0b1e9c',
+    );
+    expect(migration).toMatch(/Do not\s+retire/u);
     expect(catalog).toContain(
       "path: 'journeys/accounts/clear-all-data.spec.mts'",
     );
