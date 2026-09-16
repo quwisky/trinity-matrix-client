@@ -2345,3 +2345,83 @@ attempts, seven effective negative controls, required static/documentation
 gates, review with no unresolved findings and the all-green exact-head hosted
 run, this accepts #718. Both Playwright predecessors remain enabled. PR #677
 remains draft/open and is not merged.
+
+## Room widget journeys
+
+`android.room-widget-settings` preserves the four Playwright Room-widget
+definitions pinned by issue #719. The executable contract maps lines 37–236 of
+`room-settings-widgets-mobile.spec.mts`, lines 20–235, 237–421 and 423–543 of
+`room-widget-settings.spec.mts`, and the pinned widget, Room Settings,
+multi-Account and app helpers. It contains exactly 86 direct plus seven
+inherited stage-local identities (93 unique identities total). All four
+predecessors and their helpers remain enabled and byte-for-byte unchanged.
+
+The four installed-Android stages preserve:
+
+- Pixel 5 draft protection, eight seeded widgets, one native-created widget,
+  scrolling, long-content containment, embed bounds, close behavior, six
+  reversible Mode/Theme captures and 125% text scale;
+- exact URL substitution and secure link attributes, no eager load, rejected
+  same-origin-sibling and changed-origin responses, legitimate Widget API
+  negotiation, exact request/referrer counts, iframe sandbox/referrer policy,
+  denied capabilities and mixed-content blocking;
+- the opening admin across the predecessor's pointer-blocked Account switch,
+  an exact first widget-state-write 500, pending/error/draft continuity,
+  native retry, exact server declaration, confirmation, removal focus and an
+  empty state-event tombstone; and
+- live creation/removal controls after power grant and revocation, without an
+  eager widget request.
+
+Maestro owns reachable product taps, text entry, Enter, confirmation and
+scrolling. Finite Matrix REST owns setup and server observation. WebView/CDP is
+read-only except for exact-host fixture HTTP, reversible document-root visual
+fixtures, the source-pinned sibling/changed-origin/mixed-content probes, the
+two exact Account-runtime handler invocations required while the settings
+overlay blocks pointer input, and the exact first widget-state-write fault.
+The widget fixture intercepts only `https://widgets.example/*` and
+`https://attacker.example/origin-change`, continues unrelated requests, and
+records real widget requests plus referrers. Every Fetch/Network/Log session,
+block list, visual fixture and WebView is restored or closed in bounded
+cleanup.
+
+```bash
+pnpm nx run trinity-e2e-android:room-widget-settings --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:room-widget-settings
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+40-minute Node timeout. Shard 4 runs it after `member-role-live-updates` and
+before retained Playwright under a 45-minute wrapper. Started-only diagnostics
+live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.room-widget-settings/`
+and must preserve all four stages, all 93 identities exactly once, completed
+native commands, fixture request/referrer and bridge-policy evidence, exact
+Matrix write-fault/declaration/tombstone evidence, renderer/APK/profile
+provenance, visual and pass/failure captures, secret redaction, Synapse
+teardown and emulator shutdown.
+
+Acceptance requires the focused and full contract gates, Android and browser
+typecheck/lint, formatting and documentation gates, effective negative
+controls, three unchanged-input native first attempts, all four exact
+unchanged Playwright predecessors at retry 0, review with no unresolved
+findings, and original-attempt hosted Android/browser/renderer artifact audit.
+This mapping does not authorize predecessor retirement or merging PR #677.
+
+Local acceptance used seven effective controls: one direct and one inherited
+identity, the exact widget write-fault target, the changed-origin Fetch pattern,
+opening-Account retention, live power grant and artifact-secret redaction. Each
+mutation failed its intended guard, and the restored contract passed. Three
+unchanged-input installed-Android invocations
+`mu3vjerh-a6833afd-e177-43c3-8b97-2238304fb7ee`,
+`mu3w0hzs-c388abb8-b55f-4ede-9712-d8446acb3821` and
+`mu3whdzw-2bd84f86-500a-4a2c-824c-ee22e71da8c1` passed all four stages on
+their original attempt with zero retries and all 93 identities exactly once.
+The final invocation contained 38 redacted `SECRET_TEXT` environment values
+and 19 redacted evaluated inputs. The four exact Playwright predecessors passed
+sequentially with one worker and zero retries in invocations
+`mu3wylhu-c1d4c7d2-e940-4324-9f8e-1a29964d97d1`,
+`mu3wz7iy-67782616-d349-4f8a-a1db-74c981ee5c6e`,
+`mu3wzuc8-69724043-c87f-43e6-ac45-962e2a990fc5` and
+`mu3x0gm1-d7421f55-adb4-4b0c-9b6c-6182bfac00d0`.

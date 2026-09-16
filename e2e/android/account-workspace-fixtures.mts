@@ -18,6 +18,11 @@ export interface WorkspaceRoomContent {
   readonly power_level_content_override?: {
     readonly users?: Readonly<Record<string, number>>;
   };
+  readonly initial_state?: readonly {
+    readonly type: WorkspaceRoomStateEventType;
+    readonly state_key: string;
+    readonly content: Readonly<Record<string, unknown>>;
+  }[];
 }
 
 export interface WorkspaceRoom {
@@ -41,6 +46,7 @@ interface MatrixRecord {
 }
 
 type WorkspaceRoomStateEventType =
+  | 'im.vector.modular.widgets'
   | 'm.room.avatar'
   | 'm.room.canonical_alias'
   | 'm.room.history_visibility'
@@ -96,6 +102,7 @@ export function createAccountFixtures(
     roomId: string,
     eventType: WorkspaceRoomStateEventType,
     content: MatrixRecord,
+    stateKey?: string,
   ): Promise<void>;
   setRoomPower(
     account: NodeWorkspaceAccount,
@@ -342,6 +349,7 @@ export function createAccountFixtures(
               content.power_level_content_override,
           }
         : {}),
+      ...(content.initial_state ? { initial_state: content.initial_state } : {}),
     });
     const id = stringField(response, 'room_id', 'Matrix fixture room id');
     roomMembers.set(id, new Set([owner.userId]));
@@ -420,10 +428,11 @@ export function createAccountFixtures(
     roomId: string,
     eventType: WorkspaceRoomStateEventType,
     content: MatrixRecord,
+    stateKey?: string,
   ): Promise<void> {
     await request(
       access(owner),
-      `/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(eventType)}`,
+      `/rooms/${encodeURIComponent(roomId)}/state/${encodeURIComponent(eventType)}${stateKey === undefined ? '' : `/${encodeURIComponent(stateKey)}`}`,
       'PUT',
       content,
     );

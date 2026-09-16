@@ -289,9 +289,10 @@ describe('Android Room profile settings migration', () => {
     expect(journey).toContain("'Owned by account A'");
     expect(journey).toContain('roomStateAttempts(');
     expect(journey).toContain('fixtures.roomState(');
-    expect(readFileSync(faultPath, 'utf8')).toContain(
-      "readonly eventType: 'm.room.name' | 'm.room.topic'",
-    );
+    const fault = readFileSync(faultPath, 'utf8');
+    expect(fault).toContain('readonly eventType:');
+    expect(fault).toContain("'m.room.name'");
+    expect(fault).toContain("'m.room.topic'");
   });
 
   it('confines the blocked-modal exception to its exact two source clicks', () => {

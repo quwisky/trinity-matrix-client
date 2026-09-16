@@ -76,6 +76,7 @@
     "e2e:android:room-access-policy": "node scripts/nx.mjs run trinity-e2e-android:room-access-policy",
     "e2e:android:room-profile-settings": "node scripts/nx.mjs run trinity-e2e-android:room-profile-settings",
     "e2e:android:room-for-you": "node scripts/nx.mjs run trinity-e2e-android:room-for-you",
+    "e2e:android:room-widget-settings": "node scripts/nx.mjs run trinity-e2e-android:room-widget-settings",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",
