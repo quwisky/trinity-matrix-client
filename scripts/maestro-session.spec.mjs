@@ -22,6 +22,10 @@ import { pickAndroidDocument } from '../e2e/android/maestro-document-picker.mts'
 
 const nativeSecret = 'synthetic-native-access-token';
 const nativeReadSecret = 'synthetic-native-read-token';
+const maestroSessionSource = readFileSync(
+  join(import.meta.dirname, '../e2e/android/maestro-session.mts'),
+  'utf8',
+);
 const nativeLog =
   'V/Capacitor: callback: 42, pluginId: SecureStorage, methodName: internalSetItem, methodData: ' +
   JSON.stringify({
@@ -165,6 +169,11 @@ async function waitForPrivateCommands(f) {
 }
 
 describe('Maestro device ownership', () => {
+  it('probes driver ports on the wildcard address Maestro validates', () => {
+    expect(maestroSessionSource).toContain('server.listen(0, () => {');
+    expect(maestroSessionSource).not.toContain("server.listen(0, '127.0.0.1'");
+  });
+
   it('requires the invocation resource before touching adb', async () => {
     const f = fixture({ resources: [] });
     await expect(openMaestroDevice(f.options, f.commands)).rejects.toThrow(

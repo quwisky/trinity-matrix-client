@@ -41,7 +41,10 @@ const allocateHostPort = (): Promise<number> =>
     const server = createServer();
     server.unref();
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    // Maestro validates an explicit driver port with ServerSocket(port), which
+    // binds the wildcard address. Probe the same address family/scope so a port
+    // occupied on another local interface cannot pass here and fail in Maestro.
+    server.listen(0, () => {
       const address = server.address();
       if (!address || typeof address === 'string') {
         server.close(() => reject(new Error('Could not allocate a TCP port')));
