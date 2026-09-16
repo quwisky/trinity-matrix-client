@@ -61,11 +61,7 @@ async function nativePreferenceKeys(
 ): Promise<readonly string[]> {
   const xml = await client.device.adb(
     'shell',
-    'run-as',
-    APPLICATION_ID,
-    'sh',
-    '-c',
-    `cat '${PREFERENCE_FILE}' 2>/dev/null || true`,
+    `run-as ${APPLICATION_ID} cat ${PREFERENCE_FILE} 2>/dev/null || true`,
   );
   return parseNativePreferenceKeys(xml);
 }
@@ -135,17 +131,8 @@ export async function waitForRestartedEmptyState(
   timeoutMs = 30_000,
 ): Promise<ClearAllDataSnapshot> {
   const observed = await waitForNativeShellState(
-    async () => {
-      try {
-        return await snapshot(client);
-      } catch {
-        // The product replaces the document after a successful wipe. A read can
-        // meet that bounded swap; observation retries without causing navigation.
-        return null;
-      }
-    },
+    () => snapshot(client),
     (value) =>
-      value !== null &&
       value.documentTimeOrigin !== previousTimeOrigin &&
       value.preferenceKeys.length === 0 &&
       previousDatabases.every((name) => !value.databases.includes(name)),

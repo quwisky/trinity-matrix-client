@@ -195,6 +195,17 @@ export class AccountWorkspaceClient {
     });
   }
 
+  async tapCurrentReplacingDocument(
+    selector: string,
+    previousTimeOrigin: number,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
+    await this.nativeAction('accounts-current-point-tap', selector, filter, {}, {
+      currentPoint: true,
+      allowDocumentReplacementFrom: previousTimeOrigin,
+    });
+  }
+
   /** Tap a measured visible point when an overlay partially covers the target. */
   async tapCurrentExposed(
     selector: string,
@@ -386,6 +397,40 @@ export class AccountWorkspaceClient {
     assert.equal(matches, true, `Native input reached ${selector}`);
   }
 
+  /** Fill a product-autofocused input without allowing IME auto-capitalisation. */
+  async fillFocused(selector: string, value: string): Promise<void> {
+    await this.focused(selector);
+    const actionId = ++this.action;
+    console.info(`[accounts] native action ${actionId}: focused fill ${selector}`);
+    let failure: unknown;
+    try {
+      await this.device.runFlow(
+        join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
+        { APP_ID: 'eu.qwky.trinity', SECRET_TEXT: `x${value}` },
+      );
+      await this.key('home');
+      await this.key('forwardDelete');
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      await this.owner.apply();
+    } catch (error) {
+      if (failure !== undefined)
+        throw new AggregateError(
+          [failure, error],
+          'Native focused fill and viewport restoration failed',
+        );
+      throw error;
+    }
+    if (failure !== undefined) throw failure;
+    const matches = await evaluateNative(
+      this.webview,
+      `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`,
+    );
+    assert.equal(matches, true, `Native focused input reached ${selector}`);
+  }
+
   /** Replace a prefilled value after moving the native caret to its exact end. */
   async replace(selector: string, value: string): Promise<void> {
     await this.tapCurrent(selector);
@@ -570,12 +615,15 @@ export class AccountWorkspaceClient {
     options: {
       readonly currentPoint?: boolean;
       readonly allowFocusedInput?: boolean;
+      readonly allowDocumentReplacementFrom?: number;
       readonly fileInputSelector?: string;
       readonly exposedPoint?: boolean;
     } = {},
   ): Promise<void> {
     const currentPoint = options.currentPoint ?? false;
     const allowFocusedInput = options.allowFocusedInput ?? false;
+    const allowDocumentReplacementFrom =
+      options.allowDocumentReplacementFrom;
     const fileInputSelector = options.fileInputSelector;
     const resolvePoint = options.exposedPoint
       ? (operationSignal?: AbortSignal) =>
@@ -600,6 +648,7 @@ export class AccountWorkspaceClient {
     let actionError: unknown;
     let pointEndpoint: Awaited<ReturnType<typeof openMaestroTargetPoint>> | undefined;
     let trustedEvents: unknown = null;
+    let documentReplaced = false;
     try {
       console.info(`[accounts] native action ${actionId}: ${flow} ${selector}`);
       const flowVariables: Record<string, string> = { APP_ID: 'eu.qwky.trinity', POINT: `${initialPoint.x},${initialPoint.y}`, ...variables };
@@ -611,9 +660,21 @@ export class AccountWorkspaceClient {
         flowVariables.POINT_URL = pointEndpoint.url;
       }
       await this.device.runFlow(join(this.workspaceRoot, `e2e/android/flows/${flow}.yaml`), flowVariables);
-      const events = await evaluateNative(this.webview, 'window.__trinityAccountTap?.events ?? []');
-      assert(Array.isArray(events));
+      const outcome = await evaluateNative(
+        this.webview,
+        `({events:window.__trinityAccountTap?.events ?? [],documentTimeOrigin:performance.timeOrigin})`,
+      );
+      assert(outcome && typeof outcome === 'object');
+      assert('events' in outcome && Array.isArray(outcome.events));
+      assert(
+        'documentTimeOrigin' in outcome &&
+          typeof outcome.documentTimeOrigin === 'number',
+      );
+      const events = outcome.events;
       trustedEvents = events;
+      documentReplaced =
+        allowDocumentReplacementFrom !== undefined &&
+        outcome.documentTimeOrigin !== allowDocumentReplacementFrom;
       const activated = events.some(
         event =>
           event &&
@@ -628,10 +689,13 @@ export class AccountWorkspaceClient {
           `Native input ${actionId} focused ${selector}`,
         );
       } else {
-        assert(activated, `Native action ${actionId} activated ${selector}`);
+        assert(
+          activated || documentReplaced,
+          `Native action ${actionId} activated ${selector}`,
+        );
       }
       if (fileInputSelector !== undefined) assertNativeDocumentActivation(events);
-      else assert(events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
+      else assert(documentReplaced || events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
     } catch (error) {
       actionError = error;
     } finally {
@@ -646,6 +710,7 @@ export class AccountWorkspaceClient {
             initialPoint,
             freshPoint: pointEndpoint?.lastPoint ?? null,
             trustedEvents,
+            documentReplaced,
           });
         } catch (error) { failures.push(error); }
       }

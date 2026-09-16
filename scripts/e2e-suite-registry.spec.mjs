@@ -1463,6 +1463,48 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android clear-all-data batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.clear-all-data',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:clear-all-data',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:clear-all-data',
+        sourceEntrypoints: ['e2e/android/clear-all-data-journeys.mts'],
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:clear-all-data',
+        command: 'nx run trinity-e2e-android:clear-all-data',
+        suiteIds: ['android.clear-all-data'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:clear-all-data'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android Recent Activity batch with the host budget', async () => {
     const suite = registrySnapshot().suites.find(
       (entry) => entry.id === 'android.recent-activity',
