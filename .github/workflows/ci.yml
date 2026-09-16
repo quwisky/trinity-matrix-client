@@ -412,6 +412,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'space-settings-resilience-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'member-role-live-updates-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'room-widget-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:room-widget-settings; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
 
@@ -565,6 +566,13 @@ jobs:
           surface: android-space-settings-resilience
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.space-settings-resilience/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-widget-settings-started == 'true' }}
+        with:
+          surface: android-room-widget-settings
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-widget-settings/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}

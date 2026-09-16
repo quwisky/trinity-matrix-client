@@ -6,7 +6,11 @@ export type MatrixRequestKind = 'invite' | 'join';
 
 export interface MatrixRoomStateTarget {
   readonly roomId: string;
-  readonly eventType: 'm.room.name' | 'm.room.topic' | 'm.space.child';
+  readonly eventType:
+    | 'im.vector.modular.widgets'
+    | 'm.room.name'
+    | 'm.room.topic'
+    | 'm.space.child';
   readonly stateKey?: '' | '*' | string;
 }
 
@@ -76,6 +80,11 @@ export interface MatrixHttpFault {
   roomTagAttempts(target: MatrixRoomTagTarget): number;
   waitForAttempts(expected: number, signal: AbortSignal): Promise<number>;
   close(): Promise<void>;
+}
+
+export interface MatrixHttpFaultControl {
+  /** Hold the first matching synthetic response until this finite gate settles. */
+  readonly firstResponseGate?: Promise<void>;
 }
 
 export interface MatrixHttpOutcome {
@@ -328,6 +337,7 @@ function failureBody(responseError?: string): string {
 export async function installFirstMatrixHttpFailure(
   connection: DevtoolsEventConnection,
   options: MatrixHttpFaultOptions,
+  control: MatrixHttpFaultControl = {},
 ): Promise<MatrixHttpFault> {
   assert(
     Number.isInteger(options.status) &&
@@ -496,6 +506,7 @@ export async function installFirstMatrixHttpFailure(
     attempts += 1;
     if (attempts === 1) {
       firstNetworkId = paused.networkId;
+      await control.firstResponseGate;
       await connection.send('Fetch.fulfillRequest', {
         requestId: paused.requestId,
         responseCode: options.status,
