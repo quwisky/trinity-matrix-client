@@ -970,7 +970,7 @@ export const RUNNER_E2E_SUITES = defineSuites([
   {
     id: 'android.room-widget-settings',
     environment: 'android',
-    capabilities: ['room-administration', 'widgets'],
+    capabilities: ['room-administration'],
     contractTypes: ['host', 'journey', 'accessibility', 'security'],
     runner: 'node-test',
     currentTarget: 'trinity-e2e-android:room-widget-settings',
