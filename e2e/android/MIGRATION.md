@@ -2880,15 +2880,58 @@ pnpm e2e:android:legacy-sso
 
 The target is uncached and serial, depends on
 `trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
-20-minute Node timeout. The latest completed successful hosted timing placed it
-on shard 2, which completed before successful shards 1 and 4. Its CI wrapper is
+20-minute Node timeout. The CI registry places it on shard 2, and its wrapper is
 bounded at 25 minutes. Started-only diagnostics live under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.legacy-sso/` and use the
 `android-legacy-sso` surface.
 
-Acceptance remains pending until this section records three unchanged-input
-native first-attempt passes, all three exact Playwright predecessors
-sequentially at retry 0, effective negative controls, full validation, review
-with no unresolved findings, and original-attempt hosted
-Android/browser/renderer evidence. Do not retire or edit the predecessors. This
-mapping does not authorize merging PR #677.
+The three frozen installed-Android validations used exact production renderer
+commit `10b8ba352031670a219123a50ab5b95f2ec3948f`. Its manifest describes a
+15,302,529-byte production bundle and has SHA-256
+`e4e2c1b7bb4919d6f8ddeb2ff06be0f6448a8c0bbdf45f3386a463acd65a9629`.
+The installed debug APK has SHA-256
+`76067fe89aaf5785038bd76aaad6ba9a1357c838abb6be0c1f1cb867fcf874dd`.
+All three ran on the `Trinity_API_36` Google APIs x86_64 emulator. The first
+two stages used `PIXEL_5_ACCOUNT_PROFILE`, the geometry stage used
+`DESKTOP_ACCOUNT_PROFILE`, and every run passed on attempt 1 with zero retries,
+all three stages and all 23 identities:
+
+- `mu5cx2sr-a1f57393-1017-4d83-975e-4f30dbf47aa9` passed in
+  399,323.522 ms (395,328.276 ms attempt); its stages took 141,887.332,
+  4,145.355 and 222,327.953 ms.
+- `mu5d6rpo-24d4052b-e55a-4682-94e2-7785767f0f4a` passed in
+  405,744.495 ms (402,346.679 ms attempt); its stages took 143,948.819,
+  3,598.260 and 226,150.585 ms.
+- `mu5dg0hu-70b36feb-4a85-42d9-8150-fdf32b0dff0a` passed in
+  402,989.579 ms (399,317.166 ms attempt); its stages took 142,286.250,
+  4,231.683 and 225,689.328 ms.
+
+Each receipt preserves native Chrome/Dex ownership, shell deep-link injection,
+device and WebView pass captures, and clean observer, browser, device and
+Synapse teardown. A hidden-file scan across all three artifact roots found zero
+files containing the fixed provider password, a `syt_*` Matrix login token, or
+either timestamp-shaped forged-state value; it found 387 explicit
+`[REDACTED]` markers.
+
+The executable mutation table rejects all eight required weakenings:
+legacy/delegated action classification drift, persistence loss, forged-state
+acceptance, token-consumption weakening, in-flight stash loss, callback
+geometry/accessibility weakening, cleanup loss and redaction loss. The focused
+migration and registry guards pass 90/90 tests.
+
+The exact retained predecessor ran with one worker and zero retries as
+invocation `mu5dspzj-7df7fabf-0bb3-4600-8602-15cd4ff4cb60`. All three tests
+passed in 12.995 seconds: provider sign-in and persistence in 3.744 seconds,
+unverifiable callback refusal in 2.488 seconds, and in-flight forged callback
+recovery in 6.129 seconds. Synapse teardown completed cleanly.
+
+Local validation passed `pnpm test` (44 tasks), `pnpm lint` (77 tasks),
+`pnpm nx run-many -t typecheck` (48 tasks), `pnpm format:check`,
+`pnpm stylelint`, `pnpm architecture:check` (including all 64 registered
+suites), the 29 focused CI/warning-policy tests and `git diff --check`.
+
+Independent review resolved two documentation-only findings and found no
+unresolved code findings. Final acceptance now requires the original-attempt
+hosted Android/browser/renderer artifact audit from the exact consolidated
+tree. Do not retire or edit the predecessors. This mapping does not authorize
+merging PR #677.
