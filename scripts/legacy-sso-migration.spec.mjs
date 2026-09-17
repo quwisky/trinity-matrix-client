@@ -276,6 +276,7 @@ describe('Android legacy SSO migration', () => {
     expect(dexReadyFlow).toContain("tapOn: 'Advanced'");
     expect(dexReadyFlow).toContain('Proceed to localhost.*');
     expect(dexReadyFlow).toContain('id: login');
+    expect(dexReadyFlow).toContain('timeout: 180000');
     expect(dexReadyFlow).toContain('id: password');
     expect(dexReadyFlow).toContain('id: submit-login');
     for (const mutation of forbiddenDomActions) {
