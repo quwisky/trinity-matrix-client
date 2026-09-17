@@ -2917,10 +2917,40 @@ workflow tests, `pnpm test` (44 tasks), `pnpm nx run-many -t typecheck` (48
 tasks), `pnpm lint` (77 tasks), `pnpm stylelint`, `pnpm format:check`,
 `pnpm architecture:check` (including all 65 registered suites), production
 renderer build, Android host verification, and the documentation check,
-assemble and eight-test browser gate. Original-attempt hosted
-Android/browser/renderer artifact acceptance remains required before closing
-#724. Do not retire or edit the Playwright predecessors. This mapping does not
-authorize merging PR #677.
+assemble and eight-test browser gate.
+
+Original-attempt hosted run
+[`35253208614`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35253208614)
+then exercised consolidated head `27bdb7028d635a29afab7bddbd3d0513ca6787d0`
+through merge commit `ce2b3bcc5b7a43c3250d0d65b146313f72fc87ee`.
+Its 49-file, 15,302,528-byte renderer manifest had SHA-256
+`2ee8c14f1c8b6ac12c431fb830adbbb23323156c91ccd70ef88aa3052927ecda`;
+the merge and feature trees both resolved to
+`51799c0dc3524917d4b342a3a366583e56d14df5`, so the hosted APK was built
+from the accepted feature tree. The pinned workflow provisioned the API 36,
+`google_apis`, x86_64 Pixel 6 profile and verified the same renderer digest in
+both `www` and the packaged Android assets.
+
+Android shard 4 completed successfully. Dedicated artifact
+`10517526548` recorded invocation
+`mu5wwjc9-b6bcefd2-d6de-43a4-b933-8f6e15ccb753`: all four stages and all
+26 unique identities passed on attempt 1 with zero retries in 409.730 seconds.
+Both browser-owning stages recorded `com.android.chrome`, cleared profiles,
+handled native first run and a suite-owned DevTools controller without an
+installed ChromeDriver. The suite returned successfully only after fixture,
+Chrome and CDP teardown, and the job's unchanged-worktree check passed. An
+artifact-wide scan found zero raw fixed authorization-code, mocked
+access/refresh-token or bearer-value matches; the hosted diagnostics emitted
+no sensitive values requiring a redaction placeholder.
+
+The hosted browser job passed all four exact OIDC predecessors sequentially at
+retry zero as part of 317 passed and one intentionally skipped canonical tests.
+Renderer, browser, shard 4, unit, lint, documentation, iOS and Electron jobs
+all passed. The overall workflow conclusion was failure only because Android
+shards 1–3 independently failed in pre-existing suites before or outside this
+batch; none changed the successful OIDC artifact or its accepted inputs. Do not
+retire or edit the Playwright predecessors. This mapping does not authorize
+merging PR #677.
 
 ## Legacy SSO journeys
 

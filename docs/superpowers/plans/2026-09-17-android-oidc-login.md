@@ -474,26 +474,26 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
 - No new tracked files unless review or hosted evidence exposes a defect.
 - Update authorized GitHub issue/PR evidence after publication.
 
-- [ ] **Step 1: Complete independent review**
+- [x] **Step 1: Complete independent review**
 
   Review the full feature diff from `bf5dfcd8` through the working tree for
   correctness, security boundaries, source preservation, regression risk,
   test quality and recoverability. Resolve every actionable finding using RED
   first and re-run affected validation.
 
-- [ ] **Step 2: Verify completion before publication**
+- [x] **Step 2: Verify completion before publication**
 
   Re-run the focused migration guard, typecheck, format check, `git diff
 --check`, source hashes and clean status. Confirm the branch contains only
   #724-owned commits and PR #677 is still draft/open against `develop`.
 
-- [ ] **Step 3: Push and consolidate**
+- [x] **Step 3: Push and consolidate**
 
   Push `test/724-android-oidc-login`, cherry-pick only its verified commits into
   `test/676-android-sidebar-filter`, prove feature and consolidated trees are
   identical, and push the consolidated branch. Do not merge PR #677.
 
-- [ ] **Step 4: Audit original-attempt hosted artifacts**
+- [x] **Step 4: Audit original-attempt hosted artifacts**
 
   For the first hosted run at the consolidated commit, verify exact merge SHA
   and renderer manifest, browser predecessor results at retry zero, the
@@ -502,7 +502,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   step. Diagnose and repair any failure without accepting a rerun of unchanged
   broken code as evidence.
 
-- [ ] **Step 5: Close #724 and continue the goal**
+- [x] **Step 5: Close #724 and continue the goal**
 
   Post local/hosted evidence to #724, #660, #653 and PR #677, close #724 only
   after every acceptance item is satisfied, verify PR #677 remains draft/open
