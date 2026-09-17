@@ -2748,9 +2748,10 @@ pnpm e2e:android:password-registration
 
 The target is uncached and serial, depends on
 `trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
-15-minute Node timeout. The latest completed hosted timing placed it on shard 4
-after `clear-all-data` and before retained Playwright under a 20-minute wrapper;
-that shard completed sooner than shards 1 and 2 while shard 3 was still active.
+15-minute Node timeout. The accepted hosted run placed it on shard 4 after
+`clear-all-data` and before retained Playwright under a 20-minute wrapper; the
+focused target completed in 4 minutes 17 seconds before that shard continued
+through its retained Playwright coverage.
 Started-only diagnostics live under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.password-registration/`
 and preserve one stage, all four assertion identities exactly once, trusted
@@ -2758,6 +2759,64 @@ native-action proof, exact availability and route observations, the sanitized
 MXID/status result, renderer/APK/profile provenance, pass/failure captures,
 credential and session redaction, REST revocation, and WebView/device/Synapse
 teardown.
+
+Local acceptance on 2026-09-17 used unchanged relevant inputs and produced
+three consecutive uncached, retry-zero native passes:
+
+- `mu54pw9w-f2a95c62-6de1-40ac-ad3e-16642d9b7fd9` — 147.346 seconds;
+- `mu54unoy-f13552b6-2bfb-4e7d-ae45-da228f1d27b7` — 145.229 seconds;
+- `mu54z8jl-a604f033-6a99-4630-80c0-91795ff31acf` — 145.184 seconds.
+
+Every invocation recorded the one passed stage and all four identities exactly
+once, with zero retries, 12 native actions, successful independent password
+login and logout, and clean WebView/device/Synapse teardown. Eight reversible
+negative controls independently proved the guards reject action-classification
+drift, availability-probe weakening, route or homeserver-query drift, UIA and
+exact-MXID weakening, missing cleanup and lost secret redaction. Browser
+invocation `mu554z2q-6e8dac3d-7e40-43b5-8524-4ef3ce61dbd8` then ran the exact
+unchanged predecessor with one worker and `--retries=0`; it passed in 3.842
+seconds. The frozen production renderer manifest digest was
+`61b98ec83a29cbfd8124aeb3f200734624bfad6350bb702ffb9da8a5a9348610`
+and the installed APK digest was
+`b3fa6e3d009f33b106ca64fa042a15a291b81ef7e059df3093f7df20440dcf1b`.
+
+Hosted acceptance on 2026-09-17 used exact consolidated head
+`742c529a70c86f67e14f5b54ad349568e20ef6f1` in merge
+`b3890306a58af8b8aa6615768e19947ce0b80ce0` on run `35189634759`; the merge
+tree `7f3444eb0a3fcedbb43db5e6834d5f1f688e88e9` exactly matched both the
+feature and consolidated branch trees. Renderer job `105099196797` published
+artifact `10483712395` (3,701,106 bytes; GitHub digest
+`sha256:c104dadddd22a87a701464aad0b2d694923b550408e821fa45d55e1d448f91d7`)
+and verified the 49-file, 15,302,528-byte production manifest digest
+`e4b64dc7ef31bc38b7bb57ae7ef82ee44cc26cb3be57aa2f23d13f8f5efef986`.
+Browser job `105099461755` produced artifact `10484039999` (GitHub digest
+`sha256:909b68ec218e0d12d306d9777054b6119e50b64e1e1af9d0cb0485dd62ef8b57`):
+317 attempts passed, one was skipped and none retried; the exact registration
+predecessor passed at retry zero in 4.992 seconds.
+
+Original-attempt Android shard-4 job `105099461936` passed on an API-36
+`pixel_6` x86_64 emulator and produced
+`playwright-35189634759-1-b3890306a58af8b8aa6615768e19947ce0b80ce0-android-e2e-android-password-registration-4`,
+artifact `10488372241`, 381,432 bytes, GitHub digest
+`sha256:2a58f66d5250d2f668d0cd341924c1a31b21a58e07b3d692f440ace973fcd1c9`.
+Invocation `mu58vu05-9e056754-4d8e-4b91-b2a8-6112dcb99630` passed once in
+241.321 seconds with zero retries; its stage passed in 240.340 seconds. The
+artifact records all four identities exactly once: initially absent then
+HTTP-200 availability-gated registration, exact `/register` plus
+`https://localhost:8448`, exact `/encryption/setup`, and independent HTTP-200
+login for `@signup-android-password-registratio-w0-r0-0a80394f87:localhost`.
+It preserves 12 trusted native actions, device and WebView pass captures, and
+successful observer/login-token/Synapse cleanup. A full hidden-file scan found
+zero raw generated-password, Synapse-token or bearer-token matches and 54
+`[REDACTED]` markers. The exact renderer manifest was verified before the
+suite, the worktree-integrity check passed and the job completed cleanly.
+
+The original workflow's only failure was the pre-existing shard-3
+`room-profile-settings` rename-room native-tap failure after its access-policy
+suite had passed; its failure captures were retained and the cross-suite
+reliability debt remains owned by #665. The accepted original-attempt
+Android/browser/renderer evidence is unaffected and accepts #722 without
+retiring its Playwright predecessor. PR #677 remains draft/open and unmerged.
 
 Acceptance requires the focused and full contract gates, Android and browser
 typecheck/lint, formatting and documentation gates, eight effective negative
