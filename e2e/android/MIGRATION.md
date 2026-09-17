@@ -2845,8 +2845,9 @@ then returns a matching-state provider-error callback and proves the exact
 error surface. The third returns an exact authorization code, captures the
 token request and proves the durable verifier's RFC 7636 S256 digest equals the
 original challenge before returning token and whoami responses. The final
-stage returns password login plus exact `M_UNRECOGNIZED` responses from both
-authentication-metadata endpoints and proves password fallback.
+stage returns password login, answers either optional authentication-metadata
+endpoint with exact `M_UNRECOGNIZED` if the SDK probes it, and proves password
+fallback without inventing a request the predecessor does not require.
 
 One logical `OidcLoginFixture` controls the exact allowlisted Matrix and
 provider endpoints across the Trinity WebView and disposable emulator Chrome
@@ -2880,14 +2881,46 @@ resource, and has a 20-minute Node timeout. CI places it on shard 4 after
 use the `android-oidc-login` surface under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.oidc-login/`.
 
-Acceptance is still pending. It requires the focused and full contract gates,
-Android and browser typecheck/lint, formatting and documentation gates,
-effective reversible negative controls, three unchanged-input native first
-attempts with all four stages and all 26 identities at retry zero, the four
-exact unchanged Playwright predecessors sequentially at retry zero, review
-with no unresolved findings, and an original-attempt hosted
-Android/browser/renderer artifact audit. Do not retire or edit the Playwright
-predecessors. This mapping does not authorize merging PR #677.
+Local acceptance on 2026-09-17 used exact implementation revision
+`1dfe492c8d1fc9e961cce741232689d4e30906f7`, a 49-file, 15,302,529-byte
+production renderer manifest with SHA-256
+`1ba8e44c94736fadf1453d519c78068cff1fc8f29edcdf325031ac66c276da35`,
+and installed debug APK SHA-256
+`2db3fbd72ead76976b118211fda166425b23bd798e2b6e69ce0cce411da1442b`.
+Three sequential uncached native invocations passed unchanged on their first
+attempt with zero retries:
+
+- `mu5s48tb-ceb8553f-6770-49ae-9e97-2ab0a9f6047c` — 242.706 seconds;
+- `mu5sa5zt-8d60fb16-30c9-4e9f-9d93-fa1feec1d163` — 244.891 seconds; and
+- `mu5sfukg-6d2fd6a6-d3d8-45d5-9963-00d24af672f9` — 246.440 seconds.
+
+Each invocation recorded all four stages and all 26 unique assertion
+identities exactly once, with clean device, WebView, Chrome and Fetch teardown.
+Each artifact contained 47 explicit `[REDACTED]` markers and zero raw matches
+for the fixed authorization code, mocked access/refresh tokens or bearer-token
+patterns. Two preserved diagnostic attempts exposed and fixed an incorrect
+spinner-container assertion plus non-idempotent cleanup after the callback's
+real document replacement. A third diagnostic attempt proved stages 1–3 and
+showed that the predecessor's two fallback metadata routes are optional mocks,
+not required requests; the fixture still serves their exact 404 responses.
+Every repair began with a failing focused regression guard.
+
+Browser invocation `mu5sltpy-25cbb353-c043-48ab-ad33-e62bb32f438e` then ran
+the four exact unchanged predecessors sequentially with one worker and
+`--retries=0`; all four passed in 7.386 seconds. The source and shared helper
+hashes remained
+`e9a0dadad15f155a3c69b49e06d8b4539ea7d7f446fd08cfaa565fa3ba6ecb8a`
+and `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`.
+
+Local validation passed the 11-test focused migration guard, 106 registry and
+workflow tests, `pnpm test` (44 tasks), `pnpm nx run-many -t typecheck` (48
+tasks), `pnpm lint` (77 tasks), `pnpm stylelint`, `pnpm format:check`,
+`pnpm architecture:check` (including all 65 registered suites), production
+renderer build, Android host verification, and the documentation check,
+assemble and eight-test browser gate. Original-attempt hosted
+Android/browser/renderer artifact acceptance remains required before closing
+#724. Do not retire or edit the Playwright predecessors. This mapping does not
+authorize merging PR #677.
 
 ## Legacy SSO journeys
 
