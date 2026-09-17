@@ -262,7 +262,7 @@ describe('Android legacy SSO migration', () => {
     expect(provider).toContain('removeChromeCommandLine');
     expect(provider).toContain('throw new AggregateError(');
     expect(flow).toContain('appId: com.android.chrome');
-    expect(flow).toContain('androidWebViewHierarchy: devtools');
+    expect(flow).not.toContain('androidWebViewHierarchy: devtools');
     expect(flow).toContain('inputText: ${DEX_EMAIL_SECRET}');
     expect(flow).toContain('inputText: ${DEX_PASSWORD}');
     expect(flow).toContain('id: submit-login');
@@ -271,7 +271,7 @@ describe('Android legacy SSO migration', () => {
     expect(chromeSetupFlow).toContain('Accept & continue');
     expect(chromeSetupFlow).toContain('No thanks');
     expect(dexReadyFlow).toContain('appId: com.android.chrome');
-    expect(dexReadyFlow).toContain('androidWebViewHierarchy: devtools');
+    expect(dexReadyFlow).not.toContain('androidWebViewHierarchy: devtools');
     expect(dexReadyFlow).toContain('Your connection is not private');
     expect(dexReadyFlow).toContain("tapOn: 'Advanced'");
     expect(dexReadyFlow).toContain('Proceed to localhost.*');
