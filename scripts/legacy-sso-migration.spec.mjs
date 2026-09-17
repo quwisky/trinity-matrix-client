@@ -14,6 +14,10 @@ const dexSource = 'e2e/support/synapse/dex.yaml';
 const contractPath = resolve(root, 'e2e/android/legacy-sso-contract.mts');
 const providerPath = resolve(root, 'e2e/android/legacy-sso-provider.mts');
 const journeyPath = resolve(root, 'e2e/android/legacy-sso-journeys.mts');
+const accountClientPath = resolve(
+  root,
+  'e2e/android/account-workspace-client.mts',
+);
 const dexFlowPath = resolve(root, 'e2e/android/flows/legacy-sso-dex.yaml');
 const chromeSetupFlowPath = resolve(
   root,
@@ -282,6 +286,7 @@ describe('Android legacy SSO migration', () => {
 
   it('implements three native stages and records the exact direct identities', () => {
     const journey = readIfPresent(journeyPath);
+    const accountClient = readIfPresent(accountClientPath);
     expect(journey, 'legacy-sso-journeys.mts must exist').not.toBe('');
     expect(journey).toContain('legacy-sso-contract.mts');
     expect(journey).toContain('legacy-sso-provider.mts');
@@ -293,7 +298,15 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain("id: 'provider-sign-in-and-persistence'");
     expect(journey).toContain("id: 'unverifiable-callback-unspent-token'");
     expect(journey).toContain("id: 'inflight-forged-callback-recovery'");
+    expect(journey).toContain("client.focusCurrent('#homeserver')");
+    expect(journey).not.toContain("client.tapCurrent('#homeserver')");
     expect(journey).toContain("client.fillFocused('#homeserver'");
+    expect(accountClient).toMatch(
+      /async focusCurrent\([\s\S]*?allowFocusTransition: true/u,
+    );
+    expect(accountClient).toMatch(
+      /assert\.equal\(\s*initiallyFocused,\s*false,\s*`Native input \$\{actionId\} began unfocused \$\{selector\}`/u,
+    );
     expect(journey).toContain(
       "client.tapCurrent('button', { exactText: 'Continue' })",
     );
