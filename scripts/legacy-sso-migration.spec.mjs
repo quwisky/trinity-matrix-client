@@ -271,7 +271,7 @@ describe('Android legacy SSO migration', () => {
     expect(chromeSetupFlow).toContain('Accept & continue');
     expect(chromeSetupFlow).toContain('No thanks');
     expect(dexReadyFlow).toContain('appId: com.android.chrome');
-    expect(dexReadyFlow).not.toContain('androidWebViewHierarchy: devtools');
+    expect(dexReadyFlow).toContain('androidWebViewHierarchy: devtools');
     expect(dexReadyFlow).toContain('Your connection is not private');
     expect(dexReadyFlow).toContain("tapOn: 'Advanced'");
     expect(dexReadyFlow).toContain('Proceed to localhost.*');

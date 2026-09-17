@@ -140,8 +140,8 @@ export async function openLegacySsoProvider(
     return waitForDexSurface(
       device,
       workspaceRoot,
-      // Hosted Chrome can spend about 155 seconds on the real certificate
-      // warning and Dex controls while still completing them.
+      // Hosted Maestro's DevTools readiness probe can spend about 155 seconds
+      // on the real certificate warning and Dex controls while still passing.
       AbortSignal.any([signal, AbortSignal.timeout(240_000)]),
     );
   };
