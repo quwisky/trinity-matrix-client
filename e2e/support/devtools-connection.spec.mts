@@ -79,6 +79,7 @@ describe('DevTools connection', () => {
     );
     const socket = await peer;
     try {
+      expect(connection.closed).toBe(false);
       const first: unknown[] = [];
       const unsubscribe = connection.on('Fetch.requestPaused', (params) =>
         first.push(params),
@@ -105,6 +106,7 @@ describe('DevTools connection', () => {
       expect(first).toEqual([{ requestId: 'one' }]);
     } finally {
       connection.close();
+      expect(connection.closed).toBe(true);
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });

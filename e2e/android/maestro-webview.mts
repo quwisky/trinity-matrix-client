@@ -418,6 +418,9 @@ export async function openMaestroWebview(
     ): DevtoolsEventConnection => {
       let released = false;
       const owned: DevtoolsEventConnection = {
+        get closed() {
+          return released || page.closed;
+        },
         send: (method, params) => page.send(method, params),
         on: (method, listener) => page.on(method, listener),
         close(reason = new Error('DevTools page session closed')): void {
