@@ -366,6 +366,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.password-registration'],
   },
   {
+    name: 'e2e:android:oidc-login',
+    command: 'nx run trinity-e2e-android:oidc-login',
+    kind: 'canonical',
+    suiteIds: ['android.oidc-login'],
+  },
+  {
     name: 'e2e:android:legacy-sso',
     command: 'nx run trinity-e2e-android:legacy-sso',
     kind: 'canonical',
@@ -716,6 +722,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'password-registration-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:password-registration; fi',
     tier: 'pull-request',
     suiteIds: ['android.password-registration'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'oidc-login-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:oidc-login; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.oidc-login'],
   },
   {
     command:

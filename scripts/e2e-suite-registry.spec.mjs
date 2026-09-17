@@ -1547,6 +1547,50 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android OIDC login batch with the host budget', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.oidc-login',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:oidc-login',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:oidc-login',
+        sourceEntrypoints: ['e2e/android/oidc-login-journeys.mts'],
+        prerequisites: expect.arrayContaining(['maestro']),
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd'],
+      }),
+    );
+    expect(suite.prerequisites).not.toContain('docker');
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:oidc-login',
+        command: 'nx run trinity-e2e-android:oidc-login',
+        suiteIds: ['android.oidc-login'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:oidc-login'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android legacy SSO batch with the host budget', async () => {
     const snapshot = registrySnapshot();
     const suite = snapshot.suites.find(
