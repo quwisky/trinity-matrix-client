@@ -562,6 +562,15 @@ describe('Android legacy SSO migration', () => {
     expect(workflow).toMatch(
       /!cancelled\(\).*steps\.android\.outputs\.legacy-sso-started == 'true'/u,
     );
+    expect(workflow.indexOf('legacy-sso-started=true')).toBeLessThan(
+      workflow.indexOf('native-shell-started=true'),
+    );
+    const ciCommands = commands.slice(
+      commands.indexOf('export const E2E_CI_ENTRYPOINTS'),
+    );
+    expect(ciCommands.indexOf("suiteIds: ['android.legacy-sso']")).toBeLessThan(
+      ciCommands.indexOf("suiteIds: ['android.native-shell']"),
+    );
   });
 
   it('documents parity and retains the exact predecessors', () => {

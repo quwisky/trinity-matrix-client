@@ -569,6 +569,12 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'legacy-sso-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:legacy-sso; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.legacy-sso'],
+  },
+  {
+    command:
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'native-shell-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:native-shell; fi',
     tier: 'pull-request',
     suiteIds: ['android.native-shell'],
@@ -710,12 +716,6 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'password-registration-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:password-registration; fi',
     tier: 'pull-request',
     suiteIds: ['android.password-registration'],
-  },
-  {
-    command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'legacy-sso-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:legacy-sso; fi',
-    tier: 'pull-request',
-    suiteIds: ['android.legacy-sso'],
   },
   {
     command:
