@@ -305,6 +305,9 @@ describe('Android legacy SSO migration', () => {
       /async focusCurrent\([\s\S]*?allowFocusTransition: true/u,
     );
     expect(accountClient).toMatch(
+      /async focusCurrent\([\s\S]*?if \(target\.focused\) \{[\s\S]*?await this\.key\('tab'\)[\s\S]*?!elements\[0\]!\.focused/u,
+    );
+    expect(accountClient).toMatch(
       /assert\.equal\(\s*initiallyFocused,\s*false,\s*`Native input \$\{actionId\} began unfocused \$\{selector\}`/u,
     );
     expect(journey).toContain(
