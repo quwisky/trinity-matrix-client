@@ -140,7 +140,7 @@ export async function openLegacySsoProvider(
     return waitForDexSurface(
       device,
       workspaceRoot,
-      AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
+      AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
     );
   };
 
