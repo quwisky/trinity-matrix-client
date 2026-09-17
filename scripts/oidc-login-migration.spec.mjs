@@ -518,10 +518,9 @@ describe('Android OIDC-native login migration', () => {
     expect(commands).toContain("name: 'e2e:android:oidc-login'");
     expect(commands).toContain("suiteIds: ['android.oidc-login']");
     expect(commands).toContain('matrix.shard }}" = "4"');
-    expect(commands).toContain('--timeout-ms 1500000');
     expect(workflow).toContain('oidc-login-started=true');
     expect(workflow).toContain(
-      'pnpm exec nx run trinity-e2e-android:oidc-login',
+      'node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:oidc-login',
     );
     expect(workflow).toContain('surface: android-oidc-login');
     expect(workflow).toContain(
