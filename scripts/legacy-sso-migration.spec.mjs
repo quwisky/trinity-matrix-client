@@ -93,6 +93,46 @@ function sourceLines(path, expectedHash) {
 const assertionSiteCount = (lines) =>
   lines.filter((line) => /\bexpect(?:\.poll)?(?:\(|\s*$)/u.test(line)).length;
 
+function assertProtectedRuntimeContract(journey) {
+  const expectOccurrences = (fragment, count) => {
+    expect(journey.split(fragment).length - 1, fragment).toBe(count);
+  };
+
+  expectOccurrences(
+    `client.expectCount('[data-testid="oidc-continue"]', 0)`,
+    1,
+  );
+  expectOccurrences('await client.relaunch(PIXEL_5_ACCOUNT_PROFILE)', 1);
+  expectOccurrences(
+    "assert(!new URL(surface.url).pathname.startsWith('/rooms'))",
+    2,
+  );
+  expectOccurrences('assert.equal(appTokenLoginRequests, 0)', 2);
+  expectOccurrences('assert.equal(redeemed.userId, expectedUserId)', 2);
+  expectOccurrences(
+    'secrets.SSO_STATE_SECRET_2 = await readPersistedSsoState',
+    1,
+  );
+  expectOccurrences(
+    'secrets.SSO_STATE_SECRET_3 = await readPersistedSsoState',
+    1,
+  );
+  expectOccurrences("assert.equal(wordmark.text, 'Trinity')", 1);
+  expectOccurrences("await client.expectCount('h1, h2, h3, h4, h5, h6', 1)", 1);
+  expectOccurrences("await client.expectCount('main', 1)", 1);
+  expectOccurrences('assert(card.rect.width >= 400)', 1);
+  expectOccurrences('assert(card.rect.width <= 480)', 1);
+  expectOccurrences('assert(body.rect.x > card.rect.x + 8)', 1);
+  expectOccurrences('await tokenObserver.close()', 3);
+  expectOccurrences('await provider.close()', 1);
+  expectOccurrences('await firstProvider.close()', 2);
+  expectOccurrences('await secondProvider?.close()', 1);
+  expectOccurrences('await client.close()', 1);
+  expectOccurrences('secrets.LOGIN_TOKEN_1 = token', 1);
+  expectOccurrences('secrets.LOGIN_TOKEN_2 = token', 1);
+  expectOccurrences('redactMaestroArtifacts(output, secrets)', 1);
+}
+
 describe('Android legacy SSO migration', () => {
   it('pins all three predecessor spans and their 4 + 4 + 15 assertion shape', () => {
     const predecessor = sourceLines(
@@ -405,6 +445,73 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain('throw new AggregateError(');
     expect(provider).toContain('AbortSignal.timeout(');
     expect(provider).toContain('throw new AggregateError(');
+  });
+
+  it('rejects all eight required legacy SSO contract weakenings', () => {
+    const journey = readIfPresent(journeyPath);
+    const controls = [
+      {
+        id: 'legacy/delegated action classification drift',
+        before: `client.expectCount('[data-testid="oidc-continue"]', 0)`,
+        after: `client.expectCount('[data-testid="oidc-continue"]', 1)`,
+        occurrences: 1,
+      },
+      {
+        id: 'session persistence loss',
+        before: 'await client.relaunch(PIXEL_5_ACCOUNT_PROFILE)',
+        after: 'await client.launch(PIXEL_5_ACCOUNT_PROFILE)',
+        occurrences: 1,
+      },
+      {
+        id: 'forged-state acceptance',
+        before: "assert(!new URL(surface.url).pathname.startsWith('/rooms'))",
+        after: "assert(new URL(surface.url).pathname.startsWith('/rooms'))",
+        occurrences: 2,
+      },
+      {
+        id: 'token-consumption weakening',
+        before: 'assert.equal(appTokenLoginRequests, 0)',
+        after: 'assert.equal(appTokenLoginRequests, 1)',
+        occurrences: 2,
+      },
+      {
+        id: 'in-flight stash loss',
+        before: 'secrets.SSO_STATE_SECRET_2 = await readPersistedSsoState',
+        after: 'secrets.SSO_STATE_SECRET_2 = await forgetPersistedSsoState',
+        occurrences: 1,
+      },
+      {
+        id: 'callback geometry/accessibility weakening',
+        before: 'assert(card.rect.width >= 400)',
+        after: 'assert(card.rect.width >= 399)',
+        occurrences: 1,
+      },
+      {
+        id: 'cleanup loss',
+        before: 'await tokenObserver.close()',
+        after: 'await Promise.resolve()',
+        occurrences: 3,
+      },
+      {
+        id: 'redaction loss',
+        before: 'secrets.LOGIN_TOKEN_1 = token',
+        after: 'void token',
+        occurrences: 1,
+      },
+    ];
+
+    expect(() => assertProtectedRuntimeContract(journey)).not.toThrow();
+    for (const control of controls) {
+      expect(
+        journey.split(control.before).length - 1,
+        `${control.id} fixture occurrence count`,
+      ).toBe(control.occurrences);
+      const mutated = journey.replace(control.before, control.after);
+      expect(
+        () => assertProtectedRuntimeContract(mutated),
+        control.id,
+      ).toThrow();
+    }
   });
 
   it('registers one bounded uncached Nx suite and package command', () => {
