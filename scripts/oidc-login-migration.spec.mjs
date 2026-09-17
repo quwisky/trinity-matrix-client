@@ -115,6 +115,11 @@ function assertProtectedRuntimeContract(fixture, journey) {
     1,
   );
   expectOccurrences(fixture, 'responseCode: 404', 1);
+  expectOccurrences(
+    fixture,
+    "const fallbackOptionalEndpoints = ['authMetadata', 'authIssuer']",
+    1,
+  );
   expectOccurrences(fixture, "connection.send('Fetch.disable')", 1);
   expectOccurrences(
     fixture,
@@ -438,6 +443,13 @@ describe('Android OIDC-native login migration', () => {
         target: 'fixture',
         before: 'responseCode: 404',
         after: 'responseCode: 200',
+      },
+      {
+        id: 'fallback optional metadata probes',
+        target: 'fixture',
+        before:
+          "const fallbackOptionalEndpoints = ['authMetadata', 'authIssuer']",
+        after: 'const fallbackOptionalEndpoints = []',
       },
       {
         id: 'Fetch cleanup',

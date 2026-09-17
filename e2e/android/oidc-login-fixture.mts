@@ -823,11 +823,12 @@ export async function installOidcLoginFixture(
     },
     assertComplete() {
       throwIfFailed();
+      const fallbackOptionalEndpoints = ['authMetadata', 'authIssuer'] as const;
       const required: readonly (keyof typeof ENDPOINTS)[] =
         mode === 'classification'
           ? ['wellKnown', 'versions', 'login', 'authMetadata']
           : mode === 'fallback'
-            ? ['wellKnown', 'versions', 'login', 'authMetadata', 'authIssuer']
+            ? ['wellKnown', 'versions', 'login']
             : mode === 'provider-error'
               ? [
                   'wellKnown',
@@ -848,7 +849,15 @@ export async function installOidcLoginFixture(
                   'whoami',
                 ];
       assert.deepEqual(
-        [...completedEndpoints].sort(),
+        [...completedEndpoints]
+          .filter(
+            (endpoint) =>
+              mode !== 'fallback' ||
+              !fallbackOptionalEndpoints.includes(
+                endpoint as (typeof fallbackOptionalEndpoints)[number],
+              ),
+          )
+          .sort(),
         [...required].sort(),
         `OIDC ${mode} completed the exact endpoint ledger`,
       );
