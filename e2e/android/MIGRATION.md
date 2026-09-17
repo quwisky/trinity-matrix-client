@@ -2824,3 +2824,68 @@ controls, three unchanged-input native first attempts, the exact unchanged
 Playwright predecessor at retry 0, review with no unresolved findings, and
 original-attempt hosted Android/browser/renderer artifact audit. Do not retire
 or edit the predecessor. This mapping does not authorize merging PR #677.
+
+## Legacy SSO journeys
+
+`android.legacy-sso` preserves issue #723's three canonical legacy Synapse/Dex
+definitions in `e2e/browser/journeys/accounts/sso-login.spec.mts`, pinned at
+SHA-256
+`04bf21437efd4da47398e93df607bf35dbcd8aba00159607a9a95f96ca6e9b12`:
+lines 29–76 own real provider sign-in and persisted-session proof, lines 78–107
+own rejection of an unverifiable callback without spending its one-use token,
+and lines 109–198 own the silent forged callback during a live provider flow.
+The token fixture helper remains pinned at
+`e669c3b588e788c37fab77a7e427a38286de46cffafb228fcf27ae32c70a99b3`,
+the application helper at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+and the real Dex provider configuration at
+`b994b7e7c7de5fc103079b82d379a3dd8d022a1468796d6f8f35628c55c585d5`.
+
+The executable contract records exactly 23 assertion identities in the
+predecessor's 4 + 4 + 15 shape. The first stage classifies the real Synapse as
+legacy password plus SSO rather than delegated authentication, completes the
+real provider, reaches Rooms, then force-stops and relaunches the installed host
+without clearing state to prove persistence. The second stage mints a real
+unspent token in an isolated host-browser fixture, injects a mismatched Android
+deep link, proves the exact verification error and non-Rooms route, then redeems
+and revokes the same token independently for the exact harness MXID. The third
+stage pauses a legitimate flow at Dex, injects a forged callback, proves the
+silent completing surface's wordmark, landmark and desktop card geometry, then
+uses native Back and a fresh legitimate provider round trip to reach Rooms.
+
+Trinity actions use measured Maestro input in the installed WebView. Dex opens
+through the production Capacitor Browser handoff in a real Chrome Custom Tab;
+Maestro fills and submits its pinned form. A disposable Chrome profile and
+bounded command line provide loopback IPv4 routing and disposable-certificate
+acceptance without installing the Playwright Android driver. UIAutomator/CDP
+may observe but never operates Trinity or Dex. Host Playwright is restricted to
+the isolated adversarial-token fixture and cannot stand in for native provider
+completion.
+
+Provider credentials, Matrix login tokens, access tokens and every persisted or
+forged state value are registered as secrets for artifact redaction. Each stage
+records pass/failure device and WebView proof, one attempt, zero retries, source
+ownership and bounded cleanup. Chrome command-line/profile state, observers,
+host-browser contexts, Matrix observation sessions, WebViews, the device and
+Synapse are all closed through aggregate cleanup.
+
+```bash
+pnpm nx run trinity-e2e-android:legacy-sso --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:legacy-sso
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+20-minute Node timeout. The latest completed successful hosted timing placed it
+on shard 2, which completed before successful shards 1 and 4. Its CI wrapper is
+bounded at 25 minutes. Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.legacy-sso/` and use the
+`android-legacy-sso` surface.
+
+Acceptance remains pending until this section records three unchanged-input
+native first-attempt passes, all three exact Playwright predecessors
+sequentially at retry 0, effective negative controls, full validation, review
+with no unresolved findings, and original-attempt hosted
+Android/browser/renderer evidence. Do not retire or edit the predecessors. This
+mapping does not authorize merging PR #677.
