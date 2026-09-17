@@ -322,6 +322,7 @@ function createCases(
             },
           );
 
+          await client.hideKeyboard();
           await client.tapCurrent('[data-testid="password-register"]');
           const registrationSurface = await waitForNativeShellState(
             () => client.surface(),
@@ -349,7 +350,6 @@ function createCases(
           await client.fillFocused('#registration-password', password);
           await client.tapCurrent('#registration-confirm-password');
           await client.fillFocused('#registration-confirm-password', password);
-          await client.hideKeyboard();
           await client.tapCurrent('[data-testid="register-submit"]');
 
           const encryptionSurface = await waitForNativeShellState(

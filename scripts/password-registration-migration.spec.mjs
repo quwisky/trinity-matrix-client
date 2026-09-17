@@ -135,6 +135,9 @@ describe('Android password-registration migration', () => {
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="password-register"]\')',
     );
+    expect(journey).toMatch(
+      /assertions\.availabilityActionVisible,[\s\S]*?await client\.hideKeyboard\(\);\s*await client\.tapCurrent\('\[data-testid="password-register"\]'\)/u,
+    );
     expect(journey).toContain("client.fillFocused('#registration-username'");
     expect(journey).toContain("client.fillFocused('#registration-password'");
     expect(journey).toContain(
