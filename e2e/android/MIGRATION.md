@@ -2665,6 +2665,36 @@ artifact redaction. Browser invocation
 functional and four generated visual predecessors sequentially with one worker
 and `--retries=0`; all six passed in 11.204 seconds.
 
+Hosted acceptance on 2026-09-17 used exact consolidated head
+`8d9135e67c2ab7654b977683e07bf0556e787022` in merge
+`a5b247b3c40977bd714c0e09cb6600e9993adcf9` on run `35175303971`. Renderer
+job `105055632322` restored artifact `10478267773` (GitHub digest
+`sha256:3729ce93799af0dbc433d01d22ab698b72697f18ff8698b7d8c87f5564274e28`)
+and verified the 49-file, 15,302,528-byte production manifest digest
+`ead208b6991b7ae5363ab142066c4e9f7978eefdabd886ce38064bfd41aee2bc`.
+Browser job `105055936676` produced artifact `10479377785` (GitHub digest
+`sha256:5f95e96b85146324fcca5f40a9baf9194dbc2bff89eeb260732d1f7c940d7e24`):
+317 attempts passed, one was skipped and none retried; all six retained
+clear-all-data predecessors passed at retry zero.
+
+Original-attempt Android shard-4 job `105055936682` passed on an API-36
+`pixel_6` x86_64 emulator and produced
+`playwright-35175303971-1-a5b247b3c40977bd714c0e09cb6600e9993adcf9-android-e2e-android-clear-all-data-4`,
+artifact `10480836793`, 1,213,084 bytes, GitHub digest
+`sha256:a243c711af1b6c364c3898cc327f18eb1708c5514fa87182f2e7234f46b4d9f5`.
+Invocation `mu4znr1n-05cb7817-e0be-4ebc-aec4-3216ab7dd894` passed once in
+217.559 seconds with zero retries. Its six stages and all 25 unique identities
+were recorded exactly once. The artifact preserves trusted native taps/fills,
+authoritative native preference and IndexedDB pre/post evidence, both required
+document replacements, six device and six WebView captures, and all four
+rest-state measurements. Trinity light/dark measured 6.760/7.343 and Amethyst
+light/dark measured 6.756/7.364 against the 4.5 minimum; each installed profile
+reported `hover: none` and `pointer: coarse`. Diagnostic inputs were redacted,
+the exact renderer manifest was verified before the suite, Synapse data was
+removed, the emulator exited cleanly, and the worktree remained unchanged.
+This original-attempt Android/browser/renderer evidence accepts #721 without
+retiring its Playwright predecessors. PR #677 remains draft/open and unmerged.
+
 Acceptance requires focused and full contract gates, Android and browser
 typecheck/lint, formatting and documentation gates, eight effective negative
 controls, three unchanged-input native first attempts, all six exact unchanged

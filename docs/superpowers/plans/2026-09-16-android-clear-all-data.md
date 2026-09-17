@@ -335,7 +335,7 @@ and GitHub Actions.
   Cherry-pick only the #721 commits into `test/676-android-sidebar-filter`,
   prove identical trees, and push. Do not merge PR #677.
 
-- [ ] **Step 3: Audit original-attempt hosted evidence**
+- [x] **Step 3: Audit original-attempt hosted evidence**
 
   Require exact-head original-attempt Android suite, all retained browser
   predecessors and renderer verification. Audit artifacts, assertion ledger,
@@ -375,15 +375,28 @@ and GitHub Actions.
   typecheck/lint, 120-file / 914-test script suite, formatting, independent
   no-finding review and installed API-36 `mobile-layout` run all pass; local
   invocation `mu4x1gqr-2b88e805-2f44-411c-a424-4c56eebe9c5a` passed on one
-  attempt with zero retries and clean teardown. A fresh original-attempt
-  clear-all-data Android artifact remains required.
+  attempt with zero retries and clean teardown. Exact-head run `35175303971`
+  supplied the required original-attempt evidence: renderer job `105055632322`,
+  browser job `105055936676` and Android shard-4 job `105055936682` all passed.
+  Android artifact `10480836793`, digest
+  `sha256:a243c711af1b6c364c3898cc327f18eb1708c5514fa87182f2e7234f46b4d9f5`,
+  contains invocation `mu4znr1n-05cb7817-e0be-4ebc-aec4-3216ab7dd894`:
+  six passed stages, all 25 identities exactly once, one attempt, zero retries,
+  complete native/storage/restart/visual evidence, redaction and clean teardown.
+  Browser artifact `10479377785`, digest
+  `sha256:5f95e96b85146324fcca5f40a9baf9194dbc2bff89eeb260732d1f7c940d7e24`,
+  passed every retained clear-all-data predecessor at retry zero. Renderer
+  artifact `10478267773`, digest
+  `sha256:3729ce93799af0dbc433d01d22ab698b72697f18ff8698b7d8c87f5564274e28`,
+  verified merge `a5b247b3c40977bd714c0e09cb6600e9993adcf9` and manifest digest
+  `ead208b6991b7ae5363ab142066c4e9f7978eefdabd886ce38064bfd41aee2bc`.
 
-- [ ] **Step 4: Record and publish acceptance**
+- [x] **Step 4: Record and publish acceptance**
 
   Add exact run/job/artifact IDs and digests to the migration ledger and mark
   this plan's acceptance. Commit/push that documentation to both branches.
 
-- [ ] **Step 5: Update trackers and close only #721**
+- [x] **Step 5: Update trackers and close only #721**
 
   Comment on #721, #660, #653 and PR #677 with the exact evidence, then close
   #721. Leave PR #677 open and unmerged.
@@ -397,4 +410,4 @@ and GitHub Actions.
       retry zero.
 - [x] Static, documentation, format and full-script gates pass.
 - [x] Review has no unresolved findings.
-- [ ] Original-attempt hosted Android/browser/renderer evidence is audited.
+- [x] Original-attempt hosted Android/browser/renderer evidence is audited.
