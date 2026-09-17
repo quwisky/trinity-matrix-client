@@ -372,6 +372,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.oidc-login'],
   },
   {
+    name: 'e2e:android:security-settings',
+    command: 'nx run trinity-e2e-android:security-settings',
+    kind: 'canonical',
+    suiteIds: ['android.security-settings'],
+  },
+  {
     name: 'e2e:android:legacy-sso',
     command: 'nx run trinity-e2e-android:legacy-sso',
     kind: 'canonical',
@@ -728,6 +734,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'oidc-login-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:oidc-login; fi',
     tier: 'pull-request',
     suiteIds: ['android.oidc-login'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'security-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:security-settings; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.security-settings'],
   },
   {
     command:

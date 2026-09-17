@@ -570,6 +570,20 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "security-settings": {
+      "//": "Fresh Security posture, recovery setup and narrow verification return against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.security-settings --timeout-ms=900000 --entrypoint=e2e/android/security-settings-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "legacy-sso": {
       "//": "Real legacy Synapse/Dex provider, forged callbacks and persisted installed-Android sessions.",
       "cache": false,
