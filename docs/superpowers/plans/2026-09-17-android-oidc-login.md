@@ -185,13 +185,13 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   export function installOidcLoginFixture(options: { readonly mode: OidcLoginFixtureMode; readonly app: DevtoolsEventConnection; readonly device: MaestroDevice; readonly workspaceRoot: string; readonly artifactDirectory: string; readonly signal: AbortSignal; readonly registerSecret: (name: string, value: string) => void }): Promise<OidcLoginFixture>;
   ```
 
-- [ ] **Step 1: Add the immutable source and identity contract**
+- [x] **Step 1: Add the immutable source and identity contract**
 
   Export the two pinned source strings and four source spans. Export the 26 ids
   above in source order, infer their literal union, and assert exact count and
   uniqueness with `node:assert/strict`.
 
-- [ ] **Step 2: Parse only exact paused requests**
+- [x] **Step 2: Parse only exact paused requests**
 
   Implement a strict `pausedRequest(value)` parser returning request id,
   method, URL, headers and optional post data. Add endpoint classification by
@@ -200,7 +200,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   not represented in the mode ledger. Continue only traffic outside the owned
   origins.
 
-- [ ] **Step 3: Fulfil exact discovery, Matrix and provider responses**
+- [x] **Step 3: Fulfil exact discovery, Matrix and provider responses**
 
   Add helpers for base64 JSON and redirects. `OPTIONS` returns 204 plus the
   three exact CORS headers. Classification/error/redemption modes return exact
@@ -209,7 +209,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   endpoints. Registration accepts POST, parses JSON, records only
   `application_type`, and returns status 201 with `e2e-client-id`.
 
-- [ ] **Step 4: Prepare and attach the disposable Chrome handoff**
+- [x] **Step 4: Prepare and attach the disposable Chrome handoff**
 
   Force-stop and clear `com.android.chrome`, write the bounded disposable
   command line, open `about:blank`, cross first-run UI through the dedicated
@@ -218,7 +218,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   Fail if the OIDC handoff uses any other package or target. Record only package,
   profile-cleared, driver-absent and controller-owned facts.
 
-- [ ] **Step 5: Implement provider-error and redemption responses**
+- [x] **Step 5: Implement provider-error and redemption responses**
 
   On exact authorize GET, capture in-memory state/challenge/callback and the
   sanitized parameter facts. Provider-error mode fulfils 302 to the exact
@@ -234,7 +234,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   Require equality with the captured challenge before returning the mocked
   bearer/refresh response and exact whoami response.
 
-- [ ] **Step 6: Add finite observation and aggregate cleanup**
+- [x] **Step 6: Add finite observation and aggregate cleanup**
 
   Serialize each connection's events through a promise chain, retain the first
   event failure, provide abort-bounded waits, and expose cloned sanitized
@@ -242,7 +242,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   disable Fetch, close Chrome/app CDP leases and forwards, remove staged files,
   force-stop/clear Chrome and aggregate every failure.
 
-- [ ] **Step 7: Run focused tests incrementally**
+- [x] **Step 7: Run focused tests incrementally**
 
   ```bash
   pnpm exec vitest run scripts/oidc-login-migration.spec.mjs
@@ -271,7 +271,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
 - Produces one Node test, four ordered stage ledgers, 26 one-shot assertion
   records, pass/failure captures and a suite summary.
 
-- [ ] **Step 1: Add native discovery and typed assertion recording**
+- [x] **Step 1: Add native discovery and typed assertion recording**
 
   Implement `recordAssertion(client, recorded, identity, observation)` with a
   duplicate assertion guard. Implement `discover(client)` exclusively as:
@@ -284,7 +284,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
 
   Use renderer reads only after the native actions complete.
 
-- [ ] **Step 2: Implement classification stage (4 identities)**
+- [x] **Step 2: Implement classification stage (4 identities)**
 
   Reset mobile, attach app CDP, install classification fixture, discover
   natively, observe `oidc-continue` and `oidc-register`, and prove password Sign
@@ -292,7 +292,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   classification ids, assert fixture completeness, capture pass/failure and
   close in aggregate `finally`.
 
-- [ ] **Step 3: Implement provider-error stage (13 identities)**
+- [x] **Step 3: Implement provider-error stage (13 identities)**
 
   Reset mobile, install provider-error fixture, discover, prepare Chrome, and
   tap `oidc-continue` natively. Wait for the matching-state return, exact
@@ -301,7 +301,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   authorize presence, native application type, exact private-use callback,
   both Matrix scopes and query response mode.
 
-- [ ] **Step 4: Implement redemption stage (7 identities)**
+- [x] **Step 4: Implement redemption stage (7 identities)**
 
   Reset mobile, install redemption fixture, discover, prepare Chrome and tap
   delegated Continue natively. Wait for the token POST and record presence,
@@ -310,13 +310,13 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   have zero matches and record the final identity. Do not wait for or assert
   Rooms.
 
-- [ ] **Step 5: Implement fallback stage (2 identities)**
+- [x] **Step 5: Implement fallback stage (2 identities)**
 
   Reset mobile, install fallback fixture, discover natively, require password
   Sign in visible and delegated Continue absent, then record exactly those two
   identities and the fixture's exact 404 metadata ledger.
 
-- [ ] **Step 6: Add attempt/provenance/captures/redaction**
+- [x] **Step 6: Add attempt/provenance/captures/redaction**
 
   Create all four `running|passed|failed` stage entries before launch. Record
   renderer manifest, APK digest, installed package and viewport profile, one
@@ -325,7 +325,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   resources with aggregate errors; run artifact redaction last and scan for
   every registered secret plus generic bearer/header/body patterns.
 
-- [ ] **Step 7: Prove focused GREEN and negative controls**
+- [x] **Step 7: Prove focused GREEN and negative controls**
 
   ```bash
   pnpm exec vitest run scripts/oidc-login-migration.spec.mjs
@@ -337,7 +337,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   exchange, fallback 404, controller cleanup and redaction. Confirm each
   mutation turns the focused guard RED, restore, and confirm GREEN.
 
-- [ ] **Step 8: Commit contract, fixture and journey**
+- [x] **Step 8: Commit contract, fixture and journey**
 
   ```bash
   git add e2e/android/oidc-login-contract.mts \

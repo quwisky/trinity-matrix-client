@@ -86,6 +86,49 @@ function sourceLines(path, expectedHash) {
 const assertionSiteCount = (lines) =>
   lines.filter((line) => /\bexpect(?:\.poll)?(?:\(|\s*$)/u.test(line)).length;
 
+function assertProtectedRuntimeContract(fixture, journey) {
+  const expectOccurrences = (source, fragment, count) => {
+    expect(source.split(fragment).length - 1, fragment).toBe(count);
+  };
+  expectOccurrences(
+    fixture,
+    "wellKnown: 'https://oidc.example/.well-known/matrix/client'",
+    1,
+  );
+  expectOccurrences(
+    fixture,
+    "{ name: 'Access-Control-Allow-Origin', value: '*' }",
+    1,
+  );
+  expectOccurrences(fixture, "code_challenge_methods_supported: ['S256']", 1);
+  expectOccurrences(fixture, "application_type === 'native'", 1);
+  expectOccurrences(fixture, 'assert.equal(redirectUri, CALLBACK_URI)', 1);
+  expectOccurrences(
+    fixture,
+    "assert(state, 'OIDC authorization state must be non-empty')",
+    1,
+  );
+  expectOccurrences(fixture, 'assert.equal(code, AUTHORIZATION_CODE)', 1);
+  expectOccurrences(
+    fixture,
+    "assert(pkceMatches, 'OIDC token verifier must match the S256 challenge')",
+    1,
+  );
+  expectOccurrences(fixture, 'responseCode: 404', 1);
+  expectOccurrences(fixture, "connection.send('Fetch.disable')", 1);
+  expectOccurrences(
+    fixture,
+    "registerSecret('PKCE_VERIFIER_SECRET', verifier)",
+    1,
+  );
+  expectOccurrences(
+    journey,
+    "assert.equal(authorize.challengeMethod, 'S256')",
+    1,
+  );
+  expectOccurrences(journey, 'redactMaestroArtifacts(output, secrets)', 1);
+}
+
 describe('Android OIDC-native login migration', () => {
   it('pins all four predecessor spans and their 4 + 13 + 7 + 2 assertion shape', () => {
     const predecessor = sourceLines(
@@ -187,7 +230,7 @@ describe('Android OIDC-native login migration', () => {
     expect(fixture).toContain("'Access-Control-Allow-Origin'");
     expect(fixture).toContain("'Access-Control-Allow-Methods'");
     expect(fixture).toContain("'Access-Control-Allow-Headers'");
-    expect(fixture).toContain('eventWork = eventWork.then');
+    expect(fixture).toMatch(/eventWork\s*=\s*eventWork[\s\S]*?\.then/u);
     expect(fixture).toContain('throw new AggregateError(');
     expect(chromeFlow).toContain('appId: com.android.chrome');
     expect(chromeFlow).toContain('Use without an account');
@@ -225,9 +268,11 @@ describe('Android OIDC-native login migration', () => {
     expect(fixture).toContain("prompt_values_supported: ['create']");
     expect(fixture).toContain("application_type === 'native'");
     expect(fixture).toContain('eu.qwky.trinity:/sso-callback');
-    expect(fixture).toContain("error: 'access_denied'");
-    expect(fixture).toContain("error_description: 'E2E declined'");
-    expect(fixture).toContain("code: 'E2E_CODE'");
+    expect(fixture).toContain("callbackParams.set('error', 'access_denied')");
+    expect(fixture).toContain(
+      "callbackParams.set('error_description', 'E2E declined')",
+    );
+    expect(fixture).toContain("callbackParams.set('code', 'E2E_CODE')");
     expect(fixture).toContain("grantType === 'authorization_code'");
     expect(fixture).toContain("createHash('sha256')");
     expect(fixture).toContain("digest('base64url')");
@@ -326,6 +371,115 @@ describe('Android OIDC-native login migration', () => {
     expect(journey).toContain('await client.close()');
     expect(journey).toContain('device.close()');
     expect(journey).toContain('throw new AggregateError(');
+  });
+
+  it('rejects endpoint, protocol, native, PKCE, fallback and cleanup weakenings', () => {
+    const fixture = readIfPresent(fixturePath);
+    const journey = readIfPresent(journeyPath);
+    const controls = [
+      {
+        id: 'exact discovery endpoint',
+        target: 'fixture',
+        before: "wellKnown: 'https://oidc.example/.well-known/matrix/client'",
+        after: "wellKnown: 'https://oidc.example/*'",
+      },
+      {
+        id: 'CORS origin contract',
+        target: 'fixture',
+        before: "{ name: 'Access-Control-Allow-Origin', value: '*' }",
+        after: "{ name: 'Access-Control-Allow-Origin', value: 'null' }",
+      },
+      {
+        id: 'metadata S256 support',
+        target: 'fixture',
+        before: "code_challenge_methods_supported: ['S256']",
+        after: 'code_challenge_methods_supported: []',
+      },
+      {
+        id: 'native dynamic registration',
+        target: 'fixture',
+        before: "application_type === 'native'",
+        after: "application_type === 'web'",
+      },
+      {
+        id: 'exact private-use callback',
+        target: 'fixture',
+        before: 'assert.equal(redirectUri, CALLBACK_URI)',
+        after: 'assert.ok(redirectUri)',
+      },
+      {
+        id: 'non-empty state',
+        target: 'fixture',
+        before: "assert(state, 'OIDC authorization state must be non-empty')",
+        after: 'void state',
+      },
+      {
+        id: 'exact authorization code',
+        target: 'fixture',
+        before: 'assert.equal(code, AUTHORIZATION_CODE)',
+        after: 'assert(code)',
+      },
+      {
+        id: 'PKCE verifier equality',
+        target: 'fixture',
+        before:
+          "assert(pkceMatches, 'OIDC token verifier must match the S256 challenge')",
+        after: 'void pkceMatches',
+      },
+      {
+        id: 'fallback exact 404',
+        target: 'fixture',
+        before: 'responseCode: 404',
+        after: 'responseCode: 200',
+      },
+      {
+        id: 'Fetch cleanup',
+        target: 'fixture',
+        before: "connection.send('Fetch.disable')",
+        after: "connection.send('Fetch.enable')",
+      },
+      {
+        id: 'verifier redaction',
+        target: 'fixture',
+        before: "registerSecret('PKCE_VERIFIER_SECRET', verifier)",
+        after: 'void verifier',
+      },
+      {
+        id: 'journey challenge method proof',
+        target: 'journey',
+        before: "assert.equal(authorize.challengeMethod, 'S256')",
+        after: 'assert(authorize.challengeMethod)',
+      },
+      {
+        id: 'artifact redaction',
+        target: 'journey',
+        before: 'redactMaestroArtifacts(output, secrets)',
+        after: 'Promise.resolve()',
+      },
+    ];
+
+    expect(() =>
+      assertProtectedRuntimeContract(fixture, journey),
+    ).not.toThrow();
+    for (const control of controls) {
+      const source = control.target === 'fixture' ? fixture : journey;
+      expect(
+        source.split(control.before).length - 1,
+        `${control.id} fixture occurrence count`,
+      ).toBe(1);
+      expect(
+        () =>
+          assertProtectedRuntimeContract(
+            control.target === 'fixture'
+              ? fixture.replace(control.before, control.after)
+              : fixture,
+            control.target === 'journey'
+              ? journey.replace(control.before, control.after)
+              : journey,
+          ),
+        control.id,
+      ).toThrow();
+    }
   });
 
   it('registers one bounded uncached Nx suite and package command', () => {
