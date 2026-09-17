@@ -2886,31 +2886,31 @@ bounded at 25 minutes. Started-only diagnostics live under
 `android-legacy-sso` surface.
 
 The three frozen installed-Android validations used exact production renderer
-commit `1e005019aaa7321e02c4649f82e959f1f11f7941`. Its manifest describes a
+commit `2000c15cc27f2df921bf9ec0ab7e3e63f1c2e399`. Its manifest describes a
 15,302,529-byte production bundle and has SHA-256
-`188da4c4dec8af88fe5c293637906cfef1054b0b488b32700ecf8ecf69759976`.
+`2c64fe96be082509e86797040df41a5c6a39b3dfa4482fd5f92c06a484275d0a`.
 The installed debug APK has SHA-256
-`c74e0b53e33b224ce653ae7ff7ee01f533eb797dc37250c4959136a9d48169dc`.
+`077f65eeedc4129cde4ce227c13fc8fe66743be6bf864ad855c120813f376571`.
 All three ran on the `Trinity_API_36` Google APIs x86_64 emulator. The first
 two stages used `PIXEL_5_ACCOUNT_PROFILE`, the geometry stage used
 `DESKTOP_ACCOUNT_PROFILE`, and every run passed on attempt 1 with zero retries,
 all three stages and all 23 identities:
 
-- `mu5gb7t9-805dc983-23d7-43d1-a0ac-025e38440641` passed in
-  405,266.920 ms (401,306.852 ms attempt); its stages took 141,385.430,
-  4,216.650 and 227,293.567 ms.
-- `mu5gku8t-d77543ff-ff86-4cba-bf7b-de2bdf13a6b9` passed in
-  400,179.091 ms (396,352.802 ms attempt); its stages took 140,176.084,
-  3,555.289 and 225,790.823 ms.
-- `mu5gu28f-836d606e-759d-4d22-afa8-72793adc5ecd` passed in
-  401,786.937 ms (398,325.004 ms attempt); its stages took 143,188.833,
-  4,114.767 and 224,034.855 ms.
+- `mu5hz9jt-4fd87615-40e0-4d4a-82e7-a8d862d78647` passed in
+  400,057.724 ms (396,302.136 ms attempt); its stages took 140,634.621,
+  4,183.161 and 224,824.577 ms.
+- `mu5i8omh-1e766cd1-7fe5-426c-811a-ec9d13da67a7` passed in
+  398,978.293 ms (395,353.845 ms attempt); its stages took 140,415.457,
+  4,092.031 and 223,732.812 ms.
+- `mu5ihzks-ae67d1d2-5764-48d1-a0b7-34f029a697b1` passed in
+  399,503.827 ms (395,329.081 ms attempt); its stages took 139,921.724,
+  4,027.683 and 224,849.226 ms.
 
 Each receipt preserves native Chrome/Dex ownership, shell deep-link injection,
 device and WebView pass captures, and clean observer, browser, device and
 Synapse teardown. A hidden-file scan across all three artifact roots found zero
 files containing the fixed provider password, a `syt_*` Matrix login token, or
-either timestamp-shaped forged-state value; it found 389 explicit
+either timestamp-shaped forged-state value; it found 387 explicit
 `[REDACTED]` markers.
 
 The executable mutation table rejects all eight required weakenings:
@@ -2920,10 +2920,10 @@ geometry/accessibility weakening, cleanup loss and redaction loss. The focused
 migration and registry guards pass 90/90 tests.
 
 The exact retained predecessor ran with one worker and zero retries as
-invocation `mu5h3zzh-53862771-24e3-47e7-9091-17727f86c582`. All three tests
-passed in 13.134 seconds: provider sign-in and persistence in 3.854 seconds,
-unverifiable callback refusal in 2.495 seconds, and in-flight forged callback
-recovery in 6.202 seconds. Synapse teardown completed cleanly.
+invocation `mu5iroo3-16f29ca6-6bd0-4206-86b5-bc51b907cc33`. All three tests
+passed in 13.112 seconds: provider sign-in and persistence took 3.851 seconds,
+unverifiable callback refusal took 2.479 seconds, and in-flight forged callback
+recovery took 6.185 seconds. Synapse teardown completed cleanly.
 
 Local validation passed `pnpm test` (44 tasks), `pnpm lint` (77 tasks),
 `pnpm nx run-many -t typecheck` (48 tasks), `pnpm format:check`,
@@ -2931,7 +2931,18 @@ Local validation passed `pnpm test` (44 tasks), `pnpm lint` (77 tasks),
 suites), the 29 focused CI/warning-policy tests and `git diff --check`.
 
 Independent review resolved two documentation-only findings and found no
-unresolved code findings. Final acceptance now requires the original-attempt
-hosted Android/browser/renderer artifact audit from the exact consolidated
-tree. Do not retire or edit the predecessors. This mapping does not authorize
-merging PR #677.
+unresolved code findings. Hosted attempt 1 run `35218785980` tested exact merge
+tree `74098754eaca5ce4c988044de083cf97ec11484f` and produced a verified
+15,302,528-byte renderer artifact for merge commit
+`8169200731f2850005c17dfa6452b5d5daee5cee`. Its original legacy SSO attempt
+`mu5hn5fg-3ef5266c-e083-4743-91a3-1491317e49e4` was diagnostic rather than
+accepted: Maestro completed the real certificate-warning and all three Dex
+control observations in 155 seconds, after the then-current 90-second signal
+had expired. Artifact `10496029272` preserved the attempt-1/zero-retry failure,
+and the runtime now keeps the same real-provider proof within a guarded
+four-minute readiness bound under the unchanged 20-minute suite budget.
+
+Final acceptance now requires a fresh original-attempt hosted
+Android/browser/renderer artifact audit from the exact consolidated tree. Do
+not retire or edit the predecessors. This mapping does not authorize merging PR
+#677.
