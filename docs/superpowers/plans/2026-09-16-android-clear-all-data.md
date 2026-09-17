@@ -360,7 +360,23 @@ and GitHub Actions.
   completed its native cleanup and diagnostics. The observer is now armed
   concurrently with the trusted native tap, guarded by a RED/GREEN source test;
   the focused Android suite passed all four stages locally in 8m20s with clean
-  teardown. A fresh original-attempt Android artifact remains required.
+  teardown. Fresh run `35169342684` proved that repair on shard-4 job
+  `105037715361`: artifact `10478311004`, digest
+  `sha256:68ea02fb0da8b3877a947a8c4807d478d2f190efc457b476900ed7f31e2f6585`,
+  contains all four passed stages on one attempt with zero retries. The same
+  shard then stopped before #721 in the already accepted Room widget suite:
+  `mobile.no-eager-request-before-embed` observed its browser-open trial target
+  below the viewport after only the containing card had been centered. Artifact
+  `10477992406`, digest
+  `sha256:6a25232a68359c370c142f844322524b33330a88e3b6408f745556b0afcecb60`,
+  records the exact geometry and zero interrupted observations. Candidate
+  `ac7527fa` now scrolls that exact trial target before its unchanged
+  actionability and zero-request assertion. Its RED/GREEN guard, Android
+  typecheck/lint, 120-file / 914-test script suite, formatting, independent
+  no-finding review and installed API-36 `mobile-layout` run all pass; local
+  invocation `mu4x1gqr-2b88e805-2f44-411c-a424-4c56eebe9c5a` passed on one
+  attempt with zero retries and clean teardown. A fresh original-attempt
+  clear-all-data Android artifact remains required.
 
 - [ ] **Step 4: Record and publish acceptance**
 
