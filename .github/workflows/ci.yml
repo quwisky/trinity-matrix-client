@@ -417,6 +417,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'account-password-change-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:account-password-change; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'clear-all-data-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:clear-all-data; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'password-registration-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:password-registration; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'legacy-sso-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:legacy-sso; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
 
@@ -598,6 +599,13 @@ jobs:
           surface: android-password-registration
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.password-registration/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.legacy-sso-started == 'true' }}
+        with:
+          surface: android-legacy-sso
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.legacy-sso/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}
