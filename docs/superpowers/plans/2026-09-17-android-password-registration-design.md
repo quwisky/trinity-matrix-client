@@ -1,7 +1,7 @@
 # Android Password Registration Migration Design
 
 - **Issue:** #722
-- **Status:** Proposed
+- **Status:** Approved
 - **Target branch:** `test/722-android-password-registration`
 - **Integration branch:** `test/676-android-sidebar-filter`
 
