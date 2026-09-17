@@ -3029,9 +3029,36 @@ tasks, stylelint, formatting, architecture and the 66-suite registry,
 production renderer build, Android host verification, and the documentation
 check, assemble and eight-test browser gate.
 
-Hosted acceptance is pending. Do not retire or edit the Playwright predecessor
-until original-attempt hosted evidence is accepted. This mapping does not
-authorize merging PR #677.
+Hosted Android acceptance on 2026-09-17 used original attempt 1 of run
+`35272414146`, job `105375646253`, against PR merge commit
+`c9d556e309f70f1ecd08de92d7779a5b7c10c214` for consolidated head
+`dc05e4cf40508525b68de852888d11289805022a`. The verified renderer artifact
+`renderer-35272414146-1-c9d556e309f70f1ecd08de92d7779a5b7c10c214`
+(artifact `10519237792`) contained 49 files and 15,302,528 bytes with manifest
+SHA-256 `d65c80809695a4244d925796e1f9d68e445da3f88c0f977f24703f9c5a1270ad`.
+The native job used API 36, `google_apis`, x86_64 and the `pixel_6` hardware
+profile, and completed successfully with the tracked worktree unchanged.
+
+Hosted invocation `mu6402vu-23ca4196-73e9-4e1f-8a53-633a6c93f086` passed on
+its first attempt with zero retries in 306.687 seconds. Its posture and narrow
+stages passed in 146.708 and 158.855 seconds, respectively, and recorded all
+15 unique identities. The dedicated 510,878-byte artifact
+`playwright-35272414146-1-c9d556e309f70f1ecd08de92d7779a5b7c10c214-android-e2e-android-security-settings-4`
+(artifact `10524870004`, upload SHA-256
+`14fed8163e0e75428d75255a3f24468044776720b2dc8c9bc93acdb493e2f458`)
+contained 64 explicit `[REDACTED]` markers and zero raw bearer, Matrix access
+token or access-token query matches. Both final screenshots showed the
+expected real setup and returned Security settings states. Synapse data was
+removed after the invocation, the emulator runner and diagnostic upload
+completed successfully, and the job's final worktree guard passed.
+
+Hosted browser acceptance remains pending. In the same original attempt, the
+Storybook suite ran 163 tests but reached its independent 10-minute command
+limit with exit 124 before the canonical browser job could start. No Security
+settings browser assertion ran in that hosted attempt, so that unrelated
+timeout is not counted as predecessor acceptance. Do not retire or edit the
+Playwright predecessor until a fresh original-attempt hosted browser run
+passes it with zero retries. This mapping does not authorize merging PR #677.
 
 ## Legacy SSO journeys
 
