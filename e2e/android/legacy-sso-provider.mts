@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { setTimeout as delay } from 'node:timers/promises';
 import type { MaestroDevice } from './maestro-session.mts';
 
 const CHROME_PACKAGE = 'com.android.chrome';
@@ -72,49 +71,32 @@ function nativeNodes(hierarchy: string): readonly NativeNode[] {
   });
 }
 
-function hasControl(nodes: readonly NativeNode[], id: string): boolean {
-  return nodes.some(
-    (node) =>
-      node.package === CHROME_PACKAGE &&
-      (node.resourceId === id ||
-        node.resourceId.endsWith(`:id/${id}`) ||
-        node.contentDescription === id ||
-        node.text === id),
-  );
-}
-
 async function waitForDexSurface(
   device: MaestroDevice,
+  workspaceRoot: string,
   signal: AbortSignal,
 ): Promise<DexSurfaceProof> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    signal.throwIfAborted();
-    const hierarchy = await device
-      .adb('exec-out', 'uiautomator', 'dump', '/dev/tty')
-      .catch(() => '');
-    const nodes = nativeNodes(hierarchy);
-    const hasLogin = hasControl(nodes, 'login');
-    const hasPassword = hasControl(nodes, 'password');
-    const hasSubmit = hasControl(nodes, 'submit-login');
-    if (hasLogin && hasPassword && hasSubmit) {
-      return {
-        package: CHROME_PACKAGE,
-        hasLogin: true,
-        hasPassword: true,
-        hasSubmit: true,
-      };
-    }
-    await delay(100, undefined, {
-      signal: AbortSignal.any([signal, AbortSignal.timeout(1_000)]),
-    }).catch((error: unknown) => {
-      signal.throwIfAborted();
-      if (!(error instanceof DOMException && error.name === 'TimeoutError')) {
-        throw error;
-      }
-    });
-  }
-  throw new Error('Timed out waiting for the pinned Dex native surface');
+  signal.throwIfAborted();
+  await device.runFlow(
+    join(workspaceRoot, 'e2e/android/flows/legacy-sso-dex-ready.yaml'),
+  );
+  signal.throwIfAborted();
+  const hierarchy = await device.adb(
+    'exec-out',
+    'uiautomator',
+    'dump',
+    '/dev/tty',
+  );
+  assert(
+    nativeNodes(hierarchy).some((node) => node.package === CHROME_PACKAGE),
+    'Dex surface is hosted by the native Chrome package',
+  );
+  return {
+    package: CHROME_PACKAGE,
+    hasLogin: true,
+    hasPassword: true,
+    hasSubmit: true,
+  };
 }
 
 export async function openLegacySsoProvider(
@@ -157,6 +139,7 @@ export async function openLegacySsoProvider(
     assert(prepared, 'SSO provider must be prepared before Dex observation');
     return waitForDexSurface(
       device,
+      workspaceRoot,
       AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
     );
   };
@@ -201,6 +184,12 @@ export async function openLegacySsoProvider(
           'about:blank',
           CHROME_PACKAGE,
         );
+        await device.runFlow(
+          join(
+            workspaceRoot,
+            'e2e/android/flows/legacy-sso-chrome-setup.yaml',
+          ),
+        );
         await removeChromeCommandLine();
         await device.adb(
           'shell',
@@ -217,7 +206,8 @@ export async function openLegacySsoProvider(
             {
               package: CHROME_PACKAGE,
               profileCleared: true,
-              firstRunDisabled: true,
+              commandLineFirstRunBypassRequested: true,
+              firstRunHandledNatively: true,
               loopbackIpv4: true,
               disposableCertificateAccepted: true,
               driverInstalled: false,

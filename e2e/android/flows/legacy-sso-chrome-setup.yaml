@@ -1,0 +1,17 @@
+appId: com.android.chrome
+---
+- runFlow:
+    when:
+      visible: 'Use without an account'
+    commands:
+      - tapOn: 'Use without an account'
+- runFlow:
+    when:
+      visible: 'Accept & continue'
+    commands:
+      - tapOn: 'Accept & continue'
+- runFlow:
+    when:
+      visible: 'No thanks'
+    commands:
+      - tapOn: 'No thanks'

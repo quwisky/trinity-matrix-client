@@ -146,15 +146,17 @@ Nx, GitHub Actions, pnpm.
 
   Add a helper that force-stops and clears `com.android.chrome`, writes a base64
   encoded command line under `/data/local/tmp/chrome-command-line`, starts
-  `about:blank` with first-run suppression, IPv4 loopback mapping, disposable
-  certificate acceptance, and a named debugging socket, removes the file, and
-  reactivates Trinity. Bound every ADB wait and verify package/activity state.
+  `about:blank` with requested first-run suppression, IPv4 loopback mapping and
+  disposable certificate acceptance, uses Maestro to finish native Chrome
+  first-run prompts when the stable build ignores those flags, removes the
+  file, and reactivates Trinity. Bound every ADB wait and verify package state.
 
 - [ ] **Step 3: Observe and operate the pinned Dex form**
 
-  Dump/parse the UIAutomator tree or attach a read-only DevTools session to
-  prove the external package and exact `login`, `password`, and `submit-login`
-  controls. Add a Maestro flow for focus/fill/submit using secret variables.
+  Use UIAutomator to prove the external Chrome package and a read-only Maestro
+  DevTools hierarchy to prove the exact `login`, `password`, and `submit-login`
+  controls. Conditionally cross Chrome's native localhost certificate warning,
+  then use a separate Maestro flow for focus/fill/submit with secret variables.
   The helper must return sanitized action/surface proof and never a URL, field
   value, cookie, state, or token.
 
@@ -224,11 +226,12 @@ Nx, GitHub Actions, pnpm.
 
 - [ ] **Step 5: Implement stage 3 — in-flight forged callback recovery**
 
-  Reset with the desktop profile, mint/register another token, start a real SSO
-  flow and pause on fresh Dex, inject the forged callback, then read and record
-  all 15 copy/wordmark/heading/card/main/body/error/route identities. Send
-  native Back to return to Login, prepare fresh Chrome, complete a new real Dex
-  round trip through Maestro, and require Rooms.
+  Reset with the desktop profile, start a real SSO flow and pause on fresh Dex,
+  then mint/register another token and inject the forged callback. Read and
+  record all 15 copy/wordmark/heading/card/main/body/error/route identities,
+  prove zero app token-login requests, and immediately redeem/revoke the fresh
+  token. Send native Back to return to Login, prepare fresh Chrome, complete a
+  new real Dex round trip through Maestro, and require Rooms.
 
 - [ ] **Step 6: Add attempt ledger, captures, provenance, and cleanup**
 

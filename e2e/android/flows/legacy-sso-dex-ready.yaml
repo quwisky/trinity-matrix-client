@@ -1,0 +1,17 @@
+appId: com.android.chrome
+androidWebViewHierarchy: devtools
+---
+- runFlow:
+    when:
+      visible: 'Your connection is not private'
+    commands:
+      - tapOn: 'Advanced'
+      - tapOn: 'Proceed to localhost.*'
+- extendedWaitUntil:
+    visible:
+      id: login
+    timeout: 30000
+- assertVisible:
+    id: password
+- assertVisible:
+    id: submit-login

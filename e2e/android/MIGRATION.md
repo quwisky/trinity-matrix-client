@@ -2850,17 +2850,20 @@ unspent token in an isolated host-browser fixture, injects a mismatched Android
 deep link, proves the exact verification error and non-Rooms route, then redeems
 and revokes the same token independently for the exact harness MXID. The third
 stage pauses a legitimate flow at Dex, injects a forged callback, proves the
-silent completing surface's wordmark, landmark and desktop card geometry, then
-uses native Back and a fresh legitimate provider round trip to reach Rooms.
+silent completing surface's wordmark, landmark and desktop card geometry,
+proves the freshly minted token remains independently redeemable, then uses
+native Back and a fresh legitimate provider round trip to reach Rooms.
 
 Trinity actions use measured Maestro input in the installed WebView. Dex opens
 through the production Capacitor Browser handoff in a real Chrome Custom Tab;
-Maestro fills and submits its pinned form. A disposable Chrome profile and
-bounded command line provide loopback IPv4 routing and disposable-certificate
-acceptance without installing the Playwright Android driver. UIAutomator/CDP
-may observe but never operates Trinity or Dex. Host Playwright is restricted to
-the isolated adversarial-token fixture and cannot stand in for native provider
-completion.
+Maestro completes Chrome's native first-run prompts and localhost certificate
+warning when present, then fills and submits the pinned Dex form. A disposable
+Chrome profile, bounded command line and native Chrome setup preserve loopback
+and certificate handling without installing the Playwright Android driver.
+UIAutomator proves package ownership and Maestro's DevTools-backed hierarchy
+observes the form; CDP never operates Trinity or Dex. Host Playwright is
+restricted to the isolated adversarial-token fixture and cannot stand in for
+native provider completion.
 
 Provider credentials, Matrix login tokens, access tokens and every persisted or
 forged state value are registered as secrets for artifact redaction. Each stage
