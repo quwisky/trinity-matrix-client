@@ -456,7 +456,7 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain('await client.close()');
     expect(journey).toContain('device.close()');
     expect(journey).toContain('throw new AggregateError(');
-    expect(provider).toContain('AbortSignal.timeout(90_000)');
+    expect(provider).toContain('AbortSignal.timeout(240_000)');
     expect(provider).toContain('throw new AggregateError(');
   });
 
