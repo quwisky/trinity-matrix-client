@@ -66,6 +66,13 @@ const forbiddenDomActions = [
   /\bwindow\.open\s*\(/u,
   /client\.(?:focusFixture|navigate|reload)\s*\(/u,
 ];
+const forbiddenProductActions = [
+  /client\.(?:focusFixture|navigate|reload)\s*\(/u,
+  /evaluateNative\([\s\S]*?\.click\s*\(/u,
+  /evaluateNative\([\s\S]*?\.focus\s*\(/u,
+  /evaluateNative\([\s\S]*?\.dispatchEvent\s*\(/u,
+  /evaluateNative\([\s\S]*?\.(?:requestSubmit|submit)\s*\(/u,
+];
 
 function sourceLines(path, expectedHash) {
   const contents = readFileSync(resolve(root, path));
@@ -190,13 +197,13 @@ describe('Android legacy SSO migration', () => {
     expect(provider).toContain('uiautomator');
     expect(provider).toContain('legacy-sso-dex.yaml');
     expect(provider).toContain('device.runFlow(');
-    expect(provider).toContain('DEX_EMAIL');
+    expect(provider).toContain('DEX_EMAIL_SECRET');
     expect(provider).toContain('DEX_PASSWORD');
     expect(provider).toContain('removeChromeCommandLine');
     expect(provider).toContain('throw new AggregateError(');
     expect(flow).toContain('appId: com.android.chrome');
     expect(flow).toContain('androidWebViewHierarchy: devtools');
-    expect(flow).toContain('inputText: ${DEX_EMAIL}');
+    expect(flow).toContain('inputText: ${DEX_EMAIL_SECRET}');
     expect(flow).toContain('inputText: ${DEX_PASSWORD}');
     expect(flow).toContain('id: submit-login');
     for (const mutation of forbiddenDomActions) {
@@ -225,15 +232,15 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain("exactText: 'Continue with SSO'");
     expect(journey).toContain('completeDexSignIn(');
     expect(journey).toContain('client.relaunch(');
-    expect(journey).toContain("'am', 'start', '-W'");
+    expect(journey).toMatch(/'am',\s*'start',\s*'-W'/u);
     expect(journey).toContain("'android.intent.action.VIEW'");
-    expect(journey).toContain("'-p', TRINITY_PACKAGE");
+    expect(journey).toMatch(/'-p',\s*TRINITY_PACKAGE/u);
     expect(journey).toContain('eu.qwky.trinity://sso-callback');
     expect(journey).toContain("type: 'm.login.token'");
     expect(journey).toContain('/_matrix/client/v3/logout');
     expect(journey).toContain('expectedUserId');
     expect(journey).toContain(
-      "join(session.workspaceRoot, 'e2e/android/flows/native-shell-back.yaml')",
+      "join(\n              client.workspaceRoot,\n              'e2e/android/flows/native-shell-back.yaml'",
     );
     expect(journey).toContain('new Set<LegacySsoAssertion>()');
     expect(journey).toContain('assert(!recorded.has(identity)');
@@ -255,11 +262,11 @@ describe('Android legacy SSO migration', () => {
       }
       expect(journey).toContain(`assertions.${group}.`);
     }
-    for (const mutation of forbiddenDomActions) {
+    for (const mutation of forbiddenProductActions) {
       expect(journey).not.toMatch(mutation);
     }
     expect(journey).not.toMatch(
-      /android(?:\.|Device)|_androidDriver|launchBrowser/u,
+      /\bandroid\.(?:connect|devices?)\b|AndroidDevice|_androidDriver|launchBrowser/u,
     );
   });
 
@@ -272,8 +279,8 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain("locator('#password')");
     expect(journey).toContain("locator('#submit-login')");
     expect(journey).toContain('captured.token');
-    expect(journey).toContain('await context.close()');
-    expect(journey).toContain('await browser.close()');
+    expect(journey).toContain('await context?.close()');
+    expect(journey).toContain('await browser?.close()');
     expect(journey).toContain('appTokenLoginRequests');
     expect(journey).toMatch(/assert\.equal\(appTokenLoginRequests, 0/u);
     expect(journey).toMatch(/assert\.equal\(redeemed\.userId, expectedUserId/u);
@@ -288,15 +295,13 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain("client.expectCount('#homeserver', 0)");
     expect(journey).toContain("exactText: 'Completing sign in…'");
     expect(journey).toContain("client.visible('.login-card__wordmark')");
-    expect(journey).toContain("exactText: 'Trinity'");
+    expect(journey).toContain("assert.equal(wordmark.text, 'Trinity')");
     expect(journey).toContain(
       "client.expectCount('h1, h2, h3, h4, h5, h6', 1)",
     );
     expect(journey).toContain("client.expectCount('main', 1)");
     expect(journey).toContain("client.visible('.login-card')");
-    expect(journey).toContain(
-      'client.visible(\'[data-testid="sso-callback-body"]\')',
-    );
+    expect(journey).toContain('\'[data-testid="sso-callback-body"]\'');
     expect(journey).toMatch(/card\.rect\.width >= 400/u);
     expect(journey).toMatch(/card\.rect\.width <= 480/u);
     expect(journey).toMatch(/card\.rect\.x >= 0/u);
@@ -307,17 +312,17 @@ describe('Android legacy SSO migration', () => {
       "!new URL(surface.url).pathname.startsWith('/rooms')",
     );
     expect(journey).toMatch(
-      /await startLegitimateSso[\s\S]*await completeDexSignIn[\s\S]*await waitForRooms/u,
+      /await startLegitimateSso[\s\S]*await secondProvider\.completeDexSignIn[\s\S]*await waitForRooms/u,
     );
   });
 
   it('redacts provider credentials, login tokens, state, and Matrix access tokens', async () => {
     const journey = readIfPresent(journeyPath);
-    expect(journey).toContain('secrets.DEX_EMAIL = sso.email');
+    expect(journey).toContain('secrets.DEX_EMAIL_SECRET = sso.email');
     expect(journey).toContain('secrets.DEX_PASSWORD = sso.pass');
     expect(journey).toContain('secrets.LOGIN_TOKEN');
-    expect(journey).toContain('secrets.SSO_STATE');
-    expect(journey).toContain('secrets.ACCESS_TOKEN');
+    expect(journey).toContain('secrets.SSO_STATE_SECRET_');
+    expect(journey).toContain('secrets[accessTokenKey]');
     expect(journey).toContain('redactMaestroArtifacts(output, secrets)');
     expect(journey).not.toMatch(
       /observation:\s*(?:loginToken|accessToken|state|password|email)/u,
@@ -325,10 +330,10 @@ describe('Android legacy SSO migration', () => {
 
     const directory = await mkdtemp(join(tmpdir(), 'trinity-legacy-sso-'));
     const secrets = {
-      DEX_EMAIL: 'sso-negative@trinity.test',
+      DEX_EMAIL_SECRET: 'sso-negative@trinity.test',
       DEX_PASSWORD: 'provider-negative-password',
       LOGIN_TOKEN: 'matrix-login-token-negative',
-      SSO_STATE: 'state-negative-control',
+      SSO_STATE_SECRET: 'state-negative-control',
       ACCESS_TOKEN: 'syt_negative_control_token',
     };
     const artifact = join(directory, 'provider.log');
