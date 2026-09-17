@@ -422,7 +422,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   endpoint allowlist, redaction/cleanup contract, target/script commands,
   artifact root and explicit local/hosted evidence fields to the migration ledger.
 
-- [ ] **Step 2: Run focused and full static validation**
+- [x] **Step 2: Run focused and full static validation**
 
   Run the migration guard, full scripts tests, registry/workflow guards,
   Android/browser typecheck and lint, format check, architecture/style/docs
@@ -430,7 +430,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   repository policy. Record every command, checked revision, exit status and
   log/artifact path.
 
-- [ ] **Step 3: Run the installed-Android suite three times sequentially**
+- [x] **Step 3: Run the installed-Android suite three times sequentially**
 
   ```bash
   pnpm nx run trinity-e2e-android:oidc-login --skipNxCache
@@ -442,7 +442,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   identities, one attempt, zero retries, clean teardown and secret-free
   artifact scans.
 
-- [ ] **Step 4: Run exact Playwright predecessors sequentially**
+- [x] **Step 4: Run exact Playwright predecessors sequentially**
 
   ```bash
   pnpm nx run trinity-e2e-browser:e2e -- \
@@ -452,7 +452,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
 
   Require all four exact predecessors to pass and re-check both pinned hashes.
 
-- [ ] **Step 5: Repair only evidence-backed defects**
+- [x] **Step 5: Repair only evidence-backed defects**
 
   For every unexpected failure, use systematic debugging: preserve the first
   failing capture, identify the earliest violated invariant, add or strengthen
@@ -460,7 +460,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   checks. Never weaken source, protocol, native-action, PKCE, cleanup or
   redaction obligations.
 
-- [ ] **Step 6: Commit documentation/evidence truth**
+- [x] **Step 6: Commit documentation/evidence truth**
 
   ```bash
   git add e2e/android/MIGRATION.md
