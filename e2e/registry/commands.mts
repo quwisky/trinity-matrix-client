@@ -360,6 +360,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.clear-all-data'],
   },
   {
+    name: 'e2e:android:password-registration',
+    command: 'nx run trinity-e2e-android:password-registration',
+    kind: 'canonical',
+    suiteIds: ['android.password-registration'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -692,6 +698,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'clear-all-data-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:clear-all-data; fi',
     tier: 'pull-request',
     suiteIds: ['android.clear-all-data'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'password-registration-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:password-registration; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.password-registration'],
   },
   {
     command:
