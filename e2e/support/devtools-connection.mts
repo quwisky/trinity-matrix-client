@@ -12,6 +12,7 @@ export type DevtoolsEventListener = (
 
 /** A CDP connection that can also observe protocol events for its owned lifetime. */
 export interface DevtoolsEventConnection extends DevtoolsConnection {
+  readonly closed: boolean;
   on(method: string, listener: DevtoolsEventListener): () => void;
 }
 
@@ -144,6 +145,9 @@ export async function openDevtoolsConnection(
   });
 
   return {
+    get closed() {
+      return closed;
+    },
     send(method, params = {}): Promise<unknown> {
       if (closed)
         return Promise.reject(new Error('DevTools connection is closed'));

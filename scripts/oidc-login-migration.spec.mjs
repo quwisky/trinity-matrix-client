@@ -371,6 +371,7 @@ describe('Android OIDC-native login migration', () => {
     expect(fixture).toContain('AbortSignal.timeout(');
     expect(fixture).toContain('await eventWork');
     expect(fixture).toContain("connection.send('Fetch.disable')");
+    expect(fixture).toContain('if (!connection.closed)');
     expect(fixture).toContain('connection.close(');
     expect(fixture).toContain('throw new AggregateError(');
     expect(journey).toContain('await fixture.close()');

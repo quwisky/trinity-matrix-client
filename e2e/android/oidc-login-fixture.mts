@@ -609,10 +609,12 @@ export async function installOidcLoginFixture(
       } catch (error) {
         failures.push(error);
       }
-      try {
-        await connection.send('Fetch.disable');
-      } catch (error) {
-        failures.push(error);
+      if (!connection.closed) {
+        try {
+          await connection.send('Fetch.disable');
+        } catch (error) {
+          failures.push(error);
+        }
       }
       try {
         connection.close(new Error('OIDC fixture closed'));
