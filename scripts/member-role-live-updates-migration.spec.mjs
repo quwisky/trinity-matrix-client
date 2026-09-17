@@ -221,6 +221,10 @@ describe('Android member role live updates migration', () => {
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="member-info-kick"]\')',
     );
+    expect(journey).toContain('await Promise.allSettled(operations)');
+    expect(journey).toMatch(
+      /await settleConcurrentOperations\(\[\s*client\.tapCurrent\('\[data-testid="member-info-kick"\]'\),\s*observedElements\([\s\S]{0,300}?assertions\.touchFeedbackExactCopy/,
+    );
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="rail-rooms"]\')',
     );

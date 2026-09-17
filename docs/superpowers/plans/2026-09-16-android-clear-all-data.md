@@ -350,8 +350,17 @@ and GitHub Actions.
   touch-feedback stage never produced transition copy after a trusted native
   tap. Artifact `10472873279`, digest
   `sha256:306b3a754dcb95be49d3dab389f930cdc97dc7a1a4b4319b365f8e7fd98072a8`,
-  records that independently tracked failure. A fresh original-attempt Android
-  artifact remains required.
+  records that independently tracked failure. Fresh run `35162564310` repeated
+  the same pre-suite failure in shard 4: the first three stages passed, then
+  `touch-feedback.exact-copy` timed out after the trusted native kick tap.
+  Artifact `10475440886`, digest
+  `sha256:b363a61472cebbd6da4caafea9d163b339b5e63afd6cc5e817211a25132018b8`,
+  contains no clear-all-data start flag or artifact. The repeated failure was
+  traced to the three-second feedback being observed only after `tapCurrent`
+  completed its native cleanup and diagnostics. The observer is now armed
+  concurrently with the trusted native tap, guarded by a RED/GREEN source test;
+  the focused Android suite passed all four stages locally in 8m20s with clean
+  teardown. A fresh original-attempt Android artifact remains required.
 
 - [ ] **Step 4: Record and publish acceptance**
 
