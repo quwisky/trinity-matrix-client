@@ -2963,11 +2963,11 @@ Lines 51–84 define the fresh-account posture and recovery setup journey. Lines
 branch at lines 105–121. The browser-only trust-fault test at lines 138–223
 remains outside this native batch because its production hook is deliberately
 unavailable on Android. The navigation helper remains pinned at
-`43232dafb7e7a9a6d95cc54ef983a4574d7eb3bc03ca2fe594909c84f97f529b`,
+`43232dafbf9e80df6977442f366974100ccfa315b20ab680f893d4300ab46f81`,
 the application helper at
 `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
 and the account helper at
-`ac6ad39987eabf852a5067012bb7afc2e136214134c36a682119c567e62eeb14`.
+`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
 
 The contract records five direct plus four direct predecessor assertions and
 six inherited, stage-qualified Settings assertions: 15 unique identities in
@@ -2996,9 +2996,41 @@ after `oidc-login` under a 20-minute wrapper. Started-only diagnostics use the
 Every stage records one attempt, zero retries, stage-qualified assertions and
 sanitized captures; cleanup and artifact redaction remain aggregate failures.
 
-Native and hosted acceptance are pending. Do not retire or edit the Playwright
-predecessor until the required three native passes, full predecessor browser
-run and original-attempt hosted evidence are accepted. This mapping does not
+Local acceptance on 2026-09-17 used exact implementation revision
+`69fc7bab191a6aba60aa00ec015d5bf18d552e7e`, a 49-file, 15,302,529-byte
+production renderer manifest with SHA-256
+`dce4a99461f0df2e299f4899c8eaea6ef6bb417613f7f33b29e3793a2099a10a`,
+and installed debug APK SHA-256
+`bffd42128b7948504036ce8c934273d087fec6744bd11c2a57ef99a6eaf35ae6`.
+Three sequential uncached native invocations passed unchanged on their first
+attempt with zero retries:
+
+- `mu5z7mq0-8156d4dd-42b3-41b2-a60c-bf0fa370a5ca` — 224.935 seconds;
+- `mu5zd5jv-a1b4a650-250b-4694-b978-bf66c107276b` — 226.836 seconds; and
+- `mu5zifyi-3baf7cab-6096-416e-8557-2f7abb341228` — 225.719 seconds.
+
+Every invocation recorded both stages and all 15 unique identities exactly
+once. The posture stages took 95.049, 96.623 and 96.933 seconds; the narrow
+verification stages took 97.125, 95.862 and 95.476 seconds. Each artifact
+contained 48 explicit `[REDACTED]` markers and zero raw bearer or Matrix access
+token matches. Synapse data, emulator, WebView and client resources were gone
+after cleanup, and the tracked worktree remained unchanged. The focused guard
+passed all route, focus, fault-exclusion, cleanup and redaction mutation
+controls.
+
+Browser invocation `mu5zpx19-8bcccc27-7d2d-47e1-8b03-360449376cfc` then ran
+the complete unchanged Security settings predecessor with one worker and
+`--retries=0`; all three tests passed in 8.4 seconds. The source and helper
+hashes remained exactly those pinned above.
+
+Local validation passed the 8-test focused migration guard, 116 focused
+registry/workflow tests, all 963 scripts tests, 48 typecheck tasks, 77 lint
+tasks, stylelint, formatting, architecture and the 66-suite registry,
+production renderer build, Android host verification, and the documentation
+check, assemble and eight-test browser gate.
+
+Hosted acceptance is pending. Do not retire or edit the Playwright predecessor
+until original-attempt hosted evidence is accepted. This mapping does not
 authorize merging PR #677.
 
 ## Legacy SSO journeys
