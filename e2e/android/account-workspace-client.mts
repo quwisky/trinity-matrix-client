@@ -224,6 +224,17 @@ export class AccountWorkspaceClient {
     });
   }
 
+  /** Focus one input through Maestro and require an observed focus transition. */
+  async focusCurrent(
+    selector: string,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
+    await this.nativeAction('accounts-current-point-tap', selector, filter, {}, {
+      currentPoint: true,
+      allowFocusTransition: true,
+    });
+  }
+
   async tapCurrentReplacingDocument(
     selector: string,
     previousTimeOrigin: number,
@@ -644,6 +655,7 @@ export class AccountWorkspaceClient {
     options: {
       readonly currentPoint?: boolean;
       readonly allowFocusedInput?: boolean;
+      readonly allowFocusTransition?: boolean;
       readonly allowDocumentReplacementFrom?: number;
       readonly fileInputSelector?: string;
       readonly exposedPoint?: boolean;
@@ -651,6 +663,7 @@ export class AccountWorkspaceClient {
   ): Promise<void> {
     const currentPoint = options.currentPoint ?? false;
     const allowFocusedInput = options.allowFocusedInput ?? false;
+    const allowFocusTransition = options.allowFocusTransition ?? false;
     const allowDocumentReplacementFrom =
       options.allowDocumentReplacementFrom;
     const fileInputSelector = options.fileInputSelector;
@@ -660,6 +673,21 @@ export class AccountWorkspaceClient {
       : (operationSignal?: AbortSignal) =>
           this.actionablePoint(selector, filter, operationSignal);
     const initialPoint = await resolvePoint();
+    let initiallyFocused: boolean | undefined;
+    if (allowFocusTransition) {
+      const initialTargets = await this.elements(selector, filter);
+      assert.equal(
+        initialTargets.length,
+        1,
+        `Native focus target is exactly one ${selector}`,
+      );
+      assert.notEqual(
+        initialTargets[0]!.value,
+        null,
+        `Native focus target is an input ${selector}`,
+      );
+      initiallyFocused = initialTargets[0]!.focused;
+    }
     const actionId = ++this.action;
     // Observe capture before application listeners can remove the clicked element.
     await evaluateNative(this.webview, `(() => {
@@ -711,7 +739,18 @@ export class AccountWorkspaceClient {
           event.trusted === true &&
           event.matched === true,
       );
-      if (!activated && allowFocusedInput) {
+      if (!activated && !documentReplaced && allowFocusTransition) {
+        assert.equal(
+          initiallyFocused,
+          false,
+          `Native input ${actionId} began unfocused ${selector}`,
+        );
+        const target = await this.elements(selector, filter);
+        assert(
+          target.length === 1 && target[0]!.focused,
+          `Native input ${actionId} focused ${selector}`,
+        );
+      } else if (!activated && allowFocusedInput) {
         const target = await this.elements(selector, filter);
         assert(
           target.length === 1 && target[0]!.focused,

@@ -293,7 +293,7 @@ async function enterHomeserver(
   client: AccountWorkspaceClient,
   homeserver: string,
 ): Promise<void> {
-  await client.tapCurrent('#homeserver');
+  await client.focusCurrent('#homeserver');
   await client.fillFocused('#homeserver', homeserver);
   await client.tapCurrent('button', { exactText: 'Continue' });
   await client.visible('button', { exactText: 'Continue with SSO' }, 30_000);
