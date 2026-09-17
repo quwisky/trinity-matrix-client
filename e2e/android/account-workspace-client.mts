@@ -229,6 +229,25 @@ export class AccountWorkspaceClient {
     selector: string,
     filter: AccountElementFilter = {},
   ): Promise<void> {
+    const [target] = await this.waitElements(
+      selector,
+      elements =>
+        elements.length === 1 &&
+        elements[0]!.visible &&
+        elements[0]!.value !== null,
+      `one visible input ${selector}`,
+      filter,
+    );
+    assert(target);
+    if (target.focused) {
+      await this.key('tab');
+      await this.waitElements(
+        selector,
+        elements => elements.length === 1 && !elements[0]!.focused,
+        `native Tab moved focus away from ${selector}`,
+        filter,
+      );
+    }
     await this.nativeAction('accounts-current-point-tap', selector, filter, {}, {
       currentPoint: true,
       allowFocusTransition: true,
