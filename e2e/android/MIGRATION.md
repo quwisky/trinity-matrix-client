@@ -2702,3 +2702,66 @@ Playwright predecessors sequentially at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
 Do not retire or edit the predecessors. This mapping does not authorize merging
 PR #677.
+
+## Password registration journey
+
+`android.password-registration` preserves issue #722's canonical Playwright
+password-registration definition at
+`e2e/browser/journeys/accounts/registration.spec.mts:10-48`, pinned at SHA-256
+`a22f58f703c185645987ad471c2f8637d2741344be365d5063c8f0b1c37f2dbd`.
+Its Synapse-session and labeled-input helpers are pinned at
+`e2e/support/app.mts:124-166`, SHA-256
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+and its independent password-login helper is pinned at
+`e2e/support/account.mts:57-79`, SHA-256
+`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+The executable contract contains four assertion identities:
+
+| Predecessor obligation | Replacement assertion identity |
+| --- | --- |
+| The registration action starts absent, then appears only after the exact homeserver's successful availability probe | `password-registration.availability-action-visible` |
+| The native registration action reaches concrete `/register` with the exact homeserver query | `password-registration.registration-route` |
+| Real Synapse `m.login.dummy` UIA reaches first-device `/encryption/setup` | `password-registration.encryption-setup-route` |
+| Independent password login returns the exact newly registered MXID | `password-registration.exact-mxid` |
+
+The installed stage starts from a cleared Pixel 5-profile app and drives the
+Homeserver, Continue, Create account, username, password, confirmation and
+submit actions through Maestro-native input. A read-only CDP Network observer
+matches both the exact entered homeserver origin and
+`/_matrix/client/v3/register/available`; it records only the successful status
+and path before the gated action may satisfy its assertion. CDP also reads the
+concrete routes but never clicks, focuses, fills, submits, navigates or
+dispatches a product event.
+
+The product SDK owns registration and the real `m.login.dummy` UIA flow. The
+journey does not call Matrix registration or Synapse shared-secret creation.
+After `/encryption/setup`, a finite Node REST login must return HTTP 200 and the
+exact `@signup-<test-resource-id>:localhost` MXID. Its access token remains in
+memory, is registered for artifact redaction immediately and is revoked through
+`/_matrix/client/v3/logout` in `finally`; failed revocation fails cleanup.
+
+```bash
+pnpm nx run trinity-e2e-android:password-registration --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:password-registration
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns `android-avd` plus `synapse`, and has a
+15-minute Node timeout. The latest completed hosted timing placed it on shard 4
+after `clear-all-data` and before retained Playwright under a 20-minute wrapper;
+that shard completed sooner than shards 1 and 2 while shard 3 was still active.
+Started-only diagnostics live under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.password-registration/`
+and preserve one stage, all four assertion identities exactly once, trusted
+native-action proof, exact availability and route observations, the sanitized
+MXID/status result, renderer/APK/profile provenance, pass/failure captures,
+credential and session redaction, REST revocation, and WebView/device/Synapse
+teardown.
+
+Acceptance requires the focused and full contract gates, Android and browser
+typecheck/lint, formatting and documentation gates, eight effective negative
+controls, three unchanged-input native first attempts, the exact unchanged
+Playwright predecessor at retry 0, review with no unresolved findings, and
+original-attempt hosted Android/browser/renderer artifact audit. Do not retire
+or edit the predecessor. This mapping does not authorize merging PR #677.
