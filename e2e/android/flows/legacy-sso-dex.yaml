@@ -1,5 +1,4 @@
 appId: com.android.chrome
-androidWebViewHierarchy: devtools
 ---
 - extendedWaitUntil:
     visible:
