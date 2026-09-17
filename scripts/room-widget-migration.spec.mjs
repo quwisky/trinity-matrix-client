@@ -343,6 +343,9 @@ describe('Android Room widget migration', () => {
     expect(journey).toContain('client.fill(');
     expect(journey).toContain("client.key('enter')");
     expect(journey).toContain('client.scrollIntoViewIfNeeded(');
+    expect(journey).toMatch(
+      /const trialOpen\s*=\s*`\[data-testid="room-widget-open-board-\$\{widgetCount - 1\}"\]`;[\s\S]{0,240}?client\.scrollIntoViewIfNeeded\([\s\S]{0,120}?trialOpen,[\s\S]{0,120}?'\.room-settings__section-scroll',[\s\S]{0,240}?assertions\.mobileNoEagerRequestBeforeEmbed,[\s\S]{0,120}?trialOpen/,
+    );
     expect(journey).toContain('installFirstMatrixHttpFailure(');
     expect(journey).toContain('invokeAccountContinuityHandlers(');
     expect(journey).toContain('runBridgeAdversary(');
