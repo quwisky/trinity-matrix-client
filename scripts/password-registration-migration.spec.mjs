@@ -122,12 +122,12 @@ describe('Android password-registration migration', () => {
     expect(journey).toContain('password-registration-contract.mts');
     expect(journey).toContain('PASSWORD_REGISTRATION_SOURCES.journey');
     expect(journey).toContain('profile: PIXEL_5_ACCOUNT_PROFILE');
-    expect(journey).toContain(
-      'client.visible(\'[data-testid="password-register"]\'',
+    expect(journey).toMatch(
+      /client\.visible\(\s*'\[data-testid="password-register"\]'/u,
     );
     expect(journey).toContain("client.fillFocused('#homeserver'");
     expect(journey).toContain(
-      "client.tapCurrent('button', { text: 'Continue' })",
+      "client.tapCurrent('button', { exactText: 'Continue' })",
     );
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="password-register"]\')',
@@ -144,7 +144,7 @@ describe('Android password-registration migration', () => {
       "assert.equal(registration.pathname, '/register')",
     );
     expect(journey).toContain(
-      "assert.equal(registration.searchParams.get('homeserver'), SYNAPSE_HTTP)",
+      "assert.equal(registration.searchParams.get('homeserver'), homeserver)",
     );
     expect(journey).toContain(
       "assert.equal(encryptionSetup.pathname, '/encryption/setup')",
@@ -179,6 +179,8 @@ describe('Android password-registration migration', () => {
     expect(journey).toContain('Network.requestWillBeSent');
     expect(journey).toContain('Network.responseReceived');
     expect(journey).toContain('/_matrix/client/v3/register/available');
+    expect(journey).toContain('request.url.origin === expectedOrigin');
+    expect(journey).toContain('response.url.origin === expectedOrigin');
     expect(journey).toContain('initiallyAbsent: true');
     expect(journey).toContain('requestPath: availability.requestPath');
     expect(journey).toContain('status: availability.status');
