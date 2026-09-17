@@ -626,10 +626,16 @@ const cases: readonly AccountWorkspaceCase[] = [
           `(() => { const element=document.querySelector('[data-testid="room-settings"]'); return element instanceof HTMLElement && element.scrollWidth <= element.clientWidth + 1; })()`,
           (value) => value,
         );
+        const trialOpen =
+          `[data-testid="room-widget-open-board-${widgetCount - 1}"]`;
+        await client.scrollIntoViewIfNeeded(
+          trialOpen,
+          '.room-settings__section-scroll',
+        );
         await observedElements(
           client,
           assertions.mobileNoEagerRequestBeforeEmbed,
-          `[data-testid="room-widget-open-board-${widgetCount - 1}"]`,
+          trialOpen,
           (elements) =>
             visibleOne(elements) &&
             elements[0]!.unobstructedCenter &&
