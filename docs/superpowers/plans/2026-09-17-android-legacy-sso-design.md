@@ -1,6 +1,6 @@
 # Android Legacy SSO Migration Design
 
-**Issue:** #723  
+**Issue:** #723
 **Integration branch:** `test/676-android-sidebar-filter`
 
 ## Purpose

@@ -71,7 +71,7 @@ Nx, GitHub Actions, pnpm.
   cleanup/redaction, Nx/registry/CI wiring, documentation, and predecessor
   retention.
 
-- [ ] **Step 1: Pin exact source shape**
+- [x] **Step 1: Pin exact source shape**
 
   Add `sourceLines(path, hash)` and exact-span checks. Require the three test
   titles at lines 29, 78, and 109, the closing lines 76, 107, and 198, direct
@@ -79,13 +79,13 @@ Nx, GitHub Actions, pnpm.
   login protocol, exact static provider identity, and unchanged predecessor
   registration.
 
-- [ ] **Step 2: Require immutable source and identity exports**
+- [x] **Step 2: Require immutable source and identity exports**
 
   Require `LEGACY_SSO_SOURCES`, `legacySsoAssertions`, and exactly three groups
   whose values equal the 23 stable ids from the design. Require count and
   uniqueness assertions in the contract module.
 
-- [ ] **Step 3: Guard the native, fixture, and security boundaries**
+- [x] **Step 3: Guard the native, fixture, and security boundaries**
 
   Require measured/native Trinity input, a Chrome Custom Tab package/surface,
   a Maestro Dex flow, ADB deep-link delivery targeted at Trinity, a host-only
@@ -95,7 +95,7 @@ Nx, GitHub Actions, pnpm.
   provider responses, direct successful callback injection, and secret-bearing
   retained observations.
 
-- [ ] **Step 4: Require target, registry, CI, and ledger wiring**
+- [x] **Step 4: Require target, registry, CI, and ledger wiring**
 
   Require target `legacy-sso`, suite `android.legacy-sso`, package script
   `e2e:android:legacy-sso`, a bounded CI command, marker
@@ -103,7 +103,7 @@ Nx, GitHub Actions, pnpm.
   and migration-ledger references to source spans, local evidence, hosted
   evidence, and predecessor retention.
 
-- [ ] **Step 5: Run the focused guard and confirm RED**
+- [x] **Step 5: Run the focused guard and confirm RED**
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs
@@ -112,7 +112,7 @@ Nx, GitHub Actions, pnpm.
   Expected: failure because contract/journey/flow and wiring entries do not
   exist. Preserve the failure as RED evidence.
 
-- [ ] **Step 6: Commit the RED guard**
+- [x] **Step 6: Commit the RED guard**
 
   ```bash
   git add scripts/legacy-sso-migration.spec.mjs
@@ -136,13 +136,13 @@ Nx, GitHub Actions, pnpm.
 - Provider helper owns disposable Chrome preparation, surface observation,
   native Dex form completion, command-line removal, and Chrome cleanup.
 
-- [ ] **Step 1: Add the immutable source and assertion contract**
+- [x] **Step 1: Add the immutable source and assertion contract**
 
   Export exact source strings for the three predecessor spans plus the complete
   helper/provider files. Export grouped assertion ids in source order, type the
   23-value union, and assert total count and uniqueness at module load.
 
-- [ ] **Step 2: Configure a fresh real Chrome process without a driver**
+- [x] **Step 2: Configure a fresh real Chrome process without a driver**
 
   Add a helper that force-stops and clears `com.android.chrome`, writes a base64
   encoded command line under `/data/local/tmp/chrome-command-line`, starts
@@ -151,7 +151,7 @@ Nx, GitHub Actions, pnpm.
   first-run prompts when the stable build ignores those flags, removes the
   file, and reactivates Trinity. Bound every ADB wait and verify package state.
 
-- [ ] **Step 3: Observe and operate the pinned Dex form**
+- [x] **Step 3: Observe and operate the pinned Dex form**
 
   Use UIAutomator to prove the external Chrome package and a read-only Maestro
   DevTools hierarchy to prove the exact `login`, `password`, and `submit-login`
@@ -160,14 +160,14 @@ Nx, GitHub Actions, pnpm.
   The helper must return sanitized action/surface proof and never a URL, field
   value, cookie, state, or token.
 
-- [ ] **Step 4: Add bounded provider cleanup and negative controls**
+- [x] **Step 4: Add bounded provider cleanup and negative controls**
 
   Remove the command-line file in `finally`, force-stop Chrome, close any
   observer, and aggregate errors. Unit-test source guards by temporarily
   weakening Chrome package proof and adding a DOM provider action; confirm each
   mutation fails before restoring the implementation.
 
-- [ ] **Step 5: Run focused guard and typecheck incrementally**
+- [x] **Step 5: Run focused guard and typecheck incrementally**
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs
@@ -194,7 +194,7 @@ Nx, GitHub Actions, pnpm.
 - Produces one Node test, three ordered stages, 23 assertion records, a stage
   ledger, pass/failure captures, and a suite summary.
 
-- [ ] **Step 1: Add finite host-browser token minting**
+- [x] **Step 1: Add finite host-browser token minting**
 
   Launch host Chromium with the exact runner binary when supplied, an isolated
   context, loopback mapping, and ignored disposable TLS errors. Navigate the
@@ -202,13 +202,13 @@ Nx, GitHub Actions, pnpm.
   only in that fixture browser, capture the request token, and close browser and
   context in bounded cleanup. Return only the in-memory token.
 
-- [ ] **Step 2: Add independent token redemption and revocation**
+- [x] **Step 2: Add independent token redemption and revocation**
 
   POST `m.login.token` with finite fetch, require status 200 and
   `@sso-e2e:localhost`, register the returned access token for redaction, and
   POST logout in `finally`. Never retain response bodies, tokens, or headers.
 
-- [ ] **Step 3: Implement stage 1 — real SSO and persistence**
+- [x] **Step 3: Implement stage 1 — real SSO and persistence**
 
   Reset with the mobile profile, enter homeserver and Continue natively, record
   the password/SSO/delegated-action identities, prepare Chrome, tap SSO
@@ -216,7 +216,7 @@ Nx, GitHub Actions, pnpm.
   Force-stop/relaunch Trinity without clearing data, require Rooms and Login
   absence, and record persisted Rooms visibility.
 
-- [ ] **Step 4: Implement stage 2 — forged callback and unspent token**
+- [x] **Step 4: Implement stage 2 — forged callback and unspent token**
 
   Reset the app, mint/register a token secret, arm a read-only Matrix-login
   request observer, inject the exact forged-state deep link through ADB, record
@@ -224,7 +224,7 @@ Nx, GitHub Actions, pnpm.
   redeem the same token independently, record exact MXID, and revoke the
   resulting session.
 
-- [ ] **Step 5: Implement stage 3 — in-flight forged callback recovery**
+- [x] **Step 5: Implement stage 3 — in-flight forged callback recovery**
 
   Reset with the desktop profile, start a real SSO flow and pause on fresh Dex,
   then mint/register another token and inject the forged callback. Read and
@@ -233,7 +233,7 @@ Nx, GitHub Actions, pnpm.
   token. Send native Back to return to Login, prepare fresh Chrome, complete a
   new real Dex round trip through Maestro, and require Rooms.
 
-- [ ] **Step 6: Add attempt ledger, captures, provenance, and cleanup**
+- [x] **Step 6: Add attempt ledger, captures, provenance, and cleanup**
 
   Create three `running|passed|failed` stage entries before launch. Record each
   identity once via a typed Set, renderer manifest and APK hashes, emulator and
@@ -242,7 +242,7 @@ Nx, GitHub Actions, pnpm.
   observers, provider, host browsers, client, device, and resources with
   aggregate cleanup; run artifact redaction last.
 
-- [ ] **Step 7: Prove focused GREEN and effective negative controls**
+- [x] **Step 7: Prove focused GREEN and effective negative controls**
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs
@@ -253,7 +253,7 @@ Nx, GitHub Actions, pnpm.
   token consumption, state/stash preservation, every geometry/accessibility
   group, cleanup, and redaction. Confirm RED, restore, and confirm GREEN.
 
-- [ ] **Step 8: Commit the implementation**
+- [x] **Step 8: Commit the implementation**
 
   ```bash
   git add e2e/android/legacy-sso-contract.mts \
@@ -275,34 +275,34 @@ Nx, GitHub Actions, pnpm.
 - Modify: `scripts/e2e-suite-registry.spec.mjs`
 - Test: `scripts/legacy-sso-migration.spec.mjs`
 
-- [ ] **Step 1: Add the uncached serialized Nx target**
+- [x] **Step 1: Add the uncached serialized Nx target**
 
   Mirror the current Node/Maestro target shape with suite id
   `android.legacy-sso`, entrypoint
   `e2e/android/legacy-sso-journeys.mts`, non-parallel execution, prebuilt app
   dependency, `android-avd` + `synapse` resource ownership, and bounded timeout.
 
-- [ ] **Step 2: Add package and registry entries**
+- [x] **Step 2: Add package and registry entries**
 
   Register `e2e:android:legacy-sso`, required Chrome/Maestro/Android/Synapse
   prerequisites, security/host/journey contract types, source entrypoint,
   artifact root, no cache, pull-request tier, and the matching command.
 
-- [ ] **Step 3: Place the suite and add started-only diagnostics**
+- [x] **Step 3: Place the suite and add started-only diagnostics**
 
   Use the latest completed shard timing to choose the shortest suitable shard.
   Add a bounded `ci-run-command` invocation, set
   `legacy-sso-started=true` immediately before it runs, and upload only when
   started under surface `android-legacy-sso` with its exact report path.
 
-- [ ] **Step 4: Update and run registry guards**
+- [x] **Step 4: Update and run registry guards**
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs scripts/e2e-suite-registry.spec.mjs
   pnpm nx run trinity-e2e-android:typecheck --skipNxCache
   ```
 
-- [ ] **Step 5: Commit wiring**
+- [x] **Step 5: Commit wiring**
 
   ```bash
   git add e2e/android/project.json package.json \
@@ -318,14 +318,14 @@ Nx, GitHub Actions, pnpm.
 - Modify only for verified defects: implementation/guard files above.
 - Write ignored evidence under the suite artifact root.
 
-- [ ] **Step 1: Run static validation**
+- [x] **Step 1: Run static validation**
 
   Run focused/full script tests, Android/browser typecheck and lint, registry
   validation, format checks, documentation checks, `git diff --check`, and the
   source-selected Nx checks required by repository policy. Record every command
   and exit status.
 
-- [ ] **Step 2: Run the installed-Android suite three times sequentially**
+- [x] **Step 2: Run the installed-Android suite three times sequentially**
 
   ```bash
   pnpm nx run trinity-e2e-android:legacy-sso --skipNxCache
@@ -337,14 +337,14 @@ Nx, GitHub Actions, pnpm.
   23 direct identities, helper-owned Rooms readiness, one attempt, zero retries,
   clean teardown, and artifact scans free of every secret class.
 
-- [ ] **Step 3: Run exact predecessors sequentially at retry zero**
+- [x] **Step 3: Run exact predecessors sequentially at retry zero**
 
   Run only the three tests in
   `e2e/browser/journeys/accounts/sso-login.spec.mts` against the disposable
   harness with one worker and zero retries. Require all three unchanged spans to
   pass and preserve their exact source hash.
 
-- [ ] **Step 4: Repair only evidence-backed defects**
+- [x] **Step 4: Repair only evidence-backed defects**
 
   For any failure, use systematic debugging: preserve the failing capture,
   identify the first violated invariant, add or strengthen the focused guard,
@@ -358,14 +358,14 @@ Nx, GitHub Actions, pnpm.
 - Modify: `e2e/android/MIGRATION.md`
 - Optionally modify design/plan only when implementation truth changed.
 
-- [ ] **Step 1: Record local evidence**
+- [x] **Step 1: Record local evidence**
 
   Add source hashes/spans, 23 identity map, three native first-attempt receipts,
   predecessor retry-zero receipts, renderer/APK/emulator/profile provenance,
   native action/deep-link/provider proof, negative controls, artifact redaction
   scan, teardown, and validation commands.
 
-- [ ] **Step 2: Run independent review and resolve findings**
+- [x] **Step 2: Run independent review and resolve findings**
 
   Review the feature range against #723 for source parity, native ownership,
   callback-state security, provider reality, fixture isolation, token handling,
