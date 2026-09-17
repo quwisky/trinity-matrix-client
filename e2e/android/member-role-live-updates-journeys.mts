@@ -52,6 +52,19 @@ function describeFailure(error: unknown): string {
     : message;
 }
 
+async function settleConcurrentOperations(
+  operations: readonly Promise<unknown>[],
+): Promise<void> {
+  const results = await Promise.allSettled(operations);
+  const failures = results.flatMap((result) =>
+    result.status === 'rejected' ? [result.reason] : [],
+  );
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) {
+    throw new AggregateError(failures, 'Concurrent member role operations failed');
+  }
+}
+
 function visibleOne(elements: readonly AccountElement[]): boolean {
   return elements.length === 1 && elements[0]!.visible;
 }
@@ -572,16 +585,18 @@ const touchFeedbackCase: AccountWorkspaceCase = {
       '[data-testid="member-info-kick"]',
       visibleOne,
     );
-    await client.tapCurrent('[data-testid="member-info-kick"]');
-    await observedElements(
-      client,
-      assertions.touchFeedbackExactCopy,
-      '[data-testid="action-unavailable-feedback"]',
-      (elements) =>
-        visibleOne(elements) &&
-        elements[0]!.text ===
-          'You can only manage members with a lower role.',
-    );
+    await settleConcurrentOperations([
+      client.tapCurrent('[data-testid="member-info-kick"]'),
+      observedElements(
+        client,
+        assertions.touchFeedbackExactCopy,
+        '[data-testid="action-unavailable-feedback"]',
+        (elements) =>
+          visibleOne(elements) &&
+          elements[0]!.text ===
+            'You can only manage members with a lower role.',
+      ),
+    ]);
     await observedElements(
       client,
       assertions.touchFeedbackRemoveDialogAbsent,
