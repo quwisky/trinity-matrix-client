@@ -325,17 +325,16 @@ function createCases(): readonly OidcCase[] {
           await fixture.prepareChrome();
           await context.client.tapCurrent(OIDC_CONTINUE);
           const authorize = await fixture.waitForAuthorization(context.signal);
-          const callbackBody = await context.client.visible(
-            '[data-testid="sso-callback-body"]',
-            {},
+          const providerError = await context.client.visible(
+            '[role="alert"]',
+            { exactText: 'E2E declined' },
             60_000,
           );
-          assert(callbackBody.text.includes('E2E declined'));
           await recordAssertion(
             context.client,
             recorded,
             assertions.providerError.providerErrorVisible,
-            { text: 'E2E declined', visible: true },
+            { text: providerError.text, visible: providerError.visible },
           );
           const back = await context.client.visible('button', {
             exactText: 'Back to sign in',
