@@ -337,6 +337,9 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Install pinned Maestro prerequisite
         run: node scripts/ci-runner-prerequisites.mjs maestro
+      - name: Install pinned Chrome fixture prerequisite
+        if: ${{ matrix.shard == 2 }}
+        run: node scripts/ci-runner-prerequisites.mjs chromium
       - uses: ./.github/actions/restore-verified-renderer
         with:
           sha: ${{ needs.renderer.outputs.sha }}
