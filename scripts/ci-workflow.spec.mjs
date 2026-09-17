@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(48);
+    expect(uploads.length).toBe(49);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -251,6 +251,15 @@ describe('CI execution contract', () => {
       'report-path':
         'dist/.playwright/trinity-e2e-android/*/android.password-registration/**',
     });
+    const legacySsoUploads = uploads.filter(
+      (step) => step.with.surface === 'android-legacy-sso',
+    );
+    expect(legacySsoUploads).toHaveLength(1);
+    expect(legacySsoUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.legacy-sso/**',
+    });
     expect(
       uploads.filter((step) => step.with.surface === 'android-recent-activity'),
     ).toHaveLength(1);
@@ -380,48 +389,53 @@ describe('CI execution contract', () => {
                                                                   ? /!cancelled\(\).*outputs\.password-registration-started == 'true'/
                                                                   : step.with
                                                                         .surface ===
-                                                                      'android-recent-activity'
-                                                                    ? /!cancelled\(\).*outputs\.recent-activity-started == 'true'/
+                                                                      'android-legacy-sso'
+                                                                    ? /!cancelled\(\).*outputs\.legacy-sso-started == 'true'/
                                                                     : step.with
                                                                           .surface ===
-                                                                        'android-room-filter-spaceless'
-                                                                      ? /!cancelled\(\).*outputs\.room-filter-spaceless-started == 'true'/
+                                                                        'android-recent-activity'
+                                                                      ? /!cancelled\(\).*outputs\.recent-activity-started == 'true'/
                                                                       : step
                                                                             .with
                                                                             .surface ===
-                                                                          'android-space-curation-create-join'
-                                                                        ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
+                                                                          'android-room-filter-spaceless'
+                                                                        ? /!cancelled\(\).*outputs\.room-filter-spaceless-started == 'true'/
                                                                         : step
                                                                               .with
                                                                               .surface ===
-                                                                            'android-space-room-order'
-                                                                          ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
+                                                                            'android-space-curation-create-join'
+                                                                          ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
                                                                           : step
                                                                                 .with
                                                                                 .surface ===
-                                                                              'android-room-http-error-recovery'
-                                                                            ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
+                                                                              'android-space-room-order'
+                                                                            ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
                                                                             : step
                                                                                   .with
                                                                                   .surface ===
-                                                                                'android-room-settings-mobile'
-                                                                              ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
+                                                                                'android-room-http-error-recovery'
+                                                                              ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
                                                                               : step
                                                                                     .with
                                                                                     .surface ===
-                                                                                  'android-space-settings-mobile'
-                                                                                ? /!cancelled\(\).*outputs\.space-settings-mobile-started == 'true'/
+                                                                                  'android-room-settings-mobile'
+                                                                                ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
                                                                                 : step
                                                                                       .with
                                                                                       .surface ===
-                                                                                    'android-space-settings-resilience'
-                                                                                  ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
+                                                                                    'android-space-settings-mobile'
+                                                                                  ? /!cancelled\(\).*outputs\.space-settings-mobile-started == 'true'/
                                                                                   : step
                                                                                         .with
                                                                                         .surface ===
-                                                                                      'android-space-settings-core'
-                                                                                    ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
-                                                                                    : /!cancelled\(\).*outputs\.started == 'true'/;
+                                                                                      'android-space-settings-resilience'
+                                                                                    ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
+                                                                                    : step
+                                                                                          .with
+                                                                                          .surface ===
+                                                                                        'android-space-settings-core'
+                                                                                      ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
+                                                                                      : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(gate);
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -987,7 +1001,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(41);
+    expect(lines).toHaveLength(42);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

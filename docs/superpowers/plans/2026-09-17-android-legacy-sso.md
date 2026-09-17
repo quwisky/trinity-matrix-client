@@ -171,7 +171,7 @@ Nx, GitHub Actions, pnpm.
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs
-  pnpm exec nx run trinity-e2e-android:typecheck --skipNxCache
+  pnpm nx run trinity-e2e-android:typecheck --skipNxCache
   ```
 
   The guard may remain RED only for the not-yet-created journey/wiring. Provider
@@ -246,7 +246,7 @@ Nx, GitHub Actions, pnpm.
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs
-  pnpm exec nx run trinity-e2e-android:typecheck --skipNxCache
+  pnpm nx run trinity-e2e-android:typecheck --skipNxCache
   ```
 
   Mutate one obligation at a time for action classification, host relaunch,
@@ -299,7 +299,7 @@ Nx, GitHub Actions, pnpm.
 
   ```bash
   pnpm exec vitest run scripts/legacy-sso-migration.spec.mjs scripts/e2e-suite-registry.spec.mjs
-  pnpm exec nx run trinity-e2e-android:typecheck --skipNxCache
+  pnpm nx run trinity-e2e-android:typecheck --skipNxCache
   ```
 
 - [ ] **Step 5: Commit wiring**
@@ -328,9 +328,9 @@ Nx, GitHub Actions, pnpm.
 - [ ] **Step 2: Run the installed-Android suite three times sequentially**
 
   ```bash
-  pnpm exec nx run trinity-e2e-android:legacy-sso --skipNxCache
-  pnpm exec nx run trinity-e2e-android:legacy-sso --skipNxCache
-  pnpm exec nx run trinity-e2e-android:legacy-sso --skipNxCache
+  pnpm nx run trinity-e2e-android:legacy-sso --skipNxCache
+  pnpm nx run trinity-e2e-android:legacy-sso --skipNxCache
+  pnpm nx run trinity-e2e-android:legacy-sso --skipNxCache
   ```
 
   Require three unchanged first-attempt passes, all three stages each time, all
