@@ -133,6 +133,35 @@ export class AccountWorkspaceClient {
     await this.viewport.apply();
   }
 
+  /** Relaunch the installed host without clearing its persisted application state. */
+  async relaunch(profile = DESKTOP_ACCOUNT_PROFILE): Promise<void> {
+    await this.close();
+    await this.device.adb(
+      'shell',
+      'am',
+      'force-stop',
+      'eu.qwky.trinity',
+    );
+    this.active = await startNativeShellClient(
+      this.device,
+      'eu.qwky.trinity',
+      this.signal,
+    );
+    await this.waitElements(
+      '#homeserver, [data-testid="rail-rooms"]',
+      (elements) => elements.some((element) => element.visible),
+      'visible Login or persisted Rooms surface after host relaunch',
+      {},
+      60_000,
+    );
+    this.viewport = await openMaestroViewport(this.device, {
+      pid: this.active.pid,
+      ...profile,
+      signal: this.signal,
+    });
+    await this.viewport.apply();
+  }
+
   async elements(selector: string, filter: AccountElementFilter = {}): Promise<readonly AccountElement[]> {
     const value = await evaluateNative(this.webview, `(() => {
       const { selector, filter } = ${JSON.stringify({ selector, filter })};
