@@ -314,6 +314,10 @@ function decodeXml(value: string): string {
   return value.replaceAll('&amp;', '&').replaceAll('&quot;', '"');
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 async function readPersistedSsoState(
   device: MaestroDevice,
   signal: AbortSignal,
@@ -373,7 +377,7 @@ async function injectSsoCallback(
     '-c',
     'android.intent.category.BROWSABLE',
     '-d',
-    callback.href,
+    shellQuote(callback.href),
     '-p',
     TRINITY_PACKAGE,
   );
@@ -624,13 +628,6 @@ function createCases(): readonly LegacySsoCase[] {
       }) {
         const recorded = new Set<LegacySsoAssertion>();
         const expectedUserId = `@${sso.user}:localhost`;
-        const token = await mintUnspentLoginToken(
-          homeserver,
-          applicationOrigin,
-          sso,
-          signal,
-        );
-        secrets.LOGIN_TOKEN_2 = token;
         const forgedState = `forged-inflight-${Date.now()}`;
         secrets.SSO_STATE_SECRET_FORGED_2 = forgedState;
         const firstProvider = await openLegacySsoProvider(
@@ -652,6 +649,13 @@ function createCases(): readonly LegacySsoCase[] {
             device,
             signal,
           );
+          const token = await mintUnspentLoginToken(
+            homeserver,
+            applicationOrigin,
+            sso,
+            signal,
+          );
+          secrets.LOGIN_TOKEN_2 = token;
           tokenObserver = await armTokenLoginObserver(client, homeserver);
           await injectSsoCallback(device, token, forgedState);
 
@@ -778,6 +782,14 @@ function createCases(): readonly LegacySsoCase[] {
           assert.equal(appTokenLoginRequests, 0);
           await tokenObserver.close();
           tokenObserver = undefined;
+          await redeemAndRevoke(
+            homeserver,
+            token,
+            expectedUserId,
+            secrets,
+            'ACCESS_TOKEN_2',
+            signal,
+          );
           await firstProvider.close();
 
           await device.runFlow(
@@ -801,15 +813,6 @@ function createCases(): readonly LegacySsoCase[] {
           );
           await secondProvider.completeDexSignIn(sso.email, sso.pass);
           await waitForRooms(client);
-
-          await redeemAndRevoke(
-            homeserver,
-            token,
-            expectedUserId,
-            secrets,
-            'ACCESS_TOKEN_2',
-            signal,
-          );
         } catch (error) {
           failures.push(error);
         } finally {

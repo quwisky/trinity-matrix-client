@@ -15,6 +15,14 @@ const contractPath = resolve(root, 'e2e/android/legacy-sso-contract.mts');
 const providerPath = resolve(root, 'e2e/android/legacy-sso-provider.mts');
 const journeyPath = resolve(root, 'e2e/android/legacy-sso-journeys.mts');
 const dexFlowPath = resolve(root, 'e2e/android/flows/legacy-sso-dex.yaml');
+const chromeSetupFlowPath = resolve(
+  root,
+  'e2e/android/flows/legacy-sso-chrome-setup.yaml',
+);
+const dexReadyFlowPath = resolve(
+  root,
+  'e2e/android/flows/legacy-sso-dex-ready.yaml',
+);
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
@@ -185,8 +193,14 @@ describe('Android legacy SSO migration', () => {
   it('uses a real Chrome Custom Tab and Maestro for the pinned Dex form', () => {
     const provider = readIfPresent(providerPath);
     const flow = readIfPresent(dexFlowPath);
+    const chromeSetupFlow = readIfPresent(chromeSetupFlowPath);
+    const dexReadyFlow = readIfPresent(dexReadyFlowPath);
     expect(provider, 'legacy-sso-provider.mts must exist').not.toBe('');
     expect(flow, 'legacy-sso-dex.yaml must exist').not.toBe('');
+    expect(chromeSetupFlow, 'legacy-sso-chrome-setup.yaml must exist').not.toBe(
+      '',
+    );
+    expect(dexReadyFlow, 'legacy-sso-dex-ready.yaml must exist').not.toBe('');
     expect(provider).toContain("const CHROME_PACKAGE = 'com.android.chrome'");
     expect(provider).toContain('/data/local/tmp/chrome-command-line');
     expect(provider).toContain('--disable-fre');
@@ -196,6 +210,8 @@ describe('Android legacy SSO migration', () => {
     expect(provider).toContain("'am', 'force-stop', CHROME_PACKAGE");
     expect(provider).toContain('uiautomator');
     expect(provider).toContain('legacy-sso-dex.yaml');
+    expect(provider).toContain('legacy-sso-chrome-setup.yaml');
+    expect(provider).toContain('legacy-sso-dex-ready.yaml');
     expect(provider).toContain('device.runFlow(');
     expect(provider).toContain('DEX_EMAIL_SECRET');
     expect(provider).toContain('DEX_PASSWORD');
@@ -206,6 +222,18 @@ describe('Android legacy SSO migration', () => {
     expect(flow).toContain('inputText: ${DEX_EMAIL_SECRET}');
     expect(flow).toContain('inputText: ${DEX_PASSWORD}');
     expect(flow).toContain('id: submit-login');
+    expect(chromeSetupFlow).toContain('appId: com.android.chrome');
+    expect(chromeSetupFlow).toContain('Use without an account');
+    expect(chromeSetupFlow).toContain('Accept & continue');
+    expect(chromeSetupFlow).toContain('No thanks');
+    expect(dexReadyFlow).toContain('appId: com.android.chrome');
+    expect(dexReadyFlow).toContain('androidWebViewHierarchy: devtools');
+    expect(dexReadyFlow).toContain('Your connection is not private');
+    expect(dexReadyFlow).toContain("tapOn: 'Advanced'");
+    expect(dexReadyFlow).toContain('Proceed to localhost.*');
+    expect(dexReadyFlow).toContain('id: login');
+    expect(dexReadyFlow).toContain('id: password');
+    expect(dexReadyFlow).toContain('id: submit-login');
     for (const mutation of forbiddenDomActions) {
       expect(provider).not.toMatch(mutation);
     }
@@ -234,6 +262,7 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain('client.relaunch(');
     expect(journey).toMatch(/'am',\s*'start',\s*'-W'/u);
     expect(journey).toContain("'android.intent.action.VIEW'");
+    expect(journey).toContain('shellQuote(callback.href)');
     expect(journey).toMatch(/'-p',\s*TRINITY_PACKAGE/u);
     expect(journey).toContain('eu.qwky.trinity://sso-callback');
     expect(journey).toContain("type: 'm.login.token'");
@@ -287,6 +316,20 @@ describe('Android legacy SSO migration', () => {
     expect(journey).toContain('finally');
     expect(journey).toContain('await revokeMatrixSession(');
     expect(journey).not.toMatch(/page\.goto\([^\n]*\/sso-callback/u);
+    const inFlight = journey.slice(
+      journey.indexOf("id: 'inflight-forged-callback-recovery'"),
+    );
+    const firstLegitimate = inFlight.indexOf('await startLegitimateSso(');
+    const mint = inFlight.indexOf('await mintUnspentLoginToken(');
+    const redemption = inFlight.indexOf('await redeemAndRevoke(');
+    const secondLegitimate = inFlight.indexOf(
+      'await startLegitimateSso(',
+      firstLegitimate + 1,
+    );
+    expect(firstLegitimate).toBeGreaterThanOrEqual(0);
+    expect(mint).toBeGreaterThan(firstLegitimate);
+    expect(redemption).toBeGreaterThan(mint);
+    expect(secondLegitimate).toBeGreaterThan(redemption);
   });
 
   it('proves host persistence plus the silent in-flight callback geometry', () => {

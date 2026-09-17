@@ -108,20 +108,24 @@ fresh legitimate attempt.
 
 The suite uses the production Capacitor Browser handoff. Before a provider
 round trip it resets the disposable Chrome profile, writes a bounded Chrome
-command line under `/data/local/tmp`, and starts Chrome once with first-run
-suppression, loopback IPv4 resolution, certificate acceptance for the
-disposable harness, and a named debugging socket. It then reactivates Trinity;
-the product's `Browser.open` launches the actual Chrome Custom Tab in that
-already configured process.
+command line under `/data/local/tmp`, and requests first-run suppression,
+loopback IPv4 resolution, and disposable-certificate acceptance. Stable Chrome
+may ignore those test flags: a bounded Maestro setup flow therefore dismisses
+the native first-run prompts when present, and the provider-readiness flow
+accepts only Chrome's localhost certificate interstitial through its native
+Advanced/Proceed controls. It then reactivates Trinity; the product's
+`Browser.open` launches the actual Chrome Custom Tab in that configured
+process.
 
 Dex remains the pinned container configured by `dex.yaml`. A dedicated Maestro
-flow attaches to `com.android.chrome`, waits for the fixed Dex form, focuses and
-fills the exact harness email and password through native input, and taps the
-provider submit control. UIAutomator/DevTools may observe the provider surface
-and its stable ids, but may not fill, click, submit, or redirect it. Clearing
-the disposable Chrome profile between legitimate stages prevents a prior Dex
-cookie from turning the next required provider interaction into a silent
-login.
+flow attaches to `com.android.chrome`, crosses the disposable localhost
+certificate warning when present, waits for the fixed Dex form through
+Maestro's DevTools-backed WebView hierarchy, focuses and fills the exact harness
+email and password through native input, and taps the provider submit control.
+UIAutomator proves the native Chrome package; neither UIAutomator nor CDP fills,
+clicks, submits, or redirects the provider. Clearing the disposable Chrome
+profile between legitimate stages prevents a prior Dex cookie from turning the
+next required provider interaction into a silent login.
 
 No Playwright Android driver is installed. The Chrome command-line file is
 removed immediately after startup, Chrome is force-stopped during cleanup, and
@@ -175,18 +179,20 @@ prove that negative boundary; it never records request bodies or tokens.
 
 ### Stage 3: forged callback during a live sign-in
 
-1. Reset the installed app with the desktop account profile and mint another
-   unspent token through the isolated fixture.
+1. Reset the installed app with the desktop account profile.
 2. Enter the homeserver natively, configure fresh Chrome, start SSO natively,
    and pause on the real Dex form without submitting it. This establishes a
    durable live state stash in the installed app.
-3. Inject the forged-state token callback through the Android deep-link
+3. Mint another unspent token through the isolated fixture, then inject its
+   forged-state callback through the Android deep-link
    boundary. Require Chrome to close and Trinity's callback surface to resume.
 4. Record all 15 direct identities: completing copy, Trinity wordmark,
    single heading and main landmark, present/in-range card bounds, inset body,
    absent verification error, and absent Rooms route.
-5. Send native Back, require Login, configure a fresh provider surface, start a
-   new legitimate SSO attempt, fill Dex through Maestro, and wait for Rooms.
+5. Require zero app token-login requests, redeem and revoke the still-fresh
+   forged token independently, then send native Back and require Login.
+6. Configure a fresh provider surface, start a new legitimate SSO attempt,
+   fill Dex through Maestro, and wait for Rooms.
 
 The forged token remains secret and unredeemed by Trinity. The final legitimate
 provider callback, not the injected callback, is the only completion proof.
