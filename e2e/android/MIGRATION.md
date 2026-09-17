@@ -2825,6 +2825,70 @@ Playwright predecessor at retry 0, review with no unresolved findings, and
 original-attempt hosted Android/browser/renderer artifact audit. Do not retire
 or edit the predecessor. This mapping does not authorize merging PR #677.
 
+## OIDC-native login journeys
+
+`android.oidc-login` preserves issue #724's four canonical mocked
+MSC3861/MSC2965 definitions in
+`e2e/browser/journeys/accounts/oidc-login.spec.mts`, pinned at SHA-256
+`e9a0dadad15f155a3c69b49e06d8b4539ea7d7f446fd08cfaa565fa3ba6ecb8a`.
+The four owned spans are lines 86–100, 102–169, 171–248 and 250–285. Their
+4 + 13 + 7 + 2 shape maps to exactly 26 assertion identities. The shared
+navigation helper remains unchanged at
+`e2e/support/app.mts`, SHA-256
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`.
+
+The installed suite resets the app between four ordered stages. The first
+classifies delegated authentication and proves Continue plus Create account
+are visible while password and legacy-SSO actions are absent. The second
+captures exact dynamic native-client registration and authorization parameters,
+then returns a matching-state provider-error callback and proves the exact
+error surface. The third returns an exact authorization code, captures the
+token request and proves the durable verifier's RFC 7636 S256 digest equals the
+original challenge before returning token and whoami responses. The final
+stage returns password login plus exact `M_UNRECOGNIZED` responses from both
+authentication-metadata endpoints and proves password fallback.
+
+One logical `OidcLoginFixture` controls the exact allowlisted Matrix and
+provider endpoints across the Trinity WebView and disposable emulator Chrome
+handoff. It serializes paused requests, applies exact CORS and OIDC metadata,
+and fails unexpected traffic within the owned scopes. Maestro performs every
+reachable Trinity action through the installed Android host. CDP supplies
+protocol responses and read-only observations; it does not click, focus, fill,
+submit, navigate or invoke product handlers. The suite deliberately ends at
+the predecessor's wire-level token/whoami boundary and does not claim Matrix
+sync, encryption or Rooms arrival.
+
+Live state, PKCE verifier and challenge, authorization code, mocked tokens,
+headers and request bodies remain in memory and are registered for artifact
+redaction. Each run records one attempt, zero retries, all 26 identities once,
+sanitized protocol observations, trusted native actions, renderer/APK/profile
+provenance, stage durations and pass/failure captures. Cleanup releases paused
+requests, restores Fetch on both surfaces, closes CDP leases and forwards,
+clears disposable Chrome, closes the app client and device, then runs artifact
+redaction; cleanup failure remains a suite failure.
+
+```bash
+pnpm nx run trinity-e2e-android:oidc-login --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:oidc-login
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns only the serialized `android-avd`
+resource, and has a 20-minute Node timeout. CI places it on shard 4 after
+`password-registration` under a 25-minute wrapper. Started-only diagnostics
+use the `android-oidc-login` surface under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.oidc-login/`.
+
+Acceptance is still pending. It requires the focused and full contract gates,
+Android and browser typecheck/lint, formatting and documentation gates,
+effective reversible negative controls, three unchanged-input native first
+attempts with all four stages and all 26 identities at retry zero, the four
+exact unchanged Playwright predecessors sequentially at retry zero, review
+with no unresolved findings, and an original-attempt hosted
+Android/browser/renderer artifact audit. Do not retire or edit the Playwright
+predecessors. This mapping does not authorize merging PR #677.
+
 ## Legacy SSO journeys
 
 `android.legacy-sso` preserves issue #723's three canonical legacy Synapse/Dex

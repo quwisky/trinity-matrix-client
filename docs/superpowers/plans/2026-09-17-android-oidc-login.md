@@ -366,21 +366,21 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   `android.oidc-login`, command `e2e:android:oidc-login`, one shard command and
   one started-only diagnostics upload.
 
-- [ ] **Step 1: Add the uncached serialized Nx target**
+- [x] **Step 1: Add the uncached serialized Nx target**
 
   Mirror the retained Android Node/Maestro target shape with prebuilt Android
   dependency, bundle-manifest verification, suite id `android.oidc-login`,
   entrypoint `e2e/android/oidc-login-journeys.mts`, `android-avd` resource and a
   1,200,000 ms Node timeout.
 
-- [ ] **Step 2: Add package and registry entries**
+- [x] **Step 2: Add package and registry entries**
 
   Register `e2e:android:oidc-login`, required Maestro/Android prerequisites,
   protocol/security/host/journey contract types, source entrypoint, artifact
   root, no cache and pull-request tier. Add the matching command and ensure
   prerequisite ordering remains canonical.
 
-- [ ] **Step 3: Place the suite on shard 4 and add started-only diagnostics**
+- [x] **Step 3: Place the suite on shard 4 and add started-only diagnostics**
 
   Place the suite on Android shard 4 after `password-registration`, preserving
   every existing suite's relative order. Invoke it through
@@ -389,7 +389,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   started under surface `android-oidc-login` and report path
   `dist/.playwright/trinity-e2e-android/*/android.oidc-login/**`.
 
-- [ ] **Step 4: Run wiring guards and typecheck**
+- [x] **Step 4: Run wiring guards and typecheck**
 
   ```bash
   pnpm exec vitest run scripts/oidc-login-migration.spec.mjs \
@@ -397,7 +397,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   pnpm nx run trinity-e2e-android:typecheck --skipNxCache
   ```
 
-- [ ] **Step 5: Commit wiring**
+- [x] **Step 5: Commit wiring**
 
   ```bash
   git add e2e/android/project.json package.json \
@@ -416,7 +416,7 @@ Capacitor Preferences/deep links, Nx, GitHub Actions, pnpm.
   above.
 - Write runtime evidence only under ignored `dist/` artifact roots.
 
-- [ ] **Step 1: Document ownership and exact execution**
+- [x] **Step 1: Document ownership and exact execution**
 
   Add the pinned source hashes/spans, 26 identities, native/CDP boundary,
   endpoint allowlist, redaction/cleanup contract, target/script commands,
