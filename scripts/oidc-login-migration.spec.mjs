@@ -296,6 +296,12 @@ describe('Android OIDC-native login migration', () => {
     );
     expect(journey).toContain('\'[data-testid="oidc-continue"]\'');
     expect(journey).toContain('\'[data-testid="oidc-register"]\'');
+    expect(journey).toMatch(
+      /client\.visible\(\s*'\[role="alert"\]',\s*\{ exactText: 'E2E declined' \},\s*60_000,?\s*\)/u,
+    );
+    expect(journey).not.toContain(
+      "assert(callbackBody.text.includes('E2E declined'))",
+    );
     expect(journey).toContain('new Set<OidcLoginAssertion>()');
     expect(journey).toContain('assert(!recorded.has(identity)');
     expect(journey).toContain('expectedAssertions: 26');
