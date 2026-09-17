@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { redactMaestroArtifacts } from '../e2e/android/maestro-session.mts';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/accounts/registration.spec.mts';
@@ -211,6 +214,31 @@ describe('Android password-registration migration', () => {
     expect(journey).not.toMatch(
       /observation:\s*(?:password|accessToken|responseBody)/u,
     );
+  });
+
+  it('redacts injected password and access-token artifact payloads', async () => {
+    const directory = await mkdtemp(
+      join(tmpdir(), 'trinity-password-registration-redaction-'),
+    );
+    const password = 'Trinity-registration-negative-control';
+    const accessToken = 'syt_negative_control_token';
+    const artifact = join(directory, 'maestro.log');
+    try {
+      await writeFile(
+        artifact,
+        `SECRET_TEXT=${password}\nAuthorization: Bearer ${accessToken}\n`,
+      );
+      await redactMaestroArtifacts(directory, {
+        PASSWORD: password,
+        ACCESS_TOKEN: accessToken,
+      });
+      const redacted = await readFile(artifact, 'utf8');
+      expect(redacted).not.toContain(password);
+      expect(redacted).not.toContain(accessToken);
+      expect(redacted.match(/\[REDACTED\]/gu)).toHaveLength(2);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('records one stage, four assertions, captures, and bounded cleanup', () => {
