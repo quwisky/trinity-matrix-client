@@ -2952,6 +2952,55 @@ batch; none changed the successful OIDC artifact or its accepted inputs. Do not
 retire or edit the Playwright predecessors. This mapping does not authorize
 merging PR #677.
 
+## Security settings journeys
+
+`android.security-settings` preserves issue #725's canonical Security settings
+definitions in `e2e/browser/journeys/trust/security-settings.spec.mts`, pinned at
+SHA-256
+`7da77f2e6b8d2091709ca6565bd54a08ed97115cce71e887ad1c46b6f5767fd9`.
+Lines 51–84 define the fresh-account posture and recovery setup journey. Lines
+86–136 define the 700×760 narrow verification journey, including the Android
+branch at lines 105–121. The browser-only trust-fault test at lines 138–223
+remains outside this native batch because its production hook is deliberately
+unavailable on Android. The navigation helper remains pinned at
+`43232dafb7e7a9a6d95cc54ef983a4574d7eb3bc03ca2fe594909c84f97f529b`,
+the application helper at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+and the account helper at
+`ac6ad39987eabf852a5067012bb7afc2e136214134c36a682119c567e62eeb14`.
+
+The contract records five direct plus four direct predecessor assertions and
+six inherited, stage-qualified Settings assertions: 15 unique identities in
+total. The first stage creates and signs in a disposable account, opens
+Settings and Security through native actions, proves the session, backup,
+verification and setup posture, opens exact `/encryption/setup` with
+`returnTo=/settings/security`, and returns safely. The second stage applies the
+exact 700×760 desktop-trait profile, opens `/encryption/verify`, proves the
+focused `Verify device` page, closes it natively, and proves exact
+`/settings/security` with focused `Security` content. REST is limited to
+fixture setup and observation; user journeys use Maestro-native actions. No
+DOM action or production debug hook is introduced.
+
+```bash
+pnpm nx run trinity-e2e-android:security-settings --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:security-settings
+```
+
+The target is uncached and serial, depends on
+`trinity-android:build-prebuilt`, owns the serialized `android-avd` and
+`synapse` resources, and has a 15-minute Node timeout. CI places it on shard 4
+after `oidc-login` under a 20-minute wrapper. Started-only diagnostics use the
+`android-security-settings` surface under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.security-settings/`.
+Every stage records one attempt, zero retries, stage-qualified assertions and
+sanitized captures; cleanup and artifact redaction remain aggregate failures.
+
+Native and hosted acceptance are pending. Do not retire or edit the Playwright
+predecessor until the required three native passes, full predecessor browser
+run and original-attempt hosted evidence are accepted. This mapping does not
+authorize merging PR #677.
+
 ## Legacy SSO journeys
 
 `android.legacy-sso` preserves issue #723's three canonical legacy Synapse/Dex
