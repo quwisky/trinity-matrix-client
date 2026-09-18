@@ -89,6 +89,9 @@ export function createAccountFixtures(
   signal: AbortSignal,
 ): {
   account(role: string, options?: WorkspaceAccountOptions): Promise<NodeWorkspaceAccount>;
+  defaultKeyId(account: NodeWorkspaceAccount): Promise<string | undefined>;
+  keyBackupVersion(account: NodeWorkspaceAccount): Promise<string | undefined>;
+  masterKey(account: NodeWorkspaceAccount): Promise<string | undefined>;
   createRoom(account: NodeWorkspaceAccount, content: WorkspaceRoomContent): Promise<WorkspaceRoom>;
   setProfileAvatar(account: NodeWorkspaceAccount, png: Uint8Array): Promise<string>;
   createDirectRoom(
@@ -329,6 +332,55 @@ export function createAccountFixtures(
     const session = sessions.get(account.userId);
     assert(session, `No Matrix fixture session for ${account.userId}`);
     return session;
+  }
+
+  async function defaultKeyId(
+    owner: NodeWorkspaceAccount,
+  ): Promise<string | undefined> {
+    const path = `/user/${encodeURIComponent(owner.userId)}/account_data/m.secret_storage.default_key`;
+    const value = await get(access(owner), path, { allowNotFound: true });
+    if (value === undefined) return undefined;
+    const content = record(
+      value,
+      'Matrix fixture secret-storage default-key response',
+    );
+    return typeof content['key'] === 'string' ? content['key'] : undefined;
+  }
+
+  async function keyBackupVersion(
+    owner: NodeWorkspaceAccount,
+  ): Promise<string | undefined> {
+    const value = await get(access(owner), '/room_keys/version', {
+      allowNotFound: true,
+    });
+    if (value === undefined) return undefined;
+    const content = record(value, 'Matrix fixture key-backup response');
+    return typeof content['version'] === 'string'
+      ? content['version']
+      : undefined;
+  }
+
+  async function masterKey(
+    owner: NodeWorkspaceAccount,
+  ): Promise<string | undefined> {
+    const content = await request(access(owner), '/keys/query', 'POST', {
+      device_keys: { [owner.userId]: [] },
+    });
+    const masterKeys = record(
+      content['master_keys'] ?? {},
+      'Matrix fixture cross-signing master-key response',
+    );
+    const ownerKeys = masterKeys[owner.userId];
+    if (ownerKeys === undefined) return undefined;
+    const keyDocument = record(
+      ownerKeys,
+      'Matrix fixture account master-key response',
+    );
+    const keys = record(
+      keyDocument['keys'] ?? {},
+      'Matrix fixture account master-key map',
+    );
+    return Object.keys(keys)[0];
   }
 
   async function createRoom(
@@ -780,6 +832,9 @@ export function createAccountFixtures(
 
   return {
     account,
+    defaultKeyId,
+    keyBackupVersion,
+    masterKey,
     createRoom,
     setProfileAvatar,
     createDirectRoom,

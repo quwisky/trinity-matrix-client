@@ -12,6 +12,7 @@ import {
   readNativeShellSurface,
   startNativeShellClient,
   waitForNativeShellState,
+  type NativeShellApplicationId,
 } from './native-shell-client.mts';
 import { openMaestroTargetPoint, type NativeTargetPoint } from './maestro-target-point.mts';
 import type { createNodeAccount } from '../support/node-account.mts';
@@ -94,12 +95,20 @@ export class AccountWorkspaceClient {
   readonly workspaceRoot: string;
   readonly output: string;
   readonly signal: AbortSignal;
+  readonly applicationId: NativeShellApplicationId;
 
-  constructor(device: MaestroDevice, workspaceRoot: string, output: string, signal: AbortSignal) {
+  constructor(
+    device: MaestroDevice,
+    workspaceRoot: string,
+    output: string,
+    signal: AbortSignal,
+    applicationId: NativeShellApplicationId = 'eu.qwky.trinity',
+  ) {
     this.device = device;
     this.workspaceRoot = workspaceRoot;
     this.output = output;
     this.signal = signal;
+    this.applicationId = applicationId;
   }
 
   get webview(): NonNullable<typeof this.active>['webview'] {
@@ -125,9 +134,22 @@ export class AccountWorkspaceClient {
 
   async reset(profile = DESKTOP_ACCOUNT_PROFILE): Promise<void> {
     await this.close();
-    assert.equal(await this.device.adb('shell', 'pm', 'clear', 'eu.qwky.trinity'), 'Success');
-    await this.device.adb('shell', 'pm', 'grant', 'eu.qwky.trinity', 'android.permission.POST_NOTIFICATIONS');
-    this.active = await startNativeShellClient(this.device, 'eu.qwky.trinity', this.signal);
+    assert.equal(
+      await this.device.adb('shell', 'pm', 'clear', this.applicationId),
+      'Success',
+    );
+    await this.device.adb(
+      'shell',
+      'pm',
+      'grant',
+      this.applicationId,
+      'android.permission.POST_NOTIFICATIONS',
+    );
+    this.active = await startNativeShellClient(
+      this.device,
+      this.applicationId,
+      this.signal,
+    );
     await this.visible('#homeserver', {}, 60_000);
     this.viewport = await openMaestroViewport(this.device, { pid: this.active.pid, ...profile, signal: this.signal });
     await this.viewport.apply();
@@ -140,11 +162,11 @@ export class AccountWorkspaceClient {
       'shell',
       'am',
       'force-stop',
-      'eu.qwky.trinity',
+      this.applicationId,
     );
     this.active = await startNativeShellClient(
       this.device,
-      'eu.qwky.trinity',
+      this.applicationId,
       this.signal,
     );
     await this.waitElements(
@@ -293,7 +315,7 @@ export class AccountWorkspaceClient {
     const flow = join(this.output, `accounts-point-long-press-${actionId}.yaml`);
     await writeFile(
       flow,
-      `appId: eu.qwky.trinity\n---\n- swipe:\n    start: "${point.x},${point.y}"\n    end: "${point.x + LONG_PRESS_DRIFT_PX},${point.y}"\n    duration: ${LONG_PRESS_DURATION_MS}\n`,
+      `appId: ${this.applicationId}\n---\n- swipe:\n    start: "${point.x},${point.y}"\n    end: "${point.x + LONG_PRESS_DRIFT_PX},${point.y}"\n    duration: ${LONG_PRESS_DURATION_MS}\n`,
     );
     await evaluateNative(this.webview, `(() => {
       const {selector,filter}=${JSON.stringify({ selector, filter })};
@@ -465,7 +487,7 @@ export class AccountWorkspaceClient {
     try {
       await this.device.runFlow(
         join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
-        { APP_ID: 'eu.qwky.trinity', SECRET_TEXT: `x${value}` },
+        { APP_ID: this.applicationId, SECRET_TEXT: `x${value}` },
       );
       await this.key('home');
       await this.key('forwardDelete');
@@ -496,7 +518,7 @@ export class AccountWorkspaceClient {
     await this.key('end');
     await this.device.runFlow(
       join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
-      { APP_ID: 'eu.qwky.trinity', SECRET_TEXT: value },
+      { APP_ID: this.applicationId, SECRET_TEXT: value },
     );
     const matches = await evaluateNative(
       this.webview,
@@ -528,7 +550,7 @@ export class AccountWorkspaceClient {
           this.workspaceRoot,
           'e2e/android/flows/accounts-focused-paste.yaml',
         ),
-        { APP_ID: 'eu.qwky.trinity', POINT_URL: pointEndpoint.url },
+        { APP_ID: this.applicationId, POINT_URL: pointEndpoint.url },
       );
     } catch (error) {
       failures.push(error);
@@ -587,7 +609,7 @@ export class AccountWorkspaceClient {
       // Maestro parses absolute swipe coordinates before expanding variables.
       // Materialize the measured integer points in the ignored proof directory.
       const flow = join(this.output, `accounts-point-swipe-${++this.action}.yaml`);
-      await writeFile(flow, `appId: eu.qwky.trinity\n---\n- swipe:\n    start: "${start.x},${start.y}"\n    end: "${end.x},${end.y}"\n    duration: 600\n`);
+      await writeFile(flow, `appId: ${this.applicationId}\n---\n- swipe:\n    start: "${start.x},${start.y}"\n    end: "${end.x},${end.y}"\n    duration: 600\n`);
       let failure: unknown;
       try {
         await this.device.runFlow(flow, {});
@@ -727,7 +749,7 @@ export class AccountWorkspaceClient {
     let documentReplaced = false;
     try {
       console.info(`[accounts] native action ${actionId}: ${flow} ${selector}`);
-      const flowVariables: Record<string, string> = { APP_ID: 'eu.qwky.trinity', POINT: `${initialPoint.x},${initialPoint.y}`, ...variables };
+      const flowVariables: Record<string, string> = { APP_ID: this.applicationId, POINT: `${initialPoint.x},${initialPoint.y}`, ...variables };
       if (currentPoint) {
         pointEndpoint = await openMaestroTargetPoint({
           signal: this.signal,
@@ -816,7 +838,10 @@ export class AccountWorkspaceClient {
   async hideKeyboard(): Promise<void> {
     const actionId = ++this.action;
     const flow = join(this.output, `accounts-hide-keyboard-${actionId}.yaml`);
-    await writeFile(flow, 'appId: eu.qwky.trinity\n---\n- hideKeyboard\n');
+    await writeFile(
+      flow,
+      `appId: ${this.applicationId}\n---\n- hideKeyboard\n`,
+    );
     console.info(`[accounts] native action ${actionId}: hide keyboard`);
     let failure: unknown;
     try {
