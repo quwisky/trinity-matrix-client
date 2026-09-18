@@ -3120,32 +3120,47 @@ two-package teardown. Do not retire or edit the four Playwright predecessors
 until all required local and original-attempt hosted evidence is accepted. This
 mapping does not authorize merging PR #677.
 
-Local acceptance on 2026-09-18 ran three unchanged full-suite invocations:
-`mu6cxj20-9d48cb37-8475-4847-9324-88f66967a333`,
-`mu6dkog5-5a00de9e-55a6-418c-a198-8dbe01e9c3f7`, and
-`mu6e7qbd-9eaed241-ddbc-4241-8777-9ac80f25d956`. They passed in 1,049.693,
-1,046.757, and 1,042.233 seconds, respectively, each on attempt 1 with zero
-retries, four passed stages and all 54 assertion identities. The final run's
-stage durations were 320.850 seconds for replacement, 237.801 seconds for
-password-cancel atomicity, 268.583 seconds for original-key viability, and
-181.372 seconds for the Settings escape hatch. Each retained artifact had
-exactly eight final device/WebView screenshots, 90 explicit `[REDACTED]`
-markers, and zero bearer-token, Matrix access-token or access-token query
-matches; secret-bearing Maestro raster diagnostics were absent.
+The first hosted run of the original implementation exposed a shared-login
+regression before this suite started: `android.identity-presence` lost native
+focus between separately measured and executed username/password actions. The
+repair removes keyboard traversal from login and resolves the target point
+inside the same Maestro flow that taps, erases and enters text, so a package
+switch cannot stale the coordinate. Exact identity regression invocation
+`mu6gh6do-d1a0783b-b530-40b4-ae5d-5228641b981c` then passed all three stages on
+attempt 1 with zero retries: DM avatar in 81.054 seconds, member presence in
+91.429 seconds and DM presence in 64.189 seconds.
 
-Exact predecessor invocation
-`mu6ev5r3-f6068cfd-ba9f-4e98-9612-9ee43cc1ccd5` passed all four Playwright
-cases at one worker and retry 0 in 26.475 seconds. Repository validation passed
+Post-repair local acceptance on 2026-09-18 ran three unchanged full-suite
+invocations: `mu6gnn80-8d1c157e-fae9-4712-881e-3f579ff26545`,
+`mu6hcj5a-a83ee60c-e63f-448b-9f80-b18ae52a818b`, and
+`mu6i19y7-2210dd52-2733-4264-9168-aa268492d82a`. They passed in 1,129.270,
+1,122.315, and 1,119.185 seconds, respectively, each on attempt 1 with zero
+retries, four passed stages and all 54 assertion identities. The final run's
+stage durations were 337.581 seconds for replacement, 257.399 seconds for
+password-cancel atomicity, 288.728 seconds for original-key viability, and
+199.572 seconds for the Settings escape hatch. Each retained artifact had
+exactly eight final device/WebView screenshots, 250 explicit `[REDACTED]`
+markers, and zero bearer-token, Matrix access-token, authorization-header or
+access-token query matches; secret-bearing Maestro raster diagnostics were
+absent. Visual review confirmed the ready Security posture for replacement,
+cancel and original-key stages and the owning recovery-key dialog for the
+escape hatch.
+
+Exact canonical predecessor invocation
+`mu6jb2q8-1364090f-5ee8-4b7b-8034-55382c548c77` passed all four Playwright
+cases at one worker and retry 0 in 25.6 seconds. Repository validation passed
 48/48 uncached typecheck tasks, 77/77 uncached lint tasks, 973/973 script tests,
 145/145 focused migration tests, stylelint, format, architecture and assembled
-documentation checks. The fresh 49-file production renderer contained
-15,302,535 bytes with manifest SHA-256
-`af5ea42c73c82c63241d58c5ea755905d0f288421ce1bf5f2e93ec2d309a7bfe`.
+documentation checks. At clean repair commit
+`c8ae683ae42f5744d6090725f95bfe517ef61b8c`, the fresh 49-file production
+renderer contained 15,302,529 bytes with manifest SHA-256
+`ccdcf507f6313faeb9e641cdea5404644df6c83f8efb0ae33e427e1b679eb644`.
 Primary and secondary APK SHA-256 values were
-`d9ad261bc1a9f8291bda20ff2f54a08b0904363174495cf4701f12ef2f9a0735` and
-`bba9bfb40d982e9ffa97105b283332a1c5aea0ae190b1ed64e312b42d6512fe3`;
-the Android runner smoke passed against that renderer in 101 seconds with
-clean Synapse teardown.
+`d2b23fb7e8f3b7edda97b6b6a444fd313fca63c4e7806467e6b43c331acbbfad` and
+`fade7db4045ac15dfbce8d310b3bdb07db129cf779b979b0e8924de11c58480f`;
+Android runner-smoke invocation
+`mu6jdjyg-31b21fb3-3d58-4f9a-ba55-7c6922f348a4` passed against that exact
+renderer in 103 seconds with clean Synapse teardown.
 
 ## Legacy SSO journeys
 
