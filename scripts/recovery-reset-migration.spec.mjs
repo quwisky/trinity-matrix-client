@@ -565,6 +565,7 @@ describe('Android recovery-reset migration', () => {
   it('registers one bounded uncached two-APK Nx suite and package command', () => {
     const project = JSON.parse(read('e2e/android/project.json'));
     const target = project.targets['recovery-reset'];
+    const journey = read(journeyPath);
     expect(target).toMatchObject({
       cache: false,
       parallelism: false,
@@ -578,6 +579,7 @@ describe('Android recovery-reset migration', () => {
     });
     expect(target.options.command).toContain('--suite=android.recovery-reset');
     expect(target.options.command).toContain('--timeout-ms=2700000');
+    expect(journey).toContain('{ timeout: 2_700_000 }');
     expect(target.options.command).toContain(
       '--entrypoint=e2e/android/recovery-reset-journeys.mts',
     );

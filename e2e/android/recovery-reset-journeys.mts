@@ -856,7 +856,7 @@ assert.equal(
 
 void test(
   'Android recovery-reset journeys',
-  { timeout: 1_800_000 },
+  { timeout: 2_700_000 },
   async (context) => {
     await withNodeTestResources(
       { testId: context.name, signal: context.signal },
