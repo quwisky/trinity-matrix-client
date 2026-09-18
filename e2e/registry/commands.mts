@@ -396,6 +396,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.sso-recovery-reset'],
   },
   {
+    name: 'e2e:android:message-authenticity-shield',
+    command: 'nx run trinity-e2e-android:message-authenticity-shield',
+    kind: 'canonical',
+    suiteIds: ['android.message-authenticity-shield'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -608,6 +614,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'sso-recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi',
     tier: 'pull-request',
     suiteIds: ['android.sso-recovery-reset'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-authenticity-shield-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-authenticity-shield'],
   },
   {
     command:
