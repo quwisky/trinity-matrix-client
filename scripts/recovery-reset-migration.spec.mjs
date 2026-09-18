@@ -162,7 +162,12 @@ function assertProtectedRuntimeContract(journey) {
     'assert(replacementKey.length > 0)',
     'assert.notEqual(replacementKey, originalKey)',
     "spelledOut.split('\\n').filter((line) => line.trim().length > 0)",
+    'assert.equal(consequenceLines.length, 4)',
     "assert(spelledOut.includes('Type RESET to confirm'))",
+    'assert.equal(wrongWordKey, before.defaultKey)',
+    "assert(defaultKey, 'Initial secret-storage default key exists')",
+    "assert(backupVersion, 'Initial key-backup version exists')",
+    "assert(masterKey, 'Initial cross-signing master key exists')",
     'new Set<RecoveryResetAssertion>()',
     'assert(!recorded.has(identity)',
     'expectedStages: 4',
@@ -427,6 +432,43 @@ describe('Android recovery-reset migration', () => {
     expect(JSON.stringify(client.record.mock.calls)).not.toContain(recoveryKey);
   });
 
+  it('suppresses failure capture for a populated password without observing its value', async () => {
+    expect(
+      diagnosticsPath,
+      'recovery-reset-diagnostics.mts must exist',
+    ).toSatisfy(existsSync);
+    if (!existsSync(diagnosticsPath)) return;
+    const { captureSecretSafe } = await import(diagnosticsPath);
+    const client = {
+      output: '/unused',
+      elements: vi.fn(async () => [
+        {
+          visible: true,
+          text: '',
+          value: null,
+          hasValue: true,
+        },
+      ]),
+      surface: vi.fn(async () => ({
+        url: 'https://localhost/encryption/reset',
+      })),
+      record: vi.fn(async () => undefined),
+      capture: vi.fn(async () => undefined),
+    };
+
+    await captureSecretSafe(client, 'failed-secondary');
+
+    expect(client.capture).not.toHaveBeenCalled();
+    expect(client.record).toHaveBeenCalledWith(
+      'failed-secondary-capture',
+      expect.objectContaining({
+        capture: 'suppressed-sensitive-surface',
+        visibleSensitiveSurface: true,
+      }),
+    );
+    expect(JSON.stringify(client.record.mock.calls)).not.toContain('password');
+  });
+
   it('rejects warning, atomicity, key, escape-hatch, cleanup and redaction weakenings', () => {
     const journey = readIfPresent(journeyPath);
     if (!journey) return;
@@ -435,6 +477,10 @@ describe('Android recovery-reset migration', () => {
       [
         "spelledOut.split('\\n').filter((line) => line.trim().length > 0)",
         '[spelledOut]',
+      ],
+      [
+        'assert.equal(consequenceLines.length, 4)',
+        'assert(consequenceLines.length > 0)',
       ],
       [
         "assert(spelledOut.includes('Type RESET to confirm'))",
@@ -459,6 +505,22 @@ describe('Android recovery-reset migration', () => {
       [
         "assert(feedback.text.includes('RESET'))",
         "assert(feedback.text.includes(''))",
+      ],
+      [
+        'assert.equal(wrongWordKey, before.defaultKey)',
+        'assert.equal(wrongWordKey, wrongWordKey)',
+      ],
+      [
+        "assert(defaultKey, 'Initial secret-storage default key exists')",
+        'void defaultKey',
+      ],
+      [
+        "assert(backupVersion, 'Initial key-backup version exists')",
+        'void backupVersion',
+      ],
+      [
+        "assert(masterKey, 'Initial cross-signing master key exists')",
+        'void masterKey',
       ],
       [
         'assert.equal(backupAfter, before.backupVersion)',

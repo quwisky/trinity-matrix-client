@@ -10,7 +10,7 @@ interface SecretSafeCaptureClient {
   elements(
     selector: string,
   ): Promise<
-    readonly Pick<AccountElement, 'visible' | 'text' | 'value'>[]
+    readonly Pick<AccountElement, 'visible' | 'text' | 'value' | 'hasValue'>[]
   >;
   surface(): Promise<{ readonly url: string }>;
   record(name: string, value: unknown): Promise<void>;
@@ -27,7 +27,7 @@ export async function captureSecretSafe(
 ): Promise<void> {
   let sensitiveSurfaces: readonly Pick<
     AccountElement,
-    'visible' | 'text' | 'value'
+    'visible' | 'text' | 'value' | 'hasValue'
   >[];
   try {
     sensitiveSurfaces = await client.elements(sensitiveSurfaceSelector);
@@ -49,6 +49,7 @@ export async function captureSecretSafe(
     (element) =>
       element.visible &&
       (element.text.trim().length > 0 ||
+        element.hasValue ||
         (element.value?.trim().length ?? 0) > 0),
   );
   if (visibleSensitiveSurface) {
