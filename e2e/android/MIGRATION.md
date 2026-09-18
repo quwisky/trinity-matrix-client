@@ -3370,3 +3370,68 @@ Final acceptance now requires a fresh original-attempt hosted
 Android/browser/renderer artifact audit from the exact consolidated tree. Do
 not retire or edit the predecessors. This mapping does not authorize merging PR
 #677.
+
+## SSO recovery-reset refusal journey
+
+`android.sso-recovery-reset` maps issue #727's single legacy-SSO refusal
+definition in `e2e/browser/journeys/trust/sso-recovery-reset.spec.mts`. The
+predecessor is pinned at SHA-256
+`4d4a15f2518a40a1845dfa965d03757697be9d9613030d757b2c74004441ed0b`.
+Its availability guard, refusal case and key-backup helper own nine direct assertion identities:
+non-empty preconditions, both visible reset controls, the
+exact identity-provider refusal, absence of a new recovery key and password
+prompt, and unchanged server-side master key plus backup version.
+
+The replacement uses only `session.synapse.ssoReset`. A disposable host
+Chromium context completes the real pinned Dex flow to obtain a short-lived API
+observation session, seeds cross-signing, an empty key backup and the recovery
+pointer needed by native Security navigation only when missing, and reads the
+exact server state before and after the product flow.
+The installed Pixel 5-profile app performs its separate real SSO login through
+the native Chrome handoff. Every Trinity and Dex action is driven by Maestro;
+renderer access is read-only. The refusal therefore proves that Trinity stopped
+before destructive reset work, rather than merely showing the expected copy
+after deleting the backup.
+
+```bash
+pnpm nx run trinity-e2e-android:sso-recovery-reset --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:sso-recovery-reset
+```
+
+The uncached serial target owns Chrome, the API 36 emulator and disposable
+Synapse/Dex resources. Its Node and Nx invocation budgets are 20 minutes; CI
+runs it on shard 2 immediately after `android.legacy-sso` and before
+`android.native-shell`, with a 25-minute command bound. Started-only diagnostics
+use the `android-sso-recovery-reset` surface under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.sso-recovery-reset/`.
+Provider credentials, login/access tokens and master-key material are redacted
+and scanned; the compared backup version is never written to artifacts. Maestro
+images inside flow artifacts are removed.
+Every report records exactly one attempt, zero retries, one stage and nine
+assertions with aggregate provider, API session, WebView, app-data and device
+cleanup.
+
+Local acceptance used unchanged source and renderer inputs at consolidated base
+`8f239378586a8cf0b4b75769faa24d0183c00e85`, renderer manifest
+`8fe22f3213994fe5df0b14822425057295bd768c0f5e3dd668c07de1e68f80f4`.
+Invocations `mu725vcx-fdafbd2b-72da-48fa-8305-ff28ad24235d`,
+`mu72b8ox-94ee8652-33cb-4b5c-9b59-d6f4eae3e265` and
+`mu72gmyo-5ffd381f-8879-4d5a-b49d-d718b0487743` each passed the single stage
+on attempt 1 with zero retries and all nine identities in 218,198, 222,229 and
+212,216 ms. Their native and WebView captures show the required refusal on the
+Pixel 5 profile; full invocation scans found no provider credential, Matrix
+token, bearer header or master-key material, no Maestro flow image survived,
+and every run completed provider, API-session, client, app-data, device and
+Synapse teardown. Twelve effective source-mutation controls protect both
+non-vacuous preconditions, refusal/absence outcomes, server-state atomicity,
+owned cleanup, image removal, redaction and scanning. Exact predecessor
+invocation `mu71tohi-8a5aabd7-0c8d-4a16-88c3-6a36983de144` passed its sole
+Chromium test in 5.7 seconds with one worker and retry 0, followed by clean
+Synapse teardown.
+
+Repository validation and final review passed at this source revision.
+Acceptance now remains pending only on original-attempt hosted
+renderer/browser/Android artifact audits at the exact consolidated revision.
+Do not retire or edit the predecessor before that evidence is accepted. This
+mapping does not authorize merging PR #677.

@@ -390,6 +390,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.legacy-sso'],
   },
   {
+    name: 'e2e:android:sso-recovery-reset',
+    command: 'nx run trinity-e2e-android:sso-recovery-reset',
+    kind: 'canonical',
+    suiteIds: ['android.sso-recovery-reset'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -596,6 +602,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'legacy-sso-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:legacy-sso; fi',
     tier: 'pull-request',
     suiteIds: ['android.legacy-sso'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'sso-recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.sso-recovery-reset'],
   },
   {
     command:
