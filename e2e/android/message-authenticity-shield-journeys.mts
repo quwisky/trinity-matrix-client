@@ -337,7 +337,7 @@ async function recordGeometry(
         unique,
         records,
         assertions.shield.geometryObservationComplete,
-        { complete: true },
+        { complete: true, geometry },
         direction,
       );
       assert.equal(geometry.shieldIsBodyChild, true);
@@ -358,7 +358,11 @@ async function recordGeometry(
         { bodyChild: geometry.receiptIsBodyChild },
         direction,
       );
-      assert.equal(Math.abs(geometry.shieldTrailingGap) <= 1, true);
+      assert.equal(
+        Math.abs(geometry.shieldTrailingGap) <= 1,
+        true,
+        `${direction} shield trailing gap: ${geometry.shieldTrailingGap}`,
+      );
       await recordAssertion(
         client,
         unique,
@@ -367,7 +371,11 @@ async function recordGeometry(
         { withinOnePixel: true },
         direction,
       );
-      assert.equal(Math.abs(geometry.receiptTrailingGap) <= 1, true);
+      assert.equal(
+        Math.abs(geometry.receiptTrailingGap) <= 1,
+        true,
+        `${direction} receipt trailing gap: ${geometry.receiptTrailingGap}`,
+      );
       await recordAssertion(
         client,
         unique,

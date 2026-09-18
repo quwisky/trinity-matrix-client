@@ -227,9 +227,8 @@ describe('Android message-authenticity shield migration', () => {
     expect(journey).toContain(
       'assert(receipt.receiptAriaLabel.includes(seerName))',
     );
-    expect(journey).toContain(
-      'assert.equal(Math.abs(geometry.shieldTrailingGap) <= 1, true)',
-    );
+    expect(journey).toContain('Math.abs(geometry.shieldTrailingGap) <= 1');
+    expect(journey).toContain('{ complete: true, geometry }');
     for (const identity of assertionIds) {
       expect(journey).not.toContain(`'${identity}'`);
     }
