@@ -84,6 +84,7 @@
     "e2e:android:security-settings": "node scripts/nx.mjs run trinity-e2e-android:security-settings",
     "e2e:android:recovery-reset": "node scripts/nx.mjs run trinity-e2e-android:recovery-reset",
     "e2e:android:legacy-sso": "node scripts/nx.mjs run trinity-e2e-android:legacy-sso",
+    "e2e:android:sso-recovery-reset": "node scripts/nx.mjs run trinity-e2e-android:sso-recovery-reset",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",
