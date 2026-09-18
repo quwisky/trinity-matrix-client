@@ -286,16 +286,16 @@ describe('Android recovery-reset migration', () => {
     expect(occurrences(client, 'this.applicationId')).toBeGreaterThanOrEqual(
       10,
     );
-    for (const fragment of [
-      "'pm', 'clear', this.applicationId",
-      "'pm', 'grant', this.applicationId",
-      "'am', 'force-stop', this.applicationId",
-      'startNativeShellClient(\n      this.device,\n      this.applicationId,',
-      'APP_ID: this.applicationId',
-      '`appId: ${this.applicationId}',
+    for (const pattern of [
+      /'pm',\s*'clear',\s*this\.applicationId/u,
+      /'pm',\s*'grant',\s*this\.applicationId/u,
+      /'am',\s*'force-stop',\s*this\.applicationId/u,
+      /startNativeShellClient\(\s*this\.device,\s*this\.applicationId,/u,
     ]) {
-      expect(client).toContain(fragment);
+      expect(client).toMatch(pattern);
     }
+    expect(client).toContain('APP_ID: this.applicationId');
+    expect(client).toContain('`appId: ${this.applicationId}');
   });
 
   it('keeps crypto observations bounded and access tokens closure-private', () => {
