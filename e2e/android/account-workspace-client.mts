@@ -469,11 +469,11 @@ export class AccountWorkspaceClient {
 
   async fill(selector: string, value: string): Promise<void> {
     await this.nativeAction(
-      'accounts-point-fill',
+      'accounts-current-point-fill',
       selector,
       {},
       { SECRET_TEXT: value },
-      { allowFocusedInput: true },
+      { allowFocusedInput: true, currentPoint: true },
     );
     const matches = await evaluateNative(this.webview, `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`);
     assert.equal(matches, true, `Native input reached ${selector}`);
@@ -914,41 +914,18 @@ export class AccountWorkspaceClient {
     await evaluateNative(this.webview, `(() => {document.querySelector(${JSON.stringify(selector)}).focus();return true})()`);
   }
 
-  /** Reach an exact product control through bounded native keyboard traversal. */
-  async focusWithKeyboard(
-    selector: string,
-    filter: AccountElementFilter = {},
-  ): Promise<void> {
-    const maximumTabPresses = 12;
-    for (let presses = 0; presses <= maximumTabPresses; presses += 1) {
-      const targets = await this.elements(selector, filter);
-      assert(
-        targets.length === 1 && targets[0]!.visible,
-        `Native keyboard focus target is one visible ${selector}`,
-      );
-      if (targets[0]!.focused) return;
-      if (presses < maximumTabPresses) await this.key('tab');
-    }
-    throw new Error(
-      `Native Tab did not focus ${selector} within ${maximumTabPresses} presses`,
-    );
-  }
-
   async openMenu(): Promise<void> {
     await this.tap('[data-testid="user-menu-trigger"]');
     await this.visible('.account-menu[role="menu"]');
   }
 
   async login(account: Account): Promise<void> {
-    await this.focusWithKeyboard('#homeserver');
-    await this.fillFocused('#homeserver', account.homeserver);
-    await this.key('enter');
+    await this.fill('#homeserver', account.homeserver);
+    await this.tap('button', { exactText: 'Continue' });
     await this.visible('#username', {}, 30_000);
-    await this.focusWithKeyboard('#username');
-    await this.fillFocused('#username', account.username);
-    await this.focusWithKeyboard('#password');
-    await this.fillFocused('#password', account.password);
-    await this.key('enter');
+    await this.fill('#username', account.username);
+    await this.fill('#password', account.password);
+    await this.tap('button', { exactText: 'Sign in' });
     await this.rooms(account);
   }
 

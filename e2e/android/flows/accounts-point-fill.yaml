@@ -4,3 +4,4 @@ appId: ${APP_ID}
     point: ${POINT}
 - eraseText
 - inputText: ${SECRET_TEXT}
+- hideKeyboard
