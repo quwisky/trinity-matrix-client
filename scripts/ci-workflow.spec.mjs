@@ -851,20 +851,21 @@ describe('CI execution contract', () => {
     expect(securitySettingsLine).toContain('--timeout-ms 1200000');
   });
 
-  it('runs recovery reset after Security settings and before retained Playwright on shard 4', () => {
+  it('runs recovery reset immediately after smoke and before other shard 4 suites', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
-    const securitySettings = script.indexOf(
-      'trinity-e2e-android:security-settings',
-    );
+    const runnerSmoke = script.indexOf('trinity-e2e-android:runner-smoke');
     const recoveryReset = script.indexOf('trinity-e2e-android:recovery-reset');
+    const identity = script.indexOf('trinity-e2e-android:identity-presence');
     const playwright = script.indexOf('pnpm e2e:android --');
     const recoveryResetLine = script
       .split('\n')
       .find((line) => line.includes('trinity-e2e-android:recovery-reset'));
 
-    expect(recoveryReset).toBeGreaterThan(securitySettings);
+    expect(runnerSmoke).toBeGreaterThan(-1);
+    expect(recoveryReset).toBeGreaterThan(runnerSmoke);
+    expect(identity).toBeGreaterThan(recoveryReset);
     expect(playwright).toBeGreaterThan(recoveryReset);
     expect(recoveryResetLine).toContain('matrix.shard }}" = "4"');
     expect(recoveryResetLine).toContain('recovery-reset-started=true');

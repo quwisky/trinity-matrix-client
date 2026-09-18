@@ -3120,8 +3120,10 @@ pnpm e2e:android:recovery-reset
 
 The target is uncached and serial, builds both Android packages, owns the
 serialized `android-avd` and `synapse` resources, and has a 30-minute Node
-timeout. CI runs it on shard 4 after `android.security-settings`; started-only
-diagnostics use the `android-recovery-reset` surface under
+timeout. CI runs it on shard 4 immediately after runner smoke and before the
+long retained migration chain, so an unrelated later-suite failure cannot
+suppress its original-attempt evidence. Started-only diagnostics use the
+`android-recovery-reset` surface under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.recovery-reset/`.
 Every stage records attempt 1, zero retries, exact source ownership and bounded
 two-package teardown. Do not retire or edit the four Playwright predecessors

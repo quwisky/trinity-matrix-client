@@ -589,7 +589,7 @@ describe('Android recovery-reset migration', () => {
     );
   });
 
-  it('registers the suite and started-only hosted artifact after Security settings', () => {
+  it('registers the suite and runs it before other shard 4 migration suites', () => {
     const runners = read('e2e/registry/suites/runners.mts');
     const commands = read('e2e/registry/commands.mts');
     const workflow = read('.github/workflows/ci.yml');
@@ -603,12 +603,26 @@ describe('Android recovery-reset migration', () => {
     );
     expect(commands).toContain("name: 'e2e:android:recovery-reset'");
     expect(commands).toContain("suiteIds: ['android.recovery-reset']");
+    const ciCommands = commands.slice(
+      commands.indexOf('export const E2E_CI_ENTRYPOINTS'),
+    );
+    expect(ciCommands.indexOf("suiteIds: ['runner.android']")).toBeLessThan(
+      ciCommands.indexOf("suiteIds: ['android.recovery-reset']"),
+    );
+    expect(
+      ciCommands.indexOf("suiteIds: ['android.recovery-reset']"),
+    ).toBeLessThan(
+      ciCommands.indexOf("suiteIds: ['android.identity-presence']"),
+    );
     expect(workflow).toContain('recovery-reset-started=true');
     expect(workflow).toContain(
       'pnpm exec nx run trinity-e2e-android:recovery-reset',
     );
-    expect(workflow.indexOf('security-settings-started=true')).toBeLessThan(
+    expect(workflow.indexOf('smoke-started=true')).toBeLessThan(
       workflow.indexOf('recovery-reset-started=true'),
+    );
+    expect(workflow.indexOf('recovery-reset-started=true')).toBeLessThan(
+      workflow.indexOf('identity-started=true'),
     );
     expect(workflow).toContain('surface: android-recovery-reset');
     expect(workflow).toContain(
