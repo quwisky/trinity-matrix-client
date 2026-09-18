@@ -133,6 +133,24 @@ async function openRoom(
   await client.visible('textarea.composer__input', {}, 30_000);
 }
 
+async function composeExactMessage(
+  client: AccountWorkspaceClient,
+  body: string,
+): Promise<void> {
+  await client.device.runFlow(
+    join(
+      client.workspaceRoot,
+      'e2e/android/flows/critical-compose-unicode.yaml',
+    ),
+    { APP_ID: client.applicationId, MESSAGE: body },
+  );
+  const composerValue = await evaluateNative(
+    client.webview,
+    `document.querySelector('textarea.composer__input')?.value ?? null`,
+  );
+  assert.equal(composerValue, body);
+}
+
 async function openSecuritySettings(
   client: AccountWorkspaceClient,
 ): Promise<void> {
@@ -538,8 +556,7 @@ const cases: readonly MessageAuthenticityCase[] = [
       await secondary.login(account);
       await openRoom(secondary, room.name);
       const body = `encrypted from an unsigned device ${Date.now()} — long enough that this line wraps all the way across the message body and reaches the right-hand edge of the row`;
-      await secondary.tapCurrent('textarea.composer__input');
-      await secondary.fillFocused('textarea.composer__input', body);
+      await composeExactMessage(secondary, body);
       await secondary.tapCurrent('[data-testid="composer-send"]');
       const secondaryMessage = await secondary.visible(
         '.scroll .msg__text',
