@@ -402,6 +402,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-authenticity-shield'],
   },
   {
+    name: 'e2e:android:cross-user-verification',
+    command: 'nx run trinity-e2e-android:cross-user-verification',
+    kind: 'canonical',
+    suiteIds: ['android.cross-user-verification'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -620,6 +626,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-authenticity-shield-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-authenticity-shield'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'cross-user-verification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:cross-user-verification; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.cross-user-verification'],
   },
   {
     command:

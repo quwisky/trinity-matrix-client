@@ -3564,3 +3564,53 @@ those broader-suite reliability results remain owned by issue #665. Together
 with the frozen local evidence, the owned Android, browser and renderer jobs
 satisfy issue #728 without retiring either Playwright predecessor. This mapping
 does not authorize merging PR #677.
+
+## Cross-user verification journeys
+
+`android.cross-user-verification` maps both definitions in
+`e2e/browser/journeys/trust/verify-user.spec.mts`, pinned at SHA-256
+`4d5ddb20adfc9f661abb05f081057894ec6e4120a35ddb5f067dc4158dab6ebd`.
+The shared journey owns five direct assertion identities: the initially hidden
+and subsequently visible members panel, the exact counterpart row, member-info
+panel and requested/waiting verification page. The delayed counterpart case owns
+one additional identity, for six unique direct assertion identities and 11
+stage-local direct assertion records across the ordinary and delayed stages.
+
+Each stage registers two disposable Accounts, assigns the counterpart a unique
+display name and creates a joined private Room through Matrix REST. The installed
+primary and secondary APKs each establish a genuine cross-signing/recovery
+identity through native Security UI. Maestro then reactivates the primary app,
+opens the Room, chooses the available narrow or wide members control, selects the
+exact counterpart and activates Verify. Read-only renderer inspection proves the
+verification host is visible in its requested or waiting stage; this suite does
+not claim the SAS round trip owned by the protocol suite.
+
+The delayed stage installs a bounded CDP Fetch controller only on the primary
+WebView and only for POST `/_matrix/client/v3/keys/query` bodies whose
+`device_keys` map contains the exact counterpart MXID. Matching requests remain
+paused through the native Verify action, wait 15 seconds and then continue.
+Unrelated queries continue immediately. Cleanup releases every pending request
+before disabling interception, including when the stage fails.
+
+```bash
+pnpm nx run trinity-e2e-android:cross-user-verification --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:cross-user-verification
+```
+
+The uncached serial target builds both APKs from the verified renderer, owns the
+emulator and disposable Synapse resources, and has a 30-minute Node budget. CI
+runs it on shard 2 immediately after `android.message-authenticity-shield`, with
+a 35-minute command bound and started-only
+`android-cross-user-verification` diagnostics. Credentials, access tokens and
+session secrets are redacted and scanned; flow-owned raster artifacts are
+removed before retention. Reports preserve one attempt, zero retries, two
+stages, six identities, 11 records, source ownership and aggregate controller,
+two-package, Matrix and device teardown.
+
+Local acceptance still requires three unchanged first-attempt installed-Android
+passes, both exact Playwright predecessors at retry 0, full repository checks
+and review. Hosted acceptance requires matching original-attempt Android,
+browser and immutable-renderer artifacts from the exact consolidated revision.
+Do not retire or edit either Playwright predecessor. This mapping does not
+authorize merging PR #677.
