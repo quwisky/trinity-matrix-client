@@ -3052,13 +3052,31 @@ expected real setup and returned Security settings states. Synapse data was
 removed after the invocation, the emulator runner and diagnostic upload
 completed successfully, and the job's final worktree guard passed.
 
-Hosted browser acceptance remains pending. In the same original attempt, the
-Storybook suite ran 163 tests but reached its independent 10-minute command
-limit with exit 124 before the canonical browser job could start. No Security
-settings browser assertion ran in that hosted attempt, so that unrelated
-timeout is not counted as predecessor acceptance. Do not retire or edit the
-Playwright predecessor until a fresh original-attempt hosted browser run
-passes it with zero retries. This mapping does not authorize merging PR #677.
+Hosted browser acceptance followed on 2026-09-18 in original attempt 1 of run
+`35288604411`, job `105426656010`, against PR merge commit
+`d2ff834b3c28c68f082222ae1eac853226e5104c` for consolidated head
+`106583d16520220c7946e947e21230194e2116d0`. Its verified production renderer
+artifact `renderer-35288604411-1-d2ff834b3c28c68f082222ae1eac853226e5104c`
+(artifact `10525800615`) contained 49 files and 15,302,528 bytes with manifest
+SHA-256 `b0ba5ac0aaa106f016d43baa8229cfbc8825e0a10f8562f36459ecb80f122e52`.
+Browser invocation `mu673ggw-44141553-b1ab-485e-996b-32ba525fa105` ran all
+three exact Security settings predecessors at retry 0 with zero failures in
+13.116 seconds: 3.924 seconds for posture and recovery setup, 4.761 seconds for
+narrow verification, and 4.431 seconds for scoped Trust-fault recovery. The
+75,757,260-byte browser artifact
+`playwright-35288604411-1-d2ff834b3c28c68f082222ae1eac853226e5104c-e2e-browser-all`
+(artifact `10525689272`, upload SHA-256
+`4017fde3e8c2e046a02fdaff8fbd474dd24886d98aa3e9a1d098c1e2b20e0b64`)
+preserves the JUnit and per-test attempt records.
+
+The browser job itself failed outside this migration: the retained-stale-roster
+case in `room-administration/kick-member.spec.mts` timed out while locating its
+retry button on attempt 0, then passed its one diagnostic retry. The immutable
+suite record contains 316 passed tests, one flaky unrelated test and one
+skipped test; the Security settings cases did not retry. The earlier run's
+Storybook timeout likewise remains unrelated and is not counted as acceptance.
+The pinned Security settings predecessor and helpers remain unchanged. This
+mapping does not authorize merging PR #677.
 
 ## Legacy SSO journeys
 
