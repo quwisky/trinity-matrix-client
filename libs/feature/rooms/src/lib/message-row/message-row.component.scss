@@ -126,6 +126,7 @@
   .msg__shield {
     grid-row: 1;
     grid-column: 2;
+    justify-self: end;
     display: flex;
     align-items: center;
     justify-content: center;
