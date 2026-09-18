@@ -869,7 +869,7 @@ describe('CI execution contract', () => {
     expect(playwright).toBeGreaterThan(recoveryReset);
     expect(recoveryResetLine).toContain('matrix.shard }}" = "4"');
     expect(recoveryResetLine).toContain('recovery-reset-started=true');
-    expect(recoveryResetLine).toContain('--timeout-ms 2100000');
+    expect(recoveryResetLine).toContain('--timeout-ms 3000000');
   });
 
   it('runs message moderation after Accounts and before retained Playwright on shard 3', () => {
