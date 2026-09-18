@@ -3119,11 +3119,13 @@ pnpm e2e:android:recovery-reset
 ```
 
 The target is uncached and serial, builds both Android packages, owns the
-serialized `android-avd` and `synapse` resources, and has a 45-minute Node
-timeout. Hosted evidence from run `35331679110` showed the first three
+serialized `android-avd` and `synapse` resources, and gives both the Node test
+and invocation runner 45-minute deadlines. Hosted evidence from run
+`35331679110` showed the first three
 stages passing but consuming 26 minutes 24 seconds under nested virtualization;
-the 30-minute target deadline then cancelled the fourth stage. The bounded
-target budget is therefore 45 minutes, inside a 50-minute CI command budget.
+the 30-minute Node-test deadline then cancelled the fourth stage. The bounded
+test and runner budgets are therefore 45 minutes, inside a 50-minute CI command
+budget.
 CI runs it on shard 4 immediately after runner smoke and before the
 long retained migration chain, so an unrelated later-suite failure cannot
 suppress its original-attempt evidence. Started-only diagnostics use the
