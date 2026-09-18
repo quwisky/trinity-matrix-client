@@ -1,5 +1,12 @@
 import { execFile, spawn } from 'node:child_process';
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { closeSync, openSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { createServer } from 'node:net';
@@ -33,6 +40,7 @@ const textArtifactExtensions = new Set([
   '.txt',
   '.xml',
 ]);
+const imageArtifactExtensions = new Set(['.jpeg', '.jpg', '.png', '.webp']);
 const redactedSecret = '[REDACTED]';
 const maestroDriverPortAttempts = 3;
 
@@ -63,7 +71,11 @@ const secretValues = (
   [
     ...new Set(
       Object.entries(variables)
-        .filter(([key, value]) => /password|secret|token/iu.test(key) && value)
+        .filter(
+          ([key, value]) =>
+            /password|secret|token|recovery.?key|credential|uia/iu.test(key) &&
+            value,
+        )
         .flatMap(([, value]) => {
           const escaped = JSON.stringify(value);
           return escaped ? [value, escaped.slice(1, -1)] : [value];
@@ -109,18 +121,27 @@ const isPreStartDriverPortRejection = async (
 export async function redactMaestroArtifacts(
   directory: string,
   variables: Readonly<Record<string, string>>,
+  removeSecretImages = false,
 ): Promise<void> {
   const secrets = secretValues(variables);
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     const file = join(directory, entry.name);
     if (entry.isDirectory()) {
-      await redactMaestroArtifacts(file, variables);
+      await redactMaestroArtifacts(file, variables, removeSecretImages);
       continue;
     }
     if (!entry.isFile())
       throw new Error(`Cannot redact non-file Maestro artifact: ${entry.name}`);
     const extension = file.slice(file.lastIndexOf('.'));
+    if (
+      removeSecretImages &&
+      secrets.length > 0 &&
+      imageArtifactExtensions.has(extension)
+    ) {
+      await unlink(file);
+      continue;
+    }
     if (!textArtifactExtensions.has(extension)) continue;
     const text = await readFile(file, 'utf8');
     const redacted = redactText(
@@ -561,7 +582,7 @@ export async function openMaestroDevice(
         }
         let redactionFailure = false;
         try {
-          await redactMaestroArtifacts(privateOutput, variables);
+          await redactMaestroArtifacts(privateOutput, variables, true);
         } catch {
           redactionFailure = true;
         }

@@ -140,22 +140,33 @@ function assertProtectedRuntimeContract(journey) {
     'fixtures.defaultKeyId(account)',
     'fixtures.keyBackupVersion(account)',
     'fixtures.masterKey(account)',
-    "exactText: 'I've lost my recovery key'",
+    'exactText: "I\'ve lost my recovery key"',
     "exactText: 'Enter recovery key'",
+    "new URL(surface.url).pathname === '/settings/security' &&\n      surface.body.includes('Enter your recovery key')",
+    "new URL((await secondary.surface()).url).pathname,\n        '/settings/security'",
     "exactText: 'Reset encryption'",
     "exactText: 'Confirm your password'",
     "client.fillFocused('trn-alert-dialog input', 'yes please')",
     "client.fillFocused('trn-alert-dialog input', 'RESET')",
     'client.fillFocused(\'[data-testid="recovery-key-input"]\', originalKey)',
-    'replacementKey.length > 0',
+    'await unlockWithOriginalKey(secondary, originalKey);\n      const unlockErrors',
+    'async function returnToRooms(',
+    'for (let presses = 0; presses < 2; presses += 1)',
+    "client.device.adb('shell', 'input', 'keyevent', '4')",
+    'await client.rooms(account)',
+    'await returnToRooms(secondary, account);',
+    'assert(replacementKey.length > 0)',
     'assert.notEqual(replacementKey, originalKey)',
     "spelledOut.split('\\n').filter((line) => line.trim().length > 0)",
-    "includes('Type RESET to confirm')",
+    "assert(spelledOut.includes('Type RESET to confirm'))",
     'new Set<RecoveryResetAssertion>()',
     'assert(!recorded.has(identity)',
     'expectedStages: 4',
     'expectedAssertions: 54',
     'captureSecretSafe(',
+    'await deactivate(primary)',
+    'await deactivate(secondary)',
+    'removeRecoveryResetMaestroImages(output)',
     'redactMaestroArtifacts(output, secrets)',
     'scanRecoveryResetArtifacts(output, secrets)',
     'await primary.close()',
@@ -165,6 +176,14 @@ function assertProtectedRuntimeContract(journey) {
   ];
   for (const fragment of required) expect(journey).toContain(fragment);
   expect(occurrences(journey, 'expectedAssertions: 54')).toBe(1);
+  expect(
+    occurrences(journey, 'exactText: "I\'ve lost my recovery key"'),
+  ).toBeGreaterThanOrEqual(4);
+  expect(
+    occurrences(journey, 'await secondary.close()'),
+  ).toBeGreaterThanOrEqual(1);
+  expect(occurrences(journey, 'await deactivate(primary)')).toBe(4);
+  expect(occurrences(journey, 'await deactivate(secondary)')).toBe(1);
   expect(journey).not.toMatch(/\bretries?\s*[:=]\s*[1-9]/u);
   expect(journey).not.toMatch(
     /observation:\s*(?:originalKey|replacementKey|password|accessToken|token|uia)/u,
@@ -296,6 +315,10 @@ describe('Android recovery-reset migration', () => {
     }
     expect(client).toContain('APP_ID: this.applicationId');
     expect(client).toContain('`appId: ${this.applicationId}');
+    expect(client).toContain('readonly renderedText: string');
+    expect(client).toContain(
+      "renderedText: e instanceof HTMLElement ? e.innerText.trim() : e.textContent?.trim() ?? ''",
+    );
   });
 
   it('keeps crypto observations bounded and access tokens closure-private', () => {
@@ -346,12 +369,18 @@ describe('Android recovery-reset migration', () => {
         "spelledOut.split('\\n').filter((line) => line.trim().length > 0)",
         '[spelledOut]',
       ],
-      ["includes('Type RESET to confirm')", "includes('RESET')"],
+      [
+        "assert(spelledOut.includes('Type RESET to confirm'))",
+        "assert(spelledOut.includes('RESET'))",
+      ],
       [
         "client.fillFocused('trn-alert-dialog input', 'yes please')",
         "client.fillFocused('trn-alert-dialog input', 'RESET')",
       ],
-      ['replacementKey.length > 0', 'replacementKey.length >= 0'],
+      [
+        'assert(replacementKey.length > 0)',
+        'assert(replacementKey.length >= 0)',
+      ],
       [
         'assert.notEqual(replacementKey, originalKey)',
         'assert.equal(replacementKey, replacementKey)',
@@ -360,8 +389,19 @@ describe('Android recovery-reset migration', () => {
         'client.fillFocused(\'[data-testid="recovery-key-input"]\', originalKey)',
         'Promise.resolve()',
       ],
-      ["exactText: 'I've lost my recovery key'", "text: 'lost'"],
+      ['await returnToRooms(secondary, account);', 'await Promise.resolve();'],
+      ['exactText: "I\'ve lost my recovery key"', "text: 'lost'"],
+      ['await deactivate(primary)', 'await primary.close()'],
+      [
+        "new URL(surface.url).pathname === '/settings/security' &&\n      surface.body.includes('Enter your recovery key')",
+        "new URL(surface.url).pathname === '/encryption/unlock' &&\n      surface.body.includes('Enter your recovery key')",
+      ],
+      [
+        "new URL((await secondary.surface()).url).pathname,\n        '/settings/security'",
+        "new URL((await secondary.surface()).url).pathname,\n        '/encryption/unlock'",
+      ],
       ['redactMaestroArtifacts(output, secrets)', 'Promise.resolve()'],
+      ['removeRecoveryResetMaestroImages(output)', 'Promise.resolve()'],
       ['scanRecoveryResetArtifacts(output, secrets)', 'Promise.resolve()'],
       ['await secondary.close()', 'Promise.resolve()'],
     ];
