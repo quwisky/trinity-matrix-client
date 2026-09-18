@@ -137,10 +137,12 @@ async function composeExactMessage(
   client: AccountWorkspaceClient,
   body: string,
 ): Promise<void> {
+  assert(body.length <= 160, 'The exact message fits the composer limit');
+  await client.tapCurrent('textarea.composer__input');
   await client.device.runFlow(
     join(
       client.workspaceRoot,
-      'e2e/android/flows/critical-compose-unicode.yaml',
+      'e2e/android/flows/message-authenticity-compose.yaml',
     ),
     { APP_ID: client.applicationId, MESSAGE: body },
   );
@@ -555,7 +557,8 @@ const cases: readonly MessageAuthenticityCase[] = [
       await secondary.reset(PIXEL_5_ACCOUNT_PROFILE);
       await secondary.login(account);
       await openRoom(secondary, room.name);
-      const body = `encrypted from an unsigned device ${Date.now()} — long enough that this line wraps all the way across the message body and reaches the right-hand edge of the row`;
+      const messageToken = Date.now().toString(36);
+      const body = `encrypted from an unsigned device ${messageToken} — long enough that this line wraps all the way across the message body and reaches the right-hand edge of the row`;
       await composeExactMessage(secondary, body);
       await secondary.tapCurrent('[data-testid="composer-send"]');
       const secondaryMessage = await secondary.visible(

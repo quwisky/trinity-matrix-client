@@ -15,6 +15,10 @@ const journeyPath = resolve(
   root,
   'e2e/android/message-authenticity-shield-journeys.mts',
 );
+const composeFlowPath = resolve(
+  root,
+  'e2e/android/flows/message-authenticity-compose.yaml',
+);
 
 const plaintextAssertionIds = [
   'message-authenticity.plaintext.message-visible',
@@ -80,7 +84,9 @@ function assertProtectedRuntimeContract(journey) {
     'await primary.login(account)',
     'await secondary.login(account)',
     'await client.tapCurrent(\'[data-testid="rail-rooms"]\')',
-    "'e2e/android/flows/critical-compose-unicode.yaml'",
+    "await client.tapCurrent('textarea.composer__input')",
+    "'e2e/android/flows/message-authenticity-compose.yaml'",
+    'assert(body.length <= 160',
     'assert.equal(composerValue, body)',
     'await secondary.tapCurrent(\'[data-testid="composer-send"]\')',
     'fixtures.sendReadReceipt(',
@@ -193,11 +199,21 @@ describe('Android message-authenticity shield migration', () => {
 
   it('implements two real native stages and observation-only renderer checks', () => {
     const journey = readIfPresent(journeyPath);
+    const composeFlow = readIfPresent(composeFlowPath);
     expect(
       journey,
       'message-authenticity-shield-journeys.mts must exist',
     ).not.toBe('');
     assertProtectedRuntimeContract(journey);
+    expect(
+      composeFlow,
+      'message-authenticity-compose.yaml must exist',
+    ).not.toBe('');
+    expect(composeFlow).toContain('- eraseText');
+    expect(composeFlow).toContain('- setClipboard: ${MESSAGE}');
+    expect(composeFlow).toContain('- pasteText');
+    expect(composeFlow).toContain('- hideKeyboard');
+    expect(composeFlow).not.toContain('tapOn:');
     expect(journey).toContain("id: 'plaintext-no-shield'");
     expect(journey).toContain("id: 'unsigned-device-shield'");
     expect(journey).toContain('PIXEL_5_ACCOUNT_PROFILE');
@@ -234,7 +250,7 @@ describe('Android message-authenticity shield migration', () => {
         'await client.focusFixture(\'[data-testid^="msg-shield-"]\')',
       ],
       [
-        "'e2e/android/flows/critical-compose-unicode.yaml'",
+        "'e2e/android/flows/message-authenticity-compose.yaml'",
         "'e2e/android/flows/critical-compose.yaml'",
       ],
       [

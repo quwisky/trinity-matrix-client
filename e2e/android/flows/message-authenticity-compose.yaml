@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+- eraseText
+- setClipboard: ${MESSAGE}
+- pasteText
+- hideKeyboard
