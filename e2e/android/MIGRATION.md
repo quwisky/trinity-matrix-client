@@ -3190,6 +3190,50 @@ invocation `mu6o3zek-82e6b9fb-9e27-4f57-9b6a-aac37b9f9ce1` passed all three
 stages at attempt 1 and retry 0: DM avatar in 82.590 seconds, member presence in
 90.216 seconds, and DM presence in 64.673 seconds.
 
+Original-attempt hosted acceptance completed on 2026-09-18 in run
+`35336779408` against consolidated head
+`84b6ad4c3b64970f7899495da4e16427a9e8fa37` and PR merge commit
+`27d6d67ec7e350e9d25c92cf91cdbcd5d6b26c53`. The verified production
+renderer artifact
+`renderer-35336779408-1-27d6d67ec7e350e9d25c92cf91cdbcd5d6b26c53`
+(artifact `10543558455`) contained 49 files and 15,302,528 bytes with manifest
+SHA-256 `acac65af907328e0a8a2518799aef43af877543a963da993fa02b5ab454bf6eb`;
+its downloaded ZIP had SHA-256
+`5a10021819b7d1a834bb51b0b0dcc16b768c5f1ec4b6b4102a1bfeec5983c0c0`.
+
+Hosted recovery invocation
+`mu6ukogt-220bebf8-6708-40a4-8f76-e4b943e8d7c2` passed in 1,828.144
+seconds at attempt 1 and retry 0. Artifact
+`playwright-35336779408-1-27d6d67ec7e350e9d25c92cf91cdbcd5d6b26c53-android-e2e-android-recovery-reset-4`
+(artifact `10547971079`, downloaded ZIP SHA-256
+`42eddbced639cf6d8488175e4358499bb6de06c5ed263f49af5437119e943e75`)
+records four passed stages in 568.240, 435.417, 482.695 and 339.862 seconds.
+The immutable report has the exact 22 + 12 + 15 + 5 assertion counts, 54
+distinct assertion artifacts, zero failures and eight final device/WebView
+screenshots. Visual review confirmed the three ready Security postures and the
+fresh-device escape hatch with an empty recovery-key field. The artifact has
+324 explicit redaction markers and no bearer token, Matrix access token,
+authorization header or access-token query match. It also records clean
+Synapse data removal and teardown after the recovery invocation.
+
+The same shard continued through Identity, Room Settings, Space Settings,
+member-role, Room Widget and password-change suites before failing in the
+unrelated `android.clear-all-data` suite. That later case could not focus the
+second erase-confirmation input; recovery had already completed and uploaded
+its passing artifact. The shard failure is retained as an independent
+reliability defect and is not represented as a green recovery result.
+
+The original-attempt browser job passed with 317 tests, one intentional skip,
+zero failures and zero retries. Its artifact
+`playwright-35336779408-1-27d6d67ec7e350e9d25c92cf91cdbcd5d6b26c53-e2e-browser-all`
+(artifact `10544158004`, downloaded ZIP SHA-256
+`49f50c0a38d50fd6c9c0a2cb28f36311b536154bc7cde9682899501a5313d20f`)
+records all four exact recovery predecessors at retry 0 in 10.680, 9.731,
+10.005 and 9.835 seconds. The following SSO-recovery predecessor also passed
+at retry 0 in 8.213 seconds, preserving the next batch's baseline. The four
+recovery predecessors remain unchanged and enabled. This acceptance does not
+authorize merging PR #677.
+
 ## Legacy SSO journeys
 
 `android.legacy-sso` preserves issue #723's three canonical legacy Synapse/Dex
