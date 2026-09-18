@@ -80,8 +80,8 @@ function assertProtectedRuntimeContract(journey) {
     'await primary.login(account)',
     'await secondary.login(account)',
     'await client.tapCurrent(\'[data-testid="rail-rooms"]\')',
-    "await secondary.tapCurrent('textarea.composer__input')",
-    "await secondary.fillFocused('textarea.composer__input', body)",
+    "'e2e/android/flows/critical-compose-unicode.yaml'",
+    'assert.equal(composerValue, body)',
     'await secondary.tapCurrent(\'[data-testid="composer-send"]\')',
     'fixtures.sendReadReceipt(',
     "await client.key('tab')",
@@ -232,6 +232,10 @@ describe('Android message-authenticity shield migration', () => {
       [
         "await client.key('tab')",
         'await client.focusFixture(\'[data-testid^="msg-shield-"]\')',
+      ],
+      [
+        "'e2e/android/flows/critical-compose-unicode.yaml'",
+        "'e2e/android/flows/critical-compose.yaml'",
       ],
       [
         'assert.equal(shield.title, null)',
