@@ -21,6 +21,10 @@ const focusedFillPath = resolve(
   root,
   'e2e/android/flows/accounts-focused-fill.yaml',
 );
+const pointFillPath = resolve(
+  root,
+  'e2e/android/flows/accounts-point-fill.yaml',
+);
 
 const assertionIds = [
   'partial.failure-feedback',
@@ -125,10 +129,23 @@ describe('Android Space Settings resilience migration', () => {
     }
   });
 
-  it('accepts exact focused native input without requiring a duplicate click event', () => {
+  it('accepts exact focused or value-transitioned native input without requiring a duplicate click event', () => {
     const client = readFileSync(clientPath, 'utf8');
     expect(client).toContain('target.length === 1 && target[0]!.focused');
     expect(client).toContain('allowFocusedInput: true');
+    expect(client).toContain('initialInputValueMatches === false');
+    expect(client).toContain('inputValueMatches === true');
+    expect(client).toContain("surface.visibility === 'visible'");
+    expect(client).toContain(
+      'Native input ${actionId} focused or changed ${selector}',
+    );
+    expect(client).toContain("if (allowFocusedInput) await this.key('escape')");
+    expect(readFileSync(pointFillPath, 'utf8')).not.toContain('hideKeyboard');
+    expect(client).toContain('async focusWithKeyboard(');
+    expect(client).toContain("await this.focusWithKeyboard('#homeserver')");
+    expect(client).toContain(
+      "await this.fillFocused('#homeserver', account.homeserver)",
+    );
     expect(client).toMatch(/this\.nativeAction\(\s*'accounts-point-fill'/);
     expect(client).toContain('Native input reached ${selector}');
   });

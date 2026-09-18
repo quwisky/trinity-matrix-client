@@ -584,6 +584,24 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "recovery-reset": {
+      "//": "Recovery-reset replacement, cancellation, original-key and second-package escape-hatch journeys against two installed Android APKs.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" },
+        {
+          "projects": ["trinity-android"],
+          "target": "build-secondary-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.recovery-reset --timeout-ms=1800000 --entrypoint=e2e/android/recovery-reset-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "legacy-sso": {
       "//": "Real legacy Synapse/Dex provider, forged callbacks and persisted installed-Android sessions.",
       "cache": false,

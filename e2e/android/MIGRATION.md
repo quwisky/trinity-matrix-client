@@ -3078,6 +3078,75 @@ Storybook timeout likewise remains unrelated and is not counted as acceptance.
 The pinned Security settings predecessor and helpers remain unchanged. This
 mapping does not authorize merging PR #677.
 
+## Recovery-reset journeys
+
+`android.recovery-reset` maps issue #726's four password-account recovery-reset
+definitions in `e2e/browser/journeys/trust/recovery-reset.spec.mts`. The pinned
+source owns 22 + 12 + 15 + 5 direct assertions for successful replacement,
+password-cancel atomicity, original-key viability after cancellation, and the
+Settings escape hatch on a fresh device. The shared setup and conditional UIA
+helpers plus the application and server-observation helpers remain pinned by the
+executable migration guard.
+
+The predecessor is pinned at SHA-256
+`fad6cee0f80c92770978a672129c66a1ab22c9a7504a1068970673cbca08b848`,
+with application helper
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and account helper
+`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+
+The replacement drives primary and secondary installed packages with native
+Maestro actions. It establishes real cross-signing, secret storage and key
+backup on the primary package, then uses a clean secondary package for each
+needs-recovery path. REST is limited to disposable-account setup and read-only
+default-key, backup-version and master-key observations. Renderer access is
+read-only and cannot click, focus, fill, submit, navigate or reload product UI.
+Password and recovery-key flows remove secret-bearing Maestro image diagnostics;
+suite diagnostics are text-redacted and scanned before publication.
+
+```bash
+pnpm nx run trinity-e2e-android:recovery-reset --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:recovery-reset
+```
+
+The target is uncached and serial, builds both Android packages, owns the
+serialized `android-avd` and `synapse` resources, and has a 30-minute Node
+timeout. CI runs it on shard 4 after `android.security-settings`; started-only
+diagnostics use the `android-recovery-reset` surface under
+`dist/.playwright/trinity-e2e-android/<run-id>/android.recovery-reset/`.
+Every stage records attempt 1, zero retries, exact source ownership and bounded
+two-package teardown. Do not retire or edit the four Playwright predecessors
+until all required local and original-attempt hosted evidence is accepted. This
+mapping does not authorize merging PR #677.
+
+Local acceptance on 2026-09-18 ran three unchanged full-suite invocations:
+`mu6cxj20-9d48cb37-8475-4847-9324-88f66967a333`,
+`mu6dkog5-5a00de9e-55a6-418c-a198-8dbe01e9c3f7`, and
+`mu6e7qbd-9eaed241-ddbc-4241-8777-9ac80f25d956`. They passed in 1,049.693,
+1,046.757, and 1,042.233 seconds, respectively, each on attempt 1 with zero
+retries, four passed stages and all 54 assertion identities. The final run's
+stage durations were 320.850 seconds for replacement, 237.801 seconds for
+password-cancel atomicity, 268.583 seconds for original-key viability, and
+181.372 seconds for the Settings escape hatch. Each retained artifact had
+exactly eight final device/WebView screenshots, 90 explicit `[REDACTED]`
+markers, and zero bearer-token, Matrix access-token or access-token query
+matches; secret-bearing Maestro raster diagnostics were absent.
+
+Exact predecessor invocation
+`mu6ev5r3-f6068cfd-ba9f-4e98-9612-9ee43cc1ccd5` passed all four Playwright
+cases at one worker and retry 0 in 26.475 seconds. Repository validation passed
+48/48 uncached typecheck tasks, 77/77 uncached lint tasks, 973/973 script tests,
+145/145 focused migration tests, stylelint, format, architecture and assembled
+documentation checks. The fresh 49-file production renderer contained
+15,302,535 bytes with manifest SHA-256
+`af5ea42c73c82c63241d58c5ea755905d0f288421ce1bf5f2e93ec2d309a7bfe`.
+Primary and secondary APK SHA-256 values were
+`d9ad261bc1a9f8291bda20ff2f54a08b0904363174495cf4701f12ef2f9a0735` and
+`bba9bfb40d982e9ffa97105b283332a1c5aea0ae190b1ed64e312b42d6512fe3`;
+the Android runner smoke passed against that renderer in 101 seconds with
+clean Synapse teardown.
+
 ## Legacy SSO journeys
 
 `android.legacy-sso` preserves issue #723's three canonical legacy Synapse/Dex

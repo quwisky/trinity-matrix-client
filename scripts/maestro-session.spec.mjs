@@ -456,36 +456,51 @@ describe('Maestro device ownership', () => {
     expect(f.closed()).toBe(1);
   });
 
-  it('redacts secret variables from JSON and text artifacts without changing PNG bytes', async () => {
+  it('redacts secret variables from text artifacts and removes image diagnostics', async () => {
     const f = fixture();
     const output = join(f.options.artifactDirectory, 'redaction');
     const password = 'quoted "secret"\\value';
+    const recoveryKey = 'EsTx secret recovery key';
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
     mkdirSync(output, { recursive: true });
     writeFileSync(
       join(output, 'commands.json'),
       JSON.stringify({
-        defineVariablesCommand: { env: { PASSWORD: password } },
-        evaluatedCommand: { env: { PASSWORD: password } },
+        defineVariablesCommand: {
+          env: { PASSWORD: password, RECOVERY_KEY: recoveryKey },
+        },
+        evaluatedCommand: {
+          env: { PASSWORD: password, RECOVERY_KEY: recoveryKey },
+        },
       }),
     );
-    writeFileSync(join(output, 'maestro.log'), `login started: ${password}\n`);
+    writeFileSync(
+      join(output, 'maestro.log'),
+      `login started: ${password}\nrecovery: ${recoveryKey}\n`,
+    );
     writeFileSync(join(output, 'screenshot.png'), png);
 
-    await redactMaestroArtifacts(output, {
-      PASSWORD: password,
-      HOMESERVER: 'https://example.test',
-    });
+    await redactMaestroArtifacts(
+      output,
+      {
+        PASSWORD: password,
+        RECOVERY_KEY: recoveryKey,
+        HOMESERVER: 'https://example.test',
+      },
+      true,
+    );
 
     const commands = JSON.parse(
       readFileSync(join(output, 'commands.json'), 'utf8'),
     );
     expect(commands.defineVariablesCommand.env.PASSWORD).toBe('[REDACTED]');
+    expect(commands.defineVariablesCommand.env.RECOVERY_KEY).toBe('[REDACTED]');
     expect(commands.evaluatedCommand.env.PASSWORD).toBe('[REDACTED]');
+    expect(commands.evaluatedCommand.env.RECOVERY_KEY).toBe('[REDACTED]');
     expect(readFileSync(join(output, 'maestro.log'), 'utf8')).toBe(
-      'login started: [REDACTED]\n',
+      'login started: [REDACTED]\nrecovery: [REDACTED]\n',
     );
-    expect(readFileSync(join(output, 'screenshot.png'))).toEqual(png);
+    expect(existsSync(join(output, 'screenshot.png'))).toBe(false);
   });
 
   it('redacts native secrets before publishing a flow without secret variables', async () => {

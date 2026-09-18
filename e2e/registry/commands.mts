@@ -378,6 +378,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.security-settings'],
   },
   {
+    name: 'e2e:android:recovery-reset',
+    command: 'nx run trinity-e2e-android:recovery-reset',
+    kind: 'canonical',
+    suiteIds: ['android.recovery-reset'],
+  },
+  {
     name: 'e2e:android:legacy-sso',
     command: 'nx run trinity-e2e-android:legacy-sso',
     kind: 'canonical',
@@ -740,6 +746,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'security-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:security-settings; fi',
     tier: 'pull-request',
     suiteIds: ['android.security-settings'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:recovery-reset; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.recovery-reset'],
   },
   {
     command:

@@ -39,6 +39,7 @@ const LONG_PRESS_THRESHOLD_MS = 500;
 
 export interface AccountElement {
   readonly text: string;
+  readonly renderedText: string;
   readonly visible: boolean;
   readonly focused: boolean;
   readonly disabled: boolean;
@@ -194,7 +195,7 @@ export class AccountWorkspaceClient {
         const r = e.getBoundingClientRect(), style = getComputedStyle(e);
         const x = r.x + r.width / 2, y = r.y + r.height / 2;
         return {
-          text: e.textContent?.trim() ?? '', visible: r.width > 0 && r.height > 0 && style.visibility === 'visible',
+          text: e.textContent?.trim() ?? '', renderedText: e instanceof HTMLElement ? e.innerText.trim() : e.textContent?.trim() ?? '', visible: r.width > 0 && r.height > 0 && style.visibility === 'visible',
           focused: document.activeElement === e, disabled: e.matches(':disabled'),
           value:
             e instanceof HTMLTextAreaElement ||
@@ -713,7 +714,27 @@ export class AccountWorkspaceClient {
           this.exposedActionablePoint(selector, filter, operationSignal)
       : (operationSignal?: AbortSignal) =>
           this.actionablePoint(selector, filter, operationSignal);
+    const readInputValueMatches = async (): Promise<boolean | undefined> => {
+      if (!allowFocusedInput) return undefined;
+      const expected = variables['SECRET_TEXT'];
+      assert.notEqual(
+        expected,
+        undefined,
+        `Native fill has an expected value for ${selector}`,
+      );
+      const matches = await evaluateNative(
+        this.webview,
+        `(() => {
+          const {selector,filter,expected}=${JSON.stringify({ selector, filter, expected })};
+          const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+          return es.length===1&&(es[0] instanceof HTMLInputElement||es[0] instanceof HTMLTextAreaElement)&&es[0].value===expected;
+        })()`,
+      );
+      assert.equal(typeof matches, 'boolean');
+      return matches as boolean;
+    };
     const initialPoint = await resolvePoint();
+    const initialInputValueMatches = await readInputValueMatches();
     let initiallyFocused: boolean | undefined;
     if (allowFocusTransition) {
       const initialTargets = await this.elements(selector, filter);
@@ -793,10 +814,30 @@ export class AccountWorkspaceClient {
         );
       } else if (!activated && allowFocusedInput) {
         const target = await this.elements(selector, filter);
+        const inputValueMatches = await readInputValueMatches();
+        const inputValueChanged =
+          initialInputValueMatches === false && inputValueMatches === true;
         assert(
-          target.length === 1 && target[0]!.focused,
-          `Native input ${actionId} focused ${selector}`,
+          target.length === 1 &&
+            (target[0]!.focused || inputValueChanged),
+          `Native input ${actionId} focused or changed ${selector}`,
         );
+        if (!target[0]!.focused && inputValueChanged) {
+          await this.device.adb(
+            'shell',
+            'am',
+            'start',
+            '-n',
+            `${this.applicationId}/eu.qwky.trinity.MainActivity`,
+          );
+          await waitForNativeShellState(
+            () => this.surface(),
+            (surface) => surface.visibility === 'visible',
+            `foreground ${this.applicationId} after native fill`,
+            this.signal,
+            30_000,
+          );
+        }
       } else {
         assert(
           activated || documentReplaced,
@@ -805,6 +846,7 @@ export class AccountWorkspaceClient {
       }
       if (fileInputSelector !== undefined) assertNativeDocumentActivation(events);
       else assert(documentReplaced || events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
+      if (allowFocusedInput) await this.key('escape');
     } catch (error) {
       actionError = error;
     } finally {
@@ -872,18 +914,41 @@ export class AccountWorkspaceClient {
     await evaluateNative(this.webview, `(() => {document.querySelector(${JSON.stringify(selector)}).focus();return true})()`);
   }
 
+  /** Reach an exact product control through bounded native keyboard traversal. */
+  async focusWithKeyboard(
+    selector: string,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
+    const maximumTabPresses = 12;
+    for (let presses = 0; presses <= maximumTabPresses; presses += 1) {
+      const targets = await this.elements(selector, filter);
+      assert(
+        targets.length === 1 && targets[0]!.visible,
+        `Native keyboard focus target is one visible ${selector}`,
+      );
+      if (targets[0]!.focused) return;
+      if (presses < maximumTabPresses) await this.key('tab');
+    }
+    throw new Error(
+      `Native Tab did not focus ${selector} within ${maximumTabPresses} presses`,
+    );
+  }
+
   async openMenu(): Promise<void> {
     await this.tap('[data-testid="user-menu-trigger"]');
     await this.visible('.account-menu[role="menu"]');
   }
 
   async login(account: Account): Promise<void> {
-    await this.fill('#homeserver', account.homeserver);
-    await this.tap('button', { exactText: 'Continue' });
+    await this.focusWithKeyboard('#homeserver');
+    await this.fillFocused('#homeserver', account.homeserver);
+    await this.key('enter');
     await this.visible('#username', {}, 30_000);
-    await this.fill('#username', account.username);
-    await this.fill('#password', account.password);
-    await this.tap('button', { exactText: 'Sign in' });
+    await this.focusWithKeyboard('#username');
+    await this.fillFocused('#username', account.username);
+    await this.focusWithKeyboard('#password');
+    await this.fillFocused('#password', account.password);
+    await this.key('enter');
     await this.rooms(account);
   }
 
