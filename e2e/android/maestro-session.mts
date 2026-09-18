@@ -260,6 +260,7 @@ export interface MaestroDevice {
   ): Promise<() => Promise<void>>;
   removeForward(local: string): Promise<void>;
   install(apk: string, applicationId?: MaestroApplicationId): Promise<void>;
+  clearApplicationData(applicationId: MaestroApplicationId): Promise<void>;
   launch(): Promise<void>;
   runFlow(
     file: string,
@@ -313,6 +314,48 @@ export async function openMaestroDevice(
     commands.run(adbBinary, ['-s', serial, ...args], {
       signal: options.signal,
     });
+  const activeApplicationCleanups = new Map<
+    MaestroApplicationId,
+    Promise<void>
+  >();
+  const clearApplicationData = (
+    installedApplicationId: MaestroApplicationId,
+  ): Promise<void> => {
+    const active = activeApplicationCleanups.get(installedApplicationId);
+    if (active) return active;
+    const cleanup = (async () => {
+      const failures: unknown[] = [];
+      try {
+        await rawAdb('shell', 'am', 'force-stop', installedApplicationId);
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        const result = await rawAdb(
+          'shell',
+          'pm',
+          'clear',
+          installedApplicationId,
+        );
+        if (result !== 'Success') {
+          throw new Error(
+            `Android package data clear failed for ${installedApplicationId}: ${result}`,
+          );
+        }
+      } catch (error) {
+        failures.push(error);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length) {
+        throw new AggregateError(
+          failures,
+          `Android package cleanup failed for ${installedApplicationId}`,
+        );
+      }
+    })().finally(() => activeApplicationCleanups.delete(installedApplicationId));
+    activeApplicationCleanups.set(installedApplicationId, cleanup);
+    return cleanup;
+  };
   await mkdir(options.artifactDirectory, { recursive: true });
 
   const close = (): Promise<void> =>
@@ -336,12 +379,9 @@ export async function openMaestroDevice(
           ).catch((error: unknown) => failures.push(error));
         }
         for (const installedApplicationId of installedApplicationIds) {
-          await rawAdb(
-            'shell',
-            'am',
-            'force-stop',
-            installedApplicationId,
-          ).catch((error: unknown) => failures.push(error));
+          await clearApplicationData(installedApplicationId).catch(
+            (error: unknown) => failures.push(error),
+          );
         }
         for (const { local, previous } of [...reverses].reverse()) {
           try {
@@ -452,6 +492,7 @@ export async function openMaestroDevice(
       serial,
       artifactDirectory: options.artifactDirectory,
       adb,
+      clearApplicationData,
       close,
       async stageFile(localPath, remotePath) {
         options.signal?.throwIfAborted();

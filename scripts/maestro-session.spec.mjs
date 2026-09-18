@@ -79,6 +79,7 @@ function fixture({ resources = ['android-avd'], rejectReverse = false } = {}) {
       if (operation === 'shell getprop ro.kernel.qemu') return '1';
       if (operation === 'shell getprop ro.build.version.sdk') return '36';
       if (operation === 'shell getprop ro.product.cpu.abi') return 'x86_64';
+      if (operation.startsWith('shell pm clear ')) return 'Success';
       if (operation === 'reverse --list')
         return 'host tcp:8448 tcp:9448\nhost tcp:5556 tcp:5556';
       if (operation === 'reverse tcp:8448 tcp:8448' && rejectReverse)
@@ -241,17 +242,37 @@ describe('Maestro device ownership', () => {
     expect(f.closed()).toBe(1);
   });
 
-  it('stops every declared installed app after cancellation', async () => {
+  it('stops and clears every declared installed app after cancellation', async () => {
     const f = fixture();
     const controller = new AbortController();
+    const cleanupOptions = [];
+    const commands = {
+      ...f.commands,
+      async run(command, args, options) {
+        const operation = args.slice(args[0] === '-s' ? 2 : 0).join(' ');
+        if (operation === 'shell am force-stop eu.qwky.trinity') {
+          f.calls.push([command, ...args]);
+          cleanupOptions.push(options);
+          throw new Error('primary force-stop failed');
+        }
+        if (operation.startsWith('shell pm clear ')) {
+          f.calls.push([command, ...args]);
+          cleanupOptions.push(options);
+          return 'Success';
+        }
+        return f.commands.run(command, args, options);
+      },
+    };
     const device = await openMaestroDevice(
       { ...f.options, signal: controller.signal },
-      f.commands,
+      commands,
     );
     await device.install('/primary.apk');
     await device.install('/secondary.apk', 'eu.qwky.trinity.secondary');
     controller.abort(new Error('test cancellation'));
-    await device.close();
+    await expect(device.close()).rejects.toThrow(
+      'Android emulator-5556 cleanup failed',
+    );
 
     expect(f.closed()).toBe(1);
     expect(f.calls).toContainEqual([
@@ -272,6 +293,29 @@ describe('Maestro device ownership', () => {
       'force-stop',
       'eu.qwky.trinity.secondary',
     ]);
+    expect(f.calls).toContainEqual([
+      '/sdk/platform-tools/adb',
+      '-s',
+      'emulator-5556',
+      'shell',
+      'pm',
+      'clear',
+      'eu.qwky.trinity',
+    ]);
+    expect(f.calls).toContainEqual([
+      '/sdk/platform-tools/adb',
+      '-s',
+      'emulator-5556',
+      'shell',
+      'pm',
+      'clear',
+      'eu.qwky.trinity.secondary',
+    ]);
+    expect(cleanupOptions).toHaveLength(3);
+    for (const options of cleanupOptions) {
+      expect(options.timeout).toBe(2_000);
+      expect(options.signal).not.toBe(controller.signal);
+    }
     expect(f.calls).toContainEqual([
       '/sdk/platform-tools/adb',
       '-s',

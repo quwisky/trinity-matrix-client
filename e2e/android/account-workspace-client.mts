@@ -846,7 +846,6 @@ export class AccountWorkspaceClient {
       }
       if (fileInputSelector !== undefined) assertNativeDocumentActivation(events);
       else assert(documentReplaced || events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
-      if (allowFocusedInput) await this.key('escape');
     } catch (error) {
       actionError = error;
     } finally {

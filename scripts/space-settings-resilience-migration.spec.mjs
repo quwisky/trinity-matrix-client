@@ -139,8 +139,10 @@ describe('Android Space Settings resilience migration', () => {
     expect(client).toContain(
       'Native input ${actionId} focused or changed ${selector}',
     );
-    expect(client).toContain("if (allowFocusedInput) await this.key('escape')");
-    expect(readFileSync(pointFillPath, 'utf8')).not.toContain('hideKeyboard');
+    expect(client).not.toContain(
+      "if (allowFocusedInput) await this.key('escape')",
+    );
+    expect(readFileSync(pointFillPath, 'utf8')).toContain('hideKeyboard');
     expect(client).not.toContain('async focusWithKeyboard(');
     expect(client).toContain(
       "await this.fill('#homeserver', account.homeserver)",

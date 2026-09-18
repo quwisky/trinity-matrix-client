@@ -6,3 +6,4 @@ appId: ${APP_ID}
     point: ${output.pointResponse.body}
 - eraseText
 - inputText: ${SECRET_TEXT}
+- hideKeyboard
