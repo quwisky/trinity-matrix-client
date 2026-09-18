@@ -581,6 +581,12 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:recovery-reset; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.recovery-reset'],
+  },
+  {
+    command:
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'critical-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:critical-journeys; fi',
     tier: 'pull-request',
     suiteIds: ['android.critical-journeys'],
@@ -746,12 +752,6 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'security-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:security-settings; fi',
     tier: 'pull-request',
     suiteIds: ['android.security-settings'],
-  },
-  {
-    command:
-      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:recovery-reset; fi',
-    tier: 'pull-request',
-    suiteIds: ['android.recovery-reset'],
   },
   {
     command:
