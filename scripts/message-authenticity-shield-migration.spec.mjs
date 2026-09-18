@@ -90,6 +90,7 @@ function assertProtectedRuntimeContract(journey) {
     'assert.equal(composerValue, body)',
     'await secondary.tapCurrent(\'[data-testid="composer-send"]\')',
     'fixtures.sendReadReceipt(',
+    'seer, room.id, shield.eventId',
     "await client.key('tab')",
     '\'[data-testid^="msg-shield-"]\'',
     '\'[data-testid="read-receipts"]\'',
@@ -98,9 +99,13 @@ function assertProtectedRuntimeContract(journey) {
     "assert.equal(shield.tabindex, '0')",
     "'.msg__shield-tip-reason'",
     "'.msg__shield-tip-detail'",
+    'observation.tooltipReason.length > 0',
+    'observation.tooltipDetail.length > 0',
+    'Boolean(observation.describedBy)',
     '/intercept|read by|eavesdrop|compromised|leaked/i',
     "for (const direction of ['ltr', 'rtl'] as const)",
     'document.documentElement.dir = direction',
+    'Math.abs(geometry.shieldTrailingGap) <= 1',
     "document.documentElement.removeAttribute('dir')",
     'expectedStages: 2',
     'expectedUniqueAssertions: 26',
@@ -245,6 +250,10 @@ describe('Android message-authenticity shield migration', () => {
       ["type: 'm.room.encryption'", "type: 'm.room.name'"],
       ['fixtures.sendReadReceipt(', 'fixtures.mockReadReceipt('],
       [
+        'seer, room.id, shield.eventId',
+        'seer, room.id, `${shield.eventId}-different`',
+      ],
+      [
         "await client.key('tab')",
         'await client.focusFixture(\'[data-testid^="msg-shield-"]\')',
       ],
@@ -260,6 +269,24 @@ describe('Android message-authenticity shield migration', () => {
         "assert.equal(shield.tabindex, '0')",
         'assert.equal(shield.tabindex, shield.tabindex)',
       ],
+      [
+        'observation.tooltipReason.length > 0',
+        'observation.tooltipReason.length >= 0',
+      ],
+      [
+        'observation.tooltipDetail.length > 0',
+        'observation.tooltipDetail.length >= 0',
+      ],
+      ['Boolean(observation.describedBy)', 'true'],
+      ['/intercept|read by|eavesdrop|compromised|leaked/i', '/^$/u'],
+      [
+        "for (const direction of ['ltr', 'rtl'] as const)",
+        "for (const direction of ['ltr'] as const)",
+      ],
+      [
+        'Math.abs(geometry.shieldTrailingGap) <= 1',
+        'Math.abs(geometry.shieldTrailingGap) < Infinity',
+      ],
       ["document.documentElement.removeAttribute('dir')", 'Promise.resolve()'],
       ['redactMaestroArtifacts(output, secrets)', 'Promise.resolve()'],
       [
@@ -268,6 +295,11 @@ describe('Android message-authenticity shield migration', () => {
       ],
       ['await primary.close()', 'await Promise.resolve()'],
       ['await secondary.close()', 'await Promise.resolve()'],
+      [
+        'await device.clearApplicationData(applicationId)',
+        'await Promise.resolve(applicationId)',
+      ],
+      ['device.close()', 'Promise.resolve()'],
     ];
     for (const [before, after] of mutations) {
       expect(journey).toContain(before);
