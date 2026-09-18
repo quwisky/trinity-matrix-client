@@ -315,12 +315,12 @@ jobs:
       contents: read
       actions: read
     # Shard 1 allows 20 + 20 + 20 + 45 minutes for commands and 15 for setup/diagnostics.
-    # Shard 2 provisionally allows 120 minutes including core Space Settings;
-    # original hosted timings must validate its complete command/setup critical path.
+    # Shard 2 allows 165 minutes for the real provider and two-package trust
+    # suites plus core Space Settings; hosted timings validate the full path.
     # Shard 3 allows 20 + 145 + 45 minutes for its commands and 30 for setup/diagnostics.
     # Shard 4 allows 135 minutes for migrated suites and retained Playwright,
     # plus 45 minutes for setup and diagnostics.
-    timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 180 || 120 }}
+    timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 180 || matrix.shard == 2 && 165 || 120 }}
     strategy:
       fail-fast: false
       matrix:
@@ -399,6 +399,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-http-error-recovery-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-http-error-recovery; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'legacy-sso-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:legacy-sso; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'sso-recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-authenticity-shield-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'native-shell-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:native-shell; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'space-settings-core-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:space-settings-core; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'space-leave-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-leave; fi
@@ -641,6 +642,13 @@ jobs:
           surface: android-sso-recovery-reset
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.sso-recovery-reset/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-authenticity-shield-started == 'true' }}
+        with:
+          surface: android-message-authenticity-shield
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-authenticity-shield/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}

@@ -3462,3 +3462,49 @@ contains 49 independently rehashed files at manifest digest
 `2a016dac95e7c6a0afa14445ba1e3c6fc309dd5a5f07405d86338fe2c900d2ef`.
 Together with the local acceptance above, this satisfies issue #727 without
 retiring its Playwright predecessor.
+
+## Message-authenticity shield journeys
+
+`android.message-authenticity-shield` maps both canonical definitions in
+`e2e/browser/journeys/trust/message-shield.spec.mts`, pinned at SHA-256
+`462d527560b07201ed04b0a2793d275411abfc2c6beb58d96036ef145b93288b`.
+The plaintext definition owns two assertion sites. The real encrypted-room
+definition owns 24 more; its nine geometry sites execute in both LTR and RTL,
+for 26 unique direct assertion identities and 35 stage-local direct assertion
+records. Application and account helper sources are pinned separately by the
+executable migration contract.
+
+The plaintext stage creates and joins a genuine unencrypted private Room through
+Matrix REST, sends one exact event, signs the reader into the installed primary
+APK and opens the Room with Maestro. It proves the exact timeline body is visible
+and that no authenticity shield exists. The encrypted stage establishes recovery
+and cross-signing through native Security UI on device A, signs the same Account
+into the independently installed secondary APK as unsigned device B, and composes
+the long exact message through native input. After native reactivation, device A
+must show that exact event with a real shield.
+
+A separately named Room member places an `m.read` receipt on the observed event
+through Matrix REST. Read-only renderer inspection then proves the exact reader
+name, accessibility relationship, non-empty reason and detail, copy that does not
+overstate interception, and the complete logical-trailing-edge/non-overlap
+geometry in both writing directions. Maestro Tab traversal—not DOM focus—opens
+the tooltip. Renderer direction setup is restored in `finally`; renderer code
+never clicks, focuses, fills, submits or navigates product UI.
+
+```bash
+pnpm nx run trinity-e2e-android:message-authenticity-shield --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-authenticity-shield
+```
+
+The uncached serial target builds and installs both APKs, owns the emulator and
+disposable Synapse resources, and has a 30-minute Node budget. CI runs it on shard
+2 immediately after `android.sso-recovery-reset`, with a 35-minute command bound
+and started-only `android-message-authenticity-shield` diagnostics. Passwords,
+tokens and session secrets are redacted and scanned; flow-owned raster artifacts
+are removed before retention. Reports preserve one attempt, zero retries, two
+stages, 26 identities, 35 records, source ownership and aggregate two-package,
+Matrix and device teardown.
+
+Local and hosted acceptance evidence is pending. Do not retire or edit either
+Playwright predecessor. This mapping does not authorize merging PR #677.

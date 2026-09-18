@@ -49,6 +49,7 @@ type WorkspaceRoomStateEventType =
   | 'im.vector.modular.widgets'
   | 'm.room.avatar'
   | 'm.room.canonical_alias'
+  | 'm.room.encryption'
   | 'm.room.history_visibility'
   | 'm.room.join_rules'
   | 'm.room.name'
@@ -122,6 +123,11 @@ export function createAccountFixtures(
     reason: string,
   ): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<void>;
+  sendReadReceipt(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<void>;
   markedUnread(account: NodeWorkspaceAccount, roomId: string): Promise<boolean | undefined>;
   setMarkedUnread(
     account: NodeWorkspaceAccount,
@@ -564,6 +570,19 @@ export function createAccountFixtures(
     );
   }
 
+  async function sendReadReceipt(
+    reader: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<void> {
+    await request(
+      access(reader),
+      `/rooms/${encodeURIComponent(roomId)}/receipt/m.read/${encodeURIComponent(eventId)}`,
+      'POST',
+      {},
+    );
+  }
+
   function markedUnreadPath(account: NodeWorkspaceAccount, roomId: string): string {
     return `/user/${encodeURIComponent(account.userId)}/rooms/${encodeURIComponent(roomId)}/account_data/m.marked_unread`;
   }
@@ -845,6 +864,7 @@ export function createAccountFixtures(
     join,
     ban,
     sendMessage,
+    sendReadReceipt,
     markedUnread,
     setMarkedUnread,
     setRoomTag,
