@@ -44,6 +44,7 @@ export interface AccountElement {
   readonly focused: boolean;
   readonly disabled: boolean;
   readonly value: string | null;
+  readonly hasValue: boolean;
   readonly attributes: Readonly<Record<string, string>>;
   readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly right: number; readonly bottom: number };
   readonly style: { readonly display: string; readonly opacity: string; readonly overflowY: string };
@@ -202,6 +203,9 @@ export class AccountWorkspaceClient {
             (e instanceof HTMLInputElement && e.type !== 'password')
               ? e.value
               : null,
+          hasValue:
+            (e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement) &&
+            e.value.length > 0,
           attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'role', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
           rect: {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom},
           style: {display:style.display,opacity:style.opacity,overflowY:style.overflowY},

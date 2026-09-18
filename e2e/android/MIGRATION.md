@@ -3165,7 +3165,7 @@ diagnostic `mu6lnohf-d99bc2a0-2810-4583-8fd1-b14e9d8dbc65`, which retained both
 queries and dismissed only on the journey's explicit Escape or result choice.
 The temporary local case selector used for that diagnostic was removed before
 commit. Repository validation passed all uncached workspace typecheck and lint
-targets, 974/974 script tests, 37/37 focused review tests, stylelint, format,
+targets, 975/975 script tests, 38/38 focused review tests, stylelint, format,
 architecture and assembled documentation checks.
 
 At clean hardening commit
