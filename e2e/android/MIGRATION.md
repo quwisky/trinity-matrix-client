@@ -3430,11 +3430,8 @@ invocation `mu71tohi-8a5aabd7-0c8d-4a16-88c3-6a36983de144` passed its sole
 Chromium test in 5.7 seconds with one worker and retry 0, followed by clean
 Synapse teardown.
 
-Repository validation and final review passed at this source revision.
-Acceptance now remains pending only on original-attempt hosted
-renderer/browser/Android artifact audits at the exact consolidated revision.
-Do not retire or edit the predecessor before that evidence is accepted. This
-mapping does not authorize merging PR #677.
+Repository validation and final review passed at this source revision. The
+predecessor remains enabled. This mapping does not authorize merging PR #677.
 
 Hosted run `35358912583` at consolidated head `d26dc780` and merge revision
 `88fcadf8` supplied accepted original-attempt renderer and browser evidence.
@@ -3446,4 +3443,22 @@ seconds with zero retries. Android shard 2 stopped in unchanged
 timeouts were followed by ADB package and reverse-cleanup timeouts. No
 `android.sso-recovery-reset` artifact exists for that run, so it does not
 satisfy Android acceptance. The retained transport-loss evidence belongs to
-the #665 reliability ledger; a fresh workflow attempt remains required.
+the #665 reliability ledger and therefore required a fresh workflow attempt.
+
+Fresh original-attempt run `35369628753` at consolidated head `97c89e37` and
+merge revision `181c1501` completed the missing hosted acceptance. Android
+artifact `10561477901` (`sha256:82f26f068131a06c07883236c2c99d748fff81c732f2949e8d3ecaa616898549`)
+records invocation `mu779x2e-1162928f-5131-421c-b68c-cec1618b37b9` passing its
+single stage in 266.107 seconds on attempt 1 with zero retries, all nine
+assertions and no failures. It contains only `passed-device.png` and
+`passed-webview.png`; structured scans found no credentials, Matrix tokens,
+recovery secrets, master-key material or backup values, and Synapse cleanup
+completed. Browser artifact `10557934912`
+(`sha256:66a4647c949496a1c21bd40521fd5a450d931522b7d56054170fb02b305e726b`)
+records the exact predecessor passing in 11.026 seconds at retry 0 within the
+317-passed/one-skipped canonical suite. Renderer artifact `10558275536`
+(`sha256:1adae98240d61810c6aa4fff12a90bcc6bc7bec84ad9af8d5a416eccdad17569`)
+contains 49 independently rehashed files at manifest digest
+`2a016dac95e7c6a0afa14445ba1e3c6fc309dd5a5f07405d86338fe2c900d2ef`.
+Together with the local acceptance above, this satisfies issue #727 without
+retiring its Playwright predecessor.
