@@ -3506,5 +3506,28 @@ are removed before retention. Reports preserve one attempt, zero retries, two
 stages, 26 identities, 35 records, source ownership and aggregate two-package,
 Matrix and device teardown.
 
-Local and hosted acceptance evidence is pending. Do not retire or edit either
-Playwright predecessor. This mapping does not authorize merging PR #677.
+Local acceptance used feature source
+`f752550fffc005326c04eba3f1c1e0cccfbaf825`, production-renderer manifest
+`sha256:18fd533629d21518f24e23071c7500350ede445e0400b8d64b903b2d3b1c8266`,
+primary APK `sha256:30a8574e4986c3048fd410b9b44e4c570e2be249e8c765f8d0007da401ec3139`
+and secondary APK
+`sha256:677751d082c57732bcbf67c6d8c47b3a69a6edecba431fa74f4f50b3ec1e4bfe`.
+Invocations `mu7fqrnm-04698b02-ec24-4e60-a633-d76a9620188b`,
+`mu7g0lx7-45ed7614-7b17-42a8-9922-0b00186da05a` and
+`mu7g967q-a4b6b844-d9e7-4112-8805-605abbf93bc2` each passed both stages on
+attempt 1 with zero retries and all 26 unique/35 stage-local assertion records.
+Their plaintext/encrypted stage durations were 91,105/231,278,
+88,050/233,306 and 87,806/233,329 ms. Every LTR and RTL geometry record passed;
+both logical trailing gaps were exactly zero, all three overlap checks were
+false and the receipt remained inside the virtual row. Each invocation retained
+the native and WebView success captures for the plaintext reader, unsigned
+sender and shield reader, removed flow-owned raster artifacts, passed the exact
+secret/token scan, and completed application-data, device and Synapse teardown.
+
+Exact predecessor invocation `mu7fownh-8c6417ba-a872-49c7-84ea-58448449f0d0`
+passed both Chromium definitions with one worker and retry 0 in 12.1 seconds,
+followed by clean Synapse teardown. The predecessors remain enabled. Hosted
+acceptance still requires an original-attempt Android shard 2 artifact plus the
+matching browser and immutable renderer artifacts from the exact consolidated
+revision. Do not retire or edit either Playwright predecessor. This mapping does
+not authorize merging PR #677.
