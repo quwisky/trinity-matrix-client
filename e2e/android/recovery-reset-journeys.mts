@@ -20,6 +20,7 @@ import {
   recoveryResetAssertions as assertions,
   type RecoveryResetAssertion,
 } from './recovery-reset-contract.mts';
+import { captureSecretSafe } from './recovery-reset-diagnostics.mts';
 
 const PRIMARY_APPLICATION_ID = 'eu.qwky.trinity';
 const SECONDARY_APPLICATION_ID = 'eu.qwky.trinity.secondary';
@@ -57,6 +58,7 @@ interface RecoveryResetCase {
     readonly secondary: AccountWorkspaceClient;
     readonly fixtures: Fixtures;
     readonly secrets: Record<string, string>;
+    readonly onAssertionCount: (count: number) => void;
   }): Promise<void>;
 }
 
@@ -81,6 +83,11 @@ function redactFailure(
     );
 }
 
+const assertionCountObservers = new WeakMap<
+  Set<RecoveryResetAssertion>,
+  (count: number) => void
+>();
+
 async function recordAssertion(
   client: AccountWorkspaceClient,
   recorded: Set<RecoveryResetAssertion>,
@@ -90,6 +97,15 @@ async function recordAssertion(
   assert(!recorded.has(identity), `${identity} is recorded exactly once`);
   recorded.add(identity);
   await client.record(identity, { assertion: identity, observation });
+  assertionCountObservers.get(recorded)?.(recorded.size);
+}
+
+function createRecordedAssertions(
+  onAssertionCount: (count: number) => void,
+): Set<RecoveryResetAssertion> {
+  const recorded = new Set<RecoveryResetAssertion>();
+  assertionCountObservers.set(recorded, onAssertionCount);
+  return recorded;
 }
 
 function assertExactAssertions(
@@ -329,38 +345,6 @@ async function assertReadySecurity(
   };
 }
 
-async function captureSecretSafe(
-  client: AccountWorkspaceClient,
-  name: string,
-): Promise<void> {
-  let recoveryKeys: readonly AccountElement[];
-  try {
-    recoveryKeys = await client.elements('[data-testid="recovery-key"]');
-  } catch (error) {
-    if (!describeFailure(error).includes('Account WebView is active')) {
-      throw error;
-    }
-    await writeFile(
-      join(client.output, `${name}-capture.json`),
-      `${JSON.stringify(
-        { capture: 'skipped-inactive-client', visibleRecoveryKey: false },
-        null,
-        2,
-      )}\n`,
-    );
-    return;
-  }
-  if (recoveryKeys.some((key) => key.visible && key.text.trim().length > 0)) {
-    await client.record(`${name}-capture`, {
-      capture: 'suppressed-sensitive-surface',
-      pathname: new URL((await client.surface()).url).pathname,
-      visibleRecoveryKey: true,
-    });
-    return;
-  }
-  await client.capture(name);
-}
-
 async function scanRecoveryResetArtifacts(
   output: string,
   secrets: Readonly<Record<string, string>>,
@@ -418,8 +402,8 @@ const cases: readonly RecoveryResetCase[] = [
     id: 'replacement-key-reset',
     source: `${RECOVERY_RESET_SOURCES.replacement}; ${RECOVERY_RESET_SOURCES.helpers}; ${RECOVERY_RESET_SOURCES.app}; ${RECOVERY_RESET_SOURCES.account}`,
     expected: Object.values(assertions.replacement),
-    async run({ primary, secondary, fixtures, secrets }) {
-      const recorded = new Set<RecoveryResetAssertion>();
+    async run({ primary, secondary, fixtures, secrets, onAssertionCount }) {
+      const recorded = createRecordedAssertions(onAssertionCount);
       const account = await fixtures.account('recovery-reset-replacement');
       secrets[`${this.id}_PASSWORD`] = account.password;
       const before = await establishRecovery(
@@ -636,8 +620,8 @@ const cases: readonly RecoveryResetCase[] = [
     id: 'password-cancel-atomicity',
     source: `${RECOVERY_RESET_SOURCES.cancel}; ${RECOVERY_RESET_SOURCES.helpers}; ${RECOVERY_RESET_SOURCES.app}; ${RECOVERY_RESET_SOURCES.account}`,
     expected: Object.values(assertions.cancel),
-    async run({ primary, secondary, fixtures, secrets }) {
-      const recorded = new Set<RecoveryResetAssertion>();
+    async run({ primary, secondary, fixtures, secrets, onAssertionCount }) {
+      const recorded = createRecordedAssertions(onAssertionCount);
       const account = await fixtures.account('recovery-reset-cancel');
       secrets[`${this.id}_PASSWORD`] = account.password;
       const before = await establishRecovery(
@@ -716,8 +700,8 @@ const cases: readonly RecoveryResetCase[] = [
     id: 'original-key-after-cancel',
     source: `${RECOVERY_RESET_SOURCES.originalKey}; ${RECOVERY_RESET_SOURCES.helpers}; ${RECOVERY_RESET_SOURCES.app}; ${RECOVERY_RESET_SOURCES.account}`,
     expected: Object.values(assertions.originalKey),
-    async run({ primary, secondary, fixtures, secrets }) {
-      const recorded = new Set<RecoveryResetAssertion>();
+    async run({ primary, secondary, fixtures, secrets, onAssertionCount }) {
+      const recorded = createRecordedAssertions(onAssertionCount);
       const account = await fixtures.account('recovery-reset-original-key');
       secrets[`${this.id}_PASSWORD`] = account.password;
       const before = await establishRecovery(
@@ -807,8 +791,8 @@ const cases: readonly RecoveryResetCase[] = [
     id: 'secondary-settings-escape-hatch',
     source: `${RECOVERY_RESET_SOURCES.escapeHatch}; ${RECOVERY_RESET_SOURCES.helpers}; ${RECOVERY_RESET_SOURCES.app}; ${RECOVERY_RESET_SOURCES.account}`,
     expected: Object.values(assertions.escapeHatch),
-    async run({ primary, secondary, fixtures, secrets }) {
-      const recorded = new Set<RecoveryResetAssertion>();
+    async run({ primary, secondary, fixtures, secrets, onAssertionCount }) {
+      const recorded = createRecordedAssertions(onAssertionCount);
       const account = await fixtures.account('recovery-reset-escape-hatch');
       secrets[`${this.id}_PASSWORD`] = account.password;
       await establishRecovery(primary, fixtures, account, secrets, this.id);
@@ -904,6 +888,7 @@ void test(
           artifact: string;
           attempt: 1;
           retries: 0;
+          expectedAssertionCount: number;
           assertionCount: number;
           failureCount?: number;
           error?: string;
@@ -981,7 +966,8 @@ void test(
             artifact: `${entry.id}/**`,
             attempt: 1,
             retries: 0,
-            assertionCount: entry.expected.length,
+            expectedAssertionCount: entry.expected.length,
+            assertionCount: 0,
           };
           stages.push(stage);
           await save();
@@ -995,6 +981,9 @@ void test(
               secondary,
               fixtures,
               secrets,
+              onAssertionCount: (count) => {
+                stage.assertionCount = count;
+              },
             });
             await captureSecretSafe(primary, 'passed-primary');
             await captureSecretSafe(secondary, 'passed-secondary');
@@ -1024,13 +1013,9 @@ void test(
             for (const applicationId of [
               PRIMARY_APPLICATION_ID,
               SECONDARY_APPLICATION_ID,
-            ]) {
+            ] as const) {
               try {
-                await device.adb('shell', 'am', 'force-stop', applicationId);
-                assert.equal(
-                  await device.adb('shell', 'pm', 'clear', applicationId),
-                  'Success',
-                );
+                await device.clearApplicationData(applicationId);
               } catch (error) {
                 failures.push(error);
               }

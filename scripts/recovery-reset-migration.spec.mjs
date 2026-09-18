@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/trust/recovery-reset.spec.mts';
@@ -9,6 +9,10 @@ const appSource = 'e2e/support/app.mts';
 const accountSource = 'e2e/support/account.mts';
 const contractPath = resolve(root, 'e2e/android/recovery-reset-contract.mts');
 const journeyPath = resolve(root, 'e2e/android/recovery-reset-journeys.mts');
+const diagnosticsPath = resolve(
+  root,
+  'e2e/android/recovery-reset-diagnostics.mts',
+);
 const accountClientPath = resolve(
   root,
   'e2e/android/account-workspace-client.mts',
@@ -164,6 +168,14 @@ function assertProtectedRuntimeContract(journey) {
     'expectedStages: 4',
     'expectedAssertions: 54',
     'captureSecretSafe(',
+    'expectedAssertionCount: entry.expected.length',
+    'assertionCount: 0',
+    'onAssertionCount: (count) => {',
+    "assert(warning.text.includes('backup on the server is deleted'))",
+    "assert(feedback.text.includes('RESET'))",
+    'assert.equal(backupAfter, before.backupVersion)',
+    'assert.equal(defaultAfter, before.defaultKey)',
+    'assert.equal(masterAfter, before.masterKey)',
     'await deactivate(primary)',
     'await deactivate(secondary)',
     'removeRecoveryResetMaestroImages(output)',
@@ -171,6 +183,7 @@ function assertProtectedRuntimeContract(journey) {
     'scanRecoveryResetArtifacts(output, secrets)',
     'await primary.close()',
     'await secondary.close()',
+    'await device.clearApplicationData(applicationId)',
     'device.close()',
     'throw new AggregateError(',
   ];
@@ -184,6 +197,15 @@ function assertProtectedRuntimeContract(journey) {
   ).toBeGreaterThanOrEqual(1);
   expect(occurrences(journey, 'await deactivate(primary)')).toBe(4);
   expect(occurrences(journey, 'await deactivate(secondary)')).toBe(1);
+  expect(
+    occurrences(journey, 'assert.equal(backupAfter, before.backupVersion)'),
+  ).toBe(2);
+  expect(
+    occurrences(journey, 'assert.equal(defaultAfter, before.defaultKey)'),
+  ).toBe(2);
+  expect(
+    occurrences(journey, 'assert.equal(masterAfter, before.masterKey)'),
+  ).toBe(1);
   expect(journey).not.toMatch(/\bretries?\s*[:=]\s*[1-9]/u);
   expect(journey).not.toMatch(
     /observation:\s*(?:originalKey|replacementKey|password|accessToken|token|uia)/u,
@@ -358,6 +380,51 @@ describe('Android recovery-reset migration', () => {
     for (const mutation of forbiddenRendererActions) {
       expect(journey).not.toMatch(mutation);
     }
+    expect(
+      journey.indexOf(
+        "matrixResources.cleanup('Recovery-reset Android device'",
+      ),
+    ).toBeLessThan(journey.indexOf('await device.install('));
+  });
+
+  it('suppresses failure capture while a populated recovery-key input is visible', async () => {
+    expect(
+      diagnosticsPath,
+      'recovery-reset-diagnostics.mts must exist',
+    ).toSatisfy(existsSync);
+    if (!existsSync(diagnosticsPath)) return;
+    const { captureSecretSafe } = await import(diagnosticsPath);
+    const recoveryKey = 'sensitive recovery key fixture';
+    const client = {
+      output: '/unused',
+      elements: vi.fn(async () => [
+        {
+          visible: true,
+          text: '',
+          value: recoveryKey,
+        },
+      ]),
+      surface: vi.fn(async () => ({
+        url: 'https://localhost/encryption/unlock',
+      })),
+      record: vi.fn(async () => undefined),
+      capture: vi.fn(async () => undefined),
+    };
+
+    await captureSecretSafe(client, 'failed-secondary');
+
+    expect(client.elements).toHaveBeenCalledWith(
+      '[data-testid="recovery-key"], [data-testid="recovery-key-input"], input[type="password"]',
+    );
+    expect(client.capture).not.toHaveBeenCalled();
+    expect(client.record).toHaveBeenCalledWith(
+      'failed-secondary-capture',
+      expect.objectContaining({
+        capture: 'suppressed-sensitive-surface',
+        visibleSensitiveSurface: true,
+      }),
+    );
+    expect(JSON.stringify(client.record.mock.calls)).not.toContain(recoveryKey);
   });
 
   it('rejects warning, atomicity, key, escape-hatch, cleanup and redaction weakenings', () => {
@@ -374,6 +441,10 @@ describe('Android recovery-reset migration', () => {
         "assert(spelledOut.includes('RESET'))",
       ],
       [
+        "assert(warning.text.includes('backup on the server is deleted'))",
+        "assert(warning.text.includes('backup'))",
+      ],
+      [
         "client.fillFocused('trn-alert-dialog input', 'yes please')",
         "client.fillFocused('trn-alert-dialog input', 'RESET')",
       ],
@@ -384,6 +455,22 @@ describe('Android recovery-reset migration', () => {
       [
         'assert.notEqual(replacementKey, originalKey)',
         'assert.equal(replacementKey, replacementKey)',
+      ],
+      [
+        "assert(feedback.text.includes('RESET'))",
+        "assert(feedback.text.includes(''))",
+      ],
+      [
+        'assert.equal(backupAfter, before.backupVersion)',
+        'assert.equal(backupAfter, backupAfter)',
+      ],
+      [
+        'assert.equal(defaultAfter, before.defaultKey)',
+        'assert.equal(defaultAfter, defaultAfter)',
+      ],
+      [
+        'assert.equal(masterAfter, before.masterKey)',
+        'assert.equal(masterAfter, masterAfter)',
       ],
       [
         'client.fillFocused(\'[data-testid="recovery-key-input"]\', originalKey)',
