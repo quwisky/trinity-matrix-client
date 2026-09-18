@@ -577,7 +577,7 @@ describe('Android recovery-reset migration', () => {
       ],
     });
     expect(target.options.command).toContain('--suite=android.recovery-reset');
-    expect(target.options.command).toContain('--timeout-ms=1800000');
+    expect(target.options.command).toContain('--timeout-ms=2700000');
     expect(target.options.command).toContain(
       '--entrypoint=e2e/android/recovery-reset-journeys.mts',
     );

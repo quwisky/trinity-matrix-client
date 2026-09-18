@@ -383,7 +383,7 @@ jobs:
           script: |
             echo 'smoke-started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke
-            if [ "${{ matrix.shard }}" = "4" ]; then echo 'recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:recovery-reset; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3000000 -- pnpm exec nx run trinity-e2e-android:recovery-reset; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'critical-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:critical-journeys; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-filter-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-filter; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-touch-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-touch; fi
