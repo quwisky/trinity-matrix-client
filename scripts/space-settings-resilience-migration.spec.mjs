@@ -23,7 +23,7 @@ const focusedFillPath = resolve(
 );
 const pointFillPath = resolve(
   root,
-  'e2e/android/flows/accounts-point-fill.yaml',
+  'e2e/android/flows/accounts-current-point-fill.yaml',
 );
 
 const assertionIds = [
@@ -141,12 +141,22 @@ describe('Android Space Settings resilience migration', () => {
     );
     expect(client).toContain("if (allowFocusedInput) await this.key('escape')");
     expect(readFileSync(pointFillPath, 'utf8')).not.toContain('hideKeyboard');
-    expect(client).toContain('async focusWithKeyboard(');
-    expect(client).toContain("await this.focusWithKeyboard('#homeserver')");
+    expect(client).not.toContain('async focusWithKeyboard(');
     expect(client).toContain(
-      "await this.fillFocused('#homeserver', account.homeserver)",
+      "await this.fill('#homeserver', account.homeserver)",
     );
-    expect(client).toMatch(/this\.nativeAction\(\s*'accounts-point-fill'/);
+    expect(client).toContain("await this.fill('#username', account.username)");
+    expect(client).toContain("await this.fill('#password', account.password)");
+    expect(client).toContain(
+      "await this.tap('button', { exactText: 'Continue' })",
+    );
+    expect(client).toContain(
+      "await this.tap('button', { exactText: 'Sign in' })",
+    );
+    expect(client).toMatch(
+      /this\.nativeAction\(\s*'accounts-current-point-fill'/,
+    );
+    expect(client).toContain('currentPoint: true');
     expect(client).toContain('Native input reached ${selector}');
   });
 });
