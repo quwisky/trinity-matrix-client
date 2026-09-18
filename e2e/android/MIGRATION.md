@@ -3526,8 +3526,41 @@ secret/token scan, and completed application-data, device and Synapse teardown.
 
 Exact predecessor invocation `mu7fownh-8c6417ba-a872-49c7-84ea-58448449f0d0`
 passed both Chromium definitions with one worker and retry 0 in 12.1 seconds,
-followed by clean Synapse teardown. The predecessors remain enabled. Hosted
-acceptance still requires an original-attempt Android shard 2 artifact plus the
-matching browser and immutable renderer artifacts from the exact consolidated
-revision. Do not retire or edit either Playwright predecessor. This mapping does
-not authorize merging PR #677.
+followed by clean Synapse teardown. The predecessors remain enabled.
+
+Hosted acceptance on 2026-09-18 used exact consolidated head
+`ac760a319a0e0cc8e1688edd10393b1f5c31b34c` in merge
+`52c95b94a7b80043a1ad39a7f2eb11757bda18b9` on run `35396085035`. Android
+shard 2 job `105765823381` passed the target on its original attempt. Invocation
+`mu7ho9mz-908edb78-88d2-4cbd-a00a-0912c559af76` completed in 527,521 ms with
+zero retries: plaintext passed in 135,465 ms and the unsigned-device stage in
+390,585 ms. Artifact `10572053853` is 2,083,658 bytes with GitHub digest
+`sha256:44381b6759349a98df126fe513c32d5a15cc31ed2d66ed2f1776c22fa4fbc1b5`.
+Independent inspection counted exactly 35 assertion files and 26 unique
+identities. Both LTR and RTL observations retained zero-pixel shield and receipt
+trailing gaps, no content/shield/receipt overlap, direct body children and the
+receipt inside its virtual row. The focused success state names
+`msg-shield-red`, contains the exact wrapped message and cautious tooltip copy,
+and the assertion records preserve the exact receipt reader label. The artifact
+retains only six success rasters across the primary and secondary packages plus
+their six JSON/UI/surface companions; flow-owned temporary images were removed,
+the post-redaction secret/token scan passed, both application packages were
+cleaned, Synapse data was removed and the job's unchanged-worktree check passed.
+
+Browser job `105765823223` published artifact `10569017744` (GitHub digest
+`sha256:fb32586b65c0bd48d6e32a6577e1a695e4529e3f7e6c0f6cf870864cdeb620ce`)
+after 317 tests passed and one intentionally skipped in 18.8 minutes. The two
+exact shield predecessors remained enabled and passed at retry 0; CI's one-retry
+configuration has `failOnFlakyTests`, so the green job did not hide a recovered
+retry. Renderer job `105765453916` published artifact `10568066430` (GitHub
+digest
+`sha256:fc3401b651968cc2807cc6a34ab4f4859d671fdea69304e222486825c8f9fda5`)
+and independently verified all 49 production files, totaling 15,302,546 bytes,
+at manifest digest
+`52c52a0fbb924ed2815fed13ed27903e00407a14ba7fbf4585840214cb91c708`
+for the same merge SHA. The full workflow is not claimed green: unrelated
+Android shard 4 failed and shard 3 remained non-terminal when this audit closed;
+those broader-suite reliability results remain owned by issue #665. Together
+with the frozen local evidence, the owned Android, browser and renderer jobs
+satisfy issue #728 without retiring either Playwright predecessor. This mapping
+does not authorize merging PR #677.
