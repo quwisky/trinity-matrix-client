@@ -3104,6 +3104,14 @@ read-only and cannot click, focus, fill, submit, navigate or reload product UI.
 Password and recovery-key flows remove secret-bearing Maestro image diagnostics;
 suite diagnostics are text-redacted and scanned before publication.
 
+Review hardening also blocks failure capture whenever the recovery-key display,
+recovery-key input or a password input is populated. Focused fills hide the
+native keyboard without sending an application-level Escape, so sidebar filters
+and quick switchers retain their state until the journey explicitly dismisses
+them. Stage records count only assertions that were actually written, and
+two-package cleanup uses independent bounded ADB signals so cancellation or a
+failed force-stop cannot prevent either package from being cleared.
+
 ```bash
 pnpm nx run trinity-e2e-android:recovery-reset --skipNxCache
 # Equivalent package command:
@@ -3130,37 +3138,49 @@ switch cannot stale the coordinate. Exact identity regression invocation
 attempt 1 with zero retries: DM avatar in 81.054 seconds, member presence in
 91.429 seconds and DM presence in 64.189 seconds.
 
-Post-repair local acceptance on 2026-09-18 ran three unchanged full-suite
-invocations: `mu6gnn80-8d1c157e-fae9-4712-881e-3f579ff26545`,
-`mu6hcj5a-a83ee60c-e63f-448b-9f80-b18ae52a818b`, and
-`mu6i19y7-2210dd52-2733-4264-9168-aa268492d82a`. They passed in 1,129.270,
-1,122.315, and 1,119.185 seconds, respectively, each on attempt 1 with zero
-retries, four passed stages and all 54 assertion identities. The final run's
-stage durations were 337.581 seconds for replacement, 257.399 seconds for
-password-cancel atomicity, 288.728 seconds for original-key viability, and
-199.572 seconds for the Settings escape hatch. Each retained artifact had
-exactly eight final device/WebView screenshots, 250 explicit `[REDACTED]`
-markers, and zero bearer-token, Matrix access-token, authorization-header or
-access-token query matches; secret-bearing Maestro raster diagnostics were
-absent. Visual review confirmed the ready Security posture for replacement,
-cancel and original-key stages and the owning recovery-key dialog for the
-escape hatch.
+Final post-review local acceptance on 2026-09-18 ran three unchanged full-suite
+invocations: `mu6lu0t6-aa003754-7124-42c8-9e4d-b07f19ab6962`,
+`mu6mj1iw-d4c2a360-f27a-4803-9144-3c3927a7c7c7`, and
+`mu6n8c5t-7f87e51f-0274-42c1-8c28-2b7e8e8b9534`. Their uncached Nx targets
+passed in 19 minutes 19 seconds, 19 minutes 29 seconds, and 19 minutes 28
+seconds, respectively. Every invocation recorded attempt 1, zero retries, four
+passed stages, 54 distinct assertion artifacts, and exact actual/expected
+counts of 22 + 12 + 15 + 5. The final run's stage durations were 347.880 seconds
+for replacement, 261.850 seconds for password-cancel atomicity, 294.502 seconds
+for original-key viability, and 206.513 seconds for the Settings escape hatch.
+Each retained artifact had exactly eight final device/WebView screenshots, at
+least 220 explicit `[REDACTED]` markers, and zero bearer-token, Matrix
+access-token, authorization-header or access-token query matches;
+secret-bearing Maestro raster diagnostics were absent. Visual review confirmed
+the ready Security posture for replacement, cancel and original-key stages and
+an empty recovery-key input in the escape-hatch proof.
 
 Exact canonical predecessor invocation
 `mu6jb2q8-1364090f-5ee8-4b7b-8034-55382c548c77` passed all four Playwright
-cases at one worker and retry 0 in 25.6 seconds. Repository validation passed
-48/48 uncached typecheck tasks, 77/77 uncached lint tasks, 973/973 script tests,
-145/145 focused migration tests, stylelint, format, architecture and assembled
-documentation checks. At clean repair commit
-`c8ae683ae42f5744d6090725f95bfe517ef61b8c`, the fresh 49-file production
+cases at one worker and retry 0 in 25.6 seconds. The keyboard regression was
+covered by sidebar-filter invocation
+`mu6k86oo-0dd7af67-0b30-41aa-bbbe-8195c2a64ec8`, which passed both stages and
+retained the filter until its explicit Escape, plus exact quick-switcher
+diagnostic `mu6lnohf-d99bc2a0-2810-4583-8fd1-b14e9d8dbc65`, which retained both
+queries and dismissed only on the journey's explicit Escape or result choice.
+The temporary local case selector used for that diagnostic was removed before
+commit. Repository validation passed all uncached workspace typecheck and lint
+targets, 974/974 script tests, 37/37 focused review tests, stylelint, format,
+architecture and assembled documentation checks.
+
+At clean hardening commit
+`a733fa89049594fb2b7d39548db6517766fd37be`, the fresh 49-file production
 renderer contained 15,302,529 bytes with manifest SHA-256
-`ccdcf507f6313faeb9e641cdea5404644df6c83f8efb0ae33e427e1b679eb644`.
+`96f33fb156b154a96e9347a7a35685a51c58568f39692b9c76dd5ffd39f37f92`.
 Primary and secondary APK SHA-256 values were
-`d2b23fb7e8f3b7edda97b6b6a444fd313fca63c4e7806467e6b43c331acbbfad` and
-`fade7db4045ac15dfbce8d310b3bdb07db129cf779b979b0e8924de11c58480f`;
+`9cb2866a5ce8dbbac32a18104188dc823749720d842bab54a2273ba79edff460` and
+`9829af971ba624214769b0b76d8b8164889042a6e7066f601023b1fccaf9465c`.
 Android runner-smoke invocation
-`mu6jdjyg-31b21fb3-3d58-4f9a-ba55-7c6922f348a4` passed against that exact
-renderer in 103 seconds with clean Synapse teardown.
+`mu6o1mhp-829ad963-c95d-433f-ab31-669c76ded298` passed against that exact
+renderer in 105 seconds with clean Synapse teardown. Final identity regression
+invocation `mu6o3zek-82e6b9fb-9e27-4f57-9b6a-aac37b9f9ce1` passed all three
+stages at attempt 1 and retry 0: DM avatar in 82.590 seconds, member presence in
+90.216 seconds, and DM presence in 64.673 seconds.
 
 ## Legacy SSO journeys
 
