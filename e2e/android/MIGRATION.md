@@ -3435,3 +3435,15 @@ Acceptance now remains pending only on original-attempt hosted
 renderer/browser/Android artifact audits at the exact consolidated revision.
 Do not retire or edit the predecessor before that evidence is accepted. This
 mapping does not authorize merging PR #677.
+
+Hosted run `35358912583` at consolidated head `d26dc780` and merge revision
+`88fcadf8` supplied accepted original-attempt renderer and browser evidence.
+Renderer artifact `10554016155` contains 49 files that match manifest digest
+`c1fc90ef14c32f21d2e1e63b04b503dd21039d0d86fa4a1e3e6eb8d85d7fab70`;
+browser artifact `10554552383` records the exact predecessor passing in 11.024
+seconds with zero retries. Android shard 2 stopped in unchanged
+`android.legacy-sso` before this target started: repeated Chrome hierarchy
+timeouts were followed by ADB package and reverse-cleanup timeouts. No
+`android.sso-recovery-reset` artifact exists for that run, so it does not
+satisfy Android acceptance. The retained transport-loss evidence belongs to
+the #665 reliability ledger; a fresh workflow attempt remains required.
