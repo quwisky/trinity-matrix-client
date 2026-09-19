@@ -100,6 +100,21 @@ function assertProtectedRuntimeContract(journey, controller) {
   ];
   for (const fragment of journeyFragments) expect(journey).toContain(fragment);
 
+  const secondaryRecovery = journey.indexOf(
+    'await establishRecovery(secondary, counterpart)',
+  );
+  const secondaryClose = journey.indexOf(
+    'await secondary.close()',
+    secondaryRecovery,
+  );
+  const primaryActivation = journey.indexOf(
+    'await activatePrimary(primary, account)',
+    secondaryRecovery,
+  );
+  expect(secondaryRecovery).toBeGreaterThan(-1);
+  expect(secondaryClose).toBeGreaterThan(secondaryRecovery);
+  expect(primaryActivation).toBeGreaterThan(secondaryClose);
+
   const controllerFragments = [
     "pathname === '/_matrix/client/v3/keys/query'",
     "request.method === 'POST'",

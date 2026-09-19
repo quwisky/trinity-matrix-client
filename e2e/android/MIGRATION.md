@@ -3637,6 +3637,38 @@ on `d6039ebc` at retry 0 in 10.3 and 23.2 seconds under invocation
 the focused mutation/secret-capture guard and independent review passed with no
 remaining Critical or Important finding.
 
+Hosted run `35415982945` used consolidated source `4d45c0f7` in merge
+`d8a4ca598a03834b6e1f3804740db3d7d043d7a8`. Its immutable renderer artifact
+`10575729400` contained 49 verified files with manifest SHA-256
+`250e44528ee8f826c2c172214458024e2500bbfe401d90fb293256dd5f2f4d58`.
+The reordered shard reached this suite before unrelated coverage and exposed a
+hosted-only lifecycle failure in artifact `10576363734`: the ordinary stage
+recorded all five assertions and its pass captures, but final cleanup attempted
+to restore CDP overrides on the secondary WebView after Android had frozen that
+background app. The restore commands timed out, so the stage remained red and
+the delayed stage correctly did not start under the shard's fail-fast contract.
+
+The lifecycle fix closes the secondary WebView immediately after its recovery
+identity is established, before Maestro reactivates the primary app. The outer
+cleanup retains its idempotent close for partial-stage failures. A source-shape
+guard first failed on the missing ordering and then passed after the change.
+Using a locally built renderer based on source `4d45c0f7`, held unchanged
+across all three post-fix runs, with manifest SHA-256
+`84f96cb7aebccddc9a1ddc4501d81975f38f944616b46627ee68e8ff2d563c6c`,
+three unchanged post-fix installed-Android first attempts passed both stages:
+
+- `mu7tusyw-67836ff4-38df-4a76-b7cc-0b66935bbc5f`: 277.711 and
+  278.695 seconds;
+- `mu7u8bob-a5288c52-4e8a-48e2-bb76-8885e7a9460d`: 279.966 and
+  281.955 seconds;
+- `mu7umdn7-a8fb6540-4872-4f0f-9a88-146eb287d5ed`: 280.605 and
+  282.727 seconds.
+
+Each post-fix report again records both installed package IDs, two passed
+stages, six unique identities, 11/11 records, attempt 1, zero retries and zero
+failures; Synapse and emulator teardown completed cleanly. The focused guard,
+all 999 script tests, Android E2E typecheck and Android E2E lint also passed.
+
 Hosted acceptance still requires matching original-attempt Android, browser
 and immutable-renderer artifacts from the exact consolidated revision. Do not
 retire or edit either Playwright predecessor. This mapping does not authorize

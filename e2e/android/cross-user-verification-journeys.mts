@@ -355,6 +355,7 @@ async function runVerificationStage(
     await secondary.reset(PIXEL_5_ACCOUNT_PROFILE);
     await secondary.login(counterpart);
     await establishRecovery(secondary, counterpart);
+    await secondary.close();
     await activatePrimary(primary, account);
     await openRoom(primary, room.name);
     await openCounterpartFromMembers(
