@@ -3669,7 +3669,28 @@ stages, six unique identities, 11/11 records, attempt 1, zero retries and zero
 failures; Synapse and emulator teardown completed cleanly. The focused guard,
 all 999 script tests, Android E2E typecheck and Android E2E lint also passed.
 
-Hosted acceptance still requires matching original-attempt Android, browser
-and immutable-renderer artifacts from the exact consolidated revision. Do not
-retire or edit either Playwright predecessor. This mapping does not authorize
-merging PR #677.
+Hosted acceptance on 2026-09-19 used exact consolidated source
+`f630388d70080e1b01d7fc56d064941429d689a2` in merge
+`425ca38f2bdc1cbb31bf6d195479c18d9add87c0` on run `35420445338`. Renderer
+job `105837028471` produced artifact `10576787771` (GitHub digest
+`sha256:52c571b2b03b060e0add563c335f5055eeef6fe1d4cc2ec902d5f33d4aae55e0`):
+49 independently verified files / 15,302,546 bytes with manifest SHA-256
+`5be2751d604412b91b43aea97700e8f72b7e4f0a6b629596d4d94d9a451d7ffb`.
+
+Browser job `105837200696` passed with artifact `10577584301` (GitHub digest
+`sha256:4b012b28f878c2a14a9008e8882953efd95d364d5d54841631e1fa64b7648148`):
+317 tests passed, one was skipped and none retried. The two exact retained
+predecessors passed at retry zero in 17.989 and 31.188 seconds.
+
+Original-attempt Android shard-2 job `105837200731` passed and produced
+artifact `10579461815` (GitHub digest
+`sha256:6b46846aec084b26406932445a111b066dd7edc8e78e71e2be5ef68217749415`).
+Invocation `mu7vlaee-890d689c-a8ec-407b-a479-352e3d34b2af` records the ordinary
+and delayed stages passing in 446.642 and 460.797 seconds, attempt 1, zero
+retries, both installed package IDs, six unique identities, 11/11 assertion
+records and no failures. The delayed record proves one exact matching request
+held for 15,000 ms. All 24 retained `SECRET_TEXT` values are redacted, no
+bearer-like credential survives, only the four pass captures remain, and
+Synapse, app, WebView, controller, device and worktree cleanup completed. This
+evidence satisfies the migration while both Playwright predecessors remain
+enabled. It does not authorize merging PR #677.
