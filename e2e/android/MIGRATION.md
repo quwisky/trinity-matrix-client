@@ -3694,3 +3694,65 @@ bearer-like credential survives, only the four pass captures remain, and
 Synapse, app, WebView, controller, device and worktree cleanup completed. This
 evidence satisfies the migration while both Playwright predecessors remain
 enabled. It does not authorize merging PR #677.
+
+## Composer-draft persistence journey
+
+`android.composer-drafts` maps the complete canonical definition in
+`e2e/browser/journeys/conversations/composer-drafts.spec.mts`, pinned at
+SHA-256
+`16088cad5e1ecc4a6933c905b3963b6c46fa5cf5ffe9be82439269b22a0730cd`.
+Its shared application and Account helpers remain enabled and are pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+The migration records the predecessor's four direct assertions and four
+composer-readiness helper calls as eight unique, stage-local assertion
+identities.
+
+The single installed-Android stage creates two distinct private Rooms through
+Matrix fixtures and signs one disposable Account into the primary APK. Maestro
+opens Room A and enters an exact unsent draft, proves Room B remains empty, then
+returns to Room A and proves the draft restored. An independent host-side check
+reads the exact `trinity.composer.drafts` entry from Capacitor's native
+`CapacitorStorage.xml` through the invocation-owned device lease, parses its JSON
+map and proves the exact `conversation:[accountId,roomId]` entry for Room A
+equals the draft. The stage then force-stops and restarts the installed host,
+reopens Room A, and proves the same draft restores after the cold relaunch.
+Renderer access is observation-only; it does not read WebView local storage or
+perform product actions.
+
+```bash
+pnpm nx run trinity-e2e-android:composer-drafts --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:composer-drafts
+```
+
+The uncached serial target owns the emulator and disposable Synapse resources
+and has a 20-minute Node budget. CI runs it on shard 2 immediately after
+`android.cross-user-verification`, with a 25-minute command bound and
+started-only `android-composer-drafts` diagnostics. Reports preserve one
+attempt, zero retries, the exact source map and eight assertion records.
+Passwords and both possible Android-IME draft variants are redacted before a
+recursive text-artifact scan. Secret-bearing raster diagnostics are removed;
+structured pass/failure captures remain. Application data, WebView state,
+device and Synapse resources are cleaned on every outcome.
+
+Local acceptance used consolidated source
+`2bc541120996b399489e10b21160d599eddec2b4` and its 49-file production
+renderer at manifest SHA-256
+`73c82adbf5465fd666b5c0032c11a5c0fea163ee5b42e772906f22d3d90c979a`.
+Three unchanged installed-Android first attempts passed the stage with zero
+retries:
+
+- `mu83lsu3-e5237c5d-6a18-4601-bb46-108b9c4ce85d`: 161.615 seconds;
+- `mu83qldk-caaa724f-7365-4bfd-871b-29ddb2563d9e`: 160.575 seconds;
+- `mu83vfdi-6f9a1179-5686-4357-874c-3ae3bdae0a3f`: 164.262 seconds.
+
+Each report contains one passed stage, all eight unique/stage-local assertion
+records, exact preference/account/Room metadata, structured pass captures, no
+failure or raster artifact and successful post-redaction scanning and teardown.
+Exact retained predecessor invocation
+`mu837ry9-37ceeba0-e586-4d37-8490-ccdc5638992a` passed its sole Chromium test
+in 5.6 seconds with one worker and retry 0, followed by clean Synapse teardown.
+The predecessor remains enabled and unchanged. Hosted original-attempt Android,
+browser and renderer evidence is still required before issue acceptance. This
+mapping does not authorize merging PR #677.

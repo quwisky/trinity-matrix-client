@@ -408,6 +408,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.cross-user-verification'],
   },
   {
+    name: 'e2e:android:composer-drafts',
+    command: 'nx run trinity-e2e-android:composer-drafts',
+    kind: 'canonical',
+    suiteIds: ['android.composer-drafts'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -632,6 +638,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'cross-user-verification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:cross-user-verification; fi',
     tier: 'pull-request',
     suiteIds: ['android.cross-user-verification'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'composer-drafts-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:composer-drafts; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.composer-drafts'],
   },
   {
     command:
