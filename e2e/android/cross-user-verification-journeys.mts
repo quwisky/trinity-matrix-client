@@ -35,6 +35,7 @@ import {
   evaluateNative,
   waitForNativeShellState,
 } from './native-shell-client.mts';
+import { captureSecretSafe } from './recovery-reset-diagnostics.mts';
 
 const PRIMARY_APPLICATION_ID = 'eu.qwky.trinity';
 const SECONDARY_APPLICATION_ID = 'eu.qwky.trinity.secondary';
@@ -598,7 +599,7 @@ void test(
               [secondary, 'failed-secondary'],
             ] as const) {
               try {
-                await client.capture(name);
+                await captureSecretSafe(client, name);
               } catch (diagnosticError) {
                 failures.push(diagnosticError);
               }

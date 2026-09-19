@@ -3603,8 +3603,9 @@ emulator and disposable Synapse resources, and has a 30-minute Node budget. CI
 runs it on shard 2 immediately after `android.message-authenticity-shield`, with
 a 35-minute command bound and started-only
 `android-cross-user-verification` diagnostics. Credentials, access tokens and
-session secrets are redacted and scanned; flow-owned raster artifacts are
-removed before retention. Reports preserve one attempt, zero retries, two
+session secrets are redacted and scanned. Failure capture is suppressed while
+a populated recovery-key or password surface is visible, and flow-owned raster
+artifacts are removed before retention. Reports preserve one attempt, zero retries, two
 stages, six identities, 11 records, source ownership and aggregate controller,
 two-package, Matrix and device teardown.
 

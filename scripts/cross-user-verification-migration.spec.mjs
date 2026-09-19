@@ -19,6 +19,10 @@ const journeyPath = resolve(
   root,
   'e2e/android/cross-user-verification-journeys.mts',
 );
+const diagnosticsPath = resolve(
+  root,
+  'e2e/android/recovery-reset-diagnostics.mts',
+);
 
 const sharedAssertionIds = [
   'cross-user-verification.members-panel-initially-hidden',
@@ -87,6 +91,7 @@ function assertProtectedRuntimeContract(journey, controller) {
     'redactMaestroArtifacts(output, secrets)',
     'scanCrossUserVerificationArtifacts(output, secrets)',
     'removeCrossUserVerificationMaestroImages(output)',
+    'captureSecretSafe(client, name)',
     'await primary.close()',
     'await secondary.close()',
     'await device.clearApplicationData(applicationId)',
@@ -374,6 +379,45 @@ describe('Android cross-user verification migration', () => {
     expect(connection.sent.at(-1)).toEqual(['Fetch.disable', {}]);
   });
 
+  it('suppresses failure screenshots while recovery material is visible', async () => {
+    const { captureSecretSafe } = await import(diagnosticsPath);
+    const records = [];
+    let captures = 0;
+    const client = {
+      output: '/unused',
+      elements: async () => [
+        {
+          visible: true,
+          text: 'recovery-secret-must-not-leak',
+          value: null,
+          hasValue: false,
+        },
+      ],
+      surface: async () => ({ url: 'https://localhost/recovery/setup' }),
+      record: async (name, value) => records.push([name, value]),
+      capture: async () => {
+        captures += 1;
+      },
+    };
+
+    await captureSecretSafe(client, 'failed-primary');
+
+    expect(captures).toBe(0);
+    expect(records).toEqual([
+      [
+        'failed-primary-capture',
+        {
+          capture: 'suppressed-sensitive-surface',
+          pathname: '/recovery/setup',
+          visibleSensitiveSurface: true,
+        },
+      ],
+    ]);
+    expect(JSON.stringify(records)).not.toContain(
+      'recovery-secret-must-not-leak',
+    );
+  });
+
   it('rejects fabricated counterparts, broad delays, renderer actions and cleanup loss', () => {
     const journey = readIfPresent(journeyPath);
     const controller = readIfPresent(controllerPath);
@@ -422,6 +466,7 @@ describe('Android cross-user verification migration', () => {
       ['await delayController.close()', 'await Promise.resolve()'],
       ['await primary.close()', 'await Promise.resolve()'],
       ['removeCrossUserVerificationMaestroImages(output)', 'Promise.resolve()'],
+      ['captureSecretSafe(client, name)', 'await client.capture(name)'],
       ['redactMaestroArtifacts(output, secrets)', 'Promise.resolve()'],
       [
         'scanCrossUserVerificationArtifacts(output, secrets)',
