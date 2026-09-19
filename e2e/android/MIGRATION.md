@@ -3609,9 +3609,30 @@ artifacts are removed before retention. Reports preserve one attempt, zero retri
 stages, six identities, 11 records, source ownership and aggregate controller,
 two-package, Matrix and device teardown.
 
-Local acceptance still requires three unchanged first-attempt installed-Android
-passes, both exact Playwright predecessors at retry 0, full repository checks
-and review. Hosted acceptance requires matching original-attempt Android,
-browser and immutable-renderer artifacts from the exact consolidated revision.
-Do not retire or edit either Playwright predecessor. This mapping does not
-authorize merging PR #677.
+Local acceptance is frozen on consolidated source `d6039ebc` (Git tree
+`aa5403b0491c62fd8eb1e123418e1defd8dfb28c`, byte-identical to reviewed
+feature source `d1cf709f`). Three unchanged installed-Android first attempts
+passed both stages with zero retries:
+
+- `mu7nyn0k-8486ef10-1d1c-4e84-88a4-2642c8bd4d6a`: 271.428 and
+  276.523 seconds;
+- `mu7obws3-4da93067-7048-4e97-8351-b0e93e5f94b6`: 271.947 and
+  280.040 seconds;
+- `mu7op8aq-981ceca5-9ec7-4295-96fe-643dca48454e`: 273.504 and
+  277.254 seconds.
+
+Every run records both installed package IDs, two passed stages, six unique
+identities, 11/11 stage-local records, attempt 1 and zero retries. Their
+immutable local renderer manifest identifies `d1cf709f` with manifest SHA-256
+`7d6dc058944890efee6966209c24f54f550c1b59151659e34bc775ac4af687eb`;
+the proven Git-tree identity ties those APKs and renderer bytes to the
+consolidated source. The exact two Playwright predecessors passed sequentially
+on `d6039ebc` at retry 0 in 10.3 and 23.2 seconds under invocation
+`mu7pwgsk-ab9a1d74-b401-4087-9f02-cc4c137d7fc4`. Full repository validation,
+the focused mutation/secret-capture guard and independent review passed with no
+remaining Critical or Important finding.
+
+Hosted acceptance still requires matching original-attempt Android, browser
+and immutable-renderer artifacts from the exact consolidated revision. Do not
+retire or edit either Playwright predecessor. This mapping does not authorize
+merging PR #677.
