@@ -3881,3 +3881,64 @@ the exact merge/bundle provenance is retained and Synapse teardown completed.
 The Android shard failed only later in the unrelated
 `android.space-settings-core` exact-contents lifecycle; the composer-formatting
 target itself completed successfully. None of this authorizes merging PR #677.
+
+## Composer mention journeys
+
+`android.composer-mentions` maps both definitions in
+`e2e/browser/journeys/conversations/composer-mentions.spec.mts`, pinned at
+SHA-256
+`527176161868325d62a0b8f867d86f8601be6d21978095570e27dd1182c9c228`.
+The shared application and Account helpers remain enabled and are pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+The migration expands the predecessor's ten direct assertions plus two
+composer-readiness helper calls into 12 unique, stage-local records: eight for
+touch selection and four for keyboard acceptance. Both Playwright predecessors
+remain enabled.
+
+Each stage creates a fresh reader/member pair and private Room through Matrix
+fixtures, signs the reader into the primary APK and enters an exact partial
+display name through the Android IME. The touch stage dismisses the IME so the
+keyboard-resized native WebView exposes the suggestion, then uses a measured
+Maestro tap to select the exact member. It proves the exact composer value and
+sent `matrix.to` link, waits for the local echo to reconcile to a `$` event ID,
+and independently reads that event from Synapse to prove the exact member is in
+`m.mentions.user_ids`. It also proves the rendered link has the `mention` class,
+font weight at least 600 and a nontransparent background. The keyboard stage
+proves the exact member is highlighted, accepts it with the first native Enter
+and sends it with the second.
+
+```bash
+pnpm nx run trinity-e2e-android:composer-mentions --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:composer-mentions
+```
+
+The uncached serial target owns the emulator and disposable Synapse resources,
+runs once with zero retries and publishes started-only
+`android-composer-mentions` diagnostics from shard 2. Text diagnostics redact
+passwords, account/Room/member identities, composer values, links and event IDs
+before a recursive secret/native-storage scan. Secret-bearing raster diagnostics
+are removed. Application data, WebView state, device and Synapse resources are
+cleaned on every outcome.
+
+Local acceptance used the unchanged 49-file production renderer at manifest
+SHA-256
+`7a582752a627aeab5bbab168bc6fa311c0e761399d1cb13f0ab6165e3a6c01c5`.
+Three unchanged installed-Android first attempts passed both stages with zero
+retries:
+
+- `mu8zya5w-34023670-4b9f-4838-98a5-225bcb1b1875`: 128.590 and
+  101.270 seconds;
+- `mu904k5g-2d679619-35e6-47cb-b31d-6b25951a6546`: 127.274 and
+  102.630 seconds;
+- `mu90anwu-06266e39-7d0c-47d8-9602-31fd5528d596`: 126.638 and
+  100.567 seconds.
+
+Each report contains two passed stages, all 12 unique/stage-local assertion
+records, one attempt, zero retries, two pass records, no raster artifact and
+clean teardown. Exact retained predecessor invocation
+`mu90gwm8-6664a8c9-a97a-4322-b672-8c2e12ab0dd6` passed both Chromium tests
+sequentially in 4.3 and 3.4 seconds with one worker and retry 0, followed by
+clean Synapse teardown. Hosted acceptance is still pending; none of this
+authorizes merging PR #677.

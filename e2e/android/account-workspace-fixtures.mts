@@ -186,6 +186,11 @@ export function createAccountFixtures(
     eventType: WorkspaceRoomStateEventType,
     stateKey?: string,
   ): Promise<MatrixRecord | undefined>;
+  roomEvent(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<Readonly<Record<string, unknown>>>;
   resolveRoomAlias(
     observer: NodeWorkspaceAccount,
     alias: string,
@@ -797,6 +802,18 @@ export function createAccountFixtures(
       : record(value, 'Matrix fixture room-state response');
   }
 
+  async function roomEvent(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const value = await get(
+      access(observer),
+      `/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`,
+    );
+    return record(value, 'Matrix fixture room-event response');
+  }
+
   /** Cleanup may supply its own bounded signal after the invocation is cancelled. */
   async function joinedRoomIds(
     observer: NodeWorkspaceAccount,
@@ -878,6 +895,7 @@ export function createAccountFixtures(
     roomMembership,
     joinedRoomIds,
     roomState,
+    roomEvent,
     resolveRoomAlias,
     allowEndedMembershipCleanup,
     trackRoomMembership,

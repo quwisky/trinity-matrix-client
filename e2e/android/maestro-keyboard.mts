@@ -6,6 +6,7 @@ export const ANDROID_KEYCODES = {
   arrowLeft: 21,
   arrowRight: 22,
   arrowUp: 19,
+  backspace: 67,
   end: 123,
   enter: 66,
   escape: 111,

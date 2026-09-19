@@ -51,8 +51,10 @@ export interface AccountElement {
   readonly attributes: Readonly<Record<string, string>>;
   readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly right: number; readonly bottom: number };
   readonly style: {
+    readonly backgroundColor: string;
     readonly display: string;
     readonly fontSize: string;
+    readonly fontWeight: string;
     readonly opacity: string;
     readonly overflowY: string;
   };
@@ -244,9 +246,9 @@ export class AccountWorkspaceClient {
             e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement
               ? e.selectionEnd
               : null,
-          attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'role', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
+          attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'class', 'href', 'role', 'data-mid', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
           rect: {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom},
-          style: {display:style.display,fontSize:style.fontSize,opacity:style.opacity,overflowY:style.overflowY},
+          style: {backgroundColor:style.backgroundColor,display:style.display,fontSize:style.fontSize,fontWeight:style.fontWeight,opacity:style.opacity,overflowY:style.overflowY},
           scrollHeight:e.scrollHeight,scrollTop:e.scrollTop,clientHeight:e.clientHeight,
           unobstructedCenter:x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&e.contains(document.elementFromPoint(x,y))
         };
@@ -742,6 +744,12 @@ export class AccountWorkspaceClient {
       );
       await this.key('home');
       await this.key('forwardDelete');
+      // Removing the anti-capitalisation sentinel leaves Android's caret at
+      // offset zero. Restore it to the end and emit a final native input event
+      // there so caret-sensitive autocompletes observe the completed value.
+      await this.key('end');
+      await this.key('space');
+      await this.key('backspace');
     } catch (error) {
       failure = error;
     }
