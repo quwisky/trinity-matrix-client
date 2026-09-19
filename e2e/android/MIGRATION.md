@@ -3736,23 +3736,55 @@ recursive text-artifact scan. Secret-bearing raster diagnostics are removed;
 structured pass/failure captures remain. Application data, WebView state,
 device and Synapse resources are cleaned on every outcome.
 
-Local acceptance used consolidated source
-`2bc541120996b399489e10b21160d599eddec2b4` and its 49-file production
-renderer at manifest SHA-256
-`73c82adbf5465fd666b5c0032c11a5c0fea163ee5b42e772906f22d3d90c979a`.
+The first hosted implementation artifact was rejected even though its suite
+passed: run `35431729209`, artifact `10583082884`, exposed incremental draft
+prefixes in Capacitor Preferences `methodData` log lines. Exact-value secret
+replacement could not redact prefixes. Follow-up `62fb43a6603a5935b3718cff64bb29cf32764e68`
+therefore structurally redacts all Preferences and SecureStorage payloads before
+publication and makes the composer artifact scan accept only exact
+`[REDACTED]` payloads. Regression fixtures cover both a raw draft prefix and the
+exact redacted form. The rejected artifact is not acceptance evidence.
+
+Final local acceptance used consolidated source `62fb43a6` and its unchanged
+49-file production renderer at manifest SHA-256
+`306c23317bd8872ef4d7d937e443accd1213cfc538cac9f36513bd4d9b552d57`.
 Three unchanged installed-Android first attempts passed the stage with zero
 retries:
 
-- `mu83lsu3-e5237c5d-6a18-4601-bb46-108b9c4ce85d`: 161.615 seconds;
-- `mu83qldk-caaa724f-7365-4bfd-871b-29ddb2563d9e`: 160.575 seconds;
-- `mu83vfdi-6f9a1179-5686-4357-874c-3ae3bdae0a3f`: 164.262 seconds.
+- `mu8a9bfd-4539a06f-accd-4480-838c-351d8c4f7dcf`: 166.051 seconds;
+- `mu8aeozl-d7214d15-b8a8-402c-abb8-805104bfabf8`: 165.241 seconds;
+- `mu8ajmw5-e5dafa35-d25d-4288-86f6-ba64d2f1d0c8`: 166.865 seconds.
 
 Each report contains one passed stage, all eight unique/stage-local assertion
-records, exact preference/account/Room metadata, structured pass captures, no
-failure or raster artifact and successful post-redaction scanning and teardown.
-Exact retained predecessor invocation
-`mu837ry9-37ceeba0-e586-4d37-8490-ccdc5638992a` passed its sole Chromium test
-in 5.6 seconds with one worker and retry 0, followed by clean Synapse teardown.
-The predecessor remains enabled and unchanged. Hosted original-attempt Android,
-browser and renderer evidence is still required before issue acceptance. This
-mapping does not authorize merging PR #677.
+records, exact preference/account/Room metadata, no retry, no raster artifact,
+no unredacted Preferences payload and successful teardown. Exact retained
+predecessor invocation `mu837ry9-37ceeba0-e586-4d37-8490-ccdc5638992a`
+passed its sole Chromium test in 5.6 seconds with one worker and retry 0,
+followed by clean Synapse teardown.
+
+Final hosted acceptance is original-attempt run
+[`35439789485`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35439789485),
+whose merge revision `5906e6c6addb3d97405dfbebba547b4f9ca79904` has
+`62fb43a6` as its feature parent. Android shard-2 job `105888661023` produced
+immutable composer artifact
+[`10584116793`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35439789485/artifacts/10584116793)
+(GitHub and downloaded ZIP SHA-256
+`2dded415f4b94b8ccbd751b653067d89ea487cb5d9666c61ac0afed747112765`).
+Invocation `mu8bf8sp-2c0cfe7b-1c76-4332-ad1e-0592ae373a96` passed its single
+stage in 203.930 seconds: one attempt, zero retries, all eight records and exact
+native preference metadata. The artifact contains 27 structurally redacted
+Preferences payloads, no draft phrase, bearer or Matrix token, no raster file,
+and clean Synapse teardown. The shard's later failure belongs to unchanged
+`android.legacy-sso`; the composer target and unchanged-worktree gate passed.
+
+Renderer artifact
+[`10582888260`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35439789485/artifacts/10582888260)
+verifies all 49 production files (15,302,546 bytes) at manifest SHA-256
+`02d76d685a9756b2377bd9a134756c5284ade7fac10396e4e1586e9bc3573f4a`.
+The redaction follow-up did not change the renderer or retained browser source;
+original-attempt browser artifact
+[`10581316166`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35431729209/artifacts/10581316166)
+records 317 passes, one intentional skip and zero retries, with the exact
+composer predecessor passing at retry 0 in 8.011 seconds. The predecessor
+remains enabled and unchanged. This evidence accepts issue #730 but does not
+authorize merging PR #677.
