@@ -92,7 +92,10 @@ function assertRuntimeContract(journey, client) {
     'assert(sheet.rect.right <= viewport.rect.width + 0.5)',
     'assert(sheet.rect.bottom <= viewport.rect.height + 0.5)',
     "const formatted = 'say *hello*'",
+    "for (const selectedWord of ['hello', 'bold'] as const)",
+    'selected word is absent as an exact JSON value from ${path}',
     'const result = await exactComposer(client, formatted, { focused: true })',
+    "matches: bold.renderedText === 'bold'",
     'await client.tapCurrent(\'[data-testid="format-italic"]\')',
     'await client.tapCurrent(\'[data-testid="format-cancel"]\')',
     'await client.tapCurrent(\'[data-testid="format-preview"]\')',
@@ -153,6 +156,9 @@ function assertRuntimeContract(journey, client) {
 
   expect(journey).not.toMatch(/\bretries?\s*[:=]\s*[1-9]/u);
   expect(journey).not.toContain('client.capture(');
+  expect(journey).not.toContain('text: bold.renderedText');
+  expect(journey).not.toContain('SECRET_APPLY_SELECTED_WORD');
+  expect(journey).not.toContain('SECRET_PREVIEW_SELECTED_WORD');
   expect(journey).not.toMatch(
     /evaluateNative\([\s\S]*?\.(?:click|focus|fill|submit|requestSubmit|setSelectionRange)\s*\(/u,
   );
@@ -264,6 +270,11 @@ describe('Android composer-formatting migration', () => {
         'assert(sheet.rect.right <= viewport.rect.width + 50)',
       ],
       ["const formatted = 'say *hello*'", "const formatted = 'say hello'"],
+      ["matches: bold.renderedText === 'bold'", 'text: bold.renderedText'],
+      [
+        "for (const selectedWord of ['hello', 'bold'] as const)",
+        'for (const selectedWord of [] as const)',
+      ],
       ['selectionStart: 2', 'selectionStart: 1'],
       ['control.rect.width >= 44', 'control.rect.width >= 4'],
       ['control.rect.right <= 320.5', 'control.rect.right <= 420.5'],

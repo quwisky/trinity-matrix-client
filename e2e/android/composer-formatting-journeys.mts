@@ -111,6 +111,13 @@ async function scanComposerFormattingArtifacts(
       for (const secret of secretValues) {
         assert(!text.includes(secret), `Secret is absent from ${path}`);
       }
+      for (const selectedWord of ['hello', 'bold'] as const) {
+        const selectedWordJsonValue = JSON.stringify(selectedWord);
+        assert(
+          !new RegExp(`:\\s*${selectedWordJsonValue}\\s*[,}]`, 'u').test(text),
+          `selected word is absent as an exact JSON value from ${path}`,
+        );
+      }
       assert(!/\bBearer\s+\S+/u.test(text), `Bearer token is absent from ${path}`);
       assert(
         !/\bsyt_[A-Za-z0-9._~-]+/u.test(text),
@@ -360,7 +367,8 @@ async function runCancelAndPreview(
   const bold = await client.visible('[data-testid="composer-preview"] strong');
   assert.equal(bold.renderedText, 'bold');
   await recordAssertion(context, assertions.previewBoldContent, {
-    text: bold.renderedText,
+    matches: bold.renderedText === 'bold',
+    length: bold.renderedText.length,
   });
   await client.hideKeyboard();
   await client.tapCurrentExposed(FORMAT);
