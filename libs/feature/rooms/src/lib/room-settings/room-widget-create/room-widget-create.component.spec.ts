@@ -54,6 +54,27 @@ describe('RoomWidgetCreateComponent', () => {
     );
   });
 
+  it('reserves stable field-feedback slots before validation is exposed', async () => {
+    const { component, container, fixture } = await build();
+    const nameFeedback = container.querySelector(
+      '[data-testid="room-widget-create-name-feedback"]',
+    );
+    const urlFeedback = container.querySelector(
+      '[data-testid="room-widget-create-url-feedback"]',
+    );
+
+    expect(nameFeedback).not.toBeNull();
+    expect(urlFeedback).not.toBeNull();
+    expect(nameFeedback).toBeEmptyDOMElement();
+    expect(urlFeedback).toBeEmptyDOMElement();
+
+    component.form().markAsTouched();
+    await fixture.whenStable();
+
+    expect(nameFeedback).toHaveTextContent('Enter a widget name');
+    expect(urlFeedback).toHaveTextContent('Enter the widget URL');
+  });
+
   it('creates once, resets the fields, and reports success', async () => {
     const { component, create, toast } = await build();
     validDraft(component);

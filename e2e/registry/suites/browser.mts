@@ -11,6 +11,7 @@ export const BROWSER_E2E_SUITES = [
     environment: 'browser',
     capabilities: BROWSER_CAPABILITIES,
     contractTypes: BROWSER_CONTRACT_TYPES,
+    runner: 'playwright',
     currentTarget: 'trinity-e2e-browser:e2e',
     targetProject: 'trinity-e2e-browser',
     prerequisites: ['docker', 'playwright-chromium'],

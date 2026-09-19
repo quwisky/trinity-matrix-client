@@ -55,6 +55,16 @@
         "cwd": "{projectRoot}"
       }
     },
+    "build-secondary-prebuilt": {
+      "cache": false,
+      "dependsOn": ["sync-prebuilt"],
+      "outputs": ["{projectRoot}/app/build/outputs/apk/secondaryDebug"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./gradlew assembleSecondaryDebug",
+        "cwd": "{projectRoot}"
+      }
+    },
     "build-release": {
       "cache": false,
       "dependsOn": ["sync"],

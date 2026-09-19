@@ -58,7 +58,10 @@ export const selectSuites = (
   const { selection } = aggregate;
   if (selection.kind === 'all') return [...suites];
   if (selection.kind === 'environment') {
-    return suites.filter(({ environment }) => environment === selection.value);
+    return suites.filter(
+      ({ environment, runner }) =>
+        environment === selection.value && runner !== 'node-test',
+    );
   }
   return suites.filter(({ ciTier }) => ciTier === selection.value);
 };
@@ -110,6 +113,42 @@ const fileIsReadWriteAccessible = (path) => {
   } catch {
     return false;
   }
+};
+
+const REQUIRED_TOOL_VERSIONS = {
+  chrome: '153.0.8010.36',
+  chromedriver: '153.0.8010.36',
+  'electron-chromedriver': '150.0.7871.129',
+  maestro: '2.10.0',
+  'node-24': '24.',
+};
+
+const TOOL_ENVIRONMENT = {
+  chrome: 'TRINITY_CHROME_BINARY',
+  chromedriver: 'TRINITY_CHROMEDRIVER_BINARY',
+  'electron-chromedriver': 'TRINITY_ELECTRON_CHROMEDRIVER_BINARY',
+  maestro: 'MAESTRO_CLI',
+};
+
+const toolCommand = (requirement, environment) => {
+  if (requirement === 'node-24') {
+    return environment['TRINITY_NODE_BINARY'] ?? process.execPath;
+  }
+  return environment[TOOL_ENVIRONMENT[requirement]] ?? requirement;
+};
+
+const versionOutput = (result) =>
+  `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
+
+const checkToolVersion = (requirement, execute, environment) => {
+  const command = toolCommand(requirement, environment);
+  const result = execute(command, ['--version'], { capture: true });
+  const expected = REQUIRED_TOOL_VERSIONS[requirement];
+  const actual = versionOutput(result);
+  if (result.status !== 0 || !actual.includes(expected)) {
+    return `${requirement} ${expected} is unavailable (checked ${command}; got ${actual || 'no version output'})`;
+  }
+  return undefined;
 };
 
 export const checkPrerequisites = async (
@@ -242,6 +281,17 @@ export const checkPrerequisites = async (
       failures.push('Electron dependencies are not installed');
     }
   }
+  for (const requirement of [
+    'chrome',
+    'chromedriver',
+    'electron-chromedriver',
+    'maestro',
+    'node-24',
+  ]) {
+    if (!prerequisites.has(requirement)) continue;
+    const failure = checkToolVersion(requirement, execute, environment);
+    if (failure) failures.push(failure);
+  }
   if (
     prerequisites.has('xvfb') &&
     platform === 'linux' &&
@@ -307,6 +357,9 @@ export const runSuite = (
   return Promise.resolve(
     execute(command, args, {
       timeout,
+      // Node owns a nested test group (10s) which must settle before this
+      // supervisor is killed; the outer CI command allows 60s.
+      ...(suite.runner === 'node-test' ? { terminationGraceMs: 30_000 } : {}),
       cwd: workspaceRoot,
       environment,
       signal,
@@ -329,6 +382,7 @@ const suiteResult = (
 ) => ({
   id: suite.id,
   environment: suite.environment,
+  runner: suite.runner,
   capabilities: suite.capabilities,
   contractTypes: suite.contractTypes,
   ciTier: suite.ciTier,
@@ -408,6 +462,13 @@ const appendNotRun = (results, suites, detail) => {
   }
 };
 
+const appendTerminalFailure = (results, suites, detail) => {
+  const [failed, ...remaining] = suites;
+  if (!failed) return;
+  results.push(suiteResult(failed, 'failure', { detail }));
+  appendNotRun(results, remaining, `stopped after ${failed.id}`);
+};
+
 const readValidatedSuiteSummary = ({
   suite,
   status,
@@ -482,14 +543,24 @@ const executeRunnableSuites = async ({
   reportError,
 }) => {
   for (const [index, suite] of runnableSuites.entries()) {
-    const execution = await executeRegisteredSuite({
-      suite,
-      invocation,
-      forwardedArgs,
-      signal,
-      executeSuite,
-      readSuiteResult,
-    });
+    let execution;
+    try {
+      execution = await executeRegisteredSuite({
+        suite,
+        invocation,
+        forwardedArgs,
+        signal,
+        executeSuite,
+        readSuiteResult,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      execution = {
+        status: 1,
+        durationMs: 0,
+        summaryFailure: `suite execution failed: ${message}`,
+      };
+    }
     const failed = execution.status !== 0 || Boolean(execution.summaryFailure);
     results.push(
       suiteResult(
@@ -532,10 +603,13 @@ const closeInvocation = async ({
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const detail = `invocation teardown failed: ${message}`;
-    for (let index = results.length - 1; index >= 0; index -= 1) {
-      if (runnableSuites.some(({ id }) => id === results[index].id)) {
-        results[index] = { ...results[index], outcome: 'failure', detail };
-        break;
+    const hasFailure = results.some(({ outcome }) => outcome === 'failure');
+    if (!hasFailure) {
+      for (let index = results.length - 1; index >= 0; index -= 1) {
+        if (runnableSuites.some(({ id }) => id === results[index].id)) {
+          results[index] = { ...results[index], outcome: 'failure', detail };
+          break;
+        }
       }
     }
     reportError(`E2E invocation teardown failed: ${message}`);
@@ -603,14 +677,29 @@ export const runSelection = async (
     }
 
     const results = initialSelectionResults(aggregate, selectedSuites);
-    const { runnableSuites, unavailableSuites } = await planSelectedSuites({
-      targetName,
-      selectedSuites,
-      results,
-      isQuarantined,
-      preflight,
-      reportError,
-    });
+    let runnableSuites;
+    let unavailableSuites;
+    try {
+      ({ runnableSuites, unavailableSuites } = await planSelectedSuites({
+        targetName,
+        selectedSuites,
+        results,
+        isQuarantined,
+        preflight,
+        reportError,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const plannedIds = new Set(results.map(({ id }) => id));
+      appendTerminalFailure(
+        results,
+        selectedSuites.filter(({ id }) => !plannedIds.has(id)),
+        `selection setup failed: ${message}`,
+      );
+      persistReport(syntheticRunId(), results);
+      reportError(`E2E selection setup failed: ${message}`);
+      return 1;
+    }
     if (blocksOnUnavailable(aggregate, unavailableSuites)) {
       appendNotRun(
         results,
@@ -632,7 +721,20 @@ export const runSelection = async (
         runnableSuites.flatMap(({ serializationKeys }) => serializationKeys),
       ),
     ];
-    const invocation = await openInvocation(resources, termination.signal);
+    let invocation;
+    try {
+      invocation = await openInvocation(resources, termination.signal);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendTerminalFailure(
+        results,
+        runnableSuites,
+        `invocation setup failed: ${message}`,
+      );
+      persistReport(syntheticRunId(), results);
+      reportError(`E2E invocation setup failed: ${message}`);
+      return 1;
+    }
     const runId = invocation.descriptor?.id ?? syntheticRunId();
     let finalStatus;
     try {

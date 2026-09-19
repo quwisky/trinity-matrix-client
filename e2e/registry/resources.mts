@@ -33,4 +33,5 @@ export const E2E_TIMEOUTS_MS = {
   medium: 300_000,
   long: 1_800_000,
   host: 3_600_000,
+  'host-extended': 5_100_000,
 } as const;

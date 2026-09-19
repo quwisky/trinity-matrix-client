@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+---
+- tapOn:
+    point: ${POINT}
+- eraseText
+- inputText: ${SECRET_TEXT}
+- hideKeyboard

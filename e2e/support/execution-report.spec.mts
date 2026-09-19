@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildAggregateReport,
+  readSuiteSummary,
   readPlaywrightSuiteSummary,
   suiteSummaryPath,
   writeAggregateReport,
@@ -110,6 +111,7 @@ describe('E2E execution reports', () => {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, `${JSON.stringify(summary)}\n`);
 
+    expect(readSuiteSummary(file)).toEqual(summary);
     expect(readPlaywrightSuiteSummary(file)).toEqual(summary);
   });
 

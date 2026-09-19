@@ -121,16 +121,20 @@
 
   // Authenticity shield: grey = caution (default), red = warning. It qualifies the whole
   // message rather than any run of text, so it owns the body's trailing grid cell, top-aligned
-  // with the first line in both header and grouped layouts. It stays in flow so long content
-  // wraps before the icon and virtual row measurement includes every painted control.
+  // with the first line in both header and grouped layouts. The logical-start spacing is
+  // padding, not a margin: keeping it inside the focusable host leaves the host itself flush
+  // with the logical trailing edge in both Chromium and Android WebView RTL grid layout. It
+  // stays in flow so long content wraps before the icon and virtual row measurement includes
+  // every painted control.
   .msg__shield {
     grid-row: 1;
     grid-column: 2;
+    justify-self: end;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-top: 2px;
-    margin-inline-start: var(--trinity-space-3);
+    padding-inline-start: var(--trinity-space-3);
     color: var(--trinity-text-muted);
     font-size: 13px;
     cursor: help;
