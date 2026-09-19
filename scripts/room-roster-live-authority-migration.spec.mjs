@@ -272,8 +272,11 @@ describe('Android Room roster and live-authority migration', () => {
     expect(client).toMatch(
       /const visibleTop = Math\.max\(list\.rect\.y, 0\);[\s\S]{0,180}?const visibleBottom = Math\.min\(list\.rect\.bottom, viewport\.clientHeight\);/,
     );
-    expect(client).toMatch(
-      /async hideKeyboard\(\): Promise<void>[\s\S]{0,300}?- hideKeyboard/,
+    expect(client).toContain(
+      'const shown = /mInputShown=true/u.test(inputMethod);',
+    );
+    expect(client).toContain(
+      '`appId: ${this.applicationId}\\n---\\n- hideKeyboard\\n`,',
     );
     for (const mutation of forbiddenProductMutations) {
       expect(journey).not.toMatch(mutation);

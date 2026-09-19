@@ -88,6 +88,7 @@
     "e2e:android:message-authenticity-shield": "node scripts/nx.mjs run trinity-e2e-android:message-authenticity-shield",
     "e2e:android:cross-user-verification": "node scripts/nx.mjs run trinity-e2e-android:cross-user-verification",
     "e2e:android:composer-drafts": "node scripts/nx.mjs run trinity-e2e-android:composer-drafts",
+    "e2e:android:composer-formatting": "node scripts/nx.mjs run trinity-e2e-android:composer-formatting",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

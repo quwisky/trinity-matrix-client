@@ -3788,3 +3788,75 @@ records 317 passes, one intentional skip and zero retries, with the exact
 composer predecessor passing at retry 0 in 8.011 seconds. The predecessor
 remains enabled and unchanged. This evidence accepts issue #730 but does not
 authorize merging PR #677.
+
+## Mobile composer-formatting journeys
+
+`android.composer-formatting` maps the three Android-applicable mobile
+definitions in
+`e2e/browser/journeys/conversations/composer-formatting.spec.mts`, pinned at
+SHA-256
+`3e346da10d6b38c10928a824333f050916009fddffd3215331d4bcf723672b8c`.
+The shared application, Account and navigation helpers are pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
+`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`
+and `43232dafbf9e80df6977442f366974100ccfa315b20ab680f893d4300ab46f81`.
+The migration expands 36 direct assertion sites plus the three
+composer-readiness helper calls into 39 unique, stage-local records: 12 for
+selected Italic, 11 for Cancel/Preview continuity and 16 for compact larger
+text. All desktop definitions and the three mobile Playwright predecessors
+remain enabled.
+
+The dedicated native-selection helper observes the exact textarea value and
+uses renderer font metrics only to measure the requested word's center. A
+750 ms Maestro swipe with a two-device-pixel drift performs Android's native
+long press. Trusted pointer evidence, at least 450 ms before Android selection
+takeover, and exact observed offsets prove the result. The helper never calls
+DOM `focus()` or `setSelectionRange()`. The first stage selects only `hello`,
+proves the 44×44 Format target and action-sheet viewport bounds, chooses Italic
+through Maestro and observes the exact formatted value, dismissed sheet and
+restored focus.
+
+The second stage natively selects offsets 2–6 and proves both Cancel and
+Preview preserve them. Keyboard dismissal first reads Android IME state: it
+runs Maestro `hideKeyboard` only when the IME is shown, avoiding an accidental
+Back navigation after mobile Cancel has already focused the Aa trigger. The
+third stage enters its draft, navigates through the real Settings and
+Appearance UI, selects Larger natively, force-stops the installed host and
+relaunches it with a 320×720 viewport. It reopens the same Room and proves the
+20px root font, draft restoration, visible in-bounds 44×44 Format/Send controls,
+exact Preview content and final focus.
+
+```bash
+pnpm nx run trinity-e2e-android:composer-formatting --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:composer-formatting
+```
+
+The uncached serial target owns the emulator and disposable Synapse resources,
+runs once with zero retries and publishes started-only
+`android-composer-formatting` diagnostics from shard 2. Text diagnostics redact
+passwords and all draft variants before a recursive secret/native-storage scan.
+The retained visual is captured only while the full-height modal action sheet
+occludes the composer; its geometry record proves all four viewport bounds.
+Application data, WebView state, device and Synapse resources are cleaned on
+every outcome.
+
+Final local acceptance used source renderer `ff9ab31c` and manifest SHA-256
+`0f34190651b8bb96fc4c0d57723bd488fd3adf52158290f6e5414803d147db86`.
+Three unchanged installed-Android first attempts passed all three stages with
+zero retries:
+
+- `mu8geea7-53226154-7684-4042-868b-6416ace11fb0`: 145.861, 166.566 and
+  199.667 seconds;
+- `mu8gqpo4-61ef4cb8-92cc-43c7-9fbd-c4663b1c82b0`: 148.371, 170.223 and
+  197.255 seconds;
+- `mu8h2wdf-d0ad0b88-0c83-4602-9eb3-be3be5e17757`: 146.785, 167.253 and
+  201.978 seconds.
+
+Each report contains three passed stages, all 39 unique/stage-local assertion
+records, one attempt, zero retries, the exact renderer/source map, one inspected
+modal-covered visual, no raw draft/bearer/Matrix token in text artifacts and
+clean Synapse teardown. The three exact retained mobile predecessors passed
+sequentially with one worker and retry 0 in 3.7, 3.3 and 4.3 seconds on
+invocation `mu8gckvz-8957c43c-3a0f-46aa-b0f1-99d9affc18ab`. Hosted acceptance
+is still required, and none of this authorizes merging PR #677.

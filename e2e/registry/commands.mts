@@ -414,6 +414,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.composer-drafts'],
   },
   {
+    name: 'e2e:android:composer-formatting',
+    command: 'nx run trinity-e2e-android:composer-formatting',
+    kind: 'canonical',
+    suiteIds: ['android.composer-formatting'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -644,6 +650,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'composer-drafts-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:composer-drafts; fi',
     tier: 'pull-request',
     suiteIds: ['android.composer-drafts'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'composer-formatting-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:composer-formatting; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.composer-formatting'],
   },
   {
     command:

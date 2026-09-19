@@ -36,6 +36,7 @@ export const PIXEL_5_ACCOUNT_PROFILE: AccountViewportProfile = {
 const LONG_PRESS_DURATION_MS = 750;
 const LONG_PRESS_DRIFT_PX = 2;
 const LONG_PRESS_THRESHOLD_MS = 500;
+const WORD_SELECTION_MINIMUM_OBSERVED_MS = 450;
 
 export interface AccountElement {
   readonly text: string;
@@ -45,9 +46,16 @@ export interface AccountElement {
   readonly disabled: boolean;
   readonly value: string | null;
   readonly hasValue: boolean;
+  readonly selectionStart: number | null;
+  readonly selectionEnd: number | null;
   readonly attributes: Readonly<Record<string, string>>;
   readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly right: number; readonly bottom: number };
-  readonly style: { readonly display: string; readonly opacity: string; readonly overflowY: string };
+  readonly style: {
+    readonly display: string;
+    readonly fontSize: string;
+    readonly opacity: string;
+    readonly overflowY: string;
+  };
   readonly scrollHeight: number;
   readonly scrollTop: number;
   readonly clientHeight: number;
@@ -71,6 +79,28 @@ interface LongPressTarget {
   readonly selectionSafe: boolean;
   readonly textRectCount: number;
   readonly blockingRectCount: number;
+}
+
+interface WordSelectionMeasurement {
+  readonly cssPoint: { readonly x: number; readonly y: number };
+  readonly valueLength: number;
+  readonly wordStart: number;
+  readonly wordEnd: number;
+  readonly selectionStart: number;
+  readonly selectionEnd: number;
+  readonly focused: boolean;
+}
+
+export interface NativeWordSelectionProof {
+  readonly nativePoint: NativeTargetPoint;
+  readonly valueLength: number;
+  readonly wordStart: number;
+  readonly wordEnd: number;
+  readonly selectionStart: number;
+  readonly selectionEnd: number;
+  readonly focused: boolean;
+  readonly requestedDurationMs: number;
+  readonly observedDurationMs: number;
 }
 
 export interface AccountWorkspaceCaseContext {
@@ -206,9 +236,17 @@ export class AccountWorkspaceClient {
           hasValue:
             (e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement) &&
             e.value.length > 0,
+          selectionStart:
+            e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement
+              ? e.selectionStart
+              : null,
+          selectionEnd:
+            e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement
+              ? e.selectionEnd
+              : null,
           attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'role', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
           rect: {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom},
-          style: {display:style.display,opacity:style.opacity,overflowY:style.overflowY},
+          style: {display:style.display,fontSize:style.fontSize,opacity:style.opacity,overflowY:style.overflowY},
           scrollHeight:e.scrollHeight,scrollTop:e.scrollTop,clientHeight:e.clientHeight,
           unobstructedCenter:x>=0&&y>=0&&x<innerWidth&&y<innerHeight&&e.contains(document.elementFromPoint(x,y))
         };
@@ -462,6 +500,214 @@ export class AccountWorkspaceClient {
     const point = await this.owner.nativePoint(value.cssPoint);
     this.signal.throwIfAborted();
     return { ...value, point };
+  }
+
+  /**
+   * Select one exact word through Android's native long-press gesture.
+   *
+   * Renderer access only measures the glyph point and observes the resulting
+   * selection. It never focuses the input or mutates its selection range.
+   */
+  async selectWordCurrent(
+    selector: string,
+    expectedValue: string,
+    word: string,
+  ): Promise<NativeWordSelectionProof> {
+    assert(word.length > 0, 'Native word selection needs a non-empty word');
+    this.signal.throwIfAborted();
+    await this.owner.apply();
+    const measured = await waitForNativeShellState(
+      () =>
+        evaluateNative(this.webview, `(() => {
+          const {selector,expectedValue,word}=${JSON.stringify({ selector, expectedValue, word })};
+          const input=document.querySelector(selector);
+          if(!(input instanceof HTMLTextAreaElement)||input.value!==expectedValue||document.activeElement!==input)return null;
+          const wordStart=input.value.indexOf(word);
+          if(wordStart<0||input.value.lastIndexOf(word)!==wordStart)return null;
+          const style=getComputedStyle(input),rect=input.getBoundingClientRect();
+          if(rect.width<=0||rect.height<=0||style.visibility!=='visible')return null;
+          const canvas=new OffscreenCanvas(1,1),context=canvas.getContext('2d');
+          if(!context)return null;
+          context.font=style.font;
+          const spacing=Number.parseFloat(style.letterSpacing)||0;
+          const prefix=input.value.slice(0,wordStart);
+          const prefixWidth=context.measureText(prefix).width+spacing*prefix.length;
+          const wordWidth=context.measureText(word).width+spacing*Math.max(0,word.length-1);
+          const borderLeft=Number.parseFloat(style.borderLeftWidth)||0;
+          const borderTop=Number.parseFloat(style.borderTopWidth)||0;
+          const paddingLeft=Number.parseFloat(style.paddingLeft)||0;
+          const paddingTop=Number.parseFloat(style.paddingTop)||0;
+          const fontSize=Number.parseFloat(style.fontSize)||16;
+          const parsedLineHeight=Number.parseFloat(style.lineHeight);
+          const lineHeight=Number.isFinite(parsedLineHeight)?parsedLineHeight:fontSize*1.2;
+          const cssPoint={
+            x:rect.left+borderLeft+paddingLeft+prefixWidth+wordWidth/2-input.scrollLeft,
+            y:rect.top+borderTop+paddingTop+lineHeight/2-input.scrollTop,
+          };
+          if(cssPoint.x<rect.left||cssPoint.x>rect.right||cssPoint.y<rect.top||cssPoint.y>rect.bottom)return null;
+          return {cssPoint,valueLength:input.value.length,wordStart,wordEnd:wordStart+word.length,selectionStart:input.selectionStart,selectionEnd:input.selectionEnd,focused:true};
+        })()`),
+      (value) => value !== null,
+      `measurable exact native word inside ${selector}`,
+      this.signal,
+      15_000,
+    );
+    assert(measured && typeof measured === 'object');
+    const initial = measured as WordSelectionMeasurement;
+    const point = await this.owner.nativePoint(initial.cssPoint);
+    const actionId = ++this.action;
+    const flow = join(this.output, `accounts-word-selection-${actionId}.yaml`);
+    await writeFile(
+      flow,
+      `appId: ${this.applicationId}\n---\n- swipe:\n    start: "${point.x},${point.y}"\n    end: "${point.x + LONG_PRESS_DRIFT_PX},${point.y}"\n    duration: ${LONG_PRESS_DURATION_MS}\n`,
+    );
+    await evaluateNative(this.webview, `(() => {
+      const selector=${JSON.stringify(selector)},element=document.querySelector(selector),types=['pointerdown','pointermove','pointerup','pointercancel'];
+      if(!(element instanceof HTMLTextAreaElement))throw new Error('Native word-selection target changed before dispatch');
+      const state={events:[],types,listener:event=>state.events.push({type:event.type,trusted:event.isTrusted,matched:element.contains(event.target),pointerId:event.pointerId,timeStamp:event.timeStamp,clientX:event.clientX,clientY:event.clientY})};
+      window.__trinityAccountWordSelection=state;
+      for(const type of types)document.addEventListener(type,state.listener,true);
+      return true;
+    })()`);
+
+    let actionError: unknown;
+    let trustedEvents: unknown[] = [];
+    let observedDurationMs = 0;
+    let proof: NativeWordSelectionProof | undefined;
+    try {
+      console.info(
+        `[accounts] native action ${actionId}: exact word selection ${selector}`,
+      );
+      await this.device.runFlow(flow, {});
+      const events = await evaluateNative(
+        this.webview,
+        'window.__trinityAccountWordSelection?.events ?? []',
+      );
+      assert(Array.isArray(events), 'Native word-selection events are an array');
+      trustedEvents = events;
+      const down = events.find(
+        (event) =>
+          event?.type === 'pointerdown' &&
+          event.trusted === true &&
+          event.matched === true,
+      );
+      assert(down, `Native word selection ${actionId} started on ${selector}`);
+      const terminal = events.find(
+        (event) =>
+          (event?.type === 'pointerup' || event?.type === 'pointercancel') &&
+          event.trusted === true &&
+          event.pointerId === down.pointerId,
+      );
+      assert(terminal, `Native word selection ${actionId} completed`);
+      const samePointerEvents = events.filter(
+        (event) =>
+          event?.trusted === true &&
+          event.pointerId === down.pointerId &&
+          Number.isFinite(event.timeStamp),
+      );
+      observedDurationMs =
+        Math.max(...samePointerEvents.map((event) => event.timeStamp)) -
+        down.timeStamp;
+      assert(
+        observedDurationMs >= WORD_SELECTION_MINIMUM_OBSERVED_MS,
+        `Native word selection ${actionId} exposed at least ${WORD_SELECTION_MINIMUM_OBSERVED_MS} ms of its trusted 750 ms gesture before Android selection takeover`,
+      );
+      const selected = await waitForNativeShellState(
+        () =>
+          evaluateNative(this.webview, `(() => {
+            const {selector,expectedValue}=${JSON.stringify({ selector, expectedValue })},input=document.querySelector(selector);
+            return input instanceof HTMLTextAreaElement?{valueMatches:input.value===expectedValue,valueLength:input.value.length,selectionStart:input.selectionStart,selectionEnd:input.selectionEnd,focused:document.activeElement===input}:null;
+          })()`),
+        (value) => {
+          const observed = value as
+            | {
+                valueMatches: boolean;
+                valueLength: number;
+                selectionStart: number;
+                selectionEnd: number;
+                focused: boolean;
+              }
+            | null;
+          return (
+            observed?.valueMatches === true &&
+            observed.valueLength === initial.valueLength &&
+            observed.selectionStart === initial.wordStart &&
+            observed.selectionEnd === initial.wordEnd &&
+            observed.focused === true
+          );
+        },
+        `exact native selection ${initial.wordStart}..${initial.wordEnd}`,
+        this.signal,
+        15_000,
+      );
+      assert(selected && typeof selected === 'object');
+      const observed = selected as {
+        readonly valueLength: number;
+        readonly selectionStart: number;
+        readonly selectionEnd: number;
+        readonly focused: boolean;
+      };
+      proof = {
+        nativePoint: point,
+        valueLength: observed.valueLength,
+        wordStart: initial.wordStart,
+        wordEnd: initial.wordEnd,
+        selectionStart: observed.selectionStart,
+        selectionEnd: observed.selectionEnd,
+        focused: observed.focused,
+        requestedDurationMs: LONG_PRESS_DURATION_MS,
+        observedDurationMs,
+      };
+    } catch (error) {
+      actionError = error;
+    } finally {
+      const failures: unknown[] = [];
+      try {
+        await this.record(`word-selection-${actionId}`, {
+          selector,
+          nativePoint: point,
+          valueLength: initial.valueLength,
+          wordLength: word.length,
+          expectedSelection: {
+            start: initial.wordStart,
+            end: initial.wordEnd,
+          },
+          initialSelection: {
+            start: initial.selectionStart,
+            end: initial.selectionEnd,
+          },
+          proof: proof ?? null,
+          requestedDurationMs: LONG_PRESS_DURATION_MS,
+          observedDurationMs,
+          trustedEvents,
+        });
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await evaluateNative(
+          this.webview,
+          "(() => {const state=window.__trinityAccountWordSelection;if(state)for(const type of state.types)document.removeEventListener(type,state.listener,true);delete window.__trinityAccountWordSelection;return true})()",
+        );
+      } catch (error) {
+        failures.push(error);
+      }
+      try {
+        await this.owner.apply();
+      } catch (error) {
+        failures.push(error);
+      }
+      if (actionError !== undefined) failures.unshift(actionError);
+      if (failures.length === 1) throw failures[0];
+      if (failures.length) {
+        throw new AggregateError(
+          failures,
+          'Native word selection and cleanup failed',
+        );
+      }
+    }
+    assert(proof, 'Native word selection produced exact observed proof');
+    return proof;
   }
 
   async tapDocumentTrigger(selector: string, fileInputSelector: string): Promise<void> {
@@ -882,6 +1128,23 @@ export class AccountWorkspaceClient {
 
   async hideKeyboard(): Promise<void> {
     const actionId = ++this.action;
+    const inputMethod = await this.device.adb(
+      'shell',
+      'dumpsys',
+      'input_method',
+    );
+    const shown = /mInputShown=true/u.test(inputMethod);
+    await this.record(`keyboard-dismiss-${actionId}`, {
+      shownBefore: shown,
+      action: shown ? 'maestro-hideKeyboard' : 'already-hidden',
+    });
+    if (!shown) {
+      console.info(
+        `[accounts] native action ${actionId}: keyboard already hidden`,
+      );
+      await this.owner.apply();
+      return;
+    }
     const flow = join(this.output, `accounts-hide-keyboard-${actionId}.yaml`);
     await writeFile(
       flow,
