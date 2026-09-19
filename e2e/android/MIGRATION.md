@@ -3841,22 +3841,43 @@ occludes the composer; its geometry record proves all four viewport bounds.
 Application data, WebView state, device and Synapse resources are cleaned on
 every outcome.
 
-Final local acceptance used source renderer `ff9ab31c` and manifest SHA-256
-`0f34190651b8bb96fc4c0d57723bd488fd3adf52158290f6e5414803d147db86`.
-Three unchanged installed-Android first attempts passed all three stages with
-zero retries:
+Final privacy-correct local acceptance used the unchanged application bundle
+and three installed-Android first attempts with zero retries:
 
-- `mu8geea7-53226154-7684-4042-868b-6416ace11fb0`: 145.861, 166.566 and
-  199.667 seconds;
-- `mu8gqpo4-61ef4cb8-92cc-43c7-9fbd-c4663b1c82b0`: 148.371, 170.223 and
-  197.255 seconds;
-- `mu8h2wdf-d0ad0b88-0c83-4602-9eb3-be3be5e17757`: 146.785, 167.253 and
-  201.978 seconds.
+- `mu8o57ol-b72fd3d0-0db1-4169-940c-43077ddcd958`;
+- `mu8ohfij-9cd99b8c-524a-440f-b975-3e90d8ef473a`;
+- `mu8otu9t-9baba3af-ce57-4bfb-8ef8-5e3b910f357c`.
 
-Each report contains three passed stages, all 39 unique/stage-local assertion
-records, one attempt, zero retries, the exact renderer/source map, one inspected
-modal-covered visual, no raw draft/bearer/Matrix token in text artifacts and
-clean Synapse teardown. The three exact retained mobile predecessors passed
-sequentially with one worker and retry 0 in 3.7, 3.3 and 4.3 seconds on
-invocation `mu8gckvz-8957c43c-3a0f-46aa-b0f1-99d9affc18ab`. Hosted acceptance
-is still required, and none of this authorizes merging PR #677.
+Each report contains three passed stages, exactly 12, 11 and 16 unique
+stage-local assertion records, one attempt, zero retries, the exact
+renderer/source map, one inspected modal-covered visual and clean Synapse
+teardown. The preview record preserves its canonical identity while recording
+only `{ "matches": true, "length": 4 }`; exact recursive scans found no raw
+draft, selected word, bearer or Matrix token in text artifacts.
+
+Replacement hosted run
+[`35468767242`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35468767242)
+uses feature head `e361d4d5` and merge head `e065f61e`. Browser artifact
+[`10592976490`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35468767242/artifacts/10592976490)
+records all three exact mobile predecessors passing on their first attempts in
+4.883, 3.894 and 6.409 seconds. Its sole retry was the unrelated retained-roster
+case owned by the wider reliability ticket. Renderer-E2E artifact
+[`10592671029`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35468767242/artifacts/10592671029)
+records 163 Storybook passes, nine production-renderer passes, nine intentional
+skips, exact merge/bundle verification at manifest SHA-256
+`b74f1818516e45fe5d85a9a653165b8a5711434bdcc4e8d07d19029bfe9583a6`
+and clean Synapse teardown. Production renderer artifact
+[`10591882231`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35468767242/artifacts/10591882231)
+verifies all 49 production files (15,302,546 bytes) at the same manifest.
+Hosted Android artifact
+[`10593361441`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35468767242/artifacts/10593361441)
+(`sha256:a0477e9951a04dd28ef05ef5d61440df62da3b4fbb6a1a20d5b0f77ea5eb16d0`)
+records invocation `mu8w9xqa-e2024669-aefd-4ed8-b984-89d36230d76d` passing the
+three stages on attempt 1 with zero retries in 227.962, 281.545 and 354.602
+seconds. Its JUnit report records one test and zero failures; the report contains
+exactly 39 unique canonical assertion records, three stage-local `passed.json`
+records and the single inspected action-sheet visual. The privacy scan is clean,
+the exact merge/bundle provenance is retained and Synapse teardown completed.
+The Android shard failed only later in the unrelated
+`android.space-settings-core` exact-contents lifecycle; the composer-formatting
+target itself completed successfully. None of this authorizes merging PR #677.
