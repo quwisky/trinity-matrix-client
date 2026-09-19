@@ -698,10 +698,11 @@ describe('CI execution contract', () => {
     expect(roomTombstoneLine).toContain('--timeout-ms 1200000');
   });
 
-  it('runs cross-user verification after message shields and before native shell on shard 2', () => {
+  it('runs cross-user verification before unrelated shard 2 suites can suppress its evidence', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
+    const legacySso = script.indexOf('trinity-e2e-android:legacy-sso');
     const ssoRecoveryReset = script.indexOf(
       'trinity-e2e-android:sso-recovery-reset',
     );
@@ -723,10 +724,11 @@ describe('CI execution contract', () => {
         line.includes('trinity-e2e-android:cross-user-verification'),
       );
 
-    expect(ssoRecoveryReset).toBeGreaterThan(-1);
+    expect(crossUserVerification).toBeGreaterThan(-1);
+    expect(legacySso).toBeGreaterThan(crossUserVerification);
+    expect(ssoRecoveryReset).toBeGreaterThan(legacySso);
     expect(messageAuthenticityShield).toBeGreaterThan(ssoRecoveryReset);
-    expect(crossUserVerification).toBeGreaterThan(messageAuthenticityShield);
-    expect(nativeShell).toBeGreaterThan(crossUserVerification);
+    expect(nativeShell).toBeGreaterThan(messageAuthenticityShield);
     expect(messageAuthenticityShieldLine).toContain('matrix.shard }}" = "2"');
     expect(messageAuthenticityShieldLine).toContain(
       'message-authenticity-shield-started=true',

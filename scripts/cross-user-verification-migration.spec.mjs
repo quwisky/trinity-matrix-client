@@ -539,6 +539,9 @@ describe('Android cross-user verification migration', () => {
     expect(workflow).toContain(
       'pnpm exec nx run trinity-e2e-android:cross-user-verification',
     );
+    expect(
+      workflow.indexOf('cross-user-verification-started=true'),
+    ).toBeLessThan(workflow.indexOf('legacy-sso-started=true'));
     expect(workflow).toContain('surface: android-cross-user-verification');
     expect(workflow).toContain(
       'report-path: dist/.playwright/trinity-e2e-android/*/android.cross-user-verification/**',

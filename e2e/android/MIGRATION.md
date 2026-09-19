@@ -3600,14 +3600,19 @@ pnpm e2e:android:cross-user-verification
 
 The uncached serial target builds both APKs from the verified renderer, owns the
 emulator and disposable Synapse resources, and has a 30-minute Node budget. CI
-runs it on shard 2 immediately after `android.message-authenticity-shield`, with
-a 35-minute command bound and started-only
+runs it as shard 2's first dedicated suite, before unrelated legacy SSO and
+message-authenticity coverage can fail the serial shard, with a 35-minute
+command bound and started-only
 `android-cross-user-verification` diagnostics. Credentials, access tokens and
 session secrets are redacted and scanned. Failure capture is suppressed while
 a populated recovery-key or password surface is visible, and flow-owned raster
 artifacts are removed before retention. Reports preserve one attempt, zero retries, two
 stages, six identities, 11 records, source ownership and aggregate controller,
 two-package, Matrix and device teardown.
+
+The shard retains its existing fail-fast contract: a cross-user failure remains
+red and prevents later shard-2 suites from starting; no suite failure is
+converted to success.
 
 Local acceptance is frozen on consolidated source `d6039ebc` (Git tree
 `aa5403b0491c62fd8eb1e123418e1defd8dfb28c`, byte-identical to reviewed
