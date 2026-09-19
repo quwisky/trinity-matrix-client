@@ -93,13 +93,27 @@ const redactText = (text: string, secrets: readonly string[]): string =>
 const redactNativeLog = (text: string): string =>
   text
     .replace(
-      /(\bpluginId:[ \t]*SecureStorage\b[^\r\n]*?\bmethodData:[ \t]*)[^\r\n]*/gu,
+      /(\bpluginId:[ \t]*(?:SecureStorage|Preferences)\b[^\r\n]*?\bmethodData:[ \t]*)[^\r\n]*/gu,
       `$1${redactedSecret}`,
     )
     .replace(
       /(\bCapacitor\/Console\b[^\r\n]*?\bFile:[ \t]*-[ \t]*Line[ \t]+\d+[ \t]*-[ \t]*Msg:[ \t]*)[\[{][^\r\n]*/gu,
       `$1${redactedSecret}`,
     );
+
+export function nativeStorageMethodDataIsRedacted(
+  text: string,
+  pluginId: 'Preferences' | 'SecureStorage',
+): boolean {
+  for (const match of text.matchAll(
+    /\bpluginId:[ \t]*(Preferences|SecureStorage)\b[^\r\n]*?\bmethodData:[ \t]*([^\r\n]*)/gu,
+  )) {
+    if (match[1] === pluginId && match[2]?.trim() !== redactedSecret) {
+      return false;
+    }
+  }
+  return true;
+}
 
 const isMissingAdbListener = (error: unknown): boolean =>
   /\badb: error: listener 'tcp:\d+' not found(?:\r?\n|$)/u.test(String(error));

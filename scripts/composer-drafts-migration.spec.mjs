@@ -72,6 +72,8 @@ function assertProtectedRuntimeContract(journey, preference, client) {
     'retries: 0',
     'redactMaestroArtifacts(output, secrets, true)',
     'scanComposerDraftArtifacts(output, secrets)',
+    "nativeStorageMethodDataIsRedacted(text, 'Preferences')",
+    'Preferences method data is redacted in ${path}',
     'await client.close()',
     'await device.clearApplicationData(APPLICATION_ID)',
     'device.close()',

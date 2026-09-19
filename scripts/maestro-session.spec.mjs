@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  nativeStorageMethodDataIsRedacted,
   openMaestroDevice,
   redactMaestroArtifacts,
 } from '../e2e/android/maestro-session.mts';
@@ -22,6 +23,7 @@ import { pickAndroidDocument } from '../e2e/android/maestro-document-picker.mts'
 
 const nativeSecret = 'synthetic-native-access-token';
 const nativeReadSecret = 'synthetic-native-read-token';
+const nativePreferenceSecret = 'synthetic draft prefix';
 const maestroSessionSource = readFileSync(
   join(import.meta.dirname, '../e2e/android/maestro-session.mts'),
   'utf8',
@@ -32,6 +34,11 @@ const nativeLog =
     prefixedKey: 'fixture.accessToken:account',
     data: JSON.stringify(nativeSecret),
     sync: false,
+  }) +
+  '\nV/Capacitor: callback: 43, pluginId: Preferences, methodName: set, methodData: ' +
+  JSON.stringify({
+    key: 'trinity.composer.drafts',
+    value: JSON.stringify({ conversation: nativePreferenceSecret }),
   }) +
   '\nV/Capacitor/Console: File:  - Line 333 - Msg: ' +
   JSON.stringify({ data: nativeReadSecret }) +
@@ -170,6 +177,21 @@ async function waitForPrivateCommands(f) {
 }
 
 describe('Maestro device ownership', () => {
+  it('distinguishes exact redacted native storage payloads from raw values', () => {
+    expect(
+      nativeStorageMethodDataIsRedacted(
+        'V/Capacitor: pluginId: Preferences, methodName: set, methodData: [REDACTED]\n',
+        'Preferences',
+      ),
+    ).toBe(true);
+    expect(
+      nativeStorageMethodDataIsRedacted(
+        'V/Capacitor: pluginId: Preferences, methodName: set, methodData: {"value":"draft prefix"}\n',
+        'Preferences',
+      ),
+    ).toBe(false);
+  });
+
   it('probes driver ports on the wildcard address Maestro validates', () => {
     expect(maestroSessionSource).toContain('server.listen(0, () => {');
     expect(maestroSessionSource).not.toContain("server.listen(0, '127.0.0.1'");
@@ -563,8 +585,9 @@ describe('Maestro device ownership', () => {
     );
     expect(log).not.toContain(nativeSecret);
     expect(log).not.toContain(nativeReadSecret);
+    expect(log).not.toContain(nativePreferenceSecret);
     expect(log).toContain('Msg: [REDACTED]');
-    expect(log).toContain('methodData: [REDACTED]');
+    expect(log.match(/methodData: \[REDACTED\]/gu)).toHaveLength(2);
     expect(log).toContain('App resumed');
     await device.close();
   });

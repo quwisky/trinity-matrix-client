@@ -21,7 +21,11 @@ import {
   type ComposerDraftAssertion,
 } from './composer-drafts-contract.mts';
 import { readNativeComposerDraft } from './composer-drafts-preference.mts';
-import { openMaestroDevice, redactMaestroArtifacts } from './maestro-session.mts';
+import {
+  nativeStorageMethodDataIsRedacted,
+  openMaestroDevice,
+  redactMaestroArtifacts,
+} from './maestro-session.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
 
 const APPLICATION_ID = 'eu.qwky.trinity';
@@ -148,6 +152,10 @@ async function scanComposerDraftArtifacts(
       assert(
         !/\bsyt_[A-Za-z0-9._~-]+/u.test(text),
         `Matrix access token is absent from ${path}`,
+      );
+      assert(
+        nativeStorageMethodDataIsRedacted(text, 'Preferences'),
+        `Preferences method data is redacted in ${path}`,
       );
     }
   }
