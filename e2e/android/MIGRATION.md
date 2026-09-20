@@ -3942,3 +3942,59 @@ clean teardown. Exact retained predecessor invocation
 sequentially in 4.3 and 3.4 seconds with one worker and retry 0, followed by
 clean Synapse teardown. Hosted acceptance is still pending; none of this
 authorizes merging PR #677.
+
+## Composer reaction-picker journeys
+
+`android.composer-reactions` maps both Android-applicable definitions in
+`e2e/browser/journeys/conversations/composer-reactions.spec.mts`, pinned at
+SHA-256
+`00f7444b5646cc445139b8911fb6c39f59abd3a0a42552a7fd1482ab9f25ed6a`.
+The shared application and Account helpers remain enabled and are pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+The migration expands ten Android-owned assertion sites plus two
+composer-readiness helper calls into 12 unique, stage-local records: five for
+the composer's picker toggle and seven for the exact-message reaction flow.
+The predecessor's desktop hover/quick-reaction retry remains enabled and is
+explicitly excluded from the Android replacement.
+
+The first installed-Android stage opens a disposable Room through native touch,
+activates the exact Insert emoji trigger through Maestro and proves both the
+picker and `aria-expanded=true`. It activates the same trigger again and proves
+the picker is absent or hidden and `aria-expanded=false`, preserving the state
+synchronization that originally regressed.
+
+The second stage joins a positioning Account, seeds three filler messages from
+it through Matrix REST, then sends the exact target from the signed-in Account
+and retains that final event ID. This preserves a visible sender-avatar/header
+gesture target without weakening the exact event binding. Maestro scrolls that
+avatar into view, long-presses it, chooses `sheet-react-more`, and proves the
+accessible `Pick a reaction` dialog and its full picker, focuses the real search
+field, enters `rocket` through the Android IME and selects the exact
+rocket-labelled result through native touch. The result must appear as a 🚀 key
+inside the exact target row. A separate Matrix relations request then proves an
+unredacted `m.reaction` event from the signed-in Account whose `m.annotation`
+relation has the exact target event ID and key.
+
+```bash
+pnpm nx run trinity-e2e-android:composer-reactions --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:composer-reactions
+```
+
+The uncached serial target owns the emulator and disposable Synapse resources,
+runs once with zero retries and publishes started-only
+`android-composer-reactions` diagnostics from shard 2. Text diagnostics redact
+passwords, account/Room identities, seeded message content and Matrix event IDs
+before a recursive secret/native-storage scan; secret-bearing raster artifacts
+are removed. Application data, WebView state, device and Synapse resources are
+cleaned on every outcome. Three unchanged installed-Android invocations passed
+on their first and only attempts with all 12/12 records and no raster artifacts:
+`mu9p6b8q-d030cd87-0afa-477b-94f8-e368ed37f04e` in 222.630 seconds,
+`mu9pblbq-9846b464-2d31-4cb8-bff2-2b0bcf195301` in 226.881 seconds and
+`mu9pgz7f-fb58a35c-086b-4a4a-8a6e-e7ef9414e152` in 225.248 seconds. Exact
+retained predecessor invocation
+`mu9pnjp7-3efd445e-0e97-4921-97fb-928711eb97a5` passed both Chromium tests
+sequentially in 5.3 and 3.9 seconds with one worker and retry 0, followed by
+clean Synapse teardown. Hosted acceptance is still pending. Nothing in this
+migration authorizes merging PR #677.

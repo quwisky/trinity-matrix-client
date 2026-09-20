@@ -122,7 +122,12 @@ export function createAccountFixtures(
     member: NodeWorkspaceAccount,
     reason: string,
   ): Promise<void>;
-  sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<void>;
+  sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<string>;
+  reactionEvents(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<readonly Readonly<Record<string, unknown>>[]>;
   sendReadReceipt(
     account: NodeWorkspaceAccount,
     roomId: string,
@@ -566,12 +571,42 @@ export function createAccountFixtures(
     roomId: string,
     body: string,
     transactionId: string,
-  ): Promise<void> {
-    await request(
+  ): Promise<string> {
+    const response = await request(
       access(sender),
       `/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${encodeURIComponent(transactionId)}`,
       'PUT',
       { msgtype: 'm.text', body },
+    );
+    return stringField(response, 'event_id', 'Matrix fixture sent-message event id');
+  }
+
+  async function reactionEvents(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<readonly MatrixRecord[]> {
+    const response = await fetch(
+      `${SYNAPSE_HTTP}/_matrix/client/v1/rooms/${encodeURIComponent(roomId)}/relations/${encodeURIComponent(eventId)}/m.annotation/m.reaction`,
+      {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${access(observer).token}` },
+        signal: requestSignal(signal),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Matrix fixture reaction relations failed with HTTP ${response.status}`,
+      );
+    }
+    const body = record(
+      await response.json(),
+      'Matrix fixture reaction-relations response',
+    );
+    const chunk = body['chunk'];
+    assert(Array.isArray(chunk), 'Matrix fixture reaction-relations chunk');
+    return chunk.map((event, index) =>
+      record(event, `Matrix fixture reaction event ${index}`),
     );
   }
 
@@ -881,6 +916,7 @@ export function createAccountFixtures(
     join,
     ban,
     sendMessage,
+    reactionEvents,
     sendReadReceipt,
     markedUnread,
     setMarkedUnread,

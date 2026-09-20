@@ -426,6 +426,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.composer-mentions'],
   },
   {
+    name: 'e2e:android:composer-reactions',
+    command: 'nx run trinity-e2e-android:composer-reactions',
+    kind: 'canonical',
+    suiteIds: ['android.composer-reactions'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -668,6 +674,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'composer-mentions-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:composer-mentions; fi',
     tier: 'pull-request',
     suiteIds: ['android.composer-mentions'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'composer-reactions-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:composer-reactions; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.composer-reactions'],
   },
   {
     command:
