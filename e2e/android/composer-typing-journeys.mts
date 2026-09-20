@@ -373,20 +373,33 @@ async function runLiveAnimation(
     await recordAssertion(context, assertions.liveAnimationIndicatorVisible, {
       visible: indicator.visible,
     });
-    const observation = await evaluateNative(
-      context.client.webview,
-      `(() => {
-        const element = document.querySelector('.typing-dots__dot');
-        if (!(element instanceof HTMLElement)) throw new Error('typing dot missing');
-        const animations = element.getAnimations();
-        const timing = animations[0]?.effect?.getComputedTiming();
-        if (!timing) throw new Error('typing animation timing missing');
-        return {
-          count: animations.length,
-          duration1000: timing.duration === 1000,
-          infinite: timing.iterations === Infinity,
-        };
-      })()`,
+    const observation = await waitForNativeShellState(
+      () =>
+        evaluateNative(
+          context.client.webview,
+          `(() => {
+            const element = document.querySelector('.typing-dots__dot');
+            if (!(element instanceof HTMLElement)) return null;
+            const animations = element.getAnimations();
+            const timing = animations[0]?.effect?.getComputedTiming();
+            return {
+              count: animations.length,
+              timingReady: timing !== undefined,
+              duration1000: timing?.duration === 1000,
+              infinite: timing?.iterations === Infinity,
+            };
+          })()`,
+        ),
+      (value) =>
+        value !== null &&
+        typeof value === 'object' &&
+        'count' in value &&
+        value.count === 1 &&
+        'timingReady' in value &&
+        value.timingReady === true,
+      'typing animation timing ready',
+      context.signal,
+      20_000,
     );
     assert(observation && typeof observation === 'object');
     assert('count' in observation && observation.count === 1);

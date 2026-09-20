@@ -4095,3 +4095,69 @@ worker and retry 0, followed by clean Synapse teardown. Source re-hashing
 reproduced all three pinned hashes. Hosted acceptance is pending. The complete
 Playwright predecessor remains enabled, and nothing here authorizes merging PR
 #677.
+
+The first hosted attempt on source head `aacd0943` retained useful failure
+evidence rather than being retried away. Run `35520352131` artifact
+`10608228799` (digest
+`sha256:f5bb574e93ba5a6ea2138b9111381f1729bb5f80929acca8dc0893a0435bda9d`)
+passed show/clear, reserved-slot and long-name on attempt 1, then observed the
+live indicator before Chromium exposed the first CSS animation's effect timing.
+The immediate read failed closed with `typing animation timing missing`; it did
+not report a false animation pass. The repaired observer now uses the shared
+bounded read-only WebView readiness poll until exactly one animation exposes a
+timing object, then independently retains the exact 1000 ms and infinite
+iteration assertions. It adds no journey retry, renderer mutation or assertion
+relaxation. All six exact hosted Playwright predecessors passed at retry 0 in
+the same run; an unrelated Room roster definition passed only on retry 1 and is
+tracked under #665.
+
+The repaired observer was then held fixed across three complete local reruns on
+the same renderer manifest
+`91b60ef284152e73f0ecfcf3446c35df2a76ea462e880b618035f250a37aca26`
+and APK
+`b76cafa8d663f2cdecc10f59fc862b5f24884d9c41393b22655b67c473f3f62b`:
+
+- `mua260io-7c3a1361-97e4-4cbf-916b-e9490107f6e7` in 526.100 seconds;
+- `mua2i9rd-025ce53a-7add-4e45-8c3d-86e994fc29be` in 529.345 seconds;
+- `mua2v2fv-b2776bb2-e223-4c03-b163-477ac652efb9` in 531.043 seconds.
+
+Every rerun passed all six stages and 25 assertion records on attempt 1 with
+zero retries. Each retained tree contains 45 Maestro manifests and 258
+completed, non-optional commands, with no failed or raster artifact. The final
+animation setting is absent, the application is stopped, and Synapse data and
+containers are removed. The failed emulator-start invocation immediately before
+these runs executed no stage: it omitted the explicit disposable-emulator
+serial while `Trinity_API_36` was already running, so the adapter correctly
+failed rather than sharing an unleased device. Repeating the documented command
+with `TRINITY_ANDROID_SERIAL=emulator-5554` resolved that invocation error
+without changing production code, migration assertions or retry policy.
+
+Post-repair predecessor invocation
+`mua3874y-f7c21f99-85ac-4442-afba-bdace4510140` passed all six unchanged
+Chromium definitions with one worker and zero retries in 21.515 seconds, then
+removed its Synapse data and containers. Production-renderer invocation
+`mua3dg9h-97d6e5a1-4644-4db6-b32e-8c1f17cc6c5d` rebuilt the 49-file,
+15,302,553-byte shipped bundle and passed all nine applicable checks with nine
+explicitly skipped variants. The final pre-publication renderer manifest is
+`d64ff4bb575769f01558aa1a625111c1be38aa5683d393360e33f1d6e4877168`;
+the APK rebuilt from that exact renderer is
+`fb5fc6274a4ae229b9c535000fb89b4ef62b40fce10654a6f9f32914775becbf`.
+
+Independent review then identified one remaining page-read edge: throwing while
+the dot element itself was transiently absent would bypass the predicate-based
+poll. A mutation-resistant guard first failed against that behavior; the final
+observer now returns `null` as an explicit not-ready value until the dot exists,
+while preserving the same bounded wait and exact count, duration and iteration
+assertions. The final reviewed journey and guard were held fixed across three
+more complete invocations on the same final renderer and APK:
+
+- `mua3l1db-e401b8c7-b095-47e6-b8a7-b3ad5f0c64d1` in 533.318 seconds;
+- `mua3x7kd-181c21df-7530-4e38-b1a9-8faaa3ec9709` in 533.138 seconds;
+- `mua49e7b-ea768527-75e3-4331-ac93-8538e853640c` in 534.836 seconds.
+
+These are the controlling local acceptance runs for the reviewed repair. Each
+again passed all six stages and 25 assertion records on attempt 1 with zero
+retries, 45 Maestro manifests, 258 completed commands, no failed or raster
+artifact, and restored setting/application/Synapse state. Their combined
+journey-and-guard diff hash was
+`70286f5a777727bd2be87919b6538fd74f9bb1aee90366ae56f31aacf68c8f5a`.
