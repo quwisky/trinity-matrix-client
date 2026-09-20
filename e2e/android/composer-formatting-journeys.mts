@@ -243,6 +243,7 @@ async function runApplySelectedItalic(
   secrets.SECRET_APPLY_FORMATTED = formatted;
   await client.focusCurrent(COMPOSER);
   await client.fillFocused(COMPOSER, 'say hello');
+  await client.hideKeyboard();
   const selection = await client.selectWordCurrent(COMPOSER, draft, 'hello');
   await client.record('apply-native-selection', selection);
 
@@ -325,6 +326,7 @@ async function runCancelAndPreview(
   secrets.SECRET_PREVIEW_DRAFT = draft;
   await client.focusCurrent(COMPOSER);
   await client.fillFocused(COMPOSER, '**bold** and plain');
+  await client.hideKeyboard();
   const selection = await client.selectWordCurrent(COMPOSER, draft, 'bold');
   await client.record('preview-native-selection', selection);
   await client.hideKeyboard();

@@ -346,6 +346,28 @@ describe('Android recovery-reset migration', () => {
     expect(client).toContain(
       "renderedText: e instanceof HTMLElement ? e.innerText.trim() : e.textContent?.trim() ?? ''",
     );
+    const focusedFill = client.slice(
+      client.indexOf('async fillFocused('),
+      client.indexOf('async replace(', client.indexOf('async fillFocused(')),
+    );
+    expect(focusedFill).toContain('waitForNativeShellState(');
+    expect(focusedFill).toContain(
+      'await this.waitForFullViewportNativeBounds();',
+    );
+    expect(focusedFill).toContain('Native focused input reached ${selector}');
+    expect(focusedFill).toContain(
+      'for (let attempt = 1; attempt <= 2; attempt += 1)',
+    );
+    expect(focusedFill).toContain(
+      'retrying native focused fill for ${selector}',
+    );
+    expect(focusedFill).toContain('caseCorrections');
+    expect(focusedFill).toContain(
+      "selector==='trn-alert-dialog input'&&input instanceof HTMLInputElement&&input.type!=='password'",
+    );
+    expect(focusedFill).toContain("await this.key('arrowRight')");
+    expect(focusedFill).toMatch(/'input',\s*'keyevent'/u);
+    expect(focusedFill).not.toContain('assert.equal(matches, true');
   });
 
   it('keeps crypto observations bounded and access tokens closure-private', () => {

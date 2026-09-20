@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { MaestroDevice } from './maestro-session.mts';
 import { openMaestroViewport, type MaestroViewport, type MaestroViewportOptions } from './maestro-viewport.mts';
 import { pressAndroidKeyboardKey, type AndroidKeyboardKey } from './maestro-keyboard.mts';
@@ -733,42 +734,179 @@ export class AccountWorkspaceClient {
 
   /** Fill a product-autofocused input without allowing IME auto-capitalisation. */
   async fillFocused(selector: string, value: string): Promise<void> {
-    await this.focused(selector);
-    const actionId = ++this.action;
-    console.info(`[accounts] native action ${actionId}: focused fill ${selector}`);
-    let failure: unknown;
-    try {
-      await this.device.runFlow(
-        join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
-        { APP_ID: this.applicationId, SECRET_TEXT: `x${value}` },
+    const valueDescription = `Native focused input reached ${selector}`;
+    const waitForValue = async (): Promise<void> => {
+      await waitForNativeShellState(
+        () =>
+          evaluateNative(
+            this.webview,
+            `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`,
+          ),
+        (matches) => matches === true,
+        valueDescription,
+        this.signal,
+        15_000,
       );
-      await this.key('home');
-      await this.key('forwardDelete');
-      // Removing the anti-capitalisation sentinel leaves Android's caret at
-      // offset zero. Restore it to the end and emit a final native input event
-      // there so caret-sensitive autocompletes observe the completed value.
-      await this.key('end');
-      await this.key('space');
-      await this.key('backspace');
-    } catch (error) {
-      failure = error;
-    }
-    try {
-      await this.owner.apply();
-    } catch (error) {
-      if (failure !== undefined)
-        throw new AggregateError(
-          [failure, error],
-          'Native focused fill and viewport restoration failed',
+    };
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      await this.focused(selector);
+      const actionId = ++this.action;
+      console.info(
+        `[accounts] native action ${actionId}: focused fill ${selector}`,
+      );
+      let failure: unknown;
+      try {
+        await this.device.runFlow(
+          join(
+            this.workspaceRoot,
+            'e2e/android/flows/accounts-focused-fill.yaml',
+          ),
+          { APP_ID: this.applicationId, SECRET_TEXT: `x${value}` },
         );
-      throw error;
+        await this.key('home');
+        await this.key('forwardDelete');
+        // Removing the anti-capitalisation sentinel leaves Android's caret at
+        // offset zero. Restore it to the end and emit a final native input event
+        // there so caret-sensitive autocompletes observe the completed value.
+        await this.key('end');
+        await this.key('space');
+        await this.key('backspace');
+        await this.hideKeyboard();
+      } catch (error) {
+        failure = error;
+      }
+      try {
+        await this.waitForFullViewportNativeBounds();
+      } catch (error) {
+        if (failure !== undefined)
+          throw new AggregateError(
+            [failure, error],
+            'Native focused fill and viewport restoration failed',
+          );
+        throw error;
+      }
+      if (failure !== undefined) throw failure;
+      try {
+        await waitForValue();
+        return;
+      } catch (error) {
+        let unsettledError = error;
+        const observed = await evaluateNative(
+          this.webview,
+          `(() => {
+            const selector=${JSON.stringify(selector)},expected=${JSON.stringify(value)},input=document.querySelector(selector);
+            const current=input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement?input.value:null;
+            const caseCorrections=[];
+            let caseOnlyCorrectable=selector==='trn-alert-dialog input'&&input instanceof HTMLInputElement&&input.type!=='password'&&current!==null&&current.length===expected.length;
+            if(caseOnlyCorrectable){
+              for(let index=0;index<expected.length;index+=1){
+                if(current[index]===expected[index])continue;
+                const expectedCode=expected.codePointAt(index);
+                if(expectedCode>=97&&expectedCode<=122&&current[index]?.toLocaleLowerCase()===expected[index])caseCorrections.push({index,keyCode:29+expectedCode-97});
+                else caseOnlyCorrectable=false;
+              }
+              caseOnlyCorrectable=caseOnlyCorrectable&&caseCorrections.length>0;
+            }
+            return {
+              present:current!==null,
+              focused:document.activeElement===input,
+              length:current?.length??null,
+              expectedLength:expected.length,
+              sentinelPresent:current===\`x\${expected}\`,
+              trailingSpacePresent:current===\`\${expected} \`,
+              sameIgnoringCase:current?.toLocaleLowerCase()===expected.toLocaleLowerCase(),
+              caseOnlyCorrectable,
+              caseCorrections,
+              selectionStart:input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement?input.selectionStart:null,
+              selectionEnd:input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement?input.selectionEnd:null
+            };
+          })()`,
+        );
+        assert(observed && typeof observed === 'object');
+        const state = observed as {
+          readonly present: boolean;
+          readonly focused: boolean;
+          readonly length: number | null;
+          readonly expectedLength: number;
+          readonly sentinelPresent: boolean;
+          readonly trailingSpacePresent: boolean;
+          readonly sameIgnoringCase: boolean;
+          readonly caseOnlyCorrectable: boolean;
+          readonly caseCorrections: readonly {
+            readonly index: number;
+            readonly keyCode: number;
+          }[];
+          readonly selectionStart: number | null;
+          readonly selectionEnd: number | null;
+        };
+        assert(
+          Array.isArray(state.caseCorrections) &&
+            state.caseCorrections.every(
+              (correction) =>
+                Number.isSafeInteger(correction.index) &&
+                correction.index >= 0 &&
+                Number.isSafeInteger(correction.keyCode) &&
+                correction.keyCode >= 29 &&
+                correction.keyCode <= 54,
+          ),
+          'Native focused fill case corrections are valid Android key events',
+        );
+        console.warn(
+          `[accounts] native focused fill for ${selector} remained unsettled: ${JSON.stringify({
+            present: state.present,
+            focused: state.focused,
+            lengthMatches: state.length === state.expectedLength,
+            sentinelPresent: state.sentinelPresent,
+            trailingSpacePresent: state.trailingSpacePresent,
+            sameIgnoringCase: state.sameIgnoringCase,
+            caseOnlyCorrectable: state.caseOnlyCorrectable,
+            selectionAtEnd:
+              state.selectionStart === state.length &&
+              state.selectionEnd === state.length,
+            caseCorrectionCount: state.caseCorrections.length,
+          })}`,
+        );
+        if (
+          state.caseOnlyCorrectable &&
+          state.caseCorrections.length > 0
+        ) {
+          console.warn(
+            `[accounts] correcting native letter case for ${selector}`,
+          );
+          for (const correction of state.caseCorrections) {
+            await this.key('home');
+            for (let offset = 0; offset < correction.index; offset += 1)
+              await this.key('arrowRight');
+            await this.key('forwardDelete');
+            await this.device.adb(
+              'shell',
+              'input',
+              'keyevent',
+              String(correction.keyCode),
+            );
+          }
+          await this.key('end');
+          await this.hideKeyboard();
+          try {
+            await waitForValue();
+            return;
+          } catch (correctionError) {
+            unsettledError = correctionError;
+          }
+        }
+        if (
+          attempt === 2 ||
+          !(unsettledError instanceof Error) ||
+          !unsettledError.message.startsWith(
+            `Timed out waiting for ${valueDescription}`,
+          )
+        )
+          throw unsettledError;
+        console.warn(
+          `[accounts] retrying native focused fill for ${selector} after unsettled input`,
+        );
+      }
     }
-    if (failure !== undefined) throw failure;
-    const matches = await evaluateNative(
-      this.webview,
-      `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`,
-    );
-    assert.equal(matches, true, `Native focused input reached ${selector}`);
   }
 
   /** Replace a prefilled value after moving the native caret to its exact end. */
@@ -1134,6 +1272,47 @@ export class AccountWorkspaceClient {
     await pressAndroidKeyboardKey(this.device, key);
   }
 
+  private async waitForFullViewportNativeBounds(): Promise<void> {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      this.signal.throwIfAborted();
+      await this.owner.apply();
+      const dimensions = await evaluateNative(
+        this.webview,
+        '({ width: innerWidth, height: innerHeight })',
+      );
+      assert(
+        dimensions &&
+          typeof dimensions === 'object' &&
+          'width' in dimensions &&
+          typeof dimensions.width === 'number' &&
+          dimensions.width > 0 &&
+          'height' in dimensions &&
+          typeof dimensions.height === 'number' &&
+          dimensions.height > 0,
+        'Current Account viewport dimensions are available',
+      );
+      try {
+        await this.owner.nativePoint({
+          x: dimensions.width / 2,
+          y: dimensions.height - 1,
+        });
+        return;
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          error.message !==
+            'Native point is outside the attached WebView bounds'
+        )
+          throw error;
+      }
+      await delay(100, undefined, { signal: this.signal });
+    }
+    throw new Error(
+      'Timed out waiting for full native WebView bounds after keyboard dismissal',
+    );
+  }
+
   async hideKeyboard(): Promise<void> {
     const actionId = ++this.action;
     const inputMethod = await this.device.adb(
@@ -1150,7 +1329,7 @@ export class AccountWorkspaceClient {
       console.info(
         `[accounts] native action ${actionId}: keyboard already hidden`,
       );
-      await this.owner.apply();
+      await this.waitForFullViewportNativeBounds();
       return;
     }
     const flow = join(this.output, `accounts-hide-keyboard-${actionId}.yaml`);
@@ -1166,7 +1345,7 @@ export class AccountWorkspaceClient {
       failure = error;
     }
     try {
-      await this.owner.apply();
+      await this.waitForFullViewportNativeBounds();
     } catch (error) {
       if (failure !== undefined)
         throw new AggregateError(

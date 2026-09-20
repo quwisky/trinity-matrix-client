@@ -230,6 +230,13 @@ describe('Android clear-all-data migration', () => {
     expect(accountClient).toContain('SECRET_TEXT: `x${value}`');
     expect(accountClient).toContain("await this.key('home')");
     expect(accountClient).toContain("await this.key('forwardDelete')");
+    expect(accountClient).toContain('async waitForFullViewportNativeBounds()');
+    expect(accountClient).toContain(
+      'await this.waitForFullViewportNativeBounds();',
+    );
+    expect(accountClient).toContain(
+      'Native point is outside the attached WebView bounds',
+    );
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="alert-confirm"]\')',
     );

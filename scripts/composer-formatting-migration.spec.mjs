@@ -118,6 +118,26 @@ function assertRuntimeContract(journey, client) {
   for (const fragment of requiredJourneyFragments)
     expect(journey).toContain(fragment);
 
+  for (const [stageStart, stageEnd] of [
+    [
+      'async function runApplySelectedItalic(',
+      'async function runCancelAndPreview(',
+    ],
+    [
+      'async function runCancelAndPreview(',
+      'async function runCompactLargerText(',
+    ],
+  ]) {
+    const stage = journey.slice(
+      journey.indexOf(stageStart),
+      journey.indexOf(stageEnd),
+    );
+    expect(stage.indexOf('await client.hideKeyboard();')).toBeGreaterThan(-1);
+    expect(stage.indexOf('await client.hideKeyboard();')).toBeLessThan(
+      stage.indexOf('await client.selectWordCurrent(COMPOSER,'),
+    );
+  }
+
   const selection = client.slice(
     client.indexOf('async selectWordCurrent('),
     client.indexOf(
