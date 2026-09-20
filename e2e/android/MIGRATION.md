@@ -4026,3 +4026,72 @@ hosted merge exactly. The run's unrelated shard-3 and shard-4 failures remain
 tracked under #665 and do not weaken the successful owning browser, renderer or
 Android shard-2 artifacts. Nothing in this migration authorizes merging PR
 #677.
+
+## Composer typing-indicator journeys
+
+`android.composer-typing` maps all six definitions in
+`e2e/browser/journeys/conversations/composer-typing.spec.mts`, pinned at
+SHA-256
+`721a2dd22902ad0683c95b95e819ec3519c22b9d362b3c58a9893e60ec229f8f`.
+The shared application and Account helpers remain enabled and are pinned at
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+Nineteen direct predecessor assertions plus six composer-readiness helper calls
+expand into 25 unique, stage-local records grouped 4 + 4 + 5 + 5 + 3 + 4.
+
+Every stage signs a disposable reader into the installed Android app, opens its
+private Room through native touch and drives the counterpart's typing EDU
+through the exact Matrix v3 endpoint. Maestro owns local composer input. The
+renderer is read-only proof for exact named copy, disappearance after stop,
+positive reserved height, a below-one-CSS-pixel occupied-height delta, real
+long-name overflow, one live 1000 ms infinite animation, three full-opacity
+reduced-motion dots and the sidebar projection while the local user types.
+
+The reduced-motion path was proved on the disposable API 36 emulator before
+implementation. With the Android global `animator_duration_scale` initially
+absent, the live WebView reported
+`matchMedia('(prefers-reduced-motion: reduce)').matches === false`; after
+setting only that value to `0` and cold relaunching, it reported `true`.
+Deleting the value and relaunching restored `false`. The journey saves the
+prior value, records the live media state and always restores or deletes that
+exact value before teardown. It does not use CDP media emulation or renderer
+mutation.
+
+```bash
+pnpm nx run trinity-e2e-android:composer-typing --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:composer-typing
+```
+
+The uncached serial target owns the emulator and disposable Synapse resources,
+runs once with zero retries and publishes started-only
+`android-composer-typing` diagnostics from shard 2 immediately after composer
+reactions. Text diagnostics redact passwords, account/Room/member identities
+and the local composer draft before a recursive secret/native-storage scan;
+secret-bearing raster artifacts are removed. Counterpart typing is explicitly
+stopped, the Android setting is restored, application data and WebView state
+are cleared, and device and Synapse resources are cleaned on every outcome.
+
+Local acceptance used the unchanged 49-file / 15,302,553-byte production
+renderer with manifest SHA-256
+`73743a01b23f41926130899b14140974b95288f458b4c464623396bc068fee35`
+and Android APK SHA-256
+`0afce163aa263f9c81022aa84ec08ca4ed5930415ba574a56a2d4913c98f73c5`
+on `emulator-5554`. Three unchanged installed-Android invocations passed all
+six stages on their first and only attempt with all 25 records and zero retries:
+
+- `mu9y2zb3-ef7eb388-54ab-4047-aa77-74a9fb299743` in 528.313 seconds;
+- `mu9yeuco-64bf8f1c-ef42-40a9-ab69-22756e173abd` in 528.012 seconds;
+- `mu9yqn1b-b0327c5d-7c48-4257-abd3-1766a7350ea2` in 524.874 seconds.
+
+Each retained tree contains exactly 25 assertion files, two Android setting
+receipts, 45 Maestro manifests and 258 completed, non-optional commands. None
+contains a failed or raster artifact, bearer or Matrix token marker, or the
+local draft. The final global animation setting is absent, the app process is
+stopped, and Synapse removed its data and stopped cleanly. Exact retained
+predecessor invocation `mu9z2go2-2ca9e82b-51c6-4e5d-8ab5-1d8d8d5e8330`
+passed all six Chromium definitions sequentially in 21.176 seconds with one
+worker and retry 0, followed by clean Synapse teardown. Source re-hashing
+reproduced all three pinned hashes. Hosted acceptance is pending. The complete
+Playwright predecessor remains enabled, and nothing here authorizes merging PR
+#677.

@@ -123,6 +123,7 @@ export function createAccountFixtures(
     reason: string,
   ): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<string>;
+  setTyping(account: NodeWorkspaceAccount, roomId: string, typing: boolean): Promise<void>;
   reactionEvents(
     observer: NodeWorkspaceAccount,
     roomId: string,
@@ -581,6 +582,20 @@ export function createAccountFixtures(
     return stringField(response, 'event_id', 'Matrix fixture sent-message event id');
   }
 
+  async function setTyping(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    typing: boolean,
+  ): Promise<void> {
+    await request(
+      access(account),
+      `/rooms/${encodeURIComponent(roomId)}/typing/${encodeURIComponent(account.userId)}`,
+      'PUT',
+      typing ? { typing: true, timeout: 30_000 } : { typing: false },
+      signal,
+    );
+  }
+
   async function reactionEvents(
     observer: NodeWorkspaceAccount,
     roomId: string,
@@ -916,6 +931,7 @@ export function createAccountFixtures(
     join,
     ban,
     sendMessage,
+    setTyping,
     reactionEvents,
     sendReadReceipt,
     markedUnread,
