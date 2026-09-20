@@ -3996,5 +3996,33 @@ on their first and only attempts with all 12/12 records and no raster artifacts:
 retained predecessor invocation
 `mu9pnjp7-3efd445e-0e97-4921-97fb-928711eb97a5` passed both Chromium tests
 sequentially in 5.3 and 3.9 seconds with one worker and retry 0, followed by
-clean Synapse teardown. Hosted acceptance is still pending. Nothing in this
-migration authorizes merging PR #677.
+clean Synapse teardown.
+
+Original-attempt hosted acceptance completed in
+[run 35507101695](https://github.com/quwisky/trinity-matrix-client/actions/runs/35507101695)
+from exact source head `8780e6ec0c04b7c1436d8e56dfdc1c21c3152986` through
+hosted merge `70528304007b5ccde8bceb58e3f50827e434efc6`; the merge parents are
+`47e6616cfe1ae47bcfe7e8923ce434b48e7e2981` and the exact source head.
+Android shard 2 completed successfully on API 36 / `pixel_6` / `x86_64` and
+restored the production renderer artifact `10604710990` with manifest digest
+`a696f208b065bbb710aaba5dcb34bfb59d823fa066b1c18810850f8e61488908`.
+Dedicated artifact `10607060453` (digest
+`7d5b392cc7c74dd826ddf444319b3abb7f170e5be7325885e5f80157edf3ecfa`)
+contains invocation `mu9rlzr1-95e9fe18-3490-4846-96d2-1b8f728a9007`: its
+suite passed once with zero retries in 357.343 seconds, both stages passed in
+156.879 and 199.350 seconds, and all 5 + 7 assertion records are present with
+zero failures. All 20 Maestro manifests cover 111 completed, non-optional
+commands against `eu.qwky.trinity` on `emulator-5554`; native secret input is
+redacted. The dedicated artifact has no failure, raster, bearer-token or Matrix-
+token marker, and Synapse removed its data and stopped cleanly.
+
+Hosted browser artifact `10604946565` passed 318 attempts with zero retries
+(317 passed, one skipped); both exact composer-reaction definitions passed on
+retry 0 in 5.047 and 5.469 seconds. Hosted source re-hashing reproduced all
+three pinned hashes. Renderer artifact `10604710990` has digest
+`0f19354b90e99bc1572d57416766f6f6bdf530a63f0652dd8f02e76a845500c5`;
+its production manifest contains 49 files / 15,302,546 bytes and verifies the
+hosted merge exactly. The run's unrelated shard-3 and shard-4 failures remain
+tracked under #665 and do not weaken the successful owning browser, renderer or
+Android shard-2 artifacts. Nothing in this migration authorizes merging PR
+#677.
