@@ -1245,6 +1245,14 @@ describe('CI execution contract', () => {
     ).toBe(true);
   });
 
+  it('keeps Android animations enabled for installed-WebView motion contracts', () => {
+    const emulator = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    );
+
+    expect(emulator.with['disable-animations']).toBe(false);
+  });
+
   it('installs the pinned Chrome fixture runtime only for the legacy SSO shard', () => {
     const steps = workflow.jobs['android-e2e'].steps;
     const chrome = steps.find(
