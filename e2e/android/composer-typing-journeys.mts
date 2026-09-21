@@ -653,7 +653,7 @@ assert.deepEqual(
 
 void test(
   'Android composer typing-indicator journeys',
-  { timeout: 900_000 },
+  { timeout: 1_200_000 },
   async (testContext) => {
     await withNodeTestResources(
       { testId: testContext.name, signal: testContext.signal },

@@ -77,6 +77,7 @@ function assertRuntimeContract(journey, fixtures) {
     'expectedStages: 6',
     'expectedUniqueAssertions: 25',
     'expectedAssertionRecords: 25',
+    'timeout: 1_200_000',
     'attempt: 1',
     'retries: 0',
     'expectedAssertionRecords: 4',
@@ -297,6 +298,9 @@ describe('Android composer-typing migration', () => {
 
     expect(project).toContain('"composer-typing"');
     expect(project).toContain('--suite=android.composer-typing');
+    expect(
+      JSON.parse(project).targets['composer-typing'].options.command,
+    ).toContain('--timeout-ms=1200000');
     expect(project).toContain(
       '--entrypoint=e2e/android/composer-typing-journeys.mts',
     );

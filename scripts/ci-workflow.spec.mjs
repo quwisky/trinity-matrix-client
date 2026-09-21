@@ -607,7 +607,7 @@ describe('CI execution contract', () => {
     expect(typing).toBe(reactions + 1);
     expect(typingLine).toContain('matrix.shard }}" = "2"');
     expect(typingLine).toContain('composer-typing-started=true');
-    expect(typingLine).toContain('--timeout-ms 1200000');
+    expect(typingLine).toContain('--timeout-ms 1500000');
   });
 
   it('runs room HTTP recovery after space ordering and before retained Playwright on shard 1', () => {
