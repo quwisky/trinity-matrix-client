@@ -4258,5 +4258,39 @@ application, Fetch, Synapse, Caddy and Dex ownership all tore down cleanly. The
 unchanged four-test Playwright predecessor passed with one worker and zero
 retries in 18.2 seconds, and all four source pins remained exact.
 
-Hosted acceptance remains pending. The complete Playwright predecessor remains
-enabled, and nothing here authorizes merging PR #677.
+Hosted acceptance completed on original-attempt
+[run 35598984796](https://github.com/quwisky/trinity-matrix-client/actions/runs/35598984796)
+at source head `534f94c54148bf56c1cd64344fdb61dd6071530d` through hosted
+merge `629164becbea5dcdbe605deeb97eb3afe3aeec04`. Android shard 2
+[job 106330754502](https://github.com/quwisky/trinity-matrix-client/actions/runs/35598984796/job/106330754502)
+uploaded the passing
+[GIF picker artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35598984796/artifacts/10644904825),
+ID `10644904825`, digest
+`sha256:36270e71bbd31bf2a15aaad07dd0ceba8f3c51bb4627a4c35ba8ba1765475528`.
+Invocation `mubanc9r-02f9fcfd-2109-49bf-8912-9c15c0b84fdb` passed all
+four stages and all 24 identities in 950757 ms on attempt 1 with zero retries.
+The artifact contains the exact `10 + 4 + 3 + 7` records, 50 successful
+native-flow JUnits and 272 completed Maestro commands, both matching native
+preference receipts, both exact three-request provider receipts, the sanitized
+ordinary-send proof and the exact active-Account sender proof. It contains no
+failed or raster artifact, and the independent recursive audit found no GIF
+key, query-secret, bearer or Matrix-token pattern. The Pixel 5 logical profile,
+installed application id, exact renderer merge and manifest digest are present;
+Synapse, Caddy and Dex teardown completed and the hosted worktree-diff gate
+passed.
+
+The same attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35598984796/artifacts/10638678491),
+ID `10638678491`, digest
+`sha256:e38804de226efb07744d62b6c778677cbaecc9fd2e5323c55e025b43766a3be5`,
+records all four exact predecessor tests passing at retry 0. Its
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35598984796/artifacts/10638146866),
+ID `10638146866`, digest
+`sha256:722741179f028fc604b4b0d60d69d6faa96c112b60a9c65e70f1fa0b0f901c06`,
+contains 49 verified production files / 15,302,546 bytes and manifest digest
+`b24106fc67d24e20cb37044d924e95cbf11e15f54ea5904007939400e0006dc5`
+for the hosted merge. Shard 2 later failed in the unchanged Space Settings
+suite because `admin.photo-feedback` timed out; shard 1 independently reached
+its configured 120-minute job timeout. Those later failures are outside #735
+and remain reliability debt under #665. The complete Playwright predecessor
+remains enabled, and nothing here authorizes merging PR #677.
