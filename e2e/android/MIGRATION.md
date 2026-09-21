@@ -4161,3 +4161,23 @@ retries, 45 Maestro manifests, 258 completed commands, no failed or raster
 artifact, and restored setting/application/Synapse state. Their combined
 journey-and-guard diff hash was
 `70286f5a777727bd2be87919b6538fd74f9bb1aee90366ae56f31aacf68c8f5a`.
+
+Hosted acceptance completed on source head `547f1b74` through merge
+`e23a20e5de2c6345e9499ab741ee196191c232c0` in run
+[`35575438169`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35575438169).
+Dedicated Android artifact
+[`10632911418`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35575438169/artifacts/10632911418)
+(digest
+`sha256:5561ba423ba4e1fa725cc8f4a29fb6e946cd166990a436dedeb2fafbde57595a`)
+passed all six stages and all 25 records on attempt 1 with zero retries in
+914.686 seconds. Its 45 Maestro manifests record 258 completed, non-optional
+commands; both Android setting receipts are present, all six stage markers
+passed, and no failure or raster artifact remains. Browser artifact
+[`10629420560`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35575438169/artifacts/10629420560)
+passed all six exact predecessors at retry 0, while renderer artifact
+[`10627656206`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35575438169/artifacts/10627656206)
+preserves the exact hosted production bundle. The shard failed only after the
+owned suite, in the independent Space Settings suite; the separate shard-1 ADB
+stall and later-suite failure remain tracked under #665. The complete
+Playwright predecessor remains enabled. This evidence accepts issue #734 but
+does not complete parent #660 or authorize merging PR #677.
