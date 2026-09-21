@@ -4372,4 +4372,45 @@ predecessor passed its exact test with one worker and zero retries in 7.1
 seconds under invocation
 `mubeit3y-d8a11b9c-2d3c-418b-a5f5-cfb676061aac`. The focused migration guard,
 full 1,044-test scripts target, Android typecheck and Android lint also passed
-uncached. Hosted acceptance is still required before issue #736 is complete.
+uncached.
+
+Hosted acceptance completed on original-attempt
+[run 35620422646](https://github.com/quwisky/trinity-matrix-client/actions/runs/35620422646)
+at exact source head `eab9876c95aeb2b1547a42bb6a3e8e4c468e5912` through
+hosted merge `124254f9958dd387b11c036b0c52866b2d3a142d`. Android shard 2
+[job 106402526575](https://github.com/quwisky/trinity-matrix-client/actions/runs/35620422646/job/106402526575)
+completed successfully on the API 36 x86_64 `trinity_api_36_ci` device and
+uploaded the passing
+[Hide system messages artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35620422646/artifacts/10658890080),
+ID `10658890080`, digest
+`sha256:caa25c565463846cbca318bb2f471568eaca02886e23801c1f63d82ca7d2901a`.
+Invocation `mubhoqsq-98aa5ff4-4d4f-4494-b063-ea30a1da1667` passed its
+single stage in 274711 ms and the complete suite in 275779 ms on attempt 1
+with zero retries.
+
+The immutable artifact contains all 13 identities exactly once, 21 successful
+native-flow JUnits and 98 completed Maestro commands with no failed, skipped,
+cancelled or pending command. Its native receipts prove absent/effectively true
+by default, persisted false after the native switch action and still false
+after force-stop/relaunch. The exact ordinary message survived both filtered
+Room visits while the exact membership line was absent. No failed or raster
+artifact remained, and independent recursive scans found no bearer,
+Matrix-token, query-secret or raw Preferences pattern. Installed application
+`eu.qwky.trinity`, emulator, WebView and Synapse ownership tore down cleanly,
+and the hosted worktree-diff gate passed.
+
+The same attempt's
+[browser artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35620422646/artifacts/10651066031),
+ID `10651066031`, digest
+`sha256:0637e0951306426f87361372f66fb3e95922ff9ce01b16687ede3a2590300e49`,
+records the exact unchanged predecessor passing at retry 0 in 11491 ms. Its
+[renderer artifact](https://github.com/quwisky/trinity-matrix-client/actions/runs/35620422646/artifacts/10648235865),
+ID `10648235865`, digest
+`sha256:ace4962ce53b5fd2897e315ad07182013029d7dcc8a7a2912e2151e368e0088b`,
+contains 49 verified production files / 15,302,546 bytes and manifest digest
+`784955c06c5508091c96c57664885f607f0c06989775c961a1a61236183b4f42`
+for the hosted merge. The broad browser job later timed out in the unrelated
+Room Settings For-you mobile predecessor; the exact #736 predecessor had
+already passed and its artifact uploaded. That failure remains reliability
+debt under #665. The complete Playwright predecessor remains enabled, and
+nothing here authorizes merging PR #677.
