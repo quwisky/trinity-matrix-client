@@ -192,6 +192,10 @@ async function openRoom(
 async function openGifSettings(client: AccountWorkspaceClient): Promise<void> {
   await client.tapCurrent('[data-testid="open-settings"]');
   await client.visible('[aria-label="Settings sections"]', {}, 30_000);
+  await client.scrollIntoViewIfNeeded(
+    '[data-testid="settings-nav-gifs"]',
+    '[aria-label="Settings sections"]',
+  );
   await client.tapCurrent('[data-testid="settings-nav-gifs"]');
   await client.visible('[data-testid="settings-detail"]', {}, 30_000);
   const surface = await client.surface();
@@ -323,6 +327,10 @@ async function runSettingsLifecycle(
   await recordAssertion(context, assertions.settingsSectionsVisible, {
     visible: navigation.visible,
   });
+  await client.scrollIntoViewIfNeeded(
+    '[data-testid="settings-nav-gifs"]',
+    '[aria-label="Settings sections"]',
+  );
   await client.tapCurrent('[data-testid="settings-nav-gifs"]');
   const detail = await client.visible(
     '[data-testid="settings-detail"]',
