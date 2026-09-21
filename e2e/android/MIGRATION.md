@@ -4294,3 +4294,82 @@ suite because `admin.photo-feedback` timed out; shard 1 independently reached
 its configured 120-minute job timeout. Those later failures are outside #735
 and remain reliability debt under #665. The complete Playwright predecessor
 remains enabled, and nothing here authorizes merging PR #677.
+
+## Hide system messages journey
+
+`android.hide-system-messages` maps the single definition in
+`e2e/browser/journeys/conversations/hide-system-messages.spec.mts`, pinned at
+SHA-256
+`f1f88eb542b48cfa461132a730b7fea1120977d771ade96565d0ae5fb64329c0`.
+The Settings-navigation helper is independently pinned at
+`43232dafbf9e80df6977442f366974100ccfa315b20ab680f893d4300ab46f81`;
+the shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+Seven direct predecessor assertions, three Room-helper readiness checks and
+three inherited Settings-navigation checks expand into exactly 13 unique
+records in one stage.
+
+Disposable Matrix REST fixtures arrange two fresh Accounts, a distinctive
+joiner display name, one private Room, the join event and a later `m.text`
+message. Maestro owns login, Room and Settings navigation, the exact
+`Show joins and leaves` switch action, both returns to the Room and the
+post-force-stop reopening. Renderer inspection is read-only and scopes the
+surviving message to an exact `.msg__text` inside `trn-message-row`;
+suppression passes only when the exact membership line has count zero after the
+exact later message is visible.
+
+The native observer reads only
+`trinity.timeline.show-membership` from package-owned
+`shared_prefs/CapacitorStorage.xml` through `run-as`. It fails closed on
+duplicates, malformed XML and non-boolean values, proves default-enabled
+semantics from key absence, proves persisted `false` after the native tap and
+re-proves it after a real installed-host force-stop/relaunch. It never returns
+raw Preferences XML or mutates application storage.
+
+```bash
+pnpm nx run trinity-e2e-android:hide-system-messages --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:hide-system-messages
+```
+
+The uncached serial target owns both `android-avd` and `synapse`, runs one
+attempt with zero retries, and has a 20-minute Node timeout inside a bounded CI
+wrapper. Shard 2 runs it immediately after GIF picker and uploads
+`android-hide-system-messages` diagnostics only after its started marker is
+written. Every outcome closes the WebView, clears installed application data,
+closes the device and participates in bounded Matrix cleanup. Post-redaction
+scans reject credentials, bearer/Matrix tokens, query secrets, raw Preferences
+XML and raster diagnostics. The complete Playwright predecessor remains
+enabled, and nothing here authorizes merging PR #677.
+
+The unchanged migration implementation based on source revision `37f89b29`
+passed three complete installed-Android invocations on renderer manifest
+`5d0a885036a86f0f0e0108d69b6c3510c57f07281aca30d6a7c6aee01e737736`
+(49 files, 15,302,553 bytes), APK
+`a378d5c951faf7ac9248e6a7a443137696b0a5553d8ca3784988566509b90228`
+and native profile
+`43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`:
+
+- `mube1fpn-f7f874d9-0a92-4d1a-a965-9b8f533ca272` in 240.633 seconds;
+- `mube73ro-31702699-1603-418f-a1e7-dd5eb705c8e3` in 251.527 seconds;
+- `mubecyol-1a0d084f-98c9-402c-94bd-9145975e56ad` in 249.296 seconds.
+
+Each run passed its one stage and all 13 assertion records on attempt 1 with
+zero retries. Each retained 21 successful native-flow JUnits and 98 completed
+Maestro commands. The three native-preference receipts prove absent/effectively
+true by default, persisted false after the native switch action and still false
+after force-stop/relaunch. The exact later message survived both filtered Room
+visits while the exact membership line was absent. No failed or raster artifact
+remained, recursive secret scans found no bearer, Matrix-token, query-secret or
+raw Preferences pattern, and emulator, application and Synapse ownership tore
+down cleanly.
+
+Production-renderer invocation
+`mubdpeui-863e1090-fa7e-489a-9495-f31627e3f21c` passed all nine applicable
+checks with nine explicitly skipped variants. The unchanged Playwright
+predecessor passed its exact test with one worker and zero retries in 7.1
+seconds under invocation
+`mubeit3y-d8a11b9c-2d3c-418b-a5f5-cfb676061aac`. The focused migration guard,
+full 1,044-test scripts target, Android typecheck and Android lint also passed
+uncached. Hosted acceptance is still required before issue #736 is complete.

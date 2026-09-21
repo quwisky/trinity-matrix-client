@@ -93,6 +93,7 @@
     "e2e:android:composer-reactions": "node scripts/nx.mjs run trinity-e2e-android:composer-reactions",
     "e2e:android:composer-typing": "node scripts/nx.mjs run trinity-e2e-android:composer-typing",
     "e2e:android:gif-picker": "node scripts/nx.mjs run trinity-e2e-android:gif-picker",
+    "e2e:android:hide-system-messages": "node scripts/nx.mjs run trinity-e2e-android:hide-system-messages",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

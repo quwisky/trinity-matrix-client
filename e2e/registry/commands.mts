@@ -444,6 +444,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.gif-picker'],
   },
   {
+    name: 'e2e:android:hide-system-messages',
+    command: 'nx run trinity-e2e-android:hide-system-messages',
+    kind: 'canonical',
+    suiteIds: ['android.hide-system-messages'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -704,6 +710,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'gif-picker-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:gif-picker; fi',
     tier: 'pull-request',
     suiteIds: ['android.gif-picker'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'hide-system-messages-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:hide-system-messages; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.hide-system-messages'],
   },
   {
     command:
