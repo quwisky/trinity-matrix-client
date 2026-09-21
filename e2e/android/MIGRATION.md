@@ -4688,3 +4688,102 @@ HTTP authorization/cookie values. The focused mutation guard pins both fixes,
 and that diagnostic result was not counted among the three controlling runs.
 Hosted acceptance remains pending; the complete Playwright predecessor remains
 enabled, and nothing here authorizes merging PR #677.
+
+## Location share journey
+
+`android.location-share` maps the deterministic geolocation/Room helper at
+lines 19–33 and the complete definition at lines 38–97 of
+`e2e/browser/journeys/conversations/location-share.spec.mts`. The predecessor
+is pinned at SHA-256
+`86e673e5bd86e014a6f5ee4b4eb1da11eb979013b6629a452153367405e76244`;
+the native Android geolocation adapter source is pinned at
+`30f3489a4cac27685b03812e957a599d9ae4bef90985a55760f463fc702bfe8a`.
+The shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+The five assertions executed by the predecessor's Android branch plus Room
+readiness, exact server echo and action-sheet readiness map to exactly eight
+stage-local identities.
+
+The REST fixture creates only one disposable Account and private Room. It
+does not send or inject a location event. A bounded native adapter records the
+existing Trinity coarse/fine permission grants, GPS provider state and shell
+mock-location app-op, grants only missing location permissions, installs a GPS
+test provider at exactly `40.7128,-74.006` and pulses it once per second for a
+late Capacitor listener. Maestro owns login, Rooms navigation, composer tray,
+Location selection and the exact-row long press. Teardown stops and awaits the
+pulse, removes the test provider, restores the prior shell app-op, and revokes
+only permissions granted by this stage before WebView/application/device
+cleanup.
+
+Matrix REST observes a bounded latest-message window until exactly one real
+server echo appears. It must be the signed-in user's `m.room.message` with
+`msgtype: m.location`, body `Shared location`, exact
+`geo:40.7128,-74.006` legacy and MSC3488 URIs, and MSC3488 asset type
+`m.self`. Read-only renderer checks then scope every result to that event id,
+require one visible location card, exact text `40.71280, -74.00600`, and an
+OpenStreetMap destination whose `mlat` is exactly `40.7128`. The native
+long-press must open the action sheet, expose Copy link and omit Edit.
+
+```bash
+pnpm nx run trinity-e2e-android:location-share --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:location-share
+```
+
+The WebView is detached before permission restoration because Android may
+terminate a package when a runtime permission is revoked; the adapter still
+restores all device state before application-data and device cleanup.
+
+The uncached serial target owns both `android-avd` and `synapse`, runs one
+attempt with zero retries, and has a 20-minute Node timeout inside a 25-minute
+CI wrapper. Shard 2 runs it immediately after link-preview and uploads
+`android-location-share` diagnostics only after its started marker is written.
+Post-redaction scans reject generated credentials, Account/Room/event/location
+values, authorization/cookie data, bearer/Matrix tokens, raw native-storage
+method data and raster diagnostics.
+
+Local acceptance used the unchanged Pixel 5 API 36 profile with SHA-256
+`43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`,
+production renderer manifest SHA-256
+`d07e6219fdf5915e5e617c8b77d4aac4b11103663f7a4e7f3000c2757ba78b4c`
+and debug APK SHA-256
+`a12f8a3ff4f07259cef8b5e54f97607ea7c105152f85d8727ad9cc0bb7458d2f`.
+Three unchanged-input uncached invocations passed:
+
+- `mubuvu37-4018eb70-4aef-4762-903d-2b8c50e54740` in 115.834 seconds;
+- `mubv08b0-223b43cf-388a-4c14-a329-f842a569a772` in 115.333 seconds;
+- `mubv3vxw-796b8cad-b3e4-4570-a9d2-b27ad2b4151c` in 116.318 seconds.
+
+Every invocation recorded one passed stage, 8/8 unique assertion records,
+attempt 1, zero retries and zero failures. The receipts prove the exact native
+position and two captured permission baselines, the pulsed one-second adapter,
+one exact current-user server echo, the exact event-row/card/coordinate/OSM
+observations, and the action sheet with Copy link present and Edit count zero.
+Each retained location-share tree contains 85 files and no raster
+files; the built-in redaction scan and an independent bearer/Matrix-token scan
+both passed. All ten native flow JUnit reports passed in every invocation, and
+no emulator remained afterward.
+
+The complete browser predecessor also passed with one worker and zero retries
+in invocation `mubv8f4w-544b9f46-5c09-41db-90f9-6dcb633bbf98` (one test in
+4.0 seconds; 4.6-second suite). All four source pins were rechecked after the
+runtime runs. Production-renderer invocation
+`mubujzjs-bb53ef70-63fe-4f30-943d-2f00825e841a` passed its nine required
+projects while nine host-specific projects were intentionally skipped. Final
+production-renderer verification after the browser parity run repeated that
+9-passed/9-skipped result in invocation
+`mubvhygp-a74b7d83-de62-48f4-9ad8-15f1f50eb3ba`; the verified bundle again
+contained 49 files and 15,302,553 bytes, and the prebuilt Android build passed.
+
+Two setup diagnostics exposed that a denied package permission is a normal
+non-zero `pm check-permission` result and that the API 36 image omits the
+provider-state query used by the older fixture. Baseline capture now reads the
+package dump and secure location mode instead. A later diagnostic reached all
+8/8 assertions but exposed that revoking a runtime permission can terminate the
+package before WebView cleanup; it was not accepted. The final teardown detaches
+the WebView first, and only the three subsequent unchanged runs above count as
+acceptance evidence.
+
+Hosted acceptance remains pending; the complete Playwright predecessor remains
+enabled, and nothing here authorizes merging PR #677.

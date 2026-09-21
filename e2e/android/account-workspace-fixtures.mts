@@ -42,6 +42,16 @@ export interface WorkspaceImageEvent {
   readonly msgtype: 'm.image';
 }
 
+export interface WorkspaceLocationEvent {
+  readonly eventId: string;
+  readonly sender: string;
+  readonly msgtype: 'm.location';
+  readonly body: string | undefined;
+  readonly geoUri: string | undefined;
+  readonly msc3488Uri: string | undefined;
+  readonly assetType: string | undefined;
+}
+
 export interface WorkspaceJumpToDateHistory {
   readonly roomId: string;
   readonly roomName: string;
@@ -172,6 +182,10 @@ export function createAccountFixtures(
     observer: NodeWorkspaceAccount,
     roomId: string,
   ): Promise<WorkspaceImageEvent | undefined>;
+  latestLocationEvents(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<readonly WorkspaceLocationEvent[]>;
   sendReadReceipt(
     account: NodeWorkspaceAccount,
     roomId: string,
@@ -810,6 +824,72 @@ export function createAccountFixtures(
     return undefined;
   }
 
+  async function latestLocationEvents(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<readonly WorkspaceLocationEvent[]> {
+    const value = await get(
+      access(observer),
+      `/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=20`,
+    );
+    const response = record(value, 'Matrix fixture room-messages response');
+    const chunk = response['chunk'];
+    assert(Array.isArray(chunk), 'Matrix fixture room-messages chunk');
+    const locations: WorkspaceLocationEvent[] = [];
+    for (const [index, candidate] of chunk.entries()) {
+      const event = record(
+        candidate,
+        `Matrix fixture room-message event ${index}`,
+      );
+      const content = record(
+        event['content'] ?? {},
+        `Matrix fixture room-message content ${index}`,
+      );
+      if (
+        event['type'] !== 'm.room.message' ||
+        content['msgtype'] !== 'm.location'
+      ) {
+        continue;
+      }
+      const msc3488Location = record(
+        content['org.matrix.msc3488.location'] ?? {},
+        `Matrix fixture location content ${index}`,
+      );
+      const msc3488Asset = record(
+        content['org.matrix.msc3488.asset'] ?? {},
+        `Matrix fixture location asset ${index}`,
+      );
+      locations.push({
+        eventId: stringField(
+          event,
+          'event_id',
+          'Matrix fixture location-event id',
+        ),
+        sender: stringField(
+          event,
+          'sender',
+          'Matrix fixture location-event sender',
+        ),
+        msgtype: 'm.location',
+        body:
+          typeof content['body'] === 'string' ? content['body'] : undefined,
+        geoUri:
+          typeof content['geo_uri'] === 'string'
+            ? content['geo_uri']
+            : undefined,
+        msc3488Uri:
+          typeof msc3488Location['uri'] === 'string'
+            ? msc3488Location['uri']
+            : undefined,
+        assetType:
+          typeof msc3488Asset['type'] === 'string'
+            ? msc3488Asset['type']
+            : undefined,
+      });
+    }
+    return locations;
+  }
+
   async function sendReadReceipt(
     reader: NodeWorkspaceAccount,
     roomId: string,
@@ -1121,6 +1201,7 @@ export function createAccountFixtures(
     setTyping,
     reactionEvents,
     latestImageEvent,
+    latestLocationEvents,
     sendReadReceipt,
     markedUnread,
     setMarkedUnread,

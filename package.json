@@ -97,6 +97,7 @@
     "e2e:android:jump-to-date": "node scripts/nx.mjs run trinity-e2e-android:jump-to-date",
     "e2e:android:jump-to-latest": "node scripts/nx.mjs run trinity-e2e-android:jump-to-latest",
     "e2e:android:link-preview": "node scripts/nx.mjs run trinity-e2e-android:link-preview",
+    "e2e:android:location-share": "node scripts/nx.mjs run trinity-e2e-android:location-share",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

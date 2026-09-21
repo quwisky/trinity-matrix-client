@@ -468,6 +468,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.link-preview'],
   },
   {
+    name: 'e2e:android:location-share',
+    command: 'nx run trinity-e2e-android:location-share',
+    kind: 'canonical',
+    suiteIds: ['android.location-share'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -752,6 +758,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'link-preview-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:link-preview; fi',
     tier: 'pull-request',
     suiteIds: ['android.link-preview'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'location-share-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:location-share; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.location-share'],
   },
   {
     command:
