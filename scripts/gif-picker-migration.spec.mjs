@@ -309,6 +309,35 @@ describe('Android GIF-picker migration', () => {
     );
   });
 
+  it('seeds native GIF Preferences through one secret-free shell command', async () => {
+    expect(preferencePath, 'gif-native-preference.mts must exist').toSatisfy(
+      existsSync,
+    );
+    if (!existsSync(preferencePath)) return;
+    const preference = await import(preferencePath);
+    const calls = [];
+    await preference.seedNativeGifPreference(
+      {
+        adb: async (...args) => {
+          calls.push(args);
+          return '';
+        },
+      },
+      'eu.qwky.trinity',
+      { provider: 'klipy', apiKey: 'fixture-secret' },
+    );
+    const write = calls.find(
+      (args) =>
+        args.length === 2 &&
+        args[0] === 'shell' &&
+        args[1].startsWith('run-as eu.qwky.trinity sh -c '),
+    );
+    expect(write).toBeDefined();
+    expect(write[1]).toContain('mkdir -p shared_prefs');
+    expect(write[1]).toContain('CapacitorStorage.xml.tmp');
+    expect(JSON.stringify(calls)).not.toContain('fixture-secret');
+  });
+
   it('classifies only the pinned KLIPY API and media URLs', async () => {
     expect(providerPath, 'gif-provider-fixture.mts must exist').toSatisfy(
       existsSync,

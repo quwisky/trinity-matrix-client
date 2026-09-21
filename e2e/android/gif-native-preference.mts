@@ -105,11 +105,7 @@ export async function seedNativeGifPreference(
     await device.adb('push', local, remote);
     await device.adb(
       'shell',
-      'run-as',
-      applicationId,
-      'sh',
-      '-c',
-      `mkdir -p shared_prefs && cat ${remote} > ${PREFERENCE_FILE}.tmp && chmod 600 ${PREFERENCE_FILE}.tmp && mv ${PREFERENCE_FILE}.tmp ${PREFERENCE_FILE}`,
+      `run-as ${applicationId} sh -c 'mkdir -p shared_prefs && cat ${remote} > ${PREFERENCE_FILE}.tmp && chmod 600 ${PREFERENCE_FILE}.tmp && mv ${PREFERENCE_FILE}.tmp ${PREFERENCE_FILE}'`,
     );
   } finally {
     await device.adb('shell', 'rm', '-f', remote).catch(() => undefined);
