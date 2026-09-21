@@ -189,6 +189,18 @@ async function openRoom(
   await client.visible(COMPOSER, {}, 60_000);
 }
 
+async function roomRouteObservation(
+  client: AccountWorkspaceClient,
+  account: NodeWorkspaceAccount,
+  room: WorkspaceRoom,
+): Promise<{ readonly exactRoom: true; readonly accountQualified: true }> {
+  const url = new URL((await client.surface()).url);
+  const expectedPath = `/rooms/${Buffer.from(room.id).toString('base64url')}`;
+  assert.equal(url.pathname, expectedPath);
+  assert.equal(url.searchParams.get('account'), account.userId);
+  return { exactRoom: true, accountQualified: true };
+}
+
 async function openGifSettings(client: AccountWorkspaceClient): Promise<void> {
   await client.tapCurrent('[data-testid="open-settings"]');
   await client.visible('[aria-label="Settings sections"]', {}, 30_000);
@@ -413,12 +425,11 @@ async function runUnconfiguredTray(
   const { account, room } = await createRoomFixture(context, 'unconfigured');
   await client.login(account);
   await openRoom(client, room.name);
-  const activeRoom = await client.visible('trn-channel-sidebar .channel.active', {
-    text: room.name,
-  });
-  await recordAssertion(context, assertions.unconfiguredRoomReady, {
-    visible: activeRoom.visible,
-  });
+  await recordAssertion(
+    context,
+    assertions.unconfiguredRoomReady,
+    await roomRouteObservation(client, account, room),
+  );
   const composer = await client.visible(COMPOSER);
   await recordAssertion(context, assertions.unconfiguredComposerReady, {
     visible: composer.visible,
@@ -444,13 +455,11 @@ async function runSendImage(context: GifPickerStageContext): Promise<void> {
   await withGifProvider(context, async () => {
     await client.login(account);
     await openRoom(client, room.name);
-    const activeRoom = await client.visible(
-      'trn-channel-sidebar .channel.active',
-      { text: room.name },
+    await recordAssertion(
+      context,
+      assertions.sendRoomReady,
+      await roomRouteObservation(client, account, room),
     );
-    await recordAssertion(context, assertions.sendRoomReady, {
-      visible: activeRoom.visible,
-    });
     await client.tapCurrent('[data-testid="composer-insert"]');
     await client.tapCurrent('[data-testid="insert-gif"]');
     const search = await client.visible('[data-testid="gif-search"]');
@@ -514,13 +523,11 @@ async function runActiveAccountSend(
     });
 
     await openRoom(client, room.name);
-    const activeRoom = await client.visible(
-      'trn-channel-sidebar .channel.active',
-      { text: room.name },
+    await recordAssertion(
+      context,
+      assertions.accountRoomReady,
+      await roomRouteObservation(client, accountB, room),
     );
-    await recordAssertion(context, assertions.accountRoomReady, {
-      visible: activeRoom.visible,
-    });
     await client.tapCurrent('[data-testid="composer-insert"]');
     const gif = await client.visible('[data-testid="insert-gif"]');
     await recordAssertion(context, assertions.accountGifVisible, {
