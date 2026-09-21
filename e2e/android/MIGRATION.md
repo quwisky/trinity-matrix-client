@@ -4414,3 +4414,93 @@ Room Settings For-you mobile predecessor; the exact #736 predecessor had
 already passed and its artifact uploaded. That failure remains reliability
 debt under #665. The complete Playwright predecessor remains enabled, and
 nothing here authorizes merging PR #677.
+
+## Jump to date journey
+
+`android.jump-to-date` maps the Android-applicable definition at lines 42–119
+of `e2e/browser/journeys/conversations/jump-to-date.spec.mts` plus its Room
+helper at lines 22–30. The complete predecessor is pinned at SHA-256
+`99a1ae1ec8873d2a45795003604d9c83c162d5d33c5415899e41581e97d4fd04`;
+the shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+Four direct assertions plus the helper's composer-readiness assertion expand
+to exactly five stage-local identities.
+
+The definition at lines 121–176 remains explicitly browser-only because it
+removes the production date input's maximum, injects a future value and
+dispatches an input event to reach a service response that native use cannot
+request. The installed journey never reproduces those DOM mutations. Both
+Playwright definitions remain enabled.
+
+The REST fixture creates one disposable Account and private Room, awaits an
+exact marker event, then sends exactly 120 later filler events. The final
+filler is sent last, every response must contain a unique event id and the
+journey records an event-id-only ordering receipt. Maestro owns login, Room
+selection, overflow and dialog navigation, and the exact `Jump` activation.
+Read-only renderer observations prove the exact newest filler event is visible
+and the marker event id is absent from the initial timeline window. The date
+input must already equal both the emulator-local current day and its production
+maximum; the journey neither focuses nor fills it.
+
+A bounded CDP Network observer records only the exact Room's real GET
+`/timestamp_to_event` request, requires `dir=f` and a finite timestamp, and is
+disabled, unsubscribed and closed before WebView/device teardown. Success then
+requires one visible `.scroll .msg` whose `data-mid` equals the arranged marker
+event id and whose text contains the exact marker body. That combination ties
+the result to the initially absent event and the real history-backfill path.
+
+```bash
+pnpm nx run trinity-e2e-android:jump-to-date --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:jump-to-date
+```
+
+The uncached serial target owns both `android-avd` and `synapse`, runs one
+attempt with zero retries, and has a 20-minute Node timeout inside a 25-minute
+CI wrapper. Shard 2 runs it immediately after hide-system-messages and uploads
+`android-jump-to-date` diagnostics only after its started marker is written.
+Every outcome closes the observer and WebView, clears installed application
+data, closes the device and participates in bounded Matrix cleanup.
+Post-redaction scans reject credentials, message secrets, bearer/Matrix tokens,
+query secrets, raw native-storage method data and raster diagnostics. Local and
+hosted acceptance evidence is still required before issue #737 is complete;
+nothing here authorizes merging PR #677.
+
+Local acceptance used implementation base `4091507758e1b87f25c46b1ce7fd02ba3423b3a3`
+and the final 49-file / 15,302,553-byte production renderer at manifest
+SHA-256
+`80ef0fa138569539d3935dd092ecead84fc88d4dcc14312b7e93e87876ff24f6`.
+The installed debug APK SHA-256 was
+`4b2d89291a59c4587516d2de15df726d214e1504d4c379fd3379642d60050f2c`;
+the unchanged Pixel 5 native profile was
+`43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`.
+Three sequential uncached invocations passed the single stage and all five
+records on attempt 1 with zero retries:
+
+- `mubnp8um-df7726ff-9a74-4ce1-b833-9042ddbaf937` in 152.682 seconds;
+- `mubnt7d1-7bde7320-4a97-434b-bb4d-cf6964552b77` in 150.455 seconds;
+- `mubnx2vs-3950cb57-0f89-44ee-ae03-1da600b7a4ef` in 148.820 seconds.
+
+Each retained the exact ordered-event and forward timestamp-lookup receipts,
+10 successful native-flow manifests and 55 completed, non-optional commands.
+No failed or raster artifact remained. Runtime scans used the live generated
+credentials and message values; an independent scan found no bearer,
+Matrix-token or query-secret pattern. WebView Network, installed application,
+emulator and Synapse ownership all tore down cleanly. An earlier diagnostic
+run correctly failed its post-run scan because three message values were not
+classified for the shared redactor; a focused regression guard was added and
+the final keys now use the redactor's `SECRET_` classification before these
+three controlling runs.
+
+Exact predecessor invocation
+`mubnfl9i-1f394e81-17b2-45d4-80bb-7458638ceabf` passed both unchanged
+Chromium definitions with one worker and zero retries in 10.330 seconds, then
+removed its Synapse data and containers. Source re-hashing reproduced all
+three pins. Production-renderer invocation
+`mubnjkhb-264589b4-4cb4-43df-9312-3655ea4c006e` passed all nine applicable
+checks with nine explicit skips before the final APK build. The focused guard,
+full 1,050-test scripts target, Android typecheck and lint, format check,
+architecture contracts and APK build all passed. Hosted acceptance remains
+pending; the complete Playwright predecessor remains enabled, and nothing here
+authorizes merging PR #677.

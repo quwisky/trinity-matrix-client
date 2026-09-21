@@ -247,7 +247,7 @@ export class AccountWorkspaceClient {
             e instanceof HTMLTextAreaElement || e instanceof HTMLInputElement
               ? e.selectionEnd
               : null,
-          attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'class', 'href', 'role', 'data-mid', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
+          attributes: Object.fromEntries([...e.attributes].filter(a => ['id', 'class', 'href', 'role', 'max', 'data-mid', 'data-testid', 'data-disabled', 'data-autofocus', 'aria-checked', 'aria-current', 'aria-disabled', 'aria-expanded', 'aria-live'].includes(a.name)).map(a => [a.name,a.value])),
           rect: {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom},
           style: {backgroundColor:style.backgroundColor,display:style.display,fontSize:style.fontSize,fontWeight:style.fontWeight,opacity:style.opacity,overflowY:style.overflowY},
           scrollHeight:e.scrollHeight,scrollTop:e.scrollTop,clientHeight:e.clientHeight,

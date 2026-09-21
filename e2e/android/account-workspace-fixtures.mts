@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createNodeAccount, type NodeAccountOptions } from '../support/node-account.mts';
 import type { MatrixTestResources } from '../support/test-resources.mts';
 import { SYNAPSE_HTTP } from '../support/synapse/start.mjs';
+import { JUMP_TO_DATE_FILLER_COUNT as FILLER_COUNT } from './jump-to-date-contract.mts';
 
 export type NodeWorkspaceAccount = Awaited<ReturnType<typeof createNodeAccount>>;
 
@@ -38,6 +39,16 @@ export interface WorkspaceImageEvent {
   readonly eventId: string;
   readonly sender: string;
   readonly msgtype: 'm.image';
+}
+
+export interface WorkspaceJumpToDateHistory {
+  readonly roomId: string;
+  readonly roomName: string;
+  readonly markerBody: string;
+  readonly markerEventId: string;
+  readonly fillerEventIds: readonly string[];
+  readonly newestFillerBody: string;
+  readonly newestFillerEventId: string;
 }
 
 export type WorkspaceRoomNotificationMode = 'all' | 'mentions' | 'mute';
@@ -129,6 +140,13 @@ export function createAccountFixtures(
     reason: string,
   ): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<string>;
+  createJumpToDateHistory(
+    account: NodeWorkspaceAccount,
+    roomName: string,
+    markerBody: string,
+    fillerPrefix: string,
+    transactionPrefix: string,
+  ): Promise<WorkspaceJumpToDateHistory>;
   setTyping(account: NodeWorkspaceAccount, roomId: string, typing: boolean): Promise<void>;
   reactionEvents(
     observer: NodeWorkspaceAccount,
@@ -592,6 +610,66 @@ export function createAccountFixtures(
     return stringField(response, 'event_id', 'Matrix fixture sent-message event id');
   }
 
+  async function createJumpToDateHistory(
+    owner: NodeWorkspaceAccount,
+    roomName: string,
+    markerBody: string,
+    fillerPrefix: string,
+    transactionPrefix: string,
+  ): Promise<WorkspaceJumpToDateHistory> {
+    const room = await createRoom(owner, {
+      name: roomName,
+      preset: 'private_chat',
+    });
+    const markerEventId = await sendMessage(
+      owner,
+      room.id,
+      markerBody,
+      `${transactionPrefix}-marker`,
+    );
+    const fillerEventIds: string[] = [];
+    for (let batch = 0; batch < FILLER_COUNT - 1; batch += 20) {
+      const batchSize = Math.min(20, FILLER_COUNT - 1 - batch);
+      fillerEventIds.push(
+        ...(await Promise.all(
+          Array.from({ length: batchSize }, (_, offset) => {
+            const index = batch + offset;
+            return sendMessage(
+              owner,
+              room.id,
+              `${fillerPrefix} ${index}`,
+              `${transactionPrefix}-f${index}`,
+            );
+          }),
+        )),
+      );
+    }
+    const newestIndex = FILLER_COUNT - 1;
+    const newestFillerBody = `${fillerPrefix} ${newestIndex}`;
+    const newestFillerEventId = await sendMessage(
+      owner,
+      room.id,
+      newestFillerBody,
+      `${transactionPrefix}-f${newestIndex}`,
+    );
+    fillerEventIds.push(newestFillerEventId);
+    assert.equal(fillerEventIds.length, FILLER_COUNT);
+    assert.equal(
+      new Set([markerEventId, ...fillerEventIds]).size,
+      FILLER_COUNT + 1,
+      'Jump-to-date marker and filler event ids are present and unique',
+    );
+    return {
+      roomId: room.id,
+      roomName,
+      markerBody,
+      markerEventId,
+      fillerEventIds,
+      newestFillerBody,
+      newestFillerEventId,
+    };
+  }
+
   async function setTyping(
     account: NodeWorkspaceAccount,
     roomId: string,
@@ -980,6 +1058,7 @@ export function createAccountFixtures(
     join,
     ban,
     sendMessage,
+    createJumpToDateHistory,
     setTyping,
     reactionEvents,
     latestImageEvent,

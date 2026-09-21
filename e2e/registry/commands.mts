@@ -450,6 +450,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.hide-system-messages'],
   },
   {
+    name: 'e2e:android:jump-to-date',
+    command: 'nx run trinity-e2e-android:jump-to-date',
+    kind: 'canonical',
+    suiteIds: ['android.jump-to-date'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -716,6 +722,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'hide-system-messages-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:hide-system-messages; fi',
     tier: 'pull-request',
     suiteIds: ['android.hide-system-messages'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'jump-to-date-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-date; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.jump-to-date'],
   },
   {
     command:
