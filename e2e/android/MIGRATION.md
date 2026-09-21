@@ -4227,5 +4227,36 @@ Shard 2 runs it immediately after composer typing and uploads
 `android-gif-picker` diagnostics only after its started marker is written.
 Every stage closes its provider session and WebView, clears application data,
 and participates in aggregate device and Synapse cleanup on pass or failure.
-Hosted and repeated local acceptance remain pending. The complete Playwright
-predecessor remains enabled, and nothing here authorizes merging PR #677.
+Independent review found three fail-closed proof gaps before publication: a
+remote secret-bearing preference cleanup failure could be swallowed, arbitrary
+errors reading native Preferences could be mistaken for absence, and matching
+KLIPY hosts were fulfilled without requiring the exact route and method. The
+reviewed repair aggregates seed and cleanup failures, recognizes only an
+explicit package-side absence marker, propagates every other ADB error, and
+fulfills only GET `/v2/featured` with the exact four-parameter contract plus the
+two pinned GET media paths. The ordinary send stage also retains a sanitized
+ready-media/`m.image`/sender proof without changing the 24 assertion identities.
+
+The repaired source revision `3872c669` was held fixed across three complete
+installed-Android invocations on renderer manifest
+`717f54489cc065180752512a18f6ae4b90eb9564b54d884d2966581f5584cbce`
+(49 files, 15,302,547 bytes), APK
+`cdb83100a7dff5ba1d54bfa8e47071b668184c892476bfeed7f6771ccd53d3be`
+and native profile
+`43933884ed001211f80f8c95204e0efc6e8ca53615b538a7fda5d3f97020a516`:
+
+- `mub6isby-4c11d7dc-8237-4473-8242-d9dfd30f02b2` in 569.611 seconds;
+- `mub6vhs2-c4972ad2-5546-455f-a434-6e3c3b41d5b7` in 568.202 seconds;
+- `mub786gi-1bb787b1-f092-4b5d-bc66-331fa1308064` in 567.952 seconds.
+
+Each run passed all four stages and all 24 records in the exact `10 + 4 + 3 +
+7` grouping on attempt 1 with zero retries. Each retained two matching native
+preference receipts, two exact three-request provider receipts, and the
+ordinary-send proof; no failed or raster artifact remained. Recursive scans
+found no GIF key, query-secret, bearer, or Matrix-token pattern. Emulator,
+application, Fetch, Synapse, Caddy and Dex ownership all tore down cleanly. The
+unchanged four-test Playwright predecessor passed with one worker and zero
+retries in 18.2 seconds, and all four source pins remained exact.
+
+Hosted acceptance remains pending. The complete Playwright predecessor remains
+enabled, and nothing here authorizes merging PR #677.
