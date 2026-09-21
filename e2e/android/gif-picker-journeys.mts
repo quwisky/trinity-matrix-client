@@ -476,14 +476,23 @@ async function runSendImage(context: GifPickerStageContext): Promise<void> {
       description: result.attributes['aria-label'] === 'e2e gif',
     });
     await client.tapCurrent('[data-testid="gif-result"]');
-    await client.visible(
+    const readyMedia = await client.visible(
       '[data-testid="media-bubble"][data-media-state="ready"]',
       {},
       60_000,
     );
     const event = await waitForLatestImage(context, account, room.id);
-    assert(event.msgtype === 'm.image');
-    assert.equal(event.sender, account.userId);
+    const proof = {
+      readyMedia: readyMedia.visible,
+      imageMessage: event.msgtype === 'm.image',
+      senderMatches: event.sender === account.userId,
+    };
+    await client.record('gif-send-image-proof', proof);
+    assert.deepEqual(proof, {
+      readyMedia: true,
+      imageMessage: true,
+      senderMatches: true,
+    });
   });
 }
 

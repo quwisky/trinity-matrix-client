@@ -127,6 +127,7 @@ function assertRuntimeContract({ journey, provider, preference, fixtures }) {
     'await createGifProviderFixture(',
     'await provider.close()',
     'await fixtures.latestImageEvent(',
+    "await client.record('gif-send-image-proof'",
     "event.msgtype === 'm.image'",
     'event.sender === accountB.userId',
     '\'[data-testid="media-bubble"][data-media-state="ready"]\'',
@@ -175,12 +176,17 @@ function assertRuntimeContract({ journey, provider, preference, fixtures }) {
     'apiKeyMatches:',
     'apiKeyLength:',
     "'shell',",
-    "'run-as',",
+    '`run-as ${client.applicationId} sh -c',
+    "await device.adb('shell', 'rm', '-f', remote)",
+    "throw new AggregateError(failures, 'GIF native preference seed failed')",
+    "const ABSENT_MARKER = '__TRINITY_GIF_PREFERENCE_ABSENT__'",
   ];
   for (const fragment of preferenceFragments)
     expect(preference).toContain(fragment);
   expect(preference).not.toContain('localStorage');
   expect(preference).not.toContain('sessionStorage');
+  expect(preference).not.toContain(".catch(() => '')");
+  expect(preference).not.toContain('.catch(() => undefined)');
 
   const fixtureFragments = [
     'latestImageEvent(',
@@ -339,6 +345,48 @@ describe('Android GIF-picker migration', () => {
     expect(JSON.stringify(calls)).not.toContain('fixture-secret');
   });
 
+  it('fails closed when the remote secret-bearing preference file cannot be removed', async () => {
+    const preference = await import(preferencePath);
+    await expect(
+      preference.seedNativeGifPreference(
+        {
+          adb: async (...args) => {
+            if (args[0] === 'shell' && args[1] === 'rm') {
+              throw new Error('remote cleanup denied');
+            }
+            return '';
+          },
+        },
+        'eu.qwky.trinity',
+        { provider: 'klipy', apiKey: 'fixture-secret' },
+      ),
+    ).rejects.toThrow('GIF native preference seed failed');
+  });
+
+  it('treats only a verified missing native preference file as absent', async () => {
+    const preference = await import(preferencePath);
+    const client = {
+      applicationId: 'eu.qwky.trinity',
+      device: {
+        adb: async () => '__TRINITY_GIF_PREFERENCE_ABSENT__',
+      },
+    };
+    await expect(
+      preference.readNativeGifPreference(client, 'klipy', 'fixture-secret'),
+    ).resolves.toEqual({
+      present: false,
+      providerMatches: false,
+      apiKeyMatches: false,
+      apiKeyLength: 0,
+    });
+    client.device.adb = async () => {
+      throw new Error('run-as permission denied');
+    };
+    await expect(
+      preference.readNativeGifPreference(client, 'klipy', 'fixture-secret'),
+    ).rejects.toThrow('run-as permission denied');
+  });
+
   it('classifies only the pinned KLIPY API and media URLs', async () => {
     expect(providerPath, 'gif-provider-fixture.mts must exist').toSatisfy(
       existsSync,
@@ -346,7 +394,8 @@ describe('Android GIF-picker migration', () => {
     if (!existsSync(providerPath)) return;
     const provider = await import(providerPath);
     const api = provider.gifProviderResponse(
-      'https://api.klipy.com/v2/gifs/featured?key=redacted',
+      'https://api.klipy.com/v2/featured?key=redacted&limit=24&media_filter=gif%2Ctinygif&contentfilter=high',
+      'GET',
     );
     expect(api?.contentType).toBe('application/json');
     expect(JSON.parse(api?.body ?? '{}')).toEqual({
@@ -369,6 +418,7 @@ describe('Android GIF-picker migration', () => {
     });
     const media = provider.gifProviderResponse(
       'https://media.klipy.com/e2e-full/trinity.gif',
+      'GET',
     );
     expect(media).toEqual({
       contentType: 'image/gif',
@@ -379,6 +429,30 @@ describe('Android GIF-picker migration', () => {
     });
     expect(
       provider.gifProviderResponse('https://example.test/trinity.gif'),
+    ).toBeUndefined();
+    expect(
+      provider.gifProviderResponse(
+        'https://api.klipy.com/v2/featured?key=redacted&limit=24&media_filter=gif%2Ctinygif&contentfilter=high',
+        'POST',
+      ),
+    ).toBeUndefined();
+    expect(
+      provider.gifProviderResponse(
+        'https://api.klipy.com/v2/unexpected?key=redacted&limit=24&media_filter=gif%2Ctinygif&contentfilter=high',
+        'GET',
+      ),
+    ).toBeUndefined();
+    expect(
+      provider.gifProviderResponse(
+        'https://api.klipy.com/v2/featured?key=redacted&limit=25&media_filter=gif%2Ctinygif&contentfilter=high',
+        'GET',
+      ),
+    ).toBeUndefined();
+    expect(
+      provider.gifProviderResponse(
+        'https://media.klipy.com/unexpected/trinity.gif',
+        'GET',
+      ),
     ).toBeUndefined();
   });
 
@@ -425,6 +499,11 @@ describe('Android GIF-picker migration', () => {
       ['journey', 'await provider.close()', 'Promise.resolve()'],
       [
         'journey',
+        "await client.record('gif-send-image-proof'",
+        "await Promise.resolve('gif-send-image-proof'",
+      ],
+      [
+        'journey',
         'redactMaestroArtifacts(output, secrets, true)',
         'Promise.resolve()',
       ],
@@ -444,6 +523,16 @@ describe('Android GIF-picker migration', () => {
       ['provider', 'activeConnections.delete(webview)', 'Promise.resolve()'],
       ['preference', "'trinity.gif.config'", "'gif.config'"],
       ['preference', 'apiKeyMatches:', 'apiKeyPresent:'],
+      [
+        'preference',
+        "await device.adb('shell', 'rm', '-f', remote)",
+        'await Promise.resolve()',
+      ],
+      [
+        'preference',
+        "const ABSENT_MARKER = '__TRINITY_GIF_PREFERENCE_ABSENT__'",
+        "const ABSENT_MARKER = ''",
+      ],
       [
         'fixtures',
         "content['msgtype'] === 'm.image'",

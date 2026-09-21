@@ -17,6 +17,7 @@ export interface GifProviderResponse {
 export interface GifProviderRequest {
   readonly host: 'api.klipy.com' | 'media.klipy.com';
   readonly path: string;
+  readonly method: 'GET';
   readonly kind: 'api' | 'media';
 }
 
@@ -27,10 +28,20 @@ export interface GifProviderFixture {
 
 export function gifProviderResponse(
   input: string,
+  method = 'GET',
 ): GifProviderResponse | undefined {
   const url = new URL(input);
-  if (url.protocol !== 'https:') return undefined;
-  if (url.hostname === 'api.klipy.com') {
+  if (method !== 'GET') return undefined;
+  if (
+    url.origin === 'https://api.klipy.com' &&
+    url.pathname === '/v2/featured' &&
+    url.searchParams.size === 4 &&
+    url.searchParams.getAll('key').length === 1 &&
+    Boolean(url.searchParams.get('key')) &&
+    url.searchParams.get('limit') === '24' &&
+    url.searchParams.get('media_filter') === 'gif,tinygif' &&
+    url.searchParams.get('contentfilter') === 'high'
+  ) {
     return {
       contentType: 'application/json',
       body: JSON.stringify({
@@ -47,7 +58,12 @@ export function gifProviderResponse(
       }),
     };
   }
-  if (url.hostname === 'media.klipy.com') {
+  if (
+    url.origin === 'https://media.klipy.com' &&
+    (url.pathname === '/e2e-preview/trinity.gif' ||
+      url.pathname === '/e2e-full/trinity.gif') &&
+    url.search === ''
+  ) {
     return {
       contentType: 'image/gif',
       body: Buffer.from(GIF_BASE64, 'base64').toString('binary'),
@@ -59,14 +75,17 @@ export function gifProviderResponse(
 function pausedRequest(value: Readonly<Record<string, unknown>>): {
   readonly requestId: string;
   readonly url: string;
+  readonly method: string;
 } {
   const requestId = value['requestId'];
   const request = value['request'];
   assert(typeof requestId === 'string', 'GIF Fetch request id is present');
   assert(request && typeof request === 'object', 'GIF Fetch request is present');
   const url = (request as Readonly<Record<string, unknown>>)['url'];
+  const method = (request as Readonly<Record<string, unknown>>)['method'];
   assert(typeof url === 'string', 'GIF Fetch request URL is present');
-  return { requestId, url };
+  assert(typeof method === 'string', 'GIF Fetch request method is present');
+  return { requestId, url, method };
 }
 
 export async function createGifProviderFixture(
@@ -87,7 +106,7 @@ export async function createGifProviderFixture(
     value: Readonly<Record<string, unknown>>,
   ): Promise<void> => {
     const paused = pausedRequest(value);
-    const response = gifProviderResponse(paused.url);
+    const response = gifProviderResponse(paused.url, paused.method);
     if (!response) {
       await connection.send('Fetch.continueRequest', {
         requestId: paused.requestId,
@@ -103,6 +122,7 @@ export async function createGifProviderFixture(
     requests.push({
       host: url.hostname,
       path: url.pathname,
+      method: 'GET',
       kind: url.hostname === 'api.klipy.com' ? 'api' : 'media',
     });
     await connection.send('Fetch.fulfillRequest', {

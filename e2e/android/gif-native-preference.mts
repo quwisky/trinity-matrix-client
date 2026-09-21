@@ -8,6 +8,7 @@ import type { MaestroDevice } from './maestro-session.mts';
 
 const GIF_CONFIG_KEY = 'trinity.gif.config';
 const PREFERENCE_FILE = 'shared_prefs/CapacitorStorage.xml';
+const ABSENT_MARKER = '__TRINITY_GIF_PREFERENCE_ABSENT__';
 
 export interface GifConfig {
   readonly provider: 'giphy' | 'klipy';
@@ -99,6 +100,7 @@ export async function seedNativeGifPreference(
   const directory = await mkdtemp(join(tmpdir(), 'trinity-gif-preference-'));
   const local = join(directory, 'CapacitorStorage.xml');
   const remote = `/data/local/tmp/trinity-gif-${randomUUID()}.xml`;
+  const failures: unknown[] = [];
   try {
     await writeFile(local, preferenceXml(config), { mode: 0o600 });
     await device.adb('shell', 'am', 'force-stop', applicationId);
@@ -107,9 +109,21 @@ export async function seedNativeGifPreference(
       'shell',
       `run-as ${applicationId} sh -c 'mkdir -p shared_prefs && cat ${remote} > ${PREFERENCE_FILE}.tmp && chmod 600 ${PREFERENCE_FILE}.tmp && mv ${PREFERENCE_FILE}.tmp ${PREFERENCE_FILE}'`,
     );
-  } finally {
-    await device.adb('shell', 'rm', '-f', remote).catch(() => undefined);
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
+    await device.adb('shell', 'rm', '-f', remote);
+  } catch (error) {
+    failures.push(error);
+  }
+  try {
     await rm(directory, { recursive: true, force: true });
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length) {
+    throw new AggregateError(failures, 'GIF native preference seed failed');
   }
 }
 
@@ -119,14 +133,10 @@ export async function readNativeGifPreference(
   expectedProvider: GifConfig['provider'],
   expectedApiKey: string,
 ): Promise<NativeGifPreferenceObservation> {
-  const xml = await client.device
-    .adb(
-      'shell',
-      'run-as',
-      client.applicationId,
-      'cat',
-      PREFERENCE_FILE,
-    )
-    .catch(() => '');
+  const xml = await client.device.adb(
+    'shell',
+    `run-as ${client.applicationId} sh -c 'if [ -f ${PREFERENCE_FILE} ]; then cat ${PREFERENCE_FILE}; else printf %s ${ABSENT_MARKER}; fi'`,
+  );
+  if (xml === ABSENT_MARKER) return absentObservation();
   return parseNativeGifPreference(xml, expectedProvider, expectedApiKey);
 }
