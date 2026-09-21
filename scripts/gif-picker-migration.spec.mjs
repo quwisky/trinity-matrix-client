@@ -149,6 +149,7 @@ function assertRuntimeContract({ journey, provider, preference, fixtures }) {
     "'Fetch.disable'",
     "'application/json'",
     "'image/gif'",
+    "'Access-Control-Allow-Origin'",
     "'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'",
     "'https://media.klipy.com/e2e-preview/trinity.gif'",
     "'https://media.klipy.com/e2e-full/trinity.gif'",

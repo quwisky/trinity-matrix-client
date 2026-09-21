@@ -112,6 +112,7 @@ export async function createGifProviderFixture(
       responseHeaders: [
         { name: 'Content-Type', value: response.contentType },
         { name: 'Cache-Control', value: 'no-store' },
+        { name: 'Access-Control-Allow-Origin', value: '*' },
       ],
       body: Buffer.from(response.body, 'binary').toString('base64'),
     });
