@@ -4505,6 +4505,30 @@ architecture contracts and APK build all passed. Hosted acceptance remains
 pending; the complete Playwright predecessor remains enabled, and nothing here
 authorizes merging PR #677.
 
+Hosted rerun attempt 2 exercised merge commit
+`78d1f231221775142d82b72b69d8ab5a59ec4f84`, whose second parent is the exact
+branch commit `0158004089947efe53df58989b6310866a6935a4`. The verified 49-file
+production bundle used manifest SHA-256
+`f3165a655ff77b8a990976ff97b632974e071b91158dfb7e2f2b175e6bb30028`.
+Artifact
+`playwright-35648301526-2-78d1f231221775142d82b72b69d8ab5a59ec4f84-android-e2e-android-jump-to-date-2`
+(artifact id `10669408252`) contains invocation
+`mubtkz8n-b05332aa-e806-477a-88e3-2360f25ca036`: the suite passed in 177.618
+seconds and its single stage passed in 176.411 seconds with 5/5 records,
+attempt 1, zero retries and zero failures.
+
+The immutable receipts prove 120 uniquely ordered filler events, the exact
+initial newest event, initial marker absence, the unchanged current/max date,
+one forward `/timestamp_to_event` request for the exact Room and the exact
+marker event after the native Jump action. All ten native-flow manifests and
+the Node result passed, no failed or raster artifact remained, and an
+independent bearer/Matrix-token scan found no match across the 85 retained
+files. Re-hashing the three sources from the hosted merge reproduced every
+pinned digest. Shard 2 failed later in the unrelated Space Settings core suite
+at `admin.photo-feedback`; the exact jump-to-date target and its dedicated
+artifact had already completed successfully. The complete Playwright
+predecessor remains enabled, and nothing here authorizes merging PR #677.
+
 ## Jump to latest journey
 
 `android.jump-to-latest` maps the definition at lines 115–167 of
