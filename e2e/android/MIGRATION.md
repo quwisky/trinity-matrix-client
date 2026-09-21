@@ -4504,3 +4504,92 @@ full 1,050-test scripts target, Android typecheck and lint, format check,
 architecture contracts and APK build all passed. Hosted acceptance remains
 pending; the complete Playwright predecessor remains enabled, and nothing here
 authorizes merging PR #677.
+
+## Jump to latest journey
+
+`android.jump-to-latest` maps the definition at lines 115–167 of
+`e2e/browser/journeys/conversations/jump-to-latest.spec.mts`, its Room helper
+at lines 104–110 and the exact setup at lines 24–110. The complete predecessor
+is pinned at SHA-256
+`1ecfdf0aad6c13326b81b0103bc7f9793f4754438a77bc8098060910c01e3209`;
+the shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+Six direct assertions plus the Room helper's scroll-readiness assertion expand
+to exactly seven stage-local identities.
+
+The REST fixture creates one disposable Account and private Room, sends exactly
+20 long wrapping messages sequentially, retains every event id and marks the
+newest exact event as both `m.fully_read` and `m.read`. Maestro owns login,
+Room navigation, the timeline swipe and jump-to-latest activation. The
+predecessor's Android-only DOM `scrollBy` workaround is intentionally replaced
+by a reusable measured native swipe: read-only renderer geometry supplies two
+safe in-container CSS points, the active Pixel 5 profile transforms them to
+integer device points and one bounded Maestro flow performs the gesture.
+
+Read-only observations require initial bottom distance below 50 px, a hidden
+pill and more than 300 px of real scrollable range. After the downward finger
+gesture, `scrollTop` must decrease, bottom distance must increase and the pill
+must be visible. After native pill activation, bottom distance must return
+below 50 px and the pill must be hidden. Renderer access never assigns a scroll
+offset, calls scroll methods, dispatches events, invokes handlers, focuses,
+fills, submits or navigates.
+
+```bash
+pnpm nx run trinity-e2e-android:jump-to-latest --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:jump-to-latest
+```
+
+The uncached serial target owns both `android-avd` and `synapse`, runs one
+attempt with zero retries, and has a 20-minute Node timeout inside a 25-minute
+CI wrapper. Shard 2 runs it immediately after jump-to-date and uploads
+`android-jump-to-latest` diagnostics only after its started marker is written.
+Every outcome closes the WebView, clears installed application data, closes
+the device and participates in bounded Matrix cleanup. Post-redaction scans
+reject credentials, long message bodies, bearer/Matrix tokens, query secrets,
+raw native-storage method data and raster diagnostics. Local and hosted
+acceptance evidence is still required before issue #738 is complete; the
+complete Playwright predecessor remains enabled, and nothing here authorizes
+merging PR #677.
+
+Local acceptance used implementation base
+`0158004089947efe53df58989b6310866a6935a4` and the final 49-file /
+15,302,553-byte production renderer at manifest SHA-256
+`5ee234c2ec543a90eae165616f111e486ba091ef2e17bcab2a5aa4dfe16ad88e`.
+The installed debug APK SHA-256 was
+`5c5325a0f426edc5a850de54e407a78fd55a958e41c02f685b695f0835362808`;
+the unchanged Pixel 5 native profile was
+`43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`.
+Three sequential uncached invocations passed the single stage and all seven
+records on attempt 1 with zero retries:
+
+- `mubqkuhu-1ff46c91-5d5b-412d-a344-85ac3e7e0bb7` in 107.922 seconds;
+- `mubqruvo-a401341c-3cf9-458e-badc-e848912b2740` in 108.849 seconds;
+- `mubqvcs6-83c0c207-7d46-4cb3-a180-333d80e0705a` in 109.295 seconds.
+
+Each retained the exact 20-event ordered-send/read-marker receipt, nine
+successful native-flow JUnits and 48 completed, non-optional Maestro commands.
+The measured timeline had 5,940 px of real range. Every run transformed CSS
+points `(197, 300)` and `(197, 549)` to device points `(516, 914)` and
+`(516, 1566)` for one 600 ms downward-finger swipe, decreased `scrollTop` by
+about 280–282 px, increased bottom distance by the same amount, showed the
+pill and then returned to the original bottom bound after the native tap. No
+failed or raster artifact remained. Runtime scans used the live generated
+credentials, Room name and long body; an independent scan found no bearer,
+Matrix-token or query-secret pattern. Installed application, emulator and
+Synapse ownership all tore down cleanly.
+
+Exact predecessor invocation
+`mubqyuxq-2973b3c3-1752-406a-ae9e-ac893bcc9bbc` passed the unchanged
+Chromium definition with one worker and zero retries in 5.605 seconds, then
+removed its Synapse data and containers. Source re-hashing reproduced all
+three pins. Production-renderer invocation
+`mubqizaq-0ff93b0e-7603-474b-a93b-e3f3189f5156` passed all nine applicable
+checks with nine explicit skips before the final APK build. The focused guard,
+full 1,056-test scripts target, Android typecheck and lint, and format check all
+passed. An earlier preflight correctly stopped before the suite because the
+renderer still carried the preceding acceptance identity; it produced no test
+result and the renderer was rebuilt before the three controlling runs. Hosted
+acceptance remains pending; the complete Playwright predecessor remains
+enabled, and nothing here authorizes merging PR #677.

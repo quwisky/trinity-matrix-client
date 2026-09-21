@@ -456,6 +456,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.jump-to-date'],
   },
   {
+    name: 'e2e:android:jump-to-latest',
+    command: 'nx run trinity-e2e-android:jump-to-latest',
+    kind: 'canonical',
+    suiteIds: ['android.jump-to-latest'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -728,6 +734,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'jump-to-date-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-date; fi',
     tier: 'pull-request',
     suiteIds: ['android.jump-to-date'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'jump-to-latest-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-latest; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.jump-to-latest'],
   },
   {
     command:

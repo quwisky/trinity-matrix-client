@@ -3,6 +3,7 @@ import { createNodeAccount, type NodeAccountOptions } from '../support/node-acco
 import type { MatrixTestResources } from '../support/test-resources.mts';
 import { SYNAPSE_HTTP } from '../support/synapse/start.mjs';
 import { JUMP_TO_DATE_FILLER_COUNT as FILLER_COUNT } from './jump-to-date-contract.mts';
+import { JUMP_TO_LATEST_MESSAGE_COUNT } from './jump-to-latest-contract.mts';
 
 export type NodeWorkspaceAccount = Awaited<ReturnType<typeof createNodeAccount>>;
 
@@ -49,6 +50,14 @@ export interface WorkspaceJumpToDateHistory {
   readonly fillerEventIds: readonly string[];
   readonly newestFillerBody: string;
   readonly newestFillerEventId: string;
+}
+
+export interface WorkspaceJumpToLatestHistory {
+  readonly roomId: string;
+  readonly roomName: string;
+  readonly eventIds: readonly string[];
+  readonly newestEventId: string;
+  readonly messageCount: number;
 }
 
 export type WorkspaceRoomNotificationMode = 'all' | 'mentions' | 'mute';
@@ -147,6 +156,12 @@ export function createAccountFixtures(
     fillerPrefix: string,
     transactionPrefix: string,
   ): Promise<WorkspaceJumpToDateHistory>;
+  createJumpToLatestHistory(
+    account: NodeWorkspaceAccount,
+    roomName: string,
+    longBody: string,
+    transactionPrefix: string,
+  ): Promise<WorkspaceJumpToLatestHistory>;
   setTyping(account: NodeWorkspaceAccount, roomId: string, typing: boolean): Promise<void>;
   reactionEvents(
     observer: NodeWorkspaceAccount,
@@ -670,6 +685,49 @@ export function createAccountFixtures(
     };
   }
 
+  async function createJumpToLatestHistory(
+    owner: NodeWorkspaceAccount,
+    roomName: string,
+    longBody: string,
+    transactionPrefix: string,
+  ): Promise<WorkspaceJumpToLatestHistory> {
+    const room = await createRoom(owner, {
+      name: roomName,
+      preset: 'private_chat',
+    });
+    const eventIds: string[] = [];
+    for (let index = 0; index < JUMP_TO_LATEST_MESSAGE_COUNT; index++) {
+      const eventId = await sendMessage(
+        owner,
+        room.id,
+        `Message ${index}: ${longBody}`,
+        `${transactionPrefix}-${index}`,
+      );
+      eventIds.push(eventId);
+    }
+    assert.equal(eventIds.length, JUMP_TO_LATEST_MESSAGE_COUNT);
+    assert.equal(
+      new Set(eventIds).size,
+      JUMP_TO_LATEST_MESSAGE_COUNT,
+      'Jump-to-latest message event ids are present and unique',
+    );
+    const newestEventId = eventIds.at(-1);
+    assert(newestEventId, 'Jump-to-latest has an exact newest event');
+    await request(
+      access(owner),
+      `/rooms/${encodeURIComponent(room.id)}/read_markers`,
+      'POST',
+      { 'm.fully_read': newestEventId, 'm.read': newestEventId },
+    );
+    return {
+      roomId: room.id,
+      roomName,
+      eventIds,
+      newestEventId,
+      messageCount: JUMP_TO_LATEST_MESSAGE_COUNT,
+    };
+  }
+
   async function setTyping(
     account: NodeWorkspaceAccount,
     roomId: string,
@@ -1059,6 +1117,7 @@ export function createAccountFixtures(
     ban,
     sendMessage,
     createJumpToDateHistory,
+    createJumpToLatestHistory,
     setTyping,
     reactionEvents,
     latestImageEvent,

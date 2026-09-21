@@ -106,6 +106,22 @@ export interface NativeWordSelectionProof {
   readonly observedDurationMs: number;
 }
 
+export type NativeSwipeDirection =
+  | 'decrease-scroll-top'
+  | 'increase-scroll-top';
+
+export interface NativeSwipeProof {
+  readonly selector: string;
+  readonly direction: NativeSwipeDirection;
+  readonly durationMs: number;
+  readonly cssStart: { readonly x: number; readonly y: number };
+  readonly cssEnd: { readonly x: number; readonly y: number };
+  readonly nativeStart: NativeTargetPoint;
+  readonly nativeEnd: NativeTargetPoint;
+  readonly beforeScrollTop: number;
+  readonly afterScrollTop: number;
+}
+
 export interface AccountWorkspaceCaseContext {
   readonly client: AccountWorkspaceClient;
   readonly fixtures: ReturnType<typeof createAccountFixtures>;
@@ -1020,6 +1036,112 @@ export class AccountWorkspaceClient {
     }
     const row = await this.visible(selector);
     assert(row.unobstructedCenter, 'Native scrolling made the account row reachable');
+  }
+
+  /**
+   * Swipe inside one measured scroll container with native Maestro input.
+   *
+   * Renderer access only measures the target and observes its offset. Both
+   * points are transformed by the active viewport owner before the ignored
+   * concrete Maestro flow is written.
+   */
+  async swipeCurrent(
+    selector: string,
+    options: {
+      readonly direction: NativeSwipeDirection;
+      readonly durationMs?: number;
+    },
+  ): Promise<NativeSwipeProof> {
+    this.signal.throwIfAborted();
+    await this.owner.apply();
+    const before = await this.visible(selector);
+    const viewport = await this.visible('html');
+    assert(
+      before.scrollHeight > before.clientHeight,
+      'Native swipe target must be scrollable',
+    );
+    const visibleTop = Math.max(before.rect.y, 0);
+    const visibleBottom = Math.min(before.rect.bottom, viewport.clientHeight);
+    const visibleLeft = Math.max(before.rect.x, 0);
+    const visibleRight = Math.min(before.rect.right, viewport.rect.width);
+    const visibleHeight = visibleBottom - visibleTop;
+    const visibleWidth = visibleRight - visibleLeft;
+    assert(visibleHeight >= 80, 'Native swipe target needs 80 CSS px of height');
+    assert(visibleWidth >= 16, 'Native swipe target needs 16 CSS px of width');
+    const durationMs = options.durationMs ?? 600;
+    assert(
+      durationMs >= 300 && durationMs <= 1_500,
+      'Native swipe duration must stay between 300 and 1500 ms',
+    );
+    const x = Math.round(visibleLeft + visibleWidth / 2);
+    const upper = Math.round(visibleTop + visibleHeight * 0.2);
+    const lower = Math.round(visibleBottom - visibleHeight * 0.2);
+    assert(lower - upper >= 40, 'Native swipe needs 40 CSS px of travel');
+    const decreases = options.direction === 'decrease-scroll-top';
+    const cssStart = { x, y: decreases ? upper : lower };
+    const cssEnd = { x, y: decreases ? lower : upper };
+    const start = await this.owner.nativePoint(cssStart);
+    const end = await this.owner.nativePoint(cssEnd);
+    for (const point of [start, end]) {
+      assert(
+        Number.isInteger(point.x) && Number.isInteger(point.y),
+        'Native swipe coordinates must be exact integers',
+      );
+    }
+    const actionId = ++this.action;
+    const flow = join(this.output, `accounts-point-swipe-${actionId}.yaml`);
+    await writeFile(
+      flow,
+      `appId: ${this.applicationId}\n---\n- swipe:\n    start: "${start.x},${start.y}"\n    end: "${end.x},${end.y}"\n    duration: ${durationMs}\n`,
+    );
+    let failure: unknown;
+    try {
+      await this.device.runFlow(flow, {});
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      await this.owner.apply();
+    } catch (error) {
+      if (failure !== undefined) {
+        throw new AggregateError(
+          [failure, error],
+          'Native swipe and viewport restoration failed',
+        );
+      }
+      throw error;
+    }
+    if (failure !== undefined) throw failure;
+    const [after] = await this.waitElements(
+      selector,
+      (rows) =>
+        rows.length === 1 &&
+        (options.direction === 'decrease-scroll-top'
+          ? rows[0]!.scrollTop < before.scrollTop
+          : rows[0]!.scrollTop > before.scrollTop),
+      'native swipe changed its offset in the expected direction',
+    );
+    assert(after);
+    const scrollTop = after.scrollTop;
+    assert(
+      options.direction === 'decrease-scroll-top'
+        ? scrollTop < before.scrollTop
+        : scrollTop > before.scrollTop,
+      'Native swipe changed its offset in the expected direction',
+    );
+    const proof: NativeSwipeProof = {
+      selector,
+      direction: options.direction,
+      durationMs,
+      cssStart,
+      cssEnd,
+      nativeStart: start,
+      nativeEnd: end,
+      beforeScrollTop: before.scrollTop,
+      afterScrollTop: scrollTop,
+    };
+    await this.record(`native-swipe-${actionId}`, proof);
+    return proof;
   }
 
   private async actionablePoint(
