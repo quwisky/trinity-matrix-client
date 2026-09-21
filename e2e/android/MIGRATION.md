@@ -4181,3 +4181,51 @@ owned suite, in the independent Space Settings suite; the separate shard-1 ADB
 stall and later-suite failure remain tracked under #665. The complete
 Playwright predecessor remains enabled. This evidence accepts issue #734 but
 does not complete parent #660 or authorize merging PR #677.
+
+## GIF picker journeys
+
+`android.gif-picker` maps all four definitions in
+`e2e/browser/journeys/conversations/gif.spec.mts`, pinned at SHA-256
+`c2196e638e21cedec16ae04d45823d9893d1586d7597ec41b1665f32062ac3ad`.
+The Settings navigation helper is independently pinned at
+`43232dafbf9e80df6977442f366974100ccfa315b20ab680f893d4300ab46f81`;
+the shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+Seventeen direct predecessor assertions plus seven owned navigation and
+Account proofs expand into 24 unique records grouped 10 + 4 + 3 + 7 across
+Settings lifecycle, unconfigured tray, image send and active-Account send.
+
+Maestro owns every local tap, fill, Back action and Account login. Native
+package Preferences own configuration setup and exact persistence proof; the
+fixture never mutates renderer storage. Disposable Synapse REST fixtures own
+Accounts, Rooms and the independent newest-`m.image` observation. Read-only
+renderer inspection proves route, control, result and ready-media state. A
+single bounded CDP Fetch session intercepts only `https://api.klipy.com/*` and
+`https://media.klipy.com/*`, serving one pinned `e2e gif` result and a real
+decodable 1×1 GIF. All other requests continue normally, so upload and event
+round trips still use the real disposable homeserver.
+
+The active-Account stage signs in A, adds B through the installed UI, opens a
+B-only Room and requires the server-observed image sender to equal B exactly.
+The global provider configuration is seeded before app initialization and its
+diagnostic receipt contains only match booleans and key length. Provider
+request receipts retain only pinned host, path and kind; API keys, passwords,
+Matrix identifiers and Room data are registered for redaction. Recursive
+post-run scans reject secrets, bearer/Matrix tokens, native-storage payloads
+and raster diagnostics.
+
+```bash
+pnpm nx run trinity-e2e-android:gif-picker --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:gif-picker
+```
+
+The uncached serial target owns both `android-avd` and `synapse`, runs once
+with zero retries, and has a 20-minute Node timeout inside a bounded CI wrapper.
+Shard 2 runs it immediately after composer typing and uploads
+`android-gif-picker` diagnostics only after its started marker is written.
+Every stage closes its provider session and WebView, clears application data,
+and participates in aggregate device and Synapse cleanup on pass or failure.
+Hosted and repeated local acceptance remain pending. The complete Playwright
+predecessor remains enabled, and nothing here authorizes merging PR #677.
