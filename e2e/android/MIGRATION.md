@@ -4593,3 +4593,98 @@ renderer still carried the preceding acceptance identity; it produced no test
 result and the renderer was rebuilt before the three controlling runs. Hosted
 acceptance remains pending; the complete Playwright predecessor remains
 enabled, and nothing here authorizes merging PR #677.
+
+## Link preview journey
+
+`android.link-preview` maps the complete definition at lines 28–74 and the
+hermetic OG URL selection at lines 17–23 of
+`e2e/browser/journeys/conversations/link-preview.spec.mts`. The predecessor is
+pinned at SHA-256
+`08282733e2a496677fda5b9c03738b571714f838d49a93a36fbaf16eb38e7da4`;
+the Caddy fixture at lines 52–62 is pinned at
+`c23c76234ad98fee4692fecac6af6c7f404ad9c852a251c17a7ebf6da4c006ab`.
+The shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+The predecessor's three direct assertions map to exactly three stage-local
+identities: visible preview card, exact title and exact destination.
+
+The REST fixture creates one disposable Account and private Room with no
+`m.room.encryption` state, sends one exact run-scoped text event containing the
+selected `http://caddy:8080/og` or netns-loopback URL, and reads the event back
+to prove sender, type, body and id. It proves the encryption state is absent
+before the send, after the send and after the rendered result. Maestro owns
+login and Room navigation. Read-only renderer observation scopes the preview
+to the exact message event, requires the title `Trinity E2E Preview` and
+requires the card `href` to equal the seeded URL.
+
+A bounded CDP Network observer starts before login and retains only sanitized
+facts for the exact GET `/_matrix/client/v1/media/preview_url` request or either
+private OG origin. Acceptance requires exactly one authenticated homeserver
+request whose decoded `url` query equals the seeded URL and zero direct WebView
+requests to the Caddy or loopback fixture. The observer never intercepts,
+fulfills or reads responses and is disabled, unsubscribed and closed before
+WebView/device teardown.
+
+```bash
+pnpm nx run trinity-e2e-android:link-preview --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:link-preview
+```
+
+The uncached serial target owns both `android-avd` and `synapse`, runs one
+attempt with zero retries, and has a 20-minute Node timeout inside a 25-minute
+CI wrapper. Shard 2 runs it immediately after jump-to-latest and uploads
+`android-link-preview` diagnostics only after its started marker is written.
+Every outcome closes the Network observer and WebView, clears installed
+application data, closes the device and participates in bounded Matrix
+cleanup. Post-redaction scans reject credentials, message values,
+authorization/cookie data, bearer/Matrix tokens, raw native-storage method
+data and raster diagnostics. Local and hosted acceptance evidence is still
+required before issue #739 is complete; the complete Playwright predecessor
+remains enabled, and nothing here authorizes merging PR #677.
+
+Local acceptance used implementation base
+`35bb021c8de0eada447179d4382108449109b38e` and the 49-file /
+15,302,553-byte production renderer at manifest SHA-256
+`0dc35623a14cb26c3b1d492f4e7af43706c4426c2902c9dfdf3a38ec5ea1c4df`.
+The installed debug APK SHA-256 was
+`091433417c9b691494a5278219ed56e881540d2de7940ff8ec4eb382530755cf`;
+the unchanged Pixel 5 native profile was
+`43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`.
+Three sequential uncached invocations passed the single stage and all three
+records on attempt 1 with zero retries:
+
+- `mubtc6nx-5b994b0c-c830-47ce-85e1-50ff274661ce` in 92.266 seconds;
+- `mubtf7pp-9520b6b6-9081-40c6-a3a1-9f0fe81d3d69` in 91.365 seconds;
+- `mubtia76-fc8b4d44-7676-4db9-8877-2fbf319b21e0` in 92.535 seconds.
+
+Each retained plaintext absence before and after the exact message plus after
+the rendered result. Each observed exactly one authenticated, script-initiated
+GET to `/_matrix/client/v1/media/preview_url` with the exact decoded Caddy URL,
+zero direct Caddy/loopback WebView requests, seven successful native-flow
+JUnits and 40 completed, non-optional Maestro commands. Each exact event row
+showed one visible card, the exact title and exact destination. No failed or
+raster artifact remained; runtime scans used the generated credentials, Room
+name and message body, and installed application, Network observer, emulator
+and Synapse ownership all tore down cleanly.
+
+Exact predecessor invocation
+`mubt397z-2274815d-1711-4b3e-83c8-94e9a3f2d522` passed the unchanged Chromium
+definition with one worker and zero retries in 3.5 seconds (4.1 seconds for the
+suite), then removed its Synapse data and containers. Source re-hashing
+reproduced all four pins. Production-renderer invocation
+`mubt6rzw-9c4d03dc-92e0-4c9f-9b85-74472712b5f9` passed all nine applicable
+checks with nine explicit skips before the final APK build. The focused guard,
+full 1,062-test scripts target, Android typecheck and lint, registry/workflow
+contracts and format check all passed.
+
+An earlier diagnostic run reached and proved the exact card but correctly
+failed before acceptance because its observer expected the older media-v3
+preview path while the pinned Matrix SDK emitted the versioned client-v1 media
+path. The same run also showed that Android biometric logcat uses a numeric
+`cookie` field; the scanner now distinguishes that harmless metadata from raw
+HTTP authorization/cookie values. The focused mutation guard pins both fixes,
+and that diagnostic result was not counted among the three controlling runs.
+Hosted acceptance remains pending; the complete Playwright predecessor remains
+enabled, and nothing here authorizes merging PR #677.
