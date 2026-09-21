@@ -34,6 +34,12 @@ export interface WorkspaceDirectRoomOptions {
   readonly preset?: 'private_chat' | 'trusted_private_chat';
 }
 
+export interface WorkspaceImageEvent {
+  readonly eventId: string;
+  readonly sender: string;
+  readonly msgtype: 'm.image';
+}
+
 export type WorkspaceRoomNotificationMode = 'all' | 'mentions' | 'mute';
 
 interface AccessSession {
@@ -129,6 +135,10 @@ export function createAccountFixtures(
     roomId: string,
     eventId: string,
   ): Promise<readonly Readonly<Record<string, unknown>>[]>;
+  latestImageEvent(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<WorkspaceImageEvent | undefined>;
   sendReadReceipt(
     account: NodeWorkspaceAccount,
     roomId: string,
@@ -625,6 +635,45 @@ export function createAccountFixtures(
     );
   }
 
+  async function latestImageEvent(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<WorkspaceImageEvent | undefined> {
+    const value = await get(
+      access(observer),
+      `/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=20`,
+    );
+    const response = record(value, 'Matrix fixture room-messages response');
+    const chunk = response['chunk'];
+    assert(Array.isArray(chunk), 'Matrix fixture room-messages chunk');
+    for (const [index, candidate] of chunk.entries()) {
+      const event = record(candidate, `Matrix fixture room-message event ${index}`);
+      const content = record(
+        event['content'] ?? {},
+        `Matrix fixture room-message content ${index}`,
+      );
+      if (
+        event['type'] === 'm.room.message' &&
+        content['msgtype'] === 'm.image'
+      ) {
+        return {
+          eventId: stringField(
+            event,
+            'event_id',
+            'Matrix fixture image-event id',
+          ),
+          sender: stringField(
+            event,
+            'sender',
+            'Matrix fixture image-event sender',
+          ),
+          msgtype: 'm.image',
+        };
+      }
+    }
+    return undefined;
+  }
+
   async function sendReadReceipt(
     reader: NodeWorkspaceAccount,
     roomId: string,
@@ -933,6 +982,7 @@ export function createAccountFixtures(
     sendMessage,
     setTyping,
     reactionEvents,
+    latestImageEvent,
     sendReadReceipt,
     markedUnread,
     setMarkedUnread,

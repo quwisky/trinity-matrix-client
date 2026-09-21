@@ -155,8 +155,8 @@ function assertRuntimeContract({ journey, provider, preference, fixtures }) {
     "id: 'e2e-1'",
     "content_description: 'e2e gif'",
     'activeConnections',
-    'activeConnections.add(connection)',
-    'activeConnections.delete(connection)',
+    'activeConnections.add(webview)',
+    'activeConnections.delete(webview)',
     'unsubscribe()',
     'await work',
   ];
@@ -281,6 +281,77 @@ describe('Android GIF-picker migration', () => {
     expect(contract.GIF_PICKER_ASSERTION_RECORDS).toBe(24);
   });
 
+  it('parses native GIF Preferences without returning the API key', async () => {
+    expect(preferencePath, 'gif-native-preference.mts must exist').toSatisfy(
+      existsSync,
+    );
+    if (!existsSync(preferencePath)) return;
+    const preference = await import(preferencePath);
+    const observation = preference.parseNativeGifPreference(
+      `<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name="trinity.gif.config">{&quot;provider&quot;:&quot;giphy&quot;,&quot;apiKey&quot;:&quot;e2e-secret-key&quot;}</string></map>`,
+      'giphy',
+      'e2e-secret-key',
+    );
+    expect(observation).toEqual({
+      present: true,
+      providerMatches: true,
+      apiKeyMatches: true,
+      apiKeyLength: 14,
+    });
+    expect(JSON.stringify(observation)).not.toContain('e2e-secret-key');
+    expect(preference.parseNativeGifPreference('<map />', 'giphy', '')).toEqual(
+      {
+        present: false,
+        providerMatches: false,
+        apiKeyMatches: false,
+        apiKeyLength: 0,
+      },
+    );
+  });
+
+  it('classifies only the pinned KLIPY API and media URLs', async () => {
+    expect(providerPath, 'gif-provider-fixture.mts must exist').toSatisfy(
+      existsSync,
+    );
+    if (!existsSync(providerPath)) return;
+    const provider = await import(providerPath);
+    const api = provider.gifProviderResponse(
+      'https://api.klipy.com/v2/gifs/featured?key=redacted',
+    );
+    expect(api?.contentType).toBe('application/json');
+    expect(JSON.parse(api?.body ?? '{}')).toEqual({
+      results: [
+        {
+          id: 'e2e-1',
+          content_description: 'e2e gif',
+          media_formats: {
+            gif: {
+              url: 'https://media.klipy.com/e2e-full/trinity.gif',
+              dims: [1, 1],
+            },
+            tinygif: {
+              url: 'https://media.klipy.com/e2e-preview/trinity.gif',
+              dims: [1, 1],
+            },
+          },
+        },
+      ],
+    });
+    const media = provider.gifProviderResponse(
+      'https://media.klipy.com/e2e-full/trinity.gif',
+    );
+    expect(media).toEqual({
+      contentType: 'image/gif',
+      body: Buffer.from(
+        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+        'base64',
+      ).toString('binary'),
+    });
+    expect(
+      provider.gifProviderResponse('https://example.test/trinity.gif'),
+    ).toBeUndefined();
+  });
+
   it('uses native actions, exact native storage, hermetic GIF bytes, and real Matrix proof', () => {
     const journey = readIfPresent(journeyPath);
     const provider = readIfPresent(providerPath);
@@ -340,7 +411,7 @@ describe('Android GIF-picker migration', () => {
       ],
       ['provider', "urlPattern: 'https://api.klipy.com/*'", "urlPattern: '*'"],
       ['provider', "'image/gif'", "'application/octet-stream'"],
-      ['provider', 'activeConnections.delete(connection)', 'Promise.resolve()'],
+      ['provider', 'activeConnections.delete(webview)', 'Promise.resolve()'],
       ['preference', "'trinity.gif.config'", "'gif.config'"],
       ['preference', 'apiKeyMatches:', 'apiKeyPresent:'],
       [
