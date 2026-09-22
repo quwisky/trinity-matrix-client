@@ -70,6 +70,25 @@ export interface WorkspaceJumpToLatestHistory {
   readonly messageCount: number;
 }
 
+export interface WorkspaceMessageActionSheetHistory {
+  readonly roomId: string;
+  readonly roomName: string;
+  readonly targetEventId: string;
+  readonly targetBody: string;
+  readonly oldestFillerEventId: string | null;
+  readonly oldestFillerBody: string | null;
+  readonly messageCount: number;
+}
+
+export interface WorkspaceMessageActionSheetReaction {
+  readonly eventIdPresent: boolean;
+  readonly senderMatches: boolean;
+  readonly targetMatches: boolean;
+  readonly annotation: boolean;
+  readonly key: string;
+  readonly ready: boolean;
+}
+
 export type WorkspaceRoomNotificationMode = 'all' | 'mentions' | 'mute';
 
 interface AccessSession {
@@ -159,6 +178,17 @@ export function createAccountFixtures(
     reason: string,
   ): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<string>;
+  createMessageActionSheetHistory(
+    account: NodeWorkspaceAccount,
+    roomName: string,
+    tag: 'a' | 'b' | 'c' | 'v' | 't',
+    transactionPrefix: string,
+  ): Promise<WorkspaceMessageActionSheetHistory>;
+  messageActionSheetReactionEvents(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<readonly WorkspaceMessageActionSheetReaction[]>;
   createJumpToDateHistory(
     account: NodeWorkspaceAccount,
     roomName: string,
@@ -637,6 +667,74 @@ export function createAccountFixtures(
       { msgtype: 'm.text', body },
     );
     return stringField(response, 'event_id', 'Matrix fixture sent-message event id');
+  }
+
+  async function createMessageActionSheetHistory(
+    owner: NodeWorkspaceAccount,
+    roomName: string,
+    tag: 'a' | 'b' | 'c' | 'v' | 't',
+    transactionPrefix: string,
+  ): Promise<WorkspaceMessageActionSheetHistory> {
+    const room = await createRoom(owner, { name: roomName, preset: 'private_chat' });
+    const eventIds = new Set<string>();
+    async function sendReadyMessage(body: string, transactionId: string): Promise<string> {
+      const eventId = await sendMessage(owner, room.id, body, transactionId);
+      assert(!eventIds.has(eventId), 'Each sheet fixture message has a distinct event id');
+      eventIds.add(eventId);
+      const event = await roomEvent(owner, room.id, eventId);
+      const content = record(event['content'], 'Ready sheet fixture event content');
+      assert.equal(event['event_id'], eventId, 'Ready sheet fixture event identity');
+      assert.equal(event['type'], 'm.room.message', 'Ready sheet fixture event type');
+      assert.equal(event['sender'], owner.userId, 'Ready sheet fixture event sender');
+      assert.equal(content['msgtype'], 'm.text', 'Ready sheet fixture message kind');
+      assert.equal(content['body'], body, 'Ready sheet fixture exact message body');
+      return eventId;
+    }
+    let oldestFillerEventId: string | null = null;
+    let oldestFillerBody: string | null = null;
+    if (tag === 'v') {
+      for (let index = 0; index < 80; index++) {
+        const body = `sheet filler v ${index}`;
+        const eventId = await sendReadyMessage(body, `${transactionPrefix}-filler-${index}`);
+        if (index === 0) {
+          oldestFillerEventId = eventId;
+          oldestFillerBody = body;
+        }
+      }
+    }
+    const targetBody = `act on me ${transactionPrefix}`;
+    const targetEventId = await sendReadyMessage(targetBody, `${transactionPrefix}-target`);
+    const messageCount = tag === 'v' ? 81 : 1;
+    assert.equal(eventIds.size, messageCount, 'Exact source-owned sheet fixture message count');
+    return {
+      roomId: room.id, roomName: room.name, targetEventId, targetBody,
+      oldestFillerEventId, oldestFillerBody, messageCount,
+    };
+  }
+
+  async function messageActionSheetReactionEvents(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    eventId: string,
+  ): Promise<readonly WorkspaceMessageActionSheetReaction[]> {
+    const events = await reactionEvents(account, roomId, eventId);
+    return events.map((event) => {
+      const content = record(event['content'], 'Sheet reaction content');
+      const value = content['m.relates_to'];
+      const relation: MatrixRecord = value && typeof value === 'object' && !Array.isArray(value)
+        ? value as MatrixRecord : {};
+      const unsigned = event['unsigned'];
+      const redacted = unsigned && typeof unsigned === 'object' && 'redacted_because' in unsigned;
+      const eventIdPresent = typeof event['event_id'] === 'string' && event['event_id'].length > 0;
+      return {
+        eventIdPresent,
+        senderMatches: event['sender'] === account.userId,
+        targetMatches: relation['event_id'] === eventId,
+        annotation: relation['rel_type'] === 'm.annotation',
+        key: typeof relation['key'] === 'string' ? relation['key'] : '',
+        ready: event['type'] === 'm.reaction' && eventIdPresent && !redacted,
+      };
+    });
   }
 
   async function createJumpToDateHistory(
@@ -1196,6 +1294,8 @@ export function createAccountFixtures(
     join,
     ban,
     sendMessage,
+    createMessageActionSheetHistory,
+    messageActionSheetReactionEvents,
     createJumpToDateHistory,
     createJumpToLatestHistory,
     setTyping,

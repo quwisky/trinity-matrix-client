@@ -82,6 +82,61 @@ interface LongPressTarget {
   readonly selectionSafe: boolean;
   readonly textRectCount: number;
   readonly blockingRectCount: number;
+  readonly paddingBounds?: LongPressBounds;
+}
+
+interface LongPressBounds {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+interface LongPressPaddingGeometry {
+  readonly row: LongPressBounds;
+  readonly scroller: LongPressBounds;
+  readonly viewport: { readonly width: number; readonly height: number };
+  readonly paddingLeft: number;
+  readonly textRects: readonly LongPressBounds[];
+  readonly blockingRects: readonly LongPressBounds[];
+}
+
+interface LongPressPaddingCandidate {
+  readonly cssPoint: { readonly x: number; readonly y: number };
+  readonly bounds: LongPressBounds;
+}
+
+/** Pure geometry policy, also serialized into the read-only WebView observation. */
+export function nativeLongPressPaddingCandidates(
+  geometry: LongPressPaddingGeometry,
+): readonly LongPressPaddingCandidate[] {
+  const { row, scroller, viewport, paddingLeft, textRects, blockingRects } = geometry;
+  const rectangles = [row, scroller, ...textRects, ...blockingRects];
+  if (![paddingLeft, viewport.width, viewport.height].every(Number.isFinite) ||
+    paddingLeft < 12 || viewport.width <= 0 || viewport.height <= 0 ||
+    rectangles.some(r => ![r.left, r.top, r.right, r.bottom].every(Number.isFinite) ||
+      r.right <= r.left || r.bottom <= r.top)) return [];
+  const x = row.left + paddingLeft / 2;
+  const candidates: LongPressPaddingCandidate[] = [];
+  for (const y of [row.top + 4, row.bottom - 4, (row.top + row.bottom) / 2]) {
+    // Check an envelope, not just the nominal point: the native conversion
+    // rounds, and the duration-controlled press drifts two native pixels.
+    const bounds = { left: x - 2, top: y - 2, right: x + 2, bottom: y + 2 };
+    if (bounds.left <= Math.max(row.left, scroller.left, 0) ||
+      bounds.right >= Math.min(row.right, row.left + paddingLeft, scroller.right, viewport.width) ||
+      bounds.top <= Math.max(row.top, scroller.top, 0) ||
+      bounds.bottom >= Math.min(row.bottom, scroller.bottom, viewport.height)) continue;
+    if ([...textRects, ...blockingRects].some(r =>
+      bounds.right >= r.left - 8 && bounds.left <= r.right + 8 &&
+      bounds.bottom >= r.top - 8 && bounds.top <= r.bottom + 8)) continue;
+    candidates.push({ cssPoint: { x, y }, bounds });
+  }
+  return candidates;
+}
+
+interface NativeLongPressOptions {
+  /** Opt in only for grouped rows with no non-selectable descendant. */
+  readonly allowBlankPadding?: boolean;
 }
 
 interface WordSelectionMeasurement {
@@ -110,6 +165,51 @@ export type NativeSwipeDirection =
   | 'decrease-scroll-top'
   | 'increase-scroll-top';
 
+export type NativeSwipePositionReference = 'top' | 'bottom';
+
+interface NativeSwipeMetrics {
+  readonly scrollTop: number;
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
+}
+
+function nativeSwipePosition(
+  metrics: NativeSwipeMetrics,
+  reference: NativeSwipePositionReference,
+): number {
+  for (const value of [metrics.scrollTop, metrics.scrollHeight, metrics.clientHeight])
+    assert(Number.isFinite(value), 'Native swipe measurements must be finite');
+  assert(metrics.clientHeight > 0 && metrics.scrollHeight >= metrics.clientHeight,
+    'Native swipe measurements require a real scroll container');
+  // Older-history prepends shift the top origin while preserving the distance
+  // from latest. Zero is latest; negative positions are toward older history.
+  return reference === 'bottom'
+    ? metrics.scrollTop - metrics.scrollHeight + metrics.clientHeight
+    : metrics.scrollTop;
+}
+
+export function nativeSwipeAdvanced(
+  before: NativeSwipeMetrics,
+  after: NativeSwipeMetrics,
+  direction: NativeSwipeDirection,
+  reference: NativeSwipePositionReference = 'top',
+): boolean {
+  const beforePosition = nativeSwipePosition(before, reference);
+  const afterPosition = nativeSwipePosition(after, reference);
+  if (reference === 'bottom') {
+    assert(after.clientHeight === before.clientHeight,
+      'Bottom-referenced native swipe must preserve its viewport height');
+    // Content growth alone is not a swipe. Require actual offset displacement
+    // as well as logical progress, beyond fractional layout/rounding drift.
+    if (Math.abs(after.scrollTop - before.scrollTop) <= 2) return false;
+    return direction === 'decrease-scroll-top'
+      ? afterPosition < beforePosition - 2 : afterPosition > beforePosition + 2;
+  }
+  const scrollTop = after.scrollTop;
+  return direction === 'decrease-scroll-top'
+    ? scrollTop < before.scrollTop : scrollTop > before.scrollTop;
+}
+
 export interface NativeSwipeProof {
   readonly selector: string;
   readonly direction: NativeSwipeDirection;
@@ -120,6 +220,13 @@ export interface NativeSwipeProof {
   readonly nativeEnd: NativeTargetPoint;
   readonly beforeScrollTop: number;
   readonly afterScrollTop: number;
+  readonly positionReference: NativeSwipePositionReference;
+  readonly beforePosition: number;
+  readonly afterPosition: number;
+  readonly beforeScrollHeight: number;
+  readonly afterScrollHeight: number;
+  readonly beforeClientHeight: number;
+  readonly afterClientHeight: number;
 }
 
 export interface AccountWorkspaceCaseContext {
@@ -366,8 +473,9 @@ export class AccountWorkspaceClient {
   async longPressCurrent(
     selector: string,
     filter: AccountElementFilter = {},
+    options: NativeLongPressOptions = {},
   ): Promise<void> {
-    const target = await this.longPressTarget(selector, filter);
+    const target = await this.longPressTarget(selector, filter, options);
     const point = target.point;
     const actionId = ++this.action;
     // Maestro's longPressOn has no configurable duration and races Trinity's exact
@@ -380,7 +488,8 @@ export class AccountWorkspaceClient {
       `appId: ${this.applicationId}\n---\n- swipe:\n    start: "${point.x},${point.y}"\n    end: "${point.x + LONG_PRESS_DRIFT_PX},${point.y}"\n    duration: ${LONG_PRESS_DURATION_MS}\n`,
     );
     await evaluateNative(this.webview, `(() => {
-      const {selector,filter}=${JSON.stringify({ selector, filter })};
+      const {selector,filter,requireNoSelection}=${JSON.stringify({ selector, filter, requireNoSelection: target.paddingBounds !== undefined })};
+      if(requireNoSelection&&window.getSelection()?.toString().length!==0)throw new Error('Native padding long press requires no existing text selection');
       const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
       if(es.length!==1)throw new Error('Native long-press target changed before dispatch');
       const element=es[0],types=['pointerdown','pointermove','pointerup','pointercancel'];
@@ -392,6 +501,7 @@ export class AccountWorkspaceClient {
     let actionError: unknown;
     let trustedEvents: unknown = null;
     let durationMs: number | null = null;
+    let selectedTextLength: number | null = null;
     try {
       console.info(`[accounts] native action ${actionId}: 750 ms long press ${selector}`);
       await this.device.runFlow(flow, {});
@@ -408,6 +518,12 @@ export class AccountWorkspaceClient {
           event.matched === true,
       );
       assert(down, `Native long press ${actionId} started on ${selector}`);
+      if (target.paddingBounds) {
+        const bounds = target.paddingBounds;
+        assert(down.clientX > bounds.left && down.clientX < bounds.right &&
+          down.clientY > bounds.top && down.clientY < bounds.bottom,
+          'Native padding press landed inside the measured blank envelope');
+      }
       const terminal = events.find(
         (event) =>
           (event?.type === 'pointerup' ||
@@ -425,6 +541,12 @@ export class AccountWorkspaceClient {
           event.pointerId === down.pointerId &&
           Number.isFinite(event.timeStamp),
       );
+      if (target.paddingBounds) {
+        const bounds = target.paddingBounds;
+        assert(samePointerEvents.every(event => event.clientX > bounds.left &&
+          event.clientX < bounds.right && event.clientY > bounds.top && event.clientY < bounds.bottom),
+          'Native padding long-press path stayed inside the measured blank envelope');
+      }
       durationMs =
         Math.max(...samePointerEvents.map((event) => event.timeStamp)) -
         down.timeStamp;
@@ -432,6 +554,11 @@ export class AccountWorkspaceClient {
         durationMs >= LONG_PRESS_THRESHOLD_MS,
         `Native long press ${actionId} held for at least ${LONG_PRESS_THRESHOLD_MS} ms (observed ${durationMs} ms)`,
       );
+      if (target.paddingBounds) {
+        const length = await evaluateNative(this.webview, 'window.getSelection()?.toString().length ?? null');
+        assert.equal(length, 0, 'Native padding long press must not select text');
+        selectedTextLength = 0;
+      }
     } catch (error) {
       actionError = error;
     } finally {
@@ -445,6 +572,7 @@ export class AccountWorkspaceClient {
           requestedDriftPx: LONG_PRESS_DRIFT_PX,
           observedDurationMs: durationMs,
           trustedEvents,
+          selectedTextLength,
         });
       } catch (error) {
         failures.push(error);
@@ -476,6 +604,7 @@ export class AccountWorkspaceClient {
   private async longPressTarget(
     selector: string,
     filter: AccountElementFilter,
+    options: NativeLongPressOptions,
   ): Promise<LongPressTarget> {
     this.signal.throwIfAborted();
     await this.owner.apply();
@@ -483,7 +612,7 @@ export class AccountWorkspaceClient {
     const measured = await waitForNativeShellState(
       () =>
         evaluateNative(this.webview, `(() => {
-          const {selector,filter}=${JSON.stringify({ selector, filter })};
+          const {selector,filter,allowBlankPadding}=${JSON.stringify({ selector, filter, allowBlankPadding: options.allowBlankPadding === true })};
           const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
           if(es.length!==1)return null;
           const element=es[0],rect=element.getBoundingClientRect();
@@ -507,16 +636,40 @@ export class AccountWorkspaceClient {
             if(userSelect!=='none')continue;
             return {cssPoint:{x,y},hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid'),userSelect},selectionSafe:true,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
           }
+          if(!allowBlankPadding)return null;
+          if(window.getSelection()?.toString().length!==0)return null;
+          const scroller=element.closest('[data-message-scroller]');
+          if(!scroller)return null;
+          const paddingCandidates=(${nativeLongPressPaddingCandidates.toString()})({
+            row:rect,scroller:scroller.getBoundingClientRect(),
+            viewport:{width:innerWidth,height:innerHeight},
+            paddingLeft:parseFloat(getComputedStyle(element).paddingLeft),textRects,blockingRects,
+          });
+          for(const {cssPoint,bounds} of paddingCandidates){
+            const points=[cssPoint,{x:bounds.left,y:bounds.top},{x:bounds.right,y:bounds.top},{x:bounds.left,y:bounds.bottom},{x:bounds.right,y:bounds.bottom}];
+            if(!points.every(({x,y})=>document.elementFromPoint(x,y)===element))continue;
+            return {cssPoint,hit:{tagName:element.tagName,className:element.className,testId:element.getAttribute('data-testid'),userSelect:getComputedStyle(element).userSelect},selectionSafe:false,paddingBounds:bounds,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
+          }
           return null;
         })()`),
       (value) => value !== null,
-      `non-selectable native long-press point inside ${selector}`,
+      options.allowBlankPadding
+        ? `non-selectable or blank-padding native long-press point inside ${selector}`
+        : `non-selectable native long-press point inside ${selector}`,
       this.signal,
       15_000,
     );
     assert(measured && typeof measured === 'object');
     const value = measured as Omit<LongPressTarget, 'point'>;
     const point = await this.owner.nativePoint(value.cssPoint);
+    if (value.paddingBounds) {
+      const bounds = value.paddingBounds;
+      const start = await this.owner.nativePoint({ x: bounds.left, y: bounds.top });
+      const end = await this.owner.nativePoint({ x: bounds.right, y: bounds.bottom });
+      assert(point.x > start.x && point.x + LONG_PRESS_DRIFT_PX < end.x &&
+        point.y > start.y && point.y < end.y,
+        'Rounded native long-press start and drift endpoint fit the blank envelope');
+    }
     this.signal.throwIfAborted();
     return { ...value, point };
   }
@@ -1050,11 +1203,13 @@ export class AccountWorkspaceClient {
     options: {
       readonly direction: NativeSwipeDirection;
       readonly durationMs?: number;
+      readonly positionReference?: NativeSwipePositionReference;
     },
   ): Promise<NativeSwipeProof> {
     this.signal.throwIfAborted();
     await this.owner.apply();
     const before = await this.visible(selector);
+    const positionReference = options.positionReference ?? 'top';
     const viewport = await this.visible('html');
     assert(
       before.scrollHeight > before.clientHeight,
@@ -1116,17 +1271,12 @@ export class AccountWorkspaceClient {
       selector,
       (rows) =>
         rows.length === 1 &&
-        (options.direction === 'decrease-scroll-top'
-          ? rows[0]!.scrollTop < before.scrollTop
-          : rows[0]!.scrollTop > before.scrollTop),
+        nativeSwipeAdvanced(before, rows[0]!, options.direction, positionReference),
       'native swipe changed its offset in the expected direction',
     );
     assert(after);
-    const scrollTop = after.scrollTop;
     assert(
-      options.direction === 'decrease-scroll-top'
-        ? scrollTop < before.scrollTop
-        : scrollTop > before.scrollTop,
+      nativeSwipeAdvanced(before, after, options.direction, positionReference),
       'Native swipe changed its offset in the expected direction',
     );
     const proof: NativeSwipeProof = {
@@ -1138,7 +1288,14 @@ export class AccountWorkspaceClient {
       nativeStart: start,
       nativeEnd: end,
       beforeScrollTop: before.scrollTop,
-      afterScrollTop: scrollTop,
+      afterScrollTop: after.scrollTop,
+      positionReference,
+      beforePosition: nativeSwipePosition(before, positionReference),
+      afterPosition: nativeSwipePosition(after, positionReference),
+      beforeScrollHeight: before.scrollHeight,
+      afterScrollHeight: after.scrollHeight,
+      beforeClientHeight: before.clientHeight,
+      afterClientHeight: after.clientHeight,
     };
     await this.record(`native-swipe-${actionId}`, proof);
     return proof;

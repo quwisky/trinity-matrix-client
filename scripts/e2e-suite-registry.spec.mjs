@@ -2015,6 +2015,54 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android message-action-sheet journey with required host coverage', async () => {
+    const snapshot = registrySnapshot();
+    const suite = snapshot.suites.find(
+      (entry) => entry.id === 'android.message-action-sheet',
+    );
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:message-action-sheet',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:message-action-sheet',
+        sourceEntrypoints: [
+          'e2e/android/message-action-sheet-journeys.mts',
+          'e2e/android/message-action-sheet-contract.mts',
+          'e2e/android/message-action-sheet-observer.mts',
+          'e2e/android/message-action-sheet-artifacts.mts',
+        ],
+        availabilityPolicy: 'required',
+        ciTier: 'pull-request',
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:message-action-sheet',
+        command: 'nx run trinity-e2e-android:message-action-sheet',
+        suiteIds: ['android.message-action-sheet'],
+      }),
+    );
+    expect(
+      await runSuite(suite, {
+        execute,
+        environment: {},
+        report: discardReport,
+      }),
+    ).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:message-action-sheet'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('wraps a headless Electron suite with Xvfb', async () => {
     const calls = [];
     const status = await runSuite(

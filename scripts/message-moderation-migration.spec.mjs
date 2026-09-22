@@ -101,7 +101,7 @@ describe('Android message moderation migration', () => {
     const client = readFileSync(clientPath, 'utf8');
 
     expect(client).toMatch(
-      /async longPressCurrent\(\s*selector: string,\s*filter: AccountElementFilter = \{\},\s*\): Promise<void>/,
+      /async longPressCurrent\(\s*selector: string,\s*filter: AccountElementFilter = \{\},\s*options: NativeLongPressOptions = \{\},\s*\): Promise<void>/,
     );
     expect(client).toContain('const LONG_PRESS_DURATION_MS = 750;');
     expect(client).toContain('const LONG_PRESS_DRIFT_PX = 2;');
@@ -121,6 +121,10 @@ describe('Android message moderation migration', () => {
     );
     expect(client).toContain("getComputedStyle(node).userSelect==='none'");
     expect(client).toContain("if(userSelect!=='none')continue");
+    expect(client).toContain(
+      'allowBlankPadding: options.allowBlankPadding === true',
+    );
+    expect(client).toContain('if(!allowBlankPadding)return null');
     expect(client).toContain('selectionSafe:true');
     expect(client).toContain(
       'non-selectable native long-press point inside ${selector}',

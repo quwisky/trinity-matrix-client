@@ -67,6 +67,28 @@ function assertReadOnlyRendererExpressions(source, path) {
   }
 }
 
+function jumpToLatestFixture(source) {
+  const tree = ts.createSourceFile(
+    fixturesSource,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const matches = [];
+  function visit(node) {
+    if (
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === 'createJumpToLatestHistory'
+    )
+      matches.push(node.getText(tree));
+    ts.forEachChild(node, visit);
+  }
+  visit(tree);
+  expect(matches, 'one owned jump-to-latest fixture function').toHaveLength(1);
+  return matches[0];
+}
+
 function assertRuntimeContract({ journey, client, fixtures }) {
   const journeyFragments = [
     "const APPLICATION_ID = 'eu.qwky.trinity'",
@@ -139,7 +161,9 @@ function assertRuntimeContract({ journey, client, fixtures }) {
     'newestEventId,',
     'messageCount: JUMP_TO_LATEST_MESSAGE_COUNT',
   ];
-  for (const fragment of fixtureFragments) expect(fixtures).toContain(fragment);
+  const ownedFixture = jumpToLatestFixture(fixtures);
+  for (const fragment of fixtureFragments)
+    expect(ownedFixture).toContain(fragment);
 
   expect(journey).not.toMatch(/\bretries?\s*[:=]\s*[1-9]/u);
   expect(journey).not.toMatch(
@@ -235,8 +259,9 @@ describe('Android jump-to-latest migration', () => {
     const sources = {
       journey: readFileSync(journeyPath, 'utf8'),
       client: read(clientSource),
-      fixtures: read(fixturesSource),
+      fixtures: jumpToLatestFixture(read(fixturesSource)),
     };
+    assertRuntimeContract(sources);
     const mutations = [
       {
         journey: sources.journey.replace(

@@ -51,7 +51,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(67);
+    expect(uploads.length).toBe(68);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -138,6 +138,15 @@ describe('CI execution contract', () => {
       shard: '${{ matrix.shard }}',
       'report-path':
         'dist/.playwright/trinity-e2e-android/*/android.media-retention/**',
+    });
+    const messageActionSheetUploads = uploads.filter(
+      (step) => step.with.surface === 'android-message-action-sheet',
+    );
+    expect(messageActionSheetUploads).toHaveLength(1);
+    expect(messageActionSheetUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.message-action-sheet/**',
     });
     expect(
       uploads.filter(
@@ -664,7 +673,11 @@ describe('CI execution contract', () => {
                                                                                                                             'android-space-settings-core'
                                                                                                                           ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
                                                                                                                           : /!cancelled\(\).*outputs\.started == 'true'/;
-      expect(step.if).toMatch(gate);
+      expect(step.if).toMatch(
+        step.with.surface === 'android-message-action-sheet'
+          ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+          : gate,
+      );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
     }
@@ -688,7 +701,7 @@ describe('CI execution contract', () => {
     }
   });
 
-  it('runs composer typing through media-retention consecutively on shard 2', () => {
+  it('runs composer typing through message-action-sheet consecutively on shard 2', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -719,6 +732,9 @@ describe('CI execution contract', () => {
     );
     const mediaRetention = lines.findIndex((line) =>
       line.includes('trinity-e2e-android:media-retention'),
+    );
+    const messageActionSheet = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-action-sheet'),
     );
     const typingLine = lines[typing];
     const gifPickerLine = lines[gifPicker];
@@ -764,6 +780,12 @@ describe('CI execution contract', () => {
     expect(mediaRetentionLine).toContain('matrix.shard }}" = "2"');
     expect(mediaRetentionLine).toContain('media-retention-started=true');
     expect(mediaRetentionLine).toContain('--timeout-ms 1500000');
+    expect(messageActionSheet).toBe(mediaRetention + 1);
+    expect(lines[messageActionSheet]).toContain('matrix.shard }}" = "2"');
+    expect(lines[messageActionSheet]).toContain(
+      'message-action-sheet-started=true',
+    );
+    expect(lines[messageActionSheet]).toContain('--timeout-ms 3300000');
   });
 
   it('runs room HTTP recovery after space ordering and before retained Playwright on shard 1', () => {
@@ -1434,7 +1456,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(60);
+    expect(lines).toHaveLength(61);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

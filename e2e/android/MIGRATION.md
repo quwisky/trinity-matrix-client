@@ -5093,3 +5093,101 @@ Shard 1 reached its job time limit; shard 2 later failed the separate
 `legacy-sso` and `sso-recovery-reset` suites passed in this follow-up run.
 Unrelated failures remain under #665. All predecessors stay enabled and
 PR #677 stays draft/open and unmerged.
+
+## Message action sheet journeys
+
+Suite `android.message-action-sheet` implements the five phone definitions in
+`e2e/browser/journeys/conversations/message-action-sheet.spec.mts` without
+editing or retiring them. The source is pinned at SHA-256
+`df1d0bdb6a3ea0e2b16227d26b00b5b8138485cfba27b8ee4782945c22cb91aa`;
+its long-press, Room, clearance and restoration helpers occupy lines 29–143.
+The five definition spans are 151–214, 216–239, 241–259, 261–306 and 308–334.
+The touch-platform pin is
+`8bbf71ffc3e83010599c30ed5c2c347972f5a7b559daa6394613e33af2c43ee1`;
+application-login and Account pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+
+The inventory is 54 unique stage-local identities: 35 direct assertions plus
+five Room-readiness, twelve clearance and two restoration expansions.
+Reply, quick reaction, backdrop dismissal, virtualized latest and Thread
+target own 18 + 4 + 4 + 18 + 10 records respectively. Each stage creates its
+own Account and private Room; the virtual stage sends exactly 80 ordered
+fillers and one newest target and reads back every ready event from Synapse.
+
+Maestro owns login, Room opening, 750 ms long presses, timeline and sheet
+swipes, Reply, the exact quick 👍 reaction, jump-to-latest, Thread opening and
+exposed-backdrop taps. Renderer observations are read-only: they measure the
+single named Message actions dialog, absence of hover controls, connected
+target bounds inside its own scroller, the eight-pixel sheet gap, viewport and
+Cancel reachability. Native swipes must change the measured scroll offset in
+the intended direction; DOM actions and scroll assignment are forbidden.
+Paginated history explicitly measures position relative to the bottom, so
+loading older events cannot disguise a real native swipe by rebasing the top
+offset. It requires both physical offset displacement and logical progress
+beyond two pixels, with an unchanged viewport; content growth alone does not
+pass. Sheet swipes and other callers retain the strict top-offset default.
+
+Grouped latest rows have no avatar, so this stage opts into a measured blank
+row-padding long-press fallback. The default non-selectable target strategy
+is unchanged. The fallback excludes glyphs, links, media and controls by eight
+CSS pixels, hit-tests a rounding envelope against the exact row, and checks
+the transformed native start, drift endpoint and observed pointer path.
+Pre-existing or resulting text selection fails; application selection styles
+are unchanged. A successful press still needs every sheet/target assertion.
+
+Native Thread testing exposed an application gesture conflict with the default
+message-swipe setting of `off`: the open drawer captured the initial touch and
+cancelled the row's long press. The drawer now waits for more than ten CSS
+pixels of rightward closing movement before taking capture; edge opening is
+unchanged. An open action sheet cancels the pending drawer gesture. Composed
+row/drawer regression tests cover long press, continued movement beneath the
+sheet, deliberate closing and vertical scrolling without changing preferences.
+
+Reply checks the exact author banner. Reaction checks both its own visible
+chip and a ready server event with the exact sender, target and annotation
+key. Backdrop dismissal must leave no reply banner or reaction and preserve
+the target content. The virtual stage requires the oldest exact filler,
+native return to the single newest target, fewer than 80 rendered rows and
+latest-state preservation. Both virtual and Thread targets must restore
+their scroller-relative position within two CSS pixels after dismissal.
+
+```bash
+pnpm nx run trinity-e2e-android:message-action-sheet --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-action-sheet
+```
+
+The uncached serial target owns `android-avd` and `synapse`. It uses one
+attempt, zero retries, a 45-minute test budget, a 50-minute Node wrapper and
+a 55-minute CI wrapper, leaving bounded time for setup and teardown.
+Shard 2 runs it immediately after media retention. The
+`android-message-action-sheet` artifact uploads only after its started marker.
+Before any stage, `runtime-provenance.json` binds the pre-install and installed
+APK hashes, production renderer manifest and requested WebView profile to the
+observed Android API/model.
+
+Each started stage records its status, assertion count, duration and
+pass/failure captures. Teardown closes open sheets and Threads, detaches the
+client, clears application data, leaves and forgets fixture Rooms, logs out
+and releases the device. Final redaction and scanning reject generated
+credentials, bearer/Matrix tokens, native Preferences data and raster files.
+Local installed acceptance completed on 2026-09-22 with three consecutive
+frozen-input runs: `mucu0lge-47f72f0c-ee0d-4089-93c4-fad539d2d558`,
+`mucueqmy-ac888006-b974-4503-9148-467f1ab94a19` and
+`mucut2w3-d7d2913d-29e6-4a68-878b-9780063147db`. Each passed 5/5 stages and
+54/54 unique records on attempt 1 with retries 0. Post-cleanup audits accepted
+native-input, exact semantics, geometry/restoration, reaction, provenance,
+redaction, raster absence and teardown evidence against production renderer
+`92adf61a41d30a8fa686ed1d7edd6d9d8dec66ff83fd6c40cb3a262d9f309118`,
+built/installed APK
+`41b5476044ee265dda142e2af4284682446cf1404dd4ed800019e8a22490f705`,
+requested profile
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`
+and observed API 36 / `sdk_gphone64_x86_64`. The earlier
+`muctgn79-ff2a8067-4cb3-4a01-a5a8-e106c5f89d09` infrastructure attempt remains
+a disclosed failure: Maestro stalled before executing the backdrop-stage rail
+tap and required supported runner shutdown after its timeout; it is not counted
+as acceptance. The implementation plan records the full local verification and
+failure history. Original-attempt hosted acceptance remains pending; PR #677
+stays draft/open and this local evidence does not authorize closing #742.
