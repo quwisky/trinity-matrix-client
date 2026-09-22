@@ -24,10 +24,6 @@ import { pickAndroidDocument } from '../e2e/android/maestro-document-picker.mts'
 const nativeSecret = 'synthetic-native-access-token';
 const nativeReadSecret = 'synthetic-native-read-token';
 const nativePreferenceSecret = 'synthetic draft prefix';
-const maestroSessionSource = readFileSync(
-  join(import.meta.dirname, '../e2e/android/maestro-session.mts'),
-  'utf8',
-);
 const nativeLog =
   'V/Capacitor: callback: 42, pluginId: SecureStorage, methodName: internalSetItem, methodData: ' +
   JSON.stringify({
@@ -86,6 +82,11 @@ function fixture({ resources = ['android-avd'], rejectReverse = false } = {}) {
       if (operation === 'shell getprop ro.kernel.qemu') return '1';
       if (operation === 'shell getprop ro.build.version.sdk') return '36';
       if (operation === 'shell getprop ro.product.cpu.abi') return 'x86_64';
+      if (
+        operation ===
+        'shell cat /proc/sys/net/ipv4/ip_local_port_range /proc/net/tcp /proc/net/tcp6'
+      )
+        return '32768 60999\nsl local_address rem_address st\nsl local_address remote_address st\n';
       if (operation.startsWith('shell pm clear ')) return 'Success';
       if (operation === 'reverse --list')
         return 'host tcp:8448 tcp:9448\nhost tcp:5556 tcp:5556';
@@ -190,11 +191,6 @@ describe('Maestro device ownership', () => {
         'Preferences',
       ),
     ).toBe(false);
-  });
-
-  it('probes driver ports on the wildcard address Maestro validates', () => {
-    expect(maestroSessionSource).toContain('server.listen(0, () => {');
-    expect(maestroSessionSource).not.toContain("server.listen(0, '127.0.0.1'");
   });
 
   it('requires the invocation resource before touching adb', async () => {
@@ -622,7 +618,38 @@ describe('Maestro device ownership', () => {
     expect(ports.every((port) => Number.isInteger(port) && port > 0)).toBe(
       true,
     );
+    expect(ports.every((port) => port < 32768 || port > 60999)).toBe(true);
+    expect(
+      f.calls.filter((call) => call.includes('/proc/net/tcp6')),
+    ).toHaveLength(2);
     await device.close();
+  });
+
+  it('does not launch Maestro when Android has no eligible driver port', async () => {
+    const f = fixture();
+    configureMaestro(f);
+    const run = f.commands.run;
+    f.commands.run = async (command, args, options) => {
+      if (args.includes('/proc/sys/net/ipv4/ip_local_port_range'))
+        return '1024 65535\nsl local_address rem_address st\nsl local_address remote_address st\n';
+      return run(command, args, options);
+    };
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+    try {
+      await expect(device.runFlow('/flows/read.yaml')).rejects.toThrow(
+        'No available',
+      );
+      expect(
+        existsSync(
+          join(f.options.workspaceRoot, 'maestro-driver-port-attempts.json'),
+        ),
+      ).toBe(false);
+    } finally {
+      await device.close();
+    }
   });
 
   it('retries a pre-start driver-port rejection with a fresh port', async () => {

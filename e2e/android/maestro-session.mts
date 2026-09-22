@@ -9,12 +9,15 @@ import {
 } from 'node:fs/promises';
 import { closeSync, openSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { createServer } from 'node:net';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { runManagedCommand } from '../support/managed-command.mts';
 import { readSession } from '../support/session.mts';
+import {
+  allocateMaestroDriverPort,
+  parseAndroidPortState,
+} from './maestro-driver-port.mts';
 import {
   acquireProcessLock,
   releaseProcessLock,
@@ -43,27 +46,6 @@ const textArtifactExtensions = new Set([
 const imageArtifactExtensions = new Set(['.jpeg', '.jpg', '.png', '.webp']);
 const redactedSecret = '[REDACTED]';
 const maestroDriverPortAttempts = 3;
-
-const allocateHostPort = (): Promise<number> =>
-  new Promise((resolve, reject) => {
-    const server = createServer();
-    server.unref();
-    server.once('error', reject);
-    // Maestro validates an explicit driver port with ServerSocket(port), which
-    // binds the wildcard address. Probe the same address family/scope so a port
-    // occupied on another local interface cannot pass here and fail in Maestro.
-    server.listen(0, () => {
-      const address = server.address();
-      if (!address || typeof address === 'string') {
-        server.close(() => reject(new Error('Could not allocate a TCP port')));
-        return;
-      }
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(address.port);
-      });
-    });
-  });
 
 const secretValues = (
   variables: Readonly<Record<string, string>>,
@@ -568,10 +550,11 @@ export async function openMaestroDevice(
         let commandStatus: number | string | undefined;
         let descriptorFailure: unknown;
         for (let attempt = 1; attempt <= maestroDriverPortAttempts; attempt++) {
-          let driverHostPort: number;
-          do {
-            driverHostPort = await allocateHostPort();
-          } while (maestroDriverPorts.has(driverHostPort));
+          const devicePorts = parseAndroidPortState(await adb(
+            'shell', 'cat', '/proc/sys/net/ipv4/ip_local_port_range',
+            '/proc/net/tcp', '/proc/net/tcp6',
+          ));
+          const driverHostPort = await allocateMaestroDriverPort(devicePorts, maestroDriverPorts);
           maestroDriverPorts.add(driverHostPort);
           const descriptor = openSync(join(privateOutput, 'maestro.log'), 'w');
           commandStatus = undefined;
