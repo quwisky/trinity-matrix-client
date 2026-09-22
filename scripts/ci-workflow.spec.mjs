@@ -10,6 +10,31 @@ const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
 
 describe('CI execution contract', () => {
+  it('gives shard 1 its measured native prefix, retained Playwright budget, and diagnostics time', () => {
+    const job = workflow.jobs['android-e2e'];
+    const expression = job['timeout-minutes'];
+    const shardOneMinutes = Number(
+      expression.match(/matrix\.shard == 1 && (\d+)/)?.[1] ??
+        expression.match(/\|\| (\d+) \}\}$/)?.[1],
+    );
+    const script = job.steps.find((step) => step.id === 'android').with.script;
+    const retained = script
+      .split('\n')
+      .find((line) => line.includes('pnpm e2e:android --'));
+    const retainedMinutes =
+      Number(retained.match(/--timeout-ms (\d+)/)?.[1]) / 60_000;
+    // Run 35699645053 exceeded 120 minutes. In run 35753147455, shard 1
+    // started at 16:19:06 and reached retained Playwright at 17:57:33.
+    const observedPrefixMinutes = 99;
+    const diagnosticsMinutes = 15;
+    expect(retainedMinutes).toBe(45);
+    expect(shardOneMinutes).toBeGreaterThanOrEqual(
+      observedPrefixMinutes + retainedMinutes + diagnosticsMinutes,
+    );
+    expect(shardOneMinutes).toBeLessThanOrEqual(180);
+    expect(job['continue-on-error']).toBeUndefined();
+  });
+
   it('lets the complete Storybook matrix finish within a bounded command budget', () => {
     const job = workflow.jobs.e2e;
     const storybook = job.steps.find((step) => step.id === 'storybook');
@@ -42,7 +67,7 @@ describe('CI execution contract', () => {
       1, 2, 3, 4,
     ]);
     expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
-      '${{ matrix.shard == 3 && 240 || matrix.shard == 2 && 240 || matrix.shard == 4 && 180 || 120 }}',
+      '${{ matrix.shard == 3 && 240 || matrix.shard == 2 && 240 || matrix.shard == 4 && 180 || 180 }}',
     );
   });
 

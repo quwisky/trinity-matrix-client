@@ -316,14 +316,16 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # Shard 1 allows 20 + 20 + 20 + 45 minutes for commands and 15 for setup/diagnostics.
+    # Shard 1 needs 99 observed minutes before retained Playwright, then its
+    # full 45-minute command budget and 15 for diagnostics; round up to 180.
+    # Run 35699645053 exhausted the former 120-minute job budget.
     # Shard 2 allows 240 minutes for its serialized trust, composer and core
     # Space Settings suites. Run 35460067566 exhausted the former 165-minute
     # budget before started-only diagnostics could upload.
     # Shard 3 allows 20 + 145 + 45 minutes for its commands and 30 for setup/diagnostics.
     # Shard 4 allows 135 minutes for migrated suites and retained Playwright,
     # plus 45 minutes for setup and diagnostics.
-    timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 2 && 240 || matrix.shard == 4 && 180 || 120 }}
+    timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 2 && 240 || matrix.shard == 4 && 180 || 180 }}
     strategy:
       fail-fast: false
       matrix:
