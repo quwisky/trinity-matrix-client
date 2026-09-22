@@ -4994,10 +4994,10 @@ seconds in artifact `10677971452`.
 
 That hosted artifact predates the installed-APK provenance receipt and does
 not retain the exact APK fingerprint, so it is not complete hosted acceptance.
-The new receipt still requires hosted validation. Shard 2 failed
-later in the separate `android.legacy-sso` provider-sign-in stage; the entire
-CI run is not green. The complete Playwright predecessor remains enabled,
-issue #741 remains open, and nothing here authorizes merging PR #677.
+At that point the new receipt still required hosted validation. Shard 2 failed
+later in the separate `android.legacy-sso` provider-sign-in stage; that entire
+CI run was not green. The complete Playwright predecessor remains enabled,
+and nothing here authorizes merging PR #677.
 
 The provenance follow-up passed three unchanged-input local Android first
 attempts, each with 47/47 records, zero retries and clean device/Synapse teardown:
@@ -5035,3 +5035,61 @@ suite explicitly blocks service workers for that known local TLS boundary.
 That diagnostic remains retained and is not claimed as a passing production
 PWA test. The tested production bundle was preserved and restored with its
 original manifest verified; no predecessor or application source was changed.
+
+Hosted provenance acceptance was completed on original attempt 1 of
+[run 35699645053](https://github.com/quwisky/trinity-matrix-client/actions/runs/35699645053),
+feature head `fdda489cc260b4fb3ca72867669e8c429f60bcab` and merge
+`ca56bf016fa9ac6a03912279cd79a391fab3edb0`.
+[Android artifact 10689057060](https://github.com/quwisky/trinity-matrix-client/actions/runs/35699645053/artifacts/10689057060)
+has independently verified archive SHA-256
+`b39c8c741f0b367a3865af86daa1f9738373e79f77b6ecc48408b2783959789c`.
+Invocation `mucgoi8y-2f7ed12d-6d8f-4474-ac5a-96b106e2e195` passed its
+453.825-second stage with all 47 exact semantic records, both complete
+navigation rounds, attempt 1, zero retries and zero failures. Its 289 files
+include 33 passing native-flow JUnits, 33 completed command reports,
+158 completed commands and 25 trusted matched point receipts. The source-verified
+fixture and its receipt confirm separate plaintext/encrypted events, the exact
+PNG, correct AES-CTR-256 construction and ciphertext integrity; the semantic
+records confirm repeated decoding.
+
+The runtime receipt SHA-256 is
+`9b026965728380371a7c68e95f6ed293e4820708e14c1a7909121d901eb3bbb3`.
+Its pre-install and installed APK fingerprints both equal
+`a0ffc3906cff51911bdf1337ddec3c6bd560eca224fe430fa87d7f216085a3e1`
+(14,525,891 bytes). The exact hosted helper source was checked against the
+locally validated implementation; the full APK is not itself in the artifact.
+The receipt identifies production renderer manifest
+`8aa794f732f82364ec381a864a18ac5dacca1d00b2acb0f2181afc6feaf11051`,
+independently verified against all 49 renderer-bundle files. Its requested
+WebView profile digest remains
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`.
+The actual hosted AVD is `pixel_6`, API 36, with observed model
+`sdk_gphone64_x86_64`; the requested Pixel 5 WebView profile is not a claim
+about unmodified emulator geometry.
+
+The unchanged exact predecessor passed at retry 0 in 8.538 seconds in
+[browser artifact 10683090625](https://github.com/quwisky/trinity-matrix-client/actions/runs/35699645053/artifacts/10683090625)
+(317 passed, one expected Android-only geometry skip). Its canonical harness
+uses a development bundle, distinct from the verified production bundle.
+[Renderer-test artifact 10682562356](https://github.com/quwisky/trinity-matrix-client/actions/runs/35699645053/artifacts/10682562356)
+reports nine applicable passes and nine intentional project skips, with zero
+retries. All seven hosted contract/fixture/journey/provenance/predecessor/helper
+source pins matched the locally validated bytes. Owned cleanup, Synapse
+teardown and the final shard-2 unchanged-worktree check passed.
+
+Independent scans of the full Android artifact, including parent logs, found
+none of the required credential, token, attachment-key/IV/hash, media-URL,
+raw-media or raster classes. One identifier-hygiene limitation is retained:
+each of the two disposable fixture event IDs appears three times in native
+selector console logs, duplicated in the shared suite log (12 occurrences
+across two files). Semantic and trusted-point receipts redact these IDs.
+These identifiers are not credentials or media authorization and are outside
+the issue's explicit secret-redaction classes; this is disclosed rather than
+claimed as artifact-wide identifier removal.
+
+This completes the scoped #741 hosted acceptance, not full CI reliability.
+Shard 1 reached its job time limit; shard 2 later failed the separate
+`space-settings-core` `admin.photo-feedback` observation. The earlier
+`legacy-sso` and `sso-recovery-reset` suites passed in this follow-up run.
+Unrelated failures remain under #665. All predecessors stay enabled and
+PR #677 stays draft/open and unmerged.
