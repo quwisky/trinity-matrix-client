@@ -411,6 +411,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'jump-to-latest-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:jump-to-latest; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'link-preview-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:link-preview; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'location-share-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:location-share; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'media-retention-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:media-retention; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'legacy-sso-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:legacy-sso; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'sso-recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-authenticity-shield-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi
@@ -747,6 +748,13 @@ jobs:
           surface: android-location-share
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.location-share/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.media-retention-started == 'true' }}
+        with:
+          surface: android-media-retention
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.media-retention/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}

@@ -474,6 +474,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.location-share'],
   },
   {
+    name: 'e2e:android:media-retention',
+    command: 'nx run trinity-e2e-android:media-retention',
+    kind: 'canonical',
+    suiteIds: ['android.media-retention'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -764,6 +770,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'location-share-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:location-share; fi',
     tier: 'pull-request',
     suiteIds: ['android.location-share'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'media-retention-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:media-retention; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.media-retention'],
   },
   {
     command:

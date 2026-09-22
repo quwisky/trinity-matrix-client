@@ -4884,3 +4884,90 @@ bearer or Matrix token material. Shard 2 later failed in the unrelated retained
 that later failure does not alter this completed suite or its immutable
 artifact. The complete Playwright predecessor remains enabled, and nothing here
 authorizes merging PR #677.
+
+## Media retention journey
+
+Suite `android.media-retention` migrates the complete Android branch from
+`e2e/browser/journeys/conversations/media-retention.spec.mts`, including its
+fixture helpers at lines 16–167, interaction helpers at lines 169–221 and
+definition at lines 226–257. The predecessor is pinned at SHA-256
+`8de218b97b33dbd0513e9b93d21812120d3afa0ecc10e37e530fe265f6f18fc6`;
+the shared application and Account helper pins remain
+`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
+and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
+
+The REST fixture creates one disposable Account and two private Rooms. It
+uploads the exact pinned PNG as `retained-plain.png` with media type
+`image/png`, then uploads separately encrypted AES-CTR-256 ciphertext as
+`retained-encrypted.png` with media type `application/octet-stream`. The
+encrypted Matrix file descriptor uses version `v2`, an exported JWK, a random
+first IV half with a zero lower half, and the ciphertext SHA-256 digest. The
+fixture requires distinct content URIs and event ids and proves that the
+ciphertext differs from the plaintext before the UI journey begins.
+
+Maestro owns login, Rooms navigation, all five Room openings, six image opens
+and six lightbox closes. Read-only renderer observations are scoped to the
+exact event row and require each image bubble and lightbox image to be complete
+with positive natural width. The journey checks the initial Room A visit, then
+two complete A-to-B-to-A rounds. Its exact inventory is 47 unique records: five
+Room-readiness assertions, 18 image-readiness assertions and 24 lightbox
+assertions.
+
+```bash
+pnpm nx run trinity-e2e-android:media-retention --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:media-retention
+```
+
+The uncached serial target owns both `android-avd` and `synapse`, permits one
+attempt with zero retries, and has a 20-minute Node timeout inside a 25-minute
+CI wrapper. Shard 2 runs it immediately after location-share and uploads
+`android-media-retention` diagnostics only after its started marker is written.
+Teardown closes any open lightbox before detaching the WebView, closes the
+fixture, clears application data and releases the device resource. The fixture
+then leaves and forgets both Rooms, logs out, zeros plaintext, ciphertext and IV
+buffers, and discards its remaining references.
+
+Artifact redaction and scanning reject generated credentials, authorization
+and cookie values, bearer or Matrix tokens, MXC and blob URLs, JWK/IV/hash
+material, the raw pinned PNG and every raster diagnostic.
+
+Local acceptance used the unchanged Pixel 5 API 36 profile with SHA-256
+`43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`,
+production renderer manifest SHA-256
+`71cd40d1e0e23f8e5de591436f89f8a846d6d8c532dd28b5bef8f90bce79f7fc`
+and debug APK SHA-256
+`d047b42b4f5e40e50eb08a924211d0e39f6f38ae53d9cbbb8d1df8c42d92274b`.
+Three unchanged-input uncached invocations passed:
+
+- `muc546xs-44928afb-4730-4447-88aa-a8f7ed746ba9` in 285.401 seconds;
+- `muc5bmh1-c6157b2d-2e57-44f9-9291-031102add674` in 283.626 seconds;
+- `muc5ivvt-6073790d-c117-4332-9e01-e25796190be8` in 286.209 seconds.
+
+Every invocation recorded one passed stage, 47/47 unique assertion records,
+attempt 1, zero retries and zero failures. Each tree contains 288 retained
+files, including 33 passing native-flow JUnit reports and 33 completed Maestro
+commands. The Room-readiness, event-scoped bubble, decode, named-dialog and
+hidden-dialog receipts cover the initial visit and both full navigation rounds. The
+built-in scan and an independent bearer/Matrix/media/JWK scan passed for all
+three trees, no raster files were retained, and no emulator remained after
+teardown.
+
+The unchanged browser predecessor passed with one worker and zero retries in
+invocation `muc5r2hk-785517c9-f15a-4b2e-b0ff-3acdfdd3f469` (one test in
+5.347 seconds; 5.965-second suite). All three pinned hashes were rechecked.
+Final production-renderer invocation
+`muc5ugzq-bcfc1b40-a243-4926-97e2-eb6f13b420f8` passed its nine required
+projects while nine host-specific projects were intentionally skipped. The
+resulting verified 49-file, 15,302,553-byte manifest has SHA-256
+`d9bf24966f616f6713ae7bb17b3f99b073a36e9ec73e81d3c46c53913cd9d875`;
+the subsequent prebuilt Android build passed with debug APK SHA-256
+`b79830be593fbde57dec19e91b9c64e9005e3b9e6f42b3f877cd758f7dfbc38c`.
+
+Three setup diagnostics were not accepted: one exposed that image readiness
+does not guarantee its native tap point is in the viewport, and two showed that
+the mobile conversation must use its native Back to rooms control before a
+Room switch. The final flow now performs a native timeline scroll before each
+image tap and follows the established native mobile-back path between Rooms.
+Hosted acceptance remains pending. The complete Playwright predecessor remains
+enabled, and nothing here authorizes merging PR #677.
