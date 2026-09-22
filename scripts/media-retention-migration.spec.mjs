@@ -185,6 +185,9 @@ function assertRuntimeContract({ contract, fixture, journey }) {
     'retries: 0',
     'redactMaestroArtifacts(output, secrets, true)',
     'scanMediaRetentionArtifacts(output, secrets)',
+    'await installWithAndroidRuntimeProvenance({',
+    "output: join(output, 'runtime-provenance.json')",
+    'profile: PIXEL_5_ACCOUNT_PROFILE',
     'await closeOpenLightbox(client)',
     'await client.close()',
     'await fixture.close()',
@@ -201,6 +204,9 @@ function assertRuntimeContract({ contract, fixture, journey }) {
   expect(journey.match(/await openAndCloseLightbox\(/gu)).toHaveLength(2);
   expect(journey.match(/image\.complete === true/gu)).toHaveLength(2);
   expect(journey.match(/image\.naturalWidth > 0/gu)).toHaveLength(2);
+  expect(
+    journey.indexOf('await installWithAndroidRuntimeProvenance({'),
+  ).toBeLessThan(journey.indexOf('for (const entry of cases)'));
   expect(journey).not.toMatch(/\bretries?\s*[:=]\s*[1-9]/u);
   expect(journey).not.toMatch(
     /client\.(?:focusFixture|focusCurrent|fill|replace|navigate|reload)\s*\(/u,
@@ -507,6 +513,13 @@ describe('Android media-retention migration', () => {
           sources.journey,
           'await fixture.close()',
           'void fixture',
+        ),
+      },
+      {
+        journey: mutated(
+          sources.journey,
+          'await installWithAndroidRuntimeProvenance({',
+          'await omitRuntimeProvenance({',
         ),
       },
       {

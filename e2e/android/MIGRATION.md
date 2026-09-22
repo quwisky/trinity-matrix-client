@@ -4932,6 +4932,17 @@ Artifact redaction and scanning reject generated credentials, authorization
 and cookie values, bearer or Matrix tokens, MXC and blob URLs, JWK/IV/hash
 material, the raw pinned PNG and every raster diagnostic.
 
+The runtime provenance helper hashes the built APK before installing it and
+compares that SHA-256 with the installed package's base APK before the journey
+begins. It invalidates any prior receipt before an attempt. It retains both
+digests, APK byte length, renderer manifest digest/commit, the exact requested
+WebView profile and its digest, and observed Android API/model. Missing,
+ambiguous or mismatched installed-binary evidence fails the invocation rather
+than producing a success receipt. The receipt omits local and installed file
+paths; existing host diagnostics may retain diagnostic filesystem paths.
+The requested WebView profile is distinguished from the actual
+emulator model; it is not evidence of an unmodified native viewport.
+
 Local acceptance used the unchanged Pixel 5 API 36 profile with SHA-256
 `43933884ed001211f80f6c95204e0efc6e8ca53615b538a7fda5d3f97020a516`,
 production renderer manifest SHA-256
@@ -4969,5 +4980,58 @@ does not guarantee its native tap point is in the viewport, and two showed that
 the mobile conversation must use its native Back to rooms control before a
 Room switch. The final flow now performs a native timeline scroll before each
 image tap and follows the established native mobile-back path between Rooms.
-Hosted acceptance remains pending. The complete Playwright predecessor remains
-enabled, and nothing here authorizes merging PR #677.
+The first hosted run, `35686583472`, used merge
+`a0201a1384112a0a3850e8080c17783e6d2b58e2` and production renderer manifest
+`fe5a4052361a1c0d5d3c6c817141ca4f017454416ffd7fbafa6aca59c02e9fa1`.
+Its media-retention invocation
+`muc9hm6q-a3214a17-39cd-469a-9681-e904935a3105` passed all 47 records on
+attempt 1 with zero retries in 347.759 seconds. Artifact `10679433167`
+(`sha256:6c5455ea86a8b6aa1311c4f1aceb6a96c754b0ee0897eca89f7511cb3bcf1f1b`)
+contains 33 passing native-flow JUnits, 33 completed command reports and both
+complete navigation rounds. Independent record, fixture and credential/media
+scans passed. The unchanged browser predecessor passed at retry 0 in 8.491
+seconds in artifact `10677971452`.
+
+That hosted artifact predates the installed-APK provenance receipt and does
+not retain the exact APK fingerprint, so it is not complete hosted acceptance.
+The new receipt still requires hosted validation. Shard 2 failed
+later in the separate `android.legacy-sso` provider-sign-in stage; the entire
+CI run is not green. The complete Playwright predecessor remains enabled,
+issue #741 remains open, and nothing here authorizes merging PR #677.
+
+The provenance follow-up passed three unchanged-input local Android first
+attempts, each with 47/47 records, zero retries and clean device/Synapse teardown:
+
+- `mucatdhf-997391e4-7505-4e8f-b5a0-c7e81a59b4d4`: 283.838 seconds;
+- `mucb0y88-ad64fdba-eed4-4835-b8ef-e3abd824340a`: 281.320 seconds;
+- `mucb8gmu-d861384d-926c-4e4d-8aea-337a68bd455d`: 282.876 seconds.
+
+Each independently audited 289-file artifact includes 33 passing native-flow
+JUnits, 33 completed command reports, 25 trusted matched point receipts and the
+same runtime receipt digest
+`aa48dc9bc39839e440c6a0ed21382ba49ab092751afcb2dfcbe6648dc572a8e8`.
+The installed and pre-install APK digests both equal
+`2a974c372bc86d9091a36796127a8b464a17100c2d9011b7c8942b142c202884`;
+renderer manifest digest is
+`c54fb215ed407058a36123339c29af3900a13fc71b5a25cf26a8fecf732ced87`,
+requested WebView profile digest is
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`,
+and the observed device is API 36 `sdk_gphone64_x86_64`. All exact semantic,
+fixture and credential/media/raster scans passed. Independent review accepted
+the receipt and local evidence after stale-output and install-order regression
+tests. The full scripts suite passed 1,088 tests; Android typecheck/lint, format,
+documentation checks and production-renderer validation passed.
+
+The exact unchanged browser predecessor passed in its intended development
+configuration with one worker and zero retries in
+`mucbjtmx-01e2500f-f72a-4e2c-bbf2-5322bc647863` (5.248-second test).
+A supplemental attempt to run the canonical browser configuration against the
+production PWA failed before login in
+`mucbfx6n-b1adb201-a47f-4660-9f4a-514a2b4cf8c3`: its trace records a certificate
+error and subsequent 504 during discovery with the PWA worker loaded,
+consistent with the documented worker/self-signed-TLS failure. Unlike the
+canonical development harness, the production-renderer
+suite explicitly blocks service workers for that known local TLS boundary.
+That diagnostic remains retained and is not claimed as a passing production
+PWA test. The tested production bundle was preserved and restored with its
+original manifest verified; no predecessor or application source was changed.

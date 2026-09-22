@@ -34,6 +34,7 @@ import {
   evaluateNative,
   waitForNativeShellState,
 } from './native-shell-client.mts';
+import { installWithAndroidRuntimeProvenance } from './runtime-provenance.mts';
 
 const APPLICATION_ID = 'eu.qwky.trinity';
 const textArtifactExtensions = new Set([
@@ -476,13 +477,18 @@ void test(
         matrixResources.cleanup('Media-retention Android device', () =>
           device.close(),
         );
-        await device.install(
-          join(
-            session.workspaceRoot,
-            'android/app/build/outputs/apk/debug/app-debug.apk',
-          ),
-          APPLICATION_ID,
+        const apk = join(
+          session.workspaceRoot,
+          'android/app/build/outputs/apk/debug/app-debug.apk',
         );
+        await installWithAndroidRuntimeProvenance({
+          device,
+          applicationId: APPLICATION_ID,
+          apk,
+          rendererManifest: join(session.workspaceRoot, 'dist/web-bundle-manifest.json'),
+          profile: PIXEL_5_ACCOUNT_PROFILE,
+          output: join(output, 'runtime-provenance.json'),
+        });
 
         for (const entry of cases) {
           const directory = join(output, entry.id);
