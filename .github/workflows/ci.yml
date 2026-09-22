@@ -224,10 +224,12 @@ jobs:
 
       # Separate from the Synapse suite: this builds and serves the component Storybook, then
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
+      # The full 163-test matrix reached 157 passes at 10 minutes on a standard runner.
+      # Allow the remaining tests and teardown to finish; retain a finite command deadline.
       - id: storybook
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
+          node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-components:storybook
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
         with:

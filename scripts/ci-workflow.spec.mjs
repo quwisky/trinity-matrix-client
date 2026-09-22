@@ -10,6 +10,22 @@ const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
 
 describe('CI execution contract', () => {
+  it('lets the complete Storybook matrix finish within a bounded command budget', () => {
+    const job = workflow.jobs.e2e;
+    const storybook = job.steps.find((step) => step.id === 'storybook');
+    const timeoutMs = Number(storybook.run.match(/--timeout-ms (\d+)/)?.[1]);
+    // Original run 35753147455: 157/163 passed by the old 10-minute deadline.
+    // Keep room for all six remaining 30-second tests and lifecycle teardown.
+    const observedElapsedMs = 600_000;
+    const remainingTestBudgetMs = 6 * 30_000;
+    const teardownBudgetMs = 30_000;
+    expect(timeoutMs).toBeGreaterThanOrEqual(
+      observedElapsedMs + remainingTestBudgetMs + teardownBudgetMs,
+    );
+    expect(timeoutMs).toBeLessThan(job['timeout-minutes'] * 60_000);
+    expect(storybook['continue-on-error']).toBeUndefined();
+  });
+
   it('classifies every PR and preserves the full code graph', () => {
     expect(workflow.on.pull_request?.['paths-ignore']).toBeUndefined();
     expect(workflow.jobs.classify.outputs.mode).toContain(
