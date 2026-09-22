@@ -4615,8 +4615,32 @@ full 1,056-test scripts target, Android typecheck and lint, and format check all
 passed. An earlier preflight correctly stopped before the suite because the
 renderer still carried the preceding acceptance identity; it produced no test
 result and the renderer was rebuilt before the three controlling runs. Hosted
-acceptance remains pending; the complete Playwright predecessor remains
-enabled, and nothing here authorizes merging PR #677.
+run `35669813769` used exact branch head
+`295bedb60cf3afe65d58fdddb022726d229edc6a` at merge revision
+`cf23194bac55b2978e23c94c113abc68f9aa1c86`. Immutable browser artifact
+`10671700781`, digest
+`sha256:93239aeb1f59f22887b4069c848acfba5cfc42fba86efffa706f7acc4f717fd2`,
+contains invocation `mubx22ej-35fe3f7c-03d2-433e-9b1e-8d57ae0b6e9d`.
+The exact unchanged jump-to-latest predecessor passed once in 4.887 seconds.
+The complete browser suite used two workers and recorded 317 passed, one
+skipped and zero retries across 318 attempts in 917.653 seconds. Re-hashing
+the hosted merge reproduced the pinned predecessor, application and Account
+digests.
+
+The corresponding hosted Android suite passed on original attempt 1 with zero
+retries in 163.340 seconds. Immutable artifact `10674675604`, digest
+`sha256:3774af0a351415a1a32f38bda35ebc5230fa79226add89de9e7e8e2cbd348f92`,
+contains invocation `muc0772r-e2aff029-d22b-4b6d-8722-a60e7508de66`: one
+passed stage, 7/7 unique assertion records, zero failures, nine passing native
+flow JUnit reports and 48/48 completed Maestro commands. Its receipts retain
+the exact 20-event setup and read marker, the measured native swipe and the
+observed transition from bottom to a visible jump pill and back to the bottom.
+The 82 retained files contain no raster diagnostics, and the independent
+credential scan found no bearer or Matrix token material. Shard 2 later failed
+in the unrelated retained `android.space-settings-core` suite while waiting for
+`admin.photo-feedback`; that later failure does not alter this completed suite
+or its immutable artifact. The complete Playwright predecessor remains enabled,
+and nothing here authorizes merging PR #677.
 
 ## Link preview journey
 
@@ -4710,8 +4734,32 @@ path. The same run also showed that Android biometric logcat uses a numeric
 `cookie` field; the scanner now distinguishes that harmless metadata from raw
 HTTP authorization/cookie values. The focused mutation guard pins both fixes,
 and that diagnostic result was not counted among the three controlling runs.
-Hosted acceptance remains pending; the complete Playwright predecessor remains
-enabled, and nothing here authorizes merging PR #677.
+Hosted run `35669813769` used exact branch head
+`295bedb60cf3afe65d58fdddb022726d229edc6a` at merge revision
+`cf23194bac55b2978e23c94c113abc68f9aa1c86`. Immutable browser artifact
+`10671700781`, digest
+`sha256:93239aeb1f59f22887b4069c848acfba5cfc42fba86efffa706f7acc4f717fd2`,
+contains invocation `mubx22ej-35fe3f7c-03d2-433e-9b1e-8d57ae0b6e9d`.
+The exact unchanged link-preview predecessor passed once in 4.046 seconds.
+The complete browser suite used two workers and recorded 317 passed, one
+skipped and zero retries across 318 attempts in 917.653 seconds. Re-hashing
+the hosted merge reproduced the pinned predecessor, Caddy fixture, application
+and Account digests.
+
+The corresponding hosted Android suite passed on original attempt 1 with zero
+retries in 139.504 seconds. Immutable artifact `10674675608`, digest
+`sha256:1433dd09ef35b11bf2252abfda390a97516ab41c30049dc89c5e03dc8257ddba`,
+contains invocation `muc0b5vd-6496426b-db86-46fa-9a8c-9906f11d8103`: one
+passed stage, 3/3 unique assertion records, zero failures, seven passing native
+flow JUnit reports and 40/40 completed Maestro commands. Its receipts retain
+exactly one authenticated Matrix preview request for the encoded hermetic Caddy
+URL, no direct OG/Caddy request, and the exact event, title and destination
+match. The 64 retained files contain no raster diagnostics, and the independent
+credential scan found no bearer or Matrix token material. Shard 2 later failed
+in the unrelated retained `android.space-settings-core` suite while waiting for
+`admin.photo-feedback`; that later failure does not alter this completed suite
+or its immutable artifact. The complete Playwright predecessor remains enabled,
+and nothing here authorizes merging PR #677.
 
 ## Location share journey
 
@@ -4809,5 +4857,30 @@ package before WebView cleanup; it was not accepted. The final teardown detaches
 the WebView first, and only the three subsequent unchanged runs above count as
 acceptance evidence.
 
-Hosted acceptance remains pending; the complete Playwright predecessor remains
-enabled, and nothing here authorizes merging PR #677.
+Hosted run `35669813769` used exact branch head
+`295bedb60cf3afe65d58fdddb022726d229edc6a` at merge revision
+`cf23194bac55b2978e23c94c113abc68f9aa1c86`. Immutable browser artifact
+`10671700781`, digest
+`sha256:93239aeb1f59f22887b4069c848acfba5cfc42fba86efffa706f7acc4f717fd2`,
+contains invocation `mubx22ej-35fe3f7c-03d2-433e-9b1e-8d57ae0b6e9d`.
+The exact unchanged location-share predecessor passed once in 4.474 seconds.
+The complete browser suite used two workers and recorded 317 passed, one
+skipped and zero retries across 318 attempts in 917.653 seconds. Re-hashing
+the hosted merge reproduced the pinned predecessor, Android adapter,
+application and Account digests.
+
+The corresponding hosted Android suite passed on original attempt 1 with zero
+retries in 182.544 seconds. Immutable artifact `10674500687`, digest
+`sha256:d6762e4aeecb5850e3b8100d1bdcba633bbbfa5fb76ea26b6cd4b039ad3326e2`,
+contains invocation `muc0em0p-cff6a2dd-2230-4939-bed0-1392334a7d3f`: one
+passed stage, 8/8 unique assertion records, zero failures, ten passing native
+flow JUnit reports and 53/53 completed Maestro commands. Its receipts retain
+the exact native position and permission baselines, pulsed provider, single
+current-user server echo, event/card/coordinate/OpenStreetMap matches, and the
+action sheet with Copy link present and Edit absent. The 89 retained files
+contain no raster diagnostics, and the independent credential scan found no
+bearer or Matrix token material. Shard 2 later failed in the unrelated retained
+`android.space-settings-core` suite while waiting for `admin.photo-feedback`;
+that later failure does not alter this completed suite or its immutable
+artifact. The complete Playwright predecessor remains enabled, and nothing here
+authorizes merging PR #677.
