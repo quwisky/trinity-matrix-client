@@ -1,6 +1,10 @@
 import { Component, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { render } from '@trinity/testing';
+import {
+  TrnActionSheetService,
+  TrnDialogService,
+} from '@trinity/components/overlay';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DrawerSwipeDirective,
@@ -42,13 +46,21 @@ const OPENING_BAND_X =
   400 - NATIVE_HISTORY_EDGE_PX - Math.floor(EDGE_ZONE_PX / 2);
 
 /** A touch pointer at (x, y), `at` ms into the gesture. */
-function touch(type: string, x: number, y = 100, at = 0): PointerEvent {
+function touch(
+  type: string,
+  x: number,
+  y = 100,
+  at = 0,
+  over: PointerEventInit = {},
+): PointerEvent {
   const event = new PointerEvent(type, {
     clientX: x,
     clientY: y,
     pointerType: 'touch',
     pointerId: 1,
+    isPrimary: true,
     bubbles: true,
+    ...over,
   });
   // `timeStamp` is read-only and always 0 in jsdom; the directive divides by it for velocity.
   Object.defineProperty(event, 'timeStamp', { value: at });
@@ -59,17 +71,21 @@ describe('DrawerSwipeDirective', () => {
   let target: HTMLElement;
   let shell: HTMLElement;
   let host: HostComponent;
+  let fixture: ComponentFixture<HostComponent>;
 
   beforeEach(async () => {
     // The edge zone is measured from the viewport's right edge.
     vi.stubGlobal('innerWidth', 400);
-    const { container, fixture } = await render(HostComponent);
+    const rendered = await render(HostComponent);
+    const { container } = rendered;
+    fixture = rendered.fixture;
     target = container.querySelector('[trnDrawerSwipe]') as HTMLElement;
     shell = container.querySelector('[data-shell-root]') as HTMLElement;
     host = fixture.componentInstance;
   });
 
   afterEach(() => {
+    TestBed.inject(TrnDialogService).closeAll();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -139,6 +155,123 @@ describe('DrawerSwipeDirective', () => {
       drag(100, 140, 800);
 
       expect(host.events).toEqual([]);
+    });
+
+    it('leaves a stationary press with its child until a closing drag wins', () => {
+      const capture = vi.fn();
+      target.setPointerCapture = capture;
+      target.dispatchEvent(touch('pointerdown', 100));
+      target.dispatchEvent(touch('pointermove', 100.8, 100, 9));
+      target.dispatchEvent(touch('pointermove', 110, 100, 500));
+
+      expect(capture).not.toHaveBeenCalled();
+      expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
+
+      target.dispatchEvent(touch('pointermove', 111, 100, 510));
+      expect(capture).toHaveBeenCalledExactlyOnceWith(1);
+      expect(shell.style.getPropertyValue('--drawer-drag')).toBe('11px');
+
+      target.dispatchEvent(touch('pointerup', 220, 100, 600));
+      expect(host.events).toEqual(['closed']);
+      expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
+    });
+
+    it('does not mistake a fast sub-slop release for a closing flick', () => {
+      drag(100, 105, 1);
+      expect(host.events).toEqual([]);
+    });
+
+    it('does not capture a wrong-way drag', () => {
+      const capture = vi.fn();
+      target.setPointerCapture = capture;
+      drag(100, 50);
+      expect(capture).not.toHaveBeenCalled();
+      expect(host.events).toEqual([]);
+    });
+
+    it('gives up a vertical scroll without taking the pointer', () => {
+      const capture = vi.fn();
+      target.setPointerCapture = capture;
+      target.dispatchEvent(touch('pointerdown', 100));
+      target.dispatchEvent(touch('pointermove', 108, 113, 100));
+      target.dispatchEvent(touch('pointerup', 220, 113, 300));
+      expect(capture).not.toHaveBeenCalled();
+      expect(host.events).toEqual([]);
+    });
+
+    it.each(['pointermove', 'pointerup'])(
+      'does not close beneath a new action sheet on %s',
+      (nextEvent) => {
+        target.dispatchEvent(touch('pointerdown', 100));
+        TestBed.inject(TrnActionSheetService).open(
+          { buttons: [] },
+          'Message actions',
+        );
+        target.dispatchEvent(touch(nextEvent, 220, 100, 750));
+        target.dispatchEvent(touch('pointerup', 220, 100, 800));
+        expect(host.events).toEqual([]);
+        expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
+      },
+    );
+
+    it('cleans up an uncaptured press released outside the host', () => {
+      const capture = vi.fn();
+      target.setPointerCapture = capture;
+      target.dispatchEvent(touch('pointerdown', 100));
+      document.body.dispatchEvent(touch('pointerup', 101, 100, 750));
+      target.dispatchEvent(touch('pointermove', 230, 100, 800));
+      target.dispatchEvent(touch('pointerup', 230, 100, 850));
+      expect(capture).not.toHaveBeenCalled();
+      expect(host.events).toEqual([]);
+      drag(100, 220);
+      expect(host.events).toEqual(['closed']);
+    });
+
+    it.each([5, 20])(
+      'keeps the primary gesture when a second finger lands after %ipx',
+      (distance) => {
+        target.dispatchEvent(touch('pointerdown', 100));
+        target.dispatchEvent(touch('pointermove', 100 + distance, 100, 50));
+        target.dispatchEvent(
+          touch('pointerdown', 300, 100, 100, {
+            pointerId: 2,
+            isPrimary: false,
+          }),
+        );
+        target.dispatchEvent(touch('pointermove', 220, 100, 200));
+        target.dispatchEvent(touch('pointerup', 220, 100, 300));
+        expect(host.events).toEqual(['closed']);
+      },
+    );
+
+    it('ignores cancellation of another finger', () => {
+      target.dispatchEvent(touch('pointerdown', 100));
+      target.dispatchEvent(
+        touch('pointercancel', 100, 100, 50, {
+          pointerId: 2,
+          isPrimary: false,
+        }),
+      );
+      target.dispatchEvent(touch('pointermove', 220, 100, 200));
+      target.dispatchEvent(touch('pointerup', 220, 100, 300));
+      expect(host.events).toEqual(['closed']);
+    });
+
+    it('releases capture only when the drawer acquired it', () => {
+      const release = vi.fn();
+      target.releasePointerCapture = release;
+      target.hasPointerCapture = () => true;
+      drag(100, 101);
+      expect(release).not.toHaveBeenCalled();
+      drag(100, 220);
+      expect(release).toHaveBeenCalledExactlyOnceWith(1);
+    });
+
+    it('removes pending listeners when its host is destroyed', () => {
+      target.dispatchEvent(touch('pointerdown', 100));
+      fixture.destroy();
+      target.dispatchEvent(touch('pointermove', 220, 100, 200));
+      expect(shell.style.getPropertyValue('--drawer-drag')).toBe('');
     });
   });
 

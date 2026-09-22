@@ -1,4 +1,12 @@
-import { Directive, ElementRef, inject, input, output } from '@angular/core';
+import {
+  DestroyRef,
+  Directive,
+  ElementRef,
+  inject,
+  input,
+  output,
+} from '@angular/core';
+import { TrnDialogService } from '@trinity/components/overlay';
 import { prefersReducedMotion } from '@trinity/util/ui';
 
 /**
@@ -62,6 +70,9 @@ const COMMIT_VELOCITY_PX_PER_MS = 0.5;
  */
 const VERTICAL_SLOP_PX = 12;
 
+/** Leave stationary touches to child long presses until a closing drag wins. */
+const CLOSE_DRAG_SLOP_PX = 10;
+
 @Directive({
   selector: '[trnDrawerSwipe]',
   host: {
@@ -70,6 +81,7 @@ const VERTICAL_SLOP_PX = 12;
 })
 export class DrawerSwipeDirective {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
+  private readonly dialogs = inject(TrnDialogService);
 
   /** Whether the drawer is currently showing — decides which gesture is available. */
   readonly drawerOpen = input.required<boolean>();
@@ -91,9 +103,21 @@ export class DrawerSwipeDirective {
   private startY = 0;
   private startedAt = 0;
   private latest = 0;
+  private closing = false;
+  private captured = false;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.cancel());
+  }
 
   onPointerDown(event: PointerEvent): void {
-    if (!this.drawerEnabled() || event.pointerType === 'mouse') {
+    if (
+      !this.drawerEnabled() ||
+      event.pointerType === 'mouse' ||
+      !event.isPrimary ||
+      this.tracking ||
+      this.dialogs.hasOpen()
+    ) {
       return; // a mouse has the button; this is the touch affordance
     }
     const distanceFromRight = window.innerWidth - event.clientX;
@@ -117,21 +141,20 @@ export class DrawerSwipeDirective {
     this.startY = event.clientY;
     this.startedAt = event.timeStamp;
     this.latest = 0;
-    // Captured, for the same two reasons `PaneHandleComponent` captures: a drag that leaves
-    // this element keeps reporting here rather than to whatever it crossed, and `pointerup`
-    // arrives unconditionally. Without it a gesture released outside the host — sideways into
-    // the sidebar column, which is a sibling between `md` and `members` — never completes,
-    // and the drawer is left translated mid-drag until the next press.
-    //
-    // Capture also binds the gesture to ONE pointer, which the `pointerId` guards below
-    // finish: a second finger landing mid-drag must not be read as the same swipe.
-    this.host.nativeElement.setPointerCapture?.(event.pointerId);
+    this.closing = onDrawer;
+    // Edge opening already belongs to the drawer. Inside an open drawer, however,
+    // immediate capture sends pointerleave to the pressed message and cancels its
+    // long press even before the finger moves. Closing must first beat that slop.
+    if (!this.closing) this.capture(event.pointerId);
     this.host.nativeElement.addEventListener('pointermove', this.onPointerMove);
-    this.host.nativeElement.addEventListener('pointerup', this.onPointerUp);
-    this.host.nativeElement.addEventListener(
-      'pointercancel',
-      this.onPointerCancel,
-    );
+    // Before capture, a release outside the host must still end the pending press.
+    window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerCancel);
+  }
+
+  private capture(pointerId: number): void {
+    this.captured = true;
+    this.host.nativeElement.setPointerCapture?.(pointerId);
   }
 
   /**
@@ -142,12 +165,21 @@ export class DrawerSwipeDirective {
     if (!this.tracking || event.pointerId !== this.pointerId) {
       return;
     }
-    if (Math.abs(event.clientY - this.startY) > VERTICAL_SLOP_PX) {
-      // Turned into a scroll. Abandon rather than fight it — the drawer's content scrolls.
+    if (
+      this.dialogs.hasOpen() ||
+      !this.drawerEnabled() ||
+      this.drawerOpen() !== this.closing ||
+      Math.abs(event.clientY - this.startY) > VERTICAL_SLOP_PX
+    ) {
+      // Scrolling, a new overlay or a changed layout takes this gesture away.
       this.cancel();
       return;
     }
     this.track(event);
+    if (!this.captured) {
+      if (this.latest <= CLOSE_DRAG_SLOP_PX) return;
+      this.capture(event.pointerId);
+    }
     this.paint(this.latest);
   };
 
@@ -155,11 +187,22 @@ export class DrawerSwipeDirective {
   private track(event: PointerEvent): void {
     const delta = event.clientX - this.startX;
     // Opening drags LEFT (negative) from the right edge; closing drags RIGHT (positive).
-    this.latest = this.drawerOpen() ? Math.max(0, delta) : Math.max(0, -delta);
+    this.latest = this.closing ? Math.max(0, delta) : Math.max(0, -delta);
   }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
     if (!this.tracking || event.pointerId !== this.pointerId) {
+      return;
+    }
+    // A long press may have opened a sheet while its original finger was still
+    // down. That overlay owns the rest of the touch, not the drawer underneath.
+    if (
+      this.dialogs.hasOpen() ||
+      !this.drawerEnabled() ||
+      this.drawerOpen() !== this.closing ||
+      Math.abs(event.clientY - this.startY) > VERTICAL_SLOP_PX
+    ) {
+      this.cancel();
       return;
     }
     // The release point is the final position, not just the last move: a fast gesture can end
@@ -169,9 +212,10 @@ export class DrawerSwipeDirective {
     const elapsed = Math.max(1, event.timeStamp - this.startedAt);
     const velocity = this.latest / elapsed;
     const committed =
-      this.latest >= this.drawerWidth() * COMMIT_FRACTION ||
-      velocity >= COMMIT_VELOCITY_PX_PER_MS;
-    const wasOpen = this.drawerOpen();
+      (!this.closing || this.latest > CLOSE_DRAG_SLOP_PX) &&
+      (this.latest >= this.drawerWidth() * COMMIT_FRACTION ||
+        velocity >= COMMIT_VELOCITY_PX_PER_MS);
+    const wasOpen = this.closing;
     this.cancel();
 
     if (!committed) {
@@ -184,25 +228,30 @@ export class DrawerSwipeDirective {
     }
   };
 
-  private readonly onPointerCancel = (): void => this.cancel();
+  private readonly onPointerCancel = (event: PointerEvent): void => {
+    if (event.pointerId === this.pointerId) this.cancel();
+  };
 
   /** Stop tracking and hand the layout back to CSS. */
   private cancel(): void {
-    if (this.pointerId !== null) {
-      this.host.nativeElement.releasePointerCapture?.(this.pointerId);
-      this.pointerId = null;
+    const pointerId = this.pointerId;
+    this.pointerId = null;
+    if (
+      this.captured &&
+      pointerId !== null &&
+      this.host.nativeElement.hasPointerCapture?.(pointerId)
+    ) {
+      this.host.nativeElement.releasePointerCapture(pointerId);
     }
+    this.captured = false;
     this.tracking = false;
     this.paint(null);
     this.host.nativeElement.removeEventListener(
       'pointermove',
       this.onPointerMove,
     );
-    this.host.nativeElement.removeEventListener('pointerup', this.onPointerUp);
-    this.host.nativeElement.removeEventListener(
-      'pointercancel',
-      this.onPointerCancel,
-    );
+    window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerCancel);
   }
 
   /**
