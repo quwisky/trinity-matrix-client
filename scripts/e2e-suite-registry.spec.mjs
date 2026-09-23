@@ -2015,6 +2015,51 @@ describe('E2E suite registry runner', () => {
     );
   });
 
+  it('registers the Android edit-history journey with required host coverage', async () => {
+    const snapshot = registrySnapshot();
+    const matches = snapshot.suites.filter(
+      (entry) => entry.id === 'android.edit-history',
+    );
+    expect(matches).toHaveLength(1);
+    const suite = matches[0];
+    const execute = vi.fn().mockResolvedValue({ status: 0 });
+    expect(suite).toEqual(
+      expect.objectContaining({
+        currentTarget: 'trinity-e2e-android:edit-history',
+        targetProject: 'trinity-e2e-android',
+        canonicalScript: 'e2e:android:edit-history',
+        sourceEntrypoints: [
+          'e2e/android/edit-history-journeys.mts',
+          'e2e/android/edit-history-contract.mts',
+          'e2e/android/edit-history-fixture.mts',
+          'e2e/android/edit-history-observer.mts',
+          'e2e/android/edit-history-artifacts.mts',
+        ],
+        availabilityPolicy: 'required',
+        ciTier: 'pull-request',
+        timeoutClass: 'host',
+        cachePolicy: 'never',
+        serializationKeys: ['android-avd', 'synapse'],
+      }),
+    );
+    expect(snapshot.packageScripts).toContainEqual(
+      expect.objectContaining({
+        name: 'e2e:android:edit-history',
+        command: 'nx run trinity-e2e-android:edit-history',
+        suiteIds: ['android.edit-history'],
+      }),
+    );
+    expect(await runSuite(suite, { execute, report: discardReport })).toBe(0);
+    expect(execute).toHaveBeenCalledWith(
+      'pnpm',
+      ['exec', 'nx', 'run', 'trinity-e2e-android:edit-history'],
+      expect.objectContaining({
+        timeout: 3_600_000,
+        terminationGraceMs: 30_000,
+      }),
+    );
+  });
+
   it('registers the Android message-action-sheet journey with required host coverage', async () => {
     const snapshot = registrySnapshot();
     const suite = snapshot.suites.find(

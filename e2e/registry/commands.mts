@@ -486,6 +486,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-action-sheet'],
   },
   {
+    name: 'e2e:android:edit-history',
+    command: 'nx run trinity-e2e-android:edit-history',
+    kind: 'canonical',
+    suiteIds: ['android.edit-history'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -788,6 +794,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-action-sheet-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-action-sheet; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-action-sheet'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'edit-history-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm nx run trinity-e2e-android:edit-history; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.edit-history'],
   },
   {
     command:

@@ -1,5 +1,12 @@
 # Android Edit History Migration Implementation Plan
 
+> **Superseded:** Use `docs/superpowers/plans/2026-09-23-android-edit-history-maestro.md`
+> with the approved `docs/superpowers/specs/2026-09-23-android-edit-history-maestro-design.md`.
+> This earlier plan predates the installed-WebView font-scale probe and the
+> abort-independent device-lease cleanup design. It is retained only as
+> historical preparation; do not execute its Task 0 breakpoint claim or its
+> detached font-scale seam.
+
 > **Execution:** Use `superpowers:executing-plans`,
 > `superpowers:test-driven-development` and
 > `superpowers:verification-before-completion`; subagent delegation is not part

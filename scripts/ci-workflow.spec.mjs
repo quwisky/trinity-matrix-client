@@ -92,7 +92,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(68);
+    expect(uploads.length).toBe(69);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -189,6 +189,18 @@ describe('CI execution contract', () => {
       'report-path':
         'dist/.playwright/trinity-e2e-android/*/android.message-action-sheet/**',
     });
+    const editHistoryUploads = uploads.filter(
+      (step) => step.with.surface === 'android-edit-history',
+    );
+    expect(editHistoryUploads).toHaveLength(1);
+    expect(editHistoryUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.edit-history/**',
+    });
+    expect(editHistoryUploads[0].if).toContain(
+      "steps.edit-history-artifact-gate.outputs.edit-history-safe == 'true'",
+    );
     expect(
       uploads.filter(
         (step) => step.with.surface === 'android-accounts-workspace',
@@ -717,7 +729,9 @@ describe('CI execution contract', () => {
       expect(step.if).toMatch(
         step.with.surface === 'android-message-action-sheet'
           ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
-          : gate,
+          : step.with.surface === 'android-edit-history'
+            ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+            : gate,
       );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -1497,7 +1511,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(61);
+    expect(lines).toHaveLength(62);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import assert from 'node:assert/strict';
 import {
   mkdir,
   readFile,
@@ -245,10 +246,18 @@ export interface MaestroDeviceOptions {
   readonly bootTimeoutMs?: number;
 }
 
+export interface FontScaleLease {
+  readonly previous: string | null;
+  readonly applied: '1.5';
+  restore(): Promise<void>;
+}
+
 export interface MaestroDevice {
   readonly serial: string;
   readonly artifactDirectory: string;
   adb(...args: string[]): Promise<string>;
+  /** Apply real Android large text and restore the exact prior setting. */
+  setFontScale(scale: '1.5'): Promise<FontScaleLease>;
   /** Stage a file whose idempotent removal also runs before device teardown. */
   stageFile(
     localPath: string,
@@ -290,6 +299,7 @@ export async function openMaestroDevice(
   const maestroDriverPorts = new Set<number>();
   const reverses: Array<{ local: string; previous: string | undefined }> = [];
   const stagedFiles = new Set<() => Promise<void>>();
+  const fontScaleRestorers = new Set<() => Promise<void>>();
   let closing: Promise<void> | undefined;
   const rawAdb = (...args: string[]): Promise<string> =>
     commands.run(adbBinary, ['-s', serial, ...args], {
@@ -310,6 +320,51 @@ export async function openMaestroDevice(
     commands.run(adbBinary, ['-s', serial, ...args], {
       signal: options.signal,
     });
+  const setFontScale = async (scale: '1.5'): Promise<FontScaleLease> => {
+    options.signal?.throwIfAborted();
+    if (closing) throw new Error('Cannot change font scale on a closing device');
+    const before = await rawAdb(
+      'shell', 'settings', 'get', 'system', 'font_scale',
+    );
+    options.signal?.throwIfAborted();
+    if (closing) throw new Error('Device closed before font-scale write');
+    const previous = before.trim() === 'null' ? null : before.trim();
+    let write: Promise<string> = Promise.resolve('');
+    let restored = false;
+    let restoring: Promise<void> | undefined;
+    const restore = (): Promise<void> => {
+      if (restored) return Promise.resolve();
+      return (restoring ??= (async () => {
+        await write.catch(() => undefined);
+        if (previous === null)
+          await rawAdb('shell', 'settings', 'delete', 'system', 'font_scale');
+        else
+          await rawAdb('shell', 'settings', 'put', 'system', 'font_scale', previous);
+        const after = await rawAdb('shell', 'settings', 'get', 'system', 'font_scale');
+        assert.equal(after.trim(), previous ?? 'null', 'Exact prior font scale restored');
+        restored = true;
+        fontScaleRestorers.delete(restore);
+      })().catch((error: unknown) => {
+        restoring = undefined;
+        throw error;
+      }));
+    };
+    fontScaleRestorers.add(restore);
+    write = rawAdb('shell', 'settings', 'put', 'system', 'font_scale', scale);
+    try {
+      await write;
+      const applied = await rawAdb('shell', 'settings', 'get', 'system', 'font_scale');
+      assert.equal(applied.trim(), scale, 'Android font scale applied');
+    } catch (error) {
+      try {
+        await restore();
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'Font scale apply and restore failed');
+      }
+      throw error;
+    }
+    return { previous, applied: scale, restore };
+  };
   const activeApplicationCleanups = new Map<
     MaestroApplicationId,
     Promise<void>
@@ -358,6 +413,9 @@ export async function openMaestroDevice(
     (closing ??= (async () => {
       options.signal?.removeEventListener('abort', abort);
       const failures: unknown[] = [];
+      for (const restore of [...fontScaleRestorers].reverse()) {
+        await restore().catch((error: unknown) => failures.push(error));
+      }
       for (const remove of [...stagedFiles].reverse()) {
         await remove().catch((error: unknown) => failures.push(error));
       }
@@ -488,6 +546,7 @@ export async function openMaestroDevice(
       serial,
       artifactDirectory: options.artifactDirectory,
       adb,
+      setFontScale,
       clearApplicationData,
       close,
       async stageFile(localPath, remotePath) {

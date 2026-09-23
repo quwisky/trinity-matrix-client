@@ -121,6 +121,35 @@ function fixture({ resources = ['android-avd'], rejectReverse = false } = {}) {
   };
 }
 
+function fontScaleCommands(f, { initial = '1.0', onSetting } = {}) {
+  const state = { value: initial, operations: [], options: [] };
+  const commands = {
+    ...f.commands,
+    async run(command, args, options) {
+      const operation = args.slice(args[0] === '-s' ? 2 : 0).join(' ');
+      if (!operation.startsWith('shell settings '))
+        return f.commands.run(command, args, options);
+      state.operations.push(operation);
+      state.options.push(options);
+      const override = await onSetting?.(operation, state);
+      if (override !== undefined) return override;
+      if (operation === 'shell settings get system font_scale')
+        return state.value ?? 'null';
+      if (operation === 'shell settings delete system font_scale') {
+        state.value = null;
+        return 'Deleted 1 rows';
+      }
+      const prefix = 'shell settings put system font_scale ';
+      if (operation.startsWith(prefix)) {
+        state.value = operation.slice(prefix.length);
+        return '';
+      }
+      throw new Error(`Unexpected settings operation: ${operation}`);
+    },
+  };
+  return { state, commands };
+}
+
 function configureMaestro(
   f,
   { driverPortFailures = 0, exitCode = 0, failScrub = false, sleepMs = 0 } = {},
@@ -178,6 +207,134 @@ async function waitForPrivateCommands(f) {
 }
 
 describe('Maestro device ownership', () => {
+  it('restores the exact prior font scale idempotently before owned emulator teardown', async () => {
+    const f = fixture();
+    const { state, commands } = fontScaleCommands(f);
+    const device = await openMaestroDevice(f.options, commands);
+    const lease = await device.setFontScale('1.5');
+    expect(lease.previous).toBe('1.0');
+    expect(lease.applied).toBe('1.5');
+    expect(state.value).toBe('1.5');
+    await lease.restore();
+    await lease.restore();
+    await device.close();
+    expect(state.value).toBe('1.0');
+    expect(state.operations).toEqual([
+      'shell settings get system font_scale',
+      'shell settings put system font_scale 1.5',
+      'shell settings get system font_scale',
+      'shell settings put system font_scale 1.0',
+      'shell settings get system font_scale',
+    ]);
+    expect(f.closed()).toBe(1);
+  });
+
+  it('waits for an in-flight font write and deletes an absent setting after cancellation', async () => {
+    const f = fixture();
+    const controller = new AbortController();
+    let writeStarted;
+    let releaseWrite;
+    const started = new Promise((resolve) => {
+      writeStarted = resolve;
+    });
+    const gate = new Promise((resolve) => {
+      releaseWrite = resolve;
+    });
+    const { state, commands } = fontScaleCommands(f, {
+      initial: null,
+      async onSetting(operation) {
+        if (operation === 'shell settings put system font_scale 1.5') {
+          writeStarted();
+          await gate;
+        }
+      },
+    });
+    const device = await openMaestroDevice(
+      { ...f.options, signal: controller.signal },
+      commands,
+    );
+    const applying = device.setFontScale('1.5');
+    await started;
+    controller.abort(new Error('font write cancelled'));
+    const closing = device.close();
+    releaseWrite();
+    await Promise.allSettled([applying, closing]);
+    expect(state.value).toBeNull();
+    expect(state.operations).toContain(
+      'shell settings delete system font_scale',
+    );
+    expect(
+      state.operations.indexOf('shell settings delete system font_scale'),
+    ).toBeGreaterThan(
+      state.operations.indexOf('shell settings put system font_scale 1.5'),
+    );
+    expect(
+      state.options.every(
+        (entry) =>
+          entry.timeout === 2_000 &&
+          entry.signal !== controller.signal &&
+          !entry.signal.aborted,
+      ),
+    ).toBe(true);
+    expect(f.closed()).toBe(1);
+  });
+
+  it('retries a failed explicit font restore when the device closes', async () => {
+    const f = fixture();
+    let failuresRemaining = 1;
+    const { state, commands } = fontScaleCommands(f, {
+      onSetting(operation) {
+        if (
+          operation === 'shell settings put system font_scale 1.0' &&
+          failuresRemaining-- > 0
+        )
+          throw new Error('restore rejected once');
+      },
+    });
+    const device = await openMaestroDevice(f.options, commands);
+    const lease = await device.setFontScale('1.5');
+    await expect(lease.restore()).rejects.toThrow('restore rejected once');
+    expect(state.value).toBe('1.5');
+    await device.close();
+    expect(state.value).toBe('1.0');
+    expect(
+      state.operations.filter(
+        (operation) => operation === 'shell settings put system font_scale 1.0',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('rejects a font write readback mismatch and restores the saved value', async () => {
+    const f = fixture();
+    let reads = 0;
+    const { state, commands } = fontScaleCommands(f, {
+      onSetting(operation) {
+        if (
+          operation === 'shell settings get system font_scale' &&
+          ++reads === 2
+        )
+          return 'not-applied';
+      },
+    });
+    const device = await openMaestroDevice(f.options, commands);
+    await expect(device.setFontScale('1.5')).rejects.toThrow();
+    expect(state.value).toBe('1.0');
+    await device.close();
+  });
+
+  it('restores font scale while releasing a borrowed emulator without stopping it', async () => {
+    const f = fixture();
+    const { state, commands } = fontScaleCommands(f, { initial: null });
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      commands,
+    );
+    await device.setFontScale('1.5');
+    await device.close();
+    expect(state.value).toBeNull();
+    expect(f.closed()).toBe(0);
+  });
+
   it('distinguishes exact redacted native storage payloads from raw values', () => {
     expect(
       nativeStorageMethodDataIsRedacted(

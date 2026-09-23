@@ -417,6 +417,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'location-share-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:location-share; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'media-retention-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:media-retention; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-action-sheet-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3300000 -- pnpm exec nx run trinity-e2e-android:message-action-sheet; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'edit-history-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm nx run trinity-e2e-android:edit-history; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'legacy-sso-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:legacy-sso; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'sso-recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-authenticity-shield-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi
@@ -448,6 +449,16 @@ jobs:
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'security-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:security-settings; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
+
+      - name: Gate Android edit-history diagnostics
+        id: edit-history-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.edit-history-started == 'true' }}
+        env:
+          EDIT_HISTORY_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if find "$EDIT_HISTORY_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.edit-history/edit-history/publication-safe' -print -quit | rg -q .; then
+            echo 'edit-history-safe=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.started == 'true' }}
@@ -767,6 +778,13 @@ jobs:
           surface: android-message-action-sheet
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-action-sheet/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.edit-history-started == 'true' && steps.edit-history-artifact-gate.outputs.edit-history-safe == 'true' }}
+        with:
+          surface: android-edit-history
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.edit-history/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}

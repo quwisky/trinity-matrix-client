@@ -5191,3 +5191,63 @@ tap and required supported runner shutdown after its timeout; it is not counted
 as acceptance. The implementation plan records the full local verification and
 failure history. Original-attempt hosted acceptance remains pending; PR #677
 stays draft/open and this local evidence does not authorize closing #742.
+
+## Edit-history journeys
+
+Suite `android.edit-history` migrates the two Android-applicable definitions in
+`e2e/browser/journeys/conversations/message-edit-history.spec.mts` without
+editing or retiring any Playwright predecessor. The source is pinned at
+SHA-256 `66b251c72f0939a9913fb31641107f500d22cf627ff7b566740e15e744c37153`.
+The 46 revision-lifecycle records map to lines 123–396. The Pixel 5 stage maps
+three shared helper assertions (lines 108, 111 and 116) plus 13 direct
+assertions (lines 500–552), for 16 records and 62 unique ordered records in
+total. The 25 assertion sites in the desktop-only definition (lines 398–495)
+are deliberately excluded from Android parity.
+
+Private Matrix REST fixtures create the edit chains and verify live/redacted
+server relations after both removals. For the separately redacted original,
+direct event reads prove its edit remains live with the exact wire payload;
+Synapse suppresses relation listings on that redacted parent. Maestro owns
+every product action:
+login, Room and marker navigation, dialog toggles, native scrolling, Remove,
+confirmation and Close. WebView inspection reads exact text, diff markup and
+geometry only; it never drives input or changes the viewport. The Pixel 5
+profile is 393×727 CSS pixels at DPR 2.75. A reversible device lease applies
+real Android `font_scale=1.5`, proves the computed WebView root grows to at
+least 24px while the viewport and DPR remain fixed, and restores the prior
+setting even after cancellation. It does not claim that this crosses the
+desktop breakpoint.
+
+```bash
+pnpm nx run trinity-e2e-android:edit-history --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:edit-history
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt, zero
+retries, a 40-minute Node budget and 45-minute CI wrapper. Shard 2 runs it
+immediately after message-action-sheet. `runtime-provenance.json` binds the
+production renderer, pre-install and installed APK hashes, requested profile
+and observed Android device. Each started stage records its source, status,
+duration and exact assertion identities in `journeys.json`. Fixture and device
+cleanup can revoke a provisional pass. Diagnostics are scrubbed and scanned
+for credentials, bearer tokens, native-storage payloads and rasters; the
+`font-scale-applied.json` and `font-scale-restored.json` receipts bind the
+computed root to the device setting and its verified prior-value readback. The
+`android-edit-history` upload requires both the started marker and the
+post-scan `publication-safe` marker. The unchanged local acceptance runs
+`mueib9ke-cbc0592f-32e1-4bc4-9838-ca2b7bf602a9`,
+`mueildta-e8ee93e2-182a-4c2e-94c6-2a216ec3f272`, and
+`mueividb-a250bd45-1631-4819-b3df-712931b7c2b7` each passed on attempt 1
+with zero retries, 2/2 stages, 62/62 ordered unique records, exact
+built/installed APK SHA-256
+`c31635bd7044b7f7af6e93dd3a0f304ca5f2762e5f26400abc7068ade50484ba`,
+production renderer manifest
+`94065126105ef6fb2d616b5790ea1892a6849bc70f6391a64c07e255b4b4d92e`,
+server-chain and font-scale receipts, no retained rasters, and a
+`publication-safe` marker. The unchanged browser predecessor passed 3/3 with
+`--workers=1 --retries=0`. An earlier Pixel attempt that could not reach a
+clipped marker was not counted; the fixture now uses a compact sender for the
+post-scale native reopen, and all three accepted attempts use that revision.
+Original-attempt hosted acceptance remains pending; PR #677 remains
+draft/open and unmerged.
