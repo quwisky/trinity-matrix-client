@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Keep grouped message timestamps from taking over touch long-press selection while
+  preserving the message body and links, so Android message actions open from row padding.
+
 - Keep Renovate's repository configuration schema-valid so dependency processing reaches
   extraction instead of aborting on an explanatory, unsupported option.
 

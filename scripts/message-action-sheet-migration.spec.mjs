@@ -300,7 +300,9 @@ function assertNativeRuntime(sources) {
     'event.matched === true',
     'durationMs >= LONG_PRESS_THRESHOLD_MS',
     'allowBlankPadding: options.allowBlankPadding === true',
+    'if(!allowBlankPadding){\n            const candidates=',
     'if(!allowBlankPadding)return null',
+    "assert(target.paddingBounds, 'Opt-in blank-padding press must use measured row padding')",
     'nativeLongPressPaddingCandidates.toString()',
     'points.every(({x,y})=>document.elementFromPoint(x,y)===element)',
     'point.x + LONG_PRESS_DRIFT_PX < end.x',
@@ -529,6 +531,16 @@ describe('Android message-action-sheet migration', () => {
       ],
       ['client', 'event.trusted === true', 'event.trusted !== undefined'],
       ['client', 'if(!allowBlankPadding)return null', ''],
+      [
+        'client',
+        'if(!allowBlankPadding){\n            const candidates=',
+        'if(true){\n            const candidates=',
+      ],
+      [
+        'client',
+        "assert(target.paddingBounds, 'Opt-in blank-padding press must use measured row padding')",
+        '',
+      ],
       [
         'client',
         'nativeLongPressPaddingCandidates.toString()',

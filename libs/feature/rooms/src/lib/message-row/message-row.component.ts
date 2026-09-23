@@ -304,6 +304,17 @@ export class MessageRowComponent {
     if (!anchor) {
       return;
     }
+    // Only bare row padding is the mobile sheet's gesture surface. Prevent its default
+    // text-selection start so Android cannot select the nearby timestamp while the finger
+    // waits for the long press. Content and links keep their native selection/menu behavior,
+    // and the scroll/swipe recognizers still receive the pointer stream.
+    if (
+      this.mobileActions &&
+      event.pointerType === 'touch' &&
+      event.target === anchor
+    ) {
+      event.preventDefault();
+    }
     // Any press already pending is cleared before a new one is scheduled.
     this.cancelLongPress();
     const context = { x: event.clientX, y: event.clientY, anchor };

@@ -115,6 +115,54 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     vi.useRealTimers();
   });
 
+  it('cancels text selection only for a primary touch on bare row padding', async () => {
+    state.mobile = true;
+    vi.useFakeTimers();
+    const { container, pressed } = await renderRow();
+    const msg = container.querySelector('.msg') as HTMLElement;
+    const body = container.querySelector('.msg__text') as HTMLElement;
+    const pointerDown = (target: HTMLElement, over: PointerEventInit = {}) => {
+      const event = new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        isPrimary: true,
+        pointerType: 'touch',
+        clientX: 10,
+        clientY: 10,
+        ...over,
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    expect(pointerDown(body).defaultPrevented).toBe(false);
+    msg.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    expect(pointerDown(msg, { isPrimary: false }).defaultPrevented).toBe(false);
+    expect(pointerDown(msg, { pointerType: 'pen' }).defaultPrevented).toBe(
+      false,
+    );
+    expect(pointerDown(msg).defaultPrevented).toBe(true);
+
+    vi.advanceTimersByTime(LONG_PRESS_MS + 10);
+    TestBed.tick();
+    expect(pressed).toEqual([{ anchor: msg, clientY: 10 }]);
+  });
+
+  it('keeps bare row padding selectable when the row has no actions', async () => {
+    state.mobile = true;
+    const { container } = await renderRow({ readOnly: true });
+    const event = new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      isPrimary: true,
+      pointerType: 'touch',
+    });
+
+    container.querySelector('.msg')?.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it('asks the host for a sheet instead of revealing the bar', async () => {
     // The bar is what the platform cannot use: it covers the message it acts on, a stray
     // scroll dismisses it, and its reaction picker opens off the top of the scroller.
@@ -171,18 +219,19 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     link.href = 'https://example.invalid';
     msg.append(link);
 
-    link.dispatchEvent(
-      new PointerEvent('pointerdown', {
-        isPrimary: true,
-        pointerType: 'touch',
-        clientX: 10,
-        clientY: 10,
-        bubbles: true,
-      }),
-    );
+    const event = new PointerEvent('pointerdown', {
+      isPrimary: true,
+      pointerType: 'touch',
+      clientX: 10,
+      clientY: 10,
+      bubbles: true,
+      cancelable: true,
+    });
+    link.dispatchEvent(event);
     vi.advanceTimersByTime(LONG_PRESS_MS + 10);
     TestBed.tick();
 
+    expect(event.defaultPrevented).toBe(false);
     expect(pressed.length).toBe(0);
     expect(revealed(container)).toBe(false);
   });

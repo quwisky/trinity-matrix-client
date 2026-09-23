@@ -135,7 +135,7 @@ export function nativeLongPressPaddingCandidates(
 }
 
 interface NativeLongPressOptions {
-  /** Opt in only for grouped rows with no non-selectable descendant. */
+  /** Require measured bare row padding, even if a non-selectable descendant exists. */
   readonly allowBlankPadding?: boolean;
 }
 
@@ -476,6 +476,9 @@ export class AccountWorkspaceClient {
     options: NativeLongPressOptions = {},
   ): Promise<void> {
     const target = await this.longPressTarget(selector, filter, options);
+    if (options.allowBlankPadding) {
+      assert(target.paddingBounds, 'Opt-in blank-padding press must use measured row padding');
+    }
     const point = target.point;
     const actionId = ++this.action;
     // Maestro's longPressOn has no configurable duration and races Trinity's exact
@@ -626,15 +629,17 @@ export class AccountWorkspaceClient {
           }
           const blockerSelector='a,button,img,video,audio,input,textarea,select';
           const blockingRects=[...element.querySelectorAll(blockerSelector)].flatMap(node=>[...node.getClientRects()].map(r=>({left:r.left,top:r.top,right:r.right,bottom:r.bottom})));
-          const candidates=[...element.querySelectorAll('*')].filter(node=>getComputedStyle(node).userSelect==='none'&&!node.closest(blockerSelector)).flatMap(node=>[...node.getClientRects()].map(r=>({x:r.left+r.width/2,y:r.top+r.height/2})));
-          for(const {x,y} of candidates){
-            if(x<0||y<0||x>=innerWidth||y>=innerHeight)continue;
-            const hit=document.elementFromPoint(x,y);
-            if(!(hit instanceof Element)||!element.contains(hit))continue;
-            if(hit.closest(blockerSelector))continue;
-            const userSelect=getComputedStyle(hit).userSelect;
-            if(userSelect!=='none')continue;
-            return {cssPoint:{x,y},hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid'),userSelect},selectionSafe:true,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
+          if(!allowBlankPadding){
+            const candidates=[...element.querySelectorAll('*')].filter(node=>getComputedStyle(node).userSelect==='none'&&!node.closest(blockerSelector)).flatMap(node=>[...node.getClientRects()].map(r=>({x:r.left+r.width/2,y:r.top+r.height/2})));
+            for(const {x,y} of candidates){
+              if(x<0||y<0||x>=innerWidth||y>=innerHeight)continue;
+              const hit=document.elementFromPoint(x,y);
+              if(!(hit instanceof Element)||!element.contains(hit))continue;
+              if(hit.closest(blockerSelector))continue;
+              const userSelect=getComputedStyle(hit).userSelect;
+              if(userSelect!=='none')continue;
+              return {cssPoint:{x,y},hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid'),userSelect},selectionSafe:true,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
+            }
           }
           if(!allowBlankPadding)return null;
           if(window.getSelection()?.toString().length!==0)return null;
@@ -654,7 +659,7 @@ export class AccountWorkspaceClient {
         })()`),
       (value) => value !== null,
       options.allowBlankPadding
-        ? `non-selectable or blank-padding native long-press point inside ${selector}`
+        ? `measured blank-padding native long-press point inside ${selector}`
         : `non-selectable native long-press point inside ${selector}`,
       this.signal,
       15_000,

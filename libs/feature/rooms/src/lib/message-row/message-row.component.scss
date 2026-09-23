@@ -246,6 +246,14 @@
     opacity: 1;
   }
 
+  // The hover-only timestamp stays in the DOM and keeps its 40px
+  // alignment box, but cannot become a native text-selection target on phones.
+  @media (hover: none) {
+    .msg--cont .msg__gutter {
+      user-select: none;
+    }
+  }
+
   .msg__body {
     position: relative;
     min-width: 0;
