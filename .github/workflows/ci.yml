@@ -456,7 +456,7 @@ jobs:
         env:
           EDIT_HISTORY_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
         run: |
-          if find "$EDIT_HISTORY_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.edit-history/edit-history/publication-safe' -print -quit | rg -q .; then
+          if [ -n "$(find "$EDIT_HISTORY_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.edit-history/edit-history/publication-safe' -print -quit)" ]; then
             echo 'edit-history-safe=true' >> "$GITHUB_OUTPUT"
           fi
 

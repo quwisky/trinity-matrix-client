@@ -1,7 +1,15 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { CODE_JOB_IDS } from './ci-classify.mjs';
 
@@ -10,6 +18,95 @@ const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
 
 describe('CI execution contract', () => {
+  it('publishes edit-history diagnostics only for the exact safe marker without rg on PATH', () => {
+    const gate = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'edit-history-artifact-gate',
+    );
+    const tempRoot = mkdtempSync(join(tmpdir(), 'trinity-edit-history-gate-'));
+    try {
+      const bin = join(tempRoot, 'bin');
+      const reports = join(tempRoot, 'reports');
+      const output = join(tempRoot, 'github-output');
+      mkdirSync(bin);
+      const findBinary = execFileSync('/bin/sh', ['-c', 'command -v find'], {
+        encoding: 'utf8',
+      }).trim();
+      symlinkSync(findBinary, join(bin, 'find'));
+      mkdirSync(join(reports, 'run-1', 'android.edit-history', 'unrelated'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(
+          reports,
+          'run-1',
+          'android.edit-history',
+          'unrelated',
+          'publication-safe',
+        ),
+        '',
+      );
+      writeFileSync(output, '');
+      const runGate = () =>
+        execFileSync('/bin/bash', ['-e', '-c', gate.run], {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: bin,
+            EDIT_HISTORY_DIAGNOSTIC_ROOT: reports,
+            GITHUB_OUTPUT: output,
+          },
+        });
+
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+
+      const exactDirectory = join(
+        reports,
+        'run-1',
+        'android.edit-history',
+        'edit-history',
+      );
+      mkdirSync(exactDirectory, { recursive: true });
+      const exactMarker = join(exactDirectory, 'publication-safe');
+      symlinkSync(
+        join(
+          reports,
+          'run-1',
+          'android.edit-history',
+          'unrelated',
+          'publication-safe',
+        ),
+        exactMarker,
+      );
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+
+      rmSync(exactMarker);
+      const linkedReport = join(tempRoot, 'linked-report');
+      mkdirSync(join(linkedReport, 'android.edit-history', 'edit-history'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(
+          linkedReport,
+          'android.edit-history',
+          'edit-history',
+          'publication-safe',
+        ),
+        '',
+      );
+      symlinkSync(linkedReport, join(reports, 'run-link'));
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+
+      writeFileSync(exactMarker, '');
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('edit-history-safe=true\n');
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('gives shard 1 its measured native prefix, retained Playwright budget, and diagnostics time', () => {
     const job = workflow.jobs['android-e2e'];
     const expression = job['timeout-minutes'];
