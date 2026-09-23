@@ -64,9 +64,12 @@ function row(over: Partial<MessageRow> = {}): MessageRow {
   };
 }
 
-async function renderRow(over: Partial<MessageRowCaps> = {}) {
+async function renderRow(
+  over: Partial<MessageRowCaps> = {},
+  overRow: Partial<MessageRow> = {},
+) {
   const result = await render(MessageRowComponent, {
-    inputs: { row: row(), caps: caps(over) },
+    inputs: { row: row(overRow), caps: caps(over) },
     providers: [
       MockProvider(MediaService, {
         resolveMedia: () => of(''),
@@ -114,6 +117,50 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
     state.mobile = false;
     vi.useRealTimers();
   });
+
+  it('cancels a touch on the padding surface without canceling body selection', async () => {
+    state.mobile = true;
+    const { container } = await renderRow();
+    const msg = container.querySelector('.msg') as HTMLElement;
+    const padding = msg.querySelector('.msg__padding-touch') as HTMLElement;
+    const body = msg.querySelector('.msg__text') as HTMLElement;
+    const pointerDown = (target: HTMLElement) => {
+      const event = new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        isPrimary: true,
+        pointerType: 'touch',
+      });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    expect(padding?.parentElement).toBe(msg);
+    expect(padding.getAttribute('aria-hidden')).toBe('true');
+    expect(pointerDown(padding).defaultPrevented).toBe(true);
+    expect(pointerDown(body).defaultPrevented).toBe(false);
+  });
+
+  it('does not put a padding hit surface on desktop rows', async () => {
+    state.mobile = false;
+    const { container } = await renderRow();
+
+    expect(container.querySelector('.msg__padding-touch')).toBeNull();
+  });
+
+  it.each([
+    ['read-only', { readOnly: true }, {}],
+    ['redacted', {}, { kind: 'redacted' }],
+    ['decryption-failed', {}, { decryptionFailed: true }],
+  ] as const)(
+    'does not make padding nonselectable on %s rows',
+    async (_name, rowCaps, rowView) => {
+      state.mobile = true;
+      const { container } = await renderRow(rowCaps, rowView);
+
+      expect(container.querySelector('.msg__padding-touch')).toBeNull();
+    },
+  );
 
   it('cancels text selection only for a primary touch on bare row padding', async () => {
     state.mobile = true;

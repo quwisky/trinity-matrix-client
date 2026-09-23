@@ -81,3 +81,53 @@ describe('native long-press blank-padding geometry', () => {
     },
   );
 });
+
+describe('native long-press blank-padding hit ownership', () => {
+  const row = {};
+  const child = (parentElement, className) => ({
+    parentElement,
+    classList: { contains: (name) => name === className },
+  });
+  const padding = child(row, 'msg__padding-touch');
+
+  it('accepts the bare row and only its own nonselectable padding child', () => {
+    const matches = nativeClient.nativeLongPressPaddingHitMatches;
+    expect(matches).toBeTypeOf('function');
+    expect(matches(row, row, 'auto')).toBe(true);
+    expect(matches(row, padding, 'none')).toBe(true);
+    expect(matches(row, padding, 'auto')).toBe(false);
+    expect(matches(row, child(row, 'msg__body'), 'none')).toBe(false);
+    expect(matches(row, child(padding, 'msg__padding-touch'), 'none')).toBe(
+      false,
+    );
+    expect(matches(row, null, null)).toBe(false);
+  });
+});
+
+describe('native long-press padding surface bounds', () => {
+  const row = geometry.row;
+  const surface = { left: 0, top: 574, right: 12, bottom: 624 };
+  const fits = (hit = surface, paddingLeft = 16) => {
+    expect(nativeClient.nativeLongPressPaddingSurfaceFits).toBeTypeOf(
+      'function',
+    );
+    return nativeClient.nativeLongPressPaddingSurfaceFits(
+      row,
+      hit,
+      paddingLeft,
+    );
+  };
+
+  it('accepts the approved 12px surface anchored to the leading row edge', () => {
+    expect(fits()).toBe(true);
+  });
+
+  it('rejects widened, shifted, escaped or invalid surfaces', () => {
+    expect(fits({ ...surface, right: 16 })).toBe(false);
+    expect(fits({ ...surface, left: 1, right: 13 })).toBe(false);
+    expect(fits({ ...surface, top: 573 })).toBe(false);
+    expect(fits({ ...surface, bottom: 625 })).toBe(false);
+    expect(fits(surface, 11)).toBe(false);
+    expect(fits({ ...surface, right: NaN })).toBe(false);
+  });
+});

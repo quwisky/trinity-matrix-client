@@ -30,6 +30,9 @@
     (pointercancel)="onPointerCancel()"
     (pointerleave)="cancelLongPress()"
   >
+    @if (mobileActions && hasMessageActions()) {
+      <span class="msg__padding-touch" aria-hidden="true"></span>
+    }
     @if (swipeDirection() !== 'off' && !caps().readOnly) {
       <!-- The affordance, and under this design it is what makes the gesture honest: the
            reader has to know WHICH of edit and reply they will get before they commit. Drawn

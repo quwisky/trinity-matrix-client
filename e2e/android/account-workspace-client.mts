@@ -134,8 +134,39 @@ export function nativeLongPressPaddingCandidates(
   return candidates;
 }
 
+/** Keep a measured blank-padding press on the row or its one owned touch surface. */
+export function nativeLongPressPaddingHitMatches(
+  row: Element,
+  hit: Element | null,
+  userSelect: string | null,
+): boolean {
+  return hit === row || (
+    hit !== null &&
+    hit.parentElement === row &&
+    hit.classList.contains('msg__padding-touch') &&
+    userSelect === 'none'
+  );
+}
+
+/** Keep the owned hit surface at the approved width and inside leading padding. */
+export function nativeLongPressPaddingSurfaceFits(
+  row: LongPressBounds,
+  surface: LongPressBounds,
+  paddingLeft: number,
+): boolean {
+  if (![row.left, row.top, row.right, row.bottom, surface.left, surface.top,
+    surface.right, surface.bottom, paddingLeft].every(Number.isFinite) ||
+    row.right <= row.left || row.bottom <= row.top ||
+    surface.right <= surface.left || surface.bottom <= surface.top) return false;
+  const tolerance = 0.25;
+  return Math.abs(surface.left - row.left) <= tolerance &&
+    Math.abs(surface.right - surface.left - 12) <= tolerance &&
+    surface.right <= row.left + paddingLeft &&
+    surface.top >= row.top - tolerance && surface.bottom <= row.bottom + tolerance;
+}
+
 interface NativeLongPressOptions {
-  /** Require measured bare row padding, even if a non-selectable descendant exists. */
+  /** Require measured blank row padding, including its owned nonselectable hit surface. */
   readonly allowBlankPadding?: boolean;
 }
 
@@ -496,15 +527,20 @@ export class AccountWorkspaceClient {
       const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
       if(es.length!==1)throw new Error('Native long-press target changed before dispatch');
       const element=es[0],types=['pointerdown','pointermove','pointerup','pointercancel'];
-      const state={events:[],types,listener:e=>state.events.push({type:e.type,trusted:e.isTrusted,matched:element.contains(e.target),targetTag:e.target instanceof Element?e.target.tagName:null,targetClass:e.target instanceof Element?e.target.className:null,pointerId:e.pointerId,timeStamp:e.timeStamp,clientX:e.clientX,clientY:e.clientY})};
+      const state={element,events:[],types,
+        listener:e=>state.events.push({type:e.type,trusted:e.isTrusted,matched:element.contains(e.target),targetTag:e.target instanceof Element?e.target.tagName:null,targetClass:e.target instanceof Element?e.target.className:null,pointerId:e.pointerId,pointerType:e.pointerType,isPrimary:e.isPrimary,cancelable:e.cancelable,defaultPreventedAtCapture:e.defaultPrevented,timeStamp:e.timeStamp,clientX:e.clientX,clientY:e.clientY}),
+        rowListener:e=>{const down=state.events.find(record=>record.type==='pointerdown'&&record.pointerId===e.pointerId);if(down)down.defaultPreventedAtRow=e.defaultPrevented;}
+      };
       window.__trinityAccountLongPress=state;
       for(const type of types)document.addEventListener(type,state.listener,true);
+      element.addEventListener('pointerdown',state.rowListener);
       return true;
     })()`);
     let actionError: unknown;
     let trustedEvents: unknown = null;
     let durationMs: number | null = null;
     let selectedTextLength: number | null = null;
+    let selectionObservation: unknown = null;
     try {
       console.info(`[accounts] native action ${actionId}: 750 ms long press ${selector}`);
       await this.device.runFlow(flow, {});
@@ -558,9 +594,19 @@ export class AccountWorkspaceClient {
         `Native long press ${actionId} held for at least ${LONG_PRESS_THRESHOLD_MS} ms (observed ${durationMs} ms)`,
       );
       if (target.paddingBounds) {
-        const length = await evaluateNative(this.webview, 'window.getSelection()?.toString().length ?? null');
+        const selection = await evaluateNative(this.webview, `(() => {
+          const selected=window.getSelection(),anchor=selected?.anchorNode,focus=selected?.focusNode;
+          const anchorElement=anchor instanceof Element?anchor:anchor?.parentElement;
+          const focusElement=focus instanceof Element?focus:focus?.parentElement;
+          const row=document.querySelector(${JSON.stringify(selector)});
+          const describe=element=>({tagName:element?.tagName??null,className:typeof element?.className==='string'?element.className:null,inRow:Boolean(row&&element&&row.contains(element)),inGutter:Boolean(element?.closest('.msg__gutter')),inBody:Boolean(element?.closest('.msg__body'))});
+          return {length:selected?.toString().length??null,anchor:describe(anchorElement),focus:describe(focusElement),hoverNone:matchMedia('(hover: none)').matches,gutterUserSelect:row?.querySelector('.msg__gutter')?getComputedStyle(row.querySelector('.msg__gutter')).userSelect:null};
+        })()`);
+        selectionObservation = selection;
+        assert(selection && typeof selection === 'object');
+        const length = (selection as { length: number | null }).length;
+        selectedTextLength = length;
         assert.equal(length, 0, 'Native padding long press must not select text');
-        selectedTextLength = 0;
       }
     } catch (error) {
       actionError = error;
@@ -576,6 +622,7 @@ export class AccountWorkspaceClient {
           observedDurationMs: durationMs,
           trustedEvents,
           selectedTextLength,
+          selectionObservation,
         });
       } catch (error) {
         failures.push(error);
@@ -583,7 +630,7 @@ export class AccountWorkspaceClient {
       try {
         await evaluateNative(
           this.webview,
-          "(() => {const state=window.__trinityAccountLongPress;if(state)for(const type of state.types)document.removeEventListener(type,state.listener,true);delete window.__trinityAccountLongPress;return true})()",
+          "(() => {const state=window.__trinityAccountLongPress;if(state){for(const type of state.types)document.removeEventListener(type,state.listener,true);state.element.removeEventListener('pointerdown',state.rowListener);}delete window.__trinityAccountLongPress;return true})()",
         );
       } catch (error) {
         failures.push(error);
@@ -652,8 +699,16 @@ export class AccountWorkspaceClient {
           });
           for(const {cssPoint,bounds} of paddingCandidates){
             const points=[cssPoint,{x:bounds.left,y:bounds.top},{x:bounds.right,y:bounds.top},{x:bounds.left,y:bounds.bottom},{x:bounds.right,y:bounds.bottom}];
-            if(!points.every(({x,y})=>document.elementFromPoint(x,y)===element))continue;
-            return {cssPoint,hit:{tagName:element.tagName,className:element.className,testId:element.getAttribute('data-testid'),userSelect:getComputedStyle(element).userSelect},selectionSafe:false,paddingBounds:bounds,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
+            const hits=points.map(({x,y})=>document.elementFromPoint(x,y)),hit=hits[0];
+            if(!hit||!hits.every(candidate=>candidate===hit))continue;
+            const userSelect=getComputedStyle(hit).userSelect;
+            if(!(${nativeLongPressPaddingHitMatches.toString()})(element,hit,userSelect))continue;
+            if(hit!==element){
+              const hitRect=hit.getBoundingClientRect();
+              if(!(${nativeLongPressPaddingSurfaceFits.toString()})(rect,hitRect,
+                parseFloat(getComputedStyle(element).paddingLeft)))continue;
+            }
+            return {cssPoint,hit:{tagName:hit.tagName,className:typeof hit.className==='string'?hit.className:'',testId:hit.getAttribute('data-testid'),userSelect},selectionSafe:hit!==element,paddingBounds:bounds,textRectCount:textRects.length,blockingRectCount:blockingRects.length};
           }
           return null;
         })()`),

@@ -73,6 +73,19 @@
     padding-top: 0;
   }
 
+  // Android can begin selecting nearby body text from blank row padding even when
+  // pointerdown is cancelled. A nonselectable hit surface covers only the outer 12px
+  // of the 16px leading padding, leaving content and hover-time overflow untouched.
+  .msg__padding-touch {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    user-select: none;
+    pointer-events: auto;
+  }
+
   // A room state / membership change: a compact, centered, muted system line.
   .msg--event {
     justify-content: center;
