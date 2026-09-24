@@ -11,7 +11,12 @@ describe('QrCodeService', () => {
     service = TestBed.inject(QrCodeService);
   });
 
-  it.each(['Uint8ClampedArray', 'Uint8Array', 'number[]'] as const)(
+  it.each([
+    'Uint8ClampedArray',
+    'Uint8Array',
+    'number[]',
+    'ImageData prototype dimensions',
+  ] as const)(
     'round-trips the exact raw bytes through the production GIF data URL with %s pixels',
     (representation) => {
       const payload = new Uint8ClampedArray([0, 1, 127, 128, 254, 255]);
@@ -32,14 +37,23 @@ describe('QrCodeService', () => {
             ? Uint8Array.from(pixels)
             : pixels;
       const originalPixels = Array.from(data);
+      // Browser ImageData exposes dimensions through prototype getters, not
+      // enumerable own properties. Preserve that supported frame shape too.
+      class ImageDataFrame {
+        readonly data = data;
+        get width(): number {
+          return gif.width;
+        }
+        get height(): number {
+          return gif.height;
+        }
+      }
+      const frame =
+        representation === 'ImageData prototype dimensions'
+          ? new ImageDataFrame()
+          : { data, width: gif.width, height: gif.height };
 
-      expect(
-        service.decodeFrame({
-          data,
-          width: gif.width,
-          height: gif.height,
-        }),
-      ).toEqual(payload);
+      expect(service.decodeFrame(frame)).toEqual(payload);
       expect(Array.from(data)).toEqual(originalPixels);
     },
   );

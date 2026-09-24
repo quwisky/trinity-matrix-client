@@ -38,7 +38,8 @@ export class QrCodeService {
     try {
       decodeQr(
         {
-          ...frame,
+          width: frame.width,
+          height: frame.height,
           data: Array.isArray(frame.data)
             ? Uint8ClampedArray.from(frame.data)
             : frame.data,
