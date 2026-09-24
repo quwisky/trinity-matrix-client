@@ -11,7 +11,7 @@
 # DB are generated into ./data on first run and removed by stop.sh.
 services:
   synapse:
-    image: matrixdotorg/synapse:v1.157.2
+    image: matrixdotorg/synapse:v1.161.0
     container_name: trinity-e2e-synapse
     restart: 'no'
     environment:
@@ -38,7 +38,7 @@ services:
   # A second homeserver for federation-sensitive journeys. It listens on a distinct
   # internal port too, so the netns CI override can run both Synapses on one loopback.
   synapse-remote:
-    image: matrixdotorg/synapse:v1.157.2
+    image: matrixdotorg/synapse:v1.161.0
     container_name: trinity-e2e-synapse-remote
     restart: 'no'
     environment:
