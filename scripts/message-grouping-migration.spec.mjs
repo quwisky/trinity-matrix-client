@@ -522,6 +522,86 @@ describe('installed Android message-grouping ownership and publication', () => {
     }
   });
 
+  it.each([
+    '!Room-AbC%3Aexample.test',
+    '!Room-AbC%3aexample.test',
+    '%24Event_A%2Bb%2FC%3Dd%3Aexample.test',
+    '%24Event_A%2bb%2fC%3dd%3aexample.test',
+    '%24Event_A%2bb%2FC%3dd%3Aexample.test',
+    '%ZZ%%24Event_A%2Bb%2FC%3Dd%3Aexample.test%incomplete',
+  ])(
+    'rejects the registered URL-encoded identifier %s without scrubbing',
+    async (encoded) => {
+      const { scanGroupingArtifacts } =
+        await import('../e2e/android/message-grouping-artifacts.mts');
+      const output = await mkdtemp(
+        join(tmpdir(), 'trinity-grouping-encoded-scan-'),
+      );
+      try {
+        await writeFile(
+          join(output, 'request.log'),
+          `GET https://hs.invalid/_matrix/client/v3/rooms/${encoded}/context\n`,
+        );
+        await expect(
+          scanGroupingArtifacts(output, {
+            SECRET_GROUPING_ROOM_ID: '!Room-AbC:example.test',
+            SECRET_GROUPING_EVENT_2: '$Event_A+b/C=d:example.test',
+          }),
+        ).rejects.toThrow(/credential or identifier/u);
+      } finally {
+        await rm(output, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('scrubs encoded Room and event URLs without decoding unrelated or malformed diagnostic text', async () => {
+    const { scrubGroupingArtifacts, scanGroupingArtifacts } =
+      await import('../e2e/android/message-grouping-artifacts.mts');
+    const output = await mkdtemp(
+      join(tmpdir(), 'trinity-grouping-encoded-scrub-'),
+    );
+    const secrets = {
+      SECRET_GROUPING_ROOM_ID: '!Room-AbC:example.test',
+      SECRET_GROUPING_EVENT_2: '$Event_A+b/C=d:example.test',
+      SECRET_PASSWORD: 'Pass"word\\token',
+    };
+    const diagnostic = [
+      'GET https://hs.invalid/_matrix/client/v3/rooms/!Room-AbC%3Aexample.test/event/%24Event_A%2Bb%2FC%3Dd%3Aexample.test',
+      'GET https://hs.invalid/_matrix/client/v3/rooms/!Room-AbC%3aexample.test/event/%24Event_A%2bb%2fC%3dd%3aexample.test',
+      'broken=%ZZ%%24Event_A%2bb%2FC%3dd%3Aexample.test%incomplete',
+      'raw=!Room-AbC:example.test $Event_A+b/C=d:example.test',
+      String.raw`{"password":"Pass\"word\\token"}`,
+      'pluginId: Preferences, methodName: get, methodData: {"private":"storage"}',
+      'pluginId: SecureStorage, methodName: get, methodData: {"private":"storage"}',
+      'unchanged=%2Fpublic%3Avalue !room-AbC%3Aexample.test %24event_A%2Bb%2FC%3Dd%3Aexample.test',
+    ].join('\n');
+    const expected = [
+      'GET https://hs.invalid/_matrix/client/v3/rooms/[REDACTED]/event/[REDACTED]',
+      'GET https://hs.invalid/_matrix/client/v3/rooms/[REDACTED]/event/[REDACTED]',
+      'broken=%ZZ%[REDACTED]%incomplete',
+      'raw=[REDACTED] [REDACTED]',
+      '{"password":"[REDACTED]"}',
+      'pluginId: Preferences, methodName: get, methodData: [REDACTED]',
+      'pluginId: SecureStorage, methodName: get, methodData: [REDACTED]',
+      'unchanged=%2Fpublic%3Avalue !room-AbC%3Aexample.test %24event_A%2Bb%2FC%3Dd%3Aexample.test',
+    ].join('\n');
+    try {
+      const nested = join(output, 'message-grouping');
+      await import('node:fs/promises').then(({ mkdir }) => mkdir(nested));
+      const path = join(nested, 'device.log');
+      await writeFile(path, diagnostic);
+      await writeFile(join(nested, 'capture.png'), 'raster');
+      await scrubGroupingArtifacts(output, secrets);
+      expect(await readFile(path, 'utf8')).toBe(expected);
+      expect(existsSync(join(nested, 'capture.png'))).toBe(false);
+      await expect(
+        scanGroupingArtifacts(output, secrets),
+      ).resolves.toBeUndefined();
+    } finally {
+      await rm(output, { recursive: true, force: true });
+    }
+  });
+
   it('requires a clean complete 22-record report and actual pass capture before publication', async () => {
     const { markGroupingDiagnosticsSafe } =
       await import('../e2e/android/message-grouping-artifacts.mts');
@@ -569,6 +649,26 @@ describe('installed Android message-grouping ownership and publication', () => {
       expect(await readFile(join(output, 'publication-safe'), 'utf8')).toBe(
         'scanned\n',
       );
+      for (const staleMarker of [true, false]) {
+        if (staleMarker)
+          await writeFile(join(output, 'publication-safe'), 'scanned\n');
+        await writeFile(
+          join(stageDir, 'passed-surface.json'),
+          '{"url":"https://hs.invalid/_matrix/client/v3/rooms/!Room-AbC%3aexample.test/event/%24Event_A%2bb%2FC%3dd%3Aexample.test"}',
+        );
+        await expect(
+          markGroupingDiagnosticsSafe(
+            output,
+            {
+              SECRET_GROUPING_ROOM_ID: '!Room-AbC:example.test',
+              SECRET_GROUPING_EVENT_2: '$Event_A+b/C=d:example.test',
+            },
+            flags,
+          ),
+        ).rejects.toThrow(/credential or identifier/u);
+        expect(existsSync(join(output, 'publication-safe'))).toBe(false);
+      }
+      await writeFile(join(stageDir, 'passed-surface.json'), '{}\n');
       for (const invalid of [
         { ...valid, status: 'failed' },
         { ...valid, stages: [{ ...valid.stages[0], assertionRecords: 21 }] },

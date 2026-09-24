@@ -27,18 +27,37 @@ interface AbortReport {
   }[];
 }
 
+/** Match component-encoded secrets without decoding or changing other log text. */
+function encodedSecretPatterns(secrets: Readonly<Record<string, string>>): readonly RegExp[] {
+  return [...new Set(Object.values(secrets).filter(Boolean).map((value) => encodeURIComponent(value)))]
+    .sort((left, right) => right.length - left.length)
+    .map((value) => new RegExp(
+      value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+        .replace(/%[0-9A-F]{2}/gu, (escape) =>
+          escape.replace(/[A-F]/gu, (hex) => `[${hex}${hex.toLowerCase()}]`)),
+      'u',
+    ));
+}
+
 /** Remove local raster proof and redact text before the final fail-closed scan. */
 export async function scrubGroupingArtifacts(
   output: string,
   secrets: Readonly<Record<string, string>>,
 ): Promise<void> {
   await redactMaestroArtifacts(output, secrets, true);
+  const encoded = encodedSecretPatterns(secrets);
   for (const entry of await readdir(output, { withFileTypes: true })) {
     const path = join(output, entry.name);
     if (entry.isDirectory()) await scrubGroupingArtifacts(path, secrets);
     else {
       assert(entry.isFile(), 'Grouping diagnostic is a regular file');
       if (raster.has(extname(path).toLowerCase())) await unlink(path);
+      else if (publishableText.has(extname(path).toLowerCase())) {
+        const value = await readFile(path, 'utf8');
+        const redacted = encoded.reduce((text, pattern) =>
+          text.replaceAll(new RegExp(pattern, 'gu'), '[REDACTED]'), value);
+        if (redacted !== value) await writeFile(path, redacted, 'utf8');
+      }
     }
   }
 }
@@ -50,6 +69,7 @@ export async function scanGroupingArtifacts(
 ): Promise<void> {
   const values = Object.values(secrets).filter(Boolean).flatMap((value) =>
     [value, JSON.stringify(value).slice(1, -1)]);
+  const encoded = encodedSecretPatterns(secrets);
   for (const entry of await readdir(output, { withFileTypes: true })) {
     const path = join(output, entry.name);
     if (entry.isDirectory()) {
@@ -63,6 +83,8 @@ export async function scanGroupingArtifacts(
     const value = await readFile(path, 'utf8');
     for (const secret of values)
       assert(!value.includes(secret), 'No raw credential or identifier in grouping diagnostics');
+    for (const pattern of encoded)
+      assert(!pattern.test(value), 'No URL-encoded credential or identifier in grouping diagnostics');
     assert(!/\bBearer\s+\S+|\bsyt_[A-Za-z0-9._~-]+/u.test(value),
       'Authorization absent from grouping diagnostics');
     assert(!/<(?:map\b|string\b)[^>]*>/iu.test(value),
