@@ -236,7 +236,7 @@ function assertFailureSafeRunner(source) {
 }
 
 describe('Android edit-history migration contract', () => {
-  it('wires one serial suite, bounded CI run and started-plus-safe diagnostics', () => {
+  it('runs edit history before cross-user verification with started-plus-safe diagnostics', () => {
     const project = JSON.parse(read('e2e/android/project.json'));
     const target = project.targets['edit-history'];
     expect(target?.cache).toBe(false);
@@ -259,10 +259,33 @@ describe('Android edit-history migration contract', () => {
       'trinity-e2e-android:edit-history',
     );
     const workflow = read('.github/workflows/ci.yml');
-    expect(
-      workflow.indexOf('trinity-e2e-android:edit-history'),
-    ).toBeGreaterThan(
-      workflow.indexOf('trinity-e2e-android:message-action-sheet'),
+    const androidStep = workflow
+      .split('      - id: android\n')[1]
+      ?.split('\n      - name: Gate Android edit-history diagnostics')[0];
+    expect(androidStep).toBeDefined();
+    const commandLines = androidStep.split('\n');
+    const shard2Runs = commandLines.filter((line) =>
+      line.startsWith('            if [ "${{ matrix.shard }}" = "2" ]; then'),
+    );
+    const suiteRuns = (target) =>
+      shard2Runs.filter((line) =>
+        line.endsWith(`trinity-e2e-android:${target}; fi`),
+      );
+    const smokeRuns = commandLines.filter(
+      (line) =>
+        line.startsWith('            TRINITY_ANDROID_SERIAL=') &&
+        line.endsWith('trinity-e2e-android:runner-smoke'),
+    );
+    const editHistoryRuns = suiteRuns('edit-history');
+    const crossUserRuns = suiteRuns('cross-user-verification');
+    expect(smokeRuns).toHaveLength(1);
+    expect(editHistoryRuns).toHaveLength(1);
+    expect(crossUserRuns).toHaveLength(1);
+    expect(commandLines.indexOf(editHistoryRuns[0])).toBeGreaterThan(
+      commandLines.indexOf(smokeRuns[0]),
+    );
+    expect(commandLines.indexOf(crossUserRuns[0])).toBeGreaterThan(
+      commandLines.indexOf(editHistoryRuns[0]),
     );
     expect(workflow).toContain('edit-history-started=true');
     expect(workflow).toContain(
