@@ -492,6 +492,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.edit-history'],
   },
   {
+    name: 'e2e:android:message-forward',
+    command: 'nx run trinity-e2e-android:message-forward',
+    kind: 'canonical',
+    suiteIds: ['android.message-forward'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -800,6 +806,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "2" ]; then echo \'edit-history-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm nx run trinity-e2e-android:edit-history; fi',
     tier: 'pull-request',
     suiteIds: ['android.edit-history'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-forward-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm nx run trinity-e2e-android:message-forward; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-forward'],
   },
   {
     command:

@@ -5249,5 +5249,63 @@ server-chain and font-scale receipts, no retained rasters, and a
 `--workers=1 --retries=0`. An earlier Pixel attempt that could not reach a
 clipped marker was not counted; the fixture now uses a compact sender for the
 post-scale native reopen, and all three accepted attempts use that revision.
-Original-attempt hosted acceptance remains pending; PR #677 remains
+Original-attempt hosted acceptance passed in run `35937835285` at head
+`24dc07fb`: Android artifact `10788745273` contains both passed stages and
+62/62 records on attempt 1 with zero retries; all three retained browser
+predecessors and the production renderer passed. The later unrelated
+legacy-SSO and Astro-version failures remain with #665. PR #677 remains
 draft/open and unmerged.
+
+## Message-forward journey
+
+Suite `android.message-forward` migrates the Android branch of the one
+`forwards a message to another room` definition (lines 30–94) and its
+`openRoom` helper (lines 17–25) in the unchanged
+`e2e/browser/journeys/conversations/message-forward.spec.mts`. The source is
+pinned at SHA-256
+`2c90b5ee4989d85c611629e37cf8847169b90c21d526a52e1e8d0113dfee179d`;
+the helper pins are recorded in #744. The Playwright predecessor remains
+enabled. Its three direct and four helper-expanded assertions map as follows:
+
+| Canonical assertion | Android parity identity |
+| --- | --- |
+| Source `openRoom` composer readiness (helper line 22) | `message-forward.source-room-ready` |
+| Source row visible (line 71) | `message-forward.source-row-visible` |
+| `waitForSent` real event readiness (line 72) | `message-forward.source-server-ready` |
+| Android action sheet ready (line 77) | `message-forward.sheet-ready` |
+| Room picker search visible (line 85) | `message-forward.picker-visible` |
+| Target `openRoom` composer readiness (helper line 22) | `message-forward.target-room-ready` |
+| Target row visible (line 91) | `message-forward.target-row-and-event` |
+
+One disposable-Synapse account owns unique source and target Rooms. Native
+composer input produces a source row with a server-ready `$` ID; a direct
+source-Room event read verifies exact Room, sender and body before native
+long-press. Maestro opens the Android action sheet, touches Forward, enters
+the target name in the production picker and touches its one exact Room
+result. On the mobile Room view, Maestro taps Back to rooms and then opens the
+exact target channel natively. Its encoded route must identify that target
+Room and the active account. The visible target row's new ID
+is read directly from Synapse; the event must have the exact active sender,
+Room, body and `m.text` content without a stale relation or edit payload.
+WebView observations do not drive product actions. The suite uses one attempt,
+zero retries, serialized `android-avd` + `synapse`, exact APK/renderer/profile
+provenance, native pass/failure captures, bounded cleanup and scrubbed,
+publication-safe diagnostics. CI starts the shard-2 suite after edit-history
+and before cross-user; its dedicated artifact requires both a started marker
+and the post-scan safety marker.
+
+```bash
+pnpm nx run trinity-e2e-android:message-forward --skipNxCache
+```
+
+Three unchanged local installed-Android runs (`muf0i79g`, `muf0niuc`,
+`muf0t57r`) passed all seven records at attempt 1/retries 0 after final
+cleanup/cancellation review fixes. Their installed APK digest
+`c31635bd7044b7f7af6e93dd3a0f304ca5f2762e5f26400abc7068ade50484ba`,
+renderer manifest digest
+`a67e948b8c83c7b44c38a042016a41d4f2fa3628c7d0b2419188643cad1c890a`
+and Pixel 5 profile digest
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`
+match. The unchanged browser predecessor passed 1/1 at retry 0 (`muf06aic`).
+Original-attempt hosted Android/browser/renderer audit remains pending under
+#744; PR #677 remains draft/open and unmerged.
