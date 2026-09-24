@@ -128,7 +128,7 @@ importers:
         version: 34.0.0
       '@sanity/diff-match-patch':
         specifier: ^3.2.0
-        version: 3.2.0
+        version: 3.2.1
       '@shikijs/core':
         specifier: 4.4.3
         version: 4.4.3
@@ -4866,8 +4866,8 @@ packages:
       '@swc/helpers':
         optional: true
 
-  '@sanity/diff-match-patch@3.2.0':
-    resolution: {integrity: sha512-4hPADs0qUThFZkBK/crnfKKHg71qkRowfktBljH2UIxGHHTxIzt8g8fBiXItyCjxkuNy+zpYOdRMifQNv8+Yww==}
+  '@sanity/diff-match-patch@3.2.1':
+    resolution: {integrity: sha512-Ll3BPOn9aPGeBUOFDZpKk0IObL+NI4tNq7VyOKj680xd+iCtfjnbcZZU0vpj94XozVGE0Zf+0FoYWXk2xJgZCg==}
     engines: {node: '>=18.18'}
 
   '@schematics/angular@21.2.14':
@@ -15763,7 +15763,7 @@ snapshots:
       '@swc/helpers': 0.5.23
     optional: true
 
-  '@sanity/diff-match-patch@3.2.0': {}
+  '@sanity/diff-match-patch@3.2.1': {}
 
   '@schematics/angular@21.2.14(chokidar@5.0.0)':
     dependencies:
