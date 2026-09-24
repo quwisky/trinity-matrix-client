@@ -123,7 +123,7 @@
     "@lezer/highlight": "^1.2.3",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.4.0",
     "@ng-icons/core": "^34.0.0",
-    "@ng-icons/lucide": "^34.0.0",
+    "@ng-icons/lucide": "^36.0.0",
     "@sanity/diff-match-patch": "^3.2.0",
     "@shikijs/core": "4.4.3",
     "@shikijs/engine-javascript": "4.4.3",
