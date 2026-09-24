@@ -43,3 +43,6 @@ minimumReleaseAgeExclude:
   - '@angular/common@22.1.5'
   # Renovate security update: vitest@4.1.11
   - vitest@4.1.11
+  # Approved develop integration: exact documentation-tooling releases.
+  - astro@7.3.5
+  - '@astrojs/starlight@0.42.4'

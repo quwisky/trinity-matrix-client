@@ -23,10 +23,10 @@ These versions are checked against the root and Electron manifests. The site foo
 
 | Package         | Version   |
 | --------------- | --------- |
-| Angular         | `22.1.5`  |
+| Angular         | `22.1.7`  |
 | `matrix-js-sdk` | `^42.1.0` |
 | RxJS            | `~7.8.2`  |
-| Capacitor Core  | `8.5.0`   |
+| Capacitor Core  | `8.5.2`   |
 | Electron        | `43.2.0`  |
 
 Angular framework packages and the builder can intentionally use different patch releases. Treat installed peer requirements and repository checks as the compatibility contract.
@@ -35,8 +35,8 @@ Angular framework packages and the builder can intentionally use different patch
 
 | Package    | Version   |
 | ---------- | --------- |
-| Astro      | `7.3.3`   |
-| Starlight  | `0.42.2`  |
+| Astro      | `7.3.5`   |
+| Starlight  | `0.42.4`  |
 | Vitest     | `4.1.11`  |
 | Playwright | `^1.62.1` |
 

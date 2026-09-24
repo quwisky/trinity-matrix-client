@@ -72,8 +72,8 @@ describe('documentation site projects', () => {
     expect(manifest.devDependencies).toMatchObject({
       '@astrojs/check': '0.9.10',
       '@astrojs/markdown-remark': '7.3.1',
-      '@astrojs/starlight': '0.42.2',
-      astro: '7.3.3',
+      '@astrojs/starlight': '0.42.4',
+      astro: '7.3.5',
     });
   });
 });
