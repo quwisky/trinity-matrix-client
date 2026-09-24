@@ -19,7 +19,7 @@
     {
       "id": "codemirror-style-module",
       "package": "@codemirror/view",
-      "version": "6.43.11",
+      "version": "6.43.12",
       "mechanism": "style-mod mounts CodeMirror base and theme modules in the editor document root",
       "seam": "libs/feature/settings/src/lib/advanced/config-editor/config-editor-theme.ts",
       "importPrefixes": ["@codemirror/", "@lezer/highlight"],
