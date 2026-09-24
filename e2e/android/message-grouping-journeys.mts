@@ -96,14 +96,17 @@ async function observeGrouping(
         const body = row.querySelector('.msg__body');
         if (!lead || !text || !body) return null;
         const bodyBox = body.getBoundingClientRect();
+        const textBox = text.getBoundingClientRect();
+        const textStyle = getComputedStyle(text);
         return {
           id: row.getAttribute('data-mid'),
           body: text.textContent?.trim() ?? '',
-          visible: box.width > 0 && box.height > 0 && style.visibility === 'visible',
+          visible: box.width > 0 && box.height > 0 && style.visibility === 'visible' &&
+            textBox.width > 0 && textBox.height > 0 && textStyle.visibility === 'visible',
           continuation: row.classList.contains('msg--cont'),
           avatarCount: row.querySelectorAll('.msg__avatar').length,
           leadWidth: lead.getBoundingClientRect().width,
-          textLeft: text.getBoundingClientRect().left,
+          textLeft: textBox.left,
           paddingTop: parseFloat(style.paddingTop),
           marginTop: parseFloat(style.marginTop),
           height: box.height,

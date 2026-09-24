@@ -5365,7 +5365,7 @@ Local installed-Android, unchanged browser predecessor, and original-attempt
 hosted Android/browser/renderer evidence form the acceptance gate for #745;
 wiring alone does not establish parity or authorize issue closure.
 
-Three unchanged local installed-Android original attempts on the reviewed
+Three historical unchanged local installed-Android original attempts on the
 scanner and production bundle (`mufkay5v-9c27f3d8-3391-4b84-8eae-668c79ebe34b`,
 `mufkfyij-f05a2503-9b69-4bab-bb19-82b625a681c6`, and
 `mufkkw1e-1e7c8c6f-8352-411e-8015-d6a824be9732`) passed 1/1 stage,
@@ -5389,3 +5389,40 @@ pre-review prototype passed but was not counted in the final unchanged
 three-run set after its receipts and scanner were strengthened. The hosted
 merge-checkout audit remains pending; #745 is not closed and PR #677 stays
 draft/unmerged.
+
+Independent review of `7cec1c4b` subsequently found two false-pass paths:
+the density observer could accept a commented-out entry or malformed XML,
+and a visible row could hide its `.msg__text` while retaining geometry.
+The corrected observers require structural XML validation and visible,
+positive-size message-text boxes. The regression controls execute the
+parser and renderer observation, rather than merely matching source text.
+The historical three-run set above does not satisfy final acceptance after
+these changes; a fresh unchanged native set and hosted audit are required.
+
+The corrected implementation passed three fresh unchanged local attempts:
+`mufof9ad-4c5cc4a8-558f-4c1f-b065-05ce0be9a141`,
+`mufol54l-3036f9d2-04e5-422d-bf10-8792c2aa0ab4`, and
+`mufoq2v5-46c5570f-e871-4162-b51a-3f8c4eade822`. Independent artifact audit
+confirmed 1/1 stage, 22 ordered receipts, attempt 1/retries 0, 15 successful
+Maestro flow reports, native Compact persistence, clean teardown and the
+safety marker in each. Measured total height decreased from 161.875 to
+154.875 px, with the exact 8 px Compact gap and zero trailing body gap.
+Each run used installed/file APK SHA-256
+`ef40006792346ce2b861dc426fe3e104996b967a5229205a3f1dc1a3dbd6522d`,
+production renderer manifest
+`807340bf23bfb8bd9208018ed7fc5d3678e95912b26231404ab0d0ee2bb3a0ee`
+at `7cec1c4b` plus the reviewed observer corrections, and the same Pixel 5
+profile digest above. The exact browser predecessor passed at retry zero
+in `mufouvmg-6e52a0a0-3d12-4e5a-9166-52d2cd36921a`.
+The production renderer then passed all nine applicable tests (nine
+project-filtered skips) in `mufow7oj-9f403155-ca50-4a54-9e09-b3a1828a152f`.
+
+The artifact audit found seven incidental nonfixture event identifiers in
+each run's SDK diagnostics; none matches its three protected fixture-event
+digests. Credentials, tokens, fixture identities/bodies and native storage
+payloads remain redacted. Complete removal of every incidental identifier
+is not claimed. The 67 focused regression tests and independent correction
+review pass. The full scripts suite has 1,272 passes and the same unrelated
+untracked-plan command-policy failure; full formatting still flags ignored
+execution notes. Corrected original-attempt hosted acceptance remains
+pending; #745 stays open and PR #677 stays draft/unmerged.

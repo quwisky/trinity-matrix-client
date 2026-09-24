@@ -1,7 +1,7 @@
 # Android Message Grouping Maestro Migration Design
 
 - Issue: #745, part of #660
-- Status: Written spec and plan approved; local implementation validated, hosted audit pending
+- Status: Written spec and plan approved; review corrections locally validated, hosted audit pending
 - Branch: `test/676-android-sidebar-filter`, PR #677 (draft, unmerged)
 
 This document records the approved design. Implementation and acceptance
@@ -67,7 +67,9 @@ For cosy, the observer reads used lead widths and text positions from
 `getBoundingClientRect()`, and start/continuation padding and margin from
 `getComputedStyle()`. It scopes `.msg__avatar`, `.msg__gutter`, `.msg__text`,
 `.msg__body`, and `.msg--cont` to the three event-ID rows. The header must own
-the sole avatar; the other two rows must be continuations. Each actual avatar
+the sole avatar; the other two rows must be continuations. Each `.msg__text`
+must itself be visible with positive used width and height; a visible row
+does not prove its message body is visible. Each actual avatar
 or gutter lead is exactly 40 CSS pixels, and all three text left edges align
 within one CSS pixel. Group-start padding is at least 16 px, continuation
 padding is zero, and group-start margin is zero. The gap must be padding inside
@@ -82,7 +84,9 @@ through the production `density-select` control. The native observer checks
 `trinity.appearance.density` entry. The stored XML string must decode to an
 exact JSON envelope `{"version":1,"value":"compact"}`: version 1 and the
 Compact value, not the bare string `compact`. A missing, duplicate, malformed,
-wrong-version, wrong-value, or undecodable entry fails. Before selection,
+wrong-version, wrong-value, or undecodable entry fails. The whole XML
+document must parse structurally; commented-out entries are
+not preferences and malformed surrounding XML cannot be ignored. Before selection,
 absence is permitted only with the real rendered Cosy default; an existing
 entry must decode to version-1 Cosy. Only a sanitized `{present, version,
 value}` observation can enter reports. The same Room is reopened by Maestro;

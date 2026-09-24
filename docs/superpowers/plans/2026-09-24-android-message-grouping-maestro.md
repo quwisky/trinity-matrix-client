@@ -10,6 +10,16 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-24-android-message-grouping-maestro-design.md` (approved written design); [issue #745](https://github.com/quwisky/trinity-matrix-client/issues/745).
 
+**Review correction (after `7cec1c4b`):** Task 2 must parse the whole Preferences
+XML document structurally with the explicitly declared `saxes` dependency;
+comments cannot supply entries and malformed surrounding XML must fail.
+Behavioral controls live in `scripts/appearance-density-preference.spec.mjs`.
+Task 3 must require `.msg__text` visibility and positive dimensions, not merely
+the enclosing row's visibility; the migration guard executes the real observer
+against hidden/collapsed/zero-size text. These corrections invalidate the
+earlier native three-run set for final acceptance. Repeat Task 5's unchanged
+native set and original-attempt hosted audit after the corrections stabilize.
+
 ## Global Constraints
 
 - Preserve `e2e/browser/journeys/conversations/message-grouping.spec.mts` SHA-256 `9cdd8dcd5722dabe4783b9f045bcff56ab4c50adfce51f2ce9ba8e33884dd05f`, `e2e/support/app.mts` SHA-256 `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`, and `e2e/support/account.mts` SHA-256 `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
@@ -158,13 +168,16 @@ const observed = await evaluateNative(
       const body = row.querySelector('.msg__body');
       if (!lead || !text || !body) return null;
       const bodyBox = body.getBoundingClientRect();
+      const textBox = text.getBoundingClientRect();
+      const textStyle = getComputedStyle(text);
       return {
         id: row.getAttribute('data-mid'), body: text.textContent?.trim() ?? '',
-        visible: box.width > 0 && box.height > 0 && style.visibility === 'visible',
+        visible: box.width > 0 && box.height > 0 && style.visibility === 'visible' &&
+          textBox.width > 0 && textBox.height > 0 && textStyle.visibility === 'visible',
         continuation: row.classList.contains('msg--cont'),
         avatarCount: row.querySelectorAll('.msg__avatar').length,
         leadWidth: lead.getBoundingClientRect().width,
-        textLeft: text.getBoundingClientRect().left,
+        textLeft: textBox.left,
         paddingTop: parseFloat(style.paddingTop), marginTop: parseFloat(style.marginTop),
         height: box.height, columnGap: parseFloat(style.columnGap),
         bodyEndGap: box.right - parseFloat(style.paddingInlineEnd) - bodyBox.right,

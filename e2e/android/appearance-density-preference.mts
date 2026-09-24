@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { SaxesParser, type SaxesTagPlain } from 'saxes';
 import type { AccountWorkspaceClient } from './account-workspace-client.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
 
@@ -12,39 +13,65 @@ export interface NativeAppearanceDensityObservation {
   readonly value: 'cosy' | 'compact';
 }
 
-function decodeXml(value: string): string {
-  const decoded = value
-    .replaceAll('&quot;', '"')
-    .replaceAll('&apos;', "'")
-    .replaceAll('&lt;', '<')
-    .replaceAll('&gt;', '>')
-    .replaceAll('&amp;', '&');
-  assert(!/&(?:#\d+|#x[\da-f]+|[a-z][\w.-]*);/iu.test(decoded),
-    'Native density Preferences contains no unsupported XML entity');
-  return decoded;
+function readDensityXmlEntry(xml: string): string | null {
+  const parser = new SaxesParser({ xmlns: false });
+  const stack: SaxesTagPlain[] = [];
+  let density: string | null = null;
+
+  parser.on('doctype', () => assert.fail());
+  parser.on('opentag', (tag) => {
+    const parent = stack.at(-1);
+    const attributes = Object.keys(tag.attributes);
+    if (!parent) {
+      assert(tag.name === 'map' && attributes.length === 0);
+    } else if (parent.name === 'map') {
+      const textOrSet = tag.name === 'string' || tag.name === 'set';
+      assert(textOrSet || ['boolean', 'int', 'long', 'float'].includes(tag.name));
+      assert(Object.hasOwn(tag.attributes, 'name'));
+      assert(textOrSet
+        ? attributes.length === 1
+        : attributes.length === 2 && Object.hasOwn(tag.attributes, 'value'));
+      if (tag.attributes['name'] === DENSITY_KEY) {
+        assert(tag.name === 'string' && density === null);
+        density = '';
+      }
+    } else {
+      assert(parent.name === 'set' && tag.name === 'string' && attributes.length === 0);
+    }
+    stack.push(tag);
+  });
+  const readText = (text: string): void => {
+    const tag = stack.at(-1);
+    if (tag?.name === 'string') {
+      if (stack.length === 2 && tag.attributes['name'] === DENSITY_KEY)
+        density += text;
+    } else {
+      assert(text.trim() === '');
+    }
+  };
+  parser.on('text', readText);
+  parser.on('cdata', readText);
+  parser.on('closetag', () => { stack.pop(); });
+  try {
+    // Saxes checks the entire document, decodes entities once, and ignores
+    // comments. Reject DTDs; only native SharedPreferences structure is accepted.
+    parser.write(xml).close();
+  } catch {
+    // Parser diagnostics can contain unrelated Preferences values or XML names.
+    assert.fail('Native density Preferences is a complete XML map with no unsupported XML entity or malformed entry');
+  }
+  return density;
 }
 
 /** Decode only the density entry; never return or embed raw XML in errors. */
 export function parseNativeAppearanceDensityPreference(
   xml: string,
 ): NativeAppearanceDensityObservation {
-  const document = xml.trim().replace(/^<\?xml\s[^>]*\?>\s*/u, '');
-  const empty = /^<map\s*\/>$/u.test(document);
-  const map = document.match(/^<map(?:\s[^>]*)?>([\s\S]*)<\/map>$/u);
-  assert(empty || map, 'Native density Preferences is a complete XML map');
-  const content = map?.[1] ?? '';
-  const entries = [...content.matchAll(/<string\s+name="([^"]*)"\s*>([\s\S]*?)<\/string>/gu)]
-    .filter((entry) => entry[1] === DENSITY_KEY);
-  const mentions = content.split(DENSITY_KEY).length - 1;
-  assert(entries.length === mentions,
-    'Native density Preferences has no malformed named entry');
-  assert(entries.length <= 1,
-    'Native density Preferences has at most one density entry');
-  if (entries.length === 0) {
+  const decoded = readDensityXmlEntry(xml);
+  if (decoded === null) {
     return { present: false, version: null, value: 'cosy' };
   }
 
-  const decoded = decodeXml(entries[0]![2]!);
   let stored: unknown;
   try {
     stored = JSON.parse(decoded) as unknown;

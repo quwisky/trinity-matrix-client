@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { runInNewContext } from 'node:vm';
+import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
@@ -112,6 +114,68 @@ function changedRow(geometry, index, change) {
   };
 }
 
+function observeGroupingDocument(
+  textStyle = '',
+  textWidth = 180,
+  textHeight = 24,
+) {
+  const tree = ts.createSourceFile(
+    'message-grouping-journeys.mts',
+    read('e2e/android/message-grouping-journeys.mts'),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const observer = tree.statements.find(
+    (node) =>
+      ts.isFunctionDeclaration(node) && node.name?.text === 'observeGrouping',
+  );
+  let expression;
+  const visit = (node) => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.name.getText(tree) === 'expression'
+    )
+      expression = runInNewContext(node.initializer.getText(tree), { events });
+    ts.forEachChild(node, visit);
+  };
+  visit(observer);
+  const dom = new JSDOM(
+    events
+      .map(
+        (event, index) => `
+    <div class="msg ${index ? 'msg--cont' : ''}" data-mid="${event.id}"
+      style="visibility:visible;padding-top:${index ? 0 : 16}px;margin-top:0;column-gap:12px;padding-inline-end:0">
+      <div class="${index ? 'msg__gutter' : 'msg__avatar'}"></div>
+      <div class="msg__body"><div class="msg__text" style="${textStyle}">${event.body}</div></div>
+    </div>`,
+      )
+      .join(''),
+  );
+  try {
+    // jsdom has no layout engine; only the measured boxes are supplied.
+    // Selectors, inherited CSS visibility and the shipped observer stay real.
+    dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+      const isText = this.classList.contains('msg__text');
+      return {
+        left: 80,
+        right: 260,
+        width: isText ? textWidth : 180,
+        height: isText ? textHeight : 56,
+      };
+    };
+    return JSON.parse(
+      JSON.stringify(
+        runInNewContext(expression, {
+          document: dom.window.document,
+          getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
+        }),
+      ),
+    );
+  } finally {
+    dom.window.close();
+  }
+}
+
 describe('Android message-grouping migration contract', () => {
   it('pins the exact Android branch, helper sources and desktop return boundary', () => {
     const source = read(predecessor);
@@ -186,6 +250,22 @@ describe('Android message-grouping migration contract', () => {
       changedRow({ rows }, 1, { visible: false }).rows,
     ])
       expect(() => assertExactRows(invalid, events)).toThrow();
+  });
+
+  it('observes visible message text, not merely a visible parent row', async () => {
+    const { assertExactRows, parseGroupingGeometry } = await loadContract();
+    const visible = parseGroupingGeometry(observeGroupingDocument());
+    expect(() => assertExactRows(visible.rows, events)).not.toThrow();
+    for (const hidden of [
+      observeGroupingDocument('visibility:hidden'),
+      observeGroupingDocument('visibility:collapse'),
+      observeGroupingDocument('', 0, 24),
+      observeGroupingDocument('', 180, 0),
+    ]) {
+      const observed = parseGroupingGeometry(hidden);
+      expect(observed.rows.map((row) => row.body)).toEqual(bodies);
+      expect(() => assertExactRows(observed.rows, events)).toThrow();
+    }
   });
 
   it('rejects malformed or non-finite renderer measurements', async () => {
