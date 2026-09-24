@@ -102,7 +102,7 @@
     {
       "id": "ng-icon-component",
       "package": "@ng-icons/core",
-      "version": "34.0.0",
+      "version": "36.0.0",
       "mechanism": "NgIcon injects an Angular component stylesheet and writes size, stroke, and color custom properties inline",
       "seam": "libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.html",
       "importPrefixes": ["@ng-icons/core", "@ng-icons/lucide"],

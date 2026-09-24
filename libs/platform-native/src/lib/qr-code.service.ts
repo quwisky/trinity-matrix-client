@@ -36,12 +36,20 @@ export class QrCodeService {
   decodeFrame(frame: QrCodeFrame): Uint8ClampedArray | null {
     const segments: Uint8Array[] = [];
     try {
-      decodeQr(frame, {
-        textDecoder: (bytes: Uint8Array) => {
-          segments.push(Uint8Array.from(bytes));
-          return '';
+      decodeQr(
+        {
+          ...frame,
+          data: Array.isArray(frame.data)
+            ? Uint8ClampedArray.from(frame.data)
+            : frame.data,
         },
-      });
+        {
+          textDecoder: (bytes: Uint8Array) => {
+            segments.push(Uint8Array.from(bytes));
+            return '';
+          },
+        },
+      );
     } catch {
       return null;
     }

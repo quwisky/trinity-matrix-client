@@ -1,0 +1,69 @@
+diff --git a/dist/chunks/index.DC7d2Pf8.js b/dist/chunks/index.DC7d2Pf8.js
+index 0b0934f9465dc7d05b9ff04bb8245a30bdbc7399..7cdc33f1b96c2192139680f8f58242329ad11aa0 100644
+--- a/dist/chunks/index.DC7d2Pf8.js
++++ b/dist/chunks/index.DC7d2Pf8.js
+@@ -1,5 +1,6 @@
+ import { URL as URL$1 } from 'node:url';
+ import { Console } from 'node:console';
++import { File as NodeFile } from 'node:buffer';
+ 
+ // SEE https://github.com/jsdom/jsdom/blob/master/lib/jsdom/living/interfaces.js
+ const LIVING_KEYS = [
+@@ -453,7 +454,7 @@ var jsdom = {
+ 		});
+ 		const clearAddEventListenerPatch = patchAddEventListener(dom.window);
+ 		const clearWindowErrors = catchWindowErrors(dom.window);
+-		const utils = createCompatUtils(dom.window);
++		const utils = await createCompatUtils(dom.window);
+ 		// TODO: browser doesn't expose Buffer, but a lot of dependencies use it
+ 		dom.window.Buffer = Buffer;
+ 		dom.window.jsdom = dom;
+@@ -522,7 +523,7 @@ var jsdom = {
+ 		const clearAddEventListenerPatch = patchAddEventListener(dom.window);
+ 		const { keys, originals } = populateGlobal(global, dom.window, { bindFunctions: true });
+ 		const clearWindowErrors = catchWindowErrors(global);
+-		const utils = createCompatUtils(dom.window);
++		const utils = await createCompatUtils(dom.window);
+ 		global.jsdom = dom;
+ 		global.Request = createCompatRequest(utils);
+ 		global.URL = createJSDOMCompatURL(utils);
+@@ -568,23 +569,32 @@ function createJSDOMCompatURL(utils) {
+ 	}
+ 	return URL;
+ }
+-function createCompatUtils(window) {
+-	// this returns a hidden Symbol(impl)
+-	// this is cursed, and jsdom should just implement fetch API itself
+-	const implSymbol = Object.getOwnPropertySymbols(Object.getOwnPropertyDescriptors(new window.Blob()))[0];
++async function createCompatUtils(window) {
++	// jsdom 30.1 no longer exposes Symbol(impl). Keep this bridge local to
++	// jsdom environments and fail closed if its private byte contract changes.
++	// Upstream tracking: https://github.com/vitest-dev/vitest/pull/11353
++	const { default: { implForWrapper } } = await import('jsdom/lib/generated/idl/utils.js');
+ 	const utils = {
+ 		window,
+ 		makeCompatFormData(formData) {
+ 			const nodeFormData = new NodeFormData_();
+ 			formData.forEach((value, key) => {
+-				if (value instanceof window.Blob) nodeFormData.append(key, utils.makeCompatBlob(value));
++				if (value instanceof window.Blob) {
++					// Node 24's FormData must not wrap the bytes in the jsdom global File.
++					const file = new NodeFile([utils.makeCompatBlob(value)], value.name ?? 'blob', {
++						type: value.type,
++						lastModified: value.lastModified
++					});
++					nodeFormData.append(key, file);
++				}
+ 				else nodeFormData.append(key, value);
+ 			});
+ 			return nodeFormData;
+ 		},
+ 		makeCompatBlob(blob) {
+-			const buffer = blob[implSymbol]._buffer;
+-			return new NodeBlob_([buffer], { type: blob.type });
++			const bytes = implForWrapper(blob)?._bytes;
++			if (!ArrayBuffer.isView(bytes)) throw new TypeError('Cannot access jsdom Blob bytes');
++			return new NodeBlob_([bytes], { type: blob.type });
+ 		}
+ 	};
+ 	return utils;
