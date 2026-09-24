@@ -35,7 +35,7 @@ Angular framework packages and the builder can intentionally use different patch
 
 | Package    | Version   |
 | ---------- | --------- |
-| Astro      | `7.3.2`   |
+| Astro      | `7.3.3`   |
 | Starlight  | `0.42.0`  |
 | Vitest     | `4.1.11`  |
 | Playwright | `^1.62.1` |

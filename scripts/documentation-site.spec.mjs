@@ -73,7 +73,7 @@ describe('documentation site projects', () => {
       '@astrojs/check': '0.9.10',
       '@astrojs/markdown-remark': '7.3.1',
       '@astrojs/starlight': '0.42.0',
-      astro: '7.3.2',
+      astro: '7.3.3',
     });
   });
 });
