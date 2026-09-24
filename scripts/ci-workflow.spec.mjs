@@ -18,6 +18,56 @@ const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
 
 describe('CI execution contract', () => {
+  it('gates message-grouping upload on its exact regular-file safety marker', () => {
+    const gate = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'message-grouping-artifact-gate',
+    );
+    expect(gate.if).toContain(
+      "steps.android.outputs.message-grouping-started == 'true'",
+    );
+    const tempRoot = mkdtempSync(join(tmpdir(), 'trinity-grouping-gate-'));
+    try {
+      const reports = join(tempRoot, 'reports');
+      const output = join(tempRoot, 'github-output');
+      const wrong = join(reports, 'run-1', 'android.message-grouping', 'other');
+      mkdirSync(wrong, { recursive: true });
+      writeFileSync(join(wrong, 'publication-safe'), 'scanned\n');
+      writeFileSync(output, '');
+      const runGate = () =>
+        execFileSync('/bin/bash', ['-e', '-c', gate.run], {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            MESSAGE_GROUPING_DIAGNOSTIC_ROOT: reports,
+            GITHUB_OUTPUT: output,
+          },
+        });
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+      const exact = join(
+        reports,
+        'run-1',
+        'android.message-grouping',
+        'message-grouping',
+      );
+      mkdirSync(exact, { recursive: true });
+      writeFileSync(join(exact, 'publication-safe'), 'scanned\n');
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('message-grouping-safe=true\n');
+      const upload = workflow.jobs['android-e2e'].steps.find(
+        (step) => step.with?.surface === 'android-message-grouping',
+      );
+      expect(upload.if).toContain(
+        "steps.android.outputs.message-grouping-started == 'true'",
+      );
+      expect(upload.if).toContain(
+        "steps.message-grouping-artifact-gate.outputs.message-grouping-safe == 'true'",
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('publishes edit-history diagnostics only for the exact safe marker without rg on PATH', () => {
     const gate = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'edit-history-artifact-gate',
@@ -189,7 +239,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(70);
+    expect(uploads.length).toBe(71);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -824,13 +874,15 @@ describe('CI execution contract', () => {
                                                                                                                           ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
                                                                                                                           : /!cancelled\(\).*outputs\.started == 'true'/;
       expect(step.if).toMatch(
-        step.with.surface === 'android-message-action-sheet'
-          ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
-          : step.with.surface === 'android-edit-history'
-            ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
-            : step.with.surface === 'android-message-forward'
-              ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
-              : gate,
+        step.with.surface === 'android-message-grouping'
+          ? /!cancelled\(\).*outputs\.message-grouping-started == 'true'.*outputs\.message-grouping-safe == 'true'/
+          : step.with.surface === 'android-message-action-sheet'
+            ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+            : step.with.surface === 'android-edit-history'
+              ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+              : step.with.surface === 'android-message-forward'
+                ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
+                : gate,
       );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -1610,7 +1662,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(63);
+    expect(lines).toHaveLength(64);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

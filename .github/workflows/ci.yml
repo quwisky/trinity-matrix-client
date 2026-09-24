@@ -405,6 +405,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-http-error-recovery-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-http-error-recovery; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'edit-history-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm nx run trinity-e2e-android:edit-history; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-forward-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-forward; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-grouping-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-grouping; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'cross-user-verification-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:cross-user-verification; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-drafts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:composer-drafts; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-formatting-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:composer-formatting; fi
@@ -469,6 +470,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_FORWARD_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-forward/message-forward/publication-safe' -print -quit)" ]; then
             echo 'message-forward-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-grouping diagnostics
+        id: message-grouping-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-grouping-started == 'true' }}
+        env:
+          MESSAGE_GROUPING_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_GROUPING_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-grouping/message-grouping/publication-safe' -print -quit)" ]; then
+            echo 'message-grouping-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
@@ -803,6 +814,13 @@ jobs:
           surface: android-message-forward
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-forward/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-grouping-started == 'true' && steps.message-grouping-artifact-gate.outputs.message-grouping-safe == 'true' }}
+        with:
+          surface: android-message-grouping
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-grouping/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}

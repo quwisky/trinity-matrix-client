@@ -1,12 +1,12 @@
 # Android Message Grouping Maestro Migration Design
 
 - Issue: #745, part of #660
-- Status: Conversational design approved; written spec awaiting review
+- Status: Written spec and plan approved; local implementation validated, hosted audit pending
 - Branch: `test/676-android-sidebar-filter`, PR #677 (draft, unmerged)
 
-This document records the proposed design, not implementation or acceptance
-evidence. Approval of this written spec is required before revising the
-implementation plan or changing the journey.
+This document records the approved design. Implementation and acceptance
+evidence are tracked in `e2e/android/MIGRATION.md`; the hosted audit remains
+required before closing #745.
 
 ## Intent and source boundary
 
@@ -162,10 +162,11 @@ complete diff, and audit the original-attempt hosted Android, browser, and
 renderer artifacts before #745 can close. Report unrelated CI failures
 separately rather than concealing them with a retry.
 
-Only after all acceptance evidence may the implementation batch be committed
-and pushed to `test/676-android-sidebar-filter`, with evidence posted to #745,
-parent #660, migration tracker #653, and PR #677. Leave PR #677 draft and
-unmerged. #746 is the next issue after #745 is accepted.
+After local validation and review, commit and push the implementation batch to
+`test/676-android-sidebar-filter` so hosted checks can run. Only after auditing
+the original-attempt hosted evidence may #745 close, with results posted to
+#745, parent #660, migration tracker #653, and PR #677. Leave PR #677 draft
+and unmerged. #746 is the next issue after #745 is accepted.
 
 ## Existing plan reconciliation
 

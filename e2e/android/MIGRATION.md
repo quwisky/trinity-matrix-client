@@ -5309,3 +5309,83 @@ and Pixel 5 profile digest
 match. The unchanged browser predecessor passed 1/1 at retry 0 (`muf06aic`).
 Original-attempt hosted Android/browser/renderer audit remains pending under
 #744; PR #677 remains draft/open and unmerged.
+
+## Message-grouping journey
+
+Suite `android.message-grouping` owns the Android stage of the unchanged
+`grouped messages line up with the first of their group` predecessor in
+`e2e/browser/journeys/conversations/message-grouping.spec.mts`: fixture and
+helper lines 25–52, test lines 57–234, and the explicit Android return at
+line 234. Its SHA-256 is
+`9cdd8dcd5722dabe4783b9f045bcff56ab4c50adfce51f2ce9ba8e33884dd05f`.
+The desktop-only tail at lines 237–643 is excluded; the Playwright definition
+remains enabled and untouched. The exact 22 source-ordered parity records are:
+
+| Canonical assertion | Android parity identity |
+| --- | --- |
+| Exact named non-DM Room opened (lines 96–103) | `message-grouping.room-visible` |
+| First body visible (lines 106–110) | `message-grouping.body-first` |
+| Second body visible (lines 106–110) | `message-grouping.body-second` |
+| Third body visible (lines 106–110) | `message-grouping.body-third` |
+| One group-header avatar (line 114) | `message-grouping.avatar-count` |
+| Two continuations (line 115) | `message-grouping.continuation-count` |
+| First used 40 px lead (lines 120–132) | `message-grouping.lead-first` |
+| Second used 40 px lead (lines 120–132) | `message-grouping.lead-second` |
+| Third used 40 px lead (lines 120–132) | `message-grouping.lead-third` |
+| First text left edge (lines 134–146) | `message-grouping.text-left-first` |
+| Second text left edge (lines 134–146) | `message-grouping.text-left-second` |
+| Third text left edge (lines 134–146) | `message-grouping.text-left-third` |
+| Cosy start padding inside border box (line 166) | `message-grouping.cosy-start-padding` |
+| Cosy continuation padding (line 167) | `message-grouping.cosy-continuation-padding` |
+| Cosy start margin zero (line 178) | `message-grouping.cosy-start-margin` |
+| Android has no hover toolbar (line 184) | `message-grouping.phone-no-toolbar` |
+| Compact used column gap 8 px (line 198) | `message-grouping.compact-column-gap` |
+| Compact total used row height lower (line 228) | `message-grouping.compact-total-height` |
+| Compact start padding 12 px (line 229) | `message-grouping.compact-start-padding` |
+| Compact start margin zero (line 230) | `message-grouping.compact-start-margin` |
+| Compact continuation padding zero (line 231) | `message-grouping.compact-continuation-padding` |
+| Compact trailing body gap within 1 px (lines 232–233) | `message-grouping.compact-body-end-gap` |
+
+One fresh Account/private non-DM Room receives three exact consecutive
+same-sender Matrix events. Maestro owns login, Room and Settings navigation,
+production Compact selection, and the Room return. A read-only WebView
+observer scopes the three ordered `data-mid` rows and measures used boxes;
+read-only native `run-as` confirms the exact version-1 Compact Preferences
+envelope. The suite has one attempt and zero retries, serialized
+`android-avd` + `synapse` resources, exact APK/renderer/profile provenance,
+pass/failure captures, bounded cleanup and scrubbed diagnostics. Shard 2 runs
+it after message-forward and before cross-user; its dedicated upload requires
+both a started flag and the post-scan `publication-safe` marker.
+
+```bash
+pnpm nx run trinity-e2e-android:message-grouping --skipNxCache
+```
+
+Local installed-Android, unchanged browser predecessor, and original-attempt
+hosted Android/browser/renderer evidence form the acceptance gate for #745;
+wiring alone does not establish parity or authorize issue closure.
+
+Three unchanged local installed-Android original attempts on the reviewed
+scanner and production bundle (`mufkay5v-9c27f3d8-3391-4b84-8eae-668c79ebe34b`,
+`mufkfyij-f05a2503-9b69-4bab-bb19-82b625a681c6`, and
+`mufkkw1e-1e7c8c6f-8352-411e-8015-d6a824be9732`) passed 1/1 stage,
+22/22 unique source-ordered records, attempt 1/retries 0, three distinct
+hashed event receipts, exact Compact persistence-version receipt, and the
+post-cleanup safety marker. The installed APK digest was
+`83afd99c082a5eb77accb7b1af3130659b5135614a965c3726806e3430470291`,
+the renderer manifest digest was
+`91669b7d2aacfd0b665fa9dbb1615e3e55763b22a6d9462631651576aba7aa7a`,
+and the Pixel 5 profile digest was
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`
+in each run. The unchanged browser predecessor passed 1/1 at retry 0
+(`mufjzxn3-3e598a59-0b01-4d4d-9f33-16420ccef4cb`). The production
+renderer passed all nine applicable matrix tests (nine project-filtered
+skips) in `mufk59az-51d6316c-ddb1-494c-9a45-b0a578850813`.
+
+Two earlier original attempts remain retained as failures: `mufj1sqx` found
+that Settings needed a native Back-to-rooms action, and `mufj7rm8` found a
+diagnostic scanner false positive on ordinary JUnit XML. A subsequent
+pre-review prototype passed but was not counted in the final unchanged
+three-run set after its receipts and scanner were strengthened. The hosted
+merge-checkout audit remains pending; #745 is not closed and PR #677 stays
+draft/unmerged.

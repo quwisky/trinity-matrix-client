@@ -1,5 +1,11 @@
 # Android Message Grouping Migration Implementation Plan
 
+> **Superseded:** Do not execute this preparatory plan. The approved written
+> design is implemented by
+> `docs/superpowers/plans/2026-09-24-android-message-grouping-maestro.md`,
+> which corrects the native density envelope, assertion accounting, and
+> Nx-first validation.
+
 > **Execution:** Use `superpowers:executing-plans`,
 > `superpowers:test-driven-development` and
 > `superpowers:verification-before-completion`; subagent delegation is not part
