@@ -5498,3 +5498,13 @@ pnpm nx run trinity-e2e-android:message-linkify --skipNxCache
 Three unchanged installed-Android first attempts, the unchanged browser
 predecessor at retry 0, and audited original-attempt hosted
 Android/browser/renderer artifacts form the acceptance gate for #746.
+
+Accepted at `a8412fdd`. Three unchanged local first attempts
+(`mugrkj7d-09440da8-6e2c-447f-8f33-f51b5c95e892`,
+`mugrrhqz-939f05e2-9cf9-42e2-bda4-de914b5dd08e`,
+`mugryzlp-fc6e4d3a-5443-4f7e-bc55-6647aca62d39`) and the original-attempt hosted
+shard-1 artifact of run 36123072543 (`mugwklxg-989ebce0-7c60-4507-9466-d6ade4962d0b`)
+each passed 2/2 records at attempt 1 and zero retries, with matching built and
+installed APK digests, the publication-safe marker and no protected Room or event
+identifier. The unchanged predecessor passed at retry 0 locally and in the same
+hosted browser run, and the production renderer had nine applicable passes.
