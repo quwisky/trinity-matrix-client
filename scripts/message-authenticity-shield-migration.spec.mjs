@@ -217,7 +217,10 @@ describe('Android message-authenticity shield migration', () => {
     expect(composeFlow).toContain('- eraseText');
     expect(composeFlow).toContain('- setClipboard: ${MESSAGE}');
     expect(composeFlow).toContain('- pasteText');
-    expect(composeFlow).toContain('- hideKeyboard');
+    // An unconditional Maestro hideKeyboard is a Back press that can leave the
+    // Room; the journey uses the device-state-guarded client dismissal instead.
+    expect(composeFlow).not.toContain('- hideKeyboard');
+    expect(journey).toContain('await client.hideKeyboard();');
     expect(composeFlow).not.toContain('tapOn:');
     expect(journey).toContain("id: 'plaintext-no-shield'");
     expect(journey).toContain("id: 'unsigned-device-shield'");

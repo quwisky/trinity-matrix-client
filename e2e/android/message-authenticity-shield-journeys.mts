@@ -146,6 +146,7 @@ async function composeExactMessage(
     ),
     { APP_ID: client.applicationId, MESSAGE: body },
   );
+  await client.hideKeyboard();
   const composerValue = await evaluateNative(
     client.webview,
     `document.querySelector('textarea.composer__input')?.value ?? null`,
