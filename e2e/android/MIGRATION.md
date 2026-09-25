@@ -5386,9 +5386,18 @@ Two earlier original attempts remain retained as failures: `mufj1sqx` found
 that Settings needed a native Back-to-rooms action, and `mufj7rm8` found a
 diagnostic scanner false positive on ordinary JUnit XML. A subsequent
 pre-review prototype passed but was not counted in the final unchanged
-three-run set after its receipts and scanner were strengthened. The hosted
-merge-checkout audit remains pending; #745 is not closed and PR #677 stays
-draft/unmerged.
+three-run set after its receipts and scanner were strengthened.
+
+Original-attempt hosted run 36064938227 (merge `bb2c43f8`, head `dc777187`)
+passed the shard-2 target in 5m49s: 1/1 stage, 22/22 records, attempt 1 and
+zero retries, with matching built and installed APK digests and the audited
+hosted production manifest
+`76307d547d1e6a2dcec8aa73fdd30d6df696b25e827c9950828a18b8de996399`. An
+identifier audit of every raw, URI-decoded and double-decoded token in the
+132-file artifact found zero matches for the four protected Room/event
+digests. The same run's browser predecessor and production renderer were
+reconciled at zero executed retries, so #745 is accepted and closed. The run's
+unrelated shard failures remain #665 reliability work.
 
 Independent review of `7cec1c4b` subsequently found two false-pass paths:
 the density observer could accept a commented-out entry or malformed XML,
