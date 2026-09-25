@@ -21,6 +21,7 @@ function fixture({
   targets = [target()],
   metrics = { width: 1080, height: 2209, dpr: 1 },
   physical = 390,
+  physicalHeight = undefined,
   userAgent = 'Mozilla/5.0 (Android) Trinity Fixture',
 } = {}) {
   const calls = [];
@@ -39,7 +40,16 @@ function fixture({
       if (method === 'Runtime.evaluate')
         return { result: { result: { value: metrics } } };
       if (method === 'Page.getLayoutMetrics')
-        return physical ? { cssVisualViewport: { clientWidth: physical } } : {};
+        return physical
+          ? {
+              cssVisualViewport: {
+                clientWidth: physical,
+                ...(physicalHeight === undefined
+                  ? {}
+                  : { clientHeight: physicalHeight }),
+              },
+            }
+          : {};
       if (method === 'Emulation.setDeviceMetricsOverride') {
         metrics.width = params.width;
         metrics.height = params.height;
@@ -470,6 +480,26 @@ describe('Maestro viewport ownership', () => {
       'send',
       'Emulation.setDeviceMetricsOverride',
       expect.objectContaining({ scale: 200 / 390 }),
+    ]);
+    await viewport.close();
+  });
+
+  it('also scales a requested viewport taller than the physical WebView', async () => {
+    // Pixel 6 portrait: 390x844 CSS needs 2215.5 px, but the WebView between the
+    // system bars is shorter; width-only scaling left the page bottom off screen.
+    const f = fixture({ physical: 411.43, physicalHeight: 842.3 });
+    const viewport = await openMaestroViewport(f.device, {
+      pid: '1234',
+      width: 390,
+      height: 844,
+      fetch: f.fetch,
+      connect: f.connect,
+    });
+    await viewport.apply();
+    expect(f.calls).toContainEqual([
+      'send',
+      'Emulation.setDeviceMetricsOverride',
+      expect.objectContaining({ scale: 842.3 / 844 }),
     ]);
     await viewport.close();
   });

@@ -400,14 +400,22 @@ export async function openMaestroViewport(
       applied = false;
       await page?.send('Emulation.clearDeviceMetricsOverride');
       const physical = await page?.send('Page.getLayoutMetrics');
-      const physicalWidth =
+      const physicalViewport =
         physical && typeof physical === 'object'
           ? (physical as {
-              cssVisualViewport?: { clientWidth?: unknown };
-            }).cssVisualViewport?.clientWidth
+              cssVisualViewport?: { clientWidth?: unknown; clientHeight?: unknown };
+            }).cssVisualViewport
           : undefined;
+      const physicalWidth = physicalViewport?.clientWidth;
       assert(typeof physicalWidth === 'number' && Number.isFinite(physicalWidth) && physicalWidth > 0, 'Physical WebView layout width is unavailable');
-      const scale = Math.min(1, physicalWidth / requestedSize.width);
+      // A requested viewport taller than the WebView between the system bars (for
+      // example 390x844 on a Pixel 6) must also shrink, or its bottom is off screen.
+      const physicalHeight = physicalViewport?.clientHeight;
+      const heightScale =
+        typeof physicalHeight === 'number' && Number.isFinite(physicalHeight) && physicalHeight > 0
+          ? physicalHeight / requestedSize.height
+          : 1;
+      const scale = Math.min(1, physicalWidth / requestedSize.width, heightScale);
       await page?.send('Emulation.setDeviceMetricsOverride', {
         width: requestedSize.width,
         height: requestedSize.height,
