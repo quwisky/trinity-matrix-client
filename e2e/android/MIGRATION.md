@@ -5695,3 +5695,15 @@ Three unchanged installed-Android first attempts, the unchanged android-webview
 and browser predecessors at retry 0, and audited original-attempt hosted
 Android/browser/renderer artifacts form the acceptance gate for #747; wiring
 alone does not establish parity or authorize issue closure.
+
+Accepted at `e8a7cd9b`. Three unchanged local first attempts
+(`muh04lgt-8017375c-a0f7-4ffc-8ed5-16ba66d17b46`,
+`muh0w3e9-19bef8b7-b377-49a5-a7e2-a2715ef149ed`,
+`muh1mpgf-5dbf167e-0ad8-4693-91d9-256cd416eef1`) and the original-attempt hosted
+shard-4 artifact of run 36148661883 (`muh6ugrk-ff8e3210-3dc8-43fd-85d2-e3857c76a1b8`)
+each passed 63/63 records (6/16/9/12/14/6) at attempt 1 and zero retries, with
+matching built and installed APK digests, the publication-safe marker and no
+protected Room, event or link identifier. The unchanged android-webview
+predecessor passed 5/5 at retry 0 locally, the browser predecessor passed its five
+applicable definitions at retry 0 in the same hosted run, and the production
+renderer had nine applicable passes.
