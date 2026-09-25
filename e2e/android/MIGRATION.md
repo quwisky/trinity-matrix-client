@@ -5854,3 +5854,16 @@ Three unchanged installed-Android first attempts, the three exact Playwright
 predecessors passing sequentially at retry 0, and audited original-attempt
 hosted Android/browser/renderer artifacts form the acceptance gate for #748;
 wiring alone does not establish parity or authorize issue closure.
+
+Accepted at `117cf07a`. Three unchanged local first attempts
+(`muham6xf-207c805d-e223-4269-9bcb-4588509b952a`,
+`muhb7nam-4ec6374b-40a9-4ed7-a518-1108dadbaf9b`,
+`muhbrzv6-b035bc98-9550-4cda-b3e9-c941689a2276`) and the original-attempt hosted
+shard-5 artifact of run 36186649967 (`muhig4qa-cdb0c06c-076d-4cc1-b264-2abb56e15e39`)
+each passed 37/37 records (18/7/12) at attempt 1 and zero retries, with matching
+built and installed APK digests, the publication-safe marker and no protected
+Room or event identifier in any file, including `process.log`. The hosted run
+tested `1ff6adf0`, which differs from `117cf07a` only by a CI budget comment. The
+unchanged predecessor passed its three definitions sequentially at retry 0 locally
+and in the same hosted browser run, and the production renderer had nine
+applicable passes.
