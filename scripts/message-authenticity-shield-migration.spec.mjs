@@ -135,7 +135,7 @@ describe('Android message-authenticity shield migration', () => {
   it('pins the exact predecessor/helper sources and direct assertion shape', () => {
     const predecessor = sourceLines(
       predecessorSource,
-      '462d527560b07201ed04b0a2793d275411abfc2c6beb58d96036ef145b93288b',
+      '2ab9ceaa07b78d77aea844127b26ba16c7d9475322a7430a8f422186bafa9c9c',
     );
     const app = sourceLines(
       appSource,
@@ -146,22 +146,22 @@ describe('Android message-authenticity shield migration', () => {
       'ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594',
     );
 
-    expect(predecessor[21]).toContain('/**');
-    expect(predecessor[26]).toContain('async function setUpEncryption');
-    expect(predecessor[57]).toContain('/** Open a joined');
-    expect(predecessor[58]).toContain('async function openRoom');
-    expect(predecessor[72]).toContain(
+    expect(predecessor[22]).toContain('/**');
+    expect(predecessor[27]).toContain('async function setUpEncryption');
+    expect(predecessor[58]).toContain('/** Open a joined');
+    expect(predecessor[59]).toContain('async function openRoom');
+    expect(predecessor[73]).toContain(
       "test('a message in a plaintext room shows no shield'",
     );
-    expect(predecessor[136]).toBe('  });');
-    expect(predecessor[138]).toContain(
+    expect(predecessor[137]).toBe('  });');
+    expect(predecessor[139]).toContain(
       "test('a shielded message explains itself in a tooltip'",
     );
-    expect(predecessor[316]).toBe('  });');
-    expect(assertionSiteCount(predecessor.slice(72, 137))).toBe(2);
-    expect(assertionSiteCount(predecessor.slice(138, 317))).toBe(24);
+    expect(predecessor[317]).toBe('  });');
+    expect(assertionSiteCount(predecessor.slice(73, 138))).toBe(2);
+    expect(assertionSiteCount(predecessor.slice(139, 318))).toBe(24);
 
-    const shielded = predecessor.slice(138, 317).join('\n');
+    const shielded = predecessor.slice(139, 318).join('\n');
     expect(shielded).toContain('const deviceB = await secondaryApp.launch()');
     expect(shielded).toContain('await setUpEncryption(page, pass)');
     expect(shielded).toContain('/receipt/m.read/');
@@ -183,9 +183,9 @@ describe('Android message-authenticity shield migration', () => {
     if (!existsSync(contractPath)) return;
     const contract = await import(contractPath);
     expect(contract.MESSAGE_AUTHENTICITY_SHIELD_SOURCES).toEqual({
-      helpers: `${predecessorSource}:22-68`,
-      plaintext: `${predecessorSource}:73-137`,
-      shielded: `${predecessorSource}:139-317`,
+      helpers: `${predecessorSource}:23-69`,
+      plaintext: `${predecessorSource}:74-138`,
+      shielded: `${predecessorSource}:140-318`,
       app: appSource,
       account: accountSource,
     });
@@ -375,7 +375,7 @@ describe('Android message-authenticity shield migration', () => {
     expect(migration).toContain('## Message-authenticity shield journeys');
     expect(migration).toContain('`android.message-authenticity-shield`');
     expect(migration).toContain(
-      '462d527560b07201ed04b0a2793d275411abfc2c6beb58d96036ef145b93288b',
+      '2ab9ceaa07b78d77aea844127b26ba16c7d9475322a7430a8f422186bafa9c9c',
     );
     expect(migration).toContain('26 unique direct assertion identities');
     expect(migration).toMatch(/35 stage-local direct assertion\s+records/u);

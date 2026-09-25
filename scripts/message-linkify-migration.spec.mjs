@@ -115,7 +115,7 @@ describe('Android message-linkify migration contract', () => {
   it('pins the exact predecessor definition, Room helper and shared login pins', () => {
     const source = read(predecessor);
     expect(digest(predecessor)).toBe(
-      'd46fd3a997e4a34872930a090666cb8ccc34c90b7c32907dc1a8c0b054a9535d',
+      'dd48aadd26ab1d960077d71ad68cd4ee8bf9b836706b4beb4620a34e7f7551a3',
     );
     expect(digest('e2e/support/app.mts')).toBe(
       '60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3',
@@ -123,8 +123,8 @@ describe('Android message-linkify migration contract', () => {
     expect(digest('e2e/support/account.mts')).toBe(
       'ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594',
     );
-    expect(assertionLines(source, 27, 72)).toEqual([65]);
-    expect(assertionLines(source, 14, 22)).toEqual([19]);
+    expect(assertionLines(source, 28, 73)).toEqual([66]);
+    expect(assertionLines(source, 15, 23)).toEqual([20]);
     expect(source).toContain(
       "test('renders a bare URL in a message as a clickable link'",
     );
@@ -314,7 +314,7 @@ describe('Android message-linkify migration contract', () => {
       'client.fillFocused(COMPOSER, prefix)',
       'e2e/android/flows/message-linkify-append.yaml',
       'enterLinkifyBody(client)',
-      "client.key('enter')",
+      'client.tapCurrent(\'[data-testid="composer-send"]\')',
       'fixtures.roomEvent(account, room.id, eventId)',
       'assertPlainLinkifyEvent(',
       'assertLinkifiedRendering(rendering, eventId)',
@@ -330,6 +330,8 @@ describe('Android message-linkify migration contract', () => {
       'SECRET_LINKIFY_ROOM_SEGMENT',
     ])
       expect(journey).toContain(call);
+    // Mobile Enter inserts a new line in the composer (d3b27323); only Send sends.
+    expect(journey).not.toContain("client.key('enter')");
     expect(journey).not.toMatch(
       /\.(?:click|focus|submit|dispatchEvent|scrollIntoView)\(|location\.(?:assign|replace)|\.href\s*=|window\.open/u,
     );
@@ -630,7 +632,7 @@ describe('Android message-linkify hosted wiring and parity ledger', () => {
     ].map((match) => match[1]);
     expect(rows).toEqual(expectedAssertions);
     expect(section).toContain(
-      'd46fd3a997e4a34872930a090666cb8ccc34c90b7c32907dc1a8c0b054a9535d',
+      'dd48aadd26ab1d960077d71ad68cd4ee8bf9b836706b4beb4620a34e7f7551a3',
     );
     expect(section).toContain('Suite `android.message-linkify`');
   });

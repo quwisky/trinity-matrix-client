@@ -9,6 +9,7 @@ import {
   waitForSent,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers the message "View source" context action (msg-more → msg-view-source): a dialog
 // (data-testid="message-source") shows the event's raw JSON. Needs Synapse (Docker).
@@ -59,7 +60,7 @@ test.describe('Message source', () => {
 
     const composer = page.getByTestId('composer-input');
     await composer.fill(body);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
     const row = page.locator('.scroll .msg', { hasText: body });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());

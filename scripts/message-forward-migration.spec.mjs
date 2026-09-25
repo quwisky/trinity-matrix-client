@@ -70,7 +70,7 @@ describe('Android message-forward migration contract', () => {
   it('pins exact predecessor/helper shape and retains the Android sheet branch', () => {
     const source = read(predecessor);
     expect(digest(predecessor)).toBe(
-      '2c90b5ee4989d85c611629e37cf8847169b90c21d526a52e1e8d0113dfee179d',
+      '4776cbb08bea3b92eb5d0e2203b50b77261e4e3191acad94595b5db2f190fcd3',
     );
     expect(digest('e2e/support/app.mts')).toBe(
       '60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3',
@@ -78,8 +78,8 @@ describe('Android message-forward migration contract', () => {
     expect(digest('e2e/support/account.mts')).toBe(
       'ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594',
     );
-    expect(assertionLines(source, 30, 94)).toEqual([71, 85, 91]);
-    expect(assertionLines(source, 17, 25)).toEqual([22]);
+    expect(assertionLines(source, 31, 95)).toEqual([72, 86, 92]);
+    expect(assertionLines(source, 18, 26)).toEqual([23]);
     expect(source).toContain('if (isAndroidE2E) {');
     expect(source).toContain('openMessageActionSheet(page, row.first())');
     expect(source).toContain("sheet.getByTestId('sheet-forward').click()");
@@ -224,7 +224,7 @@ describe('Android message-forward migration contract', () => {
     for (const call of [
       'client.login(account)',
       'client.fill(\'[data-testid="composer-input"]\'',
-      "client.key('enter')",
+      'client.tapCurrent(\'[data-testid="composer-send"]\')',
       'client.longPressCurrent(',
       'client.tapCurrent(\'[data-testid="sheet-forward"]\')',
       'client.fill(\'[data-testid="switcher-input"]\'',
@@ -237,6 +237,8 @@ describe('Android message-forward migration contract', () => {
       "client.capture('failed')",
     ])
       expect(journey).toContain(call);
+    // Mobile Enter inserts a new line in the composer (d3b27323); only Send sends.
+    expect(journey).not.toContain("client.key('enter')");
     expect(journey).not.toMatch(/\.(?:click|focus|submit|navigate)\(/u);
     expect(journey).not.toContain('.first()');
     expect(journey).toContain('assertExactPickerResult(');

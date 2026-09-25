@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 
 export const COMPOSER_MENTION_SOURCES = {
   helpers:
-    'e2e/browser/journeys/conversations/composer-mentions.spec.mts:20-103',
+    'e2e/browser/journeys/conversations/composer-mentions.spec.mts:21-104',
   touch:
-    'e2e/browser/journeys/conversations/composer-mentions.spec.mts:108-168',
+    'e2e/browser/journeys/conversations/composer-mentions.spec.mts:109-169',
   keyboard:
-    'e2e/browser/journeys/conversations/composer-mentions.spec.mts:170-196',
+    'e2e/browser/journeys/conversations/composer-mentions.spec.mts:171-197',
   app: 'e2e/support/app.mts',
   account: 'e2e/support/account.mts',
 } as const;

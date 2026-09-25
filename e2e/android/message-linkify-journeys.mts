@@ -214,7 +214,10 @@ async function runStage(
   });
 
   await enterLinkifyBody(client);
-  await client.key('enter');
+  // The emulated viewport maps points only while the WebView is full height;
+  // the on-screen keyboard shrinks it, so dismiss it before the native Send tap.
+  await client.hideKeyboard();
+  await client.tapCurrent('[data-testid="composer-send"]');
   const row = await readyRow(client);
   const eventId = row.attributes['data-mid'];
   assert(eventId?.startsWith('$'), 'Sent row has a real event ID');
@@ -322,7 +325,7 @@ export async function runMessageLinkifySuite(testContext: TestContext): Promise<
           const records: MessageLinkifyAssertion[] = [];
           const stage: StageReport = {
             id: 'message-linkify',
-            source: 'e2e/browser/journeys/conversations/message-linkify.spec.mts:14-72',
+            source: 'e2e/browser/journeys/conversations/message-linkify.spec.mts:15-73',
             status: 'running', durationMs: 0, artifact: 'message-linkify/**',
             attempt: 1, retries: 0, expectedAssertionRecords: 2,
             assertionRecords: 0, assertions: [], failureCount: 0,

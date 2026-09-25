@@ -288,6 +288,7 @@ async function runTouchSelection(
   });
 
   await client.hideKeyboard();
+
   await client.tapCurrentExposed('[data-testid="mention-autocomplete"] button', {
     exactText: memberName,
   });
@@ -298,7 +299,10 @@ async function runTouchSelection(
     length: inserted.length,
     prefixLength: prefix.length,
   });
-  await client.key('enter');
+  // The emulated viewport maps points only while the WebView is full height;
+  // the on-screen keyboard shrinks it, so dismiss it before the native Send tap.
+  await client.hideKeyboard();
+  await client.tapCurrent('[data-testid="composer-send"]');
 
   const expectedHref = `https://matrix.to/#/${member.userId}`;
   context.secrets.SECRET_TOUCH_SELECTION_HREF = expectedHref;
@@ -391,7 +395,10 @@ async function runKeyboardAcceptance(
     matches: true,
     length: inserted.length,
   });
-  await client.key('enter');
+  // The emulated viewport maps points only while the WebView is full height;
+  // the on-screen keyboard shrinks it, so dismiss it before the native Send tap.
+  await client.hideKeyboard();
+  await client.tapCurrent('[data-testid="composer-send"]');
 
   const expectedHref = `https://matrix.to/#/${member.userId}`;
   context.secrets.SECRET_KEYBOARD_ACCEPTANCE_HREF = expectedHref;

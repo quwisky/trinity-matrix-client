@@ -16,6 +16,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 import { captureScreenshot } from '../../../support/screenshot.mts';
 
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
@@ -498,7 +499,7 @@ test.describe('Thread preview', () => {
     );
     const explicitBody = `explicit quote ${testResourceId('body')}`;
     await thread.getByTestId('composer-input').fill(explicitBody);
-    await thread.getByTestId('composer-input').press('Enter');
+    await sendComposerDraft(thread.getByTestId('composer-input'));
 
     const explicit = thread.locator('.msg', { hasText: explicitBody }).first();
     await expect(explicit).toBeVisible({ timeout: 20_000 });

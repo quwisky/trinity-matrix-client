@@ -9,6 +9,7 @@ import {
   waitForSent,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // End-to-end for message forwarding: pick another room from the switcher and the
 // message lands there. Needs a Synapse homeserver (Docker).
@@ -66,7 +67,7 @@ test.describe('Message forwarding', () => {
     const composer = page.getByTestId('composer-input');
     await composer.click();
     await composer.fill(body);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
     const row = page.locator('.scroll .msg', { hasText: body });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());

@@ -11,6 +11,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers the "seen by" reader list: clicking a message's read-receipt cluster
 // (data-testid="read-receipts") expands the names of who read it (seen-by-list).
@@ -105,7 +106,7 @@ test.describe('Seen by', () => {
 
     const composer = page.getByTestId('composer-input');
     await composer.fill(body);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
     await expect(
       page.locator('.scroll .msg', { hasText: body }).first(),
     ).toBeVisible({

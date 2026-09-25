@@ -6,6 +6,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers per-message authenticity shields (message-row `data-testid="msg-shield-*"`):
 // that a plaintext room raises none — shields are resolved only for encrypted events —
@@ -208,7 +209,7 @@ test.describe('Message authenticity shields', () => {
     await openRoom(deviceB, roomName);
     await deviceB.locator('textarea.composer__input').first().click();
     await deviceB.keyboard.type(body);
-    await deviceB.keyboard.press('Enter');
+    await sendComposerDraft(deviceB.getByTestId('composer-input').first());
     await expect(deviceB.locator('.msg__text', { hasText: runId })).toBeVisible(
       { timeout: 30_000 },
     );

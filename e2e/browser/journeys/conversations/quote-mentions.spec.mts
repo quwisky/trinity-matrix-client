@@ -13,6 +13,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers the notification half of quoting: carrying someone else's words must not notify
 // the people those words happen to name.
@@ -131,7 +132,7 @@ test.describe('Quoting does not notify the people it quotes', () => {
     await expect(composer).toHaveValue(`> ${named}\n\n`, { timeout: 10_000 });
     const answer = `on it ${runId}`;
     await composer.pressSequentially(answer);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
     await expect(
       page.locator('.scroll .msg', { hasText: answer }).first(),
     ).toBeVisible({ timeout: 30_000 });

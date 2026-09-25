@@ -11,6 +11,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // End-to-end for @-mention autocomplete: typing `@` opens a member menu, picking one
 // inserts a pill, and the sent message carries a matrix.to mention link (so it pings
@@ -130,7 +131,7 @@ test.describe('Composer @-mentions', () => {
     // Pick the member → the composer shows the mention, then send.
     await menu.getByText(memberName).click();
     await expect(composer).toHaveValue(`@${memberName} `);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
 
     // The sent message renders the mention as a matrix.to link to the member,
     // i.e. it carries m.mentions and will ping them.
@@ -185,10 +186,10 @@ test.describe('Composer @-mentions', () => {
       timeout: 15_000,
     });
 
-    // Enter accepts the highlighted member; a second Enter sends the message.
+    // Enter accepts the highlighted member on every device; then the draft sends.
     await composer.press('Enter');
     await expect(composer).toHaveValue(`@${memberName} `);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
 
     await expect(
       page.locator(`.scroll a[href*="${memberId}"]`).first(),

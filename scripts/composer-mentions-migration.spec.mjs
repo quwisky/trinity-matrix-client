@@ -64,6 +64,7 @@ function assertRuntimeContract(journey, client, fixtures) {
     'await client.hideKeyboard()',
     'await client.tapCurrentExposed(\'[data-testid="mention-autocomplete"] button\'',
     "await client.key('enter')",
+    'await client.tapCurrent(\'[data-testid="composer-send"]\')',
     'assert.equal(composer.value, inserted)',
     'assert.equal(pill.attributes.href, expectedHref)',
     "pill.attributes.class.split(/\\s+/u).includes('mention')",
@@ -85,6 +86,12 @@ function assertRuntimeContract(journey, client, fixtures) {
   ];
   for (const fragment of requiredJourneyFragments)
     expect(journey).toContain(fragment);
+  // Enter only accepts the highlighted suggestion: mobile Enter inserts a new line
+  // in the composer (d3b27323), so both stages send through the Send button.
+  expect(journey.split("await client.key('enter')")).toHaveLength(2);
+  expect(
+    journey.split('await client.tapCurrent(\'[data-testid="composer-send"]\')'),
+  ).toHaveLength(3);
 
   expect(client).toContain("'class'");
   expect(client).toContain("'href'");
@@ -119,7 +126,7 @@ describe('Android composer-mentions migration', () => {
   it('pins the exact predecessor and shared-helper sources', () => {
     const predecessor = sourceLines(
       predecessorSource,
-      '527176161868325d62a0b8f867d86f8601be6d21978095570e27dd1182c9c228',
+      '4fff4a23bbabe797ca87e8ed8b2fdda537e4af1adb4c5396cbb3d0feccd4eb39',
     );
     sourceLines(
       appSource,
@@ -130,25 +137,25 @@ describe('Android composer-mentions migration', () => {
       'ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594',
     );
 
-    expect(predecessor[19]).toContain('async function apiToken');
-    expect(predecessor[41]).toContain('async function seedRoomWithMember');
-    expect(predecessor[94]).toContain('async function openRoom');
-    expect(predecessor[99]).toContain("getByTestId('composer-input')");
-    expect(predecessor[107]).toContain(
+    expect(predecessor[20]).toContain('async function apiToken');
+    expect(predecessor[42]).toContain('async function seedRoomWithMember');
+    expect(predecessor[95]).toContain('async function openRoom');
+    expect(predecessor[100]).toContain("getByTestId('composer-input')");
+    expect(predecessor[108]).toContain(
       "test('autocompletes a member and sends a pinging mention'",
     );
-    expect(predecessor[169]).toContain(
+    expect(predecessor[170]).toContain(
       "test('accepts a mention with the keyboard'",
     );
     expect(
       predecessor
-        .slice(107, 168)
+        .slice(108, 169)
         .join('\n')
         .match(/\bexpect\b/gu),
     ).toHaveLength(7);
     expect(
       predecessor
-        .slice(169, 196)
+        .slice(170, 197)
         .join('\n')
         .match(/\bexpect\b/gu),
     ).toHaveLength(3);
@@ -161,9 +168,9 @@ describe('Android composer-mentions migration', () => {
     if (!existsSync(contractPath)) return;
     const contract = await import(contractPath);
     expect(contract.COMPOSER_MENTION_SOURCES).toEqual({
-      helpers: `${predecessorSource}:20-103`,
-      touch: `${predecessorSource}:108-168`,
-      keyboard: `${predecessorSource}:170-196`,
+      helpers: `${predecessorSource}:21-104`,
+      touch: `${predecessorSource}:109-169`,
+      keyboard: `${predecessorSource}:171-197`,
       app: appSource,
       account: accountSource,
     });
@@ -217,6 +224,10 @@ describe('Android composer-mentions migration', () => {
       ['redactMaestroArtifacts(output, secrets, true)', 'Promise.resolve()'],
       ['scanComposerMentionArtifacts(output, secrets)', 'Promise.resolve()'],
       ['await client.hideKeyboard()', 'Promise.resolve()'],
+      [
+        'await client.tapCurrent(\'[data-testid="composer-send"]\')',
+        "await client.key('enter')",
+      ],
       [
         'await client.tapCurrentExposed(\'[data-testid="mention-autocomplete"] button\'',
         'await client.tapCurrent(\'[data-testid="mention-autocomplete"] button\'',

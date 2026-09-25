@@ -3486,12 +3486,13 @@ retiring its Playwright predecessor.
 
 `android.message-authenticity-shield` maps both canonical definitions in
 `e2e/browser/journeys/trust/message-shield.spec.mts`, pinned at SHA-256
-`462d527560b07201ed04b0a2793d275411abfc2c6beb58d96036ef145b93288b`.
+`2ab9ceaa07b78d77aea844127b26ba16c7d9475322a7430a8f422186bafa9c9c`.
 The plaintext definition owns two assertion sites. The real encrypted-room
 definition owns 24 more; its nine geometry sites execute in both LTR and RTL,
 for 26 unique direct assertion identities and 35 stage-local direct assertion
 records. Application and account helper sources are pinned separately by the
-executable migration contract.
+executable migration contract. Device B's draft goes through the shared
+`sendComposerDraft` helper, which taps Send on a mobile target (d3b27323).
 
 The plaintext stage creates and joins a genuine unencrypted private Room through
 Matrix REST, sends one exact event, signs the reader into the installed primary
@@ -3906,26 +3907,30 @@ target itself completed successfully. None of this authorizes merging PR #677.
 `android.composer-mentions` maps both definitions in
 `e2e/browser/journeys/conversations/composer-mentions.spec.mts`, pinned at
 SHA-256
-`527176161868325d62a0b8f867d86f8601be6d21978095570e27dd1182c9c228`.
+`4fff4a23bbabe797ca87e8ed8b2fdda537e4af1adb4c5396cbb3d0feccd4eb39`.
 The shared application and Account helpers remain enabled and are pinned at
 `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`
 and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
 The migration expands the predecessor's ten direct assertions plus two
 composer-readiness helper calls into 12 unique, stage-local records: eight for
 touch selection and four for keyboard acceptance. Both Playwright predecessors
-remain enabled.
+remain enabled; they now send through the shared `sendComposerDraft` helper,
+which taps Send on a mobile target.
 
 Each stage creates a fresh reader/member pair and private Room through Matrix
 fixtures, signs the reader into the primary APK and enters an exact partial
 display name through the Android IME. The touch stage dismisses the IME so the
 keyboard-resized native WebView exposes the suggestion, then uses a measured
-Maestro tap to select the exact member. It proves the exact composer value and
+Maestro tap to select the exact member. It proves the exact composer value,
+sends it with a measured native tap on the composer's Send button, and proves the
 sent `matrix.to` link, waits for the local echo to reconcile to a `$` event ID,
 and independently reads that event from Synapse to prove the exact member is in
 `m.mentions.user_ids`. It also proves the rendered link has the `mention` class,
 font weight at least 600 and a nontransparent background. The keyboard stage
-proves the exact member is highlighted, accepts it with the first native Enter
-and sends it with the second.
+proves the exact member is highlighted, accepts it with a native Enter and
+sends it with a native Send tap. Since d3b27323, Enter in the composer inserts a
+new line on a mobile device, so both stages send through Send; Enter still
+accepts a highlighted suggestion.
 
 ```bash
 pnpm nx run trinity-e2e-android:composer-mentions --skipNxCache
@@ -5278,26 +5283,30 @@ draft/open and unmerged.
 ## Message-forward journey
 
 Suite `android.message-forward` migrates the Android branch of the one
-`forwards a message to another room` definition (lines 30–94) and its
-`openRoom` helper (lines 17–25) in the unchanged
+`forwards a message to another room` definition (lines 31–95) and its
+`openRoom` helper (lines 18–26) in
 `e2e/browser/journeys/conversations/message-forward.spec.mts`. The source is
 pinned at SHA-256
-`2c90b5ee4989d85c611629e37cf8847169b90c21d526a52e1e8d0113dfee179d`;
+`4776cbb08bea3b92eb5d0e2203b50b77261e4e3191acad94595b5db2f190fcd3`;
 the helper pins are recorded in #744. The Playwright predecessor remains
-enabled. Its three direct and four helper-expanded assertions map as follows:
+enabled; it now sends its draft through the shared `sendComposerDraft` helper,
+which taps Send on a mobile target. Its three direct and four helper-expanded
+assertions map as follows:
 
 | Canonical assertion | Android parity identity |
 | --- | --- |
-| Source `openRoom` composer readiness (helper line 22) | `message-forward.source-room-ready` |
-| Source row visible (line 71) | `message-forward.source-row-visible` |
-| `waitForSent` real event readiness (line 72) | `message-forward.source-server-ready` |
-| Android action sheet ready (line 77) | `message-forward.sheet-ready` |
-| Room picker search visible (line 85) | `message-forward.picker-visible` |
-| Target `openRoom` composer readiness (helper line 22) | `message-forward.target-room-ready` |
-| Target row visible (line 91) | `message-forward.target-row-and-event` |
+| Source `openRoom` composer readiness (helper line 23) | `message-forward.source-room-ready` |
+| Source row visible (line 72) | `message-forward.source-row-visible` |
+| `waitForSent` real event readiness (line 73) | `message-forward.source-server-ready` |
+| Android action sheet ready (line 78) | `message-forward.sheet-ready` |
+| Room picker search visible (line 86) | `message-forward.picker-visible` |
+| Target `openRoom` composer readiness (helper line 23) | `message-forward.target-room-ready` |
+| Target row visible (line 92) | `message-forward.target-row-and-event` |
 
 One disposable-Synapse account owns unique source and target Rooms. Native
-composer input produces a source row with a server-ready `$` ID; a direct
+composer input, sent by a measured native tap on the composer's Send button
+(since d3b27323, Enter in the composer inserts a new line on a mobile device),
+produces a source row with a server-ready `$` ID; a direct
 source-Room event read verifies exact Room, sender and body before native
 long-press. Maestro opens the Android action sheet, touches Forward, enters
 the target name in the production picker and touches its one exact Room
@@ -5457,25 +5466,28 @@ pending; #745 stays open and PR #677 stays draft/unmerged.
 
 ## Message-linkify journey
 
-Suite `android.message-linkify` owns the unchanged
+Suite `android.message-linkify` owns the
 `renders a bare URL in a message as a clickable link` predecessor in
 `e2e/browser/journeys/conversations/message-linkify.spec.mts`: test lines
-27–72 and the Room-opening helper at lines 14–22. Its SHA-256 is
-`d46fd3a997e4a34872930a090666cb8ccc34c90b7c32907dc1a8c0b054a9535d`, and the
-Playwright definition remains enabled and untouched. The two source-ordered
-parity records are:
+28–73 and the Room-opening helper at lines 15–23. Its SHA-256 is
+`dd48aadd26ab1d960077d71ad68cd4ee8bf9b836706b4beb4620a34e7f7551a3`, and the
+Playwright definition remains enabled. Its only change since the migration sends
+the draft through the shared `sendComposerDraft` helper, which taps Send on a
+mobile target. The two source-ordered parity records are:
 
 | Canonical assertion | Android parity identity |
 | --- | --- |
-| Room helper composer visible (line 19) | `message-linkify.room-ready` |
-| One visible exact bare-URL link (lines 65–71) | `message-linkify.link-visible` |
+| Room helper composer visible (line 20) | `message-linkify.room-ready` |
+| One visible exact bare-URL link (lines 66–72) | `message-linkify.link-visible` |
 
 One fresh Account and Room are arranged through Synapse. Maestro owns login,
 Room navigation and native composer input of the exact plain text
 `look at https://example.com`: the lowercase prefix goes through the
 anti-capitalization focused fill, and the URL is appended mid-sentence, so
 neither Android auto-capitalization nor a wrapped caret line changes it. A
-native Android Enter key event sends it, as in the forward and mention suites. The row must reconcile to a
+measured native tap on the composer's Send button sends it, as in the forward
+and mention suites: since d3b27323, Enter in the composer inserts a new line on
+a mobile device, so only Send sends. The row must reconcile to a
 real server event whose content is that exact `m.text` body with no
 `format`/`formatted_body`, relation or replacement, so the link comes from
 render-time linkification rather than seeded HTML. A read-only WebView

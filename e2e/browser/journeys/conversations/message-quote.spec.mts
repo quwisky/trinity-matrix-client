@@ -10,6 +10,7 @@ import {
   waitForSent,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers quoting a message (msg-more → msg-quote): the message's text is pulled into the
 // composer as a markdown `>` block for the user to write around, and sending it renders a
@@ -75,7 +76,7 @@ test.describe('Quote a message', () => {
     await composer.press('Shift+Enter');
     await composer.press('Shift+Enter');
     await composer.pressSequentially(second);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
 
     const row = page.locator('.scroll .msg', { hasText: first });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
@@ -97,7 +98,7 @@ test.describe('Quote a message', () => {
     // Write the response the quote exists to frame, and send.
     const answer = `my point ${runId}`;
     await composer.pressSequentially(answer);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
 
     const sent = page.locator('.scroll .msg', { hasText: answer });
     await expect(sent.first()).toBeVisible({ timeout: 20_000 });
@@ -174,7 +175,7 @@ test.describe('Quote a message', () => {
     // image row that must not offer Quote.
     const composer = page.getByTestId('composer-input');
     await composer.fill(body);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
 
     const textRow = page.locator('.scroll .msg', { hasText: body });
     await expect(textRow.first()).toBeVisible({ timeout: 20_000 });

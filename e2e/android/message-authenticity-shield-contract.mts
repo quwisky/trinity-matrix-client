@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 
 export const MESSAGE_AUTHENTICITY_SHIELD_SOURCES = {
-  helpers: 'e2e/browser/journeys/trust/message-shield.spec.mts:22-68',
-  plaintext: 'e2e/browser/journeys/trust/message-shield.spec.mts:73-137',
-  shielded: 'e2e/browser/journeys/trust/message-shield.spec.mts:139-317',
+  helpers: 'e2e/browser/journeys/trust/message-shield.spec.mts:23-69',
+  plaintext: 'e2e/browser/journeys/trust/message-shield.spec.mts:74-138',
+  shielded: 'e2e/browser/journeys/trust/message-shield.spec.mts:140-318',
   app: 'e2e/support/app.mts',
   account: 'e2e/support/account.mts',
 } as const;

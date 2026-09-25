@@ -167,7 +167,7 @@ async function runStage(
   });
 
   await client.fill('[data-testid="composer-input"]', body);
-  await client.key('enter');
+  await client.tapCurrent('[data-testid="composer-send"]');
   const sourceRow = await readyRow(client, body, 'source row reconciled to server event');
   const sourceEventId = sourceRow.attributes['data-mid'];
   assert(sourceEventId?.startsWith('$'), 'Source row has a real event ID');
@@ -345,7 +345,7 @@ export async function runMessageForwardSuite(testContext: TestContext): Promise<
       const records: MessageForwardAssertion[] = [];
       const stage: StageReport = {
         id: 'forward-to-room',
-        source: 'e2e/browser/journeys/conversations/message-forward.spec.mts:30-94',
+        source: 'e2e/browser/journeys/conversations/message-forward.spec.mts:31-95',
         status: 'running', durationMs: 0, artifact: 'forward-to-room/**',
         attempt: 1, retries: 0, expectedAssertionRecords: 7,
         assertionRecords: 0, assertions: [], failureCount: 0,
