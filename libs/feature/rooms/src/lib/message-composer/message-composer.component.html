@@ -220,6 +220,7 @@
       (compositionstart)="composing.set(true)"
       (compositionend)="composing.set(false)"
       (keydown)="onKeydown($event)"
+      (keyup)="onKeyup($event)"
       (keydown.enter)="onEnter($event)"
       (keydown.arrowUp)="onArrowUp($event)"
       (keydown.arrowDown)="onArrowDown($event)"

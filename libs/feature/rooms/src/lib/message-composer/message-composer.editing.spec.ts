@@ -1,10 +1,11 @@
 import {
   enter,
   renderComposer,
+  setMobilePlatform,
   stubObjectUrls,
 } from './message-composer.spec-harness';
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DraftStoreService } from '@trinity/platform-native';
 
 describe('MessageComposerComponent — the field, edit mode and drafts', () => {
@@ -39,6 +40,147 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
 
     expect(count).toBe(0);
     expect(cmp.text()).toBe('   ');
+  });
+
+  describe('on a mobile device', () => {
+    beforeEach(() => setMobilePlatform(true));
+    afterEach(() => setMobilePlatform(false));
+
+    it('inserts a line break on Enter instead of sending', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      let count = 0;
+      cmp.submitText.subscribe(() => count++);
+      cmp.text.set('first line');
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        cancelable: true,
+      });
+
+      cmp.onKeydown(event);
+      cmp.onEnter(event);
+
+      expect(count).toBe(0);
+      // Not a list: the browser's own Enter default inserts the newline.
+      expect(event.defaultPrevented).toBe(false);
+    });
+
+    it('continues a list on Enter', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      cmp.text.set('- one');
+      fixture.detectChanges();
+      const textarea = fixture.nativeElement.querySelector(
+        '[data-testid="composer-input"]',
+      ) as HTMLTextAreaElement;
+      textarea.setSelectionRange(5, 5);
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        cancelable: true,
+      });
+
+      cmp.onKeydown(event);
+      cmp.onEnter(event);
+
+      expect(cmp.text()).toBe('- one\n- ');
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('still sends from the Send button', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      let sent: string | undefined;
+      cmp.submitText.subscribe((e) => (sent = e.text));
+      cmp.text.set('tap to send');
+      fixture.detectChanges();
+
+      (
+        fixture.nativeElement.querySelector(
+          '[data-testid="composer-send"]',
+        ) as HTMLButtonElement
+      ).click();
+
+      expect(sent).toBe('tap to send');
+    });
+  });
+
+  describe('a physical Shift that an Android IME drops from Enter', () => {
+    // Measured on an API 36 WebView with Gboard: a hardware Shift+Enter in the
+    // composer arrives as Shift down, an IME 'Unidentified' key, then an Enter
+    // whose shiftKey is false, and Shift is released only afterwards.
+    const key = (
+      textarea: HTMLTextAreaElement,
+      type: 'keydown' | 'keyup',
+      init: KeyboardEventInit,
+    ): KeyboardEvent => {
+      const event = new KeyboardEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        ...init,
+      });
+      textarea.dispatchEvent(event);
+      return event;
+    };
+    const field = (
+      fixture: Awaited<ReturnType<typeof renderComposer>>['fixture'],
+    ) =>
+      fixture.nativeElement.querySelector(
+        '[data-testid="composer-input"]',
+      ) as HTMLTextAreaElement;
+
+    it('keeps Enter as a line break, not a send, while Shift is held', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      let count = 0;
+      cmp.submitText.subscribe(() => count++);
+      cmp.text.set('plain one');
+      fixture.detectChanges();
+      const textarea = field(fixture);
+
+      key(textarea, 'keydown', { key: 'Shift' });
+      key(textarea, 'keydown', { key: 'Unidentified' });
+      const enterEvent = key(textarea, 'keydown', { key: 'Enter' });
+
+      expect(count).toBe(0);
+      // Not a list: the browser's own Enter default inserts the newline.
+      expect(enterEvent.defaultPrevented).toBe(false);
+      expect(cmp.text()).toBe('plain one');
+
+      key(textarea, 'keyup', { key: 'Shift' });
+      key(textarea, 'keydown', { key: 'Enter' });
+      expect(count).toBe(1);
+    });
+
+    it('continues a list on that Enter', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      cmp.text.set('- [x] shipped');
+      fixture.detectChanges();
+      const textarea = field(fixture);
+      textarea.setSelectionRange(13, 13);
+
+      key(textarea, 'keydown', { key: 'Shift' });
+      const enterEvent = key(textarea, 'keydown', { key: 'Enter' });
+
+      expect(enterEvent.defaultPrevented).toBe(true);
+      expect(cmp.text()).toBe('- [x] shipped\n- [ ] ');
+    });
+
+    it('forgets a Shift whose release it never saw once the field blurs', async () => {
+      const { fixture } = await renderComposer();
+      const cmp = fixture.componentInstance;
+      let count = 0;
+      cmp.submitText.subscribe(() => count++);
+      cmp.text.set('send me');
+      fixture.detectChanges();
+      const textarea = field(fixture);
+
+      key(textarea, 'keydown', { key: 'Shift' });
+      textarea.dispatchEvent(new FocusEvent('blur'));
+      key(textarea, 'keydown', { key: 'Enter' });
+
+      expect(count).toBe(1);
+    });
   });
 
   it('prefills the draft in edit mode and keeps the text after submit', async () => {

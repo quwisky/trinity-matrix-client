@@ -102,7 +102,7 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
  * Reuses the shared {@link MessageRowComponent} so a thread renders exactly like
  * the main timeline (avatars, markdown, media, reactions, the hover toolbar) and
  * the shared {@link MessageComposerComponent} so composing behaves identically
- * (Enter sends, edit/reply banners, emoji, attachments).
+ * (the Enter behavior, edit/reply banners, emoji, attachments).
  *
  * Orchestration mirrors {@link SimpleMessageListComponent} but routes every action
  * through the exact {@link ConversationThread} child, whose commands carry the thread

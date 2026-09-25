@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Shift+Enter from a hardware keyboard inserts a line break on Android instead of sending,
+  even when the on-screen keyboard delivers the Enter without its Shift.
+
 - Bottom sheets such as Room information, reactions and message actions stay inside
   their sheet on wide touch screens, so actions like Open room remain on screen on tablets
   and landscape phones instead of extending past the right edge.
@@ -49,6 +52,9 @@ All notable changes to this project are documented here. The format is based on
   addressing the current Angular transfer-cache and Vitest mocker advisories.
 
 ### Changed
+
+- On phones and tablets, Enter in the message composer starts a new line, and lists continue
+  as they do with Shift+Enter; the Send button sends. On desktop, Enter still sends.
 
 - Replace the legacy Markdown documentation tree with separate Starlight sites for
   release users and `develop`-branch developers, plus private maintainer and decision records.
