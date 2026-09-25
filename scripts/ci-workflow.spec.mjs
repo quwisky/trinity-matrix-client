@@ -239,7 +239,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(72);
+    expect(uploads.length).toBe(73);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -878,13 +878,15 @@ describe('CI execution contract', () => {
           ? /!cancelled\(\).*outputs\.message-grouping-started == 'true'.*outputs\.message-grouping-safe == 'true'/
           : step.with.surface === 'android-message-linkify'
             ? /!cancelled\(\).*outputs\.message-linkify-started == 'true'.*outputs\.message-linkify-safe == 'true'/
-            : step.with.surface === 'android-message-action-sheet'
-              ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
-              : step.with.surface === 'android-edit-history'
-                ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
-                : step.with.surface === 'android-message-forward'
-                  ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
-                  : gate,
+            : step.with.surface === 'android-message-links'
+              ? /!cancelled\(\).*outputs\.message-links-started == 'true'.*outputs\.message-links-safe == 'true'/
+              : step.with.surface === 'android-message-action-sheet'
+                ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+                : step.with.surface === 'android-edit-history'
+                  ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+                  : step.with.surface === 'android-message-forward'
+                    ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
+                    : gate,
       );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -1395,6 +1397,61 @@ describe('CI execution contract', () => {
     expect(securitySettingsLine).toContain('--timeout-ms 1200000');
   });
 
+  it('runs message-links after security-settings and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const securitySettings = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:security-settings'),
+    );
+    const messageLinks = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-links;'),
+    );
+    const started = lines.indexOf('echo \'started=true\' >> "$GITHUB_OUTPUT"');
+    const playwright = lines.findIndex((line) =>
+      line.includes('pnpm e2e:android --'),
+    );
+    const messageLinksLine = lines[messageLinks];
+
+    expect(securitySettings).toBeGreaterThan(-1);
+    expect(messageLinks).toBe(securitySettings + 1);
+    expect(started).toBe(messageLinks + 1);
+    expect(playwright).toBe(started + 1);
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-links'),
+      ),
+    ).toHaveLength(1);
+    expect(messageLinksLine).toContain('matrix.shard }}" = "4"');
+    expect(messageLinksLine).toContain('message-links-started=true');
+    expect(messageLinksLine).toContain('--timeout-ms 3300000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-links-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-links-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-links/message-links/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-linkify-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-links',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-links-started == 'true' && steps.message-links-artifact-gate.outputs.message-links-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-links/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
   it('runs recovery reset immediately after smoke and before other shard 4 suites', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
@@ -1671,7 +1728,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(65);
+    expect(lines).toHaveLength(66);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

@@ -5508,3 +5508,178 @@ each passed 2/2 records at attempt 1 and zero retries, with matching built and
 installed APK digests, the publication-safe marker and no protected Room or event
 identifier. The unchanged predecessor passed at retry 0 locally and in the same
 hosted browser run, and the production renderer had nine applicable passes.
+
+## Matrix-link journeys
+
+Suite `android.message-links` migrates the six Android-applicable definitions
+of the unchanged Matrix Room/user-link predecessor
+`e2e/browser/journeys/conversations/message-links.spec.mts` (605 lines,
+SHA-256 `513b7f01b026991d316479edf06caef9754e70cc0df157a37436a67982aeb400`)
+into one serial six-stage installed-Android Node/Maestro suite. The Playwright
+predecessor remains enabled and untouched. The helpers occupy lines 22–147 and
+the six stages map to definitions 156–230, 232–321, 323–362, 364–424, 433–504
+(the portrait sheet, whose `test.use` at 427–431 is 390×844 mobile with touch)
+and the Android branch 507–587 of the mention definition. The issue's span
+507–604 would count the web-only popover tail at 588–604; the suite pins the
+Android `return;` at line 587 instead and excludes that tail's six assertion
+sites. The guard also pins `e2e/support/app.mts`, `e2e/support/account.mts`,
+`e2e/browser/support/contrast.mts`, `e2e/fixtures.mts` and
+`e2e/support/navigation.mts`.
+
+The suite records 63 ordered, globally unique identities: 38 direct + 25
+inherited, with stage totals 6/16/9/12/14/6. Helper assertions are keyed by
+call site, so two `createRoom` expansions in one stage keep distinct
+identities. `37@118←237` reads as helper line 37 reached through line 118
+inside `localScenario`, called at line 237.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `joined-preview` | 129@206 | inherited | `openRoom` source composer visible | `message-links.joined-preview.room-open` |
+| `joined-preview` | 214 | direct | Room-link preview visible | `message-links.joined-preview.preview-visible` |
+| `joined-preview` | 215 | direct | Preview name is the joined target name | `message-links.joined-preview.target-name` |
+| `joined-preview` | 217 | direct | Primary action reads `Open room` | `message-links.joined-preview.open-action` |
+| `joined-preview` | 218 | direct | Source composer placeholder still names the source Room | `message-links.joined-preview.source-still-active` |
+| `joined-preview` | 225 | direct | After Open, the composer placeholder names the target Room | `message-links.joined-preview.target-opened` |
+| `federated-join` | 37@118←237 | inherited | `localScenario` → `loginApi` response OK | `message-links.federated-join.api-login` |
+| `federated-join` | 76@120←237 | inherited | `localScenario` → `createRoom` source Room OK | `message-links.federated-join.source-room-created` |
+| `federated-join` | 58@239 | inherited | `registerRemote` on the secondary server OK | `message-links.federated-join.remote-registered` |
+| `federated-join` | 76@248 | inherited | `createRoom` public aliased remote Room OK | `message-links.federated-join.remote-room-created` |
+| `federated-join` | 100@255 | inherited | `sendRoomLink` encoded-alias link OK | `message-links.federated-join.link-sent` |
+| `federated-join` | 129@270 | inherited | `openRoom` source composer visible | `message-links.federated-join.room-open` |
+| `federated-join` | 274 | direct | Preview name is the remote Room name | `message-links.federated-join.remote-name` |
+| `federated-join` | 277 | direct | Preview topic is the remote Room topic | `message-links.federated-join.remote-topic` |
+| `federated-join` | 280 | direct | Primary action reads `Join room` | `message-links.federated-join.join-action` |
+| `federated-join` | 283 | direct | Source composer placeholder still names the source Room | `message-links.federated-join.source-still-active` |
+| `federated-join` | 291 | direct | After Join, success notice contains `Room joined` | `message-links.federated-join.joined-notice` |
+| `federated-join` | 295 | direct | Primary action reads `Open room` | `message-links.federated-join.open-action` |
+| `federated-join` | 296 | direct | Primary action is focused | `message-links.federated-join.open-focused` |
+| `federated-join` | 304 | direct | Light success-notice contrast ≥ 4.5 | `message-links.federated-join.light-contrast` |
+| `federated-join` | 308 | direct | Dark success-notice contrast ≥ 4.5 | `message-links.federated-join.dark-contrast` |
+| `federated-join` | 316 | direct | After Open, the composer placeholder names the remote Room | `message-links.federated-join.remote-opened` |
+| `remote-unavailable` | 37@118←328 | inherited | `localScenario` → `loginApi` response OK | `message-links.remote-unavailable.api-login` |
+| `remote-unavailable` | 76@120←328 | inherited | `localScenario` → `createRoom` source Room OK | `message-links.remote-unavailable.source-room-created` |
+| `remote-unavailable` | 58@329 | inherited | `registerRemote` on the secondary server OK | `message-links.remote-unavailable.remote-registered` |
+| `remote-unavailable` | 76@334 | inherited | `createRoom` private remote Room OK | `message-links.remote-unavailable.remote-room-created` |
+| `remote-unavailable` | 100@338 | inherited | `sendRoomLink` Room-id link with `via` OK | `message-links.remote-unavailable.link-sent` |
+| `remote-unavailable` | 129@353 | inherited | `openRoom` source composer visible | `message-links.remote-unavailable.room-open` |
+| `remote-unavailable` | 359 | direct | Load error visible | `message-links.remote-unavailable.load-error-visible` |
+| `remote-unavailable` | 360 | direct | Load error reads `Room not found` or `Room unavailable` | `message-links.remote-unavailable.load-error-guidance` |
+| `remote-unavailable` | 361 | direct | No primary action | `message-links.remote-unavailable.no-primary-action` |
+| `rejected-join` | 37@118←369 | inherited | `localScenario` → `loginApi` response OK | `message-links.rejected-join.api-login` |
+| `rejected-join` | 76@120←369 | inherited | `localScenario` → `createRoom` source Room OK | `message-links.rejected-join.source-room-created` |
+| `rejected-join` | 58@370 | inherited | `registerRemote` on the secondary server OK | `message-links.rejected-join.remote-registered` |
+| `rejected-join` | 76@375 | inherited | `createRoom` public remote Room OK | `message-links.rejected-join.remote-room-created` |
+| `rejected-join` | 100@379 | inherited | `sendRoomLink` `matrix:roomid` link with `via` OK | `message-links.rejected-join.link-sent` |
+| `rejected-join` | 129@394 | inherited | `openRoom` source composer visible | `message-links.rejected-join.room-open` |
+| `rejected-join` | 399 | direct | Primary action reads `Join room` | `message-links.rejected-join.join-action` |
+| `rejected-join` | 413 | direct | Remote join rule changed to `invite` after preview | `message-links.rejected-join.join-rule-invite` |
+| `rejected-join` | 418 | direct | After Join, action error visible | `message-links.rejected-join.action-error` |
+| `rejected-join` | 421 | direct | Primary action still reads `Join room` | `message-links.rejected-join.join-retained` |
+| `rejected-join` | 422 | direct | Primary action is focused | `message-links.rejected-join.join-focused` |
+| `rejected-join` | 423 | direct | Preview still visible | `message-links.rejected-join.preview-retained` |
+| `portrait-sheet` | 37@118←439 | inherited | `localScenario` → `loginApi` response OK | `message-links.portrait-sheet.api-login` |
+| `portrait-sheet` | 76@120←439 | inherited | `localScenario` → `createRoom` source Room OK | `message-links.portrait-sheet.source-room-created` |
+| `portrait-sheet` | 76@441 | inherited | `createRoom` portrait target Room OK | `message-links.portrait-sheet.target-room-created` |
+| `portrait-sheet` | 100@444 | inherited | `sendRoomLink` Room-id link OK | `message-links.portrait-sheet.link-sent` |
+| `portrait-sheet` | 129@459 | inherited | `openRoom` source composer visible | `message-links.portrait-sheet.room-open` |
+| `portrait-sheet` | 465 | direct | Room-link preview visible | `message-links.portrait-sheet.preview-visible` |
+| `portrait-sheet` | 466 | direct | Host has class `room-link-preview--sheet` | `message-links.portrait-sheet.sheet-class` |
+| `portrait-sheet` | 469 | direct | Primary action reads `Open room` | `message-links.portrait-sheet.open-action` |
+| `portrait-sheet` | 492 | direct | Viewport is portrait | `message-links.portrait-sheet.portrait` |
+| `portrait-sheet` | 493 | direct | Sheet left edge within 1 px of 0 | `message-links.portrait-sheet.left-edge` |
+| `portrait-sheet` | 494 | direct | Sheet right edge within 1 px of the viewport width | `message-links.portrait-sheet.right-edge` |
+| `portrait-sheet` | 497 | direct | Sheet bottom within 1 px of the visual-viewport bottom | `message-links.portrait-sheet.bottom-edge` |
+| `portrait-sheet` | 500 | direct | Action footer top ≥ 0 | `message-links.portrait-sheet.footer-top` |
+| `portrait-sheet` | 501 | direct | Action footer bottom ≤ visual-viewport bottom + 1 | `message-links.portrait-sheet.footer-bottom` |
+| `mention-user-card` | 129@566 | inherited | `openRoom` mention Room composer visible | `message-links.mention-user-card.room-open` |
+| `mention-user-card` | 573 | direct | User card visible | `message-links.mention-user-card.card-visible` |
+| `mention-user-card` | 574 | direct | User card name is the display name | `message-links.mention-user-card.card-name` |
+| `mention-user-card` | 579 | direct | No connected-position popover bounding box | `message-links.mention-user-card.no-anchored-popover` |
+| `mention-user-card` | 582 | direct | Dialog contains the display name | `message-links.mention-user-card.dialog-name` |
+| `mention-user-card` | 583 | direct | Composer placeholder still names the mention Room | `message-links.mention-user-card.room-retained` |
+
+Separate two-server REST fixtures arrange, alter and observe state on the real
+primary and federated secondary Synapse servers: API logins, remote
+registrations and Rooms with read-backs, exact formatted link sends, bounded
+federation probes before any UI step, the S4 join-rule change and membership on
+both servers. Tokens stay closure-private and errors carry only method, path
+template and status. Maestro owns every product action through current-point
+taps: login, Room navigation, message-link and mention taps, preview Join,
+Open and Close, and Appearance selection. Read-only WebView observers measure
+preview state, placeholders, anchors, the applied mode, success contrast,
+portrait geometry, the dialog model and a navigation marker; they never click,
+focus, press keys, scroll or write classes, styles, attributes or the location.
+
+Documented reinterpretations of the predecessor:
+
+- **Native taps.** The predecessor's Android `focus()` + Enter workaround
+  (`activateRoomLinkPrimary`, lines 141–142, and the inline copies at 289–290
+  and 416–417) becomes a native Maestro tap. Focus parity at 296 and 422 is
+  observed read-only after the tap and never produced.
+- **Appearance path and S2 rejoin.** The predecessor toggles the `dark` class
+  directly (298–313). The suite selects Light, and later Dark, through the
+  production Settings → Appearance mode radios, proving a mode-only change
+  against theme, density, text-scale and code carriers. Because the success
+  notice is component-local and a reopened joined Room previews without it,
+  S2 joins the same federated Room twice. After the Light join and contrast
+  record, the preview is closed, the local user leaves through REST, and the
+  leave is proved on both servers and in the sidebar. The Dark join repeats
+  the Join; its observations before 308 are receipts, not parity identities.
+  Line 308 and the Open at 316 use the same alias, Room id and link as 274–304.
+- **Header Back.** Each Appearance round trip returns through the in-app
+  `trn-page-header` Back button, which calls `location.back()` once at desktop
+  width, and must restore the exact prior route. It uses no hardware Back and
+  no viewport re-apply.
+- **Physical footer receipt.** S5 keeps the nine CSS geometry assertions
+  (±1 CSS px against the visual viewport) and adds a viewport-fit receipt
+  (390×844, DPR 1, portrait, wholly inside the WebView), a hidden IME, two
+  identical geometry samples, and a physical-reach receipt: the mapped Open
+  and Close button bottoms must sit at or above the device's single
+  navigation-bar frame from `dumpsys window`, and `elementFromPoint` must hit
+  both buttons. The primary action is never tapped in S5.
+- **S6 coarse-pointer receipt.** S6 runs at the desktop profile and records
+  `(pointer: coarse)`, the `android` platform and a navigation marker before
+  the mention tap. Line 582 also requires one modal `User` dialog containing
+  the user card inside a global overlay wrapper with a dark backdrop; 583
+  requires an unchanged marker and route. A profile read-back of the display
+  name precedes any UI step.
+- **Raised polling bounds.** Every wait is finite and at least the
+  predecessor's bound. These are polling bounds, not parity semantics.
+
+| Observation | Predecessor | Android |
+| --- | --- | --- |
+| composer after Room open | 15 s | 30 s |
+| preview name / load error / `Join room` | 20 s | 30 s |
+| success / action error | 30 s | 45 s |
+| navigation placeholder | 20/30 s | 30 s |
+| user card | 15 s | 30 s |
+| federation probes | — | 60 s |
+| leave sync / membership proof | — | 30 s |
+| other visible / focused / text | 5 s default | 15 s |
+
+S1–S4 and S6 run at the 1280×720 non-mobile desktop profile used by the
+retained android-webview configuration; S5 runs at the 390×844 portrait
+profile. The suite writes `profiles.json` with each stage's requested profile
+digest and a per-stage `profile-applied.json`.
+
+```bash
+pnpm nx run trinity-e2e-android:message-links --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-links
+```
+
+The uncached serial target owns `android-avd` and `synapse` (which includes
+the secondary server): one attempt, zero retries, and the suite stops at the
+first failed stage. Its provisional budgets are a 45-minute Node test, a
+50-minute Nx timeout and a 55-minute CI wrapper, to be re-derived from the
+local acceptance runs. Shard 4 runs it after Security settings and before
+retained Playwright. Two-server cleanup runs every bounded step even after a
+failure; a cleanup, scrub or scan failure blocks publication. Diagnostics are
+scrubbed of raw and encoded identifiers, tokens, authorization headers,
+rasters and Preferences XML. The `android-message-links` upload requires both
+the started flag and the post-scan `publication-safe` marker.
+
+Three unchanged installed-Android first attempts, the unchanged android-webview
+and browser predecessors at retry 0, and audited original-attempt hosted
+Android/browser/renderer artifacts form the acceptance gate for #747; wiring
+alone does not establish parity or authorize issue closure.

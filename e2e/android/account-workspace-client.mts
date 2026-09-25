@@ -441,6 +441,35 @@ export class AccountWorkspaceClient {
     await this.waitElements(selector, elements => elements.length === expected, `${expected} matching ${selector}`, filter);
   }
 
+  /**
+   * Map a CSS rectangle's corners, inset by 0.5 CSS px, to native screen points.
+   *
+   * Read-only: it reapplies the owned viewport emulation, then reuses the same
+   * mapping as native taps. It runs no flow, dispatches no input and never reads
+   * or writes the DOM. Each corner must lie inside the attached WebView.
+   */
+  async nativeRect(rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  }): Promise<{ readonly topLeft: NativeTargetPoint; readonly bottomRight: NativeTargetPoint }> {
+    assert(
+      [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite) &&
+        rect.width > 1 && rect.height > 1,
+      'Native rect is a finite CSS rectangle larger than its 0.5 px inset',
+    );
+    this.signal.throwIfAborted();
+    await this.owner.apply();
+    const topLeft = await this.owner.nativePoint({ x: rect.x + 0.5, y: rect.y + 0.5 });
+    const bottomRight = await this.owner.nativePoint({
+      x: rect.x + rect.width - 0.5,
+      y: rect.y + rect.height - 0.5,
+    });
+    this.signal.throwIfAborted();
+    return { topLeft, bottomRight };
+  }
+
   async tap(selector: string, filter: AccountElementFilter = {}): Promise<void> {
     await this.nativeAction('accounts-point-tap', selector, filter);
   }

@@ -510,6 +510,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-linkify'],
   },
   {
+    name: 'e2e:android:message-links',
+    command: 'nx run trinity-e2e-android:message-links',
+    kind: 'canonical',
+    suiteIds: ['android.message-links'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -1064,6 +1070,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'message-linkify-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-linkify; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-linkify'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'message-links-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-links; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-links'],
   },
   {
     command: 'pnpm e2e:scheduled',

@@ -22,6 +22,10 @@ renderer observations prove exact state, focus, geometry and contrast.
 **Issue:** #747, blocked on #746 original-attempt hosted acceptance until the
 implementation phase begins.
 
+**Design:** [Android Matrix Links Maestro Migration Design](../specs/2026-09-25-android-matrix-links-maestro-design.md)
+supersedes this preparatory plan wherever they differ. This plan is reconciled
+with it below; do not execute the earlier revision unchanged.
+
 ## Global constraints
 
 - Preserve the pinned message-links predecessor, application-login and account
@@ -29,7 +33,11 @@ implementation phase begins.
 - Record exactly 63 globally unique identities across six stages, preserving
   the source expansion as 38 direct plus 25 helper-expanded records. Stage
   totals are 6 joined, 16 federated public, 9 unavailable, 12 join race, 14
-  portrait sheet and 6 user mention.
+  portrait sheet and 6 user mention. Identities are
+  `message-links.<stage>.<suffix>`, keyed per stage and, for helper-expanded
+  records, per call site.
+- The mention stage owns the Android branch at lines 507–587, pinned by the
+  `return;` at line 587. The web-only popover tail at 588–604 is excluded.
 - Use the real primary and secondary Synapse packages. Do not model federation
   with one homeserver or infer server membership from UI text.
 - Matrix REST may arrange, mutate and observe exact local/federated state.
@@ -44,6 +52,9 @@ implementation phase begins.
   path.
 - Use one attempt, zero retries, finite observation and bounded two-server/
   application/device teardown.
+- Leave `runtime-provenance.mts` unchanged; add the suite-owned
+  `profiles.json` and per-stage `profile-applied.json`.
+- Add no CHANGELOG entry: this is a test-only migration with no user impact.
 - Preserve exact renderer, APK and portrait-profile provenance; remove raster
   diagnostics and redact credentials, access tokens, Room/user secrets and
   federation authorization.
@@ -87,8 +98,11 @@ implementation phase begins.
 
 - Create `e2e/android/message-links-contract.mts`.
 - Create `e2e/android/message-links-fixtures.mts`.
-- Modify `e2e/android/account-workspace-fixtures.mts` only if exact reusable
-  local operations are missing.
+- Create `e2e/android/message-links-observer.mts` and
+  `e2e/android/message-links-artifacts.mts`.
+- Add only the read-only `nativeRect` method to
+  `e2e/android/account-workspace-client.mts`; leave
+  `account-workspace-fixtures.mts` unchanged.
 
 - [ ] Export exact source mappings, six stage ids, per-stage counts and all 63
       identities; assert totals and global uniqueness at module load.
@@ -105,6 +119,12 @@ implementation phase begins.
       return only sanitized ids/names/aliases/topics/rules/membership facts.
 - [ ] Track every created account and Room on both homeservers and perform
       bounded aggregate cleanup even after partial setup or stage failure.
+      Register the message-links cleanup before `createAccountFixtures`, so
+      base local leave/forget and logouts run first. Then run primary API
+      logouts; for each remote Room in reverse creation order, alias DELETE
+      (404 tolerated), directory visibility `private`, owner leave and forget;
+      then remote logouts. Each step has its own 15 s timeout, runs after
+      earlier failures and aggregates failures.
 - [ ] Extend the focused guard so server substitution, wrong alias/via/link
       encoding, fixture leakage, unbounded REST work or incomplete two-server
       cleanup fails.
@@ -121,14 +141,19 @@ implementation phase begins.
       preview visible, exact target name, `Open room`, source composer still
       active, then tap Open natively and prove exact target navigation. Record
       its six identities exactly once.
-- [ ] Public-federated stage: resolve the exact remote alias and prove remote
-      name/topic, `Join room` and unchanged source; tap Join natively, prove
-      authoritative remote membership, `Room joined`, action transition to
-      focused `Open room`, then record the owned Light/Dark contrast identities
-      through the production theme path.
-- [ ] Reopen the same preview through native actions as needed without losing
-      its exact remote identity; tap Open natively and prove remote Room
-      navigation. Record all 16 stage identities exactly once.
+- [ ] Public-federated stage: select Light through test-id taps on Settings →
+      Appearance and return with the in-app header Back. Resolve the exact
+      remote alias and prove remote name/topic, `Join room` and unchanged
+      source; tap Join natively, prove authoritative remote membership on both
+      servers, `Room joined`, action transition to focused `Open room`, then
+      record the Light contrast identity.
+- [ ] Close the preview, leave the same federated Room through REST and prove
+      the leave on both servers and in the sidebar. Select Dark through the
+      same Settings round trip, tap the link again, prove `Join room`, and
+      join again natively. The second Join's observations are receipts, not
+      parity identities. Record the Dark contrast identity, then tap Open
+      natively and prove remote Room navigation. Record all 16 stage
+      identities exactly once.
 - [ ] Unavailable stage: tap the exact inaccessible remote link natively and
       prove visible exact not-found/unavailable guidance plus absence of any
       primary action. Record all nine identities exactly once.
@@ -146,11 +171,16 @@ implementation phase begins.
       the exact joined target preview natively, and prove visible phone-sheet
       class, exact `Open room`, portrait orientation, full viewport-width and
       bottom alignment within one pixel, and a wholly reachable action footer.
-      Record all 14 identities exactly once.
-- [ ] Mention stage: tap the exact named user permalink natively and prove the
-      exact user card/name, Android dialog model, zero connected-position
-      popover containers and unchanged original Room. Record all six identities
-      exactly once.
+      Add the viewport-fit and physical-reach receipts: mapped footer button
+      bottoms above the device navigation-bar frame and `elementFromPoint`
+      hits. Never tap the primary action. Record all 14 identities exactly
+      once.
+- [ ] Mention stage: record the coarse-pointer, Android-platform and
+      navigation-marker receipt, tap the exact named user permalink natively
+      and prove the exact user card/name, Android dialog model (one modal
+      `User` dialog in a global overlay wrapper with a dark backdrop), zero
+      connected-position popover containers and unchanged original Room.
+      Record all six identities exactly once.
 - [ ] Write started-stage reports, pass/failure secret-safe captures, exact
       assertion accounting, fixture/membership/rule/theme/contrast/geometry
       receipts and aggregate cleanup/redaction scans.
@@ -172,9 +202,10 @@ implementation phase begins.
       a bounded Node timeout and `android-avd` + `synapse` resources.
 - [ ] Register `android.message-links` as required current hosted Android
       coverage and add exact command metadata.
-- [ ] Invoke it on shard 2 immediately after message-linkify with a bounded
-      wrapper and started marker; add started-only `android-message-links`
-      diagnostics.
+- [ ] Invoke it on shard 4 immediately after `security-settings` and before
+      retained Playwright, with a bounded wrapper and started marker; add a
+      `publication-safe` gate and an `android-message-links` upload gated on
+      both the started flag and the safety marker.
 - [ ] Extend registry/workflow guards for exact ordering, timeout and artifact
       path.
 - [ ] Document pinned ownership, 63 identities/six stages, two-server
@@ -194,11 +225,12 @@ implementation phase begins.
       access/session tokens, bearer/federation authorization and exact Room/
       user secrets; require no raster artifacts and clean two-server/
       application/device teardown.
-- [ ] Run the complete unchanged message-links browser predecessor with one
-      worker and `--retries=0`; require the five canonical-browser definitions
-      to pass and only the explicitly Android-WebView-only portrait definition
-      to skip, while all six installed stages pass, then recheck all three
-      pinned source hashes.
+- [ ] Run the complete unchanged message-links predecessor sequentially with
+      one worker and `--retries=0`, first on android-webview (all six
+      definitions pass) and then in the browser (the five canonical-browser
+      definitions pass and only the Android-WebView-only portrait definition
+      skips), while all six installed stages pass. Then recheck all six pinned
+      source hashes.
 - [ ] Run full repository validation selected by the migration change,
       including typecheck, lint, format, architecture, production renderer,
       Android APK/host and documentation checks.

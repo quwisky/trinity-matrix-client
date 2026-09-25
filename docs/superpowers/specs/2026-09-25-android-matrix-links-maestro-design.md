@@ -156,7 +156,7 @@ WebView, and a bounds-only check, which cannot see the gesture area.
   - Navigation marker `{href, timeOrigin: performance.timeOrigin, historyLength: history.length}`.
   - Exact placeholder `Message #${roomName}`.
   - Exactly one `.scroll a` whose trimmed text is `bobName` and whose href is `https://matrix.to/#/${bobId}`.
-- **Positive model receipt**, attached to 582: exactly one visible `[role="dialog"][aria-label="User"][aria-modal="true"]` containing `[data-testid="user-card"]`, plus:
+- **Positive model receipt**, attached to 582: exactly one visible `[role="dialog"][aria-label="User"]` (its `aria-modal` value is recorded but not required: Angular CDK defaults `ariaModal` to `false`, Trinity keeps that default, and the predecessor never asserts it) containing `[data-testid="user-card"]`, plus:
   - a `.cdk-global-overlay-wrapper` ancestor;
   - a visible `.cdk-overlay-dark-backdrop`;
   - zero `.cdk-overlay-transparent-backdrop`.
@@ -584,11 +584,10 @@ timeout:
 | `e2e/android/MIGRATION.md`                                  | "Matrix-link journeys" section with the 63-row table `\| Stage \| Source line (helper@call) \| Kind \| Canonical assertion \| Android parity identity \|` (identity is the last cell); prose "38 direct + 25 inherited; 6/16/9/12/14/6"; documented reinterpretations (native taps, Appearance path plus S2 rejoin, header Back, physical footer receipt, S6 coarse receipt, raised polling bounds) |
 | `docs/superpowers/plans/2026-09-20-android-matrix-links.md` | Reconciled per the last section                                                                                                                                                                                                                                                                                                                                                                     |
 
-The new ci.yml line:
-
-```sh
-if [ "${{ matrix.shard }}" = "4" ]; then echo 'message-links-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3300000 -- pnpm exec nx run trinity-e2e-android:message-links; fi
-```
+The new ci.yml line mirrors the `security-settings` line directly above it: it
+runs only on shard 4, writes `message-links-started=true`, and runs the
+`trinity-e2e-android:message-links` target through `ci-run-command.mjs` with
+`--timeout-ms 3300000`.
 
 The new gate step:
 
@@ -782,7 +781,7 @@ A. A control fails when any of these holds:
   - Connected box count 1.
   - A transparent backdrop.
   - No global wrapper.
-  - `aria-label` ≠ `User`, or `aria-modal` missing.
+  - `aria-label` ≠ `User`.
   - Two dialogs.
   - A modal without the user card inside.
   - Pointer coarse false, or platform not `android`.
