@@ -239,7 +239,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(71);
+    expect(uploads.length).toBe(72);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -876,13 +876,15 @@ describe('CI execution contract', () => {
       expect(step.if).toMatch(
         step.with.surface === 'android-message-grouping'
           ? /!cancelled\(\).*outputs\.message-grouping-started == 'true'.*outputs\.message-grouping-safe == 'true'/
-          : step.with.surface === 'android-message-action-sheet'
-            ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
-            : step.with.surface === 'android-edit-history'
-              ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
-              : step.with.surface === 'android-message-forward'
-                ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
-                : gate,
+          : step.with.surface === 'android-message-linkify'
+            ? /!cancelled\(\).*outputs\.message-linkify-started == 'true'.*outputs\.message-linkify-safe == 'true'/
+            : step.with.surface === 'android-message-action-sheet'
+              ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+              : step.with.surface === 'android-edit-history'
+                ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+                : step.with.surface === 'android-message-forward'
+                  ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
+                  : gate,
       );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -1662,7 +1664,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(64);
+    expect(lines).toHaveLength(65);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

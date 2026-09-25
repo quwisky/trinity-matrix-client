@@ -5435,3 +5435,43 @@ review pass. The full scripts suite has 1,272 passes and the same unrelated
 untracked-plan command-policy failure; full formatting still flags ignored
 execution notes. Corrected original-attempt hosted acceptance remains
 pending; #745 stays open and PR #677 stays draft/unmerged.
+
+## Message-linkify journey
+
+Suite `android.message-linkify` owns the unchanged
+`renders a bare URL in a message as a clickable link` predecessor in
+`e2e/browser/journeys/conversations/message-linkify.spec.mts`: test lines
+27–72 and the Room-opening helper at lines 14–22. Its SHA-256 is
+`d46fd3a997e4a34872930a090666cb8ccc34c90b7c32907dc1a8c0b054a9535d`, and the
+Playwright definition remains enabled and untouched. The two source-ordered
+parity records are:
+
+| Canonical assertion | Android parity identity |
+| --- | --- |
+| Room helper composer visible (line 19) | `message-linkify.room-ready` |
+| One visible exact bare-URL link (lines 65–71) | `message-linkify.link-visible` |
+
+One fresh Account and Room are arranged through Synapse. Maestro owns login,
+Room navigation, native composer input of the exact plain text
+`look at https://example.com` and the Enter send. The row must reconcile to a
+real server event whose content is that exact `m.text` body with no
+`format`/`formatted_body`, relation or replacement, so the link comes from
+render-time linkification rather than seeded HTML. A read-only WebView
+observation of that exact `data-mid` row requires one visible anchor whose
+text and `href` are both exactly `https://example.com`, the surrounding
+`look at` outside every anchor, and exactly one matching link in the
+timeline. The link is never activated and no public URL is contacted.
+
+The suite has one attempt and zero retries, serialized `android-avd` +
+`synapse` resources, exact APK/renderer/profile provenance, pass/failure
+captures, bounded cleanup, and raw plus URL-encoded identifier scrubbing.
+Shard 1 runs it after Room HTTP error recovery; its dedicated upload requires
+both the started flag and the post-scan `publication-safe` marker.
+
+```bash
+pnpm nx run trinity-e2e-android:message-linkify --skipNxCache
+```
+
+Three unchanged installed-Android first attempts, the unchanged browser
+predecessor at retry 0, and audited original-attempt hosted
+Android/browser/renderer artifacts form the acceptance gate for #746.
