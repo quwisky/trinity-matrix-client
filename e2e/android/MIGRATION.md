@@ -5867,3 +5867,110 @@ tested `1ff6adf0`, which differs from `117cf07a` only by a CI budget comment. Th
 unchanged predecessor passed its three definitions sequentially at retry 0 locally
 and in the same hosted browser run, and the production renderer had nine
 applicable passes.
+
+## Message-poll journey
+
+Suite `android.message-poll` migrates the single definition of the unchanged
+poll predecessor `e2e/browser/journeys/conversations/message-poll.spec.mts`
+(93 lines, SHA-256
+`e23c045d237ba9fde15eb5a39d24479dfc2019e07579142c9193a8dc05ea1674`) into one
+serial one-stage installed-Android Node/Maestro suite. The Playwright
+predecessor remains enabled and untouched. The stage `create-vote-end` maps to
+definition 27–92 (`creates a poll, votes, and ends it`) and expands the
+predecessor's module-local Room-opening helper at 14–22. The guard also pins
+`e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`), the
+question template `Best fruit ${runId}?`, the options `Apple` and `Pear`, the
+Room name template `Poll E2E ${runId}` and the run suffix `p`.
+
+The suite records 10 ordered, unique identities: 8 direct + 2 inherited. The
+inherited sites are one Room readiness (the local `openRoom`, line 19) and one
+real-server echo (`waitForSent`, app line 178). Helper expansion is resolved by
+binding, so a shadowing local of the same name never counts. `19@54` reads as
+helper line 19 reached from the call on line 54.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `create-vote-end` | 19@54 | inherited | `openRoom` composer visible | `message-poll.create-vote-end.room-ready` |
+| `create-vote-end` | 59 | direct | `composer-insert` visible | `message-poll.create-vote-end.insert-tray` |
+| `create-vote-end` | 60 | direct | `composer-poll` count 0 | `message-poll.create-vote-end.no-inline-poll` |
+| `create-vote-end` | 73 | direct | First `poll` visible | `message-poll.create-vote-end.poll-visible` |
+| `create-vote-end` | 74 | direct | Poll contains the exact question | `message-poll.create-vote-end.poll-question` |
+| `create-vote-end` | 75 | direct | Poll contains `0 votes` | `message-poll.create-vote-end.zero-votes` |
+| `create-vote-end` | 178@80 | inherited | `waitForSent` poll row has a `$` event id | `message-poll.create-vote-end.server-echo` |
+| `create-vote-end` | 86 | direct | Poll contains `1 vote` | `message-poll.create-vote-end.one-vote` |
+| `create-vote-end` | 87 | direct | Poll contains `1 (100%)` | `message-poll.create-vote-end.one-hundred-percent` |
+| `create-vote-end` | 91 | direct | Poll contains `Final results` | `message-poll.create-vote-end.final-results` |
+
+The stage arranges one fresh Account and private Room through real Synapse.
+No poll, vote or end is seeded through REST: Maestro owns login, Room
+opening, the `+` tray, the Poll action, every field, Create, the Apple vote
+and End. The Create poll dialog autofocuses its question, which the journey
+proves read-only before the focused fill; each option is focused by a native
+tap. Every value goes through the shared focused fill behind an opening
+parenthesis. The digit sentinel of the Markdown suite cannot be used here:
+Gboard joins a letter or digit to the first word and recases it on the next
+space, so `1Best fruit` became `1best fruit` and `xBest fruit` became
+`Xbest fruit` on the emulator, while `(` keeps `Best` a word of its own. The
+exact dialog values are read back before the native Create tap. The shared
+focused fill now waits, read-only and within 5 seconds, for the caret after
+Ctrl+Home before Forward Delete, and after Ctrl+End before its final space.
+Each key is a separate injection that the WebView applies later: on the
+autofocused question, instrumentation showed the Forward Delete landing while
+the caret was still at the end, so it deleted nothing and kept the sentinel,
+and the fill passed only on its own second attempt. With the waits every
+field settles on its first attempt.
+
+Documented reinterpretations of the predecessor:
+
+- **Phone tray.** Line 59 also requires the one `composer-insert` control to
+  be the enabled mobile tray trigger (`aria-haspopup="dialog"`, closed). Line
+  60 also requires no `insert-poll` action while the tray is closed.
+- **Exact poll.** Line 73 requires exactly one visible poll in the Room. Line
+  74 requires the exact question and exactly the options Apple then Pear.
+  Line 75 also requires both options at `0 (0%)` and none chosen.
+- **Server readiness before the vote.** After line 178, the Room is read with
+  the raw `/messages?dir=b&limit=50` page. It must hold exactly one poll event:
+  the `m.poll.start` with the reconciled row id, the active sender, the exact
+  question, `m.poll.disclosed`, `max_selections: 1` and exactly `a0 Apple` and
+  `a1 Pear`. Only then, with every option enabled, is Apple tapped.
+- **Vote on the wire first.** Before lines 86–87 the Room must hold exactly
+  the start and one `m.poll.response` from the active sender selecting `a0`,
+  with an `m.reference` relation to the start event. The same poll row must
+  then read `1 vote`, and Apple `1 (100%)`, chosen, with Pear `0 (0%)`.
+- **End on the wire first.** Before line 91 the Room must hold exactly the
+  start, the response and one `m.poll.end` from the active sender, related to
+  the same start event. The same row must then read `1 vote · Final results`,
+  keep Apple at `1 (100%)`, disable both options and render no End control.
+
+The stage runs at the Pixel 5 profile (393×727 CSS pixels, DPR 2.75, mobile
+and touch), as the Markdown suite does, and writes `profile-applied.json`.
+Native actions log their selectors to the public job log, so rows are targeted
+by test ids and text filters only; the poll's identity is proved by read-only
+observation. Every Room, Account and poll event identifier is registered as a
+secret before it can reach a diagnostic, and records hold only digests.
+
+```bash
+pnpm nx run trinity-e2e-android:message-poll --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-poll
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries. Its provisional budgets are a 15-minute Node test, a 20-minute
+Nx timeout and a 25-minute CI wrapper, to be re-derived from the local
+acceptance runs. Shard 1 runs it last, after message-linkify, and its budget
+comment adds a provisional 6–8 minutes (about 113 native minutes). Cleanup
+runs every bounded step even after a failure; a cleanup, scrub or scan failure
+blocks publication. Failure text rethrown to the job log keeps only error
+names and messages with every registered identifier redacted. Diagnostics are
+scrubbed of raw and encoded identifiers, tokens, authorization headers,
+rasters and Preferences XML. The `android-message-poll` upload requires both
+the started flag and the post-scan `publication-safe` marker.
+
+Three unchanged installed-Android first attempts, the exact Playwright
+predecessor passing sequentially at retry 0, and audited original-attempt
+hosted Android/browser/renderer artifacts form the acceptance gate for #749;
+wiring alone does not establish parity or authorize issue closure.

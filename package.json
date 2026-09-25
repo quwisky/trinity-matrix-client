@@ -106,6 +106,7 @@
     "e2e:android:message-linkify": "node scripts/nx.mjs run trinity-e2e-android:message-linkify",
     "e2e:android:message-links": "node scripts/nx.mjs run trinity-e2e-android:message-links",
     "e2e:android:message-markdown": "node scripts/nx.mjs run trinity-e2e-android:message-markdown",
+    "e2e:android:message-poll": "node scripts/nx.mjs run trinity-e2e-android:message-poll",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

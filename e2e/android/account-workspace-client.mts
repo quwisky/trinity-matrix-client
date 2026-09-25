@@ -1043,11 +1043,17 @@ export class AccountWorkspaceClient {
         // deleted a character of the value and kept the sentinel; the document
         // chord reaches the true start (and end) of a wrapped textarea.
         await this.keyCombination('documentStart');
+        // Each chord and key is a separate injection that the WebView applies
+        // later. On an autofocused dialog input the Forward Delete once landed
+        // before the caret reached the start, deleted nothing and kept the
+        // sentinel, so each key waits for the caret the previous one moved.
+        await this.waitForNativeCaret(selector, 'start');
         await this.key('forwardDelete');
         // Removing the anti-capitalisation sentinel leaves Android's caret at
         // offset zero. Restore it to the end and emit a final native input event
         // there so caret-sensitive autocompletes observe the completed value.
         await this.keyCombination('documentEnd');
+        await this.waitForNativeCaret(selector, 'end');
         await this.key('space');
         await this.key('backspace');
         await this.hideKeyboard();
@@ -1186,6 +1192,29 @@ export class AccountWorkspaceClient {
         );
       }
     }
+  }
+
+  /** Read-only: wait until one input's collapsed caret sits at its start or end. */
+  private async waitForNativeCaret(
+    selector: string,
+    edge: 'start' | 'end',
+  ): Promise<void> {
+    await waitForNativeShellState(
+      () =>
+        evaluateNative(
+          this.webview,
+          `(() => {
+            const input=document.querySelector(${JSON.stringify(selector)});
+            if(!(input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement))return false;
+            const offset=${edge === 'start' ? '0' : 'input.value.length'};
+            return input.selectionStart===offset&&input.selectionEnd===offset;
+          })()`,
+        ),
+      (ready) => ready === true,
+      `native caret at the ${edge} of ${selector}`,
+      this.signal,
+      5_000,
+    );
   }
 
   /** Replace a prefilled value after moving the native caret to its exact end. */

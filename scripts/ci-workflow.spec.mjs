@@ -239,7 +239,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(74);
+    expect(uploads.length).toBe(75);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -882,13 +882,15 @@ describe('CI execution contract', () => {
               ? /!cancelled\(\).*outputs\.message-links-started == 'true'.*outputs\.message-links-safe == 'true'/
               : step.with.surface === 'android-message-markdown'
                 ? /!cancelled\(\).*outputs\.message-markdown-started == 'true'.*outputs\.message-markdown-safe == 'true'/
-                : step.with.surface === 'android-message-action-sheet'
-                  ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
-                  : step.with.surface === 'android-edit-history'
-                    ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
-                    : step.with.surface === 'android-message-forward'
-                      ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
-                      : gate,
+                : step.with.surface === 'android-message-poll'
+                  ? /!cancelled\(\).*outputs\.message-poll-started == 'true'.*outputs\.message-poll-safe == 'true'/
+                  : step.with.surface === 'android-message-action-sheet'
+                    ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+                    : step.with.surface === 'android-edit-history'
+                      ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+                      : step.with.surface === 'android-message-forward'
+                        ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
+                        : gate,
       );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -1452,6 +1454,87 @@ describe('CI execution contract', () => {
     expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
   });
 
+  it('runs message-poll after message-linkify at the end of shard 1', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const messageLinkify = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-linkify;'),
+    );
+    const messagePoll = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-poll;'),
+    );
+    const shardOne = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "1" ]'),
+    );
+    const messagePollLine = lines[messagePoll];
+
+    expect(messageLinkify).toBeGreaterThan(-1);
+    expect(messagePoll).toBe(messageLinkify + 1);
+    expect(shardOne.at(-1)).toBe(messagePollLine);
+    expect(
+      lines.filter((line) => line.includes('trinity-e2e-android:message-poll')),
+    ).toHaveLength(1);
+    expect(messagePollLine).toContain('matrix.shard }}" = "1"');
+    expect(messagePollLine).toContain('message-poll-started=true');
+    expect(messagePollLine).toContain('--timeout-ms 1500000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find((step) => step.id === 'message-poll-artifact-gate');
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-poll/message-poll/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-markdown-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-poll',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' && steps.message-poll-artifact-gate.outputs.message-poll-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-poll/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-poll in the shard-1 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardOne = Number(
+      comment.match(/shard 1 about (\d+) native minutes/)?.[1],
+    );
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 105 native minutes before message-poll, plus its provisional 6-8 minutes.
+    expect(shardOne).toBe(113);
+    expect(comment).toContain(
+      "1's a provisional 6-8 minutes for message-poll.",
+    );
+    expect(shardOne + retainedMinutes + diagnosticsMinutes).toBeLessThanOrEqual(
+      180,
+    );
+    for (const figure of [
+      'shard 2 about 117',
+      'shard 5 about 110',
+      'shard 6 about 106',
+    ])
+      expect(comment).toContain(figure);
+  });
+
   it('runs message-links after security-settings and before retained Playwright on shard 4', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
@@ -1783,7 +1866,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(67);
+    expect(lines).toHaveLength(68);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

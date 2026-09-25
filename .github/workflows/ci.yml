@@ -322,10 +322,11 @@ jobs:
     # limit inside retained Playwright. Budgets use the slowest native target
     # durations observed across the ten preceding runs, a 45-minute retained
     # Playwright command budget and 15 minutes for setup/diagnostics:
-    # shard 1 about 105 native minutes, shard 2 about 117, shard 3 about 158
+    # shard 1 about 113 native minutes, shard 2 about 117, shard 3 about 158
     # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 106.
-    # Shard 4's figure adds a provisional 30-40 minutes for message-links, and
-    # shard 5's a provisional 15-20 minutes for message-markdown.
+    # Shard 4's figure adds a provisional 30-40 minutes for message-links,
+    # shard 5's a provisional 15-20 minutes for message-markdown, and shard
+    # 1's a provisional 6-8 minutes for message-poll.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
@@ -405,6 +406,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-room-order-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-room-order; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-http-error-recovery-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-http-error-recovery; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'message-linkify-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-linkify; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'message-poll-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:message-poll; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'edit-history-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm nx run trinity-e2e-android:edit-history; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-forward-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-forward; fi
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-grouping-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-grouping; fi
@@ -514,6 +516,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_MARKDOWN_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-markdown/message-markdown/publication-safe' -print -quit)" ]; then
             echo 'message-markdown-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-poll diagnostics
+        id: message-poll-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' }}
+        env:
+          MESSAGE_POLL_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_POLL_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-poll/message-poll/publication-safe' -print -quit)" ]; then
+            echo 'message-poll-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
@@ -960,6 +972,13 @@ jobs:
           surface: android-message-markdown
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-markdown/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' && steps.message-poll-artifact-gate.outputs.message-poll-safe == 'true' }}
+        with:
+          surface: android-message-poll
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-poll/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}
