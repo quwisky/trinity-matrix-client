@@ -117,9 +117,16 @@ export function linkifyObservationExpression(eventId: string): string {
         href: anchor.getAttribute('href'),
         visible: visible(anchor),
       })) : [],
+      // The link-preview card (#739) also links to the destination; it is a
+      // separate feature, so it is counted as a receipt and excluded below.
+      previewDestinations: row ? [...row.querySelectorAll('trn-link-preview a')]
+        .filter(anchor => anchor.getAttribute('href') === ${JSON.stringify(MESSAGE_LINKIFY_URL)}).length : 0,
+      rowDestinationMatches: row ? [...row.querySelectorAll('a')]
+        .filter(anchor => !anchor.closest('trn-link-preview') &&
+          anchor.getAttribute('href') === ${JSON.stringify(MESSAGE_LINKIFY_URL)}).length : 0,
       timelineMatches: [...document.querySelectorAll('.scroll .msg a')]
-        .filter(anchor => anchor.getAttribute('href') === ${JSON.stringify(MESSAGE_LINKIFY_URL)} &&
-          anchor.textContent === ${JSON.stringify(MESSAGE_LINKIFY_URL)}).length,
+        .filter(anchor => !anchor.closest('trn-link-preview') &&
+          anchor.getAttribute('href') === ${JSON.stringify(MESSAGE_LINKIFY_URL)}).length,
     };
   })()`;
 }
@@ -140,6 +147,30 @@ async function observeLinkify(
     'one exact visible linkified row', client.signal, 20_000,
   );
   return parseLinkifyRendering(observed);
+}
+
+/**
+ * Android auto-capitalizes a sentence-initial word, and the focused-fill sentinel
+ * removal relies on Home, which only reaches the start of the current visual line
+ * once the URL wraps. Type the short single-line prefix through the sentinel, then
+ * append the URL mid-sentence at the caret, where no capitalization applies.
+ */
+async function enterLinkifyBody(client: AccountWorkspaceClient): Promise<void> {
+  const prefix = MESSAGE_LINKIFY_BODY.slice(0, MESSAGE_LINKIFY_BODY.indexOf(' https://'));
+  assert.equal(prefix, 'look at', 'Linkify prefix is the plain sentence start');
+  await client.focusCurrent(COMPOSER);
+  await client.fillFocused(COMPOSER, prefix);
+  await client.focused(COMPOSER);
+  await client.device.runFlow(
+    join(client.workspaceRoot, 'e2e/android/flows/message-linkify-append.yaml'),
+    { APP_ID: client.applicationId, SECRET_TEXT: MESSAGE_LINKIFY_BODY.slice(prefix.length) },
+  );
+  await waitForNativeShellState(
+    () => evaluateNative(client.webview,
+      `document.querySelector(${JSON.stringify(COMPOSER)})?.value`),
+    (value) => value === MESSAGE_LINKIFY_BODY,
+    'exact native linkify composer text', client.signal, 15_000,
+  );
 }
 
 async function runStage(
@@ -182,7 +213,7 @@ async function runStage(
     exactRoom: true, roomDigest: digest(room.id), composerVisible: true,
   });
 
-  await client.fill(COMPOSER, MESSAGE_LINKIFY_BODY);
+  await enterLinkifyBody(client);
   await client.key('enter');
   const row = await readyRow(client);
   const eventId = row.attributes['data-mid'];
@@ -201,6 +232,8 @@ async function runStage(
     exactLinkText: true,
     exactDestination: true,
     surroundingTextPlain: true,
+    rowDestinationMatches: rendering.rowDestinationMatches,
+    previewDestinations: rendering.previewDestinations,
     timelineMatches: rendering.timelineMatches,
   });
   assertLinkifyRecords(records);

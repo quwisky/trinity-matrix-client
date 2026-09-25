@@ -5471,15 +5471,19 @@ parity records are:
 | One visible exact bare-URL link (lines 65–71) | `message-linkify.link-visible` |
 
 One fresh Account and Room are arranged through Synapse. Maestro owns login,
-Room navigation, native composer input of the exact plain text
-`look at https://example.com` and the Enter send. The row must reconcile to a
+Room navigation and native composer input of the exact plain text
+`look at https://example.com`: the lowercase prefix goes through the
+anti-capitalization focused fill, and the URL is appended mid-sentence, so
+neither Android auto-capitalization nor a wrapped caret line changes it. A
+native Android Enter key event sends it, as in the forward and mention suites. The row must reconcile to a
 real server event whose content is that exact `m.text` body with no
 `format`/`formatted_body`, relation or replacement, so the link comes from
 render-time linkification rather than seeded HTML. A read-only WebView
 observation of that exact `data-mid` row requires one visible anchor whose
 text and `href` are both exactly `https://example.com`, the surrounding
-`look at` outside every anchor, and exactly one matching link in the
-timeline. The link is never activated and no public URL is contacted.
+`look at` outside every anchor, and no other link to that destination in the row
+or timeline. The server-generated link-preview card (#739) also links there; it is
+recorded as a receipt and excluded from the duplicate counts. The link is never activated and no public URL is contacted.
 
 The suite has one attempt and zero retries, serialized `android-avd` +
 `synapse` resources, exact APK/renderer/profile provenance, pass/failure

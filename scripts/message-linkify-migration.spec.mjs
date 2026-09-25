@@ -73,6 +73,8 @@ function validRendering() {
     text: body,
     textOutsideAnchors: 'look at ',
     anchors: [{ text: url, href: url, visible: true }],
+    previewDestinations: 0,
+    rowDestinationMatches: 1,
     timelineMatches: 1,
   };
 }
@@ -80,7 +82,7 @@ function validRendering() {
 /** Run the journey's exact read-only expression against production linkify markup. */
 async function observeDocument(
   messageHtml = `look at <a href="${url}">${url}</a>`,
-  { rowStyle = '', anchorStyle = '', extraRows = '' } = {},
+  { rowStyle = '', anchorStyle = '', extraRows = '', rowExtra = '' } = {},
 ) {
   const { linkifyObservationExpression } =
     await import('../e2e/android/message-linkify-journeys.mts');
@@ -89,7 +91,7 @@ async function observeDocument(
       <div class="msg" data-mid="${eventId}" style="${rowStyle}">
         <div class="msg__body"><div class="msg__content">
           <div class="msg__text msg__text--html">${messageHtml}</div>
-        </div></div>
+        </div></div>${rowExtra}
       </div>${extraRows}
     </div>`,
   );
@@ -235,6 +237,8 @@ describe('Android message-linkify migration contract', () => {
       { anchors: [{ ...anchor, visible: false }] },
       { textOutsideAnchors: '' },
       { textOutsideAnchors: body },
+      { rowDestinationMatches: 0 },
+      { rowDestinationMatches: 2 },
       { timelineMatches: 0 },
       { timelineMatches: 2 },
     ])
@@ -257,6 +261,8 @@ describe('Android message-linkify migration contract', () => {
       { ...validRendering(), anchors: [{ text: url, href: 1, visible: true }] },
       { ...validRendering(), anchors: [{ text: url, href: url }] },
       { ...validRendering(), timelineMatches: Number.NaN },
+      { ...validRendering(), rowDestinationMatches: -1 },
+      { ...validRendering(), previewDestinations: undefined },
     ])
       expect(() => parseLinkifyRendering(invalid)).toThrow();
   });
@@ -268,6 +274,12 @@ describe('Android message-linkify migration contract', () => {
       parseLinkifyRendering(await observeDocument(...args));
     const production = await observe();
     expect(() => assertLinkifiedRendering(production, eventId)).not.toThrow();
+    // A loaded link-preview card links to the same URL but is its own feature.
+    const withPreview = await observe(undefined, {
+      rowExtra: `<trn-link-preview><a href="${url}">example.com Example Domain</a></trn-link-preview>`,
+    });
+    expect(withPreview.previewDestinations).toBe(1);
+    expect(() => assertLinkifiedRendering(withPreview, eventId)).not.toThrow();
     for (const rendering of [
       await observe(`look at <span class="link">${url}</span>`),
       await observe(`<a href="${url}">look at ${url}</a>`),
@@ -282,6 +294,12 @@ describe('Android message-linkify migration contract', () => {
       await observe(undefined, {
         extraRows: `<div class="msg" data-mid="$preview"><a href="${url}">${url}</a></div>`,
       }),
+      await observe(undefined, {
+        extraRows: `<div class="msg" data-mid="$other"><a href="${url}">elsewhere</a></div>`,
+      }),
+      await observe(undefined, {
+        rowExtra: `<div class="msg__reply"><a href="${url}">Example</a></div>`,
+      }),
     ])
       expect(() => assertLinkifiedRendering(rendering, eventId)).toThrow();
   });
@@ -292,7 +310,10 @@ describe('Android message-linkify migration contract', () => {
       'client.login(account)',
       'client.tapCurrent(\'[data-testid="rail-rooms"]\')',
       "client.tapCurrent('.channel', { text: room.name })",
-      'client.fill(COMPOSER, MESSAGE_LINKIFY_BODY)',
+      'client.focusCurrent(COMPOSER)',
+      'client.fillFocused(COMPOSER, prefix)',
+      'e2e/android/flows/message-linkify-append.yaml',
+      'enterLinkifyBody(client)',
       "client.key('enter')",
       'fixtures.roomEvent(account, room.id, eventId)',
       'assertPlainLinkifyEvent(',

@@ -32,6 +32,11 @@ export interface LinkifyRendering {
   readonly text: string;
   readonly textOutsideAnchors: string;
   readonly anchors: readonly LinkifyAnchor[];
+  /** Link-preview card anchors to the URL: a separate feature, recorded only. */
+  readonly previewDestinations: number;
+  /** Anchors in the sent row, outside its link preview, to the exact URL. */
+  readonly rowDestinationMatches: number;
+  /** Timeline anchors outside link previews to the exact URL, whatever their text. */
   readonly timelineMatches: number;
 }
 
@@ -82,6 +87,8 @@ export function parseLinkifyRendering(value: unknown): LinkifyRendering {
         visible: booleanField(anchor, 'visible'),
       };
     }),
+    previewDestinations: countField(rendering, 'previewDestinations'),
+    rowDestinationMatches: countField(rendering, 'rowDestinationMatches'),
     timelineMatches: countField(rendering, 'timelineMatches'),
   };
 }
@@ -149,6 +156,8 @@ export function assertLinkifiedRendering(
   assert(anchor!.visible, 'The link is visible');
   assert.equal(rendering.textOutsideAnchors.trim(), 'look at',
     'Surrounding text stays plain message content');
+  assert.equal(rendering.rowDestinationMatches, 1,
+    'The sent row has no second link to the same destination');
   assert.equal(rendering.timelineMatches, 1,
-    'The timeline has exactly one matching link');
+    'The timeline has exactly one link to the destination');
 }

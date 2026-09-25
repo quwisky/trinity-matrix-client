@@ -10,7 +10,9 @@ import {
 const raster = new Set([
   '.avif', '.bmp', '.gif', '.ico', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp',
 ]);
-const publishableText = new Set(['.json', '.jsonl', '.log', '.txt', '.xml']);
+// Maestro flow files the native client generates (for example keyboard dismissal)
+// are plain YAML and are scanned like every other text diagnostic.
+const publishableText = new Set(['.json', '.jsonl', '.log', '.txt', '.xml', '.yaml']);
 
 export interface LinkifyPublicationSafety {
   unsafeSecrets: boolean;
