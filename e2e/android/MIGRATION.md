@@ -67,6 +67,25 @@ Acceptance requires twenty consecutive successful runs of all four journeys on
 unchanged relevant inputs, with zero retries and effective negative cases. A
 successful implementation check or a single CI run does not establish that gate.
 
+## Hosted shard layout
+
+`.github/workflows/ci.yml` is the authority for current Android shard
+placement; shard statements in the sections below record the placement at each
+batch's acceptance. Run 36064938227 showed four shards could not hold the
+migrated suites: shard 2 queued about 263 native minutes, its emulator stopped
+answering adb after 3h15m, and shard 4 reached its 180-minute limit inside
+retained Playwright. The Android job therefore has six shards, and retained
+Playwright uses `--shard=N/6`.
+
+| Shard | Moved suites |
+| --- | --- |
+| 5 (from 2) | `gif-picker`, `hide-system-messages`, `jump-to-date`, `jump-to-latest`, `link-preview`, `location-share`, `media-retention`, `message-action-sheet`, `legacy-sso`, `sso-recovery-reset` |
+| 6 (from 2) | `message-authenticity-shield`, `native-shell`, `space-settings-core`, `space-leave`, `room-tombstone`, `member-details-promotion`, `member-role-classification` |
+| 6 (from 4) | `room-widget-settings`, `space-settings-resilience` |
+
+The pinned Chrome fixture runtime follows the SSO suites to shard 5. Every
+suite keeps its target, timeout, started flag and diagnostics upload.
+
 ## Native shell, Back and Appearance batch
 
 [Migrate Android native shell, Back and appearance journeys](https://github.com/quwisky/trinity-matrix-client/issues/670)

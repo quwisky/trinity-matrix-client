@@ -689,7 +689,7 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
-      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4',
+      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/6',
     tier: 'pull-request',
     suiteIds: ['android.installed-webview'],
   },
@@ -713,19 +713,19 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'legacy-sso-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:legacy-sso; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'legacy-sso-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:legacy-sso; fi',
     tier: 'pull-request',
     suiteIds: ['android.legacy-sso'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'sso-recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'sso-recovery-reset-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi',
     tier: 'pull-request',
     suiteIds: ['android.sso-recovery-reset'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-authenticity-shield-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'message-authenticity-shield-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-authenticity-shield'],
   },
@@ -767,49 +767,49 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'gif-picker-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:gif-picker; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'gif-picker-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:gif-picker; fi',
     tier: 'pull-request',
     suiteIds: ['android.gif-picker'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'hide-system-messages-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:hide-system-messages; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'hide-system-messages-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:hide-system-messages; fi',
     tier: 'pull-request',
     suiteIds: ['android.hide-system-messages'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'jump-to-date-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-date; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'jump-to-date-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-date; fi',
     tier: 'pull-request',
     suiteIds: ['android.jump-to-date'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'jump-to-latest-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-latest; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'jump-to-latest-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:jump-to-latest; fi',
     tier: 'pull-request',
     suiteIds: ['android.jump-to-latest'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'link-preview-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:link-preview; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'link-preview-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:link-preview; fi',
     tier: 'pull-request',
     suiteIds: ['android.link-preview'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'location-share-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:location-share; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'location-share-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:location-share; fi',
     tier: 'pull-request',
     suiteIds: ['android.location-share'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'media-retention-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:media-retention; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'media-retention-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:media-retention; fi',
     tier: 'pull-request',
     suiteIds: ['android.media-retention'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-action-sheet-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-action-sheet; fi',
+      'if [ "${{ matrix.shard }}" = "5" ]; then echo \'message-action-sheet-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-action-sheet; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-action-sheet'],
   },
@@ -833,37 +833,37 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'native-shell-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:native-shell; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'native-shell-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:native-shell; fi',
     tier: 'pull-request',
     suiteIds: ['android.native-shell'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'space-settings-core-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-core; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'space-settings-core-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-core; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-settings-core'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'space-leave-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-leave; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'space-leave-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-leave; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-leave'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'room-tombstone-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-tombstone; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'room-tombstone-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-tombstone; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-tombstone'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'member-details-promotion-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-details-promotion; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'member-details-promotion-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-details-promotion; fi',
     tier: 'pull-request',
     suiteIds: ['android.member-details-promotion'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'member-role-classification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-role-classification; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'member-role-classification-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-role-classification; fi',
     tier: 'pull-request',
     suiteIds: ['android.member-role-classification'],
   },
@@ -947,13 +947,13 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'space-settings-resilience-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'space-settings-resilience-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi',
     tier: 'pull-request',
     suiteIds: ['android.space-settings-resilience'],
   },
   {
     command:
-      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'room-widget-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-widget-settings; fi',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'room-widget-settings-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:room-widget-settings; fi',
     tier: 'pull-request',
     suiteIds: ['android.room-widget-settings'],
   },

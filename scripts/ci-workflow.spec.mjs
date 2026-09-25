@@ -211,10 +211,10 @@ describe('CI execution contract', () => {
       );
     }
     expect(workflow.jobs['android-e2e'].strategy.matrix.shard).toEqual([
-      1, 2, 3, 4,
+      1, 2, 3, 4, 5, 6,
     ]);
     expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
-      '${{ matrix.shard == 3 && 240 || matrix.shard == 2 && 240 || matrix.shard == 4 && 180 || 180 }}',
+      '${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}',
     );
   });
 
@@ -909,7 +909,7 @@ describe('CI execution contract', () => {
     }
   });
 
-  it('runs composer typing through message-action-sheet consecutively on shard 2', () => {
+  it('runs composer typing through message-action-sheet consecutively, splitting at GIF for shard 5', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -959,37 +959,37 @@ describe('CI execution contract', () => {
     expect(typingLine).toContain('composer-typing-started=true');
     expect(typingLine).toContain('--timeout-ms 1500000');
     expect(gifPicker).toBe(typing + 1);
-    expect(gifPickerLine).toContain('matrix.shard }}" = "2"');
+    expect(gifPickerLine).toContain('matrix.shard }}" = "5"');
     expect(gifPickerLine).toContain('gif-picker-started=true');
     expect(gifPickerLine).toContain('--timeout-ms 1500000');
     expect(hideSystemMessages).toBe(gifPicker + 1);
-    expect(hideSystemMessagesLine).toContain('matrix.shard }}" = "2"');
+    expect(hideSystemMessagesLine).toContain('matrix.shard }}" = "5"');
     expect(hideSystemMessagesLine).toContain(
       'hide-system-messages-started=true',
     );
     expect(hideSystemMessagesLine).toContain('--timeout-ms 1500000');
     expect(jumpToDate).toBe(hideSystemMessages + 1);
-    expect(jumpToDateLine).toContain('matrix.shard }}" = "2"');
+    expect(jumpToDateLine).toContain('matrix.shard }}" = "5"');
     expect(jumpToDateLine).toContain('jump-to-date-started=true');
     expect(jumpToDateLine).toContain('--timeout-ms 1500000');
     expect(jumpToLatest).toBe(jumpToDate + 1);
-    expect(jumpToLatestLine).toContain('matrix.shard }}" = "2"');
+    expect(jumpToLatestLine).toContain('matrix.shard }}" = "5"');
     expect(jumpToLatestLine).toContain('jump-to-latest-started=true');
     expect(jumpToLatestLine).toContain('--timeout-ms 1500000');
     expect(linkPreview).toBe(jumpToLatest + 1);
-    expect(linkPreviewLine).toContain('matrix.shard }}" = "2"');
+    expect(linkPreviewLine).toContain('matrix.shard }}" = "5"');
     expect(linkPreviewLine).toContain('link-preview-started=true');
     expect(linkPreviewLine).toContain('--timeout-ms 1500000');
     expect(locationShare).toBe(linkPreview + 1);
-    expect(locationShareLine).toContain('matrix.shard }}" = "2"');
+    expect(locationShareLine).toContain('matrix.shard }}" = "5"');
     expect(locationShareLine).toContain('location-share-started=true');
     expect(locationShareLine).toContain('--timeout-ms 1500000');
     expect(mediaRetention).toBe(locationShare + 1);
-    expect(mediaRetentionLine).toContain('matrix.shard }}" = "2"');
+    expect(mediaRetentionLine).toContain('matrix.shard }}" = "5"');
     expect(mediaRetentionLine).toContain('media-retention-started=true');
     expect(mediaRetentionLine).toContain('--timeout-ms 1500000');
     expect(messageActionSheet).toBe(mediaRetention + 1);
-    expect(lines[messageActionSheet]).toContain('matrix.shard }}" = "2"');
+    expect(lines[messageActionSheet]).toContain('matrix.shard }}" = "5"');
     expect(lines[messageActionSheet]).toContain(
       'message-action-sheet-started=true',
     );
@@ -1090,7 +1090,7 @@ describe('CI execution contract', () => {
     expect(playwright).toBeGreaterThan(spaceSettings);
   });
 
-  it('runs Space Settings resilience after mobile Space Settings and before retained Playwright on shard 4', () => {
+  it('runs Space Settings resilience on shard 6 after the mobile Space Settings line', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1101,9 +1101,16 @@ describe('CI execution contract', () => {
     const playwright = script.indexOf('pnpm e2e:android --');
     expect(resilience).toBeGreaterThan(mobile);
     expect(playwright).toBeGreaterThan(resilience);
+    expect(
+      script
+        .split('\n')
+        .find((line) =>
+          line.includes('trinity-e2e-android:space-settings-resilience'),
+        ),
+    ).toContain('matrix.shard }}" = "6"');
   });
 
-  it('runs Room tombstone after Space leave and before retained Playwright on shard 2', () => {
+  it('runs Room tombstone after Space leave and before retained Playwright on shard 6', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1127,13 +1134,13 @@ describe('CI execution contract', () => {
     expect(spaceLeave).toBeGreaterThan(core);
     expect(roomTombstone).toBeGreaterThan(spaceLeave);
     expect(playwright).toBeGreaterThan(roomTombstone);
-    expect(coreLine).toContain('matrix.shard }}" = "2"');
+    expect(coreLine).toContain('matrix.shard }}" = "6"');
     expect(coreLine).toContain('space-settings-core-started=true');
     expect(coreLine).toContain('--timeout-ms 2700000');
-    expect(spaceLeaveLine).toContain('matrix.shard }}" = "2"');
+    expect(spaceLeaveLine).toContain('matrix.shard }}" = "6"');
     expect(spaceLeaveLine).toContain('space-leave-started=true');
     expect(spaceLeaveLine).toContain('--timeout-ms 1200000');
-    expect(roomTombstoneLine).toContain('matrix.shard }}" = "2"');
+    expect(roomTombstoneLine).toContain('matrix.shard }}" = "6"');
     expect(roomTombstoneLine).toContain('room-tombstone-started=true');
     expect(roomTombstoneLine).toContain('--timeout-ms 1200000');
   });
@@ -1169,7 +1176,7 @@ describe('CI execution contract', () => {
     expect(ssoRecoveryReset).toBeGreaterThan(legacySso);
     expect(messageAuthenticityShield).toBeGreaterThan(ssoRecoveryReset);
     expect(nativeShell).toBeGreaterThan(messageAuthenticityShield);
-    expect(messageAuthenticityShieldLine).toContain('matrix.shard }}" = "2"');
+    expect(messageAuthenticityShieldLine).toContain('matrix.shard }}" = "6"');
     expect(messageAuthenticityShieldLine).toContain(
       'message-authenticity-shield-started=true',
     );
@@ -1181,7 +1188,7 @@ describe('CI execution contract', () => {
     expect(crossUserVerificationLine).toContain('--timeout-ms 2100000');
   });
 
-  it('runs member details and promotion after Room tombstone and before retained Playwright on shard 2', () => {
+  it('runs member details and promotion after Room tombstone and before retained Playwright on shard 6', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1199,14 +1206,14 @@ describe('CI execution contract', () => {
     expect(roomTombstone).toBeGreaterThan(-1);
     expect(memberDetailsPromotion).toBeGreaterThan(roomTombstone);
     expect(playwright).toBeGreaterThan(memberDetailsPromotion);
-    expect(memberDetailsPromotionLine).toContain('matrix.shard }}" = "2"');
+    expect(memberDetailsPromotionLine).toContain('matrix.shard }}" = "6"');
     expect(memberDetailsPromotionLine).toContain(
       'member-details-promotion-started=true',
     );
     expect(memberDetailsPromotionLine).toContain('--timeout-ms 1500000');
   });
 
-  it('runs member role classification after member details and promotion and before retained Playwright on shard 2', () => {
+  it('runs member role classification after member details and promotion and before retained Playwright on shard 6', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1226,14 +1233,14 @@ describe('CI execution contract', () => {
     expect(memberDetailsPromotion).toBeGreaterThan(-1);
     expect(memberRoleClassification).toBeGreaterThan(memberDetailsPromotion);
     expect(playwright).toBeGreaterThan(memberRoleClassification);
-    expect(memberRoleClassificationLine).toContain('matrix.shard }}" = "2"');
+    expect(memberRoleClassificationLine).toContain('matrix.shard }}" = "6"');
     expect(memberRoleClassificationLine).toContain(
       'member-role-classification-started=true',
     );
     expect(memberRoleClassificationLine).toContain('--timeout-ms 2100000');
   });
 
-  it('runs member role live updates after Space Settings resilience and before retained Playwright on shard 4', () => {
+  it('runs member role live updates on shard 4 after the Space Settings lines and before retained Playwright', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1260,7 +1267,7 @@ describe('CI execution contract', () => {
     expect(memberRoleLiveUpdatesLine).toContain('--timeout-ms 2100000');
   });
 
-  it('runs Room widget settings after live authority updates and before retained Playwright on shard 4', () => {
+  it('runs Room widget settings after live authority updates and before retained Playwright on shard 6', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1277,12 +1284,12 @@ describe('CI execution contract', () => {
 
     expect(widgets).toBeGreaterThan(liveUpdates);
     expect(playwright).toBeGreaterThan(widgets);
-    expect(widgetsLine).toContain('matrix.shard }}" = "4"');
+    expect(widgetsLine).toContain('matrix.shard }}" = "6"');
     expect(widgetsLine).toContain('room-widget-settings-started=true');
     expect(widgetsLine).toContain('--timeout-ms 2700000');
   });
 
-  it('runs account password change after Room widgets and before retained Playwright on shard 4', () => {
+  it('runs account password change on shard 4 after the Room widget line and before retained Playwright', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
     ).with.script;
@@ -1647,7 +1654,7 @@ describe('CI execution contract', () => {
     const emulator = steps.findIndex((step) => step.id === 'android');
 
     expect(chrome).toBeDefined();
-    expect(chrome.if).toBe('${{ matrix.shard == 2 }}');
+    expect(chrome.if).toBe('${{ matrix.shard == 5 }}');
     expect(chrome.run).toBe(
       'node scripts/ci-runner-prerequisites.mjs chromium',
     );

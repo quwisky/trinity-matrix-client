@@ -432,7 +432,7 @@ describe('Android Room widget migration', () => {
     expect(journey).toContain('redactMaestroArtifacts(output, secrets)');
   });
 
-  it('registers one serialized shard-4 suite with started-only diagnostics', () => {
+  it('registers one serialized shard-6 suite with started-only diagnostics', () => {
     const project = readFileSync(
       resolve(root, 'e2e/android/project.json'),
       'utf8',
@@ -466,7 +466,7 @@ describe('Android Room widget migration', () => {
     expect(commands).toContain("name: 'e2e:android:room-widget-settings'");
     expect(commands).toContain("suiteIds: ['android.room-widget-settings']");
     expect(workflow).toContain(
-      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'room-widget-settings-started=true\'',
+      'if [ "${{ matrix.shard }}" = "6" ]; then echo \'room-widget-settings-started=true\'',
     );
     expect(workflow).toContain(
       'pnpm exec nx run trinity-e2e-android:room-widget-settings',
