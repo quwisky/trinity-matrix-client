@@ -167,11 +167,11 @@ describe('Android Room widget migration', () => {
     );
     const definition = sourceLines(
       sources.definition,
-      '7d99871e26cd216c276d895e96cc26b9fe81b2181dbaeb0a28b361c8e8b670a0',
+      '2047179526d88e7673b846782dd04fa04de1c4385d2f4fd283b89b259cd6bc6e',
     );
     sourceLines(
       sources.widgetFixture,
-      '23f37e9ca70d247a536b0985ab7e4d0ed235b4bea41350456241f9b04a7cc2ea',
+      '1712cb81e9899ed566956815aaf2035fc72b5984d4d83e8d148096ea3b481f60',
     );
     sourceLines(
       sources.roomSettings,

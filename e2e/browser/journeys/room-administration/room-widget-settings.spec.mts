@@ -29,7 +29,7 @@ test.describe('Room settings', () => {
     const rawUrl =
       'https://widgets.example/board?room=$matrix_room_id' +
       '&user=$matrix_user_id&board=$board_id';
-    const widgetFixture = await installWidgetFixture(page, 1_500);
+    const widgetFixture = await installWidgetFixture(page, 1_500, 2);
 
     await registerUser(request, user, pass);
     const { access_token, user_id } = await request
