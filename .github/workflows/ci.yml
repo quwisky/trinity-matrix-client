@@ -323,9 +323,9 @@ jobs:
     # durations observed across the ten preceding runs, a 45-minute retained
     # Playwright command budget and 15 minutes for setup/diagnostics:
     # shard 1 about 105 native minutes, shard 2 about 117, shard 3 about 158
-    # (240), shard 4 about 165 (240), shard 5 about 92 and shard 6 about 106.
+    # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 106.
     # Shard 4's figure adds a provisional 30-40 minutes for message-links, and
-    # shard 1's a provisional 15-20 minutes for message-markdown.
+    # shard 5's a provisional 15-20 minutes for message-markdown.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
