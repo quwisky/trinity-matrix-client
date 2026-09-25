@@ -227,7 +227,8 @@ describe('Android clear-all-data migration', () => {
     expect(journey).toContain(
       "client.fillFocused('trn-alert-dialog input', confirmation)",
     );
-    expect(accountClient).toContain('SECRET_TEXT: `x${value}`');
+    expect(accountClient).toContain("sentinel = 'x',");
+    expect(accountClient).toContain('SECRET_TEXT: `${sentinel}${value}`');
     expect(accountClient).toContain("await this.key('home')");
     expect(accountClient).toContain("await this.key('forwardDelete')");
     expect(accountClient).toContain('async waitForFullViewportNativeBounds()');

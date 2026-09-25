@@ -995,8 +995,21 @@ export class AccountWorkspaceClient {
     assert.equal(matches, true, `Native input reached ${selector}`);
   }
 
-  /** Fill a product-autofocused input without allowing IME auto-capitalisation. */
-  async fillFocused(selector: string, value: string): Promise<void> {
+  /**
+   * Fill a product-autofocused input without allowing IME auto-capitalisation.
+   * The sentinel is typed before the value and then deleted. Pass a digit when
+   * the sentinel joined to the first word could be autocorrected: Gboard turned
+   * `xplain` into `Explain`.
+   */
+  async fillFocused(
+    selector: string,
+    value: string,
+    sentinel = 'x',
+  ): Promise<void> {
+    assert(
+      [...sentinel].length === 1 && sentinel.trim() === sentinel,
+      'Native focused fill sentinel is one visible character',
+    );
     const valueDescription = `Native focused input reached ${selector}`;
     const waitForValue = async (): Promise<void> => {
       await waitForNativeShellState(
@@ -1024,7 +1037,7 @@ export class AccountWorkspaceClient {
             this.workspaceRoot,
             'e2e/android/flows/accounts-focused-fill.yaml',
           ),
-          { APP_ID: this.applicationId, SECRET_TEXT: `x${value}` },
+          { APP_ID: this.applicationId, SECRET_TEXT: `${sentinel}${value}` },
         );
         // Home only reaches the current visual line once the value wraps, which
         // deleted a character of the value and kept the sentinel; the document
@@ -1060,7 +1073,7 @@ export class AccountWorkspaceClient {
         const observed = await evaluateNative(
           this.webview,
           `(() => {
-            const selector=${JSON.stringify(selector)},expected=${JSON.stringify(value)},input=document.querySelector(selector);
+            const selector=${JSON.stringify(selector)},expected=${JSON.stringify(value)},sentinel=${JSON.stringify(sentinel)},input=document.querySelector(selector);
             const current=input instanceof HTMLInputElement||input instanceof HTMLTextAreaElement?input.value:null;
             const caseCorrections=[];
             let caseOnlyCorrectable=selector==='trn-alert-dialog input'&&input instanceof HTMLInputElement&&input.type!=='password'&&current!==null&&current.length===expected.length;
@@ -1078,7 +1091,7 @@ export class AccountWorkspaceClient {
               focused:document.activeElement===input,
               length:current?.length??null,
               expectedLength:expected.length,
-              sentinelPresent:current===\`x\${expected}\`,
+              sentinelPresent:current===\`\${sentinel}\${expected}\`,
               trailingSpacePresent:current===\`\${expected} \`,
               sameIgnoringCase:current?.toLocaleLowerCase()===expected.toLocaleLowerCase(),
               caseOnlyCorrectable,

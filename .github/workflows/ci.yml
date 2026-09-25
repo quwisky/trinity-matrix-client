@@ -324,7 +324,8 @@ jobs:
     # Playwright command budget and 15 minutes for setup/diagnostics:
     # shard 1 about 105 native minutes, shard 2 about 117, shard 3 about 158
     # (240), shard 4 about 165 (240), shard 5 about 92 and shard 6 about 106.
-    # Shard 4's figure adds a provisional 30-40 minutes for message-links.
+    # Shard 4's figure adds a provisional 30-40 minutes for message-links, and
+    # shard 1's a provisional 15-20 minutes for message-markdown.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
@@ -423,6 +424,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "5" ]; then echo 'message-action-sheet-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3300000 -- pnpm exec nx run trinity-e2e-android:message-action-sheet; fi
             if [ "${{ matrix.shard }}" = "5" ]; then echo 'legacy-sso-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:legacy-sso; fi
             if [ "${{ matrix.shard }}" = "5" ]; then echo 'sso-recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'message-markdown-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-markdown; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-authenticity-shield-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'native-shell-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:native-shell; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'space-settings-core-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:space-settings-core; fi
@@ -502,6 +504,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_LINKS_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-links/message-links/publication-safe' -print -quit)" ]; then
             echo 'message-links-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-markdown diagnostics
+        id: message-markdown-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-markdown-started == 'true' }}
+        env:
+          MESSAGE_MARKDOWN_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_MARKDOWN_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-markdown/message-markdown/publication-safe' -print -quit)" ]; then
+            echo 'message-markdown-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
@@ -941,6 +953,13 @@ jobs:
           surface: android-message-links
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-links/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-markdown-started == 'true' && steps.message-markdown-artifact-gate.outputs.message-markdown-safe == 'true' }}
+        with:
+          surface: android-message-markdown
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-markdown/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}

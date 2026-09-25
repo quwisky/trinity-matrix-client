@@ -284,6 +284,10 @@ export function createAccountFixtures(
     roomId: string,
     eventId: string,
   ): Promise<Readonly<Record<string, unknown>>>;
+  roomMessages(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<Readonly<Record<string, unknown>>>;
   resolveRoomAlias(
     observer: NodeWorkspaceAccount,
     alias: string,
@@ -1227,6 +1231,18 @@ export function createAccountFixtures(
     return record(value, 'Matrix fixture room-event response');
   }
 
+  /** One raw newest-first `/messages?dir=b&limit=50` page, as the browser reader requests. */
+  async function roomMessages(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const value = await get(
+      access(observer),
+      `/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=50`,
+    );
+    return record(value, 'Matrix fixture room-messages response');
+  }
+
   /** Cleanup may supply its own bounded signal after the invocation is cancelled. */
   async function joinedRoomIds(
     observer: NodeWorkspaceAccount,
@@ -1317,6 +1333,7 @@ export function createAccountFixtures(
     joinedRoomIds,
     roomState,
     roomEvent,
+    roomMessages,
     resolveRoomAlias,
     allowEndedMembershipCleanup,
     trackRoomMembership,

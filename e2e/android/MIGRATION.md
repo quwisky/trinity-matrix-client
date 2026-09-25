@@ -5707,3 +5707,150 @@ protected Room, event or link identifier. The unchanged android-webview
 predecessor passed 5/5 at retry 0 locally, the browser predecessor passed its five
 applicable definitions at retry 0 in the same hosted run, and the production
 renderer had nine applicable passes.
+
+## Message-Markdown journeys
+
+Suite `android.message-markdown` migrates the three Android-applicable
+definitions of the unchanged Markdown predecessor
+`e2e/browser/journeys/conversations/message-markdown.spec.mts` (279 lines,
+SHA-256 `128f6ae2660c02a9f6e0d64726999ead4960454b66cb369306f9f27b3bb0baa8`)
+into one serial three-stage installed-Android Node/Maestro suite. The
+Playwright predecessor remains enabled and untouched. The stages map to
+definitions 52–125 (`formatting`), 127–168 (`task-list`) and the Android
+branch 170–224 of the language-caption definition (`code-caption`), which
+ends at the explicit `return;` on line 224 after `if (isAndroidE2E) {` on line 214. The desktop hover-toolbar tail at
+225–278 and its two assertion sites (276, 277) are excluded. Lines 29–47 hold
+the exact authoritative Room-event reader. The guard also pins
+`e2e/support/message-composer.mts`
+(`4b81585eea679d11dabd285449c9b004b6d70612ca777186ac34e44705c12d9d`),
+`e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`).
+
+The suite records 37 ordered, globally unique identities: 20 direct + 17
+inherited, with stage totals 18/7/12. The inherited sites are three Room
+readiness (`openNamedRoom`, helper line 13), five composer-send readiness
+pairs (`sendComposerLines`: the send control on line 75, then
+`sendComposerDraft`'s mobile Send button on line 53), three real-server echoes (`waitForSent`,
+app line 178) and one action-sheet readiness (`openMessageActionSheet`, app
+line 220). `178@102#2` reads as helper line 178 reached from the call on line
+102 in the second run of its literal two-item loop; a helper call runs before
+a matcher on the same line, so `220@223` precedes `223`, and one call's helper
+lines run in execution order, so `75@85` precedes `53@85`.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `formatting` | 13@82 | inherited | `openNamedRoom` composer visible | `message-markdown.formatting.room-ready` |
+| `formatting` | 75@85 | inherited | `sendComposerLines` send enabled for the plain draft | `message-markdown.formatting.plain-send-ready` |
+| `formatting` | 53@85 | inherited | `sendComposerDraft` Send button enabled for the plain draft | `message-markdown.formatting.plain-send-enabled` |
+| `formatting` | 86 | direct | Plain `plain one` text visible | `message-markdown.formatting.plain-visible` |
+| `formatting` | 75@92 | inherited | `sendComposerLines` send enabled for the bold draft | `message-markdown.formatting.rich-send-ready` |
+| `formatting` | 53@92 | inherited | `sendComposerDraft` Send button enabled for the bold draft | `message-markdown.formatting.rich-send-enabled` |
+| `formatting` | 94 | direct | Rendered-Markdown `rich two` text visible | `message-markdown.formatting.rich-visible` |
+| `formatting` | 95 | direct | Bold run reads `bold one` | `message-markdown.formatting.bold-run` |
+| `formatting` | 96 | direct | Exactly one `<br>` | `message-markdown.formatting.one-break` |
+| `formatting` | 178@102#1 | inherited | `waitForSent` plain row has a `$` event id | `message-markdown.formatting.plain-server-echo` |
+| `formatting` | 178@102#2 | inherited | `waitForSent` bold row has a `$` event id | `message-markdown.formatting.rich-server-echo` |
+| `formatting` | 114 | direct | Plain `body` is `plain one\nplain two` | `message-markdown.formatting.plain-body` |
+| `formatting` | 115 | direct | Plain event has no `format` | `message-markdown.formatting.plain-no-format` |
+| `formatting` | 116 | direct | Plain event has no `formatted_body` | `message-markdown.formatting.plain-no-formatted-body` |
+| `formatting` | 118 | direct | Formatted event declares `org.matrix.custom.html` | `message-markdown.formatting.formatted-format` |
+| `formatting` | 119 | direct | `formatted_body` contains `<br>` | `message-markdown.formatting.formatted-break` |
+| `formatting` | 120 | direct | `formatted_body` contains `<strong>bold one</strong>` | `message-markdown.formatting.formatted-bold` |
+| `formatting` | 124 | direct | Formatted `body` keeps the Markdown source | `message-markdown.formatting.formatted-source` |
+| `task-list` | 13@154 | inherited | `openNamedRoom` composer visible | `message-markdown.task-list.room-ready` |
+| `task-list` | 75@160 | inherited | `sendComposerLines` send enabled for the task draft | `message-markdown.task-list.send-ready` |
+| `task-list` | 53@160 | inherited | `sendComposerDraft` Send button enabled for the task draft | `message-markdown.task-list.send-enabled` |
+| `task-list` | 163 | direct | Rendered task list visible | `message-markdown.task-list.list-visible` |
+| `task-list` | 164 | direct | List contains `☑ shipped` | `message-markdown.task-list.checked-glyph` |
+| `task-list` | 165 | direct | List contains `☐ pending` | `message-markdown.task-list.unchecked-glyph` |
+| `task-list` | 167 | direct | No `input` in the list | `message-markdown.task-list.no-checkbox-input` |
+| `code-caption` | 13@197 | inherited | `openNamedRoom` composer visible | `message-markdown.code-caption.room-ready` |
+| `code-caption` | 75@202 | inherited | `sendComposerLines` send enabled for the lead | `message-markdown.code-caption.lead-send-ready` |
+| `code-caption` | 53@202 | inherited | `sendComposerDraft` Send button enabled for the lead | `message-markdown.code-caption.lead-send-enabled` |
+| `code-caption` | 75@204 | inherited | `sendComposerLines` send enabled for the fenced block | `message-markdown.code-caption.code-send-ready` |
+| `code-caption` | 53@204 | inherited | `sendComposerDraft` Send button enabled for the fenced block | `message-markdown.code-caption.code-send-enabled` |
+| `code-caption` | 207 | direct | Rendered code block visible | `message-markdown.code-caption.code-visible` |
+| `code-caption` | 178@208 | inherited | `waitForSent` code row has a `$` event id | `message-markdown.code-caption.server-echo` |
+| `code-caption` | 212 | direct | Code row has `msg--cont` | `message-markdown.code-caption.continuation-row` |
+| `code-caption` | 217 | direct | Code row has no `.msg__toolbar` | `message-markdown.code-caption.no-hover-toolbar` |
+| `code-caption` | 218 | direct | `pre::after` content contains `python` | `message-markdown.code-caption.language-caption` |
+| `code-caption` | 220@223 | inherited | `openMessageActionSheet` sheet visible | `message-markdown.code-caption.sheet-ready` |
+| `code-caption` | 223 | direct | Returned Message actions sheet visible | `message-markdown.code-caption.sheet-visible` |
+
+Each stage arranges one fresh Account and private Room through real Synapse
+with the predecessor's `Markdown`/`Tasks`/`Overlap` name templates. No
+message under test is seeded through REST: Maestro and Android key input own
+login, Room opening, every Markdown line, every line break, every send and the
+code-row long press. The first line of each draft goes through the
+anti-capitalization focused fill behind the digit sentinel `1` (Ctrl+Home,
+Forward Delete, Ctrl+End). Every further line starts with a native Enter key event:
+Enter inserts a line break on a mobile device, and the composer turns it into a
+line break or, for `- [x] shipped`, a `- [ ] ` continuation, as the
+predecessor's Shift+Enter does. A Shift+Enter chord is not used because Gboard
+re-dispatches it without Shift. The line is then appended at the caret by a flow that never
+erases or dismisses the keyboard. A line that starts with a letter is typed
+behind the same sentinel, because Android capitalizes a new paragraph.
+A digit replaces the shared fill's default `x` because Gboard autocorrected
+the `x`-joined first word: `xplain one` became `Explain one`, and removing the
+first character then left `xplain one`, the value of an unremoved sentinel.
+Gboard leaves a digit-led word unchanged. The caret walks left over the line, Backspace removes the sentinel and Ctrl+End
+restores the caret. The exact composer value is read back after every step.
+The keyboard is then dismissed through the IME-aware helper, the composer's
+Send button is proved enabled for the exact draft, and a native tap on it
+sends, as `sendComposerDraft` does on a mobile device and as the forward,
+mention and linkify suites send.
+
+Documented reinterpretations of the predecessor:
+
+- **Server truth.** The formatting stage reads the Room with the predecessor's
+  exact `/messages?dir=b&limit=50` reader (filtered to `m.room.message`,
+  oldest first). It requires exactly the two native sends, in order, with the
+  reconciled row ids, the active sender and original `m.text` content.
+  `formatted_body` must hold exactly one `<br>`. The plain row must render as
+  pre-wrap plain text with its literal newline, never as a `<br>`.
+- **Task glyphs.** Lines 164–165 also require exactly two list items reading
+  `☑ shipped` and `☐ pending`. Line 167 also rejects any checkbox role or type.
+  A receipt proves the ready server event carries the continued source and
+  the same glyphs on the reconciled row.
+- **Ready continuation.** The 500 ms pause before the fenced block becomes a
+  proved ready lead event. Line 212 requires the ready code row to continue
+  that lead directly. Line 218 requires `pre[language="python"]` and
+  `::after` content of exactly `"python"`. The action sheet is opened by a
+  measured native 750 ms long press and proved as the message-forward suite
+  proves it: one visible `Message actions` dialog with one visible Forward
+  action. No sheet action is taken.
+
+All three stages run at the Pixel 5 profile (393×727 CSS pixels, DPR 2.75,
+mobile and touch), as the message-linkify suite does, and each writes
+`profile-applied.json`. This is a deviation from the retained android-webview
+configuration's 1280×720 non-mobile desktop profile. It was adopted when a
+stray `x` (`xplain one`) was attributed to that profile. The same value later
+appeared at the Pixel 5 profile, and its cause is the Gboard autocorrection
+described above, which the digit sentinel removes at either profile. The installed app is a
+mobile device in either profile, so Enter behaves the same, and the
+desktop-only hover-toolbar tail is already excluded.
+
+```bash
+pnpm nx run trinity-e2e-android:message-markdown --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-markdown
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt,
+zero retries, and the suite stops at the first failed stage. Its provisional
+budgets are a 25-minute Node test, a 30-minute Nx timeout and a 35-minute CI
+wrapper, to be re-derived from the local acceptance runs. Shard 5 runs it
+last, after SSO recovery reset, because shard 1 has no room left in its budget. Cleanup runs every bounded step even after a
+failure; a cleanup, scrub or scan failure blocks publication. Failure text
+rethrown to the job log keeps only error names and messages with every
+registered identifier redacted. Diagnostics are scrubbed of raw and encoded
+identifiers, tokens, authorization headers, rasters and Preferences XML. The
+`android-message-markdown` upload requires both the started flag and the
+post-scan `publication-safe` marker.
+
+Three unchanged installed-Android first attempts, the three exact Playwright
+predecessors passing sequentially at retry 0, and audited original-attempt
+hosted Android/browser/renderer artifacts form the acceptance gate for #748;
+wiring alone does not establish parity or authorize issue closure.
