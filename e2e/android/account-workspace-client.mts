@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MaestroDevice } from './maestro-session.mts';
 import { openMaestroViewport, type MaestroViewport, type MaestroViewportOptions } from './maestro-viewport.mts';
-import { pressAndroidKeyboardKey, type AndroidKeyboardKey } from './maestro-keyboard.mts';
+import {
+  pressAndroidKeyCombination,
+  pressAndroidKeyboardKey,
+  type AndroidKeyCombination,
+  type AndroidKeyboardKey,
+} from './maestro-keyboard.mts';
 import { assertNativeDocumentActivation } from './maestro-document-picker.mts';
 import {
   captureNativeShellProof,
@@ -992,12 +997,15 @@ export class AccountWorkspaceClient {
           ),
           { APP_ID: this.applicationId, SECRET_TEXT: `x${value}` },
         );
-        await this.key('home');
+        // Home only reaches the current visual line once the value wraps, which
+        // deleted a character of the value and kept the sentinel; the document
+        // chord reaches the true start (and end) of a wrapped textarea.
+        await this.keyCombination('documentStart');
         await this.key('forwardDelete');
         // Removing the anti-capitalisation sentinel leaves Android's caret at
         // offset zero. Restore it to the end and emit a final native input event
         // there so caret-sensitive autocompletes observe the completed value.
-        await this.key('end');
+        await this.keyCombination('documentEnd');
         await this.key('space');
         await this.key('backspace');
         await this.hideKeyboard();
@@ -1609,6 +1617,10 @@ export class AccountWorkspaceClient {
 
   async key(key: AndroidKeyboardKey): Promise<void> {
     await pressAndroidKeyboardKey(this.device, key);
+  }
+
+  async keyCombination(combination: AndroidKeyCombination): Promise<void> {
+    await pressAndroidKeyCombination(this.device, combination);
   }
 
   private async waitForFullViewportNativeBounds(): Promise<void> {

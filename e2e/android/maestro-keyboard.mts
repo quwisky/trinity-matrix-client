@@ -30,3 +30,27 @@ export async function pressAndroidKeyboardKey(
     String(ANDROID_KEYCODES[key]),
   );
 }
+
+/**
+ * Chromium document-boundary commands. Home/End only reach the current visual
+ * line of a wrapped textarea; Ctrl+Home/Ctrl+End reach the start/end of its text.
+ */
+export const ANDROID_KEY_COMBINATIONS = {
+  documentStart: [113, 122],
+  documentEnd: [113, 123],
+} as const;
+
+export type AndroidKeyCombination = keyof typeof ANDROID_KEY_COMBINATIONS;
+
+/** Press one native key chord (API 33+ `input keycombination`) through the device lease. */
+export async function pressAndroidKeyCombination(
+  device: MaestroDevice,
+  combination: AndroidKeyCombination,
+): Promise<void> {
+  await device.adb(
+    'shell',
+    'input',
+    'keycombination',
+    ...ANDROID_KEY_COMBINATIONS[combination].map(String),
+  );
+}
