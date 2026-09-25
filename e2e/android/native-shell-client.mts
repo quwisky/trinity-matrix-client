@@ -81,9 +81,15 @@ export async function waitForNativeShellState<T>(
       value = await read();
     } catch (error) {
       signal.throwIfAborted();
-      // Read-only polling can meet an Activity/WebView recreation. Never put
-      // navigation, native input, or any other mutation in this callback.
-      if (!(error instanceof Error) || error.message !== 'DevTools websocket closed unexpectedly') throw error;
+      // Read-only polling can meet an Activity/WebView recreation, or a busy
+      // renderer that exceeds one DevTools operation's own timeout; the poll's
+      // deadline still bounds both. Never put navigation, native input, or any
+      // other mutation in this callback.
+      const interrupted =
+        error instanceof Error &&
+        (error.message === 'DevTools websocket closed unexpectedly' ||
+          error.name === 'TimeoutError');
+      if (!interrupted) throw error;
       interruptedReads++;
       console.warn(`[native-shell] ${description}: interrupted observation ${interruptedReads}`);
       await delay(100, undefined, { signal });

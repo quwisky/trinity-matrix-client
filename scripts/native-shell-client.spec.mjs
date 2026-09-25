@@ -26,6 +26,44 @@ describe('native shell observations', () => {
     expect(read).toHaveBeenCalledTimes(2);
   });
 
+  it('resumes read observations whose DevTools operation timed out', async () => {
+    // A busy renderer (for example Rust crypto start-up after sign-in) can
+    // exceed one CDP operation's own timeout; the poll's deadline still bounds it.
+    const read = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new DOMException(
+          'The operation was aborted due to timeout',
+          'TimeoutError',
+        ),
+      )
+      .mockResolvedValue('ready');
+    expect(
+      await waitForNativeShellState(
+        read,
+        (value) => value === 'ready',
+        'ready',
+        signal(),
+        1000,
+      ),
+    ).toBe('ready');
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('still fails when every observation times out before the deadline', async () => {
+    const read = vi
+      .fn()
+      .mockRejectedValue(
+        new DOMException(
+          'The operation was aborted due to timeout',
+          'TimeoutError',
+        ),
+      );
+    await expect(
+      waitForNativeShellState(read, () => true, 'ready', signal(), 300),
+    ).rejects.toThrow('Timed out waiting for ready');
+  });
+
   it('preserves arbitrary observation failures and cancellation', async () => {
     const error = new Error('Ambiguous Trinity WebView');
     const read = vi.fn().mockRejectedValue(error);
