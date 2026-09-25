@@ -35,7 +35,10 @@ describe('Trinity overlay surface recipe', () => {
     expect(accent).toContain('var(--trinity-state-attention-surface)');
     expect(neutral).toContain('--trn-overlay-inline-size:20rem');
     expect(sheet).toContain('w-screen');
-    expect(sheet).toContain('max-w-[100vw]');
+    // A bottom-sheet dialog pane is min(100vw, 36rem) wide; the sheet must stay
+    // inside it on wide touch screens instead of spanning the whole viewport.
+    expect(sheet).toContain('max-w-full');
+    expect(sheet).not.toContain('max-w-[100vw]');
     expect(sheet).toContain('rounded-b-none');
     expect(sheet).toContain('border-x-0');
     expect(sheet).toContain('border-b-0');

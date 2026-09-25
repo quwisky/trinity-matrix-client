@@ -30,6 +30,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Bottom sheets such as Room information, reactions and message actions stay inside
+  their sheet on wide touch screens, so actions like Open room remain on screen on tablets
+  and landscape phones instead of extending past the right edge.
+
 - Keep grouped message timestamps from taking over touch long-press selection while
   preserving the message body and links, so Android message actions open from row padding.
 
