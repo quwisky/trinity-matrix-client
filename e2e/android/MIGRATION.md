@@ -6303,6 +6303,18 @@ original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #751; wiring alone does not establish parity or
 authorize issue closure.
 
+Accepted at `4d19c94d`. Three unchanged local first attempts
+(`muhrvgbm-5e6e8aa4-753d-4336-ae2d-b6964c7fed1c`,
+`muhrzg7z-36d12392-0981-446d-b188-1673a2414965`,
+`muhs3cud-01f11135-4e31-4854-a359-945a01b1a3df`) and the original-attempt hosted
+shard-3 artifact of run 36220591604 (`mui3vgp5-b047471a-2003-46fe-b2c6-0a64fd2292be`) each passed 4/4 records
+at attempt 1 and zero retries, with matching built and installed APK digests,
+the publication-safe marker and none of the suite's protected Room or event
+identifiers. The hosted artifact still carries 11 unrelated raw
+event ids in Maestro's per-flow logcat, the class #838 removes. The unchanged predecessor passed at retry 0 locally and in
+the same hosted browser run, and the production renderer had nine applicable
+passes.
+
 ## Message-source journey
 
 Suite `android.message-source` migrates the single View-source definition of
@@ -6434,6 +6446,20 @@ original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #752; wiring alone does not establish parity or
 authorize issue closure.
 
+Accepted at `9c522450`. Three unchanged local first attempts
+(`muhu4acb-ec0d9302-0afa-41f1-b2d8-a8d8a86d7baf`,
+`muhuahtx-8c56529a-b101-4353-8fb0-2cd96e3e5412`,
+`muhugqft-7213a9dd-25ee-4b36-a877-e9c6375f69a5`) and the original-attempt hosted
+shard-3 artifact of run 36220591604 (`mui3z6l5-7236f6e4-b498-4e2d-af26-e9ef38790c66`) each passed 11/11 records
+at attempt 1 and zero retries, with matching built and installed APK digests,
+the publication-safe marker and none of the suite's protected Room or event
+identifiers. No raw Room or event id shape
+appears in any file. Its rethrow guard failed only in hosted Unit tests,
+where a non-TTY assertion diff interleaves characters; `fe22394e` proves the
+rethrow independently of diff rendering. The unchanged predecessor passed at retry 0 locally and in
+the same hosted browser run, and the production renderer had nine applicable
+passes.
+
 ## Message-spoiler journey
 
 Suite `android.message-spoiler` migrates the single spoiler-reveal definition
@@ -6562,3 +6588,18 @@ predecessor definition passing sequentially at retry 0, and audited
 original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #753; wiring alone does not establish parity or
 authorize issue closure.
+
+Accepted at `135ce8eb`. Three unchanged local first attempts
+(`muhwus9t-4d42b497-2fb3-4da9-a1ce-8adc5c920e88`,
+`muhwz05r-d0ac8b61-2840-40d2-a2e3-87599fed91cc`,
+`muhx3898-634f30d6-bd34-4736-a842-46ed86b028a1`) and the original-attempt hosted
+shard-3 artifact of run 36220591604 (`mui44zub-732e9076-6cc6-4c44-be6a-a39ea8a0fa41`) each passed 6/6 records
+at attempt 1 and zero retries, with matching built and installed APK digests,
+the publication-safe marker and none of the suite's protected Room or event
+identifiers. No raw Room or event id shape
+appears in any file, and the only rasters are the leaf-cropped conceal and
+reveal captures. Its rethrow guard failed only in hosted Unit tests, where a
+non-TTY assertion diff interleaves characters; `fe22394e` proves the rethrow
+independently of diff rendering. The unchanged predecessor passed at retry 0 locally and in
+the same hosted browser run, and the production renderer had nine applicable
+passes.
