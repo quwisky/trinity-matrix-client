@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/sidebar-touch.spec.mts',
-);
+const sourceFile = 'e2e/browser/journeys/room-library/sidebar-touch.spec.mts';
 const replacementPath = resolve(root, 'e2e/android/sidebar-touch-journeys.mts');
 
 const assertionIds = [
@@ -33,15 +31,38 @@ const assertionIds = [
   'room-menu.low-priority-visible',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf(
+    '\n## Sidebar touch targets and identity dock batch\n',
+  );
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android sidebar touch migration', () => {
-  it('pins the complete unchanged Playwright predecessor', () => {
-    const source = readFileSync(sourcePath);
+  it('pins the retired predecessor at its retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
       '8b09cba85b29db3e4819462e45b0f074f516198dca8f1733c195722c492f6ebb',
     );
     expect(source.toString('utf8')).toContain(
       "test('keeps the rail, room, menu and identity-dock controls touch-sized'",
+    );
+  });
+
+  it('retires the predecessor file and its journey catalog entry', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+
+    expect(existsSync(resolve(root, sourceFile))).toBe(false);
+    expect(catalog).not.toContain(sourceFile.replace('e2e/browser/', ''));
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
     );
   });
 

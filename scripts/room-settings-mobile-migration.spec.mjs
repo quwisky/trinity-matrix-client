@@ -2,16 +2,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const forYouSourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-administration/room-settings-for-you-mobile.spec.mts',
-);
-const generalSourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-administration/room-settings-general-mobile.spec.mts',
-);
+const forYouSourcePath =
+  'e2e/browser/journeys/room-administration/room-settings-for-you-mobile.spec.mts';
+const generalSourcePath =
+  'e2e/browser/journeys/room-administration/room-settings-general-mobile.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/room-settings-mobile-journeys.mts',
@@ -60,7 +57,7 @@ function replacement() {
 }
 
 describe('Android mobile Room Settings migration', () => {
-  it('pins both unchanged functional predecessor definitions', () => {
+  it('pins both retired functional predecessors at their retirement commit', () => {
     const predecessors = [
       {
         path: forYouSourcePath,
@@ -77,11 +74,24 @@ describe('Android mobile Room Settings migration', () => {
     ];
 
     for (const predecessor of predecessors) {
-      const source = readFileSync(predecessor.path);
+      const source = readRetiredPredecessor(predecessor.path);
       expect(createHash('sha256').update(source).digest('hex')).toBe(
         predecessor.hash,
       );
       expect(source.toString('utf8')).toContain(`test('${predecessor.title}'`);
+    }
+  });
+
+  it('removes both retired predecessors from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    for (const path of [forYouSourcePath, generalSourcePath]) {
+      expect(existsSync(resolve(root, path))).toBe(false);
+      expect(catalog).not.toContain(
+        `path: '${path.replace('e2e/browser/', '')}'`,
+      );
     }
   });
 

@@ -40,8 +40,10 @@ shell dependencies and a display; iOS needs macOS and Xcode but has no installed
 Playwright runner. The aggregate preflights selected suites.
 
 The additive Node runner smoke checks and their pinned prerequisites are documented in
-the [Node runners guide](support/NODE-RUNNERS.md). Existing Playwright targets remain the
-owners of the migrated suites during this coexistence period.
+the [Node runners guide](support/NODE-RUNNERS.md). Accepted Android batches run their
+journeys as `trinity-e2e-android` Maestro targets, and their Playwright predecessors are
+retired; the [Android migration ledger](android/MIGRATION.md#predecessor-retirement) lists
+them. The remaining Playwright targets own their suites until those migrate too.
 
 The disposable Synapse stack uses fixed ports and shared state. Run Synapse-backed commands
 sequentially, never in parallel. Lifecycle targets and aggregates are uncached and serialized;
@@ -66,8 +68,8 @@ contract type; add or move a spec with its `e2e/browser/journey-catalog.mts` ent
 ## Android WebView journeys
 
 `pnpm e2e:android` builds the production Capacitor app, installs it on a validated
-dedicated emulator, and runs shared browser journeys in the app's WebView plus Android-only
-checks. It can clear the test application and change ADB reverse mappings. Set
+dedicated emulator, and runs the shared browser journeys not yet retired for an Android Maestro
+suite in the app's WebView. It can clear the test application and change ADB reverse mappings. Set
 `TRINITY_ANDROID_SERIAL` only for a disposable dedicated emulator. See
 [E2E architecture](../apps/docs-developers/src/content/docs/testing/testing-strategy.md)
 for ownership and cleanup limits.

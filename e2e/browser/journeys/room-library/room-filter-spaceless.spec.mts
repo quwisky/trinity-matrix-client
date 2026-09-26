@@ -5,6 +5,7 @@ import {
   type APIRequestContext,
 } from '../../../fixtures.mts';
 import {
+  isAndroidE2E,
   login,
   synapseSession,
   type SynapseSession,
@@ -18,11 +19,14 @@ import { registerUser } from '../../../support/account.mts';
 // (RoomsPage.visibleRooms / spaceChildRoomIds in rooms.page.ts).
 //
 // Seeds a fresh reader via Synapse's shared-secret admin endpoint (same trick
-// as room-list.spec.mts/unread-badges.spec.mts) with:
+// as unread-badges.spec.mts) with:
 //   - a spaceless plain room ("Freestanding")
 //   - a space ("Team") with a child plain room ("Team Chat") the reader has
 //     joined, linked via a `m.space.child` state event on the space (mirroring
 //     SpacesService.createRoomInSpace's own via/link shape)
+//
+// Android runs this journey through android.room-filter-spaceless (#694); the
+// place-shape geometry and hover checks stay desktop browser coverage.
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other
 // authenticated web e2e specs.
@@ -148,6 +152,10 @@ test.describe('Rooms view excludes space-owned rooms', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.room-filter-spaceless (#694).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}s`;
 

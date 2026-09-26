@@ -89,8 +89,8 @@ export class MemberActionsService {
    * took that list's place. Closing to `null` would therefore answer "close this member" with
    * "and also the list you were reading", which is not what was asked — and it is worse after
    * a moderation write, where the panel closes ITSELF on success and the point is to see the
-   * change land in the list. `promote-member.spec.mts` promotes someone and then looks for
-   * them under a Moderator heading; that heading is in the roster.
+   * change land in the list. `e2e/android/member-details-promotion-journeys.mts` promotes
+   * someone and then looks for them under a Moderator heading; that heading is in the roster.
    */
   onMemberPanelDismissed(): void {
     this.roomSurfaces.transition({ kind: 'dismiss' });

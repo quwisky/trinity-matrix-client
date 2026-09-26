@@ -7,6 +7,7 @@ import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { SECONDARY_HTTP, SYNAPSE_HTTP } from '../e2e/support/synapse/start.mjs';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor = 'e2e/browser/journeys/conversations/message-links.spec.mts';
@@ -566,13 +567,22 @@ const mutateLine = (source, line, replacement) => {
   return lines.join('\n');
 };
 
+const RETIRED_TITLES = [
+  'a joined room previews before an explicit Open',
+  'previews and joins a public room across real federation',
+  'shows a useful unavailable state for an inaccessible remote room',
+  'keeps a rejected federated Join open and retryable',
+  'keeps the sheet and its action footer reachable',
+];
+const DESKTOP_ONLY_TITLE =
+  'clicking a mention shows a user card, not an empty room';
+
 describe('Android message-links predecessor pins', () => {
-  it('pins the unchanged predecessor and five shared sources by SHA-256', () => {
-    expect(existsSync(resolve(root, predecessor))).toBe(true);
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and five shared sources by SHA-256', () => {
+    const bytes = readRetiredPredecessor(predecessor);
+    expect(sha256(bytes)).toBe(PREDECESSOR_SHA256);
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const bytes = readFileSync(resolve(root, predecessor));
     const flipped = Buffer.from(bytes);
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
@@ -583,7 +593,7 @@ describe('Android message-links predecessor pins', () => {
     }
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('keeps only the desktop-only mention definition in both Playwright inventories', async () => {
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -600,13 +610,23 @@ describe('Android message-links predecessor pins', () => {
       expect(config).not.toContain('testIgnore');
       expect(config).not.toContain('message-links');
     }
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(3);
+    // The working tree keeps only the desktop-only mention definition, skipped on
+    // Android because android.message-links owns its Android execution.
+    const current = read(predecessor);
+    for (const title of RETIRED_TITLES)
+      expect(current).not.toContain(`test('${title}'`);
+    const mention = current.split(`test('${DESKTOP_ONLY_TITLE}'`);
+    expect(mention).toHaveLength(2);
+    expect(mention[1]).toMatch(/^[^]*?=> \{\s*test\.skip\(\s*isAndroidE2E,/u);
+    expect(current).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
+    expect(current.match(/^\s*test\('/gmu)).toHaveLength(1);
   });
 
   it('maps the exact direct and helper assertion sites with the house AST rule', () => {
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     assertPredecessorShape(source);
     expect(assertionLines(source, 588, 604)).toEqual(WEB_TAIL_SITES);
     for (const stage of STAGES)
@@ -614,7 +634,7 @@ describe('Android message-links predecessor pins', () => {
   });
 
   it('rejects the issue span 507-604 because it counts the web-only tail (11 sites, 44 total)', () => {
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     expect(assertionLines(source, 507, 604)).toHaveLength(11);
     const total = [...STAGES.slice(0, 5).map((stage) => stage.span), [507, 604]]
       .map((span) => assertionLines(source, ...span).length)
@@ -626,7 +646,7 @@ describe('Android message-links predecessor pins', () => {
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     const mutations = [
       // Line 587 or 578 moves.
       mutateLine(source, 577, (line) => `\n${line}`),
@@ -687,7 +707,7 @@ describe('Android message-links predecessor pins', () => {
   });
 
   it('parses the portrait test.use and the Android-only skip', async () => {
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     expect(parseTestUse(source)).toEqual([
       {
         start: 427,
@@ -724,7 +744,7 @@ describe('Android message-links predecessor pins', () => {
 
 describe('Android message-links helper expansion by binding', () => {
   it('resolves module helper calls through the TypeChecker and excludes shadowed locals', () => {
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     const { helpers, shadowed } = helperBindings(source);
     expect(helpers).toEqual(HELPER_CALLS);
     expect(shadowed.createRoom).toEqual({
@@ -738,7 +758,7 @@ describe('Android message-links helper expansion by binding', () => {
   });
 
   it('proves the resolver matters with a naive identifier-count control', () => {
-    const source = read(predecessor);
+    const source = readRetiredPredecessor(predecessor).toString('utf8');
     const naive = naiveHelperCalls(source, Object.keys(HELPER_CALLS));
     expect(naive.createRoom).toEqual([120, 183, 184, 248, 334, 375, 441]);
     expect(naive.createRoom).not.toEqual(HELPER_CALLS.createRoom);
@@ -750,7 +770,9 @@ describe('Android message-links helper expansion by binding', () => {
   });
 
   it('expands 4 logins + 3 registrations + 8 Rooms + 4 sends + 6 opens = 25', () => {
-    const expanded = expandStages(read(predecessor)).flat();
+    const expanded = expandStages(
+      readRetiredPredecessor(predecessor).toString('utf8'),
+    ).flat();
     const inherited = expanded.filter((site) => site.kind === 'inherited');
     const byHelper = (helper) =>
       inherited.filter((site) => site.helper === helper).length;
@@ -768,7 +790,9 @@ describe('Android message-links helper expansion by binding', () => {
 
   it('matches the contract sites, including each call and via line', async () => {
     const { MESSAGE_LINKS_STAGES } = await loadContract();
-    const expanded = expandStages(read(predecessor));
+    const expanded = expandStages(
+      readRetiredPredecessor(predecessor).toString('utf8'),
+    );
     expect(
       MESSAGE_LINKS_STAGES.map((entry) => entry.sites.map(siteTuple)),
     ).toEqual(expanded.map((sites) => sites.map(siteTuple)));
@@ -1883,7 +1907,10 @@ describe('Android message-links contract ledger', () => {
       hasTouch: false,
       deviceScaleFactor: 1,
     });
-    assertPortraitParity(read(predecessor), contract.PORTRAIT_LINK_PROFILE);
+    assertPortraitParity(
+      readRetiredPredecessor(predecessor).toString('utf8'),
+      contract.PORTRAIT_LINK_PROFILE,
+    );
     const profiles = contract.messageLinksProfiles();
     for (const entry of contract.MESSAGE_LINKS_STAGES)
       expect(profiles[entry.id]).toEqual({
@@ -3960,7 +3987,7 @@ describe('Android message-links hosted wiring and parity ledger', () => {
     expect(section).toContain('6/16/9/12/14/6');
     expect(section).toContain(PREDECESSOR_SHA256);
     expect(section).toContain('Suite `android.message-links`');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
   });
 });
 

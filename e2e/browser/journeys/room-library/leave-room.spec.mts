@@ -12,16 +12,13 @@ import {
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
 
-// Covers "leave a room": each room row's kebab (`.channel__menu`) opens a Helm
-// dropdown-menu (CDK overlay) with a destructive "Leave room" item
-// (`data-testid="room-leave"`). Picking it confirms via TrnAlertService
-// (`data-testid="alert-confirm"`) and calls RoomsService.leave → client.leave,
-// after which the room drops out of the joined room list (RoomsService filters
-// to `getMyMembership() === 'join'` and refreshes on RoomEvent.MyMembership).
+// Covers the rendering of the "leave a room" menu item: each room row's kebab
+// (`.channel__menu`) opens a Helm dropdown-menu (CDK overlay) with a destructive
+// "Leave room" item (`data-testid="room-leave"`). The functional leave flow runs
+// through android.leave-room (#692).
 //
-// Seeds one reader with two plain rooms so leaving one leaves a non-empty list
-// to assert against. Needs a Synapse homeserver (Docker) and self-skips
-// otherwise, like the other authenticated web e2e specs.
+// Seeds one reader with two plain rooms. Needs a Synapse homeserver (Docker) and
+// self-skips otherwise, like the other authenticated web e2e specs.
 const session = synapseSession();
 
 async function seedTwoRooms(
@@ -72,42 +69,6 @@ async function openRoomMenu(page: Page, roomName: string): Promise<void> {
     .getByTestId('room-leave')
     .waitFor({ state: 'visible', timeout: 10_000 });
 }
-
-test.describe('Leave a room', () => {
-  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-
-  test('leaving a room removes it from the list while others stay', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}l`;
-
-    const { reader, leaveName, keepName } = await seedTwoRooms(
-      request,
-      hs,
-      runId,
-    );
-
-    await login(page, reader);
-    await page.getByTestId('rail-rooms').click();
-
-    const leaveRow = page.locator('.channel', { hasText: leaveName });
-    const keepRow = page.locator('.channel', { hasText: keepName });
-    await leaveRow.first().waitFor({ state: 'visible', timeout: 30_000 });
-    await keepRow.first().waitFor({ state: 'visible', timeout: 30_000 });
-
-    // Leave the first room via its kebab → "Leave room" → confirm.
-    await openRoomMenu(page, leaveName);
-    await page.getByTestId('room-leave').click();
-    await page.getByTestId('alert-confirm').click();
-
-    // The left room drops out of the list (leave round-trips through
-    // client.leave + the MyMembership-driven refresh); the other room stays.
-    await expect(leaveRow).toHaveCount(0, { timeout: 30_000 });
-    await expect(keepRow.first()).toBeVisible();
-  });
-});
 
 /**
  * The destructive menu item has to stay legible, and legible WHEREVER it is placed.

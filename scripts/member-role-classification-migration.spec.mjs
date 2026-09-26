@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const source = 'e2e/browser/journeys/room-administration/member-roles.spec.mts';
@@ -64,8 +65,8 @@ const forbiddenProductMutations = [
 ];
 
 describe('Android member role classification migration', () => {
-  it('pins the canonical helper, four definitions, and all 27 assertion sites', () => {
-    const contents = readFileSync(resolve(root, source));
+  it('pins the retired helper, four definitions, and all 27 assertion sites at the retirement commit', () => {
+    const contents = readRetiredPredecessor(source);
     const lines = contents.toString('utf8').split('\n');
     expect(createHash('sha256').update(contents).digest('hex')).toBe(
       '58f0cacf00feb7a2587545b8261164632af83b24e0b839cc4be889af6a52b20f',
@@ -97,6 +98,17 @@ describe('Android member role classification migration', () => {
     expect(expectSites(283, 361)).toBe(8);
     expect(expectSites(363, 393)).toBe(3);
     expect(expectSites(395, 433)).toBe(4);
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, source))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${source.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('exports exact source mappings and exactly 27 stable identities', async () => {

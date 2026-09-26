@@ -123,7 +123,7 @@ describe('E2E support architecture', () => {
         .filter((file) => file.endsWith('.electron.spec.mts'))
         .map((file) => `e2e/electron/${file}`),
     ];
-    expect(specs.length).toBeGreaterThan(100);
+    expect(specs.length).toBeGreaterThan(50);
     for (const spec of specs) {
       const source = read(spec);
       expect(source, spec).not.toMatch(/Date\.now\(\)\.toString\(36\)/);

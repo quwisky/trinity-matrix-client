@@ -7,6 +7,7 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
+  isAndroidE2E,
   login,
   openSettingsTab,
   synapseSession,
@@ -29,6 +30,8 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 //   Zulu   10                    1st       3rd            2nd
 //   Alpha  20                    2nd       1st            3rd
 //   Mike   30                    3rd       2nd            1st
+//
+// Live re-ordering as a message arrives runs through android.space-room-order (#696).
 //
 // Needs a Synapse homeserver (Docker) and self-skips otherwise, like the other authenticated
 // web e2e specs.
@@ -238,6 +241,10 @@ test.describe('Room order inside a space', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.space-room-order (#696).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}ord`;
 
@@ -423,43 +430,5 @@ test.describe('Room order inside a space', () => {
 
       await expectHeaderFits(page);
     });
-  });
-
-  test('re-orders as a message arrives, without reopening the space', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}live`;
-
-    const { reader, spaceName, zulu, alpha, mike } = await seedOrderedSpace(
-      request,
-      hs,
-      runId,
-    );
-
-    await login(page, reader);
-    await openSpace(page, spaceName);
-    await expect(roomNames(page)).toHaveText(
-      [mike.name, zulu.name, alpha.name],
-      {
-        timeout: 30_000,
-      },
-    );
-
-    // Sent over the API, never typed: neither RoomsService nor MixedRoomsService listens to
-    // RoomEvent.Timeline, so a local echo would not reorder until the next /sync anyway.
-    const sender = await apiLogin(
-      request,
-      hs,
-      reader.user as string,
-      reader.pass as string,
-    );
-    await sendMessage(request, hs, sender, alpha.roomId, `bump ${runId}`);
-
-    await expect(roomNames(page)).toHaveText(
-      [alpha.name, mike.name, zulu.name],
-      { timeout: 30_000 },
-    );
   });
 });

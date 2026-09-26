@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { redactMaestroArtifacts } from '../e2e/android/maestro-session.mts';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/accounts/oidc-login.spec.mts';
@@ -76,7 +77,10 @@ const forbiddenDomActions = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -550,19 +554,29 @@ describe('Android OIDC-native login migration', () => {
     );
   });
 
-  it('documents parity and retains every exact predecessor', () => {
+  it('documents parity and pins every retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const sectionStart = migration.indexOf('## OIDC-native login journeys');
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## OIDC-native login journeys');
-    expect(migration).toContain('`android.oidc-login`');
-    expect(migration).toContain(
+    expect(section).toContain('`android.oidc-login`');
+    expect(section).toContain(
       'e9a0dadad15f155a3c69b49e06d8b4539ea7d7f446fd08cfaa565fa3ba6ecb8a',
     );
-    expect(migration).toContain('26 assertion identities');
-    expect(migration).toContain('RFC 7636');
-    expect(migration).toMatch(/Do not\s+retire/u);
-    expect(catalog).toContain("path: 'journeys/accounts/oidc-login.spec.mts'");
-    const predecessor = read(predecessorSource);
+    expect(section).toContain('26 assertion identities');
+    expect(section).toContain('RFC 7636');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(catalog).not.toContain(
+      "path: 'journeys/accounts/oidc-login.spec.mts'",
+    );
+    const predecessor =
+      readRetiredPredecessor(predecessorSource).toString('utf8');
     for (const title of [
       'offers the provider Continue + Create account and hides password/SSO',
       'builds a PKCE authorize request and surfaces a provider error on the callback',

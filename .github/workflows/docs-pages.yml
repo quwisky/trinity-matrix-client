@@ -26,6 +26,8 @@ jobs:
         with:
           browsers: chromium
       - run: pnpm format:check
+      # Migration guards read retired Playwright predecessors at their pinned commit.
+      - run: node scripts/retired-playwright-predecessors.mjs fetch
       - run: pnpm nx test scripts
       - run: pnpm nx test docs-site
       - run: pnpm nx run docs-site:check

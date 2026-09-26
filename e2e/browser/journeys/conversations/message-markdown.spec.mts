@@ -1,13 +1,7 @@
-import {
-  testResourceId,
-  test,
-  expect,
-  type APIRequestContext,
-} from '../../../fixtures.mts';
+import { testResourceId, test, expect } from '../../../fixtures.mts';
 import {
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   waitForSent,
   type SynapseSession,
@@ -18,159 +12,24 @@ import {
   sendComposerLines,
 } from '../../../support/message-composer.mts';
 
-// Covers the markdown render path end to end, through the REAL composer so the wire
-// format is exercised, not just the rendering:
-//   - a soft line break survives alongside formatting (issue #29's sharpest bug)
-//   - a plain multi-line message still goes as plain text, not formatted_body
-//   - task lists arrive as ☑/☐ rather than being silently dropped
+// Covers the web hover toolbar over rendered markdown, through the REAL composer: a code
+// block's generated language caption stays clear of the row's hover toolbar. The wire
+// format, line-break, task-list and Android code-caption journeys run through
+// android.message-markdown (#748).
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
 
-/** Every message event in the room, oldest first, straight from the homeserver. */
-async function roomEvents(
-  request: APIRequestContext,
-  hs: string,
-  token: string,
-  roomId: string,
-): Promise<Record<string, never>[]> {
-  const json = await request
-    .get(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(
-        roomId,
-      )}/messages?dir=b&limit=50`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    .then((r) => r.json());
-  return (json.chunk as Record<string, never>[])
-    .filter((e) => (e as Record<string, unknown>)['type'] === 'm.room.message')
-    .reverse();
-}
-
 test.describe('Message markdown', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-
-  test('renders formatting, keeps line breaks, and only sends HTML when it means something', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}md`;
-    const user = `md-${runId}`;
-    const pass = `${user}-pass`;
-    const roomName = `Markdown ${runId}`;
-
-    await registerUser(request, user, pass);
-    const token = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json())
-      .then((j) => j.access_token as string);
-    const roomId = await request
-      .post(`${hs}/_matrix/client/v3/createRoom`, {
-        headers: { Authorization: `Bearer ${token}` },
-        data: { name: roomName, preset: 'private_chat' },
-      })
-      .then((r) => r.json())
-      .then((j) => j.room_id as string);
-
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openNamedRoom(page, roomName);
-
-    // 1. A plain multi-line message.
-    await sendComposerLines(page, ['plain one', 'plain two']);
-    await expect(
-      page.locator('.msg__text', { hasText: 'plain one' }),
-    ).toBeVisible({ timeout: 20_000 });
-
-    // 2. The same shape, but with formatting — this is the bug: before the fix the
-    //    line break vanished the moment anything was bold.
-    await sendComposerLines(page, ['**bold one**', 'rich two']);
-    const rich = page.locator('.msg__text--html', { hasText: 'rich two' });
-    await expect(rich).toBeVisible({ timeout: 20_000 });
-    await expect(rich.locator('strong')).toHaveText('bold one');
-    await expect(rich.locator('br')).toHaveCount(1);
-
-    // Both rows render from the local echo, which the homeserver has not necessarily
-    // seen yet — so wait for the real event id before asking it what we sent, or
-    // /messages can come back with only the first message.
-    for (const text of ['plain one', 'rich two']) {
-      await waitForSent(
-        page.locator('.scroll .msg[data-mid]', { hasText: text }).first(),
-      );
-    }
-
-    // The wire format is the real assertion: markdown that adds nothing must NOT be
-    // promoted to HTML just because `breaks` turns newlines into <br>.
-    const events = await roomEvents(request, hs, token, roomId);
-    const [plain, formatted] = events as unknown as {
-      content: { body: string; format?: string; formatted_body?: string };
-    }[];
-
-    expect(plain.content.body).toBe('plain one\nplain two');
-    expect(plain.content.format).toBeUndefined();
-    expect(plain.content.formatted_body).toBeUndefined();
-
-    expect(formatted.content.format).toBe('org.matrix.custom.html');
-    expect(formatted.content.formatted_body).toContain('<br>');
-    expect(formatted.content.formatted_body).toContain(
-      '<strong>bold one</strong>',
-    );
-    // `body` keeps the author's source, so editing round-trips the markdown.
-    expect(formatted.content.body).toBe('**bold one**\nrich two');
-  });
-
-  test('renders a task list as glyphs rather than dropping it', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}tl`;
-    const user = `task-${runId}`;
-    const pass = `${user}-pass`;
-    const roomName = `Tasks ${runId}`;
-
-    await registerUser(request, user, pass);
-    const token = await request
-      .post(`${hs}/_matrix/client/v3/login`, {
-        data: {
-          type: 'm.login.password',
-          identifier: { type: 'm.id.user', user },
-          password: pass,
-        },
-      })
-      .then((r) => r.json())
-      .then((j) => j.access_token as string);
-    await request.post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: { Authorization: `Bearer ${token}` },
-      data: { name: roomName, preset: 'private_chat' },
-    });
-
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
-    await openNamedRoom(page, roomName);
-
-    // Only the first marker is typed. Shift+Enter carries the whole marker onto the next
-    // line — bullet AND task box, always unticked — so the second line is just its text.
-    // Typing `- ` again would nest a second list; typing `[ ] ` again would put a literal
-    // `[ ]` inside the item, which is what this spec caught when the box started carrying.
-    await sendComposerLines(page, ['- [x] shipped', 'pending']);
-
-    const list = page.locator('.msg__text--html', { hasText: 'shipped' });
-    await expect(list).toBeVisible({ timeout: 20_000 });
-    await expect(list).toContainText('☑ shipped');
-    await expect(list).toContainText('☐ pending');
-    // The checkbox was previously stripped on the way out, taking the state with it.
-    await expect(list.locator('input')).toHaveCount(0);
-  });
 
   test('keeps the language caption clear of the hover toolbar', async ({
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-markdown (#748).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}ov`;
     const user = `ov-${runId}`;
@@ -210,19 +69,6 @@ test.describe('Message markdown', () => {
     );
     const row = page.locator('.msg', { has: pre }).first();
     await expect(row).toHaveClass(/msg--cont/);
-
-    if (isAndroidE2E) {
-      // Installed touch hosts do not paint the web hover toolbar at all. The
-      // caption remains rendered, and message actions move to a long-press sheet.
-      await expect(row.locator('.msg__toolbar')).toHaveCount(0);
-      expect(
-        await pre.evaluate(
-          (element) => getComputedStyle(element, '::after').content,
-        ),
-      ).toContain('python');
-      await expect(await openMessageActionSheet(page, row)).toBeVisible();
-      return;
-    }
 
     await pre.hover();
 

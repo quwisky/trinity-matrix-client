@@ -31,9 +31,13 @@ describe('Android Playwright canonical coverage', () => {
     expect(bypasses).toEqual([]);
   });
 
-  it('collects all canonical web specs and the Android-only lifecycle specs', () => {
+  it('collects all canonical web specs; Android-only lifecycle specs are retired', () => {
     expect(androidConfig).toContain("'browser/journeys/**/*.spec.mts'");
     expect(androidConfig).toContain("'android/**/*.spec.mts'");
+    // android.native-shell (#670) replaced every Android-only Playwright spec.
+    expect(
+      globSync('*.spec.mts', { cwd: join(workspaceRoot, 'e2e/android') }),
+    ).toEqual([]);
   });
 
   it('keeps the platform selector inside the Android runner', () => {

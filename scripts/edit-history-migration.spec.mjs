@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -14,6 +15,29 @@ const digest = (path) =>
   createHash('sha256')
     .update(readFileSync(resolve(root, path)))
     .digest('hex');
+const retiredSource = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
+const retiredTitles = [
+  'shows every version of an edited message, oldest first',
+  'renders the history as a fullscreen, touch-sized surface',
+];
+const desktopTitle =
+  'uses a settings-style frame with a fixed header and scrolling revisions';
+
+function ownLedgerSection(docs) {
+  const start = docs.indexOf('\n## Edit-history journeys\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
+function definitionSource(source, title) {
+  const start = source.indexOf(`test('${title}'`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = source.indexOf('\n  });\n', start);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end + '\n  });'.length);
+}
 
 const coreLines = [
   232, 237, 244, 248, 249, 253, 263, 270, 271, 273, 279, 281, 282, 283, 286,
@@ -260,7 +284,7 @@ function assertFailureSafeRunner(source) {
 }
 
 describe('Android edit-history migration contract', () => {
-  it('runs edit history before cross-user verification with started-plus-safe diagnostics', () => {
+  it('runs edit history on its shard with started-plus-safe diagnostics', () => {
     const project = JSON.parse(read('e2e/android/project.json'));
     const target = project.targets['edit-history'];
     expect(target?.cache).toBe(false);
@@ -307,9 +331,27 @@ describe('Android edit-history migration contract', () => {
     );
     expect(workflow).toContain('android-edit-history');
     expect(workflow).toContain('publication-safe');
-    expect(read('e2e/android/MIGRATION.md')).toContain('android.edit-history');
-    expect(read(predecessor)).toContain(
+    const ledger = ownLedgerSection(read('e2e/android/MIGRATION.md'));
+    expect(ledger).toContain('android.edit-history');
+    expect(ledger).toContain('Predecessor status: retired on 2026-09-26');
+    expect(retiredSource()).toContain(
       "test('renders the history as a fullscreen, touch-sized surface'",
+    );
+  });
+
+  it('retires both Android-owned definitions and keeps the desktop frame test', () => {
+    const current = read(predecessor);
+    for (const title of retiredTitles)
+      expect(current).not.toContain(`test('${title}'`);
+    expect(current).not.toContain('real Pixel 5 profile');
+    expect(current).not.toContain("devices['Pixel 5']");
+    const retired = retiredSource();
+    expect(definitionSource(current, desktopTitle)).toBe(
+      definitionSource(retired, desktopTitle),
+    );
+    expect(current.match(/^\s*test\(/gmu)).toHaveLength(1);
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      'journeys/conversations/message-edit-history.spec.mts',
     );
   });
 
@@ -482,13 +524,14 @@ describe('Android edit-history migration contract', () => {
       ).toThrow();
   });
 
-  it('pins the exact two Android assertion spans and excludes desktop-only sites', () => {
-    const source = read(predecessor);
+  it('pins the retired predecessor, its two Android assertion spans and the desktop-only sites', () => {
+    const bytes = readRetiredPredecessor(predecessor);
+    const source = bytes.toString('utf8');
     expect(assertionLines(source, 123, 396)).toEqual(coreLines);
     expect(assertionLines(source, 91, 118)).toEqual(pixelLines.slice(0, 3));
     expect(assertionLines(source, 500, 552)).toEqual(pixelLines.slice(3));
     expect(assertionLines(source, 398, 495)).toHaveLength(25);
-    expect(digest(predecessor)).toBe(
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(
       '66b251c72f0939a9913fb31641107f500d22cf627ff7b566740e15e744c37153',
     );
     expect(digest('e2e/support/app.mts')).toBe(

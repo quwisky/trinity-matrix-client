@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const definitionSource =
@@ -25,7 +26,6 @@ const accountClientPath = resolve(
   'e2e/android/account-workspace-client.mts',
 );
 const faultPath = resolve(root, 'e2e/android/matrix-http-fault.mts');
-const predecessor = readFileSync(resolve(root, definitionSource), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
@@ -88,7 +88,10 @@ const forbiddenJourneyMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  // Retired predecessors are pinned at their retirement commit; shared helpers stay in the tree.
+  const contents = [definitionSource].includes(path)
+    ? readRetiredPredecessor(path)
+    : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -102,7 +105,7 @@ function expectSites(lines, from, to) {
 }
 
 describe('Android Room profile settings migration', () => {
-  it('pins four definitions, the openRoom helper, and exactly 36 direct sites', () => {
+  it('pins four retired definitions, the openRoom helper, and exactly 36 direct sites at the retirement commit', () => {
     const definition = sourceLines(
       definitionSource,
       'f6ab33a1fc7160efb206c66f064ab158cea1c3969ad6ee5a55b8eb39299d1f96',
@@ -136,6 +139,9 @@ describe('Android Room profile settings migration', () => {
     expect(
       definition.filter((line) => line.includes('await openRoom(')),
     ).toHaveLength(5);
+    expect(readRetiredPredecessor(definitionSource).toString('utf8')).toContain(
+      "test('an admin renames a room from the settings dialog'",
+    );
   });
 
   it('exports exact source mappings and stable 36+5 identities', async () => {
@@ -338,8 +344,16 @@ describe('Android Room profile settings migration', () => {
     expect(
       readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'),
     ).toContain('android-room-profile-settings');
-    expect(predecessor).toContain(
-      "test('an admin renames a room from the settings dialog'",
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, definitionSource))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${definitionSource.replace('e2e/browser/', '')}'`,
     );
   });
 });

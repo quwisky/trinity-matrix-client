@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { redactMaestroArtifacts } from '../e2e/android/maestro-session.mts';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/accounts/sso-login.spec.mts';
@@ -87,7 +88,10 @@ const forbiddenProductActions = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -581,19 +585,29 @@ describe('Android legacy SSO migration', () => {
     );
   });
 
-  it('documents parity and retains the exact predecessors', () => {
+  it('documents parity and pins the retired predecessors at their retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const sectionStart = migration.indexOf('## Legacy SSO journeys');
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## Legacy SSO journeys');
-    expect(migration).toContain('`android.legacy-sso`');
-    expect(migration).toContain(
+    expect(section).toContain('`android.legacy-sso`');
+    expect(section).toContain(
       '04bf21437efd4da47398e93df607bf35dbcd8aba00159607a9a95f96ca6e9b12',
     );
-    expect(migration).toContain('23 assertion identities');
-    expect(migration).toContain('Chrome Custom Tab');
-    expect(migration).toMatch(/Do not\s+retire/u);
-    expect(catalog).toContain("path: 'journeys/accounts/sso-login.spec.mts'");
-    const predecessor = read(predecessorSource);
+    expect(section).toContain('23 assertion identities');
+    expect(section).toContain('Chrome Custom Tab');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(catalog).not.toContain(
+      "path: 'journeys/accounts/sso-login.spec.mts'",
+    );
+    const predecessor =
+      readRetiredPredecessor(predecessorSource).toString('utf8');
     expect(predecessor).toContain(
       "test('signs in through the provider and keeps the session'",
     );

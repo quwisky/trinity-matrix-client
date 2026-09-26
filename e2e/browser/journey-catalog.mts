@@ -37,39 +37,9 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/accounts/change-password.spec.mts',
-    capability: 'accounts',
-    contractType: 'security',
-  },
-  {
     path: 'journeys/accounts/clear-all-data.spec.mts',
     capability: 'accounts',
     contractType: 'security',
-  },
-  {
-    path: 'journeys/accounts/mixed-account-workspace.spec.mts',
-    capability: 'accounts',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/accounts/oidc-login.spec.mts',
-    capability: 'accounts',
-    contractType: 'security',
-  },
-  {
-    path: 'journeys/accounts/registration.spec.mts',
-    capability: 'accounts',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/accounts/sso-login.spec.mts',
-    capability: 'accounts',
-    contractType: 'security',
-  },
-  {
-    path: 'journeys/conversations/composer-drafts.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
   },
   {
     path: 'journeys/conversations/composer-formatting.spec.mts',
@@ -82,27 +52,7 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/conversations/composer-mentions.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/conversations/composer-reactions.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/conversations/composer-typing.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/conversations/gif.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/conversations/hide-system-messages.spec.mts',
     capability: 'conversations',
     contractType: 'journey',
   },
@@ -117,17 +67,7 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/conversations/link-preview.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/conversations/location-share.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/conversations/message-action-sheet.spec.mts',
     capability: 'conversations',
     contractType: 'journey',
   },
@@ -152,11 +92,6 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'visual',
   },
   {
-    path: 'journeys/conversations/message-linkify.spec.mts',
-    capability: 'conversations',
-    contractType: 'security',
-  },
-  {
     path: 'journeys/conversations/message-links.spec.mts',
     capability: 'conversations',
     contractType: 'security',
@@ -167,32 +102,12 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'security',
   },
   {
-    path: 'journeys/conversations/media-retention.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/conversations/message-poll.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/conversations/message-quote.spec.mts',
     capability: 'conversations',
     contractType: 'journey',
   },
   {
-    path: 'journeys/conversations/message-receipts.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/conversations/message-source.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/conversations/message-spoiler.spec.mts',
     capability: 'conversations',
     contractType: 'journey',
   },
@@ -317,11 +232,6 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'host',
   },
   {
-    path: 'journeys/identity/dm-avatar.spec.mts',
-    capability: 'identity',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/identity/presence.spec.mts',
     capability: 'identity',
     contractType: 'journey',
@@ -357,27 +267,7 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/room-administration/block-member.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/room-administration/kick-member.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/member-info.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/member-roles.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/promote-member.spec.mts',
     capability: 'room-administration',
     contractType: 'journey',
   },
@@ -392,73 +282,8 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/room-administration/room-access-settings.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/room-administration/room-members-and-addresses.spec.mts',
     capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/room-profile-settings.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/room-settings-general-mobile.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/room-settings-for-you-mobile.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/room-settings-for-you.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/room-settings-widgets-mobile.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/room-widget-settings.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/space-leave.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/space-settings-mobile.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/space-settings-resilience.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/space-settings.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-administration/tombstone.spec.mts',
-    capability: 'room-administration',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/favourite-rooms.spec.mts',
-    capability: 'room-library',
     contractType: 'journey',
   },
   {
@@ -467,42 +292,7 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/room-library/mark-read.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/mark-unread.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/recent-activity.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/room-library/room-filter-spaceless.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/room-http-error-recovery.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/room-list.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/sidebar-filter.spec.mts',
-    capability: 'room-library',
-    contractType: 'journey',
-  },
-  {
-    path: 'journeys/room-library/sidebar-touch.spec.mts',
     capability: 'room-library',
     contractType: 'journey',
   },
@@ -572,27 +362,7 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'security',
   },
   {
-    path: 'journeys/trust/message-shield.spec.mts',
-    capability: 'trust',
-    contractType: 'security',
-  },
-  {
-    path: 'journeys/trust/recovery-reset.spec.mts',
-    capability: 'trust',
-    contractType: 'security',
-  },
-  {
     path: 'journeys/trust/security-settings.spec.mts',
-    capability: 'trust',
-    contractType: 'security',
-  },
-  {
-    path: 'journeys/trust/sso-recovery-reset.spec.mts',
-    capability: 'trust',
-    contractType: 'security',
-  },
-  {
-    path: 'journeys/trust/verify-user.spec.mts',
     capability: 'trust',
     contractType: 'security',
   },

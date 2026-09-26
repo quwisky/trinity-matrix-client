@@ -297,12 +297,31 @@ describe('CI execution contract', () => {
     expect(job.if).toContain("github.event_name != 'schedule'");
     expect(job.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual([
       'pnpm format:check',
+      'node scripts/retired-playwright-predecessors.mjs fetch',
       'pnpm nx test scripts',
       'pnpm nx test docs-site',
       'pnpm nx run docs-site:check',
       'pnpm nx run docs-site:assemble',
       'pnpm nx run docs-site:e2e',
     ]);
+  });
+
+  it('fetches the retired-predecessor commit before every job that runs the guards', () => {
+    const fetch = 'node scripts/retired-playwright-predecessors.mjs fetch';
+    const jobs = [
+      [workflow.jobs.test, 'pnpm test'],
+      [workflow.jobs['docs-gate'], 'pnpm nx test scripts'],
+      [
+        yaml('.github/workflows/docs-pages.yml').jobs.build,
+        'pnpm nx test scripts',
+      ],
+      [yaml('.github/workflows/release.yml').jobs.verify, 'pnpm test'],
+    ];
+    for (const [job, tests] of jobs) {
+      const runs = job.steps.map((step) => step.run);
+      expect(runs).toContain(fetch);
+      expect(runs.indexOf(fetch)).toBeLessThan(runs.indexOf(tests));
+    }
   });
 
   it('uploads only started suites, including hidden output, after ordinary failures', async () => {

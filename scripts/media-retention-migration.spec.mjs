@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -44,11 +45,12 @@ const assertionIds = [
 ];
 
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
+const readFromWorkingTree = (path) => readFileSync(resolve(root, path));
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function sourceLines(path, expectedHash, readContents = readFromWorkingTree) {
+  const contents = readContents(path);
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -265,13 +267,21 @@ function assertWiring({
     'surface: android-media-retention',
     'android.media-retention/**',
   ]);
-  expectFragments(docs, [
-    '## Media retention journey',
+  const section = ownSection(docs, '## Media retention journey');
+  expectFragments(section, [
     '`android.media-retention`',
     '47',
     'retained-plain.png',
     'retained-encrypted.png',
+    'Predecessor status: retired on 2026-09-26',
   ]);
+}
+
+function ownSection(docs, heading) {
+  const start = docs.indexOf(`${heading}\n`);
+  expect(start, `${heading} must exist`).toBeGreaterThanOrEqual(0);
+  const next = docs.indexOf('\n## ', start + heading.length);
+  return docs.slice(start, next === -1 ? undefined : next);
 }
 
 function mutated(source, from, to) {
@@ -281,10 +291,11 @@ function mutated(source, from, to) {
 }
 
 describe('Android media-retention migration', () => {
-  it('pins the complete predecessor and its exact 47-record expansion', () => {
+  it('pins the retired predecessor at its retirement commit and its exact 47-record expansion', () => {
     const predecessor = sourceLines(
       predecessorSource,
       '8de218b97b33dbd0513e9b93d21812120d3afa0ecc10e37e530fe265f6f18fc6',
+      readRetiredPredecessor,
     );
     const app = sourceLines(
       appSource,
@@ -542,6 +553,13 @@ describe('Android media-retention migration', () => {
         `mutation ${index + 1} must be rejected`,
       ).toThrow();
     }
+  });
+
+  it('retires the browser predecessor file and its journey-catalog entry', () => {
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      predecessorSource.replace(/^e2e\/browser\//u, ''),
+    );
   });
 
   it('requires serialized Nx, registry, CI diagnostics and migration-ledger wiring', () => {

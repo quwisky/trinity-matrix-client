@@ -3,7 +3,6 @@ import {
   clickRowMenuItem,
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
   waitForSent,
@@ -32,6 +31,10 @@ test.describe('Message source', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-source (#752).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}src`;
     const user = `src-${runId}`;
@@ -65,13 +68,8 @@ test.describe('Message source', () => {
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());
 
-    // Open the host's message-actions surface → View source.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-view-source').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-view-source'));
-    }
+    // Open the row's overflow menu → View source.
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-view-source'));
 
     // The dialog shows the raw event JSON — the event type and the message body.
     const dialog = page.getByTestId('message-source');

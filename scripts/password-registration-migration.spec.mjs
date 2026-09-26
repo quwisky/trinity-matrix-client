@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { redactMaestroArtifacts } from '../e2e/android/maestro-session.mts';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/accounts/registration.spec.mts';
@@ -41,7 +42,10 @@ const forbiddenProductMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -311,21 +315,30 @@ describe('Android password-registration migration', () => {
     );
   });
 
-  it('documents parity and keeps the exact predecessor enabled', () => {
+  it('documents parity and pins the retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const sectionStart = migration.indexOf('## Password registration journey');
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## Password registration journey');
-    expect(migration).toContain('`android.password-registration`');
-    expect(migration).toContain(
+    expect(section).toContain('`android.password-registration`');
+    expect(section).toContain(
       'a22f58f703c185645987ad471c2f8637d2741344be365d5063c8f0b1c37f2dbd',
     );
-    expect(migration).toContain('`m.login.dummy`');
-    expect(migration).toContain('four assertion identities');
-    expect(migration).toMatch(/Do not\s+retire/u);
-    expect(catalog).toContain(
+    expect(section).toContain('`m.login.dummy`');
+    expect(section).toContain('four assertion identities');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(catalog).not.toContain(
       "path: 'journeys/accounts/registration.spec.mts'",
     );
-    expect(read(predecessorSource)).toContain(
+    expect(
+      readRetiredPredecessor(predecessorSource).toString('utf8'),
+    ).toContain(
       "test('creates a password account through UIA and enters encryption setup'",
     );
   });

@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/favourite-rooms.spec.mts',
-);
+const sourceFile = 'e2e/browser/journeys/room-library/favourite-rooms.spec.mts';
 const replacementPath = resolve(root, 'e2e/android/room-tags-journeys.mts');
 
 const assertionIds = [
@@ -26,9 +24,19 @@ const assertionIds = [
   'double-tag.restore-label',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf(
+    '\n## Room favourite and low-priority tags batch\n',
+  );
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android room tags migration', () => {
-  it('pins the complete unchanged Playwright predecessors', () => {
-    const source = readFileSync(sourcePath);
+  it('pins the retired predecessors at their retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
       '35b1ba6d96033782dfb66e31a67821cb97a81c7bf98d4d729cbab5fd3313a228',
@@ -38,6 +46,19 @@ describe('Android room tags migration', () => {
     );
     expect(source.toString('utf8')).toContain(
       "test('demoting a room sinks it under a Low priority section, and favouriting it there pulls it back to the top'",
+    );
+  });
+
+  it('retires the predecessor file and its journey catalog entry', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+
+    expect(existsSync(resolve(root, sourceFile))).toBe(false);
+    expect(catalog).not.toContain(sourceFile.replace('e2e/browser/', ''));
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
     );
   });
 

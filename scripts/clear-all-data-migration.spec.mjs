@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -66,7 +67,10 @@ const forbiddenJourneyMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -384,29 +388,66 @@ describe('Android clear-all-data migration', () => {
     );
   });
 
-  it('keeps every exact predecessor enabled', () => {
+  it('pins the retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const sectionStart = migration.indexOf('## Clear-all-data journeys');
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## Clear-all-data journeys');
-    expect(migration).toContain('`android.clear-all-data`');
-    expect(migration).toContain('11 signed-in, two signed-out and 12 visual');
-    expect(migration).toContain('`shared_prefs/CapacitorStorage.xml`');
-    expect(migration).toContain('`hover: none` and `pointer: coarse`');
-    expect(migration).toContain(
+    expect(section).toContain('`android.clear-all-data`');
+    expect(section).toContain('11 signed-in, two signed-out and 12 visual');
+    expect(section).toContain('`shared_prefs/CapacitorStorage.xml`');
+    expect(section).toContain('`hover: none` and `pointer: coarse`');
+    expect(section).toContain(
       '271c63f2e49f27d7c99d4d0d75c7b844d466d70afe69afda71d1335bcc0b1e9c',
     );
-    expect(migration).toMatch(/Do not\s+retire/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+
+    const retired = readRetiredPredecessor(predecessorSource).toString('utf8');
+    expect(retired).toContain(
+      "test('erases a signed-in install and restarts into an empty app'",
+    );
+    expect(retired).toContain(
+      "test('erases a signed-out install whose settings are wedged'",
+    );
+    expect(retired).toContain(
+      "for (const scheme of ['light', 'dark'] as const)",
+    );
+
+    // The file stays for its desktop-only definitions, skipped on Android.
     expect(catalog).toContain(
       "path: 'journeys/accounts/clear-all-data.spec.mts'",
     );
-    expect(read(predecessorSource)).toContain(
+    const current = read(predecessorSource);
+    expect(current).not.toContain(
+      'erases a signed-out install whose settings are wedged',
+    );
+    for (const opener of [
       "test('erases a signed-in install and restarts into an empty app'",
+      'test(`stays a legible danger red on ${theme.id}`',
+    ]) {
+      const start = current.indexOf(opener);
+      expect(start, opener).toBeGreaterThanOrEqual(0);
+      const next = current
+        .slice(start + opener.length)
+        .search(/\btest\(\s*['`]/u);
+      const definition = current.slice(
+        start,
+        next === -1 ? undefined : start + opener.length + next,
+      );
+      expect(definition, opener).toMatch(
+        /^[^\n]*\n(?:[^\n]*\n){0,2}\s*test\.skip\(\s*isAndroidE2E,/u,
+      );
+    }
+    expect(current).not.toMatch(/if \(!?isAndroidE2E\)/u);
+    // The hover state the Android contract excludes stays with this desktop owner.
+    expect(current).toContain(
+      "for (const state of ['rest', 'hover'] as const)",
     );
-    expect(read(predecessorSource)).toContain(
-      "test('erases a signed-out install whose settings are wedged'",
-    );
-    expect(read(predecessorSource)).toContain(
-      "for (const scheme of ['light', 'dark'] as const)",
-    );
+    expect(current).toContain('await button.hover()');
   });
 });

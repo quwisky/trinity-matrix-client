@@ -58,6 +58,8 @@ jobs:
         with:
           browsers: chromium
       - run: pnpm format:check
+      # Migration guards read retired Playwright predecessors at their pinned commit.
+      - run: node scripts/retired-playwright-predecessors.mjs fetch
       - run: pnpm nx test scripts
       - run: pnpm nx test docs-site
       - run: pnpm nx run docs-site:check
@@ -90,6 +92,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup
+      # Migration guards read retired Playwright predecessors at their pinned commit.
+      - run: node scripts/retired-playwright-predecessors.mjs fetch
       # Specs are excluded from every project's tsconfig.json AND from the type-aware
       # ESLint block, and Vitest transpiles them without checking — so before this step
       # existed nothing in CI ever ran the compiler over a single test file. Runs BEFORE
@@ -192,7 +196,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # 110 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
+    # 77 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
     # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
     # (developer testing guide); the 75-minute ceiling is hang containment, not an

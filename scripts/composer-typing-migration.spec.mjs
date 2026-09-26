@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -58,8 +59,19 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
+function migrationSection(heading) {
+  const migration = read('e2e/android/MIGRATION.md');
+  const start = migration.indexOf(`${heading}\n`);
+  expect(start, `${heading} must exist`).toBeGreaterThanOrEqual(0);
+  const end = migration.indexOf('\n## ', start + heading.length);
+  return migration.slice(start, end === -1 ? undefined : end);
+}
+
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -166,7 +178,7 @@ function assertRuntimeContract(journey, fixtures) {
 }
 
 describe('Android composer-typing migration', () => {
-  it('pins the exact predecessor, helper spans, and 19 + 6 parity shape', () => {
+  it('pins the retired predecessor at its retirement commit, helper spans, and 19 + 6 parity shape', () => {
     const predecessor = sourceLines(
       predecessorSource,
       '721a2dd22902ad0683c95b95e819ec3519c22b9d362b3c58a9893e60ec229f8f',
@@ -311,5 +323,15 @@ describe('Android composer-typing migration', () => {
     expect(workflow).toContain('android-composer-typing');
     expect(workflow).toContain('android.composer-typing/**');
     expect(migration).toContain('## Composer typing-indicator journeys');
+  });
+
+  it('retires the predecessor from the working tree and the browser catalog', () => {
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      "path: 'journeys/conversations/composer-typing.spec.mts'",
+    );
+    expect(migrationSection('## Composer typing-indicator journeys')).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 });

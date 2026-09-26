@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/space-curation.spec.mts',
-);
+const sourceFile = 'e2e/browser/journeys/room-library/space-curation.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/space-curation-create-join-journeys.mts',
@@ -25,9 +23,27 @@ const assertionIds = [
   'join.child-row-visible',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf(
+    '\n## Space creation and join curation functional batch\n',
+  );
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Whether a kept definition starts by skipping Android, which owns its Android run. */
+const skipsAndroidFirst = (source, title) =>
+  new RegExp(
+    `test\\('${escapeRegExp(title)}', async \\(\\{[^}]*\\}(?:, testInfo)?\\) => \\{\\s*test\\.skip\\(\\s*isAndroidE2E,`,
+  ).test(source);
+
 describe('Android space creation and join curation migration', () => {
-  it('pins the three unchanged predecessor definitions', () => {
-    const source = readFileSync(sourcePath);
+  it('pins the three predecessor definitions at their retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
     const text = source.toString('utf8');
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
@@ -40,6 +56,26 @@ describe('Android space creation and join curation migration', () => {
     ]) {
       expect(text).toContain(`test('${title}'`);
     }
+  });
+
+  it('retires the Android-owned definitions and keeps desktop-only ones skipped on Android', () => {
+    const working = readFileSync(resolve(root, sourceFile), 'utf8');
+
+    expect(working).not.toContain(
+      "test('an admin creates a space inside a space'",
+    );
+    expect(working).not.toContain(
+      "test('a child moves out of More Channels the moment you join it'",
+    );
+    expect(working).toContain(
+      "test('an admin adds an existing room to a space'",
+    );
+    expect(
+      skipsAndroidFirst(working, 'an admin adds an existing room to a space'),
+    ).toBe(true);
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 
   it('maps exactly three stages and all ten direct assertions', () => {

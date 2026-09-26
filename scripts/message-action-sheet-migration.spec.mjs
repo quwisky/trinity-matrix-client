@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -18,6 +19,8 @@ const paths = {
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readPresent = (path) =>
   existsSync(resolve(root, path)) ? read(path) : '';
+const readPredecessor = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
 
 // These are independently mapped from the pinned predecessor's assertion sites.
 const stageAssertions = {
@@ -386,12 +389,12 @@ const validGeometry = {
 };
 
 describe('Android message-action-sheet migration', () => {
-  it('pins five predecessors, 35 direct sites and all 19 helper expansions', () => {
+  it('pins the five retired predecessors at their retirement commit, 35 direct sites and all 19 helper expansions', () => {
+    const source = readPredecessor();
+    expect(createHash('sha256').update(source).digest('hex')).toBe(
+      'df1d0bdb6a3ea0e2b16227d26b00b5b8138485cfba27b8ee4782945c22cb91aa',
+    );
     for (const [path, digest] of [
-      [
-        predecessor,
-        'df1d0bdb6a3ea0e2b16227d26b00b5b8138485cfba27b8ee4782945c22cb91aa',
-      ],
       [
         'e2e/support/touch-platform.mts',
         '8bbf71ffc3e83010599c30ed5c2c347972f5a7b559daa6394613e33af2c43ee1',
@@ -408,7 +411,7 @@ describe('Android message-action-sheet migration', () => {
       expect(createHash('sha256').update(read(path)).digest('hex')).toBe(
         digest,
       );
-    const lines = read(predecessor).split('\n');
+    const lines = source.split('\n');
     for (const [, start, end, direct, title] of definitions) {
       const span = lines.slice(start - 1, end).join('\n');
       expect(span).toContain(`test('${title}'`);
@@ -421,11 +424,9 @@ describe('Android message-action-sheet migration', () => {
     expect(expectCalls(fixture)).toBe(1);
     expect(expectCalls(clearance)).toBe(4);
     expect(expectCalls(restoration)).toBe(1);
+    expect(source.match(/await expectMessageClearOfSheet\(/gu)).toHaveLength(3);
     expect(
-      read(predecessor).match(/await expectMessageClearOfSheet\(/gu),
-    ).toHaveLength(3);
-    expect(
-      read(predecessor).match(/await expectScrollerPositionRestored\(/gu),
+      source.match(/await expectScrollerPositionRestored\(/gu),
     ).toHaveLength(2);
     expect(read('e2e/support/touch-platform.mts')).toContain(
       'await page.waitForTimeout(700)',
@@ -740,10 +741,25 @@ describe('Android message-action-sheet migration', () => {
       'surface: android-message-action-sheet',
       'android.message-action-sheet/**',
     ]);
-    requireFragments(read('e2e/android/MIGRATION.md'), [
+    const docs = read('e2e/android/MIGRATION.md');
+    const heading = '## Message action sheet journeys\n';
+    const start = docs.indexOf(heading);
+    expect(start, 'message-action-sheet MIGRATION.md section').toBeGreaterThan(
+      -1,
+    );
+    const next = docs.indexOf('\n## ', start + heading.length);
+    requireFragments(docs.slice(start, next === -1 ? undefined : next), [
       'android.message-action-sheet',
       '18 + 4 + 4 + 18 + 10',
       'runtime-provenance.json',
+      'Predecessor status: retired on 2026-09-26',
     ]);
+  });
+
+  it('retires the browser predecessor file and its journey-catalog entry', () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      predecessor.replace(/^e2e\/browser\//u, ''),
+    );
   });
 });

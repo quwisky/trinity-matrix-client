@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -16,6 +17,8 @@ const digest = (path) =>
   createHash('sha256')
     .update(readFileSync(resolve(root, path)))
     .digest('hex');
+const predecessorBytes = () => readRetiredPredecessor(predecessor);
+const predecessorSource = () => predecessorBytes().toString('utf8');
 const loadContract = () =>
   import('../e2e/android/message-linkify-contract.mts');
 const loadArtifacts = () =>
@@ -113,8 +116,8 @@ async function observeDocument(
 
 describe('Android message-linkify migration contract', () => {
   it('pins the exact predecessor definition, Room helper and shared login pins', () => {
-    const source = read(predecessor);
-    expect(digest(predecessor)).toBe(
+    const source = predecessorSource();
+    expect(createHash('sha256').update(predecessorBytes()).digest('hex')).toBe(
       'dd48aadd26ab1d960077d71ad68cd4ee8bf9b836706b4beb4620a34e7f7551a3',
     );
     expect(digest('e2e/support/app.mts')).toBe(
@@ -596,9 +599,21 @@ describe('Android message-linkify hosted wiring and parity ledger', () => {
         item.suiteIds.includes('android.message-linkify'),
       ),
     ).toHaveLength(1);
-    expect(read(predecessor)).toContain(
+    expect(predecessorSource()).toContain(
       "test('renders a bare URL in a message as a clickable link'",
     );
+  });
+
+  it('pins the retired predecessor at its retirement commit and removes it from the working tree', async () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
+    const { BROWSER_JOURNEYS } =
+      await import('../e2e/browser/journey-catalog.mts');
+    expect(
+      BROWSER_JOURNEYS.filter(
+        (journey) =>
+          journey.path === 'journeys/conversations/message-linkify.spec.mts',
+      ),
+    ).toHaveLength(0);
   });
 
   it('runs on shard one and uploads only started safe diagnostics', () => {
@@ -618,9 +633,11 @@ describe('Android message-linkify hosted wiring and parity ledger', () => {
     expect(workflow).toContain('surface: android-message-linkify');
   });
 
-  it('documents both exact Android records and retains the predecessor', () => {
+  it('documents both exact Android records and the predecessor retirement', () => {
     const migration = read('e2e/android/MIGRATION.md');
-    const section = migration.split('## Message-linkify journey')[1];
+    const section = migration
+      .split('## Message-linkify journey')[1]
+      ?.split('\n## ')[0];
     expect(section).toBeTruthy();
     const rows = [
       ...section.matchAll(/^\|[^\n]+\| `(message-linkify\.[^`]+)` \|$/gmu),
@@ -630,5 +647,6 @@ describe('Android message-linkify hosted wiring and parity ledger', () => {
       'dd48aadd26ab1d960077d71ad68cd4ee8bf9b836706b4beb4620a34e7f7551a3',
     );
     expect(section).toContain('Suite `android.message-linkify`');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
   });
 });

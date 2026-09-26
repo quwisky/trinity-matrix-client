@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -15,6 +16,9 @@ const predecessor =
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
+/** The retired predecessor's exact bytes at its retirement commit. */
+const readPredecessor = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
 const loadContract = () => import('../e2e/android/message-source-contract.mts');
 const loadObserver = () => import('../e2e/android/message-source-observer.mts');
 const loadArtifacts = () =>
@@ -284,7 +288,7 @@ function importedCalls(source, fileName = predecessor) {
 function helperExpectLines(
   module,
   name,
-  source = read(module),
+  source = module === predecessor ? readPredecessor() : read(module),
   seen = new Set(),
 ) {
   const key = `${module}#${name}`;
@@ -435,11 +439,13 @@ const mutateLine = (source, line, replacement) => {
 };
 
 describe('Android message-source predecessor pins', () => {
-  it('pins the unchanged predecessor and the three shared helper sources by SHA-256', () => {
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and the three shared helper sources by SHA-256', () => {
+    expect(sha256(readRetiredPredecessor(predecessor))).toBe(
+      PREDECESSOR_SHA256,
+    );
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const flipped = Buffer.from(readFileSync(resolve(root, predecessor)));
+    const flipped = Buffer.from(readRetiredPredecessor(predecessor));
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
@@ -450,7 +456,7 @@ describe('Android message-source predecessor pins', () => {
   });
 
   it('reconciles the issue pin: the develop file differs only by the Send-button change', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const lines = source.split('\n');
     const undo = (text) =>
       text
@@ -502,7 +508,7 @@ describe('Android message-source predecessor pins', () => {
     });
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('keeps the retired predecessor desktop-only in both Playwright inventories', async () => {
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -519,19 +525,33 @@ describe('Android message-source predecessor pins', () => {
       expect(config).not.toContain('testIgnore');
       expect(config).not.toContain('message-source');
     }
-    const source = read(predecessor);
+    // The predecessor at its retirement commit.
+    const source = readPredecessor();
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
     expect(source.match(/^ {2}test\('/gmu)).toHaveLength(1);
     expect(source).not.toMatch(/test\.use\(/u);
+    // The working tree keeps the one definition for its desktop overflow-menu path.
+    expect(existsSync(resolve(root, predecessor))).toBe(true);
+    const current = read(predecessor);
+    expect(current.match(/^ {2}test\('/gmu)).toHaveLength(1);
+    const definition = current.slice(
+      current.indexOf(`  test('${STAGE.title}'`),
+    );
+    expect(definition).not.toBe(current);
+    expect(definition).toContain(
+      "test.skip(\n      isAndroidE2E,\n      'Android runs this through android.message-source (#752).',\n    );",
+    );
+    expect(current).not.toContain('openMessageActionSheet');
+    expect(current).not.toContain('sheet-view-source');
   });
 
   it('maps the exact Android-path direct and helper sites with the house AST rule', () => {
-    assertPredecessorShape(read(predecessor));
+    assertPredecessorShape(readPredecessor());
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const mutations = [
       // A source field, test id or run suffix drifts.
       mutateLine(source, 36, (line) => line.replace('}src`', '}s`')),
@@ -601,7 +621,7 @@ describe('Android message-source predecessor pins', () => {
 
 describe('Android message-source helper expansion by binding', () => {
   it('resolves module-local and imported helper calls through the TypeChecker', () => {
-    const { calls } = importedCalls(read(predecessor));
+    const { calls } = importedCalls(readPredecessor());
     expect(
       calls
         .filter(
@@ -625,7 +645,7 @@ describe('Android message-source helper expansion by binding', () => {
   });
 
   it('follows helper calls and proves registration and login add no sites', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(helperExpectLines(predecessor, 'openRoom', source)).toEqual([
       { module: predecessor, line: 23 },
     ]);
@@ -652,7 +672,7 @@ describe('Android message-source helper expansion by binding', () => {
   });
 
   it('excludes a shadowing local helper and the desktop branch, against a naive count', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const shadowed = source.replace(
       '    await waitForSent(row.first());',
       '    const waitForSent = async (_row: unknown) => {};\n    await waitForSent(row.first());',
@@ -680,7 +700,7 @@ describe('Android message-source helper expansion by binding', () => {
   });
 
   it('expands 1 Room + 1 composer-send + 1 real-server echo + 1 sheet readiness = 4 inherited sites', () => {
-    const inherited = expandDefinition(read(predecessor), STAGE.span).filter(
+    const inherited = expandDefinition(readPredecessor(), STAGE.span).filter(
       (site) => site.kind === 'inherited',
     );
     expect(inherited.map(siteTuple)).toEqual([
@@ -693,7 +713,7 @@ describe('Android message-source helper expansion by binding', () => {
 
   it('matches the contract sites, identities and helper roles exactly', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     const expanded = expandDefinition(source, STAGE.span);
     const [stage] = contract.MESSAGE_SOURCE_STAGES;
     expect(stage.sites.map(siteTuple)).toEqual(expanded.map(siteTuple));
@@ -812,7 +832,7 @@ describe('Android message-source contract ledger', () => {
 
   it('types exactly the predecessor run suffix, Room name and body', async () => {
     const contract = await loadContract();
-    expect(predecessorTemplates(read(predecessor), STAGE.span)).toMatchObject({
+    expect(predecessorTemplates(readPredecessor(), STAGE.span)).toMatchObject({
       runId: "`${testResourceId('run')}src`",
       roomName: '`Source ${runId}`',
       body: '`inspect me ${runId}`',
@@ -3047,7 +3067,7 @@ describe('Android message-source hosted wiring and parity ledger', () => {
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(section).toContain('Suite `android.message-source`');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).toContain('sheet-view-source');
     expect(section).toContain('393×727');
     expect(section).toContain('acceptance gate for #752');

@@ -1,16 +1,11 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const markReadPath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/mark-read.spec.mts',
-);
-const markUnreadPath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/mark-unread.spec.mts',
-);
+const markReadFile = 'e2e/browser/journeys/room-library/mark-read.spec.mts';
+const markUnreadFile = 'e2e/browser/journeys/room-library/mark-unread.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/room-read-state-journeys.mts',
@@ -40,10 +35,18 @@ const assertionIds = [
   'remote.dot-cleared',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf('\n## Room read-state batch\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android room read-state migration', () => {
-  it('pins all three unchanged Playwright predecessors', () => {
-    const markRead = readFileSync(markReadPath);
-    const markUnread = readFileSync(markUnreadPath);
+  it('pins all three retired predecessors at their retirement commit', () => {
+    const markRead = readRetiredPredecessor(markReadFile);
+    const markUnread = readRetiredPredecessor(markUnreadFile);
 
     expect(createHash('sha256').update(markRead).digest('hex')).toBe(
       '38d3d95524dcb03cbc36ba0891031e52014ed66a8ff7416df374aa7f2256828b',
@@ -59,6 +62,21 @@ describe('Android room read-state migration', () => {
     );
     expect(markUnread.toString('utf8')).toContain(
       "test('a flag set elsewhere arrives, survives a reload, and Mark as read clears it'",
+    );
+  });
+
+  it('retires the predecessor files and their journey catalog entries', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+
+    expect(existsSync(resolve(root, markReadFile))).toBe(false);
+    expect(catalog).not.toContain(markReadFile.replace('e2e/browser/', ''));
+    expect(existsSync(resolve(root, markUnreadFile))).toBe(false);
+    expect(catalog).not.toContain(markUnreadFile.replace('e2e/browser/', ''));
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
     );
   });
 

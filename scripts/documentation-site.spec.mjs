@@ -172,6 +172,7 @@ describe('GitHub Pages documentation publication', () => {
     expect(build.steps.flatMap((step) => (step.run ? [step.run] : []))).toEqual(
       [
         'pnpm format:check',
+        'node scripts/retired-playwright-predecessors.mjs fetch',
         'pnpm nx test scripts',
         'pnpm nx test docs-site',
         'pnpm nx run docs-site:check',

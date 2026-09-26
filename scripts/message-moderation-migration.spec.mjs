@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const reportSource =
@@ -43,9 +44,9 @@ const forbiddenProductMutations = [
 ];
 
 describe('Android message moderation migration', () => {
-  it('pins both unchanged helpers and single-definition predecessors', () => {
-    const report = readFileSync(resolve(root, reportSource));
-    const redact = readFileSync(resolve(root, redactSource));
+  it('pins both predecessors and their helpers at the retirement commit', () => {
+    const report = readRetiredPredecessor(reportSource);
+    const redact = readRetiredPredecessor(redactSource);
     const reportLines = report.toString('utf8').split('\n');
     const redactLines = redact.toString('utf8').split('\n');
 
@@ -67,6 +68,35 @@ describe('Android message moderation migration', () => {
       "test('a room admin can delete another member’s message'",
     );
     expect(redactLines[142]).toBe('  });');
+  });
+
+  it('keeps both predecessors as desktop-only definitions without an Android branch', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    for (const [path, title, desktopAction] of [
+      [reportSource, 'reports a message to the server admins', 'msg-report'],
+      [
+        redactSource,
+        'a room admin can delete another member’s message',
+        'msg-delete',
+      ],
+    ]) {
+      const text = readFileSync(resolve(root, path), 'utf8');
+      const start = text.indexOf(`test('${title}'`);
+      expect(start, `${path} keeps ${title}`).toBeGreaterThanOrEqual(0);
+      const definition = text.slice(start, text.indexOf('\n  });\n', start));
+      expect(definition).toMatch(
+        /\}\) => \{\s*test\.skip\(\s*isAndroidE2E,\s*'Android runs this through android\.message-moderation \(#708\)\.',?\s*\);/,
+      );
+      expect(definition).toContain(
+        `clickRowMenuItem(row.first(), page.getByTestId('${desktopAction}'))`,
+      );
+      expect(text).not.toContain('openMessageActionSheet');
+      expect(text).not.toMatch(/if \(!?isAndroidE2E\)/);
+      expect(catalog).toContain(`path: '${path.replace('e2e/browser/', '')}'`);
+    }
   });
 
   it('exports exact source mappings and five unique assertion identities', async () => {

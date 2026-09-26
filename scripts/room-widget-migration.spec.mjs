@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const sources = {
@@ -121,7 +122,10 @@ const directAssertionIds = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  // Retired predecessors are pinned at their retirement commit; shared helpers stay in the tree.
+  const contents = [sources.mobile, sources.definition].includes(path)
+    ? readRetiredPredecessor(path)
+    : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -160,7 +164,7 @@ async function settleEvents() {
 }
 
 describe('Android Room widget migration', () => {
-  it('pins all predecessor and helper sources', () => {
+  it('pins both retired predecessors at the retirement commit and the kept helper sources', () => {
     const mobile = sourceLines(
       sources.mobile,
       '41344fee6b5ed35b7f34ae332696fd7be4e25237b923319d5259360721975337',
@@ -198,6 +202,19 @@ describe('Android Room widget migration', () => {
       "test('widget management follows live power grants and revocations'",
     );
     expect(definition[542]).toBe('  });');
+  });
+
+  it('removes both retired predecessors from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    for (const path of [sources.mobile, sources.definition]) {
+      expect(existsSync(resolve(root, path))).toBe(false);
+      expect(catalog).not.toContain(
+        `path: '${path.replace('e2e/browser/', '')}'`,
+      );
+    }
   });
 
   it('exports exact source mappings and stable 86+7 identities', async () => {
@@ -480,20 +497,23 @@ describe('Android Room widget migration', () => {
     );
   });
 
-  it('documents parity, boundaries, invocation and predecessor retention', () => {
+  it('documents parity, boundaries, invocation and predecessor retirement', () => {
     const migration = readFileSync(
       resolve(root, 'e2e/android/MIGRATION.md'),
       'utf8',
     );
-    expect(migration).toContain('## Room widget journeys');
-    expect(migration).toMatch(/86 direct plus seven\s+inherited/);
-    expect(migration).toContain('93 unique identities');
-    expect(migration).toContain(
+    const heading = '## Room widget journeys\n';
+    const start = migration.indexOf(heading);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const rest = migration.slice(start + heading.length);
+    const next = rest.search(/^#{2,3} /m);
+    const section = next === -1 ? rest : rest.slice(0, next);
+    expect(section).toMatch(/86 direct plus seven\s+inherited/);
+    expect(section).toContain('93 unique identities');
+    expect(section).toContain(
       'pnpm nx run trinity-e2e-android:room-widget-settings --skipNxCache',
     );
-    expect(migration).toMatch(/All four\s+predecessors/);
-    expect(migration).toContain('does not authorize predecessor retirement');
-    expect(migration).toContain('does not authorize');
-    expect(migration).toContain('merging PR #677');
+    expect(section).toContain('merging PR #677');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
   });
 });

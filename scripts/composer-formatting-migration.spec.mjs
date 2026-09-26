@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -65,8 +66,19 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
+function migrationSection(heading) {
+  const migration = read('e2e/android/MIGRATION.md');
+  const start = migration.indexOf(`${heading}\n`);
+  expect(start, `${heading} must exist`).toBeGreaterThanOrEqual(0);
+  const end = migration.indexOf('\n## ', start + heading.length);
+  return migration.slice(start, end === -1 ? undefined : end);
+}
+
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -189,7 +201,7 @@ function assertRuntimeContract(journey, client) {
 }
 
 describe('Android composer-formatting migration', () => {
-  it('pins the exact predecessor and shared-helper sources', () => {
+  it('pins the retired predecessor at its retirement commit and the shared-helper sources', () => {
     const predecessor = sourceLines(
       predecessorSource,
       '3e346da10d6b38c10928a824333f050916009fddffd3215331d4bcf723672b8c',
@@ -351,5 +363,28 @@ describe('Android composer-formatting migration', () => {
     expect(workflow).toContain('composer-formatting-started=true');
     expect(workflow).toContain('android-composer-formatting');
     expect(workflow).toContain('android.composer-formatting/**');
+  });
+
+  it('retires the mobile describe and keeps the desktop definitions skipped on Android', () => {
+    const current = read(predecessorSource);
+    for (const title of [
+      'uses a bounded touch action sheet and applies selected text',
+      'cancels and previews on mobile without losing the selected text',
+      'keeps Format and Send reachable at compact width with larger text',
+    ])
+      expect(current).not.toContain(title);
+    expect(current).not.toContain(
+      "test.describe('On-demand composer formatting on mobile'",
+    );
+    expect(current).not.toContain("devices['Pixel 5']");
+    expect(
+      current.match(/process\.env\['TRINITY_E2E_PLATFORM'\] === 'android'/gu),
+    ).toHaveLength(2);
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      "path: 'journeys/conversations/composer-formatting.spec.mts'",
+    );
+    expect(
+      migrationSection('## Mobile composer-formatting journeys'),
+    ).toContain('Predecessor status: retired on 2026-09-26');
   });
 });

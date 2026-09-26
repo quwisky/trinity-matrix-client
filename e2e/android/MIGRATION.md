@@ -25,15 +25,15 @@ must contain Megolm ciphertext with no plaintext body.
 
 | Journey key                      | Existing assertion or feasibility source                                                                                                                                                                                           | New Android guarantee                                                                                                                                                                  | Remaining assertions owned elsewhere                                                                                                            |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `login`                          | [Android navigation](navigation.spec.mts), “logs in, opens settings by touch, and handles hardware Back”; [runner smoke](runner-smoke.mts)                                                                                         | Both fresh native clients reach their own authenticated Rooms route. Their durable account identities and account-scoped crypto databases exist and differ.                            | Settings navigation and hardware Back continue in the existing suite.                                                                           |
-| `two-user-encrypted-messaging`   | [Message shields](../browser/journeys/trust/message-shield.spec.mts), the real encrypted sender/reader setup; [native encryption feasibility](https://github.com/quwisky/trinity-matrix-client/issues/655#issuecomment-5606670457) | B sends ASCII and an accent/emoji vector, A decrypts them and replies, and B decrypts the reply. Exact native input and server event correlation are asserted.                         | Shield levels, cross-signing, tooltips, plaintext-room behavior and other conversation assertions continue in their existing suites.            |
-| `process-restart-restoration`    | [Android navigation](navigation.spec.mts), “restores the authenticated route after a native process restart”                                                                                                                       | A new Android process restores the same user, device and crypto database; previously received messages remain decryptable, and a fresh post-restart send decrypts in the other client. | Multi-account switching, sign-out and reauthentication retain their existing owners.                                                            |
+| `login`                          | [Android navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), “logs in, opens settings by touch, and handles hardware Back”; [runner smoke](runner-smoke.mts)                                                                                         | Both fresh native clients reach their own authenticated Rooms route. Their durable account identities and account-scoped crypto databases exist and differ.                            | Settings navigation and hardware Back moved to `android.native-shell`.                                                                           |
+| `two-user-encrypted-messaging`   | [Message shields](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/trust/message-shield.spec.mts), the real encrypted sender/reader setup; [native encryption feasibility](https://github.com/quwisky/trinity-matrix-client/issues/655#issuecomment-5606670457) | B sends ASCII and an accent/emoji vector, A decrypts them and replies, and B decrypts the reply. Exact native input and server event correlation are asserted.                         | Shield levels, cross-signing, tooltips, plaintext-room behavior and other conversation assertions continue in their owning suites.            |
+| `process-restart-restoration`    | [Android navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), “restores the authenticated route after a native process restart”                                                                                                                       | A new Android process restores the same user, device and crypto database; previously received messages remain decryptable, and a fresh post-restart send decrypts in the other client. | Multi-account switching, sign-out and reauthentication retain their existing owners.                                                            |
 | `background-foreground-recovery` | [Native lifecycle feasibility](https://github.com/quwisky/trinity-matrix-client/issues/655#issuecomment-5606670457)                                                                                                                | Home makes the document hidden, explicit activity foregrounding makes it visible, and the same process and account persist. A fresh post-resume message decrypts in the other client.  | Push delivery, process termination by the OS, offline transport recovery and physical Android release acceptance retain their dedicated owners. |
 
-[Installed app-shell protection](app-shell.spec.mts), including redirecting an
-unauthenticated protected route to login, also remains in the predecessor suite.
-The milestone does not retire an entire source file merely because it covers one
-of that file's assertions.
+[Installed app-shell protection](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/app-shell.spec.mts), including redirecting an
+unauthenticated protected route to login, stayed in the predecessor suite until
+`android.native-shell` replaced it. The milestone did not retire an entire source
+file merely because it covered one of that file's assertions.
 
 ## Run and inspect
 
@@ -51,7 +51,7 @@ The target verifies the manifest and builds both APKs from the same renderer. Se
 a private emulator overlay. Synapse and Android resource locks serialize the run.
 
 CI executes this target on the first existing Android shard, alongside the runner
-smoke and the unchanged Playwright shards. Its diagnostics use the existing upload
+smoke and the retained Playwright shard. Its diagnostics use the existing upload
 action and are retained whenever the critical suite started under the job's
 artifact policy.
 
@@ -117,25 +117,131 @@ Playwright uses `--shard=N/6`.
 The pinned Chrome fixture runtime follows the SSO suites to shard 5. Every
 suite keeps its target, timeout, started flag and diagnostics upload.
 
+## Predecessor retirement
+
+On 2026-09-26 the user decided, in
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839), to retire
+the Playwright definitions whose Android journeys are migrated and accepted: every
+batch closed under #660, plus #751–#753, which were accepted on hosted evidence.
+A definition whose behavior an accepted Android suite covers was removed from the
+browser suite and, with it, from the retained Android WebView run. A definition
+that also holds a desktop-only branch or browser-only assertions stays in the
+browser suite, loses its Android-only branch and skips on Android, where its
+Android suite owns the execution. Definitions no accepted batch owns are unchanged.
+Removing a definition also ends its desktop Chromium run, so web-only paths that
+ran through shared fixtures rather than explicit branches, such as the web SSO
+handoff, the OIDC web-client registration and the `/settings/gifs` deep link,
+no longer have end-to-end coverage until the
+[Web/PWA migration](https://github.com/quwisky/trinity-matrix-client/issues/661)
+replaces them.
+
+The parity evidence stays verifiable. `scripts/retired-playwright-predecessors.mjs`
+pins every predecessor file as a Git object at commit `dd0cb53c` (also
+reachable as `refs/pull/677/head`) with the SHA-256 its batch accepted, lists the
+retired and desktop-only definitions by title, and checks that the working tree
+matches. Each migration guard reads its predecessor from that commit, so its
+spans, sites and contract identities are unchanged. Links to deleted files below
+point at that commit. The batch sections record each predecessor at acceptance:
+statements that a predecessor remained enabled, or that a mapping did not
+authorize retirement, describe that time.
+
+| Predecessor (`e2e/browser/journeys/` unless noted) | Batches | Retirement | Kept desktop-only, skipped on Android |
+| --- | --- | --- | --- |
+| `android/app-shell.spec.mts` | #670 | file deleted | — |
+| `android/navigation.spec.mts` | #670 | file deleted | — |
+| `android/appearance.spec.mts` | #670 | file deleted | — |
+| `android/composer-format-native.spec.mts` | #670 | file deleted | — |
+| `accounts/account-lifecycle.spec.mts` | #672 | 7 retired | “the app badge sums unread across accounts, invariant to which is active” |
+| `accounts/mixed-account-workspace.spec.mts` | #672 | file deleted | — |
+| `identity/dm-avatar.spec.mts` | #674 | file deleted | — |
+| `identity/presence.spec.mts` | #674 | 2 retired | — |
+| `room-library/sidebar-filter.spec.mts` | #676 | file deleted | — |
+| `room-library/sidebar-touch.spec.mts` | #687 | file deleted | — |
+| `room-library/favourite-rooms.spec.mts` | #688 | file deleted | — |
+| `room-library/mark-read.spec.mts` | #689 | file deleted | — |
+| `room-library/mark-unread.spec.mts` | #689 | file deleted | — |
+| `room-library/room-list.spec.mts` | #690 | file deleted | — |
+| `room-library/unread-badges.spec.mts` | #691 | 1 retired | “the platform badge mirrors the unread total” |
+| `room-library/leave-room.spec.mts` | #692 | 1 retired | — |
+| `room-library/recent-activity.spec.mts` | #693 | file deleted | — |
+| `room-library/room-filter-spaceless.spec.mts` | #694 | 0 retired | “a spaceless room stays in the flat Rooms list; a space child moves under its space pill” |
+| `room-library/space-curation.spec.mts` | #695 | 2 retired | “an admin adds an existing room to a space” |
+| `room-library/space-room-order.spec.mts` | #696 | 1 retired | “defaults to recent activity, and a per-space choice beats the account default” |
+| `room-library/room-http-error-recovery.spec.mts` | #697 | file deleted | — |
+| `room-administration/room-settings-for-you-mobile.spec.mts` | #698 | file deleted | — |
+| `room-administration/room-settings-general-mobile.spec.mts` | #698 | file deleted | — |
+| `room-administration/space-settings-mobile.spec.mts` | #699 | file deleted | — |
+| `room-administration/space-settings-resilience.spec.mts` | #700 | file deleted | — |
+| `room-administration/space-settings.spec.mts` | #701 | file deleted | — |
+| `room-administration/space-leave.spec.mts` | #706 | file deleted | — |
+| `room-administration/tombstone.spec.mts` | #707 | file deleted | — |
+| `room-administration/report-message.spec.mts` | #708 | 0 retired | “reports a message to the server admins” |
+| `room-administration/redact-others.spec.mts` | #708 | 0 retired | “a room admin can delete another member’s message” |
+| `room-administration/block-member.spec.mts` | #709 | file deleted | — |
+| `room-administration/kick-member.spec.mts` | #709 | 1 retired | — |
+| `room-administration/member-info.spec.mts` | #710 | file deleted | — |
+| `room-administration/promote-member.spec.mts` | #710 | file deleted | — |
+| `room-administration/member-roles.spec.mts` | #711, #712 | file deleted | — |
+| `room-administration/room-members-and-addresses.spec.mts` | #713, #714, #715 | 3 retired | — |
+| `room-administration/room-access-settings.spec.mts` | #716 | file deleted | — |
+| `room-administration/room-profile-settings.spec.mts` | #717 | file deleted | — |
+| `room-administration/room-settings-for-you.spec.mts` | #718 | file deleted | — |
+| `room-administration/room-settings-widgets-mobile.spec.mts` | #719 | file deleted | — |
+| `room-administration/room-widget-settings.spec.mts` | #719 | file deleted | — |
+| `accounts/change-password.spec.mts` | #720 | file deleted | — |
+| `accounts/clear-all-data.spec.mts` | #721 | 1 retired | “erases a signed-in install and restarts into an empty app”; “`stays a legible danger red on ${theme.id}`” |
+| `accounts/registration.spec.mts` | #722 | file deleted | — |
+| `accounts/sso-login.spec.mts` | #723 | file deleted | — |
+| `accounts/oidc-login.spec.mts` | #724 | file deleted | — |
+| `trust/security-settings.spec.mts` | #725 | 1 retired | “keeps verification nested in the narrow settings surface” |
+| `trust/recovery-reset.spec.mts` | #726 | file deleted | — |
+| `trust/sso-recovery-reset.spec.mts` | #727 | file deleted | — |
+| `trust/message-shield.spec.mts` | #728 | file deleted | — |
+| `trust/verify-user.spec.mts` | #729 | file deleted | — |
+| `conversations/composer-drafts.spec.mts` | #730 | file deleted | — |
+| `conversations/composer-formatting.spec.mts` | #731 | 3 retired | — |
+| `conversations/composer-mentions.spec.mts` | #732 | file deleted | — |
+| `conversations/composer-reactions.spec.mts` | #733 | 1 retired | “reacts with an emoji chosen from the full picker” |
+| `conversations/composer-typing.spec.mts` | #734 | file deleted | — |
+| `conversations/gif.spec.mts` | #735 | file deleted | — |
+| `conversations/hide-system-messages.spec.mts` | #736 | file deleted | — |
+| `conversations/jump-to-date.spec.mts` | #737 | 1 retired | — |
+| `conversations/jump-to-latest.spec.mts` | #738 | 0 retired | “offers a jump-to-latest pill after scrolling up and returns to the bottom” |
+| `conversations/link-preview.spec.mts` | #739 | file deleted | — |
+| `conversations/location-share.spec.mts` | #740 | 0 retired | “shares the current location as a map card” |
+| `conversations/media-retention.spec.mts` | #741 | file deleted | — |
+| `conversations/message-action-sheet.spec.mts` | #742 | file deleted | — |
+| `conversations/message-edit-history.spec.mts` | #743 | 2 retired | — |
+| `conversations/message-forward.spec.mts` | #744 | 0 retired | “forwards a message to another room” |
+| `conversations/message-grouping.spec.mts` | #745 | 0 retired | “grouped messages line up with the first of their group” |
+| `conversations/message-linkify.spec.mts` | #746 | file deleted | — |
+| `conversations/message-links.spec.mts` | #747 | 5 retired | “clicking a mention shows a user card, not an empty room” |
+| `conversations/message-markdown.spec.mts` | #748 | 2 retired | “keeps the language caption clear of the hover toolbar” |
+| `conversations/message-poll.spec.mts` | #749 | file deleted | — |
+| `conversations/message-quote.spec.mts` | #750 | 0 retired | “pulls a message into the composer as a > block and sends it as a blockquote”; “offers no Quote for a message with no text to bring” |
+| `conversations/message-receipts.spec.mts` | #751 | file deleted | — |
+| `conversations/message-source.spec.mts` | #752 | 0 retired | “shows an event’s raw JSON in the view-source dialog” |
+| `conversations/message-spoiler.spec.mts` | #753 | file deleted | — |
+
 ## Native shell, Back and Appearance batch
 
 [Migrate Android native shell, Back and appearance journeys](https://github.com/quwisky/trinity-matrix-client/issues/670)
 owns the eight definitions in the four Android-specific predecessor files. The
 `android.native-shell` suite preserves their complete assertions and helper contracts;
 the critical milestone's login coverage does not replace the unauthenticated route
-guard or Settings Back assertions. Existing Playwright execution remains enabled
-while this batch is verified.
+guard or Settings Back assertions. Existing Playwright execution remained enabled
+while this batch was verified.
 
 | Stage                           | Predecessor definition at `877925dd`                                                                  | Required parity                                                                                                                                                                          |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `unauthenticated-shell`         | [App shell](app-shell.spec.mts), lines 8–14, and `expectLoginScreen` / `expectProtectedRouteRedirect` | Visible Homeserver and Continue; unauthenticated Settings navigation redirects to login.                                                                                                 |
-| `settings-touch-back`           | [Navigation](navigation.spec.mts), lines 78–88                                                        | Account-qualified Rooms, native touch opens Settings and its sections, hardware Back restores the rendered Rooms surface.                                                                |
-| `authenticated-process-restart` | [Navigation](navigation.spec.mts), lines 90–101                                                       | Native process restart restores the authenticated Rooms route and visible surface at this batch's revision.                                                                              |
-| `settings-section-back`         | [Navigation](navigation.spec.mts), lines 103–140                                                      | Retained 390×844 mobile/touch viewport; target ≥44px; Appearance heading focus; Back restores directory focus, overflow ≤1px, then Rooms.                                                |
-| `composer-keyboard-insert-back` | [Navigation](navigation.spec.mts), lines 166–244                                                      | Actual IME resize and native text input; insert tray dismisses IME, stays within the restored viewport, and Back restores focus and collapsed ARIA state.                                |
-| `members-back-order`            | [Navigation](navigation.spec.mts), lines 246–299                                                      | Focused Members filter and IME; ordered Back dismisses keyboard, Members, then Conversation.                                                                                             |
-| `composer-formatting`           | [Native formatting](composer-format-native.spec.mts), lines 48–98                                     | Native Aa/italic activation produces `say *hello*`, selection [5,10], editor focus and shown IME; sheet geometry and Back cancellation preserve content.                                 |
-| `native-appearance`             | [Appearance](appearance.spec.mts), lines 75–219                                                       | Android/coarse pointer, light Amethyst/Cosy and dark Onyx/Compact/Larger projections, native StatusBar state, 20px font, target/overflow/inset geometry and paired device/WebView proof. |
+| `unauthenticated-shell`         | [App shell](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/app-shell.spec.mts), lines 8–14, and `expectLoginScreen` / `expectProtectedRouteRedirect` | Visible Homeserver and Continue; unauthenticated Settings navigation redirects to login.                                                                                                 |
+| `settings-touch-back`           | [Navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), lines 78–88                                                        | Account-qualified Rooms, native touch opens Settings and its sections, hardware Back restores the rendered Rooms surface.                                                                |
+| `authenticated-process-restart` | [Navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), lines 90–101                                                       | Native process restart restores the authenticated Rooms route and visible surface at this batch's revision.                                                                              |
+| `settings-section-back`         | [Navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), lines 103–140                                                      | Retained 390×844 mobile/touch viewport; target ≥44px; Appearance heading focus; Back restores directory focus, overflow ≤1px, then Rooms.                                                |
+| `composer-keyboard-insert-back` | [Navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), lines 166–244                                                      | Actual IME resize and native text input; insert tray dismisses IME, stays within the restored viewport, and Back restores focus and collapsed ARIA state.                                |
+| `members-back-order`            | [Navigation](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/navigation.spec.mts), lines 246–299                                                      | Focused Members filter and IME; ordered Back dismisses keyboard, Members, then Conversation.                                                                                             |
+| `composer-formatting`           | [Native formatting](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/composer-format-native.spec.mts), lines 48–98                                     | Native Aa/italic activation produces `say *hello*`, selection [5,10], editor focus and shown IME; sheet geometry and Back cancellation preserve content.                                 |
+| `native-appearance`             | [Appearance](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/android/appearance.spec.mts), lines 75–219                                                       | Android/coarse pointer, light Amethyst/Cosy and dark Onyx/Compact/Larger projections, native StatusBar state, 20px font, target/overflow/inset geometry and paired device/WebView proof. |
 
 The Settings viewport has a retained CDP owner; it is released before native IME
 checks so Android's real keyboard resize remains observable. Other CDP reads
@@ -163,13 +269,18 @@ parity, effective negative controls, predecessor coexistence and current-revisio
 quality/CI diagnostics. Completing this batch does not complete the canonical
 Android ledger, physical push acceptance or the full migration's CI reliability gate.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Account lifecycle and mixed workspace batch
 
 [Account lifecycle and mixed workspace migration](https://github.com/quwisky/trinity-matrix-client/issues/672)
 owns all fourteen definitions in the two canonical files below at `ed70277`.
 The `android.accounts-workspace` suite runs every definition, resets the installed
 app before each case and records a separate outcome for each. The predecessors
-remain enabled during coexistence.
+remained enabled during coexistence.
 
 | Predecessor                                                                      | Lines   | Required parity                                                                                                                  |
 | -------------------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -181,7 +292,7 @@ remain enabled during coexistence.
 | Account lifecycle                                                                | 262–283 | Remove the only Account, reach login and reconnect.                                                                              |
 | Account lifecycle                                                                | 285–300 | Cancel adding an Account and preserve the current Account and menu count.                                                        |
 | Account lifecycle                                                                | 302–330 | Reconnect guidance, prefilled locked username, password entry and restored Account.                                              |
-| [Mixed workspace](../browser/journeys/accounts/mixed-account-workspace.spec.mts) | 16–71   | Mixed room visibility, owning-Account badge, active-row constraints and correct acting identity.                                 |
+| [Mixed workspace](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/accounts/mixed-account-workspace.spec.mts) | 16–71   | Mixed room visibility, owning-Account badge, active-row constraints and correct acting identity.                                 |
 | Mixed workspace                                                                  | 73–128  | Mixed Space pills, owning-Account badge and correct acting identity.                                                             |
 | Mixed workspace                                                                  | 132–322 | Persist selection across reload; desktop keyboard navigation, focus restoration and geometry in both themes at 125% font size.   |
 | Mixed workspace                                                                  | 339–478 | Pixel 5 profile; long Account names; both themes; actual short-list overflow, visible Done action, retained selection and focus. |
@@ -227,6 +338,11 @@ recorded in [the Accounts batch](https://github.com/quwisky/trinity-matrix-clien
 physical Android acceptance and the full migration reliability gate retain their
 separate owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Identity avatar and ordinary presence batch
 
 [Android DM avatar and ordinary presence migration](https://github.com/quwisky/trinity-matrix-client/issues/674)
@@ -234,11 +350,11 @@ owns these three definitions at `f90ff0e`. The `android.identity-presence` suite
 resets the installed app before each definition and uses the existing native
 Account login and input adapter with the predecessor's 1280×720 desktop viewport.
 All three definitions are mandatory in each complete invocation. Their Playwright
-predecessors remain enabled during coexistence.
+predecessors remained enabled during coexistence.
 
 | Predecessor                                                       | Lines                  | Required parity                                                                                                                                                                                                                                         |
 | ----------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [DM avatar](../browser/journeys/identity/dm-avatar.spec.mts)      | 148–186                | Visible decoded partner image with a `blob:` URL in the unpictured DM; then a visible named group's avatar with no image in the same session. Both rooms have the same two members.                                                                     |
+| [DM avatar](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/identity/dm-avatar.spec.mts)      | 148–186                | Visible decoded partner image with a `blob:` URL in the unpictured DM; then a visible named group's avatar with no image in the same session. Both rooms have the same two members.                                                                     |
 | [Member presence](../browser/journeys/identity/presence.spec.mts) | 153–182; helper 91–108 | Native room navigation; visible timeline; initially hidden member panel; native toggle and visible panel; exactly two seeded member rows; first presence dot visible with role `img` and an Online/Away/Offline label; reader's own online dot visible. |
 | DM presence                                                       | 184–202                | Visible presence indicator in the exact seeded counterpart's DM sidebar row.                                                                                                                                                                            |
 
@@ -286,17 +402,22 @@ exclude the production Android APK and remain with the browser migration owner.
 This batch does not transfer other Android journeys, physical push acceptance or
 the full migration reliability gate from their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Sidebar room filtering batch
 
 [Android sidebar filtering migration](https://github.com/quwisky/trinity-matrix-client/issues/676)
 owns exactly these two definitions at `738ef48`. The `android.sidebar-filter`
 suite resets the installed app for each definition and uses native Account login,
 Rooms navigation and text/key input at the predecessor's 1280×720 desktop viewport.
-Both definitions are mandatory. Their Playwright predecessors remain enabled.
+Both definitions are mandatory. Their Playwright predecessors remained enabled.
 
 | Predecessor                                                                | Lines   | Required parity                                                                                                                                                                                                                                   |
 | -------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Sidebar filter](../browser/journeys/room-library/sidebar-filter.spec.mts) | 103–162 | Initially absent clear button; accent-folded `cafeteria` matches only the exact accented room and retains the query; `zzzz` leaves zero rows with the filtered-empty copy; native clear restores the empty value and exactly both original names. |
+| [Sidebar filter](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/sidebar-filter.spec.mts) | 103–162 | Initially absent clear button; accent-folded `cafeteria` matches only the exact accented room and retains the query; `zzzz` leaves zero rows with the filtered-empty copy; native clear restores the empty value and exactly both original names. |
 | Sidebar filter                                                             | 164–196 | Exactly two initial rows; `warehouse` matches only the exact Warehouse room; focused native Escape empties the value, restores exactly both original names and leaves the filter visible.                                                         |
 
 The rows retain all sixteen direct assertions plus setup and native-action
@@ -331,17 +452,22 @@ three consecutive complete runs with frozen inputs; required quality checks;
 and original-attempt hosted evidence. Other Room Library definitions, physical
 Android acceptance and the full migration reliability gate keep their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Sidebar touch targets and identity dock batch
 
 [Android sidebar touch migration](https://github.com/quwisky/trinity-matrix-client/issues/687)
 owns the complete `keeps the rail, room, menu and identity-dock controls
 touch-sized` definition in
-[Sidebar touch](../browser/journeys/room-library/sidebar-touch.spec.mts), lines
+[Sidebar touch](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/sidebar-touch.spec.mts), lines
 32–164 at `1e3f8a45`. The pinned source SHA-256 is
 `8b09cba85b29db3e4819462e45b0f074f516198dca8f1733c195722c492f6ebb`.
 `android.sidebar-touch` resets the installed app to the predecessor's exact
 Playwright 1.62.1 Pixel 5 profile and runs the single definition as one mandatory
-stage. Its Playwright predecessor remains enabled.
+stage. Its Playwright predecessor remained enabled.
 
 | Predecessor obligation              | Replacement assertion identities                                                                                                                                 |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -382,16 +508,21 @@ and original-attempt hosted evidence. Other Room Library definitions, physical
 Android acceptance and the full migration reliability gate stay with their
 existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Room favourite and low-priority tags batch
 
 [Android room tag migration](https://github.com/quwisky/trinity-matrix-client/issues/688)
 owns both definitions in
-[Favourite rooms](../browser/journeys/room-library/favourite-rooms.spec.mts),
+[Favourite rooms](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/favourite-rooms.spec.mts),
 lines 130–196 and 198–275 at `a4197c4e`. The pinned source SHA-256 is
 `35b1ba6d96033782dfb66e31a67821cb97a81c7bf98d4d729cbab5fd3313a228`.
 `android.room-tags` resets the installed app to the Playwright 1.62.1 Pixel 5
 profile for each definition and runs them as two mandatory stages. Both
-Playwright predecessors remain enabled.
+Playwright predecessors remained enabled.
 
 | Predecessor obligation      | Replacement assertion identities                                                                                                                                                                                                                                                                 |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -434,20 +565,25 @@ checks and original-attempt hosted evidence. Other Room Library definitions,
 physical Android acceptance and the full migration reliability gate stay with
 their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Room read-state batch
 
 [Android room read-state migration](https://github.com/quwisky/trinity-matrix-client/issues/689)
 owns the complete three definitions in
-[Mark as read](../browser/journeys/room-library/mark-read.spec.mts), lines
+[Mark as read](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/mark-read.spec.mts), lines
 48–102, and
-[Mark as unread](../browser/journeys/room-library/mark-unread.spec.mts), lines
+[Mark as unread](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/mark-unread.spec.mts), lines
 29–103 and 105–180 at `bdf4a7a7`. Their pinned SHA-256 values are
 `38d3d95524dcb03cbc36ba0891031e52014ed66a8ff7416df374aa7f2256828b`
 and
 `43165d7f4fc936d214d54e5410d7876d174e6e61c0c477ed6fa8d398e70963b6`.
 `android.room-read-state` resets the installed app to the Playwright 1.62.1
 Pixel 5 profile for each definition and runs them as three mandatory stages.
-All three Playwright predecessors remain enabled.
+All three Playwright predecessors remained enabled.
 
 | Predecessor obligation | Replacement assertion identities                                                                                                                                                                    |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -493,16 +629,21 @@ required quality checks and original-attempt hosted evidence. Other Room Library
 definitions, physical Android acceptance and the full migration reliability gate
 stay with their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Room-list preview and unread-row batch
 
 [Android room-list migration](https://github.com/quwisky/trinity-matrix-client/issues/690)
 owns both complete definitions in
-[Room list](../browser/journeys/room-library/room-list.spec.mts), lines 185–217
+[Room list](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/room-list.spec.mts), lines 185–217
 and 219–269 at `9edd3a22`. The pinned source SHA-256 is
 `122c617df290018bd59fcb57a08ad962e78dbba1230ae87d16d9d3c684112654`.
 `android.room-list` resets the installed app to the Playwright 1.62.1 Pixel 5
 profile for each definition and runs them as two mandatory stages. Both
-Playwright predecessors remain enabled.
+Playwright predecessors remained enabled.
 
 | Predecessor obligation | Replacement assertion identities                                                                 |
 | ---------------------- | ------------------------------------------------------------------------------------------------ |
@@ -547,6 +688,11 @@ unchanged predecessors, required quality checks and original-attempt hosted
 evidence. Other Room Library definitions, physical Android acceptance and the
 full migration reliability gate stay with their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Aggregate and platform unread-badge batch
 
 [Android unread-badges migration](https://github.com/quwisky/trinity-matrix-client/issues/691)
@@ -557,7 +703,7 @@ source SHA-256 is
 `88717c4e01c304025b951a359b1cda79a775e92015be2f294639b39490adfae0`.
 `android.unread-badges` resets the installed app to the Playwright 1.62.1 Pixel
 5 profile for each definition and runs them as two mandatory stages. Both
-Playwright predecessors remain enabled.
+Playwright predecessors remained enabled.
 
 | Predecessor obligation          | Replacement assertion identities                        |
 | ------------------------------- | ------------------------------------------------------- |
@@ -599,6 +745,11 @@ required quality checks and original-attempt hosted evidence. Other Room
 Library definitions, physical Android acceptance and the full migration
 reliability gate stay with their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Leave-room functional batch
 
 [Android leave-room migration](https://github.com/quwisky/trinity-matrix-client/issues/692)
@@ -607,8 +758,9 @@ owns the complete functional definition in
 at `4e4a80f5`. The pinned source SHA-256 is
 `3ff3a9e93bc430044062948c4e8e6bac67578f5588d68691ac540f46e41b390c`.
 `android.leave-room` resets the installed app to the Playwright 1.62.1 Pixel 5
-profile and runs one mandatory stage. The functional Playwright predecessor and
-the same file's browser-only contrast definition both remain enabled.
+profile and runs one mandatory stage. The functional Playwright predecessor
+remained enabled through acceptance; the same file's browser-only contrast
+definition remains enabled.
 
 | Predecessor obligation        | Replacement assertion identities                      |
 | ----------------------------- | ----------------------------------------------------- |
@@ -649,16 +801,21 @@ browser-renderer coverage; other Room Library definitions, physical Android
 acceptance and the full migration reliability gate stay with their existing
 owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Recent Activity batch
 
 [Android Recent Activity migration](https://github.com/quwisky/trinity-matrix-client/issues/693)
 owns all four definitions in
-[Recent activity](../browser/journeys/room-library/recent-activity.spec.mts),
+[Recent activity](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/recent-activity.spec.mts),
 lines 97–301 at `4dbf0ce5`. The pinned source SHA-256 is
 `c2b12540c8b45ace5a7d3e2111c3f00a61ba69555522b5b6212636cb0fc9243c`.
 `android.recent-activity` resets the installed app to the Playwright 1.62.1
 Pixel 5 profile for four mandatory stages. All four Playwright predecessors
-remain enabled.
+remained enabled.
 
 | Predecessor obligation                           | Replacement assertion identities                                                                                                                                                                                                                                                |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -699,6 +856,11 @@ predecessors, required quality checks and original-attempt hosted evidence.
 Other Room Library definitions, physical Android acceptance and the full
 migration reliability gate stay with their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Spaceless room-filter functional batch
 
 [Android spaceless room filtering](https://github.com/quwisky/trinity-matrix-client/issues/694)
@@ -708,7 +870,7 @@ lines 147–230 at `758e9f21`. The pinned source SHA-256 is
 `0f5d42072c018ef27e6e1c6276f72b209d43b927666149c8e7574c2bc4aefadc`.
 `android.room-filter-spaceless` resets the installed app to the Playwright
 1.62.1 Pixel 5 profile for one mandatory stage. The complete Playwright
-predecessor remains enabled.
+predecessor remained enabled.
 
 | Predecessor obligation                                                 | Replacement assertion identities                   |
 | ---------------------------------------------------------------------- | -------------------------------------------------- |
@@ -747,6 +909,11 @@ radius, pseudo-element and mouse-hover checks remain browser-renderer coverage;
 other Room Library definitions, physical Android acceptance and the full
 migration reliability gate stay with their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Space creation and join curation functional batch
 
 [Android space creation and join curation](https://github.com/quwisky/trinity-matrix-client/issues/695)
@@ -756,7 +923,7 @@ lines 92–140, 142–221 and 392–457 at `0ac64bed`. The pinned source SHA-256
 `35a2dd1726eef56c03288c64c23885703f3f1d06927870d4eeabac7bf3a51c7b`.
 `android.space-curation-create-join` resets the installed app to the Playwright
 1.62.1 Pixel 5 profile for three mandatory stages. All three complete
-Playwright predecessors remain enabled.
+Playwright predecessors remained enabled.
 
 | Predecessor obligation                                              | Replacement assertion identities                                                        |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -795,6 +962,11 @@ held-write, reorder and desktop-keyboard definition remain browser coverage;
 other Room Library definitions, physical Android acceptance and the full
 migration reliability gate stay with their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Space room-order functional batch
 
 [Android space room ordering](https://github.com/quwisky/trinity-matrix-client/issues/696)
@@ -804,7 +976,7 @@ lines 237–347 and 428–464 at `40820c19`. The pinned source SHA-256 is
 `b26ae29366d8d470a1f813da9bf9e6b501ec4f49d77d432f1ba7e77606c96705`.
 `android.space-room-order` resets the installed app to the Playwright 1.62.1
 Pixel 5 profile for two mandatory stages. Both complete Playwright predecessors
-remain enabled.
+remained enabled.
 
 | Predecessor obligation                                                                                                         | Replacement assertion identities                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -846,16 +1018,21 @@ definitions remain browser coverage; other Room Library definitions, physical
 Android acceptance and the full migration reliability gate stay with their
 existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Room HTTP-error recovery functional batch
 
 [Android room HTTP-error recovery](https://github.com/quwisky/trinity-matrix-client/issues/697)
 owns the installed-Android functional guarantees in both definitions from
-[Room HTTP error recovery](../browser/journeys/room-library/room-http-error-recovery.spec.mts),
+[Room HTTP error recovery](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-library/room-http-error-recovery.spec.mts),
 lines 73–127 and 129–192 at `9aa0cfcd`. The pinned source SHA-256 is
 `a9fd9a2f48a03061ceed67a94a2e81104472144683e65650099dba6074042fe6`.
 `android.room-http-error-recovery` resets the installed app to the exact Pixel
 5 profile for two mandatory stages. Both complete Playwright predecessors
-remain enabled.
+remained enabled.
 
 | Predecessor obligation                                                                                                               | Replacement assertion identities                                                                                                                    |
 | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -896,18 +1073,23 @@ Other request-interception definitions, unrelated Room Library definitions,
 physical Android acceptance and the full migration reliability gate stay with
 their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Mobile Room Settings functional batch
 
 [Android mobile Room Settings](https://github.com/quwisky/trinity-matrix-client/issues/698)
 owns the installed-Android functional guarantees in
-[Room Settings · For you on a phone](../browser/journeys/room-administration/room-settings-for-you-mobile.spec.mts),
+[Room Settings · For you on a phone](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/room-settings-for-you-mobile.spec.mts),
 lines 18–115, and
-[Room Settings on a phone](../browser/journeys/room-administration/room-settings-general-mobile.spec.mts),
+[Room Settings on a phone](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/room-settings-general-mobile.spec.mts),
 lines 18–149, at `d976c05a`. Their pinned SHA-256 values are
 `749dc05f43e01cfcc972bf639b8f83241ed3054220a32d8f32eb5be197cf62c0`
 and `aec529aaa1769eddfa28f9f423d93825bb46ebd689e448036b1c168b5db3c310`.
 `android.room-settings-mobile` resets the installed app to the exact Pixel 5
-profile for two mandatory stages. Both complete Playwright predecessors remain
+profile for two mandatory stages. Both complete Playwright predecessors remained
 enabled.
 
 | Predecessor obligation                                                                                                                                                         | Replacement assertion identities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
@@ -941,15 +1123,21 @@ outcomes and artifact pointers. Stage-local assertion records and screenshots
 retain the 33 observations, provenance and registered cleanup. Acceptance
 remains pending until #698 records three complete first attempts, both unchanged
 predecessors, required quality checks and original-attempt hosted evidence. The
-widget iframe predecessor remains browser coverage; unrelated Room Settings,
+widget iframe predecessor remained browser coverage until #719 migrated it;
+unrelated Room Settings,
 physical Android acceptance and the full migration reliability gate stay with
 their existing owners.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Mobile Space Settings functional batch
 
 [Android mobile Space Settings](https://github.com/quwisky/trinity-matrix-client/issues/699)
 owns the installed-Android guarantees in
-[Space settings on a phone](../browser/journeys/room-administration/space-settings-mobile.spec.mts),
+[Space settings on a phone](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/space-settings-mobile.spec.mts),
 definitions at lines 105–433, 435–471 and 473–536, at `27f09caf`. The pinned
 source SHA-256 is
 `fd8dcdd0305cdc1ffa2412cf61779c7775cfe7583563be801ba5be5342fdaaf4`.
@@ -987,11 +1175,16 @@ and original-attempt hosted evidence. Desktop/fault Space Settings, widget
 iframes, physical Android acceptance and full migration reliability remain with
 their existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Space Settings resilience batch
 
 [Android Space Settings resilience](https://github.com/quwisky/trinity-matrix-client/issues/700)
 owns the installed-Android guarantees in
-[Space Settings resilience](../browser/journeys/room-administration/space-settings-resilience.spec.mts),
+[Space Settings resilience](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/space-settings-resilience.spec.mts),
 including shared readiness at lines 69–82 and definitions at lines 88–143 and
 145–305, on consolidated base `2042fc56`. The pinned source SHA-256 is
 `97bf56cb47ac1f74911fa73df01d582f1cec4c37f8547e4d609f168fbb9a3091`.
@@ -1039,15 +1232,20 @@ Space Settings definitions, member/address layout, widget iframe coverage,
 physical Android acceptance and complete migration reliability stay with their
 existing owners.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Core Space Settings administration batch
 
 [Android core Space Settings](https://github.com/quwisky/trinity-matrix-client/issues/701)
 owns all seven definitions and 85 direct assertions in
-[Space Settings](../browser/journeys/room-administration/space-settings.spec.mts),
+[Space Settings](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/space-settings.spec.mts),
 pinned to consolidated base `cb8959d70f9e5c1b61e651bb2048f17a0b66ff9e` and source
 SHA-256 `662f0fc7c62ba206aa1bd344c1d9ecf913162424c486b97059d252ff7ea30a3a`.
 Shared Matrix, readiness and navigation helpers occupy lines 29–181. All seven
-Playwright predecessors remain enabled with their assertions unchanged.
+Playwright predecessors remained enabled with their assertions unchanged.
 
 `android.space-settings-core` runs the following stages sequentially in one
 invocation, using one installed debug APK built from the verified production
@@ -1173,16 +1371,21 @@ original-attempt green browser and Android shard-2 jobs with an audited immutabl
 artifact are also required. Static integration checks alone do not establish
 installed-host parity or authorize predecessor retirement.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Space leave batch
 
 [Android Space leave](https://github.com/quwisky/trinity-matrix-client/issues/706)
 owns the single definition and all seven direct assertions in
-[Space leave](../browser/journeys/room-administration/space-leave.spec.mts),
+[Space leave](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/space-leave.spec.mts),
 pinned to consolidated base `b23a2474eb366c1d714f8a8d20f1563242003678`
 and source SHA-256
 `a895c51a4a586f80d1399c31d1a3780d0c20c42534c926e9e53cf41f3fe8ed54`.
 The shared token/menu/membership helpers occupy lines 17–53 and the definition
-occupies lines 58–125. The Playwright predecessor remains enabled and unchanged.
+occupies lines 58–125. The Playwright predecessor remained enabled and unchanged.
 
 `android.space-leave` resets one installed Android invocation to the exact Pixel
 5 profile. A fresh Account, private Space, private child Room and suggested
@@ -1227,18 +1430,23 @@ Acceptance remains pending until #706 records three complete unchanged-input
 native first attempts, the unchanged predecessor, at least four effective
 failing controls, all required static gates, and original-attempt green browser
 and Android shard-2 hosted jobs with an audited immutable artifact. This mapping
-does not authorize predecessor retirement.
+did not authorize predecessor retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room tombstone batch
 
 [Android Room tombstone](https://github.com/quwisky/trinity-matrix-client/issues/707)
 owns the single definition and all six direct assertions in
-[Room tombstone](../browser/journeys/room-administration/tombstone.spec.mts),
+[Room tombstone](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/tombstone.spec.mts),
 pinned to consolidated base `f46e2751da6bfa3ff784f253da1360491e28e53d`
 and source SHA-256
 `ca5563f9d5a4f84db23d7fb7a889da28682fffabf3dedd3b42b2f529d936472b`.
 The shared room-opening helper occupies lines 15–23 and the definition occupies
-lines 28–113. The Playwright predecessor remains enabled and unchanged.
+lines 28–113. The Playwright predecessor remained enabled and unchanged.
 
 `android.room-tombstone` resets one installed Android invocation to the exact
 Pixel 5 profile. A fresh Account and distinctly named old and successor private
@@ -1280,7 +1488,12 @@ Acceptance remains pending until #707 records three complete unchanged-input
 native first attempts, the unchanged predecessor, at least four effective
 failing controls, all required static gates, and original-attempt green browser
 and Android shard-2 hosted jobs with an audited immutable artifact. This mapping
-does not authorize predecessor retirement.
+did not authorize predecessor retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Message moderation batch
 
@@ -1295,7 +1508,7 @@ The report source SHA-256 is
 (helper lines 19–25, definition lines 30–80). The redaction source SHA-256 is
 `b7bb891ccdde3bb829044b6378247971555be539a6a8cd190f7ace323fa78b57`
 (helper lines 57–63, definition lines 68–143). Both Playwright predecessors
-remain enabled and unchanged.
+remained enabled and unchanged.
 
 `android.message-moderation` resets one installed Android invocation to the
 exact Pixel 5 profile for each of two stages. Finite Matrix fixtures create the
@@ -1340,14 +1553,19 @@ Acceptance remains pending until #708 records three complete unchanged-input
 native first attempts, both unchanged predecessors, at least four effective
 failing controls, all required static gates, original-attempt green Android
 hosted evidence, exact hosted predecessor passes and an audited immutable
-artifact. This mapping does not authorize predecessor retirement.
+artifact. This mapping did not authorize predecessor retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Member moderation batch
 
 [Android member Block, Kick, and Ban](https://github.com/quwisky/trinity-matrix-client/issues/709)
 owns the three Android-applicable definitions and all 22 direct assertion sites
 in
-[Block member](../browser/journeys/room-administration/block-member.spec.mts)
+[Block member](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/block-member.spec.mts)
 and
 [Kick/Ban member](../browser/journeys/room-administration/kick-member.spec.mts),
 pinned to consolidated base `1610f3ca0872e8144be657b63d0e183b0a1284b0`.
@@ -1359,7 +1577,7 @@ SHA-256 is
 (helper lines 68–76, generator lines 81–94, generated definitions lines
 95–165). Its stale-roster fault at lines 168–291 remains browser-owned because
 it requires Angular development hooks unavailable in the production APK. All
-Playwright predecessors remain enabled and unchanged.
+Playwright predecessors remained enabled and unchanged.
 
 `android.member-moderation` resets one installed Android invocation to the
 exact Pixel 5 profile for each of three stages. Finite Matrix fixtures create
@@ -1425,15 +1643,20 @@ exact predecessors and the browser-owned stale-roster case passed at retry 0.
 Together with three complete unchanged-input local native first attempts, all
 three unchanged local predecessors, five effective failing controls, the full
 static gates, and an independent review with no unresolved findings, this
-accepts #709. The Playwright predecessors remain enabled; this mapping does not
+accepts #709. The Playwright predecessors remained enabled; this mapping did not
 authorize their retirement or claim the browser-only stale-roster fault.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Member details and promotion batch
 
 [Android member details and promotion](https://github.com/quwisky/trinity-matrix-client/issues/710)
 owns two Android-applicable definitions and all 25 direct assertion sites in
-[Member info](../browser/journeys/room-administration/member-info.spec.mts) and
-[Promote member](../browser/journeys/room-administration/promote-member.spec.mts),
+[Member info](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/member-info.spec.mts) and
+[Promote member](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/promote-member.spec.mts),
 pinned to consolidated base `02de1669419235fdeff4b0614f00ee1e5b2af862`.
 The member-info source SHA-256 is
 `cca86e8d3c5925ff2358e6efbcf229ca4f32095379385d9539698dedd1c2200d`
@@ -1441,7 +1664,7 @@ The member-info source SHA-256 is
 The promotion source SHA-256 is
 `649c05090a92bf48036530ea3738c55ad40f0ebc06a0200745e48b3b6903f7c3`
 (Room helper lines 49–57, definition lines 62–134). Both Playwright
-predecessors remain enabled and unchanged.
+predecessors remained enabled and unchanged.
 
 `android.member-details-promotion` resets one installed Android invocation to
 the exact Pixel 5 profile for each of two stages. Finite Matrix fixtures create
@@ -1512,20 +1735,25 @@ command files with 136 completed entries, exact clipboard MXID and server power
 renderer/APK provenance, redacted secrets, and clean teardown. The renderer tree
 matches the hosted merge tree exactly. Unrelated aggregate-shard execution is
 tracked separately and does not change this owned-suite acceptance. This mapping
-does not authorize predecessor retirement.
+did not authorize predecessor retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Member role classification batch
 
 [Android member role classification](https://github.com/quwisky/trinity-matrix-client/issues/711)
 owns the shared open-Room helper and four Android-applicable definitions in
-[Member role sections](../browser/journeys/room-administration/member-roles.spec.mts),
+[Member role sections](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/member-roles.spec.mts),
 pinned to consolidated base `d45ae933d41687f5b0b52ca36f9ac80cbbb9b931`
 and source SHA-256
 `58f0cacf00feb7a2587545b8261164632af83b24e0b839cc4be889af6a52b20f`.
 The shared helper spans lines 173–193; the grouping, trusted-DM, owner-panel,
 and owner/admin definitions span lines 205–281, 283–361, 363–393 and 395–433.
 Together they contain exactly 27 unique source assertion sites: three shared
-helper sites plus 24 direct sites. The four Playwright predecessors remain
+helper sites plus 24 direct sites. The four Playwright predecessors remained
 enabled and unchanged.
 
 `android.member-role-classification` resets one installed Android invocation to
@@ -1609,18 +1837,23 @@ Together with the three unchanged local native passes, five effective failing
 controls, static gates, and independent review, this completes #711 without
 authorizing predecessor retirement.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ### Member role live updates batch
 
 [Android member role live updates](https://github.com/quwisky/trinity-matrix-client/issues/712)
 owns four Android-applicable definitions in
-[Member role sections](../browser/journeys/room-administration/member-roles.spec.mts),
+[Member role sections](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/member-roles.spec.mts),
 pinned to consolidated base `4f8e1a99884acbd1389a69b0f8235b2af4a7846d`
 and source SHA-256
 `58f0cacf00feb7a2587545b8261164632af83b24e0b839cc4be889af6a52b20f`.
 The definitions span lines 435–480, 482–543, 545–583 and 590–626 and own
 exactly 25 direct assertion sites. The shared helper at lines 173–193 remains
 owned by #711; this batch imports its three identities as runtime prerequisites
-without reclaiming them. All four Playwright predecessors remain enabled and
+without reclaiming them. All four Playwright predecessors remained enabled and
 unchanged.
 
 `android.member-role-live-updates` resets one installed Android invocation to
@@ -1702,8 +1935,13 @@ artifact `10375030956` records all four unchanged predecessors passing at retry
 0. The audited renderer artifact `10373827842` contains 49 verified files with
 digest `e0e4b57a301e141e0aec237a8cabead24094d8e9711b922a301d46f889a59a96`.
 The run's unrelated failures in unchanged Android shards 1 and 3 are tracked on
-#665; all #712-owned gates passed. This mapping does not authorize predecessor
+#665; all #712-owned gates passed. This mapping did not authorize predecessor
 retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room unban batch
 
@@ -1720,7 +1958,7 @@ lines 36–44, and the visible Members-panel obligation from
 [`openSettingsTab`](../support/app.mts), SHA-256
 `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
 lines 228–248. This is exactly seven direct plus two helper assertion sites.
-All predecessor sources remain enabled and unchanged.
+All predecessor sources remained enabled and unchanged.
 
 `android.room-unban` uses finite Matrix fixtures to create an admin and target,
 set the target display name before membership events, create an invited private
@@ -1765,7 +2003,7 @@ redaction, and device, WebView and Matrix teardown.
 Acceptance for #713 requires three unchanged-input native first attempts, the
 unchanged exact Playwright predecessor at retry 0, at least five effective
 failing controls, required static gates, review, original-attempt green owned
-hosted evidence, and immutable-artifact audit. This mapping does not authorize
+hosted evidence, and immutable-artifact audit. This mapping did not authorize
 predecessor retirement.
 
 Original-attempt hosted [run 34919262884](https://github.com/quwisky/trinity-matrix-client/actions/runs/34919262884), from consolidated source
@@ -1783,8 +2021,13 @@ the exact unchanged predecessor passing once at retry 0 in 6,067 ms. Renderer
 artifact `10377771152` contains 49 individually verified files with digest
 `9ad995de220185e6e44bdcadd4ab989aae5e0fb75bf2e65d6efa75436c824c9b`.
 The run's unrelated unchanged shard-1 `android.space-room-order` timeout is
-tracked on #665; all #713-owned gates passed without a rerun. This mapping does
+tracked on #665; all #713-owned gates passed without a rerun. This mapping did
 not authorize predecessor retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room roster and live-authority batch
 
@@ -1802,7 +2045,7 @@ lines 36–44, and the visible Members-panel obligation from
 [`openSettingsTab`](../support/app.mts), SHA-256
 `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
 lines 228–248. This is exactly 33 direct plus two helper assertion sites.
-All predecessor sources remain enabled and unchanged.
+All predecessor sources remained enabled and unchanged.
 
 `android.room-roster-live-authority` uses finite Matrix fixtures to create a
 controller, opening admin and member, set the member display name before
@@ -1874,7 +2117,7 @@ redaction, and device, WebView and Matrix teardown.
 Acceptance for #714 requires three unchanged-input native first attempts, the
 unchanged exact Playwright predecessor at retry 0, at least five effective
 failing controls, required static gates, review, original-attempt green owned
-hosted evidence, and immutable-artifact audit. This mapping does not authorize
+hosted evidence, and immutable-artifact audit. This mapping did not authorize
 predecessor retirement.
 
 Original-attempt hosted [run 34932186969](https://github.com/quwisky/trinity-matrix-client/actions/runs/34932186969), from consolidated source
@@ -1901,7 +2144,7 @@ suite records 317 passes, one skip and zero retries. Renderer artifact
 contains 49 individually verified files whose recomputed manifest digest is
 `c7c73787c08c14e0ac6ff15a9af66c5ebe04825837eaf7a59ab4803fb2e764cc`.
 The run's unrelated unchanged shard-2 native-shell timeout is tracked on #665;
-all #714-owned gates passed without a rerun. This mapping does not authorize
+all #714-owned gates passed without a rerun. This mapping did not authorize
 predecessor retirement.
 
 The [Android Room address lifecycle batch](https://github.com/quwisky/trinity-matrix-client/issues/715)
@@ -1917,7 +2160,7 @@ lines 36–44, and the visible Addresses-panel obligation from
 [`openSettingsTab`](../support/app.mts), SHA-256
 `60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`,
 lines 228–248. This is exactly 15 direct plus two helper assertion sites. All
-predecessor sources remain enabled and unchanged.
+predecessor sources remained enabled and unchanged.
 
 `android.room-address-lifecycle` uses finite Matrix fixtures to create one
 owner and one private Room, derive invocation-unique accepted and rejected
@@ -1997,14 +2240,19 @@ Together with three unchanged-input native first attempts, the unchanged local
 predecessor, five effective failing controls, the full static gates, and review
 with no unresolved findings, this accepts #715. The run's unrelated unchanged
 shard-2 native homeserver failure is tracked on #665; every #715-owned gate
-passed without a rerun. The Playwright predecessor remains enabled; this
-mapping does not authorize its retirement.
+passed without a rerun. The Playwright predecessor remained enabled; this
+mapping did not authorize its retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room access policy batch
 
 The [Android Room access policy batch](https://github.com/quwisky/trinity-matrix-client/issues/716)
 owns four canonical definitions in
-[Room access settings](../browser/journeys/room-administration/room-access-settings.spec.mts),
+[Room access settings](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/room-access-settings.spec.mts),
 source SHA-256
 `3ae190d7814f8e3e2fda6640bcbfb77e089b1da8605b11645b7e79c2df0bcb6c`:
 `an admin changes who can join and read history` at lines 20–137,
@@ -2114,13 +2362,18 @@ findings, this accepts #716. The shard later failed in the unchanged
 `message-moderation` suite when Maestro's device server died while starting a
 swipe; that infrastructure failure is tracked on #665 and does not invalidate
 the already-passed, independently uploaded #716 evidence. The four Playwright
-predecessors remain enabled; this mapping does not authorize their retirement.
+predecessors remained enabled; this mapping did not authorize their retirement.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room profile settings batch
 
 The [Android Room profile settings batch](https://github.com/quwisky/trinity-matrix-client/issues/717)
 owns four canonical definitions in
-[Room profile settings](../browser/journeys/room-administration/room-profile-settings.spec.mts),
+[Room profile settings](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/room-profile-settings.spec.mts),
 source SHA-256
 `f6ab33a1fc7160efb206c66f064ab158cea1c3969ad6ee5a55b8eb39299d1f96`:
 `an admin renames a room from the settings dialog` at lines 16–151,
@@ -2131,7 +2384,7 @@ It also owns five stage-local timeline obligations from
 [`openRoom`](../browser/support/room-settings-journey.mts), source SHA-256
 `bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
 lines 36–44. The mapping contains exactly 36 direct plus five inherited
-identities. All four predecessor definitions and their helper remain enabled
+identities. All four predecessor definitions and their helper remained enabled
 and byte-for-byte unchanged.
 
 | Predecessor obligation | Replacement assertion identity |
@@ -2212,7 +2465,7 @@ typecheck/lint, formatting and documentation gates, at least five effective
 failing controls, three unchanged-input native first attempts, all four exact
 unchanged Playwright predecessors at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
-This mapping does not authorize predecessor retirement or merging PR #677.
+This mapping did not authorize predecessor retirement or merging PR #677.
 
 Acceptance completed on original-attempt hosted
 [run 34997349842](https://github.com/quwisky/trinity-matrix-client/actions/runs/34997349842)
@@ -2255,13 +2508,18 @@ unchanged Accounts/Workspace suite because Maestro rejected an unavailable
 driver host port before starting a `fill()` flow. The only #717 shared-client
 change is confined to `replace()`, and 27 earlier password fills passed in the
 same job; the independent host reliability failure is tracked on #665. All
-four Playwright predecessors remain enabled.
+four Playwright predecessors remained enabled.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room For-you preferences batch
 
 The [Android Room For-you preferences batch](https://github.com/quwisky/trinity-matrix-client/issues/718)
 owns the two canonical definitions in
-[Room For-you settings](../browser/journeys/room-administration/room-settings-for-you.spec.mts),
+[Room For-you settings](https://github.com/quwisky/trinity-matrix-client/blob/dd0cb53c0227f5d218d32e80cd6839aa7b0bcbaf/e2e/browser/journeys/room-administration/room-settings-for-you.spec.mts),
 source SHA-256
 `923fe4053badf040b9deaf9beba7da74bc27bf19277af4bb570462fed2c24f88`:
 `shows a failed preference read and retries into the editable form` at lines
@@ -2271,7 +2529,7 @@ obligations from [`openRoom`](../browser/support/room-settings-journey.mts),
 source SHA-256
 `bc759b432e2880d8c93de8f6b31fc891d0d156f6944b1c2ce031d56c2a4420a7`,
 lines 36–44. The mapping contains exactly 35 direct plus three inherited
-identities. Both predecessor definitions and their helpers remain enabled and
+identities. Both predecessor definitions and their helpers remained enabled and
 byte-for-byte unchanged.
 
 | Predecessor obligation | Replacement assertion identity |
@@ -2347,7 +2605,7 @@ typecheck/lint, formatting and documentation gates, at least six effective
 failing controls, three unchanged-input native first attempts, both exact
 unchanged Playwright predecessors at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
-This mapping does not authorize predecessor retirement.
+This mapping did not authorize predecessor retirement.
 It does not authorize merging PR #677.
 
 Acceptance completed on original-attempt hosted
@@ -2393,8 +2651,13 @@ contains 49 verified files / 15,302,528 bytes and manifest digest
 for the hosted merge. Together with three unchanged-input local first
 attempts, seven effective negative controls, required static/documentation
 gates, review with no unresolved findings and the all-green exact-head hosted
-run, this accepts #718. Both Playwright predecessors remain enabled. PR #677
+run, this accepts #718. Both Playwright predecessors remained enabled. PR #677
 remains draft/open and is not merged.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Room widget journeys
 
@@ -2404,7 +2667,7 @@ definitions pinned by issue #719. The executable contract maps lines 37–236 of
 `room-widget-settings.spec.mts`, and the pinned widget, Room Settings,
 multi-Account and app helpers. It contains exactly 86 direct plus seven
 inherited stage-local identities (93 unique identities total). All four
-predecessors and their helpers remain enabled and byte-for-byte unchanged.
+predecessors and their helpers remained enabled and byte-for-byte unchanged.
 
 The four installed-Android stages preserve:
 
@@ -2457,7 +2720,7 @@ typecheck/lint, formatting and documentation gates, effective negative
 controls, three unchanged-input native first attempts, all four exact
 unchanged Playwright predecessors at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
-This mapping does not authorize predecessor retirement or merging PR #677.
+This mapping did not authorize predecessor retirement or merging PR #677.
 
 Local acceptance used seven effective controls: one direct and one inherited
 identity, the exact widget write-fault target, the changed-origin Fetch pattern,
@@ -2518,8 +2781,13 @@ contains 49 verified files / 15,302,528 bytes and manifest digest
 for the hosted merge. Together with three unchanged-input local first
 attempts, seven effective negative controls, required static/documentation
 gates and review with no unresolved findings, this accepts #719. All four
-Playwright predecessors remain enabled. PR #677 remains draft/open and is not
+Playwright predecessors remained enabled. PR #677 remains draft/open and is not
 merged.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Account password-change journey
 
@@ -2635,7 +2903,12 @@ run. Targeted attempt-2 reruns were requested for PR-level confirmation; their
 outcome does not alter the owned original-attempt acceptance. Together with the
 local evidence, required quality gates and review with no unresolved findings,
 the owned original-attempt evidence accepts #720. The Playwright predecessor
-remains enabled. PR #677 remains draft/open and is not merged.
+remained enabled. PR #677 remains draft/open and is not merged.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Clear-all-data journeys
 
@@ -2750,8 +3023,13 @@ typecheck/lint, formatting and documentation gates, eight effective negative
 controls, three unchanged-input native first attempts, all six exact unchanged
 Playwright predecessors sequentially at retry 0, review with no unresolved
 findings, and original-attempt hosted Android/browser/renderer artifact audit.
-Do not retire or edit the predecessors. This mapping does not authorize merging
+The predecessors were not retired or edited. This mapping does not authorize merging
 PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Password registration journey
 
@@ -2872,8 +3150,13 @@ Acceptance requires the focused and full contract gates, Android and browser
 typecheck/lint, formatting and documentation gates, eight effective negative
 controls, three unchanged-input native first attempts, the exact unchanged
 Playwright predecessor at retry 0, review with no unresolved findings, and
-original-attempt hosted Android/browser/renderer artifact audit. Do not retire
-or edit the predecessor. This mapping does not authorize merging PR #677.
+original-attempt hosted Android/browser/renderer artifact audit. The predecessor was
+not retired or edited. This mapping does not authorize merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## OIDC-native login journeys
 
@@ -2998,9 +3281,14 @@ retry zero as part of 317 passed and one intentionally skipped canonical tests.
 Renderer, browser, shard 4, unit, lint, documentation, iOS and Electron jobs
 all passed. The overall workflow conclusion was failure only because Android
 shards 1–3 independently failed in pre-existing suites before or outside this
-batch; none changed the successful OIDC artifact or its accepted inputs. Do not
-retire or edit the Playwright predecessors. This mapping does not authorize
+batch; none changed the successful OIDC artifact or its accepted inputs. The Playwright predecessors
+were not retired or edited. This mapping does not authorize
 merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Security settings journeys
 
@@ -3128,6 +3416,11 @@ Storybook timeout likewise remains unrelated and is not counted as acceptance.
 The pinned Security settings predecessor and helpers remain unchanged. This
 mapping does not authorize merging PR #677.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Recovery-reset journeys
 
 `android.recovery-reset` maps issue #726's four password-account recovery-reset
@@ -3182,7 +3475,7 @@ suppress its original-attempt evidence. Started-only diagnostics use the
 `android-recovery-reset` surface under
 `dist/.playwright/trinity-e2e-android/<run-id>/android.recovery-reset/`.
 Every stage records attempt 1, zero retries, exact source ownership and bounded
-two-package teardown. Do not retire or edit the four Playwright predecessors
+two-package teardown. The four Playwright predecessors were not retired or edited
 until all required local and original-attempt hosted evidence is accepted. This
 mapping does not authorize merging PR #677.
 
@@ -3281,8 +3574,13 @@ zero failures and zero retries. Its artifact
 records all four exact recovery predecessors at retry 0 in 10.680, 9.731,
 10.005 and 9.835 seconds. The following SSO-recovery predecessor also passed
 at retry 0 in 8.213 seconds, preserving the next batch's baseline. The four
-recovery predecessors remain unchanged and enabled. This acceptance does not
+recovery predecessors remained unchanged and enabled. This acceptance does not
 authorize merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Legacy SSO journeys
 
@@ -3417,9 +3715,14 @@ homeserver input through a verified native Tab transition, and gives the exact
 Dex-control readiness wait 180 seconds within the four-minute provider bound.
 
 Final acceptance now requires a fresh original-attempt hosted
-Android/browser/renderer artifact audit from the exact consolidated tree. Do
-not retire or edit the predecessors. This mapping does not authorize merging PR
+Android/browser/renderer artifact audit from the exact consolidated tree. The
+predecessors were not retired or edited. This mapping does not authorize merging PR
 #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## SSO recovery-reset refusal journey
 
@@ -3481,7 +3784,7 @@ Chromium test in 5.7 seconds with one worker and retry 0, followed by clean
 Synapse teardown.
 
 Repository validation and final review passed at this source revision. The
-predecessor remains enabled. This mapping does not authorize merging PR #677.
+predecessor remained enabled. This mapping does not authorize merging PR #677.
 
 Hosted run `35358912583` at consolidated head `d26dc780` and merge revision
 `88fcadf8` supplied accepted original-attempt renderer and browser evidence.
@@ -3512,6 +3815,11 @@ contains 49 independently rehashed files at manifest digest
 `2a016dac95e7c6a0afa14445ba1e3c6fc309dd5a5f07405d86338fe2c900d2ef`.
 Together with the local acceptance above, this satisfies issue #727 without
 retiring its Playwright predecessor.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Message-authenticity shield journeys
 
@@ -3577,7 +3885,7 @@ secret/token scan, and completed application-data, device and Synapse teardown.
 
 Exact predecessor invocation `mu7fownh-8c6417ba-a872-49c7-84ea-58448449f0d0`
 passed both Chromium definitions with one worker and retry 0 in 12.1 seconds,
-followed by clean Synapse teardown. The predecessors remain enabled.
+followed by clean Synapse teardown. The predecessors remained enabled.
 
 Hosted acceptance on 2026-09-18 used exact consolidated head
 `ac760a319a0e0cc8e1688edd10393b1f5c31b34c` in merge
@@ -3615,6 +3923,11 @@ those broader-suite reliability results remain owned by issue #665. Together
 with the frozen local evidence, the owned Android, browser and renderer jobs
 satisfy issue #728 without retiring either Playwright predecessor. This mapping
 does not authorize merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Cross-user verification journeys
 
@@ -3743,8 +4056,13 @@ records and no failures. The delayed record proves one exact matching request
 held for 15,000 ms. All 24 retained `SECRET_TEXT` values are redacted, no
 bearer-like credential survives, only the four pass captures remain, and
 Synapse, app, WebView, controller, device and worktree cleanup completed. This
-evidence satisfies the migration while both Playwright predecessors remain
+evidence satisfies the migration while both Playwright predecessors remained
 enabled. It does not authorize merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Composer-draft persistence journey
 
@@ -3837,8 +4155,13 @@ original-attempt browser artifact
 [`10581316166`](https://github.com/quwisky/trinity-matrix-client/actions/runs/35431729209/artifacts/10581316166)
 records 317 passes, one intentional skip and zero retries, with the exact
 composer predecessor passing at retry 0 in 8.011 seconds. The predecessor
-remains enabled and unchanged. This evidence accepts issue #730 but does not
+remained enabled and unchanged. This evidence accepts issue #730 but does not
 authorize merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Mobile composer-formatting journeys
 
@@ -3855,7 +4178,7 @@ The migration expands 36 direct assertion sites plus the three
 composer-readiness helper calls into 39 unique, stage-local records: 12 for
 selected Italic, 11 for Cancel/Preview continuity and 16 for compact larger
 text. All desktop definitions and the three mobile Playwright predecessors
-remain enabled.
+remained enabled.
 
 The dedicated native-selection helper observes the exact textarea value and
 uses renderer font metrics only to measure the requested word's center. A
@@ -3933,6 +4256,11 @@ The Android shard failed only later in the unrelated
 `android.space-settings-core` exact-contents lifecycle; the composer-formatting
 target itself completed successfully. None of this authorizes merging PR #677.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Composer mention journeys
 
 `android.composer-mentions` maps both definitions in
@@ -3945,7 +4273,7 @@ and `ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`.
 The migration expands the predecessor's ten direct assertions plus two
 composer-readiness helper calls into 12 unique, stage-local records: eight for
 touch selection and four for keyboard acceptance. Both Playwright predecessors
-remain enabled; they now send through the shared `sendComposerDraft` helper,
+remained enabled; they sent through the shared `sendComposerDraft` helper,
 which taps Send on a mobile target.
 
 Each stage creates a fresh reader/member pair and private Room through Matrix
@@ -3997,6 +4325,11 @@ clean teardown. Exact retained predecessor invocation
 sequentially in 4.3 and 3.4 seconds with one worker and retry 0, followed by
 clean Synapse teardown. Hosted acceptance is still pending; none of this
 authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Composer reaction-picker journeys
 
@@ -4084,6 +4417,11 @@ tracked under #665 and do not weaken the successful owning browser, renderer or
 Android shard-2 artifacts. Nothing in this migration authorizes merging PR
 #677.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Composer typing-indicator journeys
 
 `android.composer-typing` maps all six definitions in
@@ -4150,7 +4488,7 @@ predecessor invocation `mu9z2go2-2ca9e82b-51c6-4e5d-8ab5-1d8d8d5e8330`
 passed all six Chromium definitions sequentially in 21.176 seconds with one
 worker and retry 0, followed by clean Synapse teardown. Source re-hashing
 reproduced all three pinned hashes. Hosted acceptance is pending. The complete
-Playwright predecessor remains enabled, and nothing here authorizes merging PR
+Playwright predecessor remained enabled, and nothing here authorizes merging PR
 #677.
 
 The first hosted attempt on source head `aacd0943` retained useful failure
@@ -4236,8 +4574,13 @@ passed all six exact predecessors at retry 0, while renderer artifact
 preserves the exact hosted production bundle. The shard failed only after the
 owned suite, in the independent Space Settings suite; the separate shard-1 ADB
 stall and later-suite failure remain tracked under #665. The complete
-Playwright predecessor remains enabled. This evidence accepts issue #734 but
+Playwright predecessor remained enabled. This evidence accepts issue #734 but
 does not complete parent #660 or authorize merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## GIF picker journeys
 
@@ -4350,7 +4693,12 @@ for the hosted merge. Shard 2 later failed in the unchanged Space Settings
 suite because `admin.photo-feedback` timed out; shard 1 independently reached
 its configured 120-minute job timeout. Those later failures are outside #735
 and remain reliability debt under #665. The complete Playwright predecessor
-remains enabled, and nothing here authorizes merging PR #677.
+remained enabled, and nothing here authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Hide system messages journey
 
@@ -4397,7 +4745,7 @@ wrapper. Shard 2 runs it immediately after GIF picker and uploads
 written. Every outcome closes the WebView, clears installed application data,
 closes the device and participates in bounded Matrix cleanup. Post-redaction
 scans reject credentials, bearer/Matrix tokens, query secrets, raw Preferences
-XML and raster diagnostics. The complete Playwright predecessor remains
+XML and raster diagnostics. The complete Playwright predecessor remained
 enabled, and nothing here authorizes merging PR #677.
 
 The unchanged migration implementation based on source revision `37f89b29`
@@ -4469,8 +4817,13 @@ contains 49 verified production files / 15,302,546 bytes and manifest digest
 for the hosted merge. The broad browser job later timed out in the unrelated
 Room Settings For-you mobile predecessor; the exact #736 predecessor had
 already passed and its artifact uploaded. That failure remains reliability
-debt under #665. The complete Playwright predecessor remains enabled, and
+debt under #665. The complete Playwright predecessor remained enabled, and
 nothing here authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Jump to date journey
 
@@ -4488,7 +4841,7 @@ The definition at lines 121–176 remains explicitly browser-only because it
 removes the production date input's maximum, injects a future value and
 dispatches an input event to reach a service response that native use cannot
 request. The installed journey never reproduces those DOM mutations. Both
-Playwright definitions remain enabled.
+Playwright definitions remained enabled.
 
 The REST fixture creates one disposable Account and private Room, awaits an
 exact marker event, then sends exactly 120 later filler events. The final
@@ -4559,7 +4912,7 @@ three pins. Production-renderer invocation
 checks with nine explicit skips before the final APK build. The focused guard,
 full 1,050-test scripts target, Android typecheck and lint, format check,
 architecture contracts and APK build all passed. Hosted acceptance remains
-pending; the complete Playwright predecessor remains enabled, and nothing here
+pending; the complete Playwright predecessor remained enabled, and nothing here
 authorizes merging PR #677.
 
 Hosted rerun attempt 2 exercised merge commit
@@ -4584,7 +4937,12 @@ files. Re-hashing the three sources from the hosted merge reproduced every
 pinned digest. Shard 2 failed later in the unrelated Space Settings core suite
 at `admin.photo-feedback`; the exact jump-to-date target and its dedicated
 artifact had already completed successfully. The complete Playwright
-predecessor remains enabled, and nothing here authorizes merging PR #677.
+predecessor remained enabled, and nothing here authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Jump to latest journey
 
@@ -4631,7 +4989,7 @@ the device and participates in bounded Matrix cleanup. Post-redaction scans
 reject credentials, long message bodies, bearer/Matrix tokens, query secrets,
 raw native-storage method data and raster diagnostics. Local and hosted
 acceptance evidence is still required before issue #738 is complete; the
-complete Playwright predecessor remains enabled, and nothing here authorizes
+complete Playwright predecessor remained enabled, and nothing here authorizes
 merging PR #677.
 
 Local acceptance used implementation base
@@ -4696,8 +5054,13 @@ The 82 retained files contain no raster diagnostics, and the independent
 credential scan found no bearer or Matrix token material. Shard 2 later failed
 in the unrelated retained `android.space-settings-core` suite while waiting for
 `admin.photo-feedback`; that later failure does not alter this completed suite
-or its immutable artifact. The complete Playwright predecessor remains enabled,
+or its immutable artifact. The complete Playwright predecessor remained enabled,
 and nothing here authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Link preview journey
 
@@ -4748,7 +5111,7 @@ cleanup. Post-redaction scans reject credentials, message values,
 authorization/cookie data, bearer/Matrix tokens, raw native-storage method
 data and raster diagnostics. Local and hosted acceptance evidence is still
 required before issue #739 is complete; the complete Playwright predecessor
-remains enabled, and nothing here authorizes merging PR #677.
+remained enabled, and nothing here authorizes merging PR #677.
 
 Local acceptance used implementation base
 `35bb021c8de0eada447179d4382108449109b38e` and the 49-file /
@@ -4816,8 +5179,13 @@ match. The 64 retained files contain no raster diagnostics, and the independent
 credential scan found no bearer or Matrix token material. Shard 2 later failed
 in the unrelated retained `android.space-settings-core` suite while waiting for
 `admin.photo-feedback`; that later failure does not alter this completed suite
-or its immutable artifact. The complete Playwright predecessor remains enabled,
+or its immutable artifact. The complete Playwright predecessor remained enabled,
 and nothing here authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Location share journey
 
@@ -4941,8 +5309,13 @@ contain no raster diagnostics, and the independent credential scan found no
 bearer or Matrix token material. Shard 2 later failed in the unrelated retained
 `android.space-settings-core` suite while waiting for `admin.photo-feedback`;
 that later failure does not alter this completed suite or its immutable
-artifact. The complete Playwright predecessor remains enabled, and nothing here
+artifact. The complete Playwright predecessor remained enabled, and nothing here
 authorizes merging PR #677.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Media retention journey
 
@@ -5056,7 +5429,7 @@ That hosted artifact predates the installed-APK provenance receipt and does
 not retain the exact APK fingerprint, so it is not complete hosted acceptance.
 At that point the new receipt still required hosted validation. Shard 2 failed
 later in the separate `android.legacy-sso` provider-sign-in stage; that entire
-CI run was not green. The complete Playwright predecessor remains enabled,
+CI run was not green. The complete Playwright predecessor remained enabled,
 and nothing here authorizes merging PR #677.
 
 The provenance follow-up passed three unchanged-input local Android first
@@ -5152,8 +5525,13 @@ This completes the scoped #741 hosted acceptance, not full CI reliability.
 Shard 1 reached its job time limit; shard 2 later failed the separate
 `space-settings-core` `admin.photo-feedback` observation. The earlier
 `legacy-sso` and `sso-recovery-reset` suites passed in this follow-up run.
-Unrelated failures remain under #665. All predecessors stay enabled and
+Unrelated failures remain under #665. All predecessors stayed enabled and
 PR #677 stays draft/open and unmerged.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
 
 ## Message action sheet journeys
 
@@ -5255,6 +5633,11 @@ as acceptance. The implementation plan records the full local verification and
 failure history. Original-attempt hosted acceptance remains pending; PR #677
 stays draft/open and this local evidence does not authorize closing #742.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Edit-history journeys
 
 Suite `android.edit-history` migrates the two Android-applicable definitions in
@@ -5323,6 +5706,11 @@ predecessors and the production renderer passed. The later unrelated
 legacy-SSO and Astro-version failures remain with #665. PR #677 remains
 draft/open and unmerged.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-forward journey
 
 Suite `android.message-forward` migrates the Android branch of the one
@@ -5331,7 +5719,7 @@ Suite `android.message-forward` migrates the Android branch of the one
 `e2e/browser/journeys/conversations/message-forward.spec.mts`. The source is
 pinned at SHA-256
 `4776cbb08bea3b92eb5d0e2203b50b77261e4e3191acad94595b5db2f190fcd3`;
-the helper pins are recorded in #744. The Playwright predecessor remains
+the helper pins are recorded in #744. The Playwright predecessor remained
 enabled; it now sends its draft through the shared `sendComposerDraft` helper,
 which taps Send on a mobile target. Its three direct and four helper-expanded
 assertions map as follows:
@@ -5381,6 +5769,11 @@ match. The unchanged browser predecessor passed 1/1 at retry 0 (`muf06aic`).
 Original-attempt hosted Android/browser/renderer audit remains pending under
 #744; PR #677 remains draft/open and unmerged.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-grouping journey
 
 Suite `android.message-grouping` owns the Android stage of the unchanged
@@ -5390,7 +5783,7 @@ helper lines 25–52, test lines 57–234, and the explicit Android return at
 line 234. Its SHA-256 is
 `9cdd8dcd5722dabe4783b9f045bcff56ab4c50adfce51f2ce9ba8e33884dd05f`.
 The desktop-only tail at lines 237–643 is excluded; the Playwright definition
-remains enabled and untouched. The exact 22 source-ordered parity records are:
+remained enabled and untouched. The exact 22 source-ordered parity records are:
 
 | Canonical assertion | Android parity identity |
 | --- | --- |
@@ -5507,6 +5900,11 @@ untracked-plan command-policy failure; full formatting still flags ignored
 execution notes. Corrected original-attempt hosted acceptance remains
 pending; #745 stays open and PR #677 stays draft/unmerged.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-linkify journey
 
 Suite `android.message-linkify` owns the
@@ -5514,7 +5912,7 @@ Suite `android.message-linkify` owns the
 `e2e/browser/journeys/conversations/message-linkify.spec.mts`: test lines
 28–73 and the Room-opening helper at lines 15–23. Its SHA-256 is
 `dd48aadd26ab1d960077d71ad68cd4ee8bf9b836706b4beb4620a34e7f7551a3`, and the
-Playwright definition remains enabled. Its only change since the migration sends
+Playwright definition remained enabled. Its only change since the migration sends
 the draft through the shared `sendComposerDraft` helper, which taps Send on a
 mobile target. The two source-ordered parity records are:
 
@@ -5564,6 +5962,11 @@ installed APK digests, the publication-safe marker and no protected Room or even
 identifier. The unchanged predecessor passed at retry 0 locally and in the same
 hosted browser run, and the production renderer had nine applicable passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Matrix-link journeys
 
 Suite `android.message-links` migrates the six Android-applicable definitions
@@ -5571,7 +5974,7 @@ of the unchanged Matrix Room/user-link predecessor
 `e2e/browser/journeys/conversations/message-links.spec.mts` (605 lines,
 SHA-256 `513b7f01b026991d316479edf06caef9754e70cc0df157a37436a67982aeb400`)
 into one serial six-stage installed-Android Node/Maestro suite. The Playwright
-predecessor remains enabled and untouched. The helpers occupy lines 22–147 and
+predecessor remained enabled and untouched. The helpers occupy lines 22–147 and
 the six stages map to definitions 156–230, 232–321, 323–362, 364–424, 433–504
 (the portrait sheet, whose `test.use` at 427–431 is 390×844 mobile with touch)
 and the Android branch 507–587 of the mention definition. The issue's span
@@ -5751,6 +6154,11 @@ predecessor passed 5/5 at retry 0 locally, the browser predecessor passed its fi
 applicable definitions at retry 0 in the same hosted run, and the production
 renderer had nine applicable passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-Markdown journeys
 
 Suite `android.message-markdown` migrates the three Android-applicable
@@ -5758,7 +6166,7 @@ definitions of the unchanged Markdown predecessor
 `e2e/browser/journeys/conversations/message-markdown.spec.mts` (279 lines,
 SHA-256 `128f6ae2660c02a9f6e0d64726999ead4960454b66cb369306f9f27b3bb0baa8`)
 into one serial three-stage installed-Android Node/Maestro suite. The
-Playwright predecessor remains enabled and untouched. The stages map to
+Playwright predecessor remained enabled and untouched. The stages map to
 definitions 52–125 (`formatting`), 127–168 (`task-list`) and the Android
 branch 170–224 of the language-caption definition (`code-caption`), which
 ends at the explicit `return;` on line 224 after `if (isAndroidE2E) {` on line 214. The desktop hover-toolbar tail at
@@ -5913,6 +6321,11 @@ unchanged predecessor passed its three definitions sequentially at retry 0 local
 and in the same hosted browser run, and the production renderer had nine
 applicable passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-poll journey
 
 Suite `android.message-poll` migrates the single definition of the unchanged
@@ -5920,7 +6333,7 @@ poll predecessor `e2e/browser/journeys/conversations/message-poll.spec.mts`
 (93 lines, SHA-256
 `e23c045d237ba9fde15eb5a39d24479dfc2019e07579142c9193a8dc05ea1674`) into one
 serial one-stage installed-Android Node/Maestro suite. The Playwright
-predecessor remains enabled and untouched. The stage `create-vote-end` maps to
+predecessor remained enabled and untouched. The stage `create-vote-end` maps to
 definition 27–92 (`creates a poll, votes, and ends it`) and expands the
 predecessor's module-local Room-opening helper at 14–22. The guard also pins
 `e2e/support/app.mts`
@@ -6031,6 +6444,11 @@ identifier in any file, including `process.log`. No native focused fill needed i
 internal retry. The unchanged predecessor passed at retry 0 locally and in the same
 hosted browser run, and the production renderer had nine applicable passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-quote journeys
 
 Suite `android.message-quote` migrates both definitions of the unchanged quote
@@ -6038,7 +6456,7 @@ predecessor `e2e/browser/journeys/conversations/message-quote.spec.mts` (218
 lines, SHA-256
 `50b0e8a42aa1d61ee59b1c5dce97664365977aef7bc8b36aa3502e23e731064f`) into one
 serial two-stage installed-Android Node/Maestro suite. The Playwright
-predecessor remains enabled and untouched. The stages map to definition
+predecessor remained enabled and untouched. The stages map to definition
 42–115 (`quote-block`) and to the Android branches 183–187 and 201–205 of
 definition 117–217 (`quote-capability`); the desktop hover-toolbar and
 overflow-menu branches 88–90, 188–197 and 206–216, and their sites 193, 212
@@ -6194,6 +6612,11 @@ every suite. The unchanged predecessor passed both definitions at retry 0 locall
 and in the same hosted browser run, and the production renderer had nine
 applicable passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-receipts journey
 
 Suite `android.message-receipts` migrates the single "seen by" definition of
@@ -6203,7 +6626,7 @@ SHA-256
 `5d4d757364c6b5b1a5a0e148c8c17adf173296bb2f435730d2803ed7854baa42`, the
 issue's pin, which this branch carries unchanged) into one serial one-stage
 installed-Android Node/Maestro suite. The Playwright predecessor
-remains enabled and untouched. The stage maps to definition 53–165 (`seen-by`) and
+remained enabled and untouched. The stage maps to definition 53–165 (`seen-by`) and
 expands the predecessor's module-local Room-opening helper at 40–48; its
 module-local API-token helper at 19–38 reaches no `expect` site. The guard
 also pins `e2e/support/app.mts`
@@ -6315,6 +6738,11 @@ event ids in Maestro's per-flow logcat, the class #838 removes. The unchanged pr
 the same hosted browser run, and the production renderer had nine applicable
 passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-source journey
 
 Suite `android.message-source` migrates the single View-source definition of
@@ -6323,7 +6751,7 @@ the unchanged predecessor
 SHA-256
 `1a18b0772645d8d1a9cfeb38c8f620f53f37c818543d32b044a7c48be0151ca6`) into one
 serial one-stage installed-Android Node/Maestro suite. The Playwright
-predecessor remains enabled and untouched. The issue pins
+predecessor remained enabled and untouched. The issue pins
 `3d7637643bb5f9b4c8124077f9eb880cb5b8e95e22a899f0ab82269f55115512`, the file
 on `develop`; this branch carries `fe2c7c3e`, which imported
 `sendComposerDraft` and replaced the one Enter press with it. The guard
@@ -6460,6 +6888,11 @@ rethrow independently of diff rendering. The unchanged predecessor passed at ret
 the same hosted browser run, and the production renderer had nine applicable
 passes.
 
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
+
 ## Message-spoiler journey
 
 Suite `android.message-spoiler` migrates the single spoiler-reveal definition
@@ -6469,7 +6902,7 @@ SHA-256
 `d89c5751a43ac54b44329e2d65b9e7b0db2974118f6198d2fff1d6f0d050f673`, the
 issue's pin, which this branch carries unchanged) into one serial one-stage
 installed-Android Node/Maestro suite. The Playwright predecessor
-remains enabled and untouched. The stage maps to definition 84–110
+remained enabled and untouched. The stage maps to definition 84–110
 (`conceal-reveal`) and expands the predecessor's module-local Room-opening
 helper at 71–79; its module-local fixture helper `seedRoomWithSpoiler` at
 20–69 reaches no `expect` site. The guard also pins `e2e/support/app.mts`
@@ -6603,3 +7036,8 @@ non-TTY assertion diff interleaves characters; `fe22394e` proves the rethrow
 independently of diff rendering. The unchanged predecessor passed at retry 0 locally and in
 the same hosted browser run, and the production renderer had nine applicable
 passes.
+
+Predecessor status: retired on 2026-09-26 under
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.

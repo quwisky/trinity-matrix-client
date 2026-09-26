@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -28,12 +29,24 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function pinnedLines(contents, expectedHash) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
   return contents.toString('utf8').split('\n');
+}
+
+const sourceLines = (path, expectedHash) =>
+  pinnedLines(readFileSync(resolve(root, path)), expectedHash);
+
+const retiredLines = (path, expectedHash) =>
+  pinnedLines(readRetiredPredecessor(path), expectedHash);
+
+function ownLedgerSection(docs) {
+  const start = docs.indexOf('\n## Link preview journey\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
 }
 
 function assertReadOnlyRendererExpressions(source, path) {
@@ -166,8 +179,8 @@ function assertRuntimeContract({ journey, observer, fixtures }) {
 }
 
 describe('Android link-preview migration', () => {
-  it('pins the exact predecessor, OG fixture and three direct assertions', () => {
-    const predecessor = sourceLines(
+  it('pins the retired predecessor, OG fixture and three direct assertions', () => {
+    const predecessor = retiredLines(
       predecessorSource,
       '08282733e2a496677fda5b9c03738b571714f838d49a93a36fbaf16eb38e7da4',
     );
@@ -339,7 +352,7 @@ describe('Android link-preview migration', () => {
     }
   });
 
-  it('wires the uncached serial target, registry, ordered CI diagnostics and ledger', () => {
+  it('wires the uncached serial target, registry, CI diagnostics and ledger', () => {
     const project = read('e2e/android/project.json');
     const packageJson = read('package.json');
     const runners = read('e2e/registry/suites/runners.mts');
@@ -356,6 +369,9 @@ describe('Android link-preview migration', () => {
     ]) {
       expect(source).toContain('link-preview');
     }
+    expect(ownLedgerSection(docs)).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
     expect(project).toContain('--suite=android.link-preview');
     expect(project).toContain('--timeout-ms=1200000');
     expect(project).toContain('--resource=android-avd --resource=synapse');
@@ -369,7 +385,14 @@ describe('Android link-preview migration', () => {
     );
   });
 
-  it('does not weaken the retained predecessor while implementation files are absent', () => {
+  it('retires the predecessor file and its journey catalog entry', () => {
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      'journeys/conversations/link-preview.spec.mts',
+    );
+  });
+
+  it('keeps renderer-level input shortcuts out of the Android journey', () => {
     expect(readIfPresent(journeyPath)).not.toMatch(
       /mouse\.|dispatchEvent\(|\.click\(\)|\.focus\(\)|\.value\s*=/u,
     );

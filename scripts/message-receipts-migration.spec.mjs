@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -15,6 +16,9 @@ const predecessor =
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
+/** The retired predecessor's exact bytes at the retirement commit. */
+const predecessorBytes = () => readRetiredPredecessor(predecessor);
+const readPredecessor = () => predecessorBytes().toString('utf8');
 const loadContract = () =>
   import('../e2e/android/message-receipts-contract.mts');
 const loadObserver = () =>
@@ -246,7 +250,7 @@ function importedCalls(source, fileName = predecessor) {
 function helperExpectLines(
   module,
   name,
-  source = read(module),
+  source = module === predecessor ? readPredecessor() : read(module),
   seen = new Set(),
 ) {
   const key = `${module}#${name}`;
@@ -390,11 +394,11 @@ const mutateLine = (source, line, replacement) => {
 };
 
 describe('Android message-receipts predecessor pins', () => {
-  it('pins the unchanged predecessor and the two shared helper sources by SHA-256', () => {
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and the two shared helper sources by SHA-256', () => {
+    expect(sha256(predecessorBytes())).toBe(PREDECESSOR_SHA256);
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const flipped = Buffer.from(readFileSync(resolve(root, predecessor)));
+    const flipped = Buffer.from(predecessorBytes());
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
@@ -420,7 +424,8 @@ describe('Android message-receipts predecessor pins', () => {
     });
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('deletes the retired predecessor from the working tree and the browser inventory', async () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -428,22 +433,20 @@ describe('Android message-receipts predecessor pins', () => {
         (journey) =>
           journey.path === 'journeys/conversations/message-receipts.spec.mts',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     const android = read('e2e/android/playwright.config.mts');
     expect(android).toContain(
       "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
     );
-    for (const config of [android, read('e2e/browser/playwright.config.mts')]) {
+    for (const config of [android, read('e2e/browser/playwright.config.mts')])
       expect(config).not.toContain('testIgnore');
-      expect(config).not.toContain('message-receipts');
-    }
-    // Both projects run it at the wide desktop shell the suite uses.
+    // The retired predecessor ran at the wide desktop shell the suite uses.
     expect(android).toContain('viewport: { width: 1280, height: 720 },');
     expect(android).toContain('hasTouch: false,');
     expect(read('e2e/browser/playwright.config.mts')).toContain(
       "projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],",
     );
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
     expect(source.match(/^ {2}test\(/gmu)).toHaveLength(1);
@@ -451,11 +454,11 @@ describe('Android message-receipts predecessor pins', () => {
   });
 
   it('maps the exact direct and helper sites with the house AST rule', () => {
-    assertPredecessorShape(read(predecessor));
+    assertPredecessorShape(readPredecessor());
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const mutations = [
       // A role, name, body, transaction, receipt type or locator drifts.
       mutateLine(source, 57, (line) => line.replace('}s`', '}r`')),
@@ -526,7 +529,7 @@ describe('Android message-receipts predecessor pins', () => {
 
 describe('Android message-receipts helper expansion by binding', () => {
   it('resolves module-local and imported helper calls through the TypeChecker', () => {
-    const { calls } = importedCalls(read(predecessor));
+    const { calls } = importedCalls(readPredecessor());
     expect(
       calls
         .filter(
@@ -550,7 +553,7 @@ describe('Android message-receipts helper expansion by binding', () => {
   });
 
   it('follows helper calls and proves registration, API tokens and login add no sites', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(helperExpectLines(predecessor, 'openRoom', source)).toEqual([
       { module: predecessor, line: 45 },
     ]);
@@ -573,7 +576,7 @@ describe('Android message-receipts helper expansion by binding', () => {
   });
 
   it('excludes a shadowing local helper, against a naive count', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const shadowed = source.replace(
       '    await openRoom(page, roomName);',
       '    const openRoom = async (_page: Page, _name: string) => {};\n    await openRoom(page, roomName);',
@@ -587,7 +590,7 @@ describe('Android message-receipts helper expansion by binding', () => {
   });
 
   it('expands exactly 1 Room readiness site, for 3 direct + 1 inherited = 4', () => {
-    const expanded = expandDefinition(read(predecessor), STAGE.span);
+    const expanded = expandDefinition(readPredecessor(), STAGE.span);
     expect(expanded.map(siteTuple)).toEqual([
       ['inherited', 45, 'openRoom', 118],
       ['direct', 122],
@@ -598,7 +601,7 @@ describe('Android message-receipts helper expansion by binding', () => {
 
   it('matches the contract sites, identities and helper roles exactly', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     const expanded = expandDefinition(source, STAGE.span);
     const [stage] = contract.MESSAGE_RECEIPTS_STAGES;
     expect(stage.sites.map(siteTuple)).toEqual(expanded.map(siteTuple));
@@ -699,7 +702,7 @@ describe('Android message-receipts contract ledger', () => {
 
   it('types exactly the predecessor roles, names, body and transaction', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(predecessorTemplates(source, STAGE.span)).toMatchObject({
       runId: "`${testResourceId('run')}s`",
       seerName: '`Cara${runId}`',
@@ -2814,7 +2817,7 @@ describe('Android message-receipts hosted wiring and parity ledger', () => {
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(section).toContain('Suite `android.message-receipts`');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).toContain('roomReceipts');
     expect(section).toContain('m.read');
     expect(section).toContain('1280×720');

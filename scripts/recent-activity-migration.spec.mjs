@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/recent-activity.spec.mts',
-);
+const sourceFile = 'e2e/browser/journeys/room-library/recent-activity.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/recent-activity-journeys.mts',
@@ -39,9 +37,17 @@ const assertionIds = [
   'unread.badge-positive',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf('\n## Recent Activity batch\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android Recent Activity migration', () => {
-  it('pins all four unchanged predecessor definitions', () => {
-    const source = readFileSync(sourcePath);
+  it('pins all four retired predecessor definitions at their retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
     const text = source.toString('utf8');
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
@@ -55,6 +61,19 @@ describe('Android Recent Activity migration', () => {
     ]) {
       expect(text).toContain(`test('${title}'`);
     }
+  });
+
+  it('retires the predecessor file and its journey catalog entry', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+
+    expect(existsSync(resolve(root, sourceFile))).toBe(false);
+    expect(catalog).not.toContain(sourceFile.replace('e2e/browser/', ''));
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 
   it('maps exactly four stages and all 24 direct assertions', () => {

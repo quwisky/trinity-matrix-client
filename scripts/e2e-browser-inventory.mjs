@@ -20,17 +20,19 @@ const EXTRACTED_ASSERTION_SUPPORT = [
  * Counts originate from `origin/refactor/refine-architecture` at 793dbdb5 before the
  * structural move. File count intentionally grows when catch-all specs split; fingerprints
  * pin the reviewed current test and assertion sources after whitespace normalization and move
- * only with an intentional browser-contract change.
+ * only with an intentional browser-contract change. The 2026-09-26 retirement of accepted
+ * Android predecessors (#839, scripts/retired-playwright-predecessors.mjs) removed 46 files,
+ * 141 definitions and 1271 assertion calls.
  */
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
-  currentSpecFiles: 123,
-  testDefinitions: 312,
-  assertionCalls: 2759,
+  currentSpecFiles: 77,
+  testDefinitions: 171,
+  assertionCalls: 1488,
   testFingerprint:
-    'e056b85b48877b91ea0dfd0aa4e21bb23c51e7e1989b6ff1732d052cfd6510ca',
+    '0fec36ade88040e81f3d0daf2054aa49496525c256406274843df5c9c3732f3a',
   assertionFingerprint:
-    '29fca022b8b5b74926bcc930b145537d04e1889318087a37a062451f5b232839',
+    '4343def5fafa09a183cea65ed92ebbf5a7c9a640572b0a54048c67043a588d34',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();

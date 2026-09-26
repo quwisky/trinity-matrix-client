@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/leave-room.spec.mts',
-);
+const sourceFile = 'e2e/browser/journeys/room-library/leave-room.spec.mts';
 const replacementPath = resolve(root, 'e2e/android/leave-room-journeys.mts');
 
 const assertionIds = [
@@ -18,9 +16,17 @@ const assertionIds = [
   'list.keep-visible',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf('\n## Leave-room functional batch\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android leave-room migration', () => {
-  it('pins the complete functional predecessor and retains browser-only contrast', () => {
-    const source = readFileSync(sourcePath);
+  it('pins the functional predecessor at its retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
     const text = source.toString('utf8');
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
@@ -31,6 +37,19 @@ describe('Android leave-room migration', () => {
     );
     expect(text).toContain("test.describe('Destructive menu item contrast'");
     expect(text).toContain('page.emulateMedia({ colorScheme: scheme })');
+  });
+
+  it('retires the Android-owned definition and keeps the browser-only rest', () => {
+    const working = readFileSync(resolve(root, sourceFile), 'utf8');
+
+    expect(working).not.toContain(
+      "test('leaving a room removes it from the list while others stay'",
+    );
+    expect(working).toContain("test.describe('Destructive menu item contrast'");
+    expect(working).toContain('page.emulateMedia({ colorScheme: scheme })');
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 
   it('maps exactly one stage and all six direct assertions', () => {

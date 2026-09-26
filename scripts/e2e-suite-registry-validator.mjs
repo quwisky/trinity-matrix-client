@@ -691,7 +691,11 @@ const validateCiEntrypoints = (errors, workspaceRoot, snapshot) => {
       errors.push(`${suite.ciTier} suite has no CI entrypoint: ${suite.id}`);
     }
   }
-  if (!workflow.includes('# 110 canonical browser specs')) {
+  if (
+    !workflow.includes(
+      `# ${snapshot.inventory.canonicalBrowserSpecCount} canonical browser specs`,
+    )
+  ) {
     errors.push('CI canonical browser spec count is stale');
   }
 };

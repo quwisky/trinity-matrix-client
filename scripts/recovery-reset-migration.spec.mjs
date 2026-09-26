@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/trust/recovery-reset.spec.mts';
@@ -109,13 +110,18 @@ const forbiddenRendererActions = [
   /client\.(?:focusFixture|navigate|reload)\s*\(/u,
 ];
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function hashedLines(contents, expectedHash) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
   return contents.toString('utf8').split('\n');
 }
+
+const sourceLines = (path, expectedHash) =>
+  hashedLines(readFileSync(resolve(root, path)), expectedHash);
+
+const predecessorLines = (expectedHash) =>
+  hashedLines(readRetiredPredecessor(predecessorSource), expectedHash);
 
 const assertionSiteCount = (lines) =>
   lines.filter(
@@ -222,8 +228,7 @@ function assertProtectedRuntimeContract(journey) {
 
 describe('Android recovery-reset migration', () => {
   it('pins the helpers, four exact predecessor spans and 22 + 12 + 15 + 5 assertion shape', () => {
-    const predecessor = sourceLines(
-      predecessorSource,
+    const predecessor = predecessorLines(
       'fad6cee0f80c92770978a672129c66a1ab22c9a7504a1068970673cbca08b848',
     );
     const app = sourceLines(
@@ -613,7 +618,7 @@ describe('Android recovery-reset migration', () => {
     );
   });
 
-  it('registers the suite and runs it before other shard 4 migration suites', () => {
+  it('registers the suite with its shard 4 command and started-only diagnostics', () => {
     const runners = read('e2e/registry/suites/runners.mts');
     const commands = read('e2e/registry/commands.mts');
     const workflow = read('.github/workflows/ci.yml');
@@ -640,16 +645,28 @@ describe('Android recovery-reset migration', () => {
     );
   });
 
-  it('documents parity and keeps every predecessor enabled', () => {
+  it('documents parity and pins the retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const heading = '## Recovery-reset journeys';
+    expect(migration).toContain(heading);
+    const sectionStart = migration.indexOf(heading);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
+    expect(section).toContain('`android.recovery-reset`');
+    expect(section).toContain('22 + 12 + 15 + 5');
+    expect(section).toContain('primary and secondary installed packages');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## Recovery-reset journeys');
-    expect(migration).toContain('`android.recovery-reset`');
-    expect(migration).toContain('22 + 12 + 15 + 5');
-    expect(migration).toContain('primary and secondary installed packages');
-    expect(migration).toMatch(/Do not\s+retire/u);
-    expect(catalog).toContain("path: 'journeys/trust/recovery-reset.spec.mts'");
-    const predecessor = read(predecessorSource);
+    expect(catalog).not.toContain(
+      "path: 'journeys/trust/recovery-reset.spec.mts'",
+    );
+    const predecessor =
+      readRetiredPredecessor(predecessorSource).toString('utf8');
     for (const title of [
       'mints a new recovery key for someone who lost theirs',
       'a cancelled password costs the account nothing',

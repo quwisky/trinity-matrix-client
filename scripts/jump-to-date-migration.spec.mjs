@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -29,8 +30,11 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function sourceLines(
+  path,
+  expectedHash,
+  contents = readFileSync(resolve(root, path)),
+) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -149,10 +153,11 @@ function assertRuntimeContract({ journey, observer, fixtures }) {
 }
 
 describe('Android jump-to-date migration', () => {
-  it('pins the exact predecessor and four direct plus one helper identity shape', () => {
+  it('pins the retired predecessor at its retirement commit and four direct plus one helper identity shape', () => {
     const predecessor = sourceLines(
       predecessorSource,
       '99a1ae1ec8873d2a45795003604d9c83c162d5d33c5415899e41581e97d4fd04',
+      readRetiredPredecessor(predecessorSource),
     );
     const app = sourceLines(
       appSource,
@@ -182,6 +187,22 @@ describe('Android jump-to-date migration', () => {
     expect(browserOnly).toContain("field.dispatchEvent(new Event('input'");
     expect(app.join('\n')).toContain('export async function login(');
     expect(account.join('\n')).toContain('export async function registerUser(');
+  });
+
+  it('retires the applicable definition and keeps the browser-only one in the working tree', () => {
+    const current = read(predecessorSource);
+    expect(current).not.toContain(
+      "test('pages history back to reach a message that was not loaded'",
+    );
+    expect(current).not.toContain('function isoToday');
+    expect(current).toContain(
+      "test('reports a date with nothing on it instead of jumping'",
+    );
+    expect(current).toContain("field.removeAttribute('max')");
+    expect(current).toContain("field.dispatchEvent(new Event('input'");
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      'journeys/conversations/jump-to-date.spec.mts',
+    );
   });
 
   it('exports exactly five identities and the explicit browser-only boundary', async () => {
@@ -314,6 +335,12 @@ describe('Android jump-to-date migration', () => {
     ]) {
       expect(source).toContain('jump-to-date');
     }
+    const sectionStart = docs.indexOf('\n## Jump to date journey\n');
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = docs.indexOf('\n## ', sectionStart + 1);
+    expect(
+      docs.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd),
+    ).toContain('Predecessor status: retired on 2026-09-26');
     expect(project).toContain('--suite=android.jump-to-date');
     expect(project).toContain('--timeout-ms=1200000');
     expect(project).toContain('--resource=android-avd --resource=synapse');
@@ -327,7 +354,7 @@ describe('Android jump-to-date migration', () => {
     );
   });
 
-  it('does not weaken the retained predecessor while implementation files are absent', () => {
+  it('keeps the Android journey free of the browser-only date mutation and request interception', () => {
     expect(readIfPresent(journeyPath)).not.toContain("removeAttribute('max')");
     expect(readIfPresent(observerPath)).not.toContain('Fetch.enable');
   });

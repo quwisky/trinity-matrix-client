@@ -241,11 +241,11 @@ describe('E2E suite registry', () => {
         location: {
           file: join(
             workspaceRoot,
-            'e2e/browser/journeys/accounts/registration.spec.mts',
+            'e2e/browser/journeys/accounts/account-lifecycle.spec.mts',
           ),
         },
         annotations: [],
-        titlePath: () => ['chromium', 'Accounts', 'registers'],
+        titlePath: () => ['chromium', 'Accounts', 'switches accounts'],
         parent: { project: () => ({ name: 'chromium' }) },
       };
       const result = {
@@ -260,7 +260,7 @@ describe('E2E suite registry', () => {
       await reporter.onEnd({ status: 'passed' });
 
       expect(browserJourneyPath(testCase.location.file)).toBe(
-        'journeys/accounts/registration.spec.mts',
+        'journeys/accounts/account-lifecycle.spec.mts',
       );
       expect(testCase.annotations).toEqual(
         expect.arrayContaining([
@@ -276,7 +276,7 @@ describe('E2E suite registry', () => {
       );
       const report = JSON.parse(readFileSync(outputFile, 'utf8'));
       expect(report).toMatchObject({
-        expectedSpecCount: 123,
+        expectedSpecCount: 77,
         collectedSpecCount: 1,
         testCount: 1,
         attempts: 1,

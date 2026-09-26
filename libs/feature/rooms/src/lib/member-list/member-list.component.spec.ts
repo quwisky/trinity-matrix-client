@@ -497,7 +497,8 @@ describe('MemberListComponent — windowing', () => {
   // The component's own geometry, restated so a change to either has to be made twice —
   // deliberately, because these numbers are the contract between the spacer arithmetic and
   // the stylesheet. That they match the RENDERED height is not checkable here (jsdom does
-  // no layout); `member-info.spec.mts` measures both in Chromium.
+  // no layout); `e2e/android/member-details-promotion-journeys.mts` measures both in the
+  // installed WebView.
   const HEADER_PX = 34;
   const ROW_PX = 44;
 
@@ -610,7 +611,8 @@ describe('MemberListComponent — windowing', () => {
     // it fails on a wrong ROW_PX or a bad slice (checked), and it is algebraically BLIND
     // to HEADER_PX — the bottom spacer is derived from the same total, so the header's
     // height cancels out whatever it is. That number is only checkable against a real
-    // cascade, and `member-info.spec.mts` measures it in Chromium.
+    // cascade, and `e2e/android/member-details-promotion-journeys.mts` measures it in the
+    // installed WebView.
     const { container } = await render(MemberListComponent, {
       inputs: { members: crowd(600) },
       ...opts,

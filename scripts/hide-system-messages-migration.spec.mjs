@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -45,8 +46,11 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function sourceLines(
+  path,
+  expectedHash,
+  contents = readFileSync(resolve(root, path)),
+) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -187,10 +191,11 @@ function assertRuntimeContract({ journey, preference, fixtures, client }) {
 }
 
 describe('Android hide-system-messages migration', () => {
-  it('pins the exact predecessor, helper spans, and 7 + 3 + 3 parity shape', () => {
+  it('pins the retired predecessor at its retirement commit, helper spans, and 7 + 3 + 3 parity shape', () => {
     const predecessor = sourceLines(
       predecessorSource,
       'f1f88eb542b48cfa461132a730b7fea1120977d771ade96565d0ae5fb64329c0',
+      readRetiredPredecessor(predecessorSource),
     );
     const navigation = sourceLines(
       navigationSource,
@@ -227,6 +232,22 @@ describe('Android hide-system-messages migration', () => {
     expect(settingsHelper).toContain("getByTestId('settings-detail')");
     expect(app.join('\n')).toContain('export async function readPreference(');
     expect(account.join('\n')).toContain('export async function registerUser(');
+  });
+
+  it('retires the whole predecessor file and its browser catalog entry', () => {
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      'journeys/conversations/hide-system-messages.spec.mts',
+    );
+    const migration = read('e2e/android/MIGRATION.md');
+    const sectionStart = migration.indexOf(
+      '\n## Hide system messages journey\n',
+    );
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    expect(
+      migration.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd),
+    ).toContain('Predecessor status: retired on 2026-09-26');
   });
 
   it('exports the exact thirteen identities and source mapping', async () => {

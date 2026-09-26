@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const definitionSource =
@@ -58,7 +59,10 @@ const forbiddenProductMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  // Retired predecessors are pinned at their retirement commit; shared helpers stay in the tree.
+  const contents = [definitionSource].includes(path)
+    ? readRetiredPredecessor(path)
+    : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -72,7 +76,7 @@ function expectSites(lines, from, to) {
 }
 
 describe('Android Room address lifecycle migration', () => {
-  it('pins one definition, both transitive helpers, and exactly 17 sites', () => {
+  it('pins one retired definition, both transitive helpers, and exactly 17 sites at the retirement commit', () => {
     const definition = sourceLines(
       definitionSource,
       'f306f5bfffca9f7a476966d7d2ff678a227fa7b2fae6e2f4934fb46c6c218ff5',
@@ -99,6 +103,17 @@ describe('Android Room address lifecycle migration', () => {
     expect(expectSites(definition, 403, 536)).toBe(15);
     expect(expectSites(openRoom, 36, 44)).toBe(1);
     expect(expectSites(openSettingsTab, 228, 248)).toBe(1);
+  });
+
+  it('retires its definition from the kept Room members and addresses file', () => {
+    const remaining = readFileSync(resolve(root, definitionSource), 'utf8');
+    expect(remaining).not.toContain(
+      "test('an admin adds a room address and makes it the main one'",
+    );
+    expect(remaining).not.toContain("test.describe('Room settings'");
+    expect(
+      readFileSync(resolve(root, 'e2e/browser/journey-catalog.mts'), 'utf8'),
+    ).toContain(`path: '${definitionSource.replace('e2e/browser/', '')}'`);
   });
 
   it('exports exact source mappings and stable 15+2 identities', async () => {

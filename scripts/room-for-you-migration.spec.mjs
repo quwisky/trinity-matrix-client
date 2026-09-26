@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const definitionSource =
@@ -13,9 +14,20 @@ const contractPath = resolve(root, 'e2e/android/room-for-you-contract.mts');
 const journeyPath = resolve(root, 'e2e/android/room-for-you-journeys.mts');
 const faultPath = resolve(root, 'e2e/android/matrix-http-fault.mts');
 const fixturePath = resolve(root, 'e2e/android/account-workspace-fixtures.mts');
-const predecessor = readFileSync(resolve(root, definitionSource), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
+
+function migrationSection(heading) {
+  const migration = readFileSync(
+    resolve(root, 'e2e/android/MIGRATION.md'),
+    'utf8',
+  );
+  const start = migration.indexOf(`${heading}\n`);
+  expect(start, `${heading} must exist`).toBeGreaterThanOrEqual(0);
+  const body = migration.slice(start + heading.length);
+  const next = body.search(/^#{2,3} /m);
+  return next === -1 ? body : body.slice(0, next);
+}
 
 const inheritedAssertionIds = [
   'load.room-timeline-visible',
@@ -73,7 +85,10 @@ const forbiddenJourneyMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  // Retired predecessors are pinned at their retirement commit; shared helpers stay in the tree.
+  const contents = [definitionSource].includes(path)
+    ? readRetiredPredecessor(path)
+    : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -87,7 +102,7 @@ function expectSites(lines, from, to) {
 }
 
 describe('Android Room For-you migration', () => {
-  it('pins both definitions and the exact 35+3 source obligations', () => {
+  it('pins both retired definitions and the exact 35+3 source obligations at the retirement commit', () => {
     const definition = sourceLines(
       definitionSource,
       '923fe4053badf040b9deaf9beba7da74bc27bf19277af4bb570462fed2c24f88',
@@ -123,6 +138,9 @@ describe('Android Room For-you migration', () => {
     expect(
       definition.filter((line) => line.includes('await openRoom(')),
     ).toHaveLength(3);
+    expect(readRetiredPredecessor(definitionSource).toString('utf8')).toContain(
+      "test('shows a failed preference read and retries into the editable form'",
+    );
   });
 
   it('exports exact source mappings and stable 35+3 identities', async () => {
@@ -294,22 +312,26 @@ describe('Android Room For-you migration', () => {
     expect(
       readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'),
     ).toContain('android-room-for-you');
-    expect(predecessor).toContain(
-      "test('shows a failed preference read and retries into the editable form'",
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, definitionSource))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${definitionSource.replace('e2e/browser/', '')}'`,
     );
   });
 
-  it('documents every identity and keeps predecessor retirement out of scope', () => {
-    const migration = readFileSync(
-      resolve(root, 'e2e/android/MIGRATION.md'),
-      'utf8',
-    );
-    expect(migration).toContain('## Room For-you preferences batch');
-    expect(migration).toContain('exactly 35 direct plus three inherited');
-    expect(migration).toContain('does not authorize predecessor retirement');
-    expect(migration).toContain('does not authorize merging PR #677');
+  it('documents every identity and records the predecessor retirement', () => {
+    const section = migrationSection('## Room For-you preferences batch');
+    expect(section).toContain('exactly 35 direct plus three inherited');
+    expect(section).toContain('does not authorize merging PR #677');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     for (const identity of assertionIds) {
-      expect(migration).toContain(`\`${identity}\``);
+      expect(section).toContain(`\`${identity}\``);
     }
   });
 });

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/trust/verify-user.spec.mts';
@@ -39,7 +40,10 @@ const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -560,8 +564,20 @@ describe('Android cross-user verification migration', () => {
     );
   });
 
-  it('documents parity and retains both exact predecessors', () => {
+  it('documents parity and pins the retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const heading = '## Cross-user verification journeys';
+    const sectionStart = migration.indexOf(heading);
+    expect(sectionStart).toBeGreaterThanOrEqual(0);
+    const sectionEnd = migration.indexOf(
+      '\n## ',
+      sectionStart + heading.length,
+    );
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
+    const retired = readRetiredPredecessor(predecessorSource).toString('utf8');
     const catalog = read('e2e/browser/journey-catalog.mts');
     expect(migration).toContain('## Cross-user verification journeys');
     expect(migration).toContain('`android.cross-user-verification`');
@@ -570,12 +586,15 @@ describe('Android cross-user verification migration', () => {
     );
     expect(migration).toContain('six unique direct assertion identities');
     expect(migration).toMatch(/11\s+stage-local direct assertion records/u);
-    expect(migration).toMatch(/Do not\s+retire/u);
-    expect(catalog).toContain("path: 'journeys/trust/verify-user.spec.mts'");
-    expect(read(predecessorSource)).toContain(
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(catalog).not.toContain(
+      "path: 'journeys/trust/verify-user.spec.mts'",
+    );
+    expect(retired).toContain(
       "test('starts cross-user verification from the member panel'",
     );
-    expect(read(predecessorSource)).toContain(
+    expect(retired).toContain(
       "test('starts cross-user verification with a delayed counterpart identity'",
     );
   });

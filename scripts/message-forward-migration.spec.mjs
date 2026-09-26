@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -17,6 +18,23 @@ const digest = (path) =>
   createHash('sha256')
     .update(readFileSync(resolve(root, path)))
     .digest('hex');
+const retiredSource = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
+
+function ownLedgerSection(docs) {
+  const start = docs.indexOf('\n## Message-forward journey\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
+function definitionSource(source, title) {
+  const start = source.indexOf(`test('${title}'`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = source.indexOf('\n  });\n', start);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end + '\n  });'.length);
+}
 
 function assertionLines(source, start, end) {
   const tree = ts.createSourceFile(
@@ -67,9 +85,10 @@ const expectedTarget = {
 };
 
 describe('Android message-forward migration contract', () => {
-  it('pins exact predecessor/helper shape and retains the Android sheet branch', () => {
-    const source = read(predecessor);
-    expect(digest(predecessor)).toBe(
+  it('pins the retired predecessor/helper shape and its Android sheet branch', () => {
+    const bytes = readRetiredPredecessor(predecessor);
+    const source = bytes.toString('utf8');
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(
       '4776cbb08bea3b92eb5d0e2203b50b77261e4e3191acad94595b5db2f190fcd3',
     );
     expect(digest('e2e/support/app.mts')).toBe(
@@ -84,6 +103,27 @@ describe('Android message-forward migration contract', () => {
     expect(source).toContain('openMessageActionSheet(page, row.first())');
     expect(source).toContain("sheet.getByTestId('sheet-forward').click()");
     expect(source).toContain('waitForSent(row.first())');
+  });
+
+  it('keeps the predecessor desktop-only without its Android sheet branch', () => {
+    const current = read(predecessor);
+    const definition = definitionSource(
+      current,
+      'forwards a message to another room',
+    );
+    expect(definition).toMatch(
+      /^test\('forwards a message to another room', async \(\{ page, request \}\) => \{\s*test\.skip\(\s*isAndroidE2E,\s*'Android runs this through android\.message-forward \(#744\)\.',?\s*\);/u,
+    );
+    expect(definition).toContain(
+      "clickRowMenuItem(row.first(), page.getByTestId('msg-forward'))",
+    );
+    expect(current).not.toContain('if (isAndroidE2E)');
+    expect(current).not.toContain('openMessageActionSheet');
+    expect(current).not.toContain('sheet-forward');
+    expect(current.match(/^\s*test\(/gmu)).toHaveLength(1);
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      'journeys/conversations/message-forward.spec.mts',
+    );
   });
 
   it('requires seven unique source-ordered identities', async () => {
@@ -423,7 +463,7 @@ describe('Android message-forward migration contract', () => {
     }
   });
 
-  it('registers one serialized Nx suite and retains the browser predecessor', async () => {
+  it('registers one serialized Nx suite and pins the retired browser predecessor', async () => {
     const project = JSON.parse(read('e2e/android/project.json'));
     const pkg = JSON.parse(read('package.json'));
     const { RUNNER_E2E_SUITES } =
@@ -464,7 +504,7 @@ describe('Android message-forward migration contract', () => {
         item.suiteIds.includes('android.message-forward'),
       ),
     ).toHaveLength(1);
-    expect(read(predecessor)).toContain(
+    expect(retiredSource()).toContain(
       "test('forwards a message to another room'",
     );
   });
@@ -486,8 +526,8 @@ describe('Android message-forward migration contract', () => {
     expect(workflow).toContain(
       'report-path: dist/.playwright/trinity-e2e-android/*/android.message-forward/**',
     );
-    expect(read('e2e/android/MIGRATION.md')).toContain(
-      'Suite `android.message-forward`',
-    );
+    const ledger = ownLedgerSection(read('e2e/android/MIGRATION.md'));
+    expect(ledger).toContain('Suite `android.message-forward`');
+    expect(ledger).toContain('Predecessor status: retired on 2026-09-26');
   });
 });

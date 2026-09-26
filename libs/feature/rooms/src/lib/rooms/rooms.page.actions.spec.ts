@@ -919,7 +919,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     // You reached member info by clicking a row in the member list, and it took that list's
     // place in the slot. Closing has to give the list back — most visibly after a moderation
     // write, where the panel closes itself and the whole point is seeing the change land in
-    // the roster. `promote-member.spec.mts` proves that end to end in a real browser.
+    // the roster. `e2e/android/member-details-promotion-journeys.mts` proves that end to end
+    // on the installed app.
     const shell = build();
     setRouteRoom('!r:hs');
     await settleWorkspace();

@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -15,6 +16,9 @@ const predecessor =
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
+/** The retired predecessor's exact bytes at its retirement commit. */
+const readPredecessor = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
 const loadContract = () =>
   import('../e2e/android/message-spoiler-contract.mts');
 const loadObserver = () =>
@@ -232,7 +236,7 @@ function importedCalls(source, fileName = predecessor) {
 function helperExpectLines(
   module,
   name,
-  source = read(module),
+  source = module === predecessor ? readPredecessor() : read(module),
   seen = new Set(),
 ) {
   const key = `${module}#${name}`;
@@ -371,11 +375,13 @@ const mutateLine = (source, line, replacement) => {
 };
 
 describe('Android message-spoiler predecessor pins', () => {
-  it('pins the unchanged predecessor and the two shared helper sources by SHA-256', () => {
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and the two shared helper sources by SHA-256', () => {
+    expect(sha256(readRetiredPredecessor(predecessor))).toBe(
+      PREDECESSOR_SHA256,
+    );
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const flipped = Buffer.from(readFileSync(resolve(root, predecessor)));
+    const flipped = Buffer.from(readRetiredPredecessor(predecessor));
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
@@ -401,7 +407,8 @@ describe('Android message-spoiler predecessor pins', () => {
     });
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('deletes the retired predecessor from both Playwright inventories', async () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -409,7 +416,7 @@ describe('Android message-spoiler predecessor pins', () => {
         (journey) =>
           journey.path === 'journeys/conversations/message-spoiler.spec.mts',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     const android = read('e2e/android/playwright.config.mts');
     expect(android).toContain(
       "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
@@ -418,7 +425,8 @@ describe('Android message-spoiler predecessor pins', () => {
       expect(config).not.toContain('testIgnore');
       expect(config).not.toContain('message-spoiler');
     }
-    const source = read(predecessor);
+    // The predecessor at its retirement commit.
+    const source = readPredecessor();
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
     expect(source.match(/^ {2}test\('/gmu)).toHaveLength(1);
@@ -426,11 +434,11 @@ describe('Android message-spoiler predecessor pins', () => {
   });
 
   it('maps the exact direct and helper sites with the house AST rule', () => {
-    assertPredecessorShape(read(predecessor));
+    assertPredecessorShape(readPredecessor());
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const mutations = [
       // A source field, template or run suffix drifts.
       mutateLine(source, 88, (line) => line.replace('}s`', '}sp`')),
@@ -508,7 +516,7 @@ describe('Android message-spoiler predecessor pins', () => {
 
 describe('Android message-spoiler helper expansion by binding', () => {
   it('resolves module-local and imported helper calls through the TypeChecker', () => {
-    const { calls } = importedCalls(read(predecessor));
+    const { calls } = importedCalls(readPredecessor());
     expect(
       calls
         .filter(
@@ -535,7 +543,7 @@ describe('Android message-spoiler helper expansion by binding', () => {
   });
 
   it('follows helper calls and proves the fixture helper, registration and login add no sites', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(helperExpectLines(predecessor, 'openRoom', source)).toEqual([
       { module: predecessor, line: 76 },
     ]);
@@ -560,7 +568,7 @@ describe('Android message-spoiler helper expansion by binding', () => {
   });
 
   it('excludes a shadowing local helper, against a naive count', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const shadowed = source.replace(
       '    await openRoom(page, roomName);',
       '    const openRoom = async (_page: unknown, _name: string) => {};\n    await openRoom(page, roomName);',
@@ -582,7 +590,7 @@ describe('Android message-spoiler helper expansion by binding', () => {
 
   it('matches the contract sites, identities and helper roles exactly', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     const expanded = expandDefinition(source, STAGE.span);
     const [stage] = contract.MESSAGE_SPOILER_STAGES;
     expect(stage.sites.map(siteTuple)).toEqual(expanded.map(siteTuple));
@@ -681,7 +689,7 @@ describe('Android message-spoiler contract ledger', () => {
 
   it('arranges exactly the predecessor run suffix, Room, secret, transaction and formatted content', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(predecessorTemplates(source, STAGE.span)).toMatchObject({
       runId: "`${testResourceId('run')}s`",
     });
@@ -3066,7 +3074,7 @@ describe('Android message-spoiler hosted wiring and parity ledger', () => {
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(section).toContain('Suite `android.message-spoiler`');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).toContain('data-mx-spoiler');
     expect(section).toContain('1280×720');
     expect(section).toContain('spoiler-concealed.png');

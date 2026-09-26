@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -54,13 +55,18 @@ const forbiddenProductMutations = [
   /client\.(?:focusFixture|navigate|reload)\s*\(/u,
 ];
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function hashedLines(contents, expectedHash) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
   return contents.toString('utf8').split('\n');
 }
+
+const sourceLines = (path, expectedHash) =>
+  hashedLines(readFileSync(resolve(root, path)), expectedHash);
+
+const predecessorLines = (expectedHash) =>
+  hashedLines(readRetiredPredecessor(predecessorSource), expectedHash);
 
 const assertionSiteCount = (lines) =>
   lines.filter((line) => /\bexpect(?:\.poll)?(?:\(|\s*$)/u.test(line)).length;
@@ -107,8 +113,7 @@ function assertProtectedJourney(journey) {
 
 describe('Android Security settings migration', () => {
   it('pins the two applicable paths and the browser-only fault exclusion', () => {
-    const predecessor = sourceLines(
-      predecessorSource,
+    const predecessor = predecessorLines(
       '7da77f2e6b8d2091709ca6565bd54a08ed97115cce71e887ad1c46b6f5767fd9',
     );
     const navigation = sourceLines(
@@ -295,7 +300,8 @@ describe('Android Security settings migration', () => {
       ).toThrow();
     }
 
-    const predecessor = read(predecessorSource);
+    const predecessor =
+      readRetiredPredecessor(predecessorSource).toString('utf8');
     const exclusion =
       "'fault injection requires Angular development hooks; the installed APK is production'";
     expect(predecessor).toContain(exclusion);
@@ -327,7 +333,7 @@ describe('Android Security settings migration', () => {
     );
   });
 
-  it('registers the suite and started-only hosted artifact after OIDC', () => {
+  it('registers the suite and started-only hosted artifact', () => {
     const runners = read('e2e/registry/suites/runners.mts');
     const commands = read('e2e/registry/commands.mts');
     const workflow = read('.github/workflows/ci.yml');
@@ -356,24 +362,52 @@ describe('Android Security settings migration', () => {
     );
   });
 
-  it('documents parity and keeps every predecessor enabled', () => {
+  it('documents parity and pins the retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
+    const heading = '## Security settings journeys';
+    expect(migration).toContain(heading);
+    const sectionStart = migration.indexOf(heading);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
+    expect(section).toContain('`android.security-settings`');
+    expect(section).toContain('five direct plus four direct');
+    expect(section).toContain('six inherited');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+
+    const retired = readRetiredPredecessor(predecessorSource).toString('utf8');
+    const retiredTitle =
+      'shows the encryption posture and launches recovery setup';
+    const desktopOnlyTitle =
+      'keeps verification nested in the narrow settings surface';
+    const faultTitle =
+      'labels failed Trust reads and recovers through the scoped action';
+    for (const title of [retiredTitle, desktopOnlyTitle, faultTitle]) {
+      expect(retired).toContain(`test('${title}'`);
+    }
+
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## Security settings journeys');
-    expect(migration).toContain('`android.security-settings`');
-    expect(migration).toContain('five direct plus four direct');
-    expect(migration).toContain('six inherited');
-    expect(migration).toMatch(/Do not\s+retire/u);
     expect(catalog).toContain(
       "path: 'journeys/trust/security-settings.spec.mts'",
     );
-    const predecessor = read(predecessorSource);
-    for (const title of [
-      'shows the encryption posture and launches recovery setup',
-      'keeps verification nested in the narrow settings surface',
-      'labels failed Trust reads and recovers through the scoped action',
-    ]) {
-      expect(predecessor).toContain(`test('${title}'`);
-    }
+    const current = read(predecessorSource);
+    expect(current).not.toContain(retiredTitle);
+    expect(current).toContain(`test('${faultTitle}'`);
+    const desktopStart = current.indexOf(`test('${desktopOnlyTitle}'`);
+    expect(desktopStart).toBeGreaterThan(-1);
+    const desktopEnd = current.indexOf('\n  });\n', desktopStart);
+    const desktopOnly = current.slice(desktopStart, desktopEnd);
+    expect(desktopOnly).toMatch(
+      /^test\('[^']+', async \(\{\s+page,\s+request,\s+\}\) => \{\s+test\.skip\(\s*isAndroidE2E,/u,
+    );
+    expect(desktopOnly).toContain(
+      "'Android runs this through android.security-settings (#725).'",
+    );
+    expect(desktopOnly).not.toContain('if (isAndroidE2E)');
+    expect(desktopOnly).toContain(
+      "getByRole('dialog', { name: 'Encryption' })",
+    );
   });
 });

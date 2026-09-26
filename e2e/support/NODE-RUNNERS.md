@@ -72,5 +72,5 @@ definitions through `android.accounts-workspace`. Each case clears the installed
 app, retains its canonical viewport profile and records its own first-attempt
 outcome. Native Maestro input and Android keyboard events drive the interactions;
 CDP supplies bounded observations and the predecessor's explicit fixtures. The
-migration ledger describes the Badge recorder's limited claim and coexistence
-with the original Android journeys.
+migration ledger describes the Badge recorder's limited claim and the retirement
+of the original Playwright journeys.

@@ -8,12 +8,16 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor = 'e2e/browser/journeys/conversations/message-quote.spec.mts';
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
+/** The retired predecessor's exact bytes at the retirement commit. */
+const predecessorBytes = () => readRetiredPredecessor(predecessor);
+const readPredecessor = () => predecessorBytes().toString('utf8');
 const loadContract = () => import('../e2e/android/message-quote-contract.mts');
 const loadObserver = () => import('../e2e/android/message-quote-observer.mts');
 const loadArtifacts = () =>
@@ -349,7 +353,7 @@ function importedCalls(source, fileName = predecessor) {
 function helperExpectLines(
   module,
   name,
-  source = read(module),
+  source = module === predecessor ? readPredecessor() : read(module),
   seen = new Set(),
 ) {
   const key = `${module}#${name}`;
@@ -513,11 +517,11 @@ const mutateLine = (source, line, replacement) => {
 };
 
 describe('Android message-quote predecessor pins', () => {
-  it('pins the unchanged predecessor and the three shared helper sources by SHA-256', () => {
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and the three shared helper sources by SHA-256', () => {
+    expect(sha256(predecessorBytes())).toBe(PREDECESSOR_SHA256);
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const flipped = Buffer.from(readFileSync(resolve(root, predecessor)));
+    const flipped = Buffer.from(predecessorBytes());
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
@@ -528,7 +532,7 @@ describe('Android message-quote predecessor pins', () => {
   });
 
   it('reconciles the issue pin: the develop file differs only by the Send-button change', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const lines = source.split('\n');
     // Undo fe2c7c3e: drop the import and restore the three Enter presses.
     const develop = lines
@@ -575,7 +579,7 @@ describe('Android message-quote predecessor pins', () => {
     );
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('keeps both definitions desktop-only in the browser inventory and pins the retired predecessor counts', async () => {
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -588,22 +592,33 @@ describe('Android message-quote predecessor pins', () => {
     expect(android).toContain(
       "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
     );
-    for (const config of [android, read('e2e/browser/playwright.config.mts')]) {
+    for (const config of [android, read('e2e/browser/playwright.config.mts')])
       expect(config).not.toContain('testIgnore');
-      expect(config).not.toContain('message-quote');
-    }
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
     expect(source.match(/^ {2}test\('/gmu)).toHaveLength(2);
+    const current = read(predecessor);
+    expect(current).not.toContain('openMessageActionSheet');
+    expect(current.match(/^ {2}test\('/gmu)).toHaveLength(2);
+    for (const stage of STAGES) {
+      const start = current.indexOf(`  test('${stage.title}'`);
+      expect(start).toBeGreaterThan(-1);
+      const next = current.indexOf("\n  test('", start + 1);
+      const definition = current.slice(start, next === -1 ? undefined : next);
+      expect(definition).toContain(
+        "test.skip(\n      isAndroidE2E,\n      'Android runs this through android.message-quote (#750).',\n    );",
+      );
+      expect(definition).not.toMatch(/if \(!?isAndroidE2E\)/u);
+    }
   });
 
   it('maps the exact Android-path direct and helper sites with the house AST rule', () => {
-    assertPredecessorShape(read(predecessor));
+    assertPredecessorShape(readPredecessor());
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const mutations = [
       // A quote field, fixture byte, test id or run suffix drifts.
       mutateLine(source, 51, (line) => line.replace('alpha', 'Alpha')),
@@ -666,7 +681,7 @@ describe('Android message-quote predecessor pins', () => {
 
 describe('Android message-quote helper expansion by binding', () => {
   it('resolves module-local and imported helper calls through the TypeChecker', () => {
-    const { calls } = importedCalls(read(predecessor));
+    const { calls } = importedCalls(readPredecessor());
     expect(
       calls
         .filter(
@@ -700,7 +715,7 @@ describe('Android message-quote helper expansion by binding', () => {
   });
 
   it('follows helper calls and proves registration and login add no sites', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(helperExpectLines(predecessor, 'openRoom', source)).toEqual([
       { module: predecessor, line: 34 },
     ]);
@@ -727,7 +742,7 @@ describe('Android message-quote helper expansion by binding', () => {
   });
 
   it('excludes a shadowing local helper and the desktop branches, against a naive count', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const shadowed = source.replace(
       '    await waitForSent(row.first());',
       '    const waitForSent = async (_row: unknown) => {};\n    await waitForSent(row.first());',
@@ -755,7 +770,7 @@ describe('Android message-quote helper expansion by binding', () => {
   });
 
   it('expands 2 Room + 3 composer-send + 2 real-server echo + 3 sheet readiness = 10 inherited sites', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const inherited = STAGES.flatMap((stage) =>
       expandDefinition(source, stage.span).filter(
         (site) => site.kind === 'inherited',
@@ -772,7 +787,7 @@ describe('Android message-quote helper expansion by binding', () => {
 
   it('matches the contract sites, identities and helper roles exactly', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     for (const [index, stage] of STAGES.entries()) {
       const expanded = expandDefinition(source, stage.span);
       expect(contract.MESSAGE_QUOTE_STAGES[index].sites.map(siteTuple)).toEqual(
@@ -933,7 +948,7 @@ describe('Android message-quote contract ledger', () => {
 
   it('types exactly the predecessor paragraphs, answer, control, Room names and image fixture', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(predecessorTemplates(source, BLOCK.span)).toMatchObject({
       runId: "`${testResourceId('run')}q`",
       roomName: '`Quote ${runId}`',
@@ -3188,7 +3203,7 @@ describe('Android message-quote hosted wiring and parity ledger', () => {
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(section).toContain('Suite `android.message-quote`');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).toContain('m.in_reply_to');
     expect(section).toContain('application/octet-stream');
     expect(section).toContain('acceptance gate for #750');

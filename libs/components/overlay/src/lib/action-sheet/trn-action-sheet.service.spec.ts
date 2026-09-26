@@ -180,8 +180,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     // `overflow-hidden` box with no height bound, and CDK clamps the pane to the
     // viewport — so at 360x640 the last row fell outside with no scrollbar and no
     // affordance. jsdom has no layout, so this asserts the STRUCTURE that fixes it:
-    // every row inside an element that can scroll. The geometry is measured in
-    // `e2e/browser/journeys/conversations/message-action-sheet.spec.mts`.
+    // every row inside an element that can scroll. The geometry is measured on the
+    // installed app by `e2e/android/message-action-sheet-journeys.mts`.
     const svc = TestBed.inject(TrnActionSheetService);
     svc.open({
       buttons: Array.from({ length: 13 }, (_, i) => ({

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -33,8 +34,19 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
+function migrationSection(heading) {
+  const migration = read('e2e/android/MIGRATION.md');
+  const start = migration.indexOf(`${heading}\n`);
+  expect(start, `${heading} must exist`).toBeGreaterThanOrEqual(0);
+  const end = migration.indexOf('\n## ', start + heading.length);
+  return migration.slice(start, end === -1 ? undefined : end);
+}
+
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -123,7 +135,7 @@ function assertRuntimeContract(journey, client, fixtures) {
 }
 
 describe('Android composer-mentions migration', () => {
-  it('pins the exact predecessor and shared-helper sources', () => {
+  it('pins the retired predecessor at its retirement commit and the shared-helper sources', () => {
     const predecessor = sourceLines(
       predecessorSource,
       '4fff4a23bbabe797ca87e8ed8b2fdda537e4af1adb4c5396cbb3d0feccd4eb39',
@@ -278,5 +290,15 @@ describe('Android composer-mentions migration', () => {
     expect(workflow).toContain('composer-mentions-started=true');
     expect(workflow).toContain('android-composer-mentions');
     expect(workflow).toContain('android.composer-mentions/**');
+  });
+
+  it('retires the predecessor from the working tree and the browser catalog', () => {
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      "path: 'journeys/conversations/composer-mentions.spec.mts'",
+    );
+    expect(migrationSection('## Composer mention journeys')).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 });

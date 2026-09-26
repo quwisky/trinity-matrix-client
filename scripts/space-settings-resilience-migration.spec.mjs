@@ -2,12 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-administration/space-settings-resilience.spec.mts',
-);
+const sourcePath =
+  'e2e/browser/journeys/room-administration/space-settings-resilience.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/space-settings-resilience-journeys.mts',
@@ -53,8 +52,8 @@ const transition = () =>
   existsSync(transitionPath) ? readFileSync(transitionPath, 'utf8') : '';
 
 describe('Android Space Settings resilience migration', () => {
-  it('pins both unchanged functional predecessor definitions', () => {
-    const source = readFileSync(sourcePath);
+  it('pins both retired functional predecessor definitions at their retirement commit', () => {
+    const source = readRetiredPredecessor(sourcePath);
     const text = source.toString('utf8');
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
@@ -66,6 +65,17 @@ describe('Android Space Settings resilience migration', () => {
     ]) {
       expect(text).toContain(`test('${title}'`);
     }
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, sourcePath))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${sourcePath.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('maps exactly two stages and all eighteen direct assertions', () => {

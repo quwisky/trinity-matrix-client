@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const definitionSource =
@@ -46,7 +47,10 @@ const forbiddenProductMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  // Retired predecessors are pinned at their retirement commit; shared helpers stay in the tree.
+  const contents = [definitionSource].includes(path)
+    ? readRetiredPredecessor(path)
+    : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -54,7 +58,7 @@ function sourceLines(path, expectedHash) {
 }
 
 describe('Android account password-change migration', () => {
-  it('pins the exact predecessor and helper-owned assertion shape', () => {
+  it('pins the retired predecessor at its retirement commit and the helper-owned assertion shape', () => {
     const definition = sourceLines(
       definitionSource,
       'bc3d99b6a65fd59bd5b0641d94768127692df14f757b7c787c982e466b47b98f',
@@ -255,18 +259,21 @@ describe('Android account password-change migration', () => {
     );
   });
 
-  it('documents parity and keeps the exact predecessor enabled', () => {
+  it('documents parity and retires the exact predecessor', () => {
     const migration = read('e2e/android/MIGRATION.md');
     const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## Account password-change journey');
-    expect(migration).toContain('`android.account-password-change`');
-    expect(migration).toContain('five direct plus three inherited');
-    expect(migration).toMatch(/Do not\s+retire/);
-    expect(catalog).toContain(
+    const heading = '## Account password-change journey\n';
+    const start = migration.indexOf(heading);
+    expect(start).toBeGreaterThanOrEqual(0);
+    const rest = migration.slice(start + heading.length);
+    const next = rest.search(/^#{2,3} /m);
+    const section = next === -1 ? rest : rest.slice(0, next);
+    expect(section).toContain('`android.account-password-change`');
+    expect(section).toContain('five direct plus three inherited');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+    expect(existsSync(resolve(root, definitionSource))).toBe(false);
+    expect(catalog).not.toContain(
       "path: 'journeys/accounts/change-password.spec.mts'",
-    );
-    expect(read(definitionSource)).toContain(
-      "test('rejects a wrong current password, then changes it'",
     );
   });
 });

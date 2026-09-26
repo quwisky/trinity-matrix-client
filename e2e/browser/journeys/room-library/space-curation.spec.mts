@@ -6,6 +6,7 @@ import {
   type Page,
 } from '../../../fixtures.mts';
 import {
+  isAndroidE2E,
   login,
   openSettingsTab,
   synapseSession,
@@ -19,6 +20,8 @@ import { registerUser } from '../../../support/account.mts';
 //
 // Asserted against the `m.space.child` state event over the CS API, because that event is
 // the whole feature: a UI that reordered a list locally and wrote nothing looks identical.
+// Creating a subspace and joining a child run through android.space-curation-create-join
+// (#695), which also runs adding an existing room on Android.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = synapseSession();
 
@@ -93,6 +96,10 @@ test.describe('Space curation', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.space-curation-create-join (#695).',
+    );
     test.setTimeout(150_000);
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}ad`;
@@ -137,87 +144,6 @@ test.describe('Space curation', () => {
       .toEqual(expect.objectContaining({ via: expect.any(Array) }));
     const link = await childLink(request, hs, token, spaceId, roomId);
     expect((link?.['via'] as string[]).length).toBeGreaterThan(0);
-  });
-
-  test('an admin creates a space inside a space', async ({ page, request }) => {
-    test.setTimeout(150_000);
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}sub`;
-    const user = `curate-sub-${runId}`;
-    const pass = `${user}-pass`;
-    const parentName = `Parent ${runId}`;
-    const childName = `Child ${runId}`;
-
-    await registerUser(request, user, pass);
-    const token = await apiLogin(request, hs, user, pass);
-    const parentId = await createRoom(request, hs, token, {
-      name: parentName,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    });
-
-    await login(page, { available: true, hs, user, pass } as SynapseSession);
-    const pill = page.getByRole('button', { name: parentName, exact: true });
-    await pill.waitFor({ state: 'visible', timeout: 30_000 });
-    await pill.click();
-    await page.getByTestId('space-actions-overflow').click();
-    await page.getByTestId('space-create-subspace').click();
-
-    // Target the prompt's own field by its placeholder, not `getByRole('textbox').last()`.
-    // That form does not wait for the dialog — it resolves against whatever textboxes are
-    // on the page at that instant, and the shell always has some (the sidebar filter, the
-    // composer). If the prompt has not opened yet it fills one of those instead, `Create`
-    // then submits an empty name, no subspace is ever created, and the failure surfaces
-    // 60s later as "no m.space.child link appeared on the parent" — pointing at the
-    // server rather than at the typing. Waiting on the placeholder waits for the dialog.
-    const nameField = page.getByPlaceholder('Space name');
-    await nameField.waitFor({ state: 'visible', timeout: 10_000 });
-    await nameField.fill(childName);
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
-
-    // Two writes: the space is created, then linked into its parent. The LINK is what
-    // makes it a subspace rather than just another space, so assert on that.
-    const childId = await new Promise<string>((resolve, reject) => {
-      const deadline = Date.now() + 60_000;
-      const poll = async () => {
-        const res = await request.get(
-          `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(parentId)}/state`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        if (res.ok()) {
-          const events = (await res.json()) as {
-            type: string;
-            state_key: string;
-            content: Record<string, unknown>;
-          }[];
-          const link = events.find(
-            (event) =>
-              event.type === 'm.space.child' &&
-              Array.isArray(event.content['via']) &&
-              (event.content['via'] as unknown[]).length > 0,
-          );
-          if (link) {
-            resolve(link.state_key);
-            return;
-          }
-        }
-        if (Date.now() > deadline) {
-          reject(new Error('no m.space.child link appeared on the parent'));
-          return;
-        }
-        setTimeout(poll, 1000);
-      };
-      void poll();
-    });
-
-    // And the linked child really is a space, not a plain room.
-    const created = await request
-      .get(
-        `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(childId)}/state/m.room.create/`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      )
-      .then((r) => r.json());
-    expect(created.type).toBe('m.space');
   });
 
   test('an admin suggests and reorders a space’s rooms', async ({
@@ -387,73 +313,5 @@ test.describe('Space curation', () => {
     await expect(panel.getByTestId(`space-content-${third}`)).toBeVisible({
       timeout: 30_000,
     });
-  });
-
-  test('a child moves out of More Channels the moment you join it', async ({
-    page,
-    request,
-  }) => {
-    // The `joined` flag on a space's children is derived from sync, not from the
-    // `/hierarchy` fetch that produced the list — so joining has to move a room from
-    // "More Channels" into the channel list with no re-fetch and no reload. That
-    // derivation is the whole reason SpacesService carried a bump counter.
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}jn`;
-    const owner = `spacer-${runId}`;
-    const pass = `${owner}-pass`;
-    // A second account, because the room has to be one the viewer is NOT in. Anything
-    // this user creates, they are joined to.
-    const other = `other-${runId}`;
-    const spaceName = `Joinable ${runId}`;
-    const childName = `Lobby ${runId}`;
-
-    await registerUser(request, owner, pass);
-    await registerUser(request, other, pass);
-    const ownerToken = await apiLogin(request, hs, owner, pass);
-    const otherToken = await apiLogin(request, hs, other, pass);
-
-    const spaceId = await createRoom(request, hs, ownerToken, {
-      name: spaceName,
-      preset: 'private_chat',
-      creation_content: { type: 'm.space' },
-    });
-    // Public, so the viewer can actually join it from the sidebar.
-    const childId = await createRoom(request, hs, otherToken, {
-      name: childName,
-      preset: 'public_chat',
-    });
-    await request.put(
-      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.space.child/${encodeURIComponent(childId)}`,
-      {
-        headers: { Authorization: `Bearer ${ownerToken}` },
-        data: { via: ['localhost'] },
-      },
-    );
-
-    await login(page, {
-      available: true,
-      hs,
-      user: owner,
-      pass,
-    } as SynapseSession);
-    const pill = page.getByRole('button', { name: spaceName, exact: true });
-    await pill.waitFor({ state: 'visible', timeout: 30_000 });
-    await pill.click();
-
-    // Not joined yet: offered under More Channels rather than listed as a channel.
-    const join = page.getByTestId(`join-child-${childId}`);
-    await expect(join).toBeVisible({ timeout: 30_000 });
-
-    await join.click();
-
-    // Gone from the joinable list, and present as a channel — both halves, because
-    // disappearing without appearing would look the same to a half-broken derivation.
-    await expect(join).toBeHidden({ timeout: 30_000 });
-    // A channel row's accessible name is its avatar initial then its name ("L Lobby …"),
-    // so anchor on that shape: a bare substring match would also hit the row's own
-    // "Options for Lobby …" button and pass without the row existing.
-    await expect(
-      page.getByRole('button', { name: new RegExp(`^\\S+ ${childName}$`) }),
-    ).toBeVisible({ timeout: 30_000 });
   });
 });

@@ -1,5 +1,4 @@
 import {
-  devices,
   testResourceId,
   test,
   expect,
@@ -19,12 +18,12 @@ import { captureScreenshot } from '../../../support/screenshot.mts';
 
 // Covers the composer's formatting affordances: the on-demand Format menu, rebindable chords,
 // markdown-aware Shift+Enter, preview, sending, and composer layout.
+// The mobile Format action sheet runs through android.composer-formatting (#731).
 //
 // These assert on the TEXTAREA's value rather than on a sent message — the point is what the
 // composer does to what you are writing. Needs a Synapse homeserver (Docker); self-skips
 // otherwise.
 const session = synapseSession();
-const mobile = devices['Pixel 5'];
 const DRAFTS_KEY = 'trinity.composer.drafts';
 
 /** Register, create a room, sign in and open it. Returns the composer locator. */
@@ -447,7 +446,7 @@ test.describe('On-demand composer formatting', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.skip(
     process.env['TRINITY_E2E_PLATFORM'] === 'android',
-    'Android uses the mobile action-sheet surface below',
+    'Android runs the mobile action-sheet surface through android.composer-formatting (#731)',
   );
 
   test('opens the desktop Format popover, applies selected text, and restores focus', async ({
@@ -568,126 +567,5 @@ test.describe('On-demand composer formatting', () => {
     await expect(composer).toBeFocused();
     await expect(composer).toHaveJSProperty('selectionStart', 2);
     await expect(composer).toHaveJSProperty('selectionEnd', 6);
-  });
-});
-
-test.describe('On-demand composer formatting on mobile', () => {
-  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
-  test.use({
-    viewport: mobile.viewport,
-    userAgent: mobile.userAgent,
-    deviceScaleFactor: mobile.deviceScaleFactor,
-    isMobile: mobile.isMobile,
-    hasTouch: mobile.hasTouch,
-  });
-
-  test('uses a bounded touch action sheet and applies selected text', async ({
-    page,
-    request,
-    touchPlatform,
-  }) => {
-    const { composer } = await openComposer(page, request, 'menu-mobile');
-    await composer.fill('say hello');
-    await selectWord(page, 'hello');
-    const trigger = page.getByTestId('composer-format');
-    const target = await trigger.boundingBox();
-    expect(target?.width).toBeGreaterThanOrEqual(44);
-    expect(target?.height).toBeGreaterThanOrEqual(44);
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
-
-    const dialog = page.getByRole('dialog', { name: 'Format message' });
-    const sheet = dialog.getByTestId('action-sheet-surface');
-    await expect(sheet).toBeVisible();
-    const box = await sheet.boundingBox();
-    const viewport = page.viewportSize();
-    expect(box).not.toBeNull();
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    // Allow subpixel rounding in the installed WebView device-scale ratio.
-    expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 0.5);
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 0.5);
-    await test.info().attach('composer-format-mobile', {
-      body: await captureScreenshot(page, () => page.screenshot()),
-      contentType: 'image/png',
-    });
-
-    await touchPlatform.tap(page, dialog.getByTestId('format-italic'));
-    await expect(composer).toHaveValue('say *hello*');
-    await expect(sheet).toBeHidden();
-    await expect(composer).toBeFocused();
-  });
-
-  test('cancels and previews on mobile without losing the selected text', async ({
-    page,
-    request,
-    touchPlatform,
-  }) => {
-    const { composer } = await openComposer(
-      page,
-      request,
-      'menu-mobile-preview',
-    );
-    await composer.fill('**bold** and plain');
-    await selectWord(page, 'bold');
-    const trigger = page.getByTestId('composer-format');
-    const dialog = page.getByRole('dialog', { name: 'Format message' });
-
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
-    await touchPlatform.tap(page, dialog.getByTestId('format-cancel'));
-    await expect(dialog).toBeHidden();
-    await expect(composer).toHaveValue('**bold** and plain');
-    await expect(composer).toHaveJSProperty('selectionStart', 2);
-    await expect(composer).toHaveJSProperty('selectionEnd', 6);
-
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
-    await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
-    const preview = page.getByTestId('composer-preview');
-    await expect(preview.locator('strong')).toHaveText('bold');
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, trigger);
-    await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
-    await expect(preview).toBeHidden();
-    await expect(composer).toBeFocused();
-    await expect(composer).toHaveJSProperty('selectionStart', 2);
-    await expect(composer).toHaveJSProperty('selectionEnd', 6);
-    await expect(page.getByTestId('composer-send')).toBeVisible();
-  });
-  test('keeps Format and Send reachable at compact width with larger text', async ({
-    page,
-    request,
-    touchPlatform,
-  }) => {
-    const { composer } = await openComposer(page, request, 'menu-larger');
-    await touchPlatform.dismissKeyboard(page);
-    await page.setViewportSize({ width: 320, height: 720 });
-    await seedPreference(page, 'trinity.text-scale', 'larger');
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(composer).toBeVisible();
-    await expect(page.locator('html')).toHaveCSS('font-size', '20px');
-    await composer.fill('compact draft');
-    for (const id of ['composer-format', 'composer-send']) {
-      const control = page.getByTestId(id);
-      await expect(control).toBeVisible();
-      const box = await control.boundingBox();
-      expect(box!.width).toBeGreaterThanOrEqual(44);
-      expect(box!.height).toBeGreaterThanOrEqual(44);
-      expect(box!.x).toBeGreaterThanOrEqual(0);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(320.5);
-    }
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, page.getByTestId('composer-format'));
-    const dialog = page.getByRole('dialog', { name: 'Format message' });
-    await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
-    await expect(page.getByTestId('composer-preview')).toHaveText(
-      'compact draft',
-    );
-    await touchPlatform.dismissKeyboard(page);
-    await touchPlatform.tap(page, page.getByTestId('composer-format'));
-    await touchPlatform.tap(page, dialog.getByTestId('format-preview'));
-    await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue('compact draft');
   });
 });

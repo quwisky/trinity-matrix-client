@@ -8,12 +8,16 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor = 'e2e/browser/journeys/conversations/message-poll.spec.mts';
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
+/** The retired predecessor's exact bytes at its retirement commit, as text. */
+const readPredecessor = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
 const loadContract = () => import('../e2e/android/message-poll-contract.mts');
 const loadObserver = () => import('../e2e/android/message-poll-observer.mts');
 const loadArtifacts = () => import('../e2e/android/message-poll-artifacts.mts');
@@ -209,7 +213,7 @@ function importedCalls(source, fileName = predecessor) {
 function helperExpectLines(
   module,
   name,
-  source = read(module),
+  source = module === predecessor ? readPredecessor() : read(module),
   seen = new Set(),
 ) {
   const key = `${module}#${name}`;
@@ -349,11 +353,13 @@ const mutateLine = (source, line, replacement) => {
 };
 
 describe('Android message-poll predecessor pins', () => {
-  it('pins the unchanged predecessor and both shared helper sources by SHA-256', () => {
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and both shared helper sources by SHA-256', () => {
+    expect(sha256(readRetiredPredecessor(predecessor))).toBe(
+      PREDECESSOR_SHA256,
+    );
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const flipped = Buffer.from(readFileSync(resolve(root, predecessor)));
+    const flipped = Buffer.from(readRetiredPredecessor(predecessor));
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
@@ -375,7 +381,8 @@ describe('Android message-poll predecessor pins', () => {
     });
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('retires the deleted predecessor from both Playwright inventories', async () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -383,7 +390,7 @@ describe('Android message-poll predecessor pins', () => {
         (journey) =>
           journey.path === 'journeys/conversations/message-poll.spec.mts',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     const android = read('e2e/android/playwright.config.mts');
     expect(android).toContain(
       "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
@@ -392,20 +399,20 @@ describe('Android message-poll predecessor pins', () => {
       expect(config).not.toContain('testIgnore');
       expect(config).not.toContain('message-poll');
     }
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
     expect(source.match(/^ {2}test\('/gmu)).toHaveLength(1);
   });
 
   it('maps the exact direct and helper assertion sites with the house AST rule', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     assertPredecessorShape(source);
     expect(assertionLines(source, ...STAGE.span)).toEqual(STAGE.direct);
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const mutations = [
       // A poll field, test id or run suffix drifts.
       mutateLine(source, 65, (line) => line.replace('Best fruit', 'Best food')),
@@ -457,7 +464,7 @@ describe('Android message-poll predecessor pins', () => {
 
 describe('Android message-poll helper expansion by binding', () => {
   it('resolves module-local and imported helper calls through the TypeChecker', () => {
-    const { calls } = importedCalls(read(predecessor));
+    const { calls } = importedCalls(readPredecessor());
     expect(
       calls
         .filter(
@@ -477,7 +484,7 @@ describe('Android message-poll helper expansion by binding', () => {
   });
 
   it('follows helper calls and proves registration and login add no sites', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(helperExpectLines(predecessor, 'openRoom', source)).toEqual([
       { module: predecessor, line: 19 },
     ]);
@@ -494,7 +501,7 @@ describe('Android message-poll helper expansion by binding', () => {
   });
 
   it('excludes a shadowing local helper and proves binding matters against a naive count', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const shadowed = source.replace(
       '    await waitForSent(',
       '    const waitForSent = async (_row: unknown) => {};\n    await waitForSent(',
@@ -519,7 +526,7 @@ describe('Android message-poll helper expansion by binding', () => {
   });
 
   it('expands 1 Room readiness + 1 real-server echo = 2 inherited sites', () => {
-    const expanded = expandDefinition(read(predecessor));
+    const expanded = expandDefinition(readPredecessor());
     const inherited = expanded.filter((site) => site.kind === 'inherited');
     expect(inherited.map((site) => site.helper)).toEqual([
       'openRoom',
@@ -530,7 +537,7 @@ describe('Android message-poll helper expansion by binding', () => {
 
   it('matches the contract sites, identities and helper roles exactly', async () => {
     const contract = await loadContract();
-    const source = read(predecessor);
+    const source = readPredecessor();
     const expanded = expandDefinition(source);
     expect(contract.MESSAGE_POLL_STAGES[0].sites.map(siteTuple)).toEqual(
       expanded.map(siteTuple),
@@ -638,7 +645,7 @@ describe('Android message-poll contract ledger', () => {
 
   it('types exactly the predecessor question, options and Room name', async () => {
     const contract = await loadContract();
-    const { fills, templates } = predecessorPollFields(read(predecessor));
+    const { fills, templates } = predecessorPollFields(readPredecessor());
     expect(fills).toEqual([
       ['poll-question', 'question'],
       ['poll-option-0', 'Apple'],
@@ -2525,7 +2532,7 @@ describe('Android message-poll hosted wiring and parity ledger', () => {
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(section).toContain('Suite `android.message-poll`');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).toContain('acceptance gate for #749');
     expect(section).not.toContain('pnpm exec nx');
   });

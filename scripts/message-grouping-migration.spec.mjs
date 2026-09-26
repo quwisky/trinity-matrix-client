@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -16,6 +17,8 @@ const digest = (path) =>
   createHash('sha256')
     .update(readFileSync(resolve(root, path)))
     .digest('hex');
+const predecessorBytes = () => readRetiredPredecessor(predecessor);
+const predecessorSource = () => predecessorBytes().toString('utf8');
 const loadContract = () =>
   import('../e2e/android/message-grouping-contract.mts');
 const loadPreference = () =>
@@ -178,8 +181,8 @@ function observeGroupingDocument(
 
 describe('Android message-grouping migration contract', () => {
   it('pins the exact Android branch, helper sources and desktop return boundary', () => {
-    const source = read(predecessor);
-    expect(digest(predecessor)).toBe(
+    const source = predecessorSource();
+    expect(createHash('sha256').update(predecessorBytes()).digest('hex')).toBe(
       '9cdd8dcd5722dabe4783b9f045bcff56ab4c50adfce51f2ce9ba8e33884dd05f',
     );
     expect(digest('e2e/support/app.mts')).toBe(
@@ -197,6 +200,25 @@ describe('Android message-grouping migration contract', () => {
     expect(source).toContain("html.setAttribute('data-density', 'compact')");
     expect(source.split('\n')[233]?.trim()).toBe('return;');
     expect(source.split('\n')[236]).toContain('hover toolbar');
+  });
+
+  it('keeps only the desktop tail of the retired predecessor in the working tree', () => {
+    const current = read(predecessor);
+    const title =
+      "test('grouped messages line up with the first of their group'";
+    const start = current.indexOf(title);
+    expect(start).toBeGreaterThan(-1);
+    expect(current.indexOf(title, start + 1)).toBe(-1);
+    const definition = current.slice(start);
+    const body = definition.slice(definition.indexOf('=> {'));
+    expect(
+      body.trimStart().startsWith('=> {\n    test.skip(\n      isAndroidE2E,'),
+    ).toBe(true);
+    expect(current).not.toContain('if (isAndroidE2E)');
+    expect(current).not.toContain(
+      'Phones and tablets intentionally replace every hover toolbar',
+    );
+    expect(current).toContain('hover toolbar');
   });
 
   it('requires the 22 unique source-ordered Android identities', async () => {
@@ -801,13 +823,16 @@ describe('Android message-grouping hosted wiring and parity ledger', () => {
 
   it('documents all 22 exact Android records and excludes the desktop tail', () => {
     const migration = read('e2e/android/MIGRATION.md');
-    const section = migration.split('## Message-grouping journey')[1];
+    const section = migration
+      .split('## Message-grouping journey')[1]
+      ?.split('\n## ')[0];
     expect(section).toBeTruthy();
     const rows = [
       ...section.matchAll(/^\|[^\n]+\| `(message-grouping\.[^`]+)` \|$/gmu),
     ].map((match) => match[1]);
     expect(rows).toEqual(expectedAssertions);
     expect(section).toContain('desktop-only tail');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).toContain(
       '9cdd8dcd5722dabe4783b9f045bcff56ab4c50adfce51f2ce9ba8e33884dd05f',
     );

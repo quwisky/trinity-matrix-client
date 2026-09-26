@@ -14,21 +14,15 @@ import { registerUser } from '../../../support/account.mts';
 import {
   installBadgeRecorder,
   recordedBadgeCalls,
-  recordedBadgeCount,
 } from '../../../support/platform-badge.mts';
 
-// Covers the two unread-badge features end to end:
+// Covers AppBadgeService's web sink end to end — the W3C Badging API. We stub
+// `navigator.setAppBadge`/`clearAppBadge` before the app boots and assert the
+// service mirrors the account-wide unread total onto it, and (best effort) that
+// reading the room clears it back to 0. The server-rail Rooms pill badge and the
+// Android platform badge run through android.unread-badges (#691).
 //
-//   1. Server-rail badge (ServerRailComponent) — a non-DM room's unread
-//      notifications should surface as a red `.badge` on the Rooms pill
-//      (`data-testid="rail-rooms"`), summed from RoomsPage.roomsUnread().
-//
-//   2. AppBadgeService's web sink — the W3C Badging API. We stub
-//      `navigator.setAppBadge`/`clearAppBadge` before the app boots and assert
-//      the service mirrors the account-wide unread total onto it, and (best
-//      effort) that reading the room clears it back to 0.
-//
-// Both scenarios register a throwaway "reader" + "sender" pair per test via
+// The scenario registers a throwaway "reader" + "sender" pair per test via
 // Synapse's shared-secret admin endpoint (same mechanism as the protocol rooms
 // and search specs) instead of reusing the shared session user — that keeps the
 // unread *count* exact and the tests order-independent: a fresh account has no
@@ -130,39 +124,14 @@ async function seedUnreadRoom(
 test.describe('Unread badges', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('server-rail Rooms pill shows the aggregated unread count', async ({
-    page,
-    request,
-  }) => {
-    const hs = session.hs as string;
-    const runId = `${testResourceId('run')}r`;
-
-    const { reader } = await seedUnreadRoom(request, hs, runId, SEED);
-
-    await login(page, reader);
-
-    // The Rooms pill (data-testid="rail-rooms") sums unread across every
-    // non-DM room — our seeded room is the reader's only room, so its badge
-    // should read exactly SEED once the initial /sync has landed.
-    const roomsItem = page.locator('trn-server-rail .item').filter({
-      has: page.getByTestId('rail-rooms'),
-    });
-    const badge = roomsItem.locator('.badge');
-    await expect(badge).toBeVisible({ timeout: 30_000 });
-
-    const text = (await badge.textContent())?.trim() ?? '';
-    // Assert the exact seeded count; fall back to "a positive integer" so the
-    // test isn't flaky against server-side notification-count timing quirks.
-    if (text !== String(SEED)) {
-      expect(text).toMatch(/^\d+\+?$/);
-      expect(parseInt(text, 10)).toBeGreaterThan(0);
-    }
-  });
-
   test('the platform badge mirrors the unread total', async ({
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.unread-badges (#691).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}b`;
 
@@ -171,19 +140,6 @@ test.describe('Unread badges', () => {
     await installBadgeRecorder(page);
 
     await login(page, reader);
-
-    if (isAndroidE2E) {
-      await expect
-        .poll(() => recordedBadgeCount(page), { timeout: 30_000 })
-        .toBe(SEED);
-
-      await page.getByTestId('rail-rooms').click();
-      await page.locator('.channel', { hasText: roomName }).first().click();
-      await expect
-        .poll(() => recordedBadgeCount(page), { timeout: 15_000 })
-        .toBe(0);
-      return;
-    }
 
     // Wait for AppBadgeService's effect to settle on the seeded total (its
     // constructor effect runs on every RoomsService.totalUnread() change).

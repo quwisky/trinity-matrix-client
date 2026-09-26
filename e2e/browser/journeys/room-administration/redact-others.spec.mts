@@ -9,7 +9,6 @@ import {
   clickRowMenuItem,
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -69,6 +68,10 @@ test.describe('Moderator redaction', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-moderation (#708).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}m`;
 
@@ -124,12 +127,7 @@ test.describe('Moderator redaction', () => {
 
     // Reveal the hover toolbar → ⋯ menu → "Delete message" (offered because the
     // admin has redact power over others), then confirm the destructive dialog.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-delete').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-delete'));
-    }
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-delete'));
     await page.getByTestId('alert-confirm').click();
 
     // The message is redacted: the row now reads "(message deleted)" and the

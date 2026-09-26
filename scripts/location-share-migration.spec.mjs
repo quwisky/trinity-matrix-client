@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -30,12 +31,34 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+const desktopOnlyTitle = 'shares the current location as a map card';
+
+function pinnedLines(contents, expectedHash) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
   return contents.toString('utf8').split('\n');
+}
+
+const sourceLines = (path, expectedHash) =>
+  pinnedLines(readFileSync(resolve(root, path)), expectedHash);
+
+const retiredLines = (path, expectedHash) =>
+  pinnedLines(readRetiredPredecessor(path), expectedHash);
+
+function definitionBody(source, title) {
+  const start = source.indexOf(`test('${title}'`);
+  expect(start, `definition '${title}'`).toBeGreaterThanOrEqual(0);
+  const end = source.indexOf('\n  });\n', start);
+  expect(end, `end of definition '${title}'`).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
+function ownLedgerSection(docs) {
+  const start = docs.indexOf('\n## Location share journey\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
 }
 
 function assertReadOnlyRendererExpressions(source, path) {
@@ -185,8 +208,8 @@ function assertRuntimeContract({ adapter, contract, fixtures, journey }) {
 }
 
 describe('Android location-share migration', () => {
-  it('pins the exact predecessor, Android adapter source and eight records', () => {
-    const predecessor = sourceLines(
+  it('pins the retired predecessor, Android adapter source and eight records', () => {
+    const predecessor = retiredLines(
       predecessorSource,
       '86e673e5bd86e014a6f5ee4b4eb1da11eb979013b6629a452153367405e76244',
     );
@@ -380,7 +403,7 @@ describe('Android location-share migration', () => {
     }
   });
 
-  it('wires the serial target, registry, ordered CI diagnostics and ledger', () => {
+  it('wires the serial target, registry, CI diagnostics and ledger', () => {
     const project = read('e2e/android/project.json');
     const packageJson = read('package.json');
     const runners = read('e2e/registry/suites/runners.mts');
@@ -397,6 +420,9 @@ describe('Android location-share migration', () => {
     ]) {
       expect(source).toContain('location-share');
     }
+    expect(ownLedgerSection(docs)).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
     expect(project).toContain('--suite=android.location-share');
     expect(project).toContain('--timeout-ms=1200000');
     expect(project).toContain('--resource=android-avd --resource=synapse');
@@ -410,7 +436,28 @@ describe('Android location-share migration', () => {
     );
   });
 
-  it('does not weaken the retained predecessor while migration files are absent', () => {
+  it('keeps the predecessor definition desktop-only without its Android branch', () => {
+    const working = read(predecessorSource);
+    const definition = definitionBody(working, desktopOnlyTitle);
+    expect(definition).toMatch(/test\.skip\(\s*isAndroidE2E,/u);
+    expect(definition).toContain(
+      "await clickRowToolbar(row.first(), row.first().getByTestId('msg-more'));",
+    );
+    expect(definition).toContain(
+      "await expect(page.getByTestId('msg-edit')).toHaveCount(0);",
+    );
+    expect(definition).toContain(
+      "await expect(page.getByTestId('msg-copy-link')).toBeVisible();",
+    );
+    expect(working).toContain("permissions: ['geolocation']");
+    expect(working).not.toContain('if (isAndroidE2E)');
+    expect(working).not.toContain('openMessageActionSheet');
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      'journeys/conversations/location-share.spec.mts',
+    );
+  });
+
+  it('keeps renderer-level input shortcuts out of the Android journey', () => {
     expect(readIfPresent(journeyPath)).not.toMatch(
       /mouse\.|dispatchEvent\(|\.click\(\)|\.focus\(\)|\.value\s*=/u,
     );

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -36,13 +37,18 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function hashedLines(contents, expectedHash) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
   return contents.toString('utf8').split('\n');
 }
+
+const sourceLines = (path, expectedHash) =>
+  hashedLines(readFileSync(resolve(root, path)), expectedHash);
+
+const predecessorLines = (expectedHash) =>
+  hashedLines(readRetiredPredecessor(predecessorSource), expectedHash);
 
 const assertionSiteCount = (lines) =>
   lines.filter(
@@ -104,8 +110,7 @@ function assertProtectedRuntimeContract(journey) {
 
 describe('Android SSO recovery-reset migration', () => {
   it('pins the exact predecessor, dedicated account guard, helper and nine assertions', () => {
-    const predecessor = sourceLines(
-      predecessorSource,
+    const predecessor = predecessorLines(
       '4d4a15f2518a40a1845dfa965d03757697be9d9613030d757b2c74004441ed0b',
     );
     const account = sourceLines(
@@ -279,7 +284,7 @@ describe('Android SSO recovery-reset migration', () => {
     }
   });
 
-  it('registers one bounded uncached Chrome/Maestro suite before native shell', () => {
+  it('registers one bounded uncached Chrome/Maestro suite', () => {
     const project = JSON.parse(read('e2e/android/project.json'));
     const target = project.targets['sso-recovery-reset'];
     expect(target).toMatchObject({
@@ -326,21 +331,30 @@ describe('Android SSO recovery-reset migration', () => {
     );
   });
 
-  it('documents parity and retains the exact predecessor', () => {
+  it('documents parity and pins the retired predecessor at its retirement commit', () => {
     const migration = read('e2e/android/MIGRATION.md');
-    const catalog = read('e2e/browser/journey-catalog.mts');
-    expect(migration).toContain('## SSO recovery-reset refusal journey');
-    expect(migration).toContain('`android.sso-recovery-reset`');
-    expect(migration).toContain(
+    const heading = '## SSO recovery-reset refusal journey';
+    expect(migration).toContain(heading);
+    const sectionStart = migration.indexOf(heading);
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    const section = migration.slice(
+      sectionStart,
+      sectionEnd === -1 ? undefined : sectionEnd,
+    );
+    expect(section).toContain('`android.sso-recovery-reset`');
+    expect(section).toContain(
       '4d4a15f2518a40a1845dfa965d03757697be9d9613030d757b2c74004441ed0b',
     );
-    expect(migration).toContain('nine direct assertion identities');
-    expect(migration).toMatch(/Do not\s+retire/u);
-    expect(catalog).toContain(
+    expect(section).toContain('nine direct assertion identities');
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
+
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    const catalog = read('e2e/browser/journey-catalog.mts');
+    expect(catalog).not.toContain(
       "path: 'journeys/trust/sso-recovery-reset.spec.mts'",
     );
-    expect(read(predecessorSource)).toContain(
-      "test('refuses the reset and points at the identity provider'",
-    );
+    expect(
+      readRetiredPredecessor(predecessorSource).toString('utf8'),
+    ).toContain("test('refuses the reset and points at the identity provider'");
   });
 });

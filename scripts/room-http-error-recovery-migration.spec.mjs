@@ -2,12 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/room-http-error-recovery.spec.mts',
-);
+const sourceFile =
+  'e2e/browser/journeys/room-library/room-http-error-recovery.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/room-http-error-recovery-journeys.mts',
@@ -33,9 +32,19 @@ function replacement() {
     : '';
 }
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf(
+    '\n## Room HTTP-error recovery functional batch\n',
+  );
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android room HTTP-error recovery migration', () => {
-  it('pins both unchanged functional predecessor definitions', () => {
-    const source = readFileSync(sourcePath);
+  it('pins both retired functional predecessor definitions at their retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
     const text = source.toString('utf8');
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
@@ -47,6 +56,19 @@ describe('Android room HTTP-error recovery migration', () => {
     ]) {
       expect(text).toContain(`test('${title}'`);
     }
+  });
+
+  it('retires the predecessor file and its journey catalog entry', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+
+    expect(existsSync(resolve(root, sourceFile))).toBe(false);
+    expect(catalog).not.toContain(sourceFile.replace('e2e/browser/', ''));
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 
   it('maps exactly two stages and all eleven direct assertions', () => {

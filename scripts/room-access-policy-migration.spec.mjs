@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const definitionSource =
@@ -71,7 +72,10 @@ const forbiddenProductMutations = [
 ];
 
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  // Retired predecessors are pinned at their retirement commit; shared helpers stay in the tree.
+  const contents = [definitionSource].includes(path)
+    ? readRetiredPredecessor(path)
+    : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -85,7 +89,7 @@ function expectSites(lines, from, to) {
 }
 
 describe('Android Room access policy migration', () => {
-  it('pins four definitions, helper sources, and exactly 23 direct sites', () => {
+  it('pins four retired definitions, helper sources, and exactly 23 direct sites at the retirement commit', () => {
     const definition = sourceLines(
       definitionSource,
       '3ae190d7814f8e3e2fda6640bcbfb77e089b1da8605b11645b7e79c2df0bcb6c',
@@ -133,6 +137,17 @@ describe('Android Room access policy migration', () => {
     expect(
       definition.filter((line) => line.includes('await openSettingsTab(')),
     ).toHaveLength(5);
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, definitionSource))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${definitionSource.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('exports exact source mappings and stable 23+6 identities', async () => {

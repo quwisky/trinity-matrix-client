@@ -116,6 +116,10 @@ test.describe('Jump to latest', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.jump-to-latest (#738).',
+    );
     const runId = `${testResourceId('run')}j`;
     const { reader, roomName } = await seedBusyRoom(
       request,
@@ -150,15 +154,9 @@ test.describe('Jump to latest', () => {
     );
     expect(range, `scrollable range ${range}px`).toBeGreaterThan(300);
 
-    // Desktop Chromium accepts a wheel gesture. Android's attached WebView does
-    // not receive Playwright's synthetic mouse wheel, so drive the same scroll
-    // container directly there and let its real scroll event update the signal.
-    if (isAndroidE2E) {
-      await scroll.evaluate((element) => element.scrollBy({ top: -3000 }));
-    } else {
-      await scroll.hover();
-      await page.mouse.wheel(0, -3000);
-    }
+    // Scroll up with a real wheel gesture over the timeline.
+    await scroll.hover();
+    await page.mouse.wheel(0, -3000);
     await expect(pill).toBeVisible({ timeout: 15_000 });
 
     // Jumping returns to the newest message and dismisses the pill.

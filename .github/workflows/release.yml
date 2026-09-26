@@ -84,6 +84,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm stylelint
       - run: pnpm format:check
+      # Migration guards read retired Playwright predecessors at their pinned commit.
+      - run: node scripts/retired-playwright-predecessors.mjs fetch
       - run: pnpm test
       - run: pnpm build
       # These Nx-owned targets install the standalone shell dependency graph but do not

@@ -3,7 +3,6 @@ import {
   clickRowMenuItem,
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
   waitForSent,
@@ -29,6 +28,10 @@ test.describe('Message forwarding', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('forwards a message to another room', async ({ page, request }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-forward (#744).',
+    );
     const runId = `${testResourceId('run')}f`;
     const hs = session.hs as string;
     const username = `fwd-user-${runId}`;
@@ -72,14 +75,9 @@ test.describe('Message forwarding', () => {
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());
 
-    // Android exposes message actions through a long-press sheet; pointer hosts use
-    // the row's overflow menu. Both dispatch the same forward command.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-forward').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-forward'));
-    }
+    // Pointer hosts forward from the row's overflow menu; the Android long-press sheet
+    // runs through android.message-forward.
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-forward'));
 
     // The switcher opens as a room picker — choose the target room.
     const search = page.getByPlaceholder('Search rooms, spaces, people');

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -36,8 +37,19 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
+function migrationSection(heading) {
+  const migration = read('e2e/android/MIGRATION.md');
+  const start = migration.indexOf(`${heading}\n`);
+  expect(start, `${heading} must exist`).toBeGreaterThanOrEqual(0);
+  const end = migration.indexOf('\n## ', start + heading.length);
+  return migration.slice(start, end === -1 ? undefined : end);
+}
+
 function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+  const contents =
+    path === predecessorSource
+      ? readRetiredPredecessor(path)
+      : readFileSync(resolve(root, path));
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -117,7 +129,7 @@ function assertRuntimeContract(journey, fixtures) {
 }
 
 describe('Android composer-reactions migration', () => {
-  it('pins the exact predecessor and shared-helper sources', () => {
+  it('pins the retired predecessor at its retirement commit and the shared-helper sources', () => {
     const predecessor = sourceLines(
       predecessorSource,
       '00f7444b5646cc445139b8911fb6c39f59abd3a0a42552a7fd1482ab9f25ed6a',
@@ -269,5 +281,29 @@ describe('Android composer-reactions migration', () => {
     expect(workflow).toContain('android-composer-reactions');
     expect(workflow).toContain('android.composer-reactions/**');
     expect(migration).toContain('## Composer reaction-picker journeys');
+  });
+
+  it('retires the toggle and keeps the desktop hover path desktop-only', () => {
+    const current = read(predecessorSource);
+    expect(current).not.toContain(
+      "test('opens and closes the composer’s own picker from its button'",
+    );
+    const desktopTitle =
+      "test('reacts with an emoji chosen from the full picker'";
+    expect(current).toContain(desktopTitle);
+    const desktop = current.slice(current.indexOf(desktopTitle));
+    expect(desktop).toMatch(
+      /^test\('reacts with an emoji chosen from the full picker', async \(\{\s*page,\s*request,\s*\}\) => \{\s*test\.skip\(\s*isAndroidE2E,/u,
+    );
+    expect(desktop).toContain('.toPass({ timeout: 30_000 })');
+    expect(current).not.toContain('if (isAndroidE2E)');
+    expect(current).not.toContain('if (!isAndroidE2E)');
+    expect(current).not.toContain('openMessageActionSheet');
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      "path: 'journeys/conversations/composer-reactions.spec.mts'",
+    );
+    expect(migrationSection('## Composer reaction-picker journeys')).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
   });
 });

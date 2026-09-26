@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const sourcePath =
@@ -37,8 +38,8 @@ const forbiddenProductMutations = [
 ];
 
 describe('Android Room tombstone migration', () => {
-  it('pins the unchanged helper and single-definition predecessor', () => {
-    const source = readFileSync(resolve(root, sourcePath));
+  it('pins the retired helper and single-definition predecessor at its retirement commit', () => {
+    const source = readRetiredPredecessor(sourcePath);
     const lines = source.toString('utf8').split('\n');
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
@@ -57,6 +58,17 @@ describe('Android Room tombstone migration', () => {
         (match) => match[1],
       ),
     ).toEqual(['shows the upgrade banner and moves to the successor room']);
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, sourcePath))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${sourcePath.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('exports the exact source mappings and six unique assertion identities', async () => {

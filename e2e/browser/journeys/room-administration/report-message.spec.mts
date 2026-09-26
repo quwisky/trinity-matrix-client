@@ -3,7 +3,6 @@ import {
   clickRowMenuItem,
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -28,6 +27,10 @@ test.describe('Report a message', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
   test('reports a message to the server admins', async ({ page, request }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-moderation (#708).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}r`;
     const user = `report-user-${runId}`;
@@ -66,12 +69,7 @@ test.describe('Report a message', () => {
     await row.first().waitFor({ state: 'visible', timeout: 20_000 });
 
     // Hover → ⋯ → Report message → confirm the reason prompt.
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-report').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-report'));
-    }
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-report'));
     await page.getByTestId('alert-confirm').click();
 
     await expect(page.getByText('Reported to the server admins.')).toBeVisible({

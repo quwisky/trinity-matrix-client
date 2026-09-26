@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const blockSource =
@@ -56,9 +57,9 @@ const forbiddenProductMutations = [
 ];
 
 describe('Android member moderation migration', () => {
-  it('pins the Block and generated Kick/Ban sources while preserving the browser-only fault', () => {
-    const block = readFileSync(resolve(root, blockSource));
-    const removal = readFileSync(resolve(root, removalSource));
+  it('pins the retired Block and generated Kick/Ban sources at the retirement commit', () => {
+    const block = readRetiredPredecessor(blockSource);
+    const removal = readRetiredPredecessor(removalSource);
     const blockLines = block.toString('utf8').split('\n');
     const removalLines = removal.toString('utf8').split('\n');
 
@@ -104,6 +105,35 @@ describe('Android member moderation migration', () => {
         ...removalLines.slice(94, 165),
       ]),
     ).toBe(8);
+  });
+
+  it('retires Block and generated Kick/Ban while keeping the browser-only stale-roster fault', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, blockSource))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${blockSource.replace('e2e/browser/', '')}'`,
+    );
+
+    const removal = readFileSync(resolve(root, removalSource), 'utf8');
+    expect(removal).not.toContain('for (const moderation of [');
+    expect(removal).not.toContain(
+      'a lower-power member from the visible roster',
+    );
+    expect(removal.match(/^  test\('([^']+)'/gm)).toEqual([
+      "  test('labels a retained stale roster and recovers without closing its panel'",
+    ]);
+    const staleRoster = removal.slice(
+      removal.indexOf("test('labels a retained stale roster"),
+    );
+    expect(staleRoster).toMatch(
+      /test\.skip\(\s*process\.env\['TRINITY_E2E_PLATFORM'\] === 'android',\s*'fault injection requires Angular development hooks; the installed APK is production',/,
+    );
+    expect(catalog).toContain(
+      `path: '${removalSource.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('exports exact source mappings, the generated domain, and 22 unique identities', async () => {

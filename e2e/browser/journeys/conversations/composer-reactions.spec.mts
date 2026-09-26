@@ -8,7 +8,6 @@ import {
 import {
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
 } from '../../../support/app.mts';
@@ -74,43 +73,14 @@ async function openRoom(page: Page, roomName: string): Promise<void> {
 test.describe('Full emoji reaction picker', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('opens and closes the composer’s own picker from its button', async ({
-    page,
-    request,
-  }) => {
-    // The composer's emoji picker had NO e2e coverage at all, which is how it shipped
-    // unclosable: it moved into the CDK overlay container, its trigger stayed in the row the
-    // overlay anchors to, and a press there reached CDK's outside-press dispatcher as well as
-    // the button's own handler. Both wrote the same signal. The second click left the state
-    // saying open with nothing rendered — and 202 e2e tests passed, because none of them ever
-    // closed it.
-    const runId = `${testResourceId('run')}p`;
-    const { user, roomName } = await seedRoom(
-      request,
-      session.hs as string,
-      runId,
-    );
-
-    await login(page, user);
-    await openRoom(page, roomName);
-
-    const trigger = page.getByRole('button', { name: 'Insert emoji' });
-    const picker = page.locator('trn-emoji-picker');
-
-    await trigger.click();
-    await expect(picker).toBeVisible({ timeout: 20_000 });
-    // The trigger has to agree with what is on screen, which is the half that desynced.
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-
-    await trigger.click();
-    await expect(picker).toBeHidden({ timeout: 10_000 });
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
-  });
-
   test('reacts with an emoji chosen from the full picker', async ({
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.composer-reactions (#733).',
+    );
     const runId = `${testResourceId('run')}r`;
     const { user, roomName, roomId, headers } = await seedRoom(
       request,
@@ -139,15 +109,7 @@ test.describe('Full emoji reaction picker', () => {
     const row = page.locator('.scroll .msg', { hasText: body });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
 
-    // Android deliberately has no hover toolbar: a long press opens the native action
-    // sheet, whose "More reactions…" action reaches the same full picker. Desktop keeps
-    // its hover toolbar → quick reactions → "+" interaction below.
     const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-react-more').click();
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-    }
 
     // Reveal the hover toolbar, open the quick reactions, then escalate to "+".
     // The hover → "Add reaction" → quick-reactions popover chain is a fragile pointer
@@ -161,20 +123,18 @@ test.describe('Full emoji reaction picker', () => {
     // the click then waits out the whole 120s test timeout on an element that is never
     // coming back. Bounding it at 5s turns that hang into another attempt instead.
     const reactMore = page.getByTestId('react-more');
-    if (!isAndroidE2E) {
-      await expect(async () => {
-        if (await dialog.isVisible()) return;
-        if (!(await reactMore.isVisible())) {
-          await row.first().hover();
-          await row
-            .first()
-            .getByRole('button', { name: 'Add reaction' })
-            .click({ timeout: 2_000 });
-        }
-        await reactMore.click({ timeout: 2_000 });
-        await expect(dialog).toBeVisible({ timeout: 2_000 });
-      }).toPass({ timeout: 30_000 });
-    }
+    await expect(async () => {
+      if (await dialog.isVisible()) return;
+      if (!(await reactMore.isVisible())) {
+        await row.first().hover();
+        await row
+          .first()
+          .getByRole('button', { name: 'Add reaction' })
+          .click({ timeout: 2_000 });
+      }
+      await reactMore.click({ timeout: 2_000 });
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
 
     // The full picker opens in a dialog; drive it through its search box (emoji-mart
     // lazy-renders, so search first) and pick the first result.

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const sourcePath =
@@ -182,8 +183,8 @@ describe('Android core Space Settings migration', () => {
     expect(source).toContain("(value) => value?.['topic'] === newTopic");
   });
 
-  it('pins the unchanged seven-definition predecessor and helper span', () => {
-    const source = readFileSync(resolve(root, sourcePath));
+  it('pins the retired seven-definition predecessor and helper span at its retirement commit', () => {
+    const source = readRetiredPredecessor(sourcePath);
     expect(createHash('sha256').update(source).digest('hex')).toBe(
       '662f0fc7c62ba206aa1bd344c1d9ecf913162424c486b97059d252ff7ea30a3a',
     );
@@ -209,6 +210,17 @@ describe('Android core Space Settings migration', () => {
     }
     expect(lines[28]).toBe('async function apiLogin(');
     expect(lines[180]).toBe('}');
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, sourcePath))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${sourcePath.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('exports exactly seven source mappings and all 85 unique literal identities', async () => {

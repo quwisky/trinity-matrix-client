@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -15,6 +16,9 @@ const predecessor =
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
+/** The retired predecessor's exact bytes at its retirement commit, as text. */
+const readPredecessor = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
 const loadContract = () =>
   import('../e2e/android/message-markdown-contract.mts');
 const loadObserver = () =>
@@ -481,11 +485,13 @@ const mutateLine = (source, line, replacement) => {
 };
 
 describe('Android message-markdown predecessor pins', () => {
-  it('pins the unchanged predecessor and three shared helper sources by SHA-256', () => {
-    expect(digest(predecessor)).toBe(PREDECESSOR_SHA256);
+  it('pins the retired predecessor at its retirement commit and three shared helper sources by SHA-256', () => {
+    expect(sha256(readRetiredPredecessor(predecessor))).toBe(
+      PREDECESSOR_SHA256,
+    );
     for (const [path, hash] of Object.entries(SHARED_SHA256))
       expect(digest(path)).toBe(hash);
-    const flipped = Buffer.from(readFileSync(resolve(root, predecessor)));
+    const flipped = Buffer.from(readRetiredPredecessor(predecessor));
     flipped[flipped.length - 2] ^= 1;
     expect(sha256(flipped)).not.toBe(PREDECESSOR_SHA256);
     for (const path of Object.keys(SHARED_SHA256)) {
@@ -520,7 +526,7 @@ describe('Android message-markdown predecessor pins', () => {
     );
   });
 
-  it('keeps the predecessor enabled in both Playwright inventories', async () => {
+  it('retires the predecessor to its desktop-only hover-toolbar definition', async () => {
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -537,21 +543,40 @@ describe('Android message-markdown predecessor pins', () => {
       expect(config).not.toContain('testIgnore');
       expect(config).not.toContain('message-markdown');
     }
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(source).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
     expect(source.match(/test\.skip\(/gu)).toHaveLength(1);
     expect(source.match(/^ {2}test\('/gmu)).toHaveLength(3);
+    const current = read(predecessor);
+    expect(current).not.toMatch(/test\.(?:fixme|only)\(|test\.skip\(true/u);
+    for (const title of [
+      'renders formatting, keeps line breaks, and only sends HTML when it means something',
+      'renders a task list as glyphs rather than dropping it',
+    ])
+      expect(current).not.toContain(title);
+    expect(current.match(/^ {2}test\('/gmu)).toHaveLength(1);
+    const desktop = current.slice(
+      current.indexOf(
+        "  test('keeps the language caption clear of the hover toolbar'",
+      ),
+    );
+    expect(desktop.startsWith("  test('keeps the language caption")).toBe(true);
+    expect(desktop).toMatch(
+      /^ {2}test\('keeps the language caption clear of the hover toolbar', async \(\{\s+page,\s+request,\s+\}\) => \{\s+test\.skip\(\s*isAndroidE2E,/u,
+    );
+    expect(current).not.toContain('if (isAndroidE2E)');
+    expect(current).not.toContain('openMessageActionSheet');
   });
 
   it('maps the exact direct and helper assertion sites with the house AST rule', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     assertPredecessorShape(source);
     for (const stage of STAGES)
       expect(assertionLines(source, ...stage.span)).toEqual(stage.direct);
   });
 
   it('rejects the whole third definition 170–278 because it counts the desktop tail', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(assertionLines(source, 170, 278)).toHaveLength(7);
     expect(
       [...STAGES.slice(0, 2).map((stage) => stage.span), [170, 278]]
@@ -564,7 +589,7 @@ describe('Android message-markdown predecessor pins', () => {
   });
 
   it('fails every text-level pin under an effective in-memory mutation', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const mutations = [
       // The Android branch or its return moves or disappears.
       mutateLine(source, 213, (line) => `${line}\n`),
@@ -610,7 +635,7 @@ describe('Android message-markdown predecessor pins', () => {
 
 describe('Android message-markdown helper expansion by binding', () => {
   it('resolves imported helper calls through the TypeChecker', () => {
-    const { calls } = importedCalls(read(predecessor));
+    const { calls } = importedCalls(readPredecessor());
     const helpers = calls
       .filter((call) => call.specifier?.startsWith('../../../support/'))
       .map((call) => [call.name, call.line, call.loop?.count ?? 1]);
@@ -670,7 +695,7 @@ describe('Android message-markdown helper expansion by binding', () => {
   });
 
   it('excludes a shadowing local helper and proves binding matters against a naive count', () => {
-    const source = read(predecessor);
+    const source = readPredecessor();
     const shadowed = source.replace(
       "    for (const text of ['plain one', 'rich two']) {",
       "    const waitForSent = async (_row: unknown) => {};\n    for (const text of ['plain one', 'rich two']) {",
@@ -687,7 +712,7 @@ describe('Android message-markdown helper expansion by binding', () => {
   });
 
   it('expands 3 Room readiness + 10 send readiness + 3 server echoes + 1 action sheet = 17', () => {
-    const expanded = expandDefinitions(read(predecessor)).flat();
+    const expanded = expandDefinitions(readPredecessor()).flat();
     const inherited = expanded.filter((site) => site.kind === 'inherited');
     const byHelper = (helper) =>
       inherited.filter((site) => site.helper === helper).length;
@@ -705,7 +730,7 @@ describe('Android message-markdown helper expansion by binding', () => {
 
   it('matches the contract sites, identities and helper roles exactly', async () => {
     const contract = await loadContract();
-    const expanded = expandDefinitions(read(predecessor));
+    const expanded = expandDefinitions(readPredecessor());
     expect(
       contract.MESSAGE_MARKDOWN_STAGES.map((entry) =>
         entry.sites.map(siteTuple),
@@ -787,7 +812,7 @@ describe('Android message-markdown contract ledger', () => {
       await loadContract();
     const drafts = Object.values(MESSAGE_MARKDOWN_DRAFTS);
     expect(drafts.map((draft) => draft.lines)).toEqual(
-      predecessorDrafts(read(predecessor)),
+      predecessorDrafts(readPredecessor()),
     );
     for (const draft of drafts) {
       expect(draft.first).toBe(draft.lines[0]);
@@ -803,7 +828,7 @@ describe('Android message-markdown contract ledger', () => {
     expect(MESSAGE_MARKDOWN_DRAFTS.lead.value).toBe(bodies.LEAD_BODY);
     expect(MESSAGE_MARKDOWN_DRAFTS.code.value).toBe(bodies.CODE_BODY);
     // The predecessor's own expected wire bodies (114, 124).
-    const source = read(predecessor);
+    const source = readPredecessor();
     expect(lineAt(source, 114)).toBe(
       "expect(plain.content.body).toBe('plain one\\nplain two');",
     );
@@ -2598,7 +2623,7 @@ describe('Android message-markdown hosted wiring and parity ledger', () => {
     expect(section).toContain('Suite `android.message-markdown`');
     expect(section).toContain('`return;` on line 224');
     expect(section).toContain('Enter inserts a line break on a mobile device');
-    expect(section).toMatch(/remains enabled and untouched/u);
+    expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(section).not.toContain('pnpm exec nx');
   });
 });

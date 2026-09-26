@@ -4,7 +4,6 @@ import {
   clickRowToolbar,
   isAndroidE2E,
   login,
-  openMessageActionSheet,
   synapseSession,
   type SynapseSession,
   waitForSent,
@@ -43,6 +42,10 @@ test.describe('Quote a message', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-quote (#750).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}q`;
     const user = `quote-${runId}`;
@@ -82,12 +85,7 @@ test.describe('Quote a message', () => {
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());
 
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, row.first());
-      await sheet.getByTestId('sheet-quote').click();
-    } else {
-      await clickRowMenuItem(row.first(), page.getByTestId('msg-quote'));
-    }
+    await clickRowMenuItem(row.first(), page.getByTestId('msg-quote'));
 
     // Every line marked, INCLUDING the paragraph break, and a blank line at the end for
     // the reply to be typed on.
@@ -118,6 +116,10 @@ test.describe('Quote a message', () => {
     page,
     request,
   }) => {
+    test.skip(
+      isAndroidE2E,
+      'Android runs this through android.message-quote (#750).',
+    );
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}qn`;
     const user = `quoten-${runId}`;
@@ -180,39 +182,25 @@ test.describe('Quote a message', () => {
     const textRow = page.locator('.scroll .msg', { hasText: body });
     await expect(textRow.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(textRow.first());
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, textRow.first());
-      await expect(sheet.getByTestId('sheet-quote')).toBeVisible();
-      await sheet.getByText('Cancel', { exact: true }).click();
-      await expect(sheet).toHaveCount(0);
-    } else {
-      await clickRowToolbar(
-        textRow.first(),
-        textRow.first().getByTestId('msg-more'),
-      );
-      await expect(page.getByTestId('msg-quote')).toBeVisible({
-        timeout: 10_000,
-      });
-      await page.keyboard.press('Escape');
-    }
+    await clickRowToolbar(
+      textRow.first(),
+      textRow.first().getByTestId('msg-more'),
+    );
+    await expect(page.getByTestId('msg-quote')).toBeVisible({
+      timeout: 10_000,
+    });
+    await page.keyboard.press('Escape');
 
     const imageRow = page.locator('.scroll .msg', { hasText: 'shot.png' });
     await expect(imageRow.first()).toBeVisible({ timeout: 20_000 });
-    if (isAndroidE2E) {
-      const sheet = await openMessageActionSheet(page, imageRow.first());
-      // Same sheet, no Quote — proving the cap is per-message and not merely absent.
-      await expect(sheet.getByTestId('sheet-copy')).toBeVisible();
-      await expect(sheet.getByTestId('sheet-quote')).toHaveCount(0);
-    } else {
-      await clickRowToolbar(
-        imageRow.first(),
-        imageRow.first().getByTestId('msg-more'),
-      );
-      // Same menu, no Quote — proving the cap is per-message and not merely absent.
-      await expect(page.getByTestId('msg-copy')).toBeVisible({
-        timeout: 10_000,
-      });
-      await expect(page.getByTestId('msg-quote')).toHaveCount(0);
-    }
+    await clickRowToolbar(
+      imageRow.first(),
+      imageRow.first().getByTestId('msg-more'),
+    );
+    // Same menu, no Quote — proving the cap is per-message and not merely absent.
+    await expect(page.getByTestId('msg-copy')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('msg-quote')).toHaveCount(0);
   });
 });

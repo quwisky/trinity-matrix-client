@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const memberInfoSource =
@@ -69,9 +70,9 @@ const forbiddenProductMutations = [
 ];
 
 describe('Android member details and promotion migration', () => {
-  it('pins both canonical sources, helpers, titles, and all direct assertion sites', () => {
-    const memberInfo = readFileSync(resolve(root, memberInfoSource));
-    const promotion = readFileSync(resolve(root, promotionSource));
+  it('pins both retired sources, helpers, titles, and all direct assertion sites at the retirement commit', () => {
+    const memberInfo = readRetiredPredecessor(memberInfoSource);
+    const promotion = readRetiredPredecessor(promotionSource);
     const memberInfoLines = memberInfo.toString('utf8').split('\n');
     const promotionLines = promotion.toString('utf8').split('\n');
 
@@ -111,6 +112,19 @@ describe('Android member details and promotion migration', () => {
         ...promotionLines.slice(61, 134),
       ]),
     ).toBe(7);
+  });
+
+  it('removes both retired predecessors from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    for (const path of [memberInfoSource, promotionSource]) {
+      expect(existsSync(resolve(root, path))).toBe(false);
+      expect(catalog).not.toContain(
+        `path: '${path.replace('e2e/browser/', '')}'`,
+      );
+    }
   });
 
   it('exports exact source mappings and exactly 25 stable identities', async () => {

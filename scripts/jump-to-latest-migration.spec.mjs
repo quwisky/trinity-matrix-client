@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource =
@@ -28,12 +29,35 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+const desktopOnlyTitle =
+  'offers a jump-to-latest pill after scrolling up and returns to the bottom';
+
+function pinnedLines(contents, expectedHash) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
   return contents.toString('utf8').split('\n');
+}
+
+const sourceLines = (path, expectedHash) =>
+  pinnedLines(readFileSync(resolve(root, path)), expectedHash);
+
+const retiredLines = (path, expectedHash) =>
+  pinnedLines(readRetiredPredecessor(path), expectedHash);
+
+function definitionBody(source, title) {
+  const start = source.indexOf(`test('${title}'`);
+  expect(start, `definition '${title}'`).toBeGreaterThanOrEqual(0);
+  const end = source.indexOf('\n  });\n', start);
+  expect(end, `end of definition '${title}'`).toBeGreaterThan(start);
+  return source.slice(start, end);
+}
+
+function ownLedgerSection(docs) {
+  const start = docs.indexOf('\n## Jump to latest journey\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
 }
 
 function assertReadOnlyRendererExpressions(source, path) {
@@ -176,8 +200,8 @@ function assertRuntimeContract({ journey, client, fixtures }) {
 }
 
 describe('Android jump-to-latest migration', () => {
-  it('pins the exact predecessor, helpers and six direct plus one helper identity shape', () => {
-    const predecessor = sourceLines(
+  it('pins the retired predecessor, helpers and six direct plus one helper identity shape', () => {
+    const predecessor = retiredLines(
       predecessorSource,
       '1ecfdf0aad6c13326b81b0103bc7f9793f4754438a77bc8098060910c01e3209',
     );
@@ -391,6 +415,9 @@ describe('Android jump-to-latest migration', () => {
     ]) {
       expect(source).toContain('jump-to-latest');
     }
+    expect(ownLedgerSection(docs)).toContain(
+      'Predecessor status: retired on 2026-09-26',
+    );
     expect(project).toContain('--suite=android.jump-to-latest');
     expect(project).toContain('--timeout-ms=1200000');
     expect(project).toContain('--resource=android-avd --resource=synapse');
@@ -404,7 +431,19 @@ describe('Android jump-to-latest migration', () => {
     );
   });
 
-  it('does not weaken the retained predecessor while implementation files are absent', () => {
+  it('keeps the predecessor definition desktop-only without its Android branch', () => {
+    const working = read(predecessorSource);
+    const definition = definitionBody(working, desktopOnlyTitle);
+    expect(definition).toMatch(/test\.skip\(\s*isAndroidE2E,/u);
+    expect(definition).toContain('await page.mouse.wheel(0, -3000);');
+    expect(working).not.toContain('if (isAndroidE2E)');
+    expect(working).not.toContain('scrollBy(');
+    expect(read('e2e/browser/journey-catalog.mts')).toContain(
+      'journeys/conversations/jump-to-latest.spec.mts',
+    );
+  });
+
+  it('keeps synthetic scrolling out of the Android journey', () => {
     expect(readIfPresent(journeyPath)).not.toMatch(
       /mouse\.|scrollBy\(|scrollTo\(|dispatchEvent\(|\.scrollTop\s*=/u,
     );

@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-library/room-list.spec.mts',
-);
+const sourceFile = 'e2e/browser/journeys/room-library/room-list.spec.mts';
 const replacementPath = resolve(root, 'e2e/android/room-list-journeys.mts');
 
 const assertionIds = [
@@ -18,9 +16,17 @@ const assertionIds = [
   'unread.muted-badge-count',
 ];
 
+function ownLedgerSection() {
+  const docs = readFileSync(resolve(root, 'e2e/android/MIGRATION.md'), 'utf8');
+  const start = docs.indexOf('\n## Room-list preview and unread-row batch\n');
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = docs.indexOf('\n## ', start + 1);
+  return docs.slice(start, end === -1 ? undefined : end);
+}
+
 describe('Android room-list migration', () => {
-  it('pins both complete unchanged Playwright predecessors', () => {
-    const source = readFileSync(sourcePath);
+  it('pins both retired predecessors at their retirement commit', () => {
+    const source = readRetiredPredecessor(sourceFile);
 
     expect(createHash('sha256').update(source).digest('hex')).toBe(
       '122c617df290018bd59fcb57a08ad962e78dbba1230ae87d16d9d3c684112654',
@@ -30,6 +36,19 @@ describe('Android room-list migration', () => {
     );
     expect(source.toString('utf8')).toContain(
       "test('an unread room row shows a muted badge with the unread count, and it clears once opened'",
+    );
+  });
+
+  it('retires the predecessor file and its journey catalog entry', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+
+    expect(existsSync(resolve(root, sourceFile))).toBe(false);
+    expect(catalog).not.toContain(sourceFile.replace('e2e/browser/', ''));
+    expect(ownLedgerSection()).toContain(
+      'Predecessor status: retired on 2026-09-26',
     );
   });
 

@@ -2,12 +2,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
-const sourcePath = resolve(
-  root,
-  'e2e/browser/journeys/room-administration/space-settings-mobile.spec.mts',
-);
+const sourcePath =
+  'e2e/browser/journeys/room-administration/space-settings-mobile.spec.mts';
 const replacementPath = resolve(
   root,
   'e2e/android/space-settings-mobile-journeys.mts',
@@ -86,8 +85,8 @@ const replacement = () =>
   existsSync(replacementPath) ? readFileSync(replacementPath, 'utf8') : '';
 
 describe('Android mobile Space Settings migration', () => {
-  it('pins the unchanged three-definition predecessor', () => {
-    const source = readFileSync(sourcePath);
+  it('pins the retired three-definition predecessor at its retirement commit', () => {
+    const source = readRetiredPredecessor(sourcePath);
     expect(createHash('sha256').update(source).digest('hex')).toBe(
       'fd8dcdd0305cdc1ffa2412cf61779c7775cfe7583563be801ba5be5342fdaaf4',
     );
@@ -98,6 +97,17 @@ describe('Android mobile Space Settings migration', () => {
     ]) {
       expect(source.toString('utf8')).toContain(`test('${title}'`);
     }
+  });
+
+  it('removes the retired predecessor from the working tree and browser catalog', () => {
+    const catalog = readFileSync(
+      resolve(root, 'e2e/browser/journey-catalog.mts'),
+      'utf8',
+    );
+    expect(existsSync(resolve(root, sourcePath))).toBe(false);
+    expect(catalog).not.toContain(
+      `path: '${sourcePath.replace('e2e/browser/', '')}'`,
+    );
   });
 
   it('maps exactly three stages and all sixty-seven direct assertions', () => {

@@ -30,7 +30,7 @@ describe('TypingIndicatorComponent', () => {
 
   it('reserves its space whether or not anyone is typing', async () => {
     // jsdom applies no CSS, so this asserts only that the slot is PRESENT when idle —
-    // that it has a reserved HEIGHT is measured in `composer-typing.spec.mts`.
+    // that it has a reserved HEIGHT is measured in `e2e/android/composer-typing-journeys.mts`.
     const { fixture, container } = await render(TypingIndicatorComponent, {
       inputs: { names: [] },
     });

@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessorSource = 'e2e/browser/journeys/conversations/gif.spec.mts';
@@ -58,8 +59,11 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const readIfPresent = (path) =>
   existsSync(path) ? readFileSync(path, 'utf8') : '';
 
-function sourceLines(path, expectedHash) {
-  const contents = readFileSync(resolve(root, path));
+function sourceLines(
+  path,
+  expectedHash,
+  contents = readFileSync(resolve(root, path)),
+) {
   expect(createHash('sha256').update(contents).digest('hex')).toBe(
     expectedHash,
   );
@@ -212,10 +216,11 @@ function assertRuntimeContract({ journey, provider, preference, fixtures }) {
 }
 
 describe('Android GIF-picker migration', () => {
-  it('pins the exact predecessor, helper spans, and 17 + 7 parity shape', () => {
+  it('pins the retired predecessor at its retirement commit, helper spans, and 17 + 7 parity shape', () => {
     const predecessor = sourceLines(
       predecessorSource,
       'c2196e638e21cedec16ae04d45823d9893d1586d7597ec41b1665f32062ac3ad',
+      readRetiredPredecessor(predecessorSource),
     );
     const navigation = sourceLines(
       navigationSource,
@@ -264,6 +269,13 @@ describe('Android GIF-picker migration', () => {
       "page.getByRole('navigation', { name: 'Settings sections' })",
     );
     expect(navigationSpan).toContain("getByTestId('settings-detail')");
+  });
+
+  it('retires the whole predecessor file and its browser catalog entry', () => {
+    expect(existsSync(resolve(root, predecessorSource))).toBe(false);
+    expect(read('e2e/browser/journey-catalog.mts')).not.toContain(
+      'journeys/conversations/gif.spec.mts',
+    );
   });
 
   it('exports all 24 identities in exact 10 + 4 + 3 + 7 groups', async () => {
@@ -574,5 +586,10 @@ describe('Android GIF-picker migration', () => {
     expect(workflow).toContain('android-gif-picker');
     expect(workflow).toContain('android.gif-picker/**');
     expect(migration).toContain('## GIF picker journeys');
+    const sectionStart = migration.indexOf('\n## GIF picker journeys\n');
+    const sectionEnd = migration.indexOf('\n## ', sectionStart + 1);
+    expect(
+      migration.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd),
+    ).toContain('Predecessor status: retired on 2026-09-26');
   });
 });

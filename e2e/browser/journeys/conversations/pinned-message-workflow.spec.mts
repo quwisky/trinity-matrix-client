@@ -24,7 +24,7 @@ import { registerUser } from '../../../support/account.mts';
 // (`.pin-item__main`), and offer an inline Unpin (`.pin-item__unpin`).
 //
 // Seeds a single fresh user via Synapse's shared-secret admin endpoint (same
-// trick as unread-badges.spec.mts / room-list.spec.mts) who creates their own
+// trick as unread-badges.spec.mts) who creates their own
 // room — as creator they hold power level 100, so
 // `maySendStateEvent('m.room.pinned_events')` (canPin) is true with no extra
 // power-level setup. No second "sender" account is needed: the room is
