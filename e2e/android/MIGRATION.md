@@ -5830,7 +5830,9 @@ stray `x` (`xplain one`) was attributed to that profile. The same value later
 appeared at the Pixel 5 profile, and its cause is the Gboard autocorrection
 described above, which the digit sentinel removes at either profile. The installed app is a
 mobile device in either profile, so Enter behaves the same, and the
-desktop-only hover-toolbar tail is already excluded.
+desktop-only hover-toolbar tail is already excluded. The profile is kept: the
+suite passed its hosted acceptance at it, and the Android action-sheet path it
+covers is the phone path.
 
 ```bash
 pnpm nx run trinity-e2e-android:message-markdown --skipNxCache
@@ -6135,6 +6137,19 @@ predecessor definitions passing sequentially at retry 0, and audited
 original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #750; wiring alone does not establish parity or
 authorize issue closure.
+
+Accepted at `221ce915`. Three unchanged local first attempts
+(`muhouvdb-be5117b6-8dda-456a-8209-6b0f5f26cd6e`,
+`muhp8q2j-ae9c2dae-94c4-4c7e-a56a-9ade77a83452`,
+`muhpmhmr-20aafb64-6de6-4b5a-bebf-c002dfb366a8`) and the original-attempt hosted
+shard-6 artifact of run 36213556510 (`muhwqc46-f94ebb77-e2c4-42cc-8aee-978d541a4c98`)
+each passed 23/23 records (12/11) at attempt 1 and zero retries, with matching
+built and installed APK digests, the publication-safe marker and none of the
+suite's protected Room or event identifiers. The hosted artifact still carries 14
+unrelated raw event ids in Maestro's per-flow logcat; #838 removes that class from
+every suite. The unchanged predecessor passed both definitions at retry 0 locally
+and in the same hosted browser run, and the production renderer had nine
+applicable passes.
 
 ## Message-receipts journey
 
