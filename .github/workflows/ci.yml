@@ -335,6 +335,8 @@ jobs:
     # Shard 3's figure adds a provisional 5 minutes for message-receipts.
     # Shard 3's figure also adds a provisional 5 minutes for message-source.
     # Shard 3's figure also adds a provisional 5 minutes for message-spoiler.
+    # Runner smoke runs on shard 1 only; the other shards start with their first
+    # suite, and their figures still include its 3-5 minutes until the rebalance.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
@@ -397,8 +399,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: |
-            echo 'smoke-started=true' >> "$GITHUB_OUTPUT"
-            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'smoke-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3000000 -- pnpm exec nx run trinity-e2e-android:recovery-reset; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'critical-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:critical-journeys; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-filter-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-filter; fi

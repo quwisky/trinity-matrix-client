@@ -737,7 +737,7 @@ export const E2E_CI_ENTRYPOINTS = [
   },
   {
     command:
-      'TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:runner-smoke',
+      'if [ "${{ matrix.shard }}" = "1" ]; then echo \'smoke-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:runner-smoke; fi',
     tier: 'pull-request',
     suiteIds: ['runner.android'],
   },

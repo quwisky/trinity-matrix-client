@@ -20,6 +20,9 @@ const workflow = yaml('.github/workflows/ci.yml');
 // Each native Android suite's own CI placement: [target, shard, started flag, command
 // timeout]. Order within a shard is scheduling, not a suite contract.
 const ANDROID_NATIVE_PLACEMENT = [
+  // Runner smoke proves the emulator runner once, on shard 1; other shards start
+  // with their first suite.
+  ['runner-smoke', 1, 'smoke', 1_200_000],
   ['critical-journeys', 1, 'critical', 1_200_000],
   ['leave-room', 1, 'leave-room', 1_200_000],
   ['message-linkify', 1, 'message-linkify', 1_200_000],
@@ -471,11 +474,9 @@ describe('CI execution contract', () => {
     const targets = lines.flatMap(
       (line) => line.match(/ trinity-e2e-android:([a-z0-9-]+)/u)?.[1] ?? [],
     );
+    expect(targets[0]).toBe('runner-smoke');
     expect(targets.sort()).toEqual(
-      [
-        'runner-smoke',
-        ...ANDROID_NATIVE_PLACEMENT.map(([target]) => target),
-      ].sort(),
+      ANDROID_NATIVE_PLACEMENT.map(([target]) => target).sort(),
     );
     for (const [target, shard, flag, timeoutMs] of ANDROID_NATIVE_PLACEMENT) {
       const matching = lines.filter((line) =>

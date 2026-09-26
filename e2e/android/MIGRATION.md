@@ -117,6 +117,13 @@ Playwright uses `--shard=N/6`.
 The pinned Chrome fixture runtime follows the SSO suites to shard 5. Every
 suite keeps its target, timeout, started flag and diagnostics upload.
 
+Since 2026-09-26
+([#839](https://github.com/quwisky/trinity-matrix-client/issues/839)) the runner
+smoke runs on shard 1 only, first in its script, with its started-only
+diagnostics upload. The other shards start with their first suite; statements
+below that a suite runs after the runner smoke record their acceptance-time
+placement.
+
 ## Predecessor retirement
 
 On 2026-09-26 the user decided, in
