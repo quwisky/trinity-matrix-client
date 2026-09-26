@@ -12,6 +12,7 @@ import {
   type AccountElement,
   type AccountElementFilter,
   type AccountWorkspaceCase,
+  SharedStageAccount,
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import {
@@ -191,19 +192,23 @@ function sameJson(value: unknown, expected: unknown): boolean {
   return isDeepStrictEqual(value, expected);
 }
 
+// No stage tests Account, login or session state: all four sign in as this
+// one Account and stay isolated through fresh Rooms and Spaces of their own.
+const sharedAccount = new SharedStageAccount('room-access-shared');
+
 const cases: readonly AccountWorkspaceCase[] = [
   {
     id: 'admin-public-history',
     source: ROOM_ACCESS_POLICY_SOURCES.adminPublicHistory,
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner = await fixtures.account('room-access-admin');
+      const owner = await sharedAccount.get(fixtures);
       const room = await fixtures.createRoom(owner, {
         name: `Access ${resources.roomName('admin-public-history')}`,
         preset: 'private_chat',
       });
 
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await openRoom(client, room.name, assertions.adminRoomTimelineVisible);
       await client.tapCurrent('[data-testid="open-room-settings"]');
       await observedElements(
@@ -296,7 +301,7 @@ const cases: readonly AccountWorkspaceCase[] = [
     source: ROOM_ACCESS_POLICY_SOURCES.restrictedSpace,
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner = await fixtures.account('room-access-restricted');
+      const owner = await sharedAccount.get(fixtures);
       const room = await fixtures.createRoom(owner, {
         name: `Restricted ${resources.roomName('restricted-room')}`,
         preset: 'private_chat',
@@ -311,7 +316,7 @@ const cases: readonly AccountWorkspaceCase[] = [
         suggested: true,
       });
 
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await selectSpaceRoom(
         client,
         space.name,
@@ -368,7 +373,7 @@ const cases: readonly AccountWorkspaceCase[] = [
     source: ROOM_ACCESS_POLICY_SOURCES.revokeSpace,
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner = await fixtures.account('room-access-revoke');
+      const owner = await sharedAccount.get(fixtures);
       const room = await fixtures.createRoom(owner, {
         name: `Revoke ${resources.roomName('revoke-room')}`,
         preset: 'private_chat',
@@ -404,7 +409,7 @@ const cases: readonly AccountWorkspaceCase[] = [
         ],
       });
 
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await selectSpaceRoom(
         client,
         kept.name,
@@ -451,7 +456,7 @@ const cases: readonly AccountWorkspaceCase[] = [
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
       const owner = await fixtures.account('room-access-member-owner');
-      const member = await fixtures.account('room-access-member-reader');
+      const member = await sharedAccount.get(fixtures);
       const room = await fixtures.createRoom(owner, {
         name: `Member access ${resources.roomName('member-read-only')}`,
         preset: 'private_chat',
@@ -465,7 +470,7 @@ const cases: readonly AccountWorkspaceCase[] = [
       );
       await fixtures.join(member, room.id);
 
-      await client.login(member);
+      await sharedAccount.signIn(client, member);
       await openRoom(client, room.name, assertions.memberRoomTimelineVisible);
       await client.tapCurrent('[data-testid="open-room-settings"]');
       await client.visible('[data-testid="room-settings"]');
@@ -609,7 +614,11 @@ void test(
           const failures: unknown[] = [];
           console.info(`[room-access-policy] ${entry.id} start`);
           try {
-            await client.reset(entry.profile ?? DESKTOP_ACCOUNT_PROFILE);
+            await sharedAccount.enter(
+              client,
+              entry.profile ?? DESKTOP_ACCOUNT_PROFILE,
+              { fresh: entry.freshApp },
+            );
             await entry.run({
               client,
               fixtures,

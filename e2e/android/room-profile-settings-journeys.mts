@@ -11,6 +11,7 @@ import {
   type AccountElementFilter,
   type AccountWorkspaceCase,
   type AccountWorkspaceCaseContext,
+  SharedStageAccount,
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import { pickAndroidDocument } from './maestro-document-picker.mts';
@@ -289,13 +290,18 @@ async function withNameDelay<T>(
   return result as T;
 }
 
+// Rename, photo and partial-save stages act on Rooms of their own and share
+// this signed-in Account. The Account-continuity stage adds and switches
+// Accounts, so it starts from a cleared app with fresh Accounts.
+const sharedAccount = new SharedStageAccount('room-profile-shared');
+
 const cases: readonly AccountWorkspaceCase[] = [
   {
     id: 'rename-room',
     source: ROOM_PROFILE_SETTINGS_SOURCES.rename,
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner = await fixtures.account('room-profile-rename-owner');
+      const owner = await sharedAccount.get(fixtures);
       const suffix = resources.roomName('room-profile-rename');
       const priorName = `Prior ${suffix}`;
       const originalName = `Before ${suffix}`;
@@ -309,7 +315,7 @@ const cases: readonly AccountWorkspaceCase[] = [
         preset: 'private_chat',
       });
 
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await openRoom(
         client,
         priorName,
@@ -498,12 +504,12 @@ const cases: readonly AccountWorkspaceCase[] = [
     source: ROOM_PROFILE_SETTINGS_SOURCES.photo,
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner = await fixtures.account('room-profile-photo-owner');
+      const owner = await sharedAccount.get(fixtures);
       const room = await fixtures.createRoom(owner, {
         name: `Photo ${resources.roomName('room-profile-photo')}`,
         preset: 'private_chat',
       });
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await openRoom(
         client,
         room.name,
@@ -560,12 +566,12 @@ const cases: readonly AccountWorkspaceCase[] = [
     profile: DESKTOP_ACCOUNT_PROFILE,
     async run(context) {
       const { client, fixtures, resources, signal } = context;
-      const owner = await fixtures.account('room-profile-partial-owner');
+      const owner = await sharedAccount.get(fixtures);
       const room = await fixtures.createRoom(owner, {
         name: `Partial ${resources.roomName('room-profile-partial')}`,
         preset: 'private_chat',
       });
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await openRoom(
         client,
         room.name,
@@ -643,6 +649,7 @@ const cases: readonly AccountWorkspaceCase[] = [
     id: 'opening-account-continuity',
     source: ROOM_PROFILE_SETTINGS_SOURCES.accountContinuity,
     profile: DESKTOP_ACCOUNT_PROFILE,
+    freshApp: true,
     async run(context) {
       const { client, fixtures, resources, signal } = context;
       const owner = await fixtures.account('room-profile-continuity-owner');
@@ -835,7 +842,11 @@ void test(
           const failures: unknown[] = [];
           console.info(`[room-profile-settings] ${entry.id} start`);
           try {
-            await client.reset(entry.profile ?? DESKTOP_ACCOUNT_PROFILE);
+            await sharedAccount.enter(
+              client,
+              entry.profile ?? DESKTOP_ACCOUNT_PROFILE,
+              { fresh: entry.freshApp },
+            );
             await entry.run({
               client,
               fixtures,

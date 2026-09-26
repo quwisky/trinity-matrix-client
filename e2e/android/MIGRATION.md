@@ -148,6 +148,27 @@ heuristics ([#839](https://github.com/quwisky/trinity-matrix-client/issues/839))
   Account addition, switching, removal and reauthentication through the
   signed-in surfaces rather than the form fields.
 
+A suite whose stages do not test Account, login, session or first-run state
+signs one `SharedStageAccount` in once. Its first stage clears the installed app
+and signs in. Each later stage relaunches the host process, which discards
+every in-memory surface, dialog and route, and proves the same Account's Rooms
+surface before it acts. Stages remain isolated through fresh Rooms, Spaces and
+fixture Accounts of their own. A stage marked `freshApp` starts from a cleared
+app, and the next shared stage signs in again.
+
+| Suite | Signed-in Account | Reason |
+| --- | --- | --- |
+| `room-access-policy` | Shared by all four stages | Each stage changes the access policy of its own Room. |
+| `room-profile-settings` | Shared by rename, photo and partial save; `opening-account-continuity` is `freshApp` | Continuity adds and switches Accounts. |
+| `space-settings-mobile` | Shared by all three stages | Each stage uses its own Space. The contents candidate list is read in the first stage. |
+| `space-curation-create-join` | Shared by all three stages | Each stage uses its own Spaces. Adding an existing Room runs first, so it lists only its own Room. |
+| `accounts-workspace`, `recovery-reset`, `clear-all-data`, `oidc-login`, `legacy-sso`, `security-settings`, `cross-user-verification`, `message-authenticity-shield` | Fresh per stage | They test Account, login, session, device or trust state. |
+| `identity-presence`, `member-role-classification`, `member-role-live-updates` | Fresh per stage | Stages set the signed-in Account's own profile, which every Room's member list shows. |
+| `recent-activity`, `room-read-state`, `unread-badges`, `room-list`, `room-tags`, `sidebar-filter` | Fresh per stage | Their assertions aggregate across every Room of the Account: recency, favourites, unread counts, list order, tags and filter results. |
+| `gif-picker`, `room-for-you`, `room-settings-mobile`, `space-room-order`, `message-links`, `composer-formatting` | Fresh per stage | Stages change Account or device preferences such as GIF opt-in, notification rules, Space order or Appearance. |
+| `room-widget-settings`, `space-settings-resilience` | Fresh per stage | A stage adds and switches Accounts; widget approvals are also per Account. |
+| `message-markdown`, `message-action-sheet`, `message-quote`, `edit-history`, `composer-typing`, `composer-mentions`, `composer-reactions`, `member-details-promotion`, `member-moderation`, `message-moderation`, `room-http-error-recovery` | Fresh per stage | Not converted yet. No stage is known to need a fresh Account, but several register each stage's Account in a per-stage publication-safety ledger. |
+
 ## Hosted shard layout
 
 `.github/workflows/ci.yml` is the authority for current Android shard
@@ -988,8 +1009,8 @@ Playwright predecessors remained enabled.
 | Nested-space prompt creates and links an actual `m.space` child     | `subspace.name-field-visible`, `subspace.link-present`, `subspace.child-type-space`     |
 | Joining an offered child updates the live space view without reload | `join.action-visible`, `join.action-hidden`, `join.child-row-visible`                   |
 
-These are exactly ten direct assertions. Each stage uses fresh accounts and
-rooms. Matrix state reads remain inside the fixture closure so access tokens
+These are exactly ten direct assertions. The three stages sign in as
+[one shared signed-in Account](#shared-native-actions-and-sign-in); each uses fresh Rooms and Spaces. Matrix state reads remain inside the fixture closure so access tokens
 cannot enter diagnostics. Space selection, menus, room picks, creation and join
 actions use measured current-coordinate native taps; the nested-space name uses
 native input. WebView access is observation-only. UI-created membership is
@@ -1208,8 +1229,9 @@ enabled.
 | The Space Members shortcut opens its detail directly and returns to focused directory navigation                                                                                                                            | `members.panel-visible`, `members.directory-hidden`, `members.heading-named`, `members.back-visible`, `members.directory-tab-visible`, `members.directory-tab-focused`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | An ordinary member reads exact General values as paragraph content without writable actions                                                                                                                                 | `readonly.name-visible`, `readonly.topic-visible`, `readonly.name-paragraph`, `readonly.topic-paragraph`, `readonly.actions-hidden`, `readonly.surface-visible`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
-These are exactly sixty-seven direct assertions. Fresh Accounts, a real Space,
-Rooms, child links and memberships establish state through Matrix. All product
+These are exactly sixty-seven direct assertions. The three stages sign in as
+[one shared signed-in Account](#shared-native-actions-and-sign-in). Fresh owner Accounts, a real Space per stage, Rooms, child links and
+memberships establish state through Matrix. All product
 navigation, form entry, radio/checkbox changes and dialog choices use measured
 native Maestro input. Matrix reads observe persisted child and membership state;
 the owned WebView connection only observes UI state and geometry. Client/device
@@ -2357,7 +2379,8 @@ plus six helper identities, with all predecessor sources enabled and unchanged.
 | Member sees the exact history role warning | `member.history-read-only-message` |
 | Member sees no Access action footer | `member.actions-absent` |
 
-`android.room-access-policy` uses finite Matrix REST fixtures to create its
+`android.room-access-policy` signs its four stages in as
+[one shared signed-in Account](#shared-native-actions-and-sign-in). It uses finite Matrix REST fixtures to create its
 accounts, version-9 Rooms, Spaces, child links, membership, history and exact
 restricted allow-list state, and to observe final server state. Installed-app
 login, Room/Space navigation, Room Settings and Access selection, radio and
@@ -2488,7 +2511,9 @@ and byte-for-byte unchanged.
 | Subsequent topic reports Topic saved | `continuity.topic-saved` |
 | Member observer reads the exact persisted topic | `continuity.topic-persisted` |
 
-`android.room-profile-settings` uses finite Matrix REST fixtures to create
+The rename, photo and partial-save stages of `android.room-profile-settings`
+sign in as [one shared signed-in Account](#shared-native-actions-and-sign-in); the Account-continuity stage starts from a cleared app with
+fresh Accounts. The suite uses finite Matrix REST fixtures to create
 Rooms and accounts and to observe exact name, topic and avatar state. Installed
 app login, Room and Room Settings navigation, responsive Back behavior, text
 entry, save/retry actions, photo activation and Android DocumentsUI selection

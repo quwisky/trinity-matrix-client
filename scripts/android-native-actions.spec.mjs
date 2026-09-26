@@ -268,3 +268,93 @@ describe('Android Account client native actions', () => {
     expect(hide).not.toContain('runFlow');
   });
 });
+
+describe('Android shared stage Account', () => {
+  const sharedSuites = [
+    'room-access-policy-journeys.mts',
+    'room-profile-settings-journeys.mts',
+    'space-curation-create-join-journeys.mts',
+    'space-settings-mobile-journeys.mts',
+  ];
+
+  it('signs in once, then relaunches the host and proves the same Account', async () => {
+    const { SharedStageAccount } =
+      await import('../e2e/android/account-workspace-client.mts');
+    const calls = [];
+    const client = {
+      reset: async (profile) => calls.push(['reset', profile.width]),
+      relaunch: async (profile) => calls.push(['relaunch', profile.width]),
+      login: async (account) => calls.push(['login', account.userId]),
+      activeAccountRooms: async (account) =>
+        calls.push(['rooms', account.userId]),
+    };
+    let registered = 0;
+    const fixtures = {
+      account: async (role) => ({
+        userId: `@${role}-${++registered}:localhost`,
+      }),
+    };
+    const profile = { width: 393 };
+    const shared = new SharedStageAccount('suite-shared');
+    for (const fresh of [undefined, undefined, true, undefined]) {
+      await shared.enter(client, profile, { fresh });
+      const account = await shared.get(fixtures);
+      await shared.signIn(client, account);
+    }
+    const account = '@suite-shared-1:localhost';
+    expect(registered).toBe(1);
+    expect(calls).toEqual([
+      ['reset', 393],
+      ['login', account],
+      ['relaunch', 393],
+      ['rooms', account],
+      ['reset', 393],
+      ['login', account],
+      ['relaunch', 393],
+      ['rooms', account],
+    ]);
+    await expect(
+      shared.signIn(client, { userId: '@other:localhost' }),
+    ).rejects.toThrow('Shared stage Account is the suite Account');
+  });
+
+  it('is used only by suites whose stages keep fresh Rooms of their own', () => {
+    const journeys = readdirSync(resolve(root, 'e2e/android')).filter(
+      (name) =>
+        name.endsWith('-journeys.mts') &&
+        read(`e2e/android/${name}`).includes('new SharedStageAccount('),
+    );
+    expect(journeys.sort()).toEqual(sharedSuites);
+    for (const name of sharedSuites) {
+      const text = read(`e2e/android/${name}`);
+      expect(text.match(/new SharedStageAccount\(/gu), name).toHaveLength(1);
+      // The runner attaches every stage through the shared Account.
+      expect(text, name).toMatch(
+        /await sharedAccount\.enter\(\s*client,\s*entry\.profile \?\? \w+,\s*\{\s*fresh:\s*entry\.freshApp\s*\},?\s*\)/u,
+      );
+      expect(text, name).not.toMatch(/\bclient\.reset\(/u);
+      const start = text.indexOf('const cases');
+      const cases = text.slice(start, text.indexOf('\n];', start));
+      const bodies = cases.split(/\n {2}\{\n {4}id: '/u).slice(1);
+      expect(bodies.length, name).toBeGreaterThanOrEqual(3);
+      for (const body of bodies) {
+        const id = body.slice(0, body.indexOf("'"));
+        expect(body, `${name} ${id}`).toMatch(/fixtures\.createRoom\(/u);
+        if (body.includes('freshApp: true')) {
+          expect(body, `${name} ${id}`).not.toContain('sharedAccount.');
+          expect(body, `${name} ${id}`).toMatch(/client\.login\(/u);
+        } else {
+          expect(
+            body.match(/sharedAccount\.get\(fixtures\)/gu),
+            `${name} ${id}`,
+          ).toHaveLength(1);
+          expect(
+            body.match(/sharedAccount\.signIn\(client,\s*\w+\)/gu),
+            `${name} ${id}`,
+          ).toHaveLength(1);
+          expect(body, `${name} ${id}`).not.toMatch(/client\.login\(/u);
+        }
+      }
+    }
+  });
+});

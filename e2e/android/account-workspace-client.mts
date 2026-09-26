@@ -323,10 +323,69 @@ export interface AccountWorkspaceCaseContext {
   readonly signal: AbortSignal;
 }
 
+/**
+ * One signed-in Account shared by the stages of a suite that do not test
+ * Account, login, session or first-run state.
+ *
+ * The first stage clears the installed app and signs in natively. Every later
+ * stage relaunches the host process, which discards each in-memory surface,
+ * dialog and route, and proves the same Account's Rooms surface before the
+ * stage acts. Stages stay isolated through fresh Rooms and fixtures of their
+ * own. A stage that needs a fresh app enters with `fresh`, and the next shared
+ * stage signs in again.
+ */
+export class SharedStageAccount {
+  private account: Promise<Account> | undefined;
+  private signedIn = false;
+
+  readonly role: string;
+
+  constructor(role: string) {
+    this.role = role;
+  }
+
+  /** Runner: attach a stage client to a fresh app or the signed-in host. */
+  async enter(
+    client: AccountWorkspaceClient,
+    profile: AccountViewportProfile,
+    options: { readonly fresh?: boolean } = {},
+  ): Promise<'reset' | 'relaunch'> {
+    if (this.signedIn && !options.fresh) {
+      await client.relaunch(profile);
+      return 'relaunch';
+    }
+    this.signedIn = false;
+    await client.reset(profile);
+    return 'reset';
+  }
+
+  /** Stage: the suite's one Account, registered on first use. */
+  get(fixtures: ReturnType<typeof createAccountFixtures>): Promise<Account> {
+    this.account ??= fixtures.account(this.role);
+    return this.account;
+  }
+
+  /** Stage: sign in once, or prove the relaunched host kept the same Account. */
+  async signIn(client: AccountWorkspaceClient, account: Account): Promise<void> {
+    assert.equal(account, await this.account, 'Shared stage Account is the suite Account');
+    if (this.signedIn) {
+      await client.activeAccountRooms(account);
+      return;
+    }
+    await client.login(account);
+    this.signedIn = true;
+  }
+}
+
 export interface AccountWorkspaceCase {
   readonly id: string;
   readonly source: string;
   readonly profile?: AccountViewportProfile;
+  /**
+   * In a suite that shares one signed-in Account, this stage tests Account,
+   * login or session state and starts from a cleared app instead.
+   */
+  readonly freshApp?: boolean;
   run(context: AccountWorkspaceCaseContext): Promise<void>;
 }
 

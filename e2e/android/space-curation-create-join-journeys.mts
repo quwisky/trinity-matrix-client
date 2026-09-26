@@ -11,6 +11,7 @@ import {
   type AccountElement,
   type AccountElementFilter,
   type AccountWorkspaceCase,
+  SharedStageAccount,
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
@@ -109,13 +110,18 @@ async function openSpaceAction(
   await client.tapCurrent(`[data-testid="${testId}"]`);
 }
 
+// No stage tests Account, login or session state: all three sign in as this
+// one Account and stay isolated through fresh Spaces and Rooms of their own.
+// Adding an existing Room runs first, so its candidates are its own Room.
+const sharedAccount = new SharedStageAccount('space-curation-shared');
+
 const cases: readonly AccountWorkspaceCase[] = [
   {
     id: 'add-existing-room',
     source: addSource,
     profile: PIXEL_5_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const reader = await fixtures.account('curate-add');
+      const reader = await sharedAccount.get(fixtures);
       const spaceName = `Curated ${resources.roomName('space')}`;
       const roomName = `Existing ${resources.roomName('room')}`;
       const space = await fixtures.createRoom(reader, {
@@ -128,7 +134,7 @@ const cases: readonly AccountWorkspaceCase[] = [
         preset: 'private_chat',
       });
 
-      await client.login(reader);
+      await sharedAccount.signIn(client, reader);
       await selectSpace(client, spaceName);
       await openSpaceAction(client, 'space-add-rooms');
       await observedElements(
@@ -180,7 +186,7 @@ const cases: readonly AccountWorkspaceCase[] = [
     source: createSource,
     profile: PIXEL_5_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const reader = await fixtures.account('curate-subspace');
+      const reader = await sharedAccount.get(fixtures);
       const parentName = `Parent ${resources.roomName('space')}`;
       const childName = `Child ${resources.roomName('space')}`;
       const parent = await fixtures.createRoom(reader, {
@@ -189,7 +195,7 @@ const cases: readonly AccountWorkspaceCase[] = [
         creation_content: { type: 'm.space' },
       });
 
-      await client.login(reader);
+      await sharedAccount.signIn(client, reader);
       const spaceSelector = await selectSpace(client, parentName);
       await openSpaceAction(client, 'space-create-subspace');
       await observedElements(
@@ -234,7 +240,7 @@ const cases: readonly AccountWorkspaceCase[] = [
     source: joinSource,
     profile: PIXEL_5_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const reader = await fixtures.account('curate-join-reader');
+      const reader = await sharedAccount.get(fixtures);
       const other = await fixtures.account('curate-join-owner');
       const spaceName = `Joinable ${resources.roomName('space')}`;
       const childName = `Lobby ${resources.roomName('room')}`;
@@ -249,7 +255,7 @@ const cases: readonly AccountWorkspaceCase[] = [
       });
       await fixtures.setSpaceChild(reader, space.id, child.id);
 
-      await client.login(reader);
+      await sharedAccount.signIn(client, reader);
       await selectSpace(client, spaceName);
       const join = roomControl('.joinable', 'join-child-', childName, child.id);
       await observedElements(
@@ -374,7 +380,11 @@ void test(
           const failures: unknown[] = [];
           console.info(`[space-curation-create-join] ${entry.id} start`);
           try {
-            await client.reset(entry.profile ?? PIXEL_5_ACCOUNT_PROFILE);
+            await sharedAccount.enter(
+              client,
+              entry.profile ?? PIXEL_5_ACCOUNT_PROFILE,
+              { fresh: entry.freshApp },
+            );
             await entry.run({
               client,
               fixtures,

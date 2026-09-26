@@ -11,6 +11,7 @@ import {
   type AccountElement,
   type AccountElementFilter,
   type AccountWorkspaceCase,
+  SharedStageAccount,
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import { evaluateNative, waitForNativeShellState } from './native-shell-client.mts';
@@ -212,13 +213,17 @@ const focusedOne = (elements: readonly AccountElement[]) =>
 const touchTarget = (elements: readonly AccountElement[]) =>
   elements.length === 1 && elements[0]!.visible && elements[0]!.rect.height >= 44;
 
+// No stage tests Account, login or session state: all three sign in as this
+// one Account and stay isolated through fresh Spaces and Rooms of their own.
+const sharedAccount = new SharedStageAccount('space-settings-shared');
+
 const cases: readonly AccountWorkspaceCase[] = [
   {
     id: 'directory-drafts-and-contents',
     source: openingSource,
     profile: PIXEL_5_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner = await fixtures.account('space-settings-owner');
+      const owner = await sharedAccount.get(fixtures);
       const suffix = resources.roomName('space-settings-mobile');
       const space = await fixtures.createRoom(owner, {
         name: `Mobile space ${suffix}`,
@@ -229,7 +234,7 @@ const cases: readonly AccountWorkspaceCase[] = [
       const candidate = await fixtures.createRoom(owner, { name: `Mobile candidate ${suffix}`, preset: 'private_chat' });
       await fixtures.setSpaceChild(owner, space.id, room.id, { suggested: true });
 
-      await client.login(owner);
+      await sharedAccount.signIn(client, owner);
       await recordReadOnlyWebviewSession(client);
       await openSpaceSettings(client, space.name, room.name);
       await observedElements(client, assertions.settingsVisible, '[data-testid="space-settings"]', visibleOne);
@@ -376,9 +381,9 @@ const cases: readonly AccountWorkspaceCase[] = [
     source: membersSource,
     profile: PIXEL_5_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
-      const owner=await fixtures.account('space-members-owner');
+      const owner=await sharedAccount.get(fixtures);
       const space=await fixtures.createRoom(owner,{name:`Members shortcut ${resources.roomName('space-members')}`,preset:'private_chat',creation_content:{type:'m.space'}});
-      await client.login(owner);
+      await sharedAccount.signIn(client,owner);
       await recordReadOnlyWebviewSession(client);
       await selectSpace(client,space.name);
       await client.tapCurrent('[data-testid="space-actions-overflow"]');
@@ -398,11 +403,11 @@ const cases: readonly AccountWorkspaceCase[] = [
     profile: PIXEL_5_ACCOUNT_PROFILE,
     async run({ client, fixtures, resources }) {
       const owner=await fixtures.account('space-readonly-owner');
-      const member=await fixtures.account('space-readonly-member');
+      const member=await sharedAccount.get(fixtures);
       const space=await fixtures.createRoom(owner,{name:`Phone read only ${resources.roomName('space-readonly')}`,preset:'private_chat',creation_content:{type:'m.space'}});
       await fixtures.invite(owner,space.id,member);
       await fixtures.join(member,space.id);
-      await client.login(member);
+      await sharedAccount.signIn(client,member);
       await recordReadOnlyWebviewSession(client);
       await openSpaceSettings(client,space.name);
       await client.tapCurrent('[data-testid="space-settings-tab-general"]');
@@ -443,7 +448,7 @@ void test('Android mobile Space Settings journeys', { timeout: 1_080_000 }, asyn
         const stage:{id:string;source:string;status:'running'|'passed'|'failed';durationMs:number;artifact:string;failureCount?:number;error?:string}={id:entry.id,source:entry.source,status:'running',durationMs:0,artifact:`${entry.id}/*`};
         stages.push(stage);await save();const started=performance.now();const failures:unknown[]=[];
         console.info(`[space-settings-mobile] ${entry.id} start`);
-        try{await client.reset(entry.profile ?? PIXEL_5_ACCOUNT_PROFILE);await entry.run({client,fixtures,resources:matrixResources,signal});await client.capture('passed');}
+        try{await sharedAccount.enter(client,entry.profile ?? PIXEL_5_ACCOUNT_PROFILE,{fresh:entry.freshApp});await entry.run({client,fixtures,resources:matrixResources,signal});await client.capture('passed');}
         catch(error){failures.push(error);try{await client.capture('failed');}catch(captureError){failures.push(captureError);}}
         finally{try{await client.close();}catch(error){failures.push(error);}client=undefined;}
         stage.durationMs=performance.now()-started;stage.failureCount=failures.length;
