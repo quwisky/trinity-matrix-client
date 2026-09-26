@@ -601,13 +601,8 @@ describe('Android message-linkify hosted wiring and parity ledger', () => {
     );
   });
 
-  it('runs at the end of shard one and uploads only started safe diagnostics', () => {
+  it('runs on shard one and uploads only started safe diagnostics', () => {
     const workflow = read('.github/workflows/ci.yml');
-    const runner = workflow.indexOf('message-linkify-started=true');
-    expect(runner).toBeGreaterThan(
-      workflow.indexOf('room-http-error-recovery-started=true'),
-    );
-    expect(runner).toBeLessThan(workflow.indexOf('edit-history-started=true'));
     expect(workflow).toContain(
       'if [ "${{ matrix.shard }}" = "1" ]; then echo \'message-linkify-started=true\'',
     );

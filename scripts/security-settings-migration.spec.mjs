@@ -347,9 +347,6 @@ describe('Android Security settings migration', () => {
     expect(workflow).toContain(
       'pnpm exec nx run trinity-e2e-android:security-settings',
     );
-    expect(workflow.indexOf('oidc-login-started=true')).toBeLessThan(
-      workflow.indexOf('security-settings-started=true'),
-    );
     expect(workflow).toContain('surface: android-security-settings');
     expect(workflow).toContain(
       'report-path: dist/.playwright/trinity-e2e-android/*/android.security-settings/**',

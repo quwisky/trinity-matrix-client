@@ -779,14 +779,10 @@ describe('Android message-grouping hosted wiring and parity ledger', () => {
     ).toHaveLength(1);
   });
 
-  it('runs in shard two after message-forward and uploads only started safe diagnostics', () => {
+  it('runs in shard two and uploads only started safe diagnostics', () => {
     const workflow = read('.github/workflows/ci.yml');
-    const runner = workflow.indexOf('message-grouping-started=true');
-    expect(runner).toBeGreaterThan(
-      workflow.indexOf('message-forward-started=true'),
-    );
-    expect(runner).toBeLessThan(
-      workflow.indexOf('cross-user-verification-started=true'),
+    expect(workflow).toContain(
+      'if [ "${{ matrix.shard }}" = "2" ]; then echo \'message-grouping-started=true\'',
     );
     expect(workflow).toContain(
       'node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-grouping',

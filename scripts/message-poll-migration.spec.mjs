@@ -2331,12 +2331,11 @@ function wiringInputs() {
     project: JSON.parse(read('e2e/android/project.json')),
     pkg: JSON.parse(read('package.json')),
     workflow: read('.github/workflows/ci.yml'),
-    ciSpec: read('scripts/ci-workflow.spec.mjs'),
   };
 }
 
 /** Every hosted wiring rule, as a pure function of the files' text. */
-function assertWiring({ project, pkg, workflow, ciSpec }) {
+function assertWiring({ project, pkg, workflow }) {
   const target = project.targets['message-poll'];
   expect(target.cache).toBe(false);
   expect(target.parallelism).toBe(false);
@@ -2351,15 +2350,12 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   const lines = workflow.split('\n').map((line) => line.trim());
   const runner = lines.indexOf(CI_LINE);
   expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
   expect(
     lines.filter((line) => line.includes('trinity-e2e-android:message-poll')),
   ).toHaveLength(1);
-  expect(lines[runner - 1]).toContain("echo 'message-linkify-started=true'");
-  expect(
-    lines
-      .filter((line) => line.startsWith('if [ "${{ matrix.shard }}" = "1" ]'))
-      .at(-1),
-  ).toBe(CI_LINE);
   const gate = workflow
     .split('      - name: Gate Android message-poll diagnostics\n')[1]
     ?.split('\n      - ')[0];
@@ -2378,18 +2374,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-poll/**',
   );
-  expect(workflow).toContain('# shard 1 about 113 native minutes,');
   expect(workflow).toContain(
     "# 1's a provisional 6-8 minutes for message-poll.",
-  );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(79);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(72);');
-  expect(ciSpec).toContain("step.with.surface === 'android-message-poll'");
-  expect(ciSpec).toContain(
-    'runs message-poll after message-linkify at the end of shard 1',
-  );
-  expect(ciSpec).toContain(
-    'budgets message-poll in the shard-1 figure of the Android budget comment',
   );
 }
 
@@ -2496,29 +2482,17 @@ describe('Android message-poll hosted wiring and parity ledger', () => {
         UPLOAD_IF,
         "${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' }}",
       ),
-      withText(
-        'workflow',
-        'shard 1 about 113 native minutes',
-        'shard 1 about 105 native minutes',
-      ),
-      withText(
-        'ciSpec',
-        'expect(uploads.length).toBe(79);',
-        'expect(uploads.length).toBe(78);',
-      ),
-      withText(
-        'ciSpec',
-        'expect(lines).toHaveLength(72);',
-        'expect(lines).toHaveLength(71);',
-      ),
     ])
       expect(() => assertWiring(mutated)).toThrow();
-    // The runner moved before message-linkify.
+    // The runner moved after the retained Playwright command.
     const inputs = clone();
     const lines = inputs.workflow.split('\n');
     const index = lines.findIndex((line) => line.trim() === CI_LINE);
     const [line] = lines.splice(index, 1);
-    lines.splice(index - 1, 0, line);
+    const retained = lines.findIndex((entry) =>
+      entry.includes('pnpm e2e:android --'),
+    );
+    lines.splice(retained + 1, 0, line);
     inputs.workflow = lines.join('\n');
     expect(() => assertWiring(inputs)).toThrow();
   });

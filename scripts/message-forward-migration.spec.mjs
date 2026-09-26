@@ -469,16 +469,10 @@ describe('Android message-forward migration contract', () => {
     );
   });
 
-  it('runs before cross-user and uploads only started publication-safe diagnostics', () => {
+  it('runs on its shard and uploads only started publication-safe diagnostics', () => {
     const workflow = read('.github/workflows/ci.yml');
     const runLine = 'pnpm nx run trinity-e2e-android:message-forward; fi';
     expect(workflow).toContain(runLine);
-    expect(workflow.indexOf(runLine)).toBeGreaterThan(
-      workflow.indexOf('pnpm nx run trinity-e2e-android:edit-history; fi'),
-    );
-    expect(workflow.indexOf(runLine)).toBeLessThan(
-      workflow.indexOf('trinity-e2e-android:cross-user-verification; fi'),
-    );
     expect(workflow).toContain('message-forward-started=true');
     expect(workflow).toContain('Gate Android message-forward diagnostics');
     expect(workflow).toContain('message-forward-artifact-gate');

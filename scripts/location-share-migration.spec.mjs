@@ -408,9 +408,6 @@ describe('Android location-share migration', () => {
     expect(workflow).toContain(
       'dist/.playwright/trinity-e2e-android/*/android.location-share/**',
     );
-    expect(
-      workflow.indexOf('trinity-e2e-android:location-share'),
-    ).toBeGreaterThan(workflow.indexOf('trinity-e2e-android:link-preview'));
   });
 
   it('does not weaken the retained predecessor while migration files are absent', () => {

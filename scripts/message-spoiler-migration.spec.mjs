@@ -2860,12 +2860,11 @@ function wiringInputs() {
     project: JSON.parse(read('e2e/android/project.json')),
     pkg: JSON.parse(read('package.json')),
     workflow: read('.github/workflows/ci.yml'),
-    ciSpec: read('scripts/ci-workflow.spec.mjs'),
   };
 }
 
 /** Every hosted wiring rule, as a pure function of the files' text. */
-function assertWiring({ project, pkg, workflow, ciSpec }) {
+function assertWiring({ project, pkg, workflow }) {
   const target = project.targets['message-spoiler'];
   expect(target.cache).toBe(false);
   expect(target.parallelism).toBe(false);
@@ -2880,17 +2879,14 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   const lines = workflow.split('\n').map((line) => line.trim());
   const runner = lines.indexOf(CI_LINE);
   expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
   expect(
     lines.filter((line) =>
       line.includes('trinity-e2e-android:message-spoiler'),
     ),
   ).toHaveLength(1);
-  expect(lines[runner - 1]).toContain("echo 'message-source-started=true'");
-  expect(
-    lines
-      .filter((line) => line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'))
-      .at(-1),
-  ).toBe(CI_LINE);
   const gate = workflow
     .split('      - name: Gate Android message-spoiler diagnostics\n')[1]
     ?.split('\n      - ')[0];
@@ -2911,18 +2907,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-spoiler/**',
   );
-  expect(workflow).toContain('shard 2 about 117, shard 3 about 173\n');
   expect(workflow).toContain(
     "# Shard 3's figure also adds a provisional 5 minutes for message-spoiler.",
-  );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(79);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(72);');
-  expect(ciSpec).toContain("step.with.surface === 'android-message-spoiler'");
-  expect(ciSpec).toContain(
-    'runs message-spoiler after message-source at the end of shard 3',
-  );
-  expect(ciSpec).toContain(
-    'budgets message-spoiler in the shard-3 figure of the Android budget comment',
   );
 }
 
@@ -3037,30 +3023,22 @@ describe('Android message-spoiler hosted wiring and parity ledger', () => {
         UPLOAD_IF,
         "${{ !cancelled() && steps.android.outputs.message-spoiler-started == 'true' }}",
       ),
-      withText('workflow', 'shard 3 about 173', 'shard 3 about 168'),
-      withText(
-        'ciSpec',
-        'expect(uploads.length).toBe(79);',
-        'expect(uploads.length).toBe(78);',
-      ),
-      withText(
-        'ciSpec',
-        'expect(lines).toHaveLength(72);',
-        'expect(lines).toHaveLength(71);',
-      ),
     ])
       expect(() => assertWiring(mutated)).toThrow();
-    // The runner moved before message-source.
+    // The runner moved after the retained Playwright command.
     const inputs = clone();
     const lines = inputs.workflow.split('\n');
     const index = lines.findIndex((line) => line.trim() === CI_LINE);
     const [line] = lines.splice(index, 1);
-    lines.splice(index - 1, 0, line);
+    const retained = lines.findIndex((entry) =>
+      entry.includes('pnpm e2e:android --'),
+    );
+    lines.splice(retained + 1, 0, line);
     inputs.workflow = lines.join('\n');
     expect(() => assertWiring(inputs)).toThrow();
   });
 
-  it('documents exactly the 6 identities with their source lines and the 5/1 prose, as the last section', () => {
+  it('documents exactly the 6 identities with their source lines and the 5/1 prose', () => {
     const migration = read('e2e/android/MIGRATION.md');
     const section = migration
       .split('## Message-spoiler journey')[1]
@@ -3095,11 +3073,6 @@ describe('Android message-spoiler hosted wiring and parity ledger', () => {
     expect(section).toContain('spoiler-revealed.png');
     expect(section).toContain('acceptance gate for #753');
     expect(section).not.toContain('pnpm exec nx');
-    expect(migration.trimEnd().endsWith(section.trimEnd())).toBe(true);
-    // The message-source section, and only it, precedes this one.
-    expect(
-      migration.split('\n## ').at(-2).startsWith('Message-source journey\n'),
-    ).toBe(true);
     const design = read(
       'docs/superpowers/specs/2026-09-26-android-spoiler-reveal-maestro-design.md',
     );

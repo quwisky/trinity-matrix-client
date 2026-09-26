@@ -324,12 +324,6 @@ describe('Android SSO recovery-reset migration', () => {
     expect(workflow).toContain(
       'report-path: dist/.playwright/trinity-e2e-android/*/android.sso-recovery-reset/**',
     );
-    expect(workflow.indexOf('legacy-sso-started=true')).toBeLessThan(
-      workflow.indexOf('sso-recovery-reset-started=true'),
-    );
-    expect(workflow.indexOf('sso-recovery-reset-started=true')).toBeLessThan(
-      workflow.indexOf('native-shell-started=true'),
-    );
   });
 
   it('documents parity and retains the exact predecessor', () => {

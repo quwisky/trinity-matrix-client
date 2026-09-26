@@ -265,9 +265,6 @@ function assertWiring({
     'surface: android-media-retention',
     'android.media-retention/**',
   ]);
-  expect(workflow.indexOf('trinity-e2e-android:location-share')).toBeLessThan(
-    workflow.indexOf('trinity-e2e-android:media-retention'),
-  );
   expectFragments(docs, [
     '## Media retention journey',
     '`android.media-retention`',

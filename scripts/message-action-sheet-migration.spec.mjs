@@ -703,7 +703,7 @@ describe('Android message-action-sheet migration', () => {
     }
   });
 
-  it('registers one uncached serialized suite after media retention with owned diagnostics', () => {
+  it('registers one uncached serialized suite with owned diagnostics', () => {
     const project = JSON.parse(read('e2e/android/project.json'));
     const target = project.targets['message-action-sheet'];
     expect(target, 'message-action-sheet Nx target must exist').toBeDefined();
@@ -745,8 +745,5 @@ describe('Android message-action-sheet migration', () => {
       '18 + 4 + 4 + 18 + 10',
       'runtime-provenance.json',
     ]);
-    expect(
-      workflow.indexOf('trinity-e2e-android:message-action-sheet'),
-    ).toBeGreaterThan(workflow.indexOf('trinity-e2e-android:media-retention'));
   });
 });

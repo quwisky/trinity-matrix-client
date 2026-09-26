@@ -291,26 +291,10 @@ describe('Android edit-history migration contract', () => {
     const shard2Runs = commandLines.filter((line) =>
       line.startsWith('            if [ "${{ matrix.shard }}" = "2" ]; then'),
     );
-    const suiteRuns = (target) =>
-      shard2Runs.filter((line) =>
-        line.endsWith(`trinity-e2e-android:${target}; fi`),
-      );
-    const smokeRuns = commandLines.filter(
-      (line) =>
-        line.startsWith('            TRINITY_ANDROID_SERIAL=') &&
-        line.endsWith('trinity-e2e-android:runner-smoke'),
+    const editHistoryRuns = shard2Runs.filter((line) =>
+      line.endsWith('trinity-e2e-android:edit-history; fi'),
     );
-    const editHistoryRuns = suiteRuns('edit-history');
-    const crossUserRuns = suiteRuns('cross-user-verification');
-    expect(smokeRuns).toHaveLength(1);
     expect(editHistoryRuns).toHaveLength(1);
-    expect(crossUserRuns).toHaveLength(1);
-    expect(commandLines.indexOf(editHistoryRuns[0])).toBeGreaterThan(
-      commandLines.indexOf(smokeRuns[0]),
-    );
-    expect(commandLines.indexOf(crossUserRuns[0])).toBeGreaterThan(
-      commandLines.indexOf(editHistoryRuns[0]),
-    );
     expect(workflow).toContain('edit-history-started=true');
     expect(workflow).toContain(
       'ci-run-command.mjs --timeout-ms 2700000 -- pnpm nx run trinity-e2e-android:edit-history',

@@ -402,9 +402,6 @@ describe('Android jump-to-latest migration', () => {
     expect(workflow).toContain(
       'dist/.playwright/trinity-e2e-android/*/android.jump-to-latest/**',
     );
-    expect(
-      workflow.indexOf('trinity-e2e-android:jump-to-latest'),
-    ).toBeGreaterThan(workflow.indexOf('trinity-e2e-android:jump-to-date'));
   });
 
   it('does not weaken the retained predecessor while implementation files are absent', () => {

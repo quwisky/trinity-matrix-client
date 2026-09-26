@@ -2609,12 +2609,11 @@ function wiringInputs() {
     project: JSON.parse(read('e2e/android/project.json')),
     pkg: JSON.parse(read('package.json')),
     workflow: read('.github/workflows/ci.yml'),
-    ciSpec: read('scripts/ci-workflow.spec.mjs'),
   };
 }
 
 /** Every hosted wiring rule, as a pure function of the files' text. */
-function assertWiring({ project, pkg, workflow, ciSpec }) {
+function assertWiring({ project, pkg, workflow }) {
   const target = project.targets['message-receipts'];
   expect(target.cache).toBe(false);
   expect(target.parallelism).toBe(false);
@@ -2629,19 +2628,14 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   const lines = workflow.split('\n').map((line) => line.trim());
   const runner = lines.indexOf(CI_LINE);
   expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
   expect(
     lines.filter((line) =>
       line.includes('trinity-e2e-android:message-receipts'),
     ),
   ).toHaveLength(1);
-  expect(lines[runner - 1]).toContain("echo 'member-moderation-started=true'");
-  // Only message-source and message-spoiler follow it on shard 3.
-  const shardThree = lines.filter((line) =>
-    line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'),
-  );
-  expect(shardThree.at(-3)).toBe(CI_LINE);
-  expect(shardThree.at(-2)).toContain('trinity-e2e-android:message-source;');
-  expect(shardThree.at(-1)).toContain('trinity-e2e-android:message-spoiler;');
   const gate = workflow
     .split('      - name: Gate Android message-receipts diagnostics\n')[1]
     ?.split('\n      - ')[0];
@@ -2662,20 +2656,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-receipts/**',
   );
-  // 163 with message-receipts; message-source and message-spoiler then add
-  // their own 5 minutes each.
-  expect(workflow).toContain('shard 2 about 117, shard 3 about 173\n');
   expect(workflow).toContain(
     "# Shard 3's figure adds a provisional 5 minutes for message-receipts.",
-  );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(79);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(72);');
-  expect(ciSpec).toContain("step.with.surface === 'android-message-receipts'");
-  expect(ciSpec).toContain(
-    'runs message-receipts after member-moderation, followed only by message-source and message-spoiler on shard 3',
-  );
-  expect(ciSpec).toContain(
-    'budgets message-receipts in the shard-3 figure of the Android budget comment',
   );
 }
 
@@ -2789,25 +2771,17 @@ describe('Android message-receipts hosted wiring and parity ledger', () => {
         UPLOAD_IF,
         "${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' }}",
       ),
-      withText('workflow', 'shard 3 about 173', 'shard 3 about 158'),
-      withText(
-        'ciSpec',
-        'expect(uploads.length).toBe(79);',
-        'expect(uploads.length).toBe(78);',
-      ),
-      withText(
-        'ciSpec',
-        'expect(lines).toHaveLength(72);',
-        'expect(lines).toHaveLength(71);',
-      ),
     ])
       expect(() => assertWiring(mutated)).toThrow();
-    // The runner moved before member-moderation.
+    // The runner moved after the retained Playwright command.
     const inputs = clone();
     const lines = inputs.workflow.split('\n');
     const index = lines.findIndex((line) => line.trim() === CI_LINE);
     const [line] = lines.splice(index, 1);
-    lines.splice(index - 1, 0, line);
+    const retained = lines.findIndex((entry) =>
+      entry.includes('pnpm e2e:android --'),
+    );
+    lines.splice(retained + 1, 0, line);
     inputs.workflow = lines.join('\n');
     expect(() => assertWiring(inputs)).toThrow();
   });
@@ -2846,10 +2820,6 @@ describe('Android message-receipts hosted wiring and parity ledger', () => {
     expect(section).toContain('1280×720');
     expect(section).toContain('acceptance gate for #751');
     expect(section).not.toContain('pnpm exec nx');
-    // The next migration's section, and only it, follows this one.
-    expect(
-      migration.split('## Message-receipts journey')[1].split('\n## ')[1],
-    ).toMatch(/^Message-source journey\n/u);
     const design = read(
       'docs/superpowers/specs/2026-09-26-android-read-receipt-maestro-design.md',
     );

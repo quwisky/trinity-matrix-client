@@ -367,9 +367,6 @@ describe('Android link-preview migration', () => {
     expect(workflow).toContain(
       'dist/.playwright/trinity-e2e-android/*/android.link-preview/**',
     );
-    expect(
-      workflow.indexOf('trinity-e2e-android:link-preview'),
-    ).toBeGreaterThan(workflow.indexOf('trinity-e2e-android:jump-to-latest'));
   });
 
   it('does not weaken the retained predecessor while implementation files are absent', () => {

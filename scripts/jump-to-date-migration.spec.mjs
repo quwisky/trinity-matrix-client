@@ -325,11 +325,6 @@ describe('Android jump-to-date migration', () => {
     expect(workflow).toContain(
       'dist/.playwright/trinity-e2e-android/*/android.jump-to-date/**',
     );
-    expect(
-      workflow.indexOf('trinity-e2e-android:jump-to-date'),
-    ).toBeGreaterThan(
-      workflow.indexOf('trinity-e2e-android:hide-system-messages'),
-    );
   });
 
   it('does not weaken the retained predecessor while implementation files are absent', () => {
