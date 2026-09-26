@@ -239,7 +239,7 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(76);
+    expect(uploads.length).toBe(77);
     const uploadIdentities = uploads.map((step) =>
       [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
     );
@@ -886,13 +886,15 @@ describe('CI execution contract', () => {
                   ? /!cancelled\(\).*outputs\.message-poll-started == 'true'.*outputs\.message-poll-safe == 'true'/
                   : step.with.surface === 'android-message-quote'
                     ? /!cancelled\(\).*outputs\.message-quote-started == 'true'.*outputs\.message-quote-safe == 'true'/
-                    : step.with.surface === 'android-message-action-sheet'
-                      ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
-                      : step.with.surface === 'android-edit-history'
-                        ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
-                        : step.with.surface === 'android-message-forward'
-                          ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
-                          : gate,
+                    : step.with.surface === 'android-message-receipts'
+                      ? /!cancelled\(\).*outputs\.message-receipts-started == 'true'.*outputs\.message-receipts-safe == 'true'/
+                      : step.with.surface === 'android-message-action-sheet'
+                        ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+                        : step.with.surface === 'android-edit-history'
+                          ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+                          : step.with.surface === 'android-message-forward'
+                            ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
+                            : gate,
       );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
@@ -1614,6 +1616,85 @@ describe('CI execution contract', () => {
     );
   });
 
+  it('runs message-receipts after member-moderation at the end of shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const memberModeration = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:member-moderation;'),
+    );
+    const messageReceipts = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-receipts;'),
+    );
+    const shardThree = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'),
+    );
+    const messageReceiptsLine = lines[messageReceipts];
+
+    expect(memberModeration).toBeGreaterThan(-1);
+    expect(messageReceipts).toBe(memberModeration + 1);
+    expect(shardThree.at(-1)).toBe(messageReceiptsLine);
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-receipts'),
+      ),
+    ).toHaveLength(1);
+    expect(messageReceiptsLine).toContain('matrix.shard }}" = "3"');
+    expect(messageReceiptsLine).toContain('message-receipts-started=true');
+    expect(messageReceiptsLine).toContain('--timeout-ms 1200000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-receipts-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-receipts/message-receipts/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-quote-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-receipts',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' && steps.message-receipts-artifact-gate.outputs.message-receipts-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-receipts/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-receipts in the shard-3 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardThree = Number(
+      comment.match(/shard 3 about (\d+) \(240\)/)?.[1],
+    );
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 158 native minutes before message-receipts, plus its provisional 5 minutes.
+    expect(shardThree).toBe(163);
+    expect(comment).toContain(
+      "Shard 3's figure adds a provisional 5 minutes for message-receipts.",
+    );
+    expect(
+      shardThree + retainedMinutes + diagnosticsMinutes,
+    ).toBeLessThanOrEqual(240);
+  });
+
   it('runs message-links after security-settings and before retained Playwright on shard 4', () => {
     const script = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'android',
@@ -1945,7 +2026,7 @@ describe('CI execution contract', () => {
       .filter(Boolean)
       .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
 
-    expect(lines).toHaveLength(69);
+    expect(lines).toHaveLength(70);
     for (const line of lines) {
       expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
     }

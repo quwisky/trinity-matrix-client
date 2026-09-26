@@ -6135,3 +6135,112 @@ predecessor definitions passing sequentially at retry 0, and audited
 original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #750; wiring alone does not establish parity or
 authorize issue closure.
+
+## Message-receipts journey
+
+Suite `android.message-receipts` migrates the single "seen by" definition of
+the unchanged read-receipt predecessor
+`e2e/browser/journeys/conversations/message-receipts.spec.mts` (166 lines,
+SHA-256
+`5d4d757364c6b5b1a5a0e148c8c17adf173296bb2f435730d2803ed7854baa42`, the
+issue's pin, which this branch carries unchanged) into one serial one-stage
+installed-Android Node/Maestro suite. The Playwright predecessor
+remains enabled and untouched. The stage maps to definition 53–165 (`seen-by`) and
+expands the predecessor's module-local Room-opening helper at 40–48; its
+module-local API-token helper at 19–38 reaches no `expect` site. The guard
+also pins `e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`), the run
+suffix `s`, the roles `rcpt-reader-`, `rcpt-author-` and `rcpt-seer-`, the
+seer name `Cara${runId}` set before `createRoom`, the Room name
+`Receipts E2E ${runId}` inviting author and seer, the body
+`read receipt target ${runId}`, the transaction `rcpt-${runId}`, the `m.read`
+receipt for the exact `eventId`, the locator
+`.scroll [data-testid="read-receipts"]`, the `aria-label` matcher
+`new RegExp(seerName)` and the four-edge intersection.
+
+The suite records 4 ordered, unique identities: 3 direct + 1 inherited. The
+inherited site is the Room readiness of the local `openRoom` (line 45).
+Helper expansion is resolved by binding; `registerUser`, `apiToken` and
+`login` add no site. `45@118` reads as helper line 45 reached from the call on
+line 118. The mobile Send-button change does not touch this predecessor (it
+sends through REST), so the issue's four records are the suite's four.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `seen-by` | 45@118 | inherited | `openRoom` composer visible | `message-receipts.seen-by.room-ready` |
+| `seen-by` | 122 | direct | First read-receipt cluster visible | `message-receipts.seen-by.cluster-visible` |
+| `seen-by` | 123 | direct | Cluster `aria-label` names the seer | `message-receipts.seen-by.seer-named` |
+| `seen-by` | 164 | direct | Cluster does not intersect its message text | `message-receipts.seen-by.text-clear` |
+
+Three fresh Accounts (reader, author, seer) are arranged through real
+Synapse exactly as the predecessor arranges them: the seer's display name
+`Cara<run>` is set before the Room exists, the reader creates the Room
+inviting author and seer, both join, the author sends the one text message
+and the seer posts its real `m.read` receipt for that event id. REST only
+arranges and observes; Maestro owns login as the reader and Room opening. No
+text is typed beyond login. The Room is proved read-only through one
+additive fixture in `account-workspace-fixtures.mts`, `roomReceipts`, which
+reads the Room's `m.receipt` ephemeral events from one filtered,
+non-blocking `/sync` as the reader's fixture session.
+
+Documented reinterpretations of the predecessor:
+
+- **Authoritative relation before launch.** Before any UI step, bounded
+  independent reads must show: exactly one Room message, the author's
+  original `m.text` with the exact body and event id; a seer invite from the
+  reader and exactly one seer join, every seer member event carrying only
+  `Cara<run>` (a name set after the join would add a second join); current
+  `join` membership for all three; and exactly one unthreaded `m.read`
+  receipt of the seer, on exactly that event. The relation is read again
+  after the rendered records.
+- **Event-scoped cluster.** The predecessor's `receipts.first()` must be
+  owned by the exact message row (found read-only by its body and proved by
+  its event id), be that row's first cluster and the document's first, and
+  be a visible button with at least one avatar. An avatar elsewhere in the
+  Room never satisfies line 122.
+- **Exact accessible name.** Beyond `RegExp(seerName)`, the `Seen by …` name
+  list must hold the seer exactly once, never the reader, only joined
+  non-reader members, and one name per avatar. The installed app lists the
+  author too: the SDK's implicit receipt for a sender's own message sits on
+  the same event, so the device shows two names and two avatars.
+- **Measured geometry.** The cluster and the exact row's first `.msg__text`
+  are measured with `getBoundingClientRect` in one read-only expression; both
+  boxes must be finite and non-zero and the four edge conditions are
+  recomputed from the numbers. On the device the cluster sits below the text.
+
+The stage runs at the predecessor's wide desktop profile (1280×720 CSS
+pixels, DPR 1, no touch), the viewport of both Playwright projects that run
+the predecessor, and writes `profile-applied.json`. Every Account, Room,
+event and run-scoped text identifier is registered as a secret before it can
+reach a diagnostic; records hold only digests, counts, booleans and measured
+boxes, and the scan also rejects `access_token` values. The two native
+selectors (`[data-testid="rail-rooms"]` and `.channel` with a text filter)
+carry no identifier; the message row is never an action target.
+
+```bash
+pnpm nx run trinity-e2e-android:message-receipts --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-receipts
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries. Its provisional budgets are a 10-minute Node test, a 15-minute
+Nx timeout and a 20-minute CI wrapper, to be re-derived from the local
+acceptance runs. Shard 3 runs it last, after member moderation, and its
+budget comment adds a provisional 5 minutes (about 163 native minutes of the
+240-minute job). Cleanup runs every bounded step even after a failure,
+including the three Accounts' Room leave, forget and logout; a cleanup,
+scrub or scan failure blocks publication. Failure text rethrown to the job
+log keeps only error names and messages with every registered identifier
+redacted. Diagnostics are scrubbed of raw and encoded identifiers, tokens,
+authorization headers, rasters and Preferences XML. The
+`android-message-receipts` upload requires both the started flag and the
+post-scan `publication-safe` marker.
+
+Three unchanged installed-Android first attempts, the exact Playwright
+predecessor definition passing sequentially at retry 0, and audited
+original-attempt hosted Android/browser/renderer artifacts form the
+acceptance gate for #751; wiring alone does not establish parity or
+authorize issue closure.

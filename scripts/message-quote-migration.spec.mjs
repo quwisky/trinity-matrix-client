@@ -3041,8 +3041,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(workflow).toContain(
     "# Shard 6's figure adds a provisional 12 minutes for message-quote.",
   );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(76);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(69);');
+  expect(ciSpec).toContain('expect(uploads.length).toBe(77);');
+  expect(ciSpec).toContain('expect(lines).toHaveLength(70);');
   expect(ciSpec).toContain("step.with.surface === 'android-message-quote'");
   expect(ciSpec).toContain(
     'runs message-quote after room-widget-settings at the end of shard 6',
@@ -3161,13 +3161,13 @@ describe('Android message-quote hosted wiring and parity ledger', () => {
       withText('workflow', 'shard 6 about 118', 'shard 6 about 106'),
       withText(
         'ciSpec',
+        'expect(uploads.length).toBe(77);',
         'expect(uploads.length).toBe(76);',
-        'expect(uploads.length).toBe(75);',
       ),
       withText(
         'ciSpec',
+        'expect(lines).toHaveLength(70);',
         'expect(lines).toHaveLength(69);',
-        'expect(lines).toHaveLength(68);',
       ),
     ])
       expect(() => assertWiring(mutated)).toThrow();
@@ -3217,7 +3217,10 @@ describe('Android message-quote hosted wiring and parity ledger', () => {
     expect(section).toContain('application/octet-stream');
     expect(section).toContain('acceptance gate for #750');
     expect(section).not.toContain('pnpm exec nx');
-    expect(migration.trimEnd().endsWith(section.trimEnd())).toBe(true);
+    // The next migration's section, and only it, follows this one.
+    expect(
+      migration.split('## Message-quote journeys')[1].split('\n## ')[1],
+    ).toMatch(/^Message-receipts journey\n/u);
   });
 });
 

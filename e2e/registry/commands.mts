@@ -534,6 +534,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-quote'],
   },
   {
+    name: 'e2e:android:message-receipts',
+    command: 'nx run trinity-e2e-android:message-receipts',
+    kind: 'canonical',
+    suiteIds: ['android.message-receipts'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -914,6 +920,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'member-moderation-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:member-moderation; fi',
     tier: 'pull-request',
     suiteIds: ['android.member-moderation'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'message-receipts-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-receipts; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-receipts'],
   },
   {
     command:

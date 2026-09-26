@@ -306,6 +306,10 @@ export function createAccountFixtures(
     observer: NodeWorkspaceAccount,
     roomId: string,
   ): Promise<Readonly<Record<string, unknown>>>;
+  roomReceipts(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<readonly Readonly<Record<string, unknown>>[]>;
   resolveRoomAlias(
     observer: NodeWorkspaceAccount,
     alias: string,
@@ -1301,6 +1305,49 @@ export function createAccountFixtures(
     return record(value, 'Matrix fixture room-messages response');
   }
 
+  /**
+   * The Room's `m.receipt` ephemeral events from one filtered, non-blocking
+   * `/sync` as the observer's fixture session. Receipts are ephemeral, so
+   * `/sync` is their only client-server read; it neither waits nor sets
+   * presence, and the access token stays in this closure.
+   */
+  async function roomReceipts(
+    observer: NodeWorkspaceAccount,
+    roomId: string,
+  ): Promise<readonly MatrixRecord[]> {
+    const filter = JSON.stringify({
+      account_data: { types: [] },
+      presence: { types: [] },
+      room: {
+        rooms: [roomId],
+        account_data: { types: [] },
+        state: { types: [] },
+        timeline: { limit: 1 },
+        ephemeral: { types: ['m.receipt'] },
+      },
+    });
+    const response = record(
+      await get(
+        access(observer),
+        `/sync?timeout=0&set_presence=offline&filter=${encodeURIComponent(filter)}`,
+      ),
+      'Matrix fixture sync response',
+    );
+    const rooms = record(response['rooms'] ?? {}, 'Matrix fixture sync rooms');
+    const joined = record(rooms['join'] ?? {}, 'Matrix fixture sync joined rooms');
+    const room = joined[roomId];
+    if (room === undefined) return [];
+    const ephemeral = record(
+      record(room, 'Matrix fixture sync room')['ephemeral'] ?? {},
+      'Matrix fixture sync ephemeral section',
+    );
+    const events = ephemeral['events'] ?? [];
+    assert(Array.isArray(events), 'Matrix fixture sync ephemeral events');
+    return events.map((event, index) =>
+      record(event, `Matrix fixture ephemeral event ${index}`),
+    );
+  }
+
   /** Cleanup may supply its own bounded signal after the invocation is cancelled. */
   async function joinedRoomIds(
     observer: NodeWorkspaceAccount,
@@ -1393,6 +1440,7 @@ export function createAccountFixtures(
     roomState,
     roomEvent,
     roomMessages,
+    roomReceipts,
     resolveRoomAlias,
     allowEndedMembershipCleanup,
     trackRoomMembership,
