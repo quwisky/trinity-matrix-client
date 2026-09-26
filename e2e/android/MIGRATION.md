@@ -5975,6 +5975,17 @@ predecessor passing sequentially at retry 0, and audited original-attempt
 hosted Android/browser/renderer artifacts form the acceptance gate for #749;
 wiring alone does not establish parity or authorize issue closure.
 
+Accepted at `e7d4187e`. Three unchanged local first attempts
+(`muhjzz4s-9f471432-973d-4e00-b107-68b9d965adfb`,
+`muhk8jd9-f6328ba1-20a5-41a0-bff9-cef1352f01a5`,
+`muhkh7ny-7820bd74-a4b6-45e1-b894-3c59b42be34a`) and the original-attempt hosted
+shard-1 artifact of run 36203167573 (`muhq7iup-d6f5df1b-db96-472c-a04e-1ccc4f79779c`)
+each passed 10/10 records at attempt 1 and zero retries, with matching built and
+installed APK digests, the publication-safe marker and no protected Room or event
+identifier in any file, including `process.log`. No native focused fill needed its
+internal retry. The unchanged predecessor passed at retry 0 locally and in the same
+hosted browser run, and the production renderer had nine applicable passes.
+
 ## Message-quote journeys
 
 Suite `android.message-quote` migrates both definitions of the unchanged quote
