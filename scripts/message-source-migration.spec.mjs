@@ -2310,9 +2310,16 @@ describe('Android message-source diagnostics safety', () => {
       RUN,
     ])
       expect(error.message).not.toContain(value);
-    // Node appends an assertion's actual/expected values to a custom message;
-    // they never reach the job log, nor does any unregistered event-id shape.
-    expect(failure.message).toContain(OTHER_ID);
+    // Node appends an assertion's actual/expected values to a custom message,
+    // contiguous or as an interleaved character diff depending on the
+    // terminal. The rethrow keeps exactly the first line, so no fragment of
+    // that block reaches the job log, nor does any unregistered event-id shape.
+    const [firstLine, ...appended] = failure.message.split('\n');
+    expect(firstLine).toBe("The dialog event_id is the server event's");
+    expect(appended.join('\n').trim()).not.toBe('');
+    expect(error.message.split('\n')).toContain(`AssertionError: ${firstLine}`);
+    for (const fragment of appended.map((line) => line.trim()))
+      if (fragment.length >= 3) expect(error.message).not.toContain(fragment);
     expect(error.message).not.toContain(OTHER_ID);
     expect(error.message).not.toContain('actual');
     const unregistered = '$SJXdpxxWrrm9mq1XxwAx1Kq-JhfVCWzpxntFokS4Ox4';

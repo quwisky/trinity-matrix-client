@@ -349,6 +349,8 @@ describe('Node test reporter', () => {
       'node.assertion-detail',
     );
     expect(result.status).not.toBe(0);
-    expect(result.stdout).toContain('value-actual-marker');
+    // The inspected `actual` property is contiguous whether Node renders the
+    // message diff line by line or character by character.
+    expect(result.stdout).toContain("actual: 'value-actual-marker'");
   });
 });
