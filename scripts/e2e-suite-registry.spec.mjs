@@ -23,6 +23,7 @@ import {
   validateWorkspace,
   yamlReportPaths,
   yamlRunCommands,
+  playwrightTracePolicyAllows,
 } from './e2e-suite-registry-validator.mjs';
 import {
   checkPrerequisites,
@@ -104,6 +105,20 @@ describe('E2E suite registry', () => {
       snapshot.suites.find(({ id }) => id === 'android.installed-webview')
         .ciRetries,
     ).toBe(1);
+  });
+
+  it('allows CI traces off only for an identifier-safe suite', () => {
+    const offInCi = "trace: process.env['CI'] ? 'off' : 'retain-on-failure',";
+    expect(playwrightTracePolicyAllows("trace: 'retain-on-failure',")).toBe(
+      true,
+    );
+    expect(playwrightTracePolicyAllows(offInCi)).toBe(false);
+    expect(
+      playwrightTracePolicyAllows(
+        `e2eReportConfig(SUITE, {\n  identifierSafe: Boolean(process.env['CI']),\n}),\n${offInCi}`,
+      ),
+    ).toBe(true);
+    expect(playwrightTracePolicyAllows("trace: 'off',")).toBe(false);
   });
 
   it('rejects undefined serialization ownership and command drift', () => {

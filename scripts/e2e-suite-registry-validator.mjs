@@ -61,6 +61,20 @@ const NODE_TEST_PREREQUISITES = new Set([
   'node-24',
 ]);
 
+/**
+ * Failed-attempt traces are retained, except in CI for a suite whose published
+ * diagnostics must be verified free of Matrix identifiers: a trace is a zip the
+ * identifier scan cannot read, so such a suite turns CI traces off and omits its
+ * zipped reports together.
+ */
+export function playwrightTracePolicyAllows(source) {
+  if (source.includes("trace: 'retain-on-failure'")) return true;
+  return (
+    source.includes("trace: process.env['CI'] ? 'off' : 'retain-on-failure'") &&
+    /identifierSafe:\s*Boolean\(process\.env\['CI'\]\)/u.test(source)
+  );
+}
+
 export const registrySnapshot = () =>
   structuredClone({
     suites: E2E_SUITES,
@@ -523,7 +537,7 @@ const validateSuiteFilesAndTargets = (errors, workspaceRoot, snapshot) => {
         if (!source.includes("failOnFlakyTests: Boolean(process.env['CI'])")) {
           errors.push(`${suite.id} must fail on flaky tests in CI`);
         }
-        if (!source.includes("trace: 'retain-on-failure'")) {
+        if (!playwrightTracePolicyAllows(source)) {
           errors.push(`${suite.id} must retain failed-attempt traces`);
         }
         if (!source.includes("screenshot: 'only-on-failure'")) {

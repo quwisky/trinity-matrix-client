@@ -916,12 +916,12 @@ describe('CI execution contract', () => {
     );
     expect(action.runs.steps.indexOf(identifiers)).toBe(0);
     expect(identifiers.if).toBe(
-      "${{ startsWith(inputs.surface, 'android-') }}",
+      "${{ inputs.surface == 'android' || startsWith(inputs.surface, 'android-') }}",
     );
     expect(identifiers.run).toBe('node scripts/ci-matrix-identifiers.mjs');
     expect(identifiers.env.CI_REPORT_PATH).toBe('${{ inputs.report-path }}');
     expect(upload.if).toBe(
-      "${{ !cancelled() && (!startsWith(inputs.surface, 'android-') || steps.matrix-identifiers.outputs.verified == 'true') }}",
+      "${{ !cancelled() && ((inputs.surface != 'android' && !startsWith(inputs.surface, 'android-')) || steps.matrix-identifiers.outputs.verified == 'true') }}",
     );
     for (const field of [
       'github.run_id',

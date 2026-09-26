@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -151,6 +152,22 @@ describe('Playwright config primitives', () => {
       if (previousCi === undefined) delete process.env['CI'];
       else process.env['CI'] = previousCi;
     }
+  });
+
+  it('omits the zipped reports an identifier scan cannot read for identifier-safe suites', () => {
+    installSession();
+    const reporters = (options?: { identifierSafe: boolean }): string[] => {
+      const { reporter } = e2eReportConfig(reportingSuite, options);
+      assert(Array.isArray(reporter), 'reporters are a list');
+      return reporter.map((entry) => String(entry[0]));
+    };
+    expect(reporters()).toEqual(
+      expect.arrayContaining(['blob', 'html', 'junit']),
+    );
+    const safe = reporters({ identifierSafe: true });
+    expect(safe).toEqual(expect.arrayContaining(['junit']));
+    expect(safe).not.toContain('blob');
+    expect(safe).not.toContain('html');
   });
 
   it('restores registry identity after the worker replaces annotations', () => {
