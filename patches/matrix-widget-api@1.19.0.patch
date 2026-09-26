@@ -1,8 +1,8 @@
 diff --git a/lib/ClientWidgetApi.js b/lib/ClientWidgetApi.js
-index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026857c52f7 100644
+index 5c6ad54..c717d04 100644
 --- a/lib/ClientWidgetApi.js
 +++ b/lib/ClientWidgetApi.js
-@@ -107,6 +107,10 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+@@ -115,6 +115,10 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
      _defineProperty(_assertThisInitialized(_this), "isStopped", false);
      _defineProperty(_assertThisInitialized(_this), "turnServers", null);
      _defineProperty(_assertThisInitialized(_this), "contentLoadedWaitTimer", void 0);
@@ -13,7 +13,7 @@ index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026
      // Stores pending requests to push a room's state to the widget
      _defineProperty(_assertThisInitialized(_this), "pushRoomStateTasks", new Set());
      // Room ID → event type → state key → events to be pushed
-@@ -122,10 +126,11 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+@@ -130,10 +134,11 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
      if (!driver) {
        throw new Error("Invalid driver");
      }
@@ -26,7 +26,7 @@ index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026
      _this.transport.start();
      return _this;
    }
-@@ -193,7 +198,13 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+@@ -201,7 +206,13 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
    }, {
      key: "stop",
      value: function stop() {
@@ -40,7 +40,7 @@ index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026
        this.transport.stop();
      }
    }, {
-@@ -237,17 +248,20 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+@@ -245,17 +256,20 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
      key: "beginCapabilities",
      value: function beginCapabilities() {
        var _this2 = this;
@@ -62,7 +62,7 @@ index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026
        });
      }
    }, {
-@@ -356,6 +370,8 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+@@ -364,6 +378,8 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
    }, {
      key: "onIframeLoad",
      value: function onIframeLoad(ev) {
@@ -71,7 +71,7 @@ index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026
        if (this.widget.waitForIframeLoad) {
          // If the widget is set to waitForIframeLoad the capabilities immediately get setup after load.
          // The client does not wait for the ContentLoaded action.
-@@ -365,6 +381,7 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
+@@ -373,6 +389,7 @@ var ClientWidgetApi = /*#__PURE__*/function (_EventEmitter) {
          // the clientApi is awaiting the FIRST ContentLoaded action.
          console.log("waitForIframeLoad is false: waiting for widget to send contentLoaded");
          this.contentLoadedWaitTimer = setTimeout(function () {
@@ -80,7 +80,7 @@ index 643e4efa3d471634a72a8e0b64bb7e9d17a61f8e..8b5a8dd7cb63b3b5edd26397b64d5026
          }, 10000);
          this.contentLoadedActionSent = false;
 diff --git a/lib/transport/PostmessageTransport.js b/lib/transport/PostmessageTransport.js
-index cff1f0db5dbda9f704daaa3a03a7ff847515f0e3..ae721a17c51f63ce5cce2fcd4651c8d87ce1f0a0 100644
+index 9e0e904..0672d3c 100644
 --- a/lib/transport/PostmessageTransport.js
 +++ b/lib/transport/PostmessageTransport.js
 @@ -62,6 +62,8 @@ var PostmessageTransport = /*#__PURE__*/function (_EventEmitter) {
@@ -93,10 +93,10 @@ index cff1f0db5dbda9f704daaa3a03a7ff847515f0e3..ae721a17c51f63ce5cce2fcd4651c8d8
        if (_this.strictOriginCheck && ev.origin !== globalThis.origin) return; // bad origin
  
 diff --git a/src/ClientWidgetApi.ts b/src/ClientWidgetApi.ts
-index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700ce61e17de 100644
+index ac3a4bf..972b4cd 100644
 --- a/src/ClientWidgetApi.ts
 +++ b/src/ClientWidgetApi.ts
-@@ -146,6 +146,8 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -156,6 +156,8 @@ export class ClientWidgetApi extends EventEmitter {
      private isStopped = false;
      private turnServers: AsyncGenerator<ITurnServer> | null = null;
      private contentLoadedWaitTimer?: ReturnType<typeof setTimeout>;
@@ -105,7 +105,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
      // Stores pending requests to push a room's state to the widget
      private readonly pushRoomStateTasks = new Set<Promise<void>>();
      // Room ID → event type → state key → events to be pushed
-@@ -175,6 +177,7 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -185,6 +187,7 @@ export class ClientWidgetApi extends EventEmitter {
          if (!driver) {
              throw new Error("Invalid driver");
          }
@@ -113,7 +113,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
          this.transport = new PostmessageTransport(
              WidgetApiDirection.ToWidget,
              widget.id,
-@@ -184,7 +187,7 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -194,7 +197,7 @@ export class ClientWidgetApi extends EventEmitter {
          this.transport.targetOrigin = widget.origin;
          this.transport.on("message", this.handleMessage.bind(this));
  
@@ -122,7 +122,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
  
          this.transport.start();
      }
-@@ -229,7 +232,13 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -239,7 +242,13 @@ export class ClientWidgetApi extends EventEmitter {
      }
  
      public stop(): void {
@@ -136,7 +136,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
          this.transport.stop();
      }
  
-@@ -252,6 +261,7 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -262,6 +271,7 @@ export class ClientWidgetApi extends EventEmitter {
      }
  
      private beginCapabilities(): void {
@@ -144,7 +144,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
          // widget has loaded - tell all the listeners that
          this.emit("preparing");
  
-@@ -259,15 +269,17 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -269,15 +279,17 @@ export class ClientWidgetApi extends EventEmitter {
          this.transport
              .send<IWidgetApiRequestEmptyData, ICapabilitiesActionResponseData>(WidgetApiToWidgetAction.Capabilities, {})
              .then((caps) => {
@@ -163,7 +163,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
              });
      }
  
-@@ -337,6 +349,7 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -347,6 +359,7 @@ export class ClientWidgetApi extends EventEmitter {
      }
  
      private onIframeLoad(ev: Event): void {
@@ -171,7 +171,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
          if (this.widget.waitForIframeLoad) {
              // If the widget is set to waitForIframeLoad the capabilities immediately get setup after load.
              // The client does not wait for the ContentLoaded action.
-@@ -346,6 +359,7 @@ export class ClientWidgetApi extends EventEmitter {
+@@ -356,6 +369,7 @@ export class ClientWidgetApi extends EventEmitter {
              // the clientApi is awaiting the FIRST ContentLoaded action.
              console.log("waitForIframeLoad is false: waiting for widget to send contentLoaded");
              this.contentLoadedWaitTimer = setTimeout(() => {
@@ -180,7 +180,7 @@ index 75ec2a69b0557388dec19efb04f3d00c37e8ecec..b29832bfda86f2a88dc08a734181700c
                      "Widget specified waitForIframeLoad=false but timed out waiting for contentLoaded event!",
                  );
 diff --git a/src/transport/PostmessageTransport.ts b/src/transport/PostmessageTransport.ts
-index ac684f822e6c46b29fa04126595792c43abcc93d..0ace887757d72208e7d8c3f688dfda7fbdaa51ff 100644
+index ac684f8..0ace887 100644
 --- a/src/transport/PostmessageTransport.ts
 +++ b/src/transport/PostmessageTransport.ts
 @@ -157,6 +157,8 @@ export class PostmessageTransport extends EventEmitter implements ITransport {
