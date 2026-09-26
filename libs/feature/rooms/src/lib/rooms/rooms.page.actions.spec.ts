@@ -84,6 +84,7 @@ describe('RoomsPage space actions', () => {
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomLibraryService, {
+          rooms: signal<RoomSummary[]>([]),
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
