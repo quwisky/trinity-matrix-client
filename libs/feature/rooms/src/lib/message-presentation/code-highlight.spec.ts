@@ -71,12 +71,16 @@ describe('code highlighting', () => {
     expect(code.textContent).toBe(source);
   });
 
-  it('highlights every registered language', () => {
+  describe('highlights every registered language', () => {
     // One sample per grammar, in that grammar's own syntax — a JS-ish sample is a false
     // negative for diff, ini or makefile, which is exactly how an earlier survey of this
     // set concluded they were unsupported. A grammar that stops resolving (a renamed
     // @shikijs/langs entry, a dropped import) shows up here as a language with no tokens
     // rather than as a silently plain block in someone's room.
+    //
+    // One test per grammar: each first use compiles that grammar's rules, and all 31 in one
+    // test took 2.4 s locally and overran the 5 s default on a slow hosted runner. Split, the
+    // same work proves the same thing with each test bounded by one grammar.
     const samples: [string, string][] = [
       ['bash', 'echo "hi" # c'],
       ['c', '#include <stdio.h>\nint main(){return 0;}'],
@@ -111,11 +115,9 @@ describe('code highlighting', () => {
       ['yaml', 'a: 1'],
     ];
 
-    const unhighlighted = samples
-      .filter(([lang, source]) => roles(highlight(lang, source)).length === 0)
-      .map(([lang]) => lang);
-
-    expect(unhighlighted).toEqual([]);
+    it.each(samples)('%s', (lang, source) => {
+      expect(roles(highlight(lang, source))).not.toEqual([]);
+    });
   });
 
   it('resolves short language aliases', () => {
