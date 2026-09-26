@@ -190,7 +190,7 @@ async function establishRecovery(
   secrets: Record<string, string>,
   stageId: string,
 ): Promise<RecoveryState> {
-  await client.login(account);
+  await client.loginByFields(account);
   await openSecuritySettings(client);
   await client.visible('[data-testid="security-setup"]', {}, 30_000);
   await client.tapCurrent('[data-testid="security-setup"]');
@@ -239,7 +239,7 @@ async function enterSecondaryRecovery(
   readonly reset: AccountElement;
 }> {
   await client.reset(DESKTOP_ACCOUNT_PROFILE);
-  await client.login(account);
+  await client.loginByFields(account);
   await openSecuritySettings(client);
   const lost = await client.visible(
     '[data-testid="security-reset-recovery"]',
@@ -799,7 +799,7 @@ const cases: readonly RecoveryResetCase[] = [
       await deactivate(primary);
 
       await secondary.reset(DESKTOP_ACCOUNT_PROFILE);
-      await secondary.login(account);
+      await secondary.loginByFields(account);
       await openSecuritySettings(secondary);
       const lost = await secondary.visible(
         '[data-testid="security-reset-recovery"]',

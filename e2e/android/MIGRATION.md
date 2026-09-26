@@ -129,6 +129,24 @@ heuristics ([#839](https://github.com/quwisky/trinity-matrix-client/issues/839))
   has rendered and come to rest, and clears DocumentsUI first: DocumentsUI keeps
   its view mode across launches, and the pick flow expects its first-launch
   state, so a second pick on one emulator used to fail.
+- `client.login()` signs in with one flow,
+  [`accounts-sign-in.yaml`](flows/accounts-sign-in.yaml): it replaces the
+  prefilled homeserver, taps Continue, types the username and password and taps
+  Sign in. Each target is measured when the flow reaches it, and that read checks
+  the previous step: the untouched homeserver and empty credentials before
+  typing, the exact typed homeserver and username, and the typed password
+  length. After each typed field a dismissal endpoint sends one Back key event
+  while Android reports the keyboard shown and answers once it is hidden; the
+  flow re-reads it while a slow device is still closing the keyboard. A read-only capture
+  listener proves that every trusted click hit one of the five targets, with
+  Continue before Sign in. The Account-qualified Rooms surface stays the final
+  signed-in proof. `client.loginByFields()` keeps one native action per field
+  for the suites that test login: `account-password-change`, `clear-all-data`
+  and `recovery-reset`. `critical-journeys`, `password-registration`,
+  `oidc-login`, `legacy-sso` and `sso-recovery-reset` keep their own sign-in
+  flows. `accounts-workspace` uses the batched flow, because its stages prove
+  Account addition, switching, removal and reauthentication through the
+  signed-in surfaces rather than the form fields.
 
 ## Hosted shard layout
 

@@ -1,0 +1,83 @@
+appId: ${APP_ID}
+---
+# One native sign-in: homeserver, Continue, username, password and Sign in.
+# Each point endpoint measures its target when the flow asks for it and checks
+# the preceding step read-only: the untouched homeserver and empty credentials
+# before typing, the exact typed homeserver and username, and the typed
+# password length. Each ready endpoint answers once the tapped input is focused
+# with the soft keyboard shown. After each typed field a dismissal endpoint
+# sends one Back key event while Android reports the keyboard shown and answers
+# once it is hidden; the flow re-reads it while a slow device closes the
+# keyboard. The harness then proves the signed-in Rooms surface.
+- evalScript: ${output.point = http.get(HOMESERVER_POINT_URL)}
+- assertTrue: ${output.point.status === 200}
+- tapOn:
+    point: ${output.point.body}
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1
+- evalScript: ${output.ready = http.get(HOMESERVER_READY_URL)}
+- assertTrue: ${output.ready.status === 200}
+# ERASE_HOMESERVER: the harness writes one erase of the prefilled value here.
+- inputText: ${SECRET_HOMESERVER}
+- evalScript: ${output.hidden = http.get(HOMESERVER_HIDDEN_URL)}
+- repeat:
+    times: 3
+    while:
+      true: ${output.hidden.status !== 200}
+    commands:
+      - evalScript: ${output.hidden = http.get(HOMESERVER_HIDDEN_URL)}
+- assertTrue: ${output.hidden.status === 200}
+- evalScript: ${output.point = http.get(CONTINUE_POINT_URL)}
+- assertTrue: ${output.point.status === 200}
+- tapOn:
+    point: ${output.point.body}
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1
+# Homeserver discovery renders the credential step; each bounded read waits for
+# it, and the flow asks again while it has not appeared.
+- evalScript: ${output.point = http.get(USERNAME_POINT_URL)}
+- repeat:
+    times: 3
+    while:
+      true: ${output.point.status !== 200}
+    commands:
+      - evalScript: ${output.point = http.get(USERNAME_POINT_URL)}
+- assertTrue: ${output.point.status === 200}
+- tapOn:
+    point: ${output.point.body}
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1
+- evalScript: ${output.ready = http.get(USERNAME_READY_URL)}
+- assertTrue: ${output.ready.status === 200}
+- inputText: ${SECRET_USERNAME}
+- evalScript: ${output.hidden = http.get(USERNAME_HIDDEN_URL)}
+- repeat:
+    times: 3
+    while:
+      true: ${output.hidden.status !== 200}
+    commands:
+      - evalScript: ${output.hidden = http.get(USERNAME_HIDDEN_URL)}
+- assertTrue: ${output.hidden.status === 200}
+- evalScript: ${output.point = http.get(PASSWORD_POINT_URL)}
+- assertTrue: ${output.point.status === 200}
+- tapOn:
+    point: ${output.point.body}
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1
+- evalScript: ${output.ready = http.get(PASSWORD_READY_URL)}
+- assertTrue: ${output.ready.status === 200}
+- inputText: ${SECRET_PASSWORD}
+- evalScript: ${output.hidden = http.get(PASSWORD_HIDDEN_URL)}
+- repeat:
+    times: 3
+    while:
+      true: ${output.hidden.status !== 200}
+    commands:
+      - evalScript: ${output.hidden = http.get(PASSWORD_HIDDEN_URL)}
+- assertTrue: ${output.hidden.status === 200}
+- evalScript: ${output.point = http.get(SIGN_IN_POINT_URL)}
+- assertTrue: ${output.point.status === 200}
+- tapOn:
+    point: ${output.point.body}
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1

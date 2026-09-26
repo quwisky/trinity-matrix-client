@@ -310,6 +310,12 @@ export interface NativeKeyboardDismissal {
   readonly action: 'native-back-keyevent' | 'already-hidden';
 }
 
+interface SignInClicks {
+  readonly documentReplaced: boolean;
+  readonly targets: readonly string[];
+  readonly untrustedClicks: number;
+}
+
 export interface AccountWorkspaceCaseContext {
   readonly client: AccountWorkspaceClient;
   readonly fixtures: ReturnType<typeof createAccountFixtures>;
@@ -1985,22 +1991,33 @@ export class AccountWorkspaceClient {
    * keyboard must report hidden and the WebView must regain its full bounds.
    */
   private async dismissKeyboard(): Promise<NativeKeyboardDismissal> {
+    const dismissal = await this.sendBackWhileKeyboardShown();
+    await this.waitForKeyboardHidden(this.signal);
+    return dismissal;
+  }
+
+  /** Send the Back key event only while Android reports the keyboard shown. */
+  private async sendBackWhileKeyboardShown(): Promise<NativeKeyboardDismissal> {
     const shownBefore = await this.keyboardShown();
     if (shownBefore) {
       await this.device.adb('shell', 'input', 'keyevent', '4');
-      await waitForNativeShellState(
-        () => this.keyboardShown(),
-        (shown) => !shown,
-        'soft keyboard hidden after the native Back key event',
-        this.signal,
-        KEYBOARD_HIDE_TIMEOUT_MS,
-      );
     }
-    await this.waitForFullViewportNativeBounds();
     return {
       shownBefore,
       action: shownBefore ? 'native-back-keyevent' : 'already-hidden',
     };
+  }
+
+  /** Read-only: the keyboard reports hidden and the WebView has its full bounds. */
+  private async waitForKeyboardHidden(signal: AbortSignal): Promise<void> {
+    await waitForNativeShellState(
+      () => this.keyboardShown(),
+      (shown) => !shown,
+      'soft keyboard hidden after the native Back key event',
+      signal,
+      KEYBOARD_HIDE_TIMEOUT_MS,
+    );
+    await this.waitForFullViewportNativeBounds();
   }
 
   async key(key: AndroidKeyboardKey): Promise<void> {
@@ -2079,7 +2096,250 @@ export class AccountWorkspaceClient {
     await this.visible('.account-menu[role="menu"]');
   }
 
+  /**
+   * Sign in through one native Maestro flow and prove the signed-in Rooms
+   * surface. Suites whose stages test login itself use {@link loginByFields}.
+   *
+   * The flow replaces the homeserver, taps Continue, types username and password
+   * and taps Sign in. Each point endpoint re-measures its target when the flow reaches it and
+   * checks the preceding step read-only; ready endpoints wait for focus and the
+   * soft keyboard. A capture listener proves every trusted click hit one of
+   * the five targets, with Continue before Sign in.
+   */
   async login(account: Account): Promise<void> {
+    const actionId = ++this.action;
+    await this.visible('#homeserver', {}, 60_000);
+    // The homeserver input starts with a placeholder value to replace.
+    const homeserverLength = await this.inputLength('#homeserver');
+    const { timeOrigin } = await this.installSignInClickCapture();
+    // After each typed field the flow reads a dismissal endpoint: its first
+    // read sends one Back key event, only while Android reports the keyboard
+    // shown, and every read waits for the keyboard to report hidden, so the
+    // flow can re-read while a slow device is still closing it. Each next
+    // target's read then only checks that the keyboard is hidden.
+    const keyboards: NativeKeyboardDismissal[] = [];
+    const dismissOnce = (): ReturnType<typeof openMaestroReadiness> => {
+      let dismissal: Promise<NativeKeyboardDismissal> | undefined;
+      return openMaestroReadiness({
+        signal: this.signal,
+        readTimeoutMs: MAESTRO_READ_TIMEOUT_MS,
+        waitReady: async (operationSignal) => {
+          dismissal ??= this.sendBackWhileKeyboardShown().then((result) => {
+            keyboards.push(result);
+            return result;
+          });
+          await dismissal;
+          await this.waitForKeyboardHidden(operationSignal);
+        },
+      });
+    };
+    const hidden = (operationSignal: AbortSignal): Promise<void> =>
+      this.waitForKeyboardHidden(operationSignal);
+    const value = async (
+      selector: string,
+      expected: { readonly value?: string; readonly length?: number },
+      description: string,
+      operationSignal: AbortSignal,
+    ): Promise<void> => {
+      await waitForNativeShellState(
+        () =>
+          evaluateNative(
+            this.webview,
+            `(() => {
+              const e=document.querySelector(${JSON.stringify(selector)});
+              return e instanceof HTMLInputElement?{value:e.type==='password'?null:e.value,length:e.value.length}:null;
+            })()`,
+          ),
+        (observed) => {
+          const current = observed as { value: string | null; length: number } | null;
+          return (
+            current !== null &&
+            (expected.value === undefined || current.value === expected.value) &&
+            (expected.length === undefined || current.length === expected.length)
+          );
+        },
+        description,
+        operationSignal,
+        MAESTRO_READ_TIMEOUT_MS,
+      );
+    };
+    const endpoints = {
+      HOMESERVER_POINT_URL: await openMaestroTargetPoint({
+        signal: this.signal,
+        readTimeoutMs: MAESTRO_READ_TIMEOUT_MS,
+        readPoint: async (operationSignal) => {
+          await value('#homeserver', { length: homeserverLength }, 'unchanged homeserver before native input', operationSignal);
+          return this.actionablePoint('#homeserver', {}, operationSignal);
+        },
+      }),
+      HOMESERVER_READY_URL: await openMaestroReadiness({
+        signal: this.signal,
+        waitReady: (operationSignal) =>
+          this.waitForInputReady('#homeserver', {}, operationSignal),
+      }),
+      HOMESERVER_HIDDEN_URL: await dismissOnce(),
+      CONTINUE_POINT_URL: await openMaestroTargetPoint({
+        signal: this.signal,
+        readTimeoutMs: MAESTRO_READ_TIMEOUT_MS,
+        readPoint: async (operationSignal) => {
+          await hidden(operationSignal);
+          await value('#homeserver', { value: account.homeserver }, 'native homeserver input', operationSignal);
+          return this.actionablePoint('button', { exactText: 'Continue' }, operationSignal);
+        },
+      }),
+      USERNAME_POINT_URL: await openMaestroTargetPoint({
+        signal: this.signal,
+        readTimeoutMs: MAESTRO_READ_TIMEOUT_MS,
+        readPoint: async (operationSignal) => {
+          const point = await this.actionablePoint('#username', {}, operationSignal);
+          await value('#username', { length: 0 }, 'empty username before native input', operationSignal);
+          return point;
+        },
+      }),
+      USERNAME_READY_URL: await openMaestroReadiness({
+        signal: this.signal,
+        waitReady: (operationSignal) =>
+          this.waitForInputReady('#username', {}, operationSignal),
+      }),
+      USERNAME_HIDDEN_URL: await dismissOnce(),
+      PASSWORD_POINT_URL: await openMaestroTargetPoint({
+        signal: this.signal,
+        readTimeoutMs: MAESTRO_READ_TIMEOUT_MS,
+        readPoint: async (operationSignal) => {
+          await hidden(operationSignal);
+          await value('#username', { value: account.username }, 'native username input', operationSignal);
+          await value('#password', { length: 0 }, 'empty password before native input', operationSignal);
+          return this.actionablePoint('#password', {}, operationSignal);
+        },
+      }),
+      PASSWORD_READY_URL: await openMaestroReadiness({
+        signal: this.signal,
+        waitReady: (operationSignal) =>
+          this.waitForInputReady('#password', {}, operationSignal),
+      }),
+      PASSWORD_HIDDEN_URL: await dismissOnce(),
+      SIGN_IN_POINT_URL: await openMaestroTargetPoint({
+        signal: this.signal,
+        readTimeoutMs: MAESTRO_READ_TIMEOUT_MS,
+        readPoint: async (operationSignal) => {
+          await hidden(operationSignal);
+          await value('#username', { value: account.username }, 'native username input', operationSignal);
+          await value('#password', { length: account.password.length }, 'native password input length', operationSignal);
+          return this.actionablePoint('button', { exactText: 'Sign in' }, operationSignal);
+        },
+      }),
+    };
+    let actionError: unknown;
+    let clicks: SignInClicks | null = null;
+    try {
+      console.info(`[accounts] native action ${actionId}: sign-in flow`);
+      await this.device.runFlow(
+        await this.eraseFlow('accounts-sign-in', {
+          ERASE_HOMESERVER: homeserverLength,
+        }),
+        {
+          APP_ID: this.applicationId,
+          SECRET_HOMESERVER: account.homeserver,
+          SECRET_USERNAME: account.username,
+          SECRET_PASSWORD: account.password,
+          ...Object.fromEntries(
+            Object.entries(endpoints).map(([name, endpoint]) => [name, endpoint.url]),
+          ),
+        },
+      );
+      clicks = await this.readSignInClicks(timeOrigin);
+    } catch (error) {
+      actionError = error;
+    } finally {
+      const failures: unknown[] = [];
+      for (const endpoint of Object.values(endpoints)) {
+        if (endpoint.lastError !== undefined) failures.push(endpoint.lastError);
+        try { await endpoint.close(); } catch (error) { failures.push(error); }
+      }
+      try {
+        await this.record(`sign-in-${actionId}`, {
+          points: {
+            homeserver: endpoints.HOMESERVER_POINT_URL.lastPoint ?? null,
+            continue: endpoints.CONTINUE_POINT_URL.lastPoint ?? null,
+            username: endpoints.USERNAME_POINT_URL.lastPoint ?? null,
+            password: endpoints.PASSWORD_POINT_URL.lastPoint ?? null,
+            signIn: endpoints.SIGN_IN_POINT_URL.lastPoint ?? null,
+          },
+          inputReady: {
+            homeserver: endpoints.HOMESERVER_READY_URL.ready,
+            username: endpoints.USERNAME_READY_URL.ready,
+            password: endpoints.PASSWORD_READY_URL.ready,
+          },
+          keyboards,
+          clicks,
+        });
+      } catch (error) { failures.push(error); }
+      try {
+        await evaluateNative(this.webview, "(() => {const state=window.__trinitySignInClicks;if(state)document.removeEventListener('click',state.listener,true);delete window.__trinitySignInClicks;return true})()");
+      } catch (error) {
+        // A replaced document no longer holds the listener.
+        if (clicks?.documentReplaced !== true) failures.push(error);
+      }
+      try { await this.owner.apply(); } catch (error) { failures.push(error); }
+      if (actionError !== undefined) failures.unshift(actionError);
+      if (failures.length === 1) throw failures[0];
+      if (failures.length) throw new AggregateError(failures, 'Native sign-in flow and cleanup failed');
+    }
+    assert(clicks, 'Native sign-in click capture was read');
+    if (!clicks.documentReplaced) {
+      assert(
+        clicks.targets.every((target) => target !== 'other') &&
+          clicks.targets.includes('continue') &&
+          clicks.targets.includes('sign-in') &&
+          clicks.targets.indexOf('continue') < clicks.targets.lastIndexOf('sign-in'),
+        `Native sign-in ${actionId} clicked only its targets, Continue before Sign in`,
+      );
+    }
+    await this.rooms(account);
+  }
+
+  /** Read-only capture of trusted clicks on the five sign-in targets. */
+  private async installSignInClickCapture(): Promise<{ readonly timeOrigin: number }> {
+    const timeOrigin = await evaluateNative(this.webview, `(() => {
+      const classify=target=>{
+        const e=target instanceof Element?target:null;
+        if(e?.closest('#homeserver'))return 'homeserver';
+        if(e?.closest('#username'))return 'username';
+        if(e?.closest('#password'))return 'password';
+        const button=e?.closest('button');
+        const text=button?.textContent?.trim();
+        if(text==='Continue')return 'continue';
+        if(text==='Sign in')return 'sign-in';
+        return 'other';
+      };
+      const state={events:[],listener:e=>state.events.push({trusted:e.isTrusted,target:classify(e.target)})};
+      window.__trinitySignInClicks=state;
+      document.addEventListener('click',state.listener,true);
+      return performance.timeOrigin;
+    })()`);
+    assert(typeof timeOrigin === 'number', 'Sign-in document time origin is readable');
+    return { timeOrigin };
+  }
+
+  private async readSignInClicks(timeOrigin: number): Promise<SignInClicks> {
+    const observed = await evaluateNative(
+      this.webview,
+      '({timeOrigin:performance.timeOrigin,events:window.__trinitySignInClicks?.events ?? []})',
+    );
+    assert(observed && typeof observed === 'object' && 'events' in observed && Array.isArray(observed.events));
+    assert('timeOrigin' in observed && typeof observed.timeOrigin === 'number');
+    const events = observed.events as { trusted?: unknown; target?: unknown }[];
+    return {
+      documentReplaced: observed.timeOrigin !== timeOrigin,
+      targets: events
+        .filter((event) => event.trusted === true)
+        .map((event) => String(event.target)),
+      untrustedClicks: events.filter((event) => event.trusted !== true).length,
+    };
+  }
+
+  /** Sign in with one native action per field, for suites that test login itself. */
+  async loginByFields(account: Account): Promise<void> {
     await this.fill('#homeserver', account.homeserver);
     await this.tap('button', { exactText: 'Continue' });
     await this.visible('#username', {}, 30_000);

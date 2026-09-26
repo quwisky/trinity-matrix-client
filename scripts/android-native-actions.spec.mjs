@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -27,6 +27,9 @@ const steps = (text) =>
     .split('\n')
     .filter((line) => /^- /u.test(line))
     .map((line) => line.slice(2));
+
+// Maestro's secret-variable pattern in e2e/android/maestro-session.mts.
+const secretKey = /password|secret|token|recovery.?key|credential|uia/iu;
 
 describe('Android Account client native actions', () => {
   it('taps once without Maestro settle heuristics and proves the click itself', () => {
@@ -126,6 +129,117 @@ describe('Android Account client native actions', () => {
       'await this.dismissKeyboard();',
       "await this.keyCombination('documentStart');",
     ]);
+  });
+
+  it('signs in with one native flow and keeps the signed-in proof', () => {
+    const text = flow('accounts-sign-in');
+    const urls = steps(text)
+      .filter((step) => step.startsWith('evalScript:'))
+      .map((step) => /http\.get\((\w+)\)/u.exec(step)?.[1]);
+    expect(urls).toEqual([
+      'HOMESERVER_POINT_URL',
+      'HOMESERVER_READY_URL',
+      'HOMESERVER_HIDDEN_URL',
+      'CONTINUE_POINT_URL',
+      'USERNAME_POINT_URL',
+      'USERNAME_READY_URL',
+      'USERNAME_HIDDEN_URL',
+      'PASSWORD_POINT_URL',
+      'PASSWORD_READY_URL',
+      'PASSWORD_HIDDEN_URL',
+      'SIGN_IN_POINT_URL',
+    ]);
+    // A slow device may still be closing the keyboard: the flow re-reads the
+    // dismissal endpoint, which sends at most one Back per typed field.
+    for (const field of ['HOMESERVER', 'USERNAME', 'PASSWORD']) {
+      expect(text).toContain(
+        `    while:\n      true: \${output.hidden.status !== 200}\n    commands:\n      - evalScript: \${output.hidden = http.get(${field}_HIDDEN_URL)}\n- assertTrue: \${output.hidden.status === 200}\n`,
+      );
+    }
+    expect(steps(text).filter((step) => step === 'tapOn:')).toHaveLength(5);
+    expect(text.match(/retryTapIfNoChange: false/gu)).toHaveLength(5);
+    ordered(text, [
+      'http.get(HOMESERVER_READY_URL)',
+      '\n# ERASE_HOMESERVER:',
+      'inputText: ${SECRET_HOMESERVER}',
+      'http.get(CONTINUE_POINT_URL)',
+      'http.get(USERNAME_POINT_URL)',
+      'true: ${output.point.status !== 200}',
+      'http.get(USERNAME_READY_URL)',
+      'inputText: ${SECRET_USERNAME}',
+      'http.get(PASSWORD_READY_URL)',
+      'inputText: ${SECRET_PASSWORD}',
+      'http.get(SIGN_IN_POINT_URL)',
+    ]);
+    // No unconditional Maestro Back: the next target's read dismisses the keyboard.
+    expect(text).not.toMatch(/eraseText|hideKeyboard/u);
+    for (const variable of text.match(/inputText: \$\{(\w+)\}/gu) ?? []) {
+      expect(variable).toMatch(secretKey);
+    }
+
+    const login = between(
+      client,
+      '  async login(account: Account)',
+      '  /** Read-only capture of trusted clicks',
+    );
+    ordered(login, [
+      "await this.visible('#homeserver', {}, 60_000);",
+      "const homeserverLength = await this.inputLength('#homeserver');",
+      'await this.installSignInClickCapture();',
+      'dismissal ??= this.sendBackWhileKeyboardShown()',
+      'await this.waitForKeyboardHidden(operationSignal);',
+      "'unchanged homeserver before native input'",
+      "{ value: account.homeserver }, 'native homeserver input'",
+      "'empty username before native input'",
+      "{ value: account.username }, 'native username input'",
+      "'empty password before native input'",
+      "{ length: account.password.length }, 'native password input length'",
+      "await this.eraseFlow('accounts-sign-in', {",
+      'ERASE_HOMESERVER: homeserverLength,',
+      'clicks = await this.readSignInClicks(timeOrigin);',
+      '`sign-in-${actionId}`',
+      "clicks.targets.every((target) => target !== 'other')",
+      "clicks.targets.indexOf('continue') < clicks.targets.lastIndexOf('sign-in')",
+      'await this.rooms(account);',
+    ]);
+    expect(login.match(/this\.device\.runFlow\(/gu)).toHaveLength(1);
+    // Continue, password and Sign in reads each dismiss the preceding keyboard.
+    expect(login.match(/await hidden\(operationSignal\);/gu)).toHaveLength(3);
+    expect(login.trimEnd().endsWith('await this.rooms(account);\n  }')).toBe(
+      true,
+    );
+    expect(login).not.toMatch(/this\.(?:fill|tap)\(/u);
+  });
+
+  it('keeps one native action per field in the suites that test login', () => {
+    const byFields = between(
+      client,
+      '  async loginByFields(',
+      '  async addAccount(',
+    );
+    ordered(byFields, [
+      "await this.fill('#homeserver', account.homeserver);",
+      "await this.tap('button', { exactText: 'Continue' });",
+      "await this.visible('#username', {}, 30_000);",
+      "await this.fill('#username', account.username);",
+      "await this.fill('#password', account.password);",
+      "await this.tap('button', { exactText: 'Sign in' });",
+      'await this.rooms(account);',
+    ]);
+    const journeys = readdirSync(resolve(root, 'e2e/android')).filter((name) =>
+      name.endsWith('.mts'),
+    );
+    const byFieldSuites = journeys.filter((name) =>
+      read(`e2e/android/${name}`).includes('.loginByFields('),
+    );
+    expect(byFieldSuites.sort()).toEqual([
+      'account-password-change-journeys.mts',
+      'clear-all-data-journeys.mts',
+      'recovery-reset-journeys.mts',
+    ]);
+    for (const name of byFieldSuites) {
+      expect(read(`e2e/android/${name}`)).not.toMatch(/\bclient\.login\(/u);
+    }
   });
 
   it('dismisses the keyboard only while Android reports it shown', () => {

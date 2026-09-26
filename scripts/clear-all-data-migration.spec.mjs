@@ -222,7 +222,9 @@ describe('Android clear-all-data migration', () => {
     expect(journey).toContain('CLEAR_ALL_DATA_SOURCES.signedOut');
     expect(journey).toContain('CLEAR_ALL_DATA_SOURCES.visual');
     expect(journey).toContain('PIXEL_5_ACCOUNT_PROFILE');
-    expect(journey).toContain('client.login(account)');
+    // A login suite keeps one native action per sign-in field.
+    expect(journey).toContain('client.loginByFields(account)');
+    expect(journey).not.toContain('client.login(account)');
     expect(journey).toContain('client.openMenu()');
     expect(journey).toContain('client.tap(\'[data-testid="add-account"]\')');
     expect(journey).toContain(

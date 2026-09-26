@@ -91,7 +91,7 @@ async function signedInWipe(
 ): Promise<void> {
   const { client, fixtures } = context;
   const account = await fixtures.account('clear-all-data-signed-in');
-  await client.login(account);
+  await client.loginByFields(account);
 
   const before = await waitForSnapshot(
     client,

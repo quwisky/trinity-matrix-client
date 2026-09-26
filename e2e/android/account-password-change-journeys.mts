@@ -157,7 +157,7 @@ const cases: readonly AccountWorkspaceCase[] = [
       assert.notEqual(wrongPassword, oldPassword);
       assert.notEqual(wrongPassword, newPassword);
 
-      await client.login(account);
+      await client.loginByFields(account);
       const rooms = await waitForNativeShellState(
         () => client.surface(),
         (surface) => {

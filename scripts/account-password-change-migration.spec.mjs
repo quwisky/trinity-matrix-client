@@ -134,7 +134,9 @@ describe('Android account password-change migration', () => {
     expect(journey).toContain('account-password-change-contract.mts');
     expect(journey).toContain('ACCOUNT_PASSWORD_CHANGE_SOURCES.journey');
     expect(journey).toContain('profile: DESKTOP_ACCOUNT_PROFILE');
-    expect(journey).toContain('client.login(account)');
+    // A login suite keeps one native action per sign-in field.
+    expect(journey).toContain('client.loginByFields(account)');
+    expect(journey).not.toContain('client.login(account)');
     expect(journey).toContain(
       'client.tapCurrent(\'[data-testid="open-settings"]\')',
     );
