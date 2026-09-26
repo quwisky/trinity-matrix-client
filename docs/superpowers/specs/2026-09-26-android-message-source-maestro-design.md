@@ -279,6 +279,31 @@ and device screenshots.
 
 This is a test-only migration with no user impact, like #747–#751.
 
+### D11. Device findings
+
+The first device run passed and surfaced three refinements, each made at the
+root and never with a retry or a loosened assertion:
+
+- **The shadow is a list.** The device reports `boxShadow` as Tailwind's four
+  transparent zero ring layers followed by the real `oklch(0 0 0 / 0.18) 0px
+12px 32px 0px`. "Not `none`" alone would accept a surface that paints only
+  those transparent layers, so line 104 also requires at least one layer
+  with a non-zero alpha and a non-zero offset, blur or spread. The border is
+  `0.761905px` (one device pixel at DPR 2.75) and the background
+  `oklch(0.965 0.008 265)`, which the predecessor's fourth-channel rule could
+  not read; the D6 parser does.
+- **The SDK logs state-event ids.** matrix-js-sdk writes "Event $… already in
+  timeline" to logcat for the Room's state events. Those ids are never known
+  to the suite, so the scrub also redacts every room-version-3+ event-id shape
+  (`$` and 43 URL-safe base64 characters, raw or percent-encoded) and the scan
+  rejects any that remains.
+- **Assertion messages carry values.** Node 24 appends an assertion's actual
+  and expected values to its message even when a custom message is given.
+  The job-log rethrow therefore keeps only an assertion's first line (its
+  operator when Node generated the whole message) and also redacts event-id
+  shapes, so a foreign, unregistered id read from the dialog cannot reach the
+  public log. The complete text stays in the scrubbed `journeys.json`.
+
 ## Stage plan: `view-source`
 
 1. **Arrange.** `run = aliasLocalpart('source-view-source') + 'src'`.

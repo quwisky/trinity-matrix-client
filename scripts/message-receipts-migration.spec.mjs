@@ -2635,11 +2635,12 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
     ),
   ).toHaveLength(1);
   expect(lines[runner - 1]).toContain("echo 'member-moderation-started=true'");
-  expect(
-    lines
-      .filter((line) => line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'))
-      .at(-1),
-  ).toBe(CI_LINE);
+  // Only message-source follows it on shard 3.
+  const shardThree = lines.filter((line) =>
+    line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'),
+  );
+  expect(shardThree.at(-2)).toBe(CI_LINE);
+  expect(shardThree.at(-1)).toContain('trinity-e2e-android:message-source;');
   const gate = workflow
     .split('      - name: Gate Android message-receipts diagnostics\n')[1]
     ?.split('\n      - ')[0];
@@ -2660,15 +2661,16 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-receipts/**',
   );
-  expect(workflow).toContain('shard 2 about 117, shard 3 about 163\n');
+  // 163 with message-receipts; message-source then adds its own 5 minutes.
+  expect(workflow).toContain('shard 2 about 117, shard 3 about 168\n');
   expect(workflow).toContain(
     "# Shard 3's figure adds a provisional 5 minutes for message-receipts.",
   );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(77);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(70);');
+  expect(ciSpec).toContain('expect(uploads.length).toBe(78);');
+  expect(ciSpec).toContain('expect(lines).toHaveLength(71);');
   expect(ciSpec).toContain("step.with.surface === 'android-message-receipts'");
   expect(ciSpec).toContain(
-    'runs message-receipts after member-moderation at the end of shard 3',
+    'runs message-receipts after member-moderation, followed only by message-source on shard 3',
   );
   expect(ciSpec).toContain(
     'budgets message-receipts in the shard-3 figure of the Android budget comment',
@@ -2785,16 +2787,16 @@ describe('Android message-receipts hosted wiring and parity ledger', () => {
         UPLOAD_IF,
         "${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' }}",
       ),
-      withText('workflow', 'shard 3 about 163', 'shard 3 about 158'),
+      withText('workflow', 'shard 3 about 168', 'shard 3 about 158'),
       withText(
         'ciSpec',
+        'expect(uploads.length).toBe(78);',
         'expect(uploads.length).toBe(77);',
-        'expect(uploads.length).toBe(76);',
       ),
       withText(
         'ciSpec',
+        'expect(lines).toHaveLength(71);',
         'expect(lines).toHaveLength(70);',
-        'expect(lines).toHaveLength(69);',
       ),
     ])
       expect(() => assertWiring(mutated)).toThrow();
@@ -2842,7 +2844,10 @@ describe('Android message-receipts hosted wiring and parity ledger', () => {
     expect(section).toContain('1280×720');
     expect(section).toContain('acceptance gate for #751');
     expect(section).not.toContain('pnpm exec nx');
-    expect(migration.trimEnd().endsWith(section.trimEnd())).toBe(true);
+    // The next migration's section, and only it, follows this one.
+    expect(
+      migration.split('## Message-receipts journey')[1].split('\n## ')[1],
+    ).toMatch(/^Message-source journey\n/u);
     const design = read(
       'docs/superpowers/specs/2026-09-26-android-read-receipt-maestro-design.md',
     );

@@ -6244,3 +6244,134 @@ predecessor definition passing sequentially at retry 0, and audited
 original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #751; wiring alone does not establish parity or
 authorize issue closure.
+
+## Message-source journey
+
+Suite `android.message-source` migrates the single View-source definition of
+the unchanged predecessor
+`e2e/browser/journeys/conversations/message-source.spec.mts` (106 lines,
+SHA-256
+`1a18b0772645d8d1a9cfeb38c8f620f53f37c818543d32b044a7c48be0151ca6`) into one
+serial one-stage installed-Android Node/Maestro suite. The Playwright
+predecessor remains enabled and untouched. The issue pins
+`3d7637643bb5f9b4c8124077f9eb880cb5b8e95e22a899f0ab82269f55115512`, the file
+on `develop`; this branch carries `fe2c7c3e`, which imported
+`sendComposerDraft` and replaced the one Enter press with it. The guard
+rebuilds the `develop` file from the branch file and proves the issue's pin,
+and every issue span moves down by one line. The stage maps to definition
+31–105 (`view-source`) and its Android branch 69–71; the desktop overflow-menu
+branch 72–74 is excluded. It expands the predecessor's module-local
+Room-opening helper at 18–26. The guard also pins `e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`),
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`) and
+`e2e/support/message-composer.mts`
+(`4b81585eea679d11dabd285449c9b004b6d70612ca777186ac34e44705c12d9d`), the run
+suffix `src`, the Room name `Source ${runId}`, the body `inspect me ${runId}`,
+the `private_chat` preset, the `sheet-view-source` action, the
+`message-source` and `message-source-json` test ids and the predecessor's
+alpha, border and shadow rules.
+
+The suite records 11 ordered, unique identities: 7 direct + 4 inherited. The
+inherited sites are the Room readiness of the local `openRoom` (line 23), the
+composer Send-button wait of `sendComposerDraft` (line 53), the real-server
+echo of `waitForSent` (line 178) and the action-sheet readiness of
+`openMessageActionSheet` (line 220). Helper expansion is resolved by binding;
+`registerUser` and `login` add no site. `23@59` reads as helper line 23
+reached from the call on line 59. The issue's 10 records were counted on
+`develop`; the Send-button wait that `fe2c7c3e` added is the eleventh.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `view-source` | 23@59 | inherited | `openRoom` composer visible | `message-source.view-source.room-ready` |
+| `view-source` | 53@63 | inherited | `sendComposerDraft` Send enabled for the body | `message-source.view-source.send-enabled` |
+| `view-source` | 65 | direct | Message row visible | `message-source.view-source.row-visible` |
+| `view-source` | 178@66 | inherited | `waitForSent` row has a `$` id | `message-source.view-source.server-echo` |
+| `view-source` | 220@70 | inherited | `openMessageActionSheet` sheet visible | `message-source.view-source.sheet-ready` |
+| `view-source` | 78 | direct | Message-source dialog visible | `message-source.view-source.dialog-visible` |
+| `view-source` | 80 | direct | Dialog JSON is the `m.room.message` event | `message-source.view-source.json-event` |
+| `view-source` | 81 | direct | Dialog JSON carries the exact body | `message-source.view-source.json-body` |
+| `view-source` | 100 | direct | Dialog surface paints a fully opaque colour | `message-source.view-source.surface-opaque` |
+| `view-source` | 103 | direct | Dialog surface has a non-zero border | `message-source.view-source.surface-border` |
+| `view-source` | 104 | direct | Dialog surface has a shadow | `message-source.view-source.surface-shadow` |
+
+REST creates one fresh Account and a private Room and observes the Room;
+nothing is seeded. Maestro owns login, Room opening, the focused fill of the
+body behind the digit sentinel `1`, the Send tap with the keyboard dismissed,
+the 750 ms long press on the ready row, bounded in-sheet swipes to View
+source and its tap. No shared source changes: the existing `roomMessages`
+reader observes the authoritative event.
+
+Documented reinterpretations of the predecessor:
+
+- **Ready authoritative event.** The row is long-pressed only after it has
+  reconciled to a `$` id and the Room, read from real Synapse, holds exactly
+  one `m.room.message`: the native send, an original `m.text` from the active
+  Account with exactly the body, whose id is the row's. A pending local echo
+  is never pressed.
+- **Android sheet branch.** The long press must open exactly one visible
+  `Message actions` sheet with one Forward and one `sheet-view-source`
+  action; View source sits below Copy text, Copy link and Forward and is
+  reached with at most eight native swipes (one on the device), tapped, and
+  the sheet must close.
+- **Exact parsed JSON.** Beyond `toContainText`, the dialog must be the one
+  visible `message-source` surface inside the one `Message source` dialog;
+  its JSON is parsed strictly as one object, and `event_id`, `type`, `sender`
+  and `room_id` must equal both the server event's and the expected values,
+  `content.body` must be exactly the body and `content` must deep-equal the
+  server content. Text that merely contains the body fails.
+- **Measured paint over the conversation.** The surface's measured box must
+  be finite, non-zero, intersect the conversation scroller and be topmost at
+  its centre. Its computed `backgroundColor` is parsed for every colour
+  syntax (the device reports `oklch(…)`, which the predecessor's
+  fourth-channel rule cannot read) and its alpha must be exactly 1; the top
+  border must be a non-zero pixel width with a drawn style (0.76 px on the
+  device); and the computed `boxShadow` must not be `none` and must paint at
+  least one layer with a non-zero alpha and extent, since Tailwind always
+  composes four transparent ring layers before the real shadow.
+
+The stage runs at the Pixel 5 profile (393×727 CSS pixels, DPR 2.75, mobile
+and touch), as the #748–#750 action-sheet suites do: the owned path is the
+`isAndroidE2E` branch, which the retained Android Playwright project reaches
+at its wide shell by synthesising touch, while the installed app takes genuine
+touch input at the phone profile. The paint claims are computed styles and do
+not depend on the viewport.
+
+The dialog displays the event id, Room id and sender, and the pass and
+failure captures include the document text and screenshots. Every Account,
+Room, body and run identifier is registered before any UI step and the event
+id as soon as the row reconciles, before the sheet opens. The scrub redacts
+them in every form, also redacts every Matrix event-id shape (the SDK logs
+the Room's unregistered state-event ids to logcat) and deletes every raster,
+so no screenshot of the dialog is published; the fail-closed scan rejects any
+remaining identifier, event-id shape, event-JSON field still holding a raw
+identifier, raster, token or authorization header. Records hold only digests
+(`eventDigest`, `roomDigest`, `senderDigest`), booleans, the computed paint
+strings and measured numbers, never the JSON. Failure text rethrown to the
+job log keeps error names and messages only; Node appends an assertion's
+actual and expected values to its message even when a custom message is
+given, so assertions keep only their first line, and every registered value
+and event-id shape is redacted. No native selector carries an identifier:
+the row is targeted as `.scroll .msg[data-mid^="$"]` with a text filter.
+
+```bash
+pnpm nx run trinity-e2e-android:message-source --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-source
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries. Its provisional budgets are a 10-minute Node test, a 15-minute
+Nx timeout and a 20-minute CI wrapper; the first device run took 4 m 53 s.
+Shard 3 runs it last, after message-receipts, and its budget comment adds a
+provisional 5 minutes (about 168 native minutes of the 240-minute job).
+Cleanup runs every bounded step even after a failure, including the
+Account's Room leave, forget and logout; a cleanup, scrub or scan failure
+blocks publication. The `android-message-source` upload requires both the
+started flag and the post-scan `publication-safe` marker.
+
+Three unchanged installed-Android first attempts, the exact Playwright
+predecessor definition passing sequentially at retry 0, and audited
+original-attempt hosted Android/browser/renderer artifacts form the
+acceptance gate for #752; wiring alone does not establish parity or
+authorize issue closure.

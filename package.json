@@ -109,6 +109,7 @@
     "e2e:android:message-poll": "node scripts/nx.mjs run trinity-e2e-android:message-poll",
     "e2e:android:message-quote": "node scripts/nx.mjs run trinity-e2e-android:message-quote",
     "e2e:android:message-receipts": "node scripts/nx.mjs run trinity-e2e-android:message-receipts",
+    "e2e:android:message-source": "node scripts/nx.mjs run trinity-e2e-android:message-source",
     "e2e:runner:chromium": "node scripts/nx.mjs run trinity-e2e-browser:runner-smoke",
     "e2e:runner:electron": "node scripts/nx.mjs run trinity-e2e-electron:runner-smoke",
     "e2e:runner:android": "node scripts/nx.mjs run trinity-e2e-android:runner-smoke",

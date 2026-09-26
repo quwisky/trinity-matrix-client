@@ -2445,8 +2445,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-markdown/**',
   );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(77);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(70);');
+  expect(ciSpec).toContain('expect(uploads.length).toBe(78);');
+  expect(ciSpec).toContain('expect(lines).toHaveLength(71);');
   expect(ciSpec).toContain("step.with.surface === 'android-message-markdown'");
   expect(ciSpec).toContain(
     'runs message-markdown after SSO recovery reset at the end of shard 5',
@@ -2558,13 +2558,13 @@ describe('Android message-markdown hosted wiring and parity ledger', () => {
       ),
       withText(
         'ciSpec',
+        'expect(uploads.length).toBe(78);',
         'expect(uploads.length).toBe(77);',
-        'expect(uploads.length).toBe(76);',
       ),
       withText(
         'ciSpec',
+        'expect(lines).toHaveLength(71);',
         'expect(lines).toHaveLength(70);',
-        'expect(lines).toHaveLength(69);',
       ),
     ])
       expect(() => assertWiring(mutated)).toThrow();

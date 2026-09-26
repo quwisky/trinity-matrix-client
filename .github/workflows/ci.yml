@@ -322,13 +322,14 @@ jobs:
     # limit inside retained Playwright. Budgets use the slowest native target
     # durations observed across the ten preceding runs, a 45-minute retained
     # Playwright command budget and 15 minutes for setup/diagnostics:
-    # shard 1 about 113 native minutes, shard 2 about 117, shard 3 about 163
+    # shard 1 about 113 native minutes, shard 2 about 117, shard 3 about 168
     # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 118.
     # Shard 4's figure adds a provisional 30-40 minutes for message-links,
     # shard 5's a provisional 15-20 minutes for message-markdown, and shard
     # 1's a provisional 6-8 minutes for message-poll.
     # Shard 6's figure adds a provisional 12 minutes for message-quote.
     # Shard 3's figure adds a provisional 5 minutes for message-receipts.
+    # Shard 3's figure also adds a provisional 5 minutes for message-source.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
@@ -446,6 +447,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-address-lifecycle-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-android:room-address-lifecycle; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'member-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:member-moderation; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-receipts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-receipts; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-source-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-source; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'room-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
@@ -550,6 +552,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_RECEIPTS_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-receipts/message-receipts/publication-safe' -print -quit)" ]; then
             echo 'message-receipts-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-source diagnostics
+        id: message-source-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-source-started == 'true' }}
+        env:
+          MESSAGE_SOURCE_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_SOURCE_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-source/message-source/publication-safe' -print -quit)" ]; then
+            echo 'message-source-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
@@ -1017,6 +1029,13 @@ jobs:
           surface: android-message-receipts
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-receipts/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-source-started == 'true' && steps.message-source-artifact-gate.outputs.message-source-safe == 'true' }}
+        with:
+          surface: android-message-source
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-source/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}
