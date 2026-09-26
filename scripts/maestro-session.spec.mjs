@@ -722,6 +722,31 @@ describe('Maestro device ownership', () => {
     expect(existsSync(join(output, 'screenshot.png'))).toBe(false);
   });
 
+  it('redacts every Matrix Room and event id shape from Maestro text output', async () => {
+    const output = mkdtempSync(join(tmpdir(), 'trinity-maestro-identifiers-'));
+    try {
+      const eventId = `$${'aB3_-'.repeat(8)}xyz`;
+      mkdirSync(join(output, 'flow', 'logs'), { recursive: true });
+      writeFileSync(
+        join(output, 'flow', 'logs', 'device-logcat.txt'),
+        `I Capacitor/Console: Event ${eventId} already in timeline\n`,
+      );
+      writeFileSync(
+        join(output, 'flow.yaml'),
+        '# !AbCdEfGhIjKlMnOpQr:localhost\n',
+      );
+      await redactMaestroArtifacts(output, {});
+      expect(
+        readFileSync(join(output, 'flow', 'logs', 'device-logcat.txt'), 'utf8'),
+      ).toBe('I Capacitor/Console: Event [REDACTED] already in timeline\n');
+      expect(readFileSync(join(output, 'flow.yaml'), 'utf8')).toBe(
+        '# [REDACTED]\n',
+      );
+    } finally {
+      rmSync(output, { recursive: true, force: true });
+    }
+  });
+
   it('redacts native secrets before publishing a flow without secret variables', async () => {
     const f = fixture();
     configureMaestro(f);

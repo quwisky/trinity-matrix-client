@@ -51,7 +51,11 @@ function runNode(
   return { directory, status: 0, signal: null };
 }
 
-function runNodeAllowFailure(source: string, suiteId: string) {
+function runNodeAllowFailure(
+  source: string,
+  suiteId: string,
+  environment: NodeJS.ProcessEnv = {},
+) {
   const directory = mkdtempSync(join(tmpdir(), 'trinity-node-reporter-'));
   directories.push(directory);
   const file = join(directory, 'fixture.mjs');
@@ -72,6 +76,7 @@ function runNodeAllowFailure(source: string, suiteId: string) {
         ...process.env,
         TRINITY_E2E_SUITE_ID: suiteId,
         TRINITY_E2E_REPORT_DIR: directory,
+        ...environment,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },
@@ -301,5 +306,49 @@ describe('Node test reporter', () => {
       !existsSync(summaryFile) ||
         JSON.parse(readFileSync(summaryFile, 'utf8')).status,
     ).not.toBe('passed');
+  });
+
+  it('keeps Matrix identifiers and assertion values out of Android output', async () => {
+    const eventId = `$${'aB3_-'.repeat(8)}xyz`;
+    const roomId = '!AbCdEfGhIjKlMnOpQr:localhost';
+    const result = await runNodeAllowFailure(
+      `import assert from 'node:assert/strict';
+       import { test } from 'node:test';
+       const eventId = ${JSON.stringify(eventId)};
+       test('leaks nothing', () => {
+         process.stdout.write('Event ' + eventId.slice(0, 20));
+         process.stdout.write(eventId.slice(20) + ' already in timeline\\n');
+         console.error('room ' + encodeURIComponent(${JSON.stringify(roomId)}));
+         assert.equal('value-actual-marker', eventId, 'exact event row is bound');
+       });`,
+      'android.identifier-output',
+      { TRINITY_E2E_PLATFORM: 'android' },
+    );
+    expect(result.status).not.toBe(0);
+    const published = [
+      result.stdout,
+      readFileSync(join(result.directory, 'process.log'), 'utf8'),
+      readFileSync(join(result.directory, 'junit', 'results.xml'), 'utf8'),
+    ];
+    for (const text of published) {
+      expect(text).not.toContain(eventId.slice(1));
+      expect(text).not.toContain('AbCdEfGhIjKlMnOpQr');
+      expect(text).not.toContain('value-actual-marker');
+    }
+    expect(published[1]).toContain('Event [REDACTED] already in timeline');
+    expect(published[1]).toContain('room [REDACTED]');
+    expect(result.stdout).toContain('exact event row is bound');
+    expect(result.stdout).toContain('fixture.mjs');
+  });
+
+  it('keeps assertion detail outside Android', async () => {
+    const result = await runNodeAllowFailure(
+      `import assert from 'node:assert/strict';
+       import { test } from 'node:test';
+       test('detailed', () => assert.equal('value-actual-marker', 'other', 'bound'));`,
+      'node.assertion-detail',
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toContain('value-actual-marker');
   });
 });

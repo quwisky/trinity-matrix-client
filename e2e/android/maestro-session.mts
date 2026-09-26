@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { runManagedCommand } from '../support/managed-command.mts';
+import { redactMatrixIdentifiers } from '../support/matrix-identifiers.mts';
 import { readSession } from '../support/session.mts';
 import {
   allocateMaestroDriverPort,
@@ -43,6 +44,7 @@ const textArtifactExtensions = new Set([
   '.log',
   '.txt',
   '.xml',
+  '.yaml',
 ]);
 const imageArtifactExtensions = new Set(['.jpeg', '.jpg', '.png', '.webp']);
 const redactedSecret = '[REDACTED]';
@@ -141,12 +143,14 @@ export async function redactMaestroArtifacts(
     }
     if (!textArtifactExtensions.has(extension)) continue;
     const text = await readFile(file, 'utf8');
-    const redacted = redactText(
+    // Per-flow device logcat carries SDK console lines such as
+    // "Event $… already in timeline": no Room or event id is ever published.
+    const redacted = redactMatrixIdentifiers(redactText(
       extension === '.txt' || extension === '.log'
         ? redactNativeLog(text)
         : text,
       secrets,
-    );
+    ));
     if (redacted !== text) await writeFile(file, redacted, 'utf8');
   }
 }
@@ -429,7 +433,7 @@ export async function openMaestroDevice(
           );
           await writeFile(
             join(options.artifactDirectory, file),
-            redactNativeLog(output),
+            redactMatrixIdentifiers(redactNativeLog(output)),
           ).catch((error: unknown) => failures.push(error));
         }
         for (const installedApplicationId of installedApplicationIds) {

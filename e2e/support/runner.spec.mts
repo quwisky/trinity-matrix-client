@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -506,6 +507,108 @@ describe('E2E runner boundaries', () => {
       rmSync(workspaceRoot, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    { binary: false, expected: 0 },
+    { binary: true, expected: 1 },
+  ])(
+    'scrubs Android diagnostics and fails closed on unverifiable ones (binary: $binary)',
+    async ({ binary, expected }) => {
+      const workspaceRoot = mkdtempSync(join(tmpdir(), 'trinity-node-runner-'));
+      const eventId = `$${'aB3_-'.repeat(8)}xyz`;
+      try {
+        const execute = vi.fn(async (_command, _args, options) => {
+          const directory = options.environment?.['TRINITY_E2E_REPORT_DIR'];
+          mkdirSync(join(directory, 'stage', 'logs'), { recursive: true });
+          writeFileSync(
+            join(directory, 'stage', 'logs', 'device-logcat.txt'),
+            `Event ${eventId} already in timeline\n`,
+          );
+          writeFileSync(
+            join(directory, 'stage', 'publication-safe'),
+            'scanned\n',
+          );
+          if (binary)
+            writeFileSync(
+              join(directory, 'stage', 'trace.bin'),
+              Buffer.from([0, 1, 2]),
+            );
+          writeFileSync(
+            join(directory, 'suite-summary.json'),
+            JSON.stringify({
+              schemaVersion: 1,
+              suiteId: 'android.identifiers',
+              status: 'passed',
+              attempts: 1,
+              retries: 0,
+              durationMs: 1,
+              attemptDurationMs: 1,
+              attemptsByStatus: { passed: 1 },
+            }),
+          );
+          return { status: 0, timedOut: false };
+        });
+        const result = await runNode(
+          [
+            '--suite=android.identifiers',
+            '--entrypoint=e2e/node.spec.mts',
+            '--platform=android',
+          ],
+          {},
+          {
+            workspaceRoot,
+            openInvocation: async () => ({
+              owned: true,
+              file: 'session.json',
+              descriptor: {
+                version: 1,
+                id: 'run-node-identifiers',
+                workspaceRoot,
+                owner: {
+                  pid: process.pid,
+                  nonce: 'nonce-node-identifiers',
+                  createdAt: new Date().toISOString(),
+                },
+                resources: [],
+                endpoints: {
+                  application: 'http://127.0.0.1:10001/',
+                  storybook: 'http://127.0.0.1:10002/',
+                  report: 'http://127.0.0.1:10003/',
+                },
+                artifactsRoot: join(workspaceRoot, 'artifacts'),
+              },
+              environment: {},
+              close: async () => undefined,
+            }),
+            prepareBundle: vi.fn().mockResolvedValue(0),
+            executeCommand: execute,
+          },
+        );
+        expect(result).toBe(expected);
+        const directory = join(
+          workspaceRoot,
+          'dist/.playwright/trinity-e2e-android/run-node-identifiers/android.identifiers',
+        );
+        expect(
+          readFileSync(
+            join(directory, 'stage', 'logs', 'device-logcat.txt'),
+            'utf8',
+          ),
+        ).toBe('Event [REDACTED] already in timeline\n');
+        expect(existsSync(join(directory, 'stage', 'trace.bin'))).toBe(false);
+        expect(existsSync(join(directory, 'stage', 'publication-safe'))).toBe(
+          !binary,
+        );
+        expect(
+          JSON.parse(
+            readFileSync(join(directory, 'suite-summary.json'), 'utf8'),
+          ),
+        ).toMatchObject({ status: binary ? 'failed' : 'passed' });
+      } finally {
+        rmSync(workspaceRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('maps explicit recovery to the same support-owned Synapse lease', () => {
     expect(resourceLockFile('synapse')).toBe(synapseLockFile);

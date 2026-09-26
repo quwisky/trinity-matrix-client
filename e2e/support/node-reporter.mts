@@ -4,10 +4,18 @@ import { dirname, join, relative } from 'node:path';
 import type { EventData } from 'node:test';
 import type { TestEvent } from 'node:test/reporters';
 import { inspect } from 'node:util';
+import { MatrixIdentifierLineRedactor } from './matrix-identifiers.mts';
+import { publicFailureText } from './public-failure.mts';
 
 /** Environment variables consumed by the Node test reporter. */
 export const NODE_REPORTER_SUITE_ENV = 'TRINITY_E2E_SUITE_ID';
 export const NODE_REPORTER_DIRECTORY_ENV = 'TRINITY_E2E_REPORT_DIR';
+/**
+ * Android output reaches the published job log and `process.log`: every Matrix
+ * identifier shape is redacted from process output, and failures show only
+ * public messages and stack frames, never assertion values.
+ */
+export const NODE_REPORTER_PLATFORM_ENV = 'TRINITY_E2E_PLATFORM';
 
 type Attempt = {
   readonly name: string;
@@ -37,6 +45,12 @@ const xml = (value: string): string =>
 export default class NodeReporter extends Transform {
   private readonly suiteId = process.env[NODE_REPORTER_SUITE_ENV] ?? '';
   private readonly directory = process.env[NODE_REPORTER_DIRECTORY_ENV];
+  private readonly android =
+    process.env[NODE_REPORTER_PLATFORM_ENV] === 'android';
+  private readonly output = {
+    'test:stdout': new MatrixIdentifierLineRedactor(),
+    'test:stderr': new MatrixIdentifierLineRedactor(),
+  } as const;
   private readonly attempts: Attempt[] = [];
   private readonly started = new Map<string, EventData.TestStart>();
   private readonly progressStarted = new Set<string>();
@@ -59,14 +73,11 @@ export default class NodeReporter extends Transform {
     switch (chunk.type) {
       case 'test:stdout':
       case 'test:stderr':
-        this.push(chunk.data.message);
-        if (this.directory) {
-          mkdirSync(this.directory, { recursive: true });
-          appendFileSync(
-            join(this.directory, 'process.log'),
-            chunk.data.message,
-          );
-        }
+        this.processOutput(
+          this.android
+            ? this.output[chunk.type].write(chunk.data.message)
+            : chunk.data.message,
+        );
         break;
       case 'test:start':
         this.started.set(this.eventKey(chunk.data), chunk.data);
@@ -92,7 +103,7 @@ export default class NodeReporter extends Transform {
       case 'test:fail':
         this.sawFailure = true;
         this.push(
-          `${chunk.data.name}: ${inspect(chunk.data.details.error, { depth: 5, colors: false })}\n`,
+          `${chunk.data.name}: ${this.failureText(chunk.data.details.error)}\n`,
         );
         if (chunk.data.details.type !== 'suite')
           this.record('failed', chunk.data);
@@ -105,8 +116,25 @@ export default class NodeReporter extends Transform {
   }
 
   override _flush(callback: TransformCallback): void {
+    for (const stream of Object.values(this.output))
+      this.processOutput(stream.flush());
     this.finalize();
     callback();
+  }
+
+  private processOutput(message: string): void {
+    if (!message) return;
+    this.push(message);
+    if (this.directory) {
+      mkdirSync(this.directory, { recursive: true });
+      appendFileSync(join(this.directory, 'process.log'), message);
+    }
+  }
+
+  private failureText(error: unknown): string {
+    return this.android
+      ? publicFailureText(error)
+      : inspect(error, { depth: 5, colors: false });
   }
 
   private record(
@@ -126,9 +154,8 @@ export default class NodeReporter extends Transform {
       attempt,
       ...(status === 'failed'
         ? {
-            error: inspect(
+            error: this.failureText(
               (data.details as EventData.TestFail['details']).error,
-              { depth: 5, colors: false },
             ),
           }
         : {}),

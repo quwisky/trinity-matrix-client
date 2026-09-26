@@ -9,6 +9,10 @@ import {
 } from './execution-report.mts';
 import { openE2EInvocation, type E2EInvocation } from './invocation.mts';
 import {
+  enforceMatrixIdentifierFreeArtifacts,
+  redactMatrixIdentifiers,
+} from './matrix-identifiers.mts';
+import {
   createProcessTerminationScope,
   runManagedCommand,
 } from './managed-command.mts';
@@ -142,7 +146,9 @@ function writeTerminalSummary(
     }
   }
   if (existing && !force) return;
-  const message = detail instanceof Error ? detail.message : String(detail);
+  const message = redactMatrixIdentifiers(
+    detail instanceof Error ? detail.message : String(detail),
+  );
   writeFileSync(
     summaryFile,
     `${JSON.stringify(
@@ -222,6 +228,32 @@ function validateTerminalSummary(
       detail: error instanceof Error ? error.message : String(error),
       force: true,
     };
+  }
+}
+
+/**
+ * Android publication boundary: after the Node child has exited, however it
+ * ended, redact every Matrix identifier shape from the suite's diagnostics and
+ * rescan them. A file that still carries one, or cannot be read as text, is
+ * withheld with every `publication-safe` marker, and the suite fails.
+ */
+async function withholdIdentifierDiagnostics(
+  options: NodeRunnerArguments,
+  environment: NodeJS.ProcessEnv,
+): Promise<Error | undefined> {
+  const directory = environment['TRINITY_E2E_REPORT_DIR'];
+  if (options.platform !== 'android' || !directory || !existsSync(directory))
+    return undefined;
+  try {
+    const { unsafe } = await enforceMatrixIdentifierFreeArtifacts(directory);
+    if (unsafe.length === 0) return undefined;
+    return new Error(
+      `Matrix identifier scan withheld ${unsafe.length} Android diagnostic(s): ${unsafe.join(', ')}`,
+    );
+  } catch (error) {
+    return new Error(
+      `Matrix identifier scrub of Android diagnostics failed: ${error instanceof Error ? error.name : typeof error}`,
+    );
   }
 }
 
@@ -309,6 +341,22 @@ export async function runNode(
       },
     );
     result = commandResult.status;
+    const withheld = await withholdIdentifierDiagnostics(
+      options,
+      invocationEnvironment,
+    );
+    if (withheld) {
+      console.error(`[e2e] ${withheld.message}`);
+      failure = withheld;
+      writeTerminalSummary(
+        invocationEnvironment,
+        options.suite,
+        termination.signal.aborted ? 'interrupted' : 'failed',
+        withheld,
+        true,
+      );
+      return 1;
+    }
     if (result !== 0) {
       failure =
         commandResult.error ??

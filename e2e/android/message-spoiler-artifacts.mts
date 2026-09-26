@@ -22,6 +22,10 @@ import {
   nativeStorageMethodDataIsRedacted,
   redactMaestroArtifacts,
 } from './maestro-session.mts';
+import {
+  hasMatrixIdentifier,
+  redactMatrixIdentifiers,
+} from '../support/matrix-identifiers.mts';
 
 const raster = new Set([
   '.avif', '.bmp', '.gif', '.ico', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp',
@@ -41,13 +45,6 @@ const PASSED_RASTERS = [SPOILER_CAPTURE_NAMES.concealed, SPOILER_CAPTURE_NAMES.r
 const TEXT_CHUNKS = new Set(['tEXt', 'zTXt', 'iTXt', 'eXIf']);
 const digest = (value: string | Uint8Array): string =>
   createHash('sha256').update(value).digest('hex');
-/**
- * A room-version 3+ Matrix event id (`$` and 43 URL-safe base64 characters),
- * raw or percent-encoded. The SDK logs the Room's state-event ids to logcat
- * ("Event $… already in timeline"); none is registered, so every event-id
- * shape is redacted and rejected.
- */
-const EVENT_ID_SHAPE = /(?:\$|%24)[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/giu;
 
 export interface MessageSpoilerPublicationSafety {
   unsafeSecrets: boolean;
@@ -161,12 +158,16 @@ export function redactSecretText(
   return redacted;
 }
 
-/** Redact every registered secret and every Matrix event-id shape from text. */
+/**
+ * Redact every registered secret and every Matrix Room and event-id shape from
+ * text. The SDK logs the Room's state-event ids to logcat ("Event $… already in
+ * timeline"); none is registered, so the shared shapes are redacted as well.
+ */
 export function redactDiagnosticText(
   text: string,
   secrets: Readonly<Record<string, string>>,
 ): string {
-  return redactSecretText(text, secrets).replace(EVENT_ID_SHAPE, '[REDACTED]');
+  return redactMatrixIdentifiers(redactSecretText(text, secrets));
 }
 
 // Leaf-scoped rasters.
@@ -473,8 +474,8 @@ export async function scanMessageSpoilerArtifacts(
         'Authorization absent from message-spoiler diagnostics');
       assert(!/access_token["']?\s*[:=]\s*["']?[\w.~-]{8,}/iu.test(value),
         'Query-string and JSON access tokens absent from message-spoiler diagnostics');
-      assert(!new RegExp(EVENT_ID_SHAPE.source, 'iu').test(value),
-        'No Matrix event id in message-spoiler diagnostics');
+      assert(!hasMatrixIdentifier(value),
+        'No Matrix Room or event id in message-spoiler diagnostics');
       assert(!/<(?:map\b|string\b)[^>]*>/iu.test(value),
         'Raw native Preferences XML absent from message-spoiler diagnostics');
       assert(nativeStorageMethodDataIsRedacted(value, 'Preferences'),

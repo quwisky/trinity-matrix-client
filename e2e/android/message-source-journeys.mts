@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test, type TestContext } from 'node:test';
 import { withNodeTestResources } from '../support/node-fixtures.mts';
+import { publicStageFailure } from '../support/public-failure.mts';
 import { readSession } from '../support/session.mts';
 import { MatrixTestResources } from '../support/test-resources.mts';
 import {
@@ -512,46 +513,20 @@ function describeFailure(error: unknown): string {
 }
 
 /**
- * An error's message for the job log. Node appends an assertion's actual and
- * expected values to its message even when a custom message is given, and a
- * parsed dialog value may be an identifier that was never registered, so an
- * assertion keeps only its first line, or its operator when Node generated the
- * whole message.
- */
-function jobLogMessage(error: Error): string {
-  if (Reflect.get(error, 'code') !== 'ERR_ASSERTION') return error.message;
-  if (Reflect.get(error, 'generatedMessage') === true)
-    return `${String(Reflect.get(error, 'operator'))} assertion failed`;
-  return error.message.split('\n')[0] ?? '';
-}
-
-/**
  * The error rethrown to the test reporter after a failed stage. The reporter
- * prints thrown errors, including assertion actual/expected values, to the
- * ungated job log, so rethrow only names and messages without appended values,
- * with every registered secret and event-id shape redacted. The complete text
- * stays in the scrubbed journeys.json.
+ * prints thrown errors to the ungated job log, and Node appends an assertion's
+ * actual/expected values to its message, so the shared public rethrow keeps
+ * only names and first message lines, with every registered secret and every
+ * Matrix Room and event-id shape redacted. The complete text stays in the
+ * scrubbed journeys.json.
  */
 export function redactStageFailure(
   stageId: string,
   failures: readonly unknown[],
   secrets: Readonly<Record<string, string>>,
 ): Error {
-  const lines: string[] = [];
-  const visit = (value: unknown): void => {
-    if (value instanceof AggregateError) {
-      lines.push(`${value.name}: ${value.message}`);
-      for (const nested of value.errors) visit(nested);
-    } else if (value instanceof Error) {
-      lines.push(`${value.name}: ${jobLogMessage(value)}`);
-    } else {
-      lines.push(typeof value);
-    }
-  };
-  for (const failure of failures) visit(failure);
-  return new Error(
-    redactDiagnosticText(`Android message-source ${stageId} failed\n${lines.join('\n')}`, secrets),
-  );
+  return publicStageFailure(`Android message-source ${stageId} failed`, failures,
+    (text) => redactDiagnosticText(text, secrets));
 }
 
 /** An id-free account of a cleanup failure for process output, which reaches ungated CI logs. */

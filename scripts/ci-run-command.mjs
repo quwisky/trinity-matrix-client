@@ -2,18 +2,23 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { MatrixIdentifierLineRedactor } from '../e2e/support/matrix-identifiers.mts';
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_KILL_GRACE_MS = 2000;
 const CLI_KILL_GRACE_MS = 60 * 1000;
 
-function append(logFile, label, stream, chunk) {
-  const text = chunk.toString();
+/**
+ * Retain and echo output by whole lines with every Matrix Room and event
+ * identifier shape redacted: this output is the published job log and the
+ * uploaded `dist/.ci` log, so an identifier is never printed.
+ */
+function append(logFile, label, stream, text) {
+  if (!text) return;
   appendFileSync(logFile, `[${label}] ${stream}: ${text}`);
   for (const line of text.split(/(?<=\n)/)) {
     if (line) process.stdout.write(`[${label}] ${stream}: ${line}`);
   }
-  return text;
 }
 
 function terminate(child, signal) {
@@ -50,6 +55,14 @@ export function runCommand({
     });
     let stdout = '';
     let stderr = '';
+    const redactors = {
+      stdout: new MatrixIdentifierLineRedactor(),
+      stderr: new MatrixIdentifierLineRedactor(),
+    };
+    const flush = () => {
+      for (const [stream, redactor] of Object.entries(redactors))
+        append(logFile, label, stream, redactor.flush());
+    };
     let timedOut = false;
     let aborted = abortSignal?.aborted ?? false;
     let settled = false;
@@ -73,10 +86,14 @@ export function runCommand({
     const timer = setTimeout(() => stop('timeout', 'SIGINT'), timeoutMs);
     timer.unref?.();
     child.stdout.on('data', (chunk) => {
-      stdout += append(logFile, label, 'stdout', chunk);
+      const text = chunk.toString();
+      stdout += text;
+      append(logFile, label, 'stdout', redactors.stdout.write(text));
     });
     child.stderr.on('data', (chunk) => {
-      stderr += append(logFile, label, 'stderr', chunk);
+      const text = chunk.toString();
+      stderr += text;
+      append(logFile, label, 'stderr', redactors.stderr.write(text));
     });
     child.once('error', (error) => {
       if (settled) return;
@@ -84,6 +101,7 @@ export function runCommand({
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
       abortSignal?.removeEventListener('abort', onAbort);
+      flush();
       appendFileSync(
         logFile,
         `[${label}] error: ${error.stack ?? error.message}\n`,
@@ -104,6 +122,7 @@ export function runCommand({
     });
     child.once('close', (exitCode, signal) => {
       if (settled) return;
+      flush();
       cleanupGroup();
       settled = true;
       clearTimeout(timer);

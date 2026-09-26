@@ -911,6 +911,18 @@ describe('CI execution contract', () => {
     );
     expect(upload.with['include-hidden-files']).toBe(true);
     expect(upload.with['if-no-files-found']).toBe('error');
+    const identifiers = action.runs.steps.find(
+      (step) => step.id === 'matrix-identifiers',
+    );
+    expect(action.runs.steps.indexOf(identifiers)).toBe(0);
+    expect(identifiers.if).toBe(
+      "${{ startsWith(inputs.surface, 'android-') }}",
+    );
+    expect(identifiers.run).toBe('node scripts/ci-matrix-identifiers.mjs');
+    expect(identifiers.env.CI_REPORT_PATH).toBe('${{ inputs.report-path }}');
+    expect(upload.if).toBe(
+      "${{ !cancelled() && (!startsWith(inputs.surface, 'android-') || steps.matrix-identifiers.outputs.verified == 'true') }}",
+    );
     for (const field of [
       'github.run_id',
       'github.run_attempt',

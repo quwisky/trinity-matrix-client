@@ -583,7 +583,9 @@ describe('installed Android message-grouping ownership and publication', () => {
       '{"password":"[REDACTED]"}',
       'pluginId: Preferences, methodName: get, methodData: [REDACTED]',
       'pluginId: SecureStorage, methodName: get, methodData: [REDACTED]',
-      'unchanged=%2Fpublic%3Avalue !room-AbC%3Aexample.test %24event_A%2Bb%2FC%3Dd%3Aexample.test',
+      // An unregistered Room-id shape is redacted too (#838); the non-id
+      // encoded values stay undecoded.
+      'unchanged=%2Fpublic%3Avalue [REDACTED] %24event_A%2Bb%2FC%3Dd%3Aexample.test',
     ].join('\n');
     try {
       const nested = join(output, 'message-grouping');
