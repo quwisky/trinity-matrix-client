@@ -24,6 +24,7 @@ import {
   visibleOne,
 } from './space-settings-core-observations.mts';
 import { withSpaceSettingsVisualFixture } from './space-settings-visual-fixture.mts';
+import { bindRoomControl, roomControl, roomRow } from './room-control-identity.mts';
 
 /** Register before native creation; discovery must not depend on successful UI assertions. */
 export async function registerCreatedContentsCleanup(
@@ -149,7 +150,9 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
     await openSettingsSection(client, 'contents');
     const panel = '[data-testid="space-settings-panel-contents"]';
     const detail = '[data-testid="space-settings-detail"]';
-    const linkedRow = `${panel} [data-testid="space-content-${linked.id}"]`;
+    // Selectors reach the job log, so contents rows are found by their Room
+    // names and bound to the exact Rooms by read-only observation.
+    const linkedRow = roomRow(`${panel} .contents-list__row`, 'space-content-', linked.name, linked.id);
     await observedElements(
       client,
       assertions.contentsPanelVisible,
@@ -159,16 +162,18 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
     await observedElements(
       client,
       assertions.contentsLinkedName,
-      `${linkedRow} strong`,
+      `${linkedRow.selector} strong`,
       visibleOne,
       { exactText: linked.name },
     );
     await observedElements(
       client,
       assertions.contentsLinkedTypeRoom,
-      linkedRow,
+      linkedRow.selector,
       (elements) => visibleOne(elements) && elements[0]!.text.includes('Room'),
+      linkedRow.filter,
     );
+    await bindRoomControl(client, linkedRow, 'Contents row is the exact linked Room');
     await withSpaceSettingsVisualFixture(
       client,
       { fontSize: '125%' },
@@ -193,16 +198,21 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
 
     await client.tapCurrent('[data-testid="space-contents-add-existing"]');
     await client.fill('[data-testid="space-contents-search"]', 'Candidate');
-    const candidateCheckbox = `[data-testid="space-contents-pick-${candidate.id}"] [role="checkbox"]`;
-    await client.visible(candidateCheckbox);
+    // Selectors reach the job log, so candidate picks are found by the Room's
+    // name, not the Room id in their test ids; read-only observation binds them.
+    const candidatePick = roomControl('.space-contents__candidate', 'space-contents-pick-', candidate.name, candidate.id);
+    const candidateCheckbox = `${candidatePick.selector} [role="checkbox"]`;
+    await client.visible(candidateCheckbox, candidatePick.filter);
+    await bindRoomControl(client, candidatePick, 'First candidate pick is the exact candidate Room');
     // Search precedes the alphabetically first candidate. Native Tab establishes focus.
     await client.focused('[data-testid="space-contents-search"]');
     await client.key('tab');
-    await client.focused(candidateCheckbox);
+    await client.focused(candidateCheckbox, candidatePick.filter);
     await client.key('space');
-    await client.tapCurrent(
-      `[data-testid="space-contents-pick-${candidateSpace.id}"]`,
-    );
+    const candidateSpacePick = roomControl('.space-contents__candidate', 'space-contents-pick-', candidateSpace.name, candidateSpace.id);
+    await client.visible(candidateSpacePick.selector, candidateSpacePick.filter);
+    await bindRoomControl(client, candidateSpacePick, 'Space candidate pick is the exact candidate Space');
+    await client.tapCurrent(candidateSpacePick.selector, candidateSpacePick.filter);
     await client.scrollIntoViewIfNeeded(
       '[data-testid="space-contents-add-confirm"]',
       detail,
@@ -248,13 +258,15 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
       () => fixtures.spaceChild(owner, space.id, createdSpaceId),
       (value) => Array.isArray(value?.['via']),
     );
-    const createdSpaceRow = `${panel} [data-testid="space-content-${createdSpaceId}"]`;
+    const createdSpaceRow = roomRow(`${panel} .contents-list__row`, 'space-content-', createdSpaceName, createdSpaceId);
     await observedElements(
       client,
       assertions.contentsCreatedSpaceType,
-      `${createdSpaceRow} .contents-list__kind`,
+      `${panel} .contents-list__row .contents-list__kind`,
       (elements) => visibleOne(elements) && elements[0]!.text === 'Space',
+      { within: { selector: '.contents-list__row', text: createdSpaceName } },
     );
+    await bindRoomControl(client, createdSpaceRow, 'Contents row is the exact created Space');
 
     await withChildLinkFailure(context, space.id, async (fault) => {
       await client.scrollIntoViewIfNeeded(
@@ -349,10 +361,11 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
       );
     });
 
-    const linkedUnlink = `[data-testid="space-content-unlink-${linked.id}"]`;
+    const linkedUnlink = roomControl('.contents-list__row', 'space-content-unlink-', linked.name, linked.id);
     const removeDialog = '[data-testid="alert-surface"]';
-    await client.scrollIntoViewIfNeeded(linkedUnlink, detail);
-    await client.tapCurrent(linkedUnlink);
+    await client.scrollIntoViewIfNeeded(linkedUnlink.selector, detail, linkedUnlink.filter);
+    await bindRoomControl(client, linkedUnlink, 'Remove control belongs to the exact linked Room');
+    await client.tapCurrent(linkedUnlink.selector, linkedUnlink.filter);
     await client.visible(`${removeDialog} h2`, {
       exactText: 'Remove Room from Space',
     });
@@ -384,7 +397,7 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
       () => fixtures.spaceChild(owner, space.id, linked.id),
       (value) => Array.isArray(value?.['via']),
     );
-    await client.tapCurrent(linkedUnlink);
+    await client.tapCurrent(linkedUnlink.selector, linkedUnlink.filter);
     await client.tapCurrent('[data-testid="alert-confirm"]');
     await observedServerValue(
       client,
@@ -400,9 +413,10 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
     );
     await client.capture('space-contents-desktop');
 
-    const createdSpaceUnlink = `[data-testid="space-content-unlink-${createdSpaceId}"]`;
-    await client.scrollIntoViewIfNeeded(createdSpaceUnlink, detail);
-    await client.tapCurrent(createdSpaceUnlink);
+    const createdSpaceUnlink = roomControl('.contents-list__row', 'space-content-unlink-', createdSpaceName, createdSpaceId);
+    await client.scrollIntoViewIfNeeded(createdSpaceUnlink.selector, detail, createdSpaceUnlink.filter);
+    await bindRoomControl(client, createdSpaceUnlink, 'Remove control belongs to the exact created Space');
+    await client.tapCurrent(createdSpaceUnlink.selector, createdSpaceUnlink.filter);
     await client.visible(`${removeDialog} h2`, {
       exactText: 'Remove Space from Space',
     });
@@ -461,29 +475,40 @@ export const spaceSettingsCoreContentsCase: AccountWorkspaceCase = {
       `${panel} [data-testid="space-contents-actions"]`,
       absent,
     );
+    const candidateSpaceRow = roomRow(`${panel} .contents-list__row`, 'space-content-', candidateSpace.name, candidateSpace.id);
     await observedElements(
       client,
       assertions.contentsCandidateSpaceVisible,
-      `${panel} [data-testid="space-content-${candidateSpace.id}"]`,
+      candidateSpaceRow.selector,
       visibleOne,
+      candidateSpaceRow.filter,
     );
+    await bindRoomControl(client, candidateSpaceRow, 'Contents row is the exact candidate Space');
+    const withinCandidateSpace = (prefix: string, element = '') =>
+      roomControl(`${panel} .contents-list__row`, prefix, candidateSpace.name, candidateSpace.id, element);
+    const unlinkHidden = withinCandidateSpace('space-content-unlink-');
     await observedElements(
       client,
       assertions.contentsUnlinkHidden,
-      `${panel} [data-testid="space-content-unlink-${candidateSpace.id}"]`,
+      unlinkHidden.selector,
       absent,
+      unlinkHidden.filter,
     );
+    const suggestHidden = withinCandidateSpace('space-content-suggest-', 'trn-checkbox');
     await observedElements(
       client,
       assertions.contentsSuggestHidden,
-      `${panel} [data-testid="space-content-suggest-${candidateSpace.id}"]`,
+      suggestHidden.selector,
       absent,
+      suggestHidden.filter,
     );
+    const moveUpHidden = withinCandidateSpace('space-content-move-up-');
     await observedElements(
       client,
       assertions.contentsMoveUpHidden,
-      `${panel} [data-testid="space-content-move-up-${candidateSpace.id}"]`,
+      moveUpHidden.selector,
       absent,
+      moveUpHidden.filter,
     );
   },
 };

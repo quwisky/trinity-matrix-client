@@ -97,8 +97,37 @@ async function finiteNumber(client: AccountWorkspaceClient, expression: string):
   return value;
 }
 
-function rowSelector(eventId: string): string {
-  return `.msg[data-mid=${JSON.stringify(eventId)}]`;
+/**
+ * Selectors reach the job log, so no native action or wait names an event id:
+ * a target row is `.msg[data-mid^="$"]` scoped by its unique body, and a
+ * read-only observation binds it to the exact event before each gesture. The
+ * id-bearing `eventIdSelector` is used only inside read-only renderer
+ * observations, which never log or record it.
+ */
+const ROW = '.msg[data-mid^="$"]';
+
+interface RowTarget {
+  readonly selector: string;
+  readonly filter: AccountElementFilter;
+  readonly within: AccountElementFilter;
+  readonly eventIdSelector: string;
+  readonly eventId: string;
+}
+
+function rowTarget(scope: string, body: string, eventId: string): RowTarget {
+  const prefix = scope ? `${scope} ` : '';
+  return {
+    selector: `${prefix}${ROW}`,
+    filter: { text: body },
+    within: { within: { selector: '.msg', text: body } },
+    eventIdSelector: `${prefix}.msg[data-mid=${JSON.stringify(eventId)}]`,
+    eventId,
+  };
+}
+
+async function bindTarget(client: AccountWorkspaceClient, target: RowTarget, description: string): Promise<void> {
+  const identity = await client.eventIdentity(target.selector, target.filter, target.eventId);
+  assert(identity.matches === 1 && identity.exactEvent, description);
 }
 
 async function sheetVisible(context: StageContext): Promise<void> {
@@ -177,29 +206,30 @@ async function restored(context: StageContext, selector: string, before: number)
   await record(context, 'position-restored', { before, after, delta: Math.abs(after - before) });
 }
 
-async function reply(context: StageContext, selector: string): Promise<void> {
+async function reply(context: StageContext, target: RowTarget): Promise<void> {
   const { client } = context;
-  const toolbarCount = (await client.elements(`${selector} .msg__toolbar`)).length;
+  const toolbarCount = (await client.elements(`${ROW} .msg__toolbar`, target.within)).length;
   assert(toolbarCount === 0, 'Phone has no hover toolbar');
   await record(context, 'toolbar-absent', { toolbarCount });
   const bodyWidth = await finiteNumber(client,
-    `document.querySelector(${JSON.stringify(`${selector} .msg__body`)})?.getBoundingClientRect().width`);
+    `document.querySelector(${JSON.stringify(`${target.eventIdSelector} .msg__body`)})?.getBoundingClientRect().width`);
   assert(bodyWidth > 200, 'Phone message body stays wider than 200 CSS pixels');
   await record(context, 'body-wide', { bodyWidth });
-  const author = await client.visible(`${selector} .msg__author`);
+  const author = await client.visible(`${ROW} .msg__author`, target.within);
   assert(author.text.length > 0, 'Exact source target has an author');
-  await client.longPressCurrent(selector);
+  await bindTarget(client, target, 'Reply long press targets the exact source event');
+  await client.longPressCurrent(target.selector, target.filter);
   await sheetVisible(context);
-  const revealedCount = (await client.elements(`${selector}.msg--revealed`)).length;
+  const revealedCount = (await client.elements(`${target.selector}.msg--revealed`, target.filter)).length;
   assert(revealedCount === 0, 'Long press uses the sheet, not revealed hover state');
   await record(context, 'revealed-row-absent', { revealedCount });
   const dialogCount = (await client.elements(DIALOG)).length;
   assert(dialogCount === 1, 'Phone sheet is one named dialog');
   await record(context, 'single-named-dialog', { dialogCount });
-  const geometry = await readSheetGeometry(client, selector);
+  const geometry = await readSheetGeometry(client, target.eventIdSelector);
   assert(geometry.sheetPresent, 'Sheet has a real bounding box');
   await record(context, 'sheet-box-present', geometry);
-  await clearance(context, selector);
+  await clearance(context, target.eventIdSelector);
   assertSheetViewport(geometry);
   await record(context, 'sheet-top-in-viewport', geometry);
   await record(context, 'sheet-bottom-in-viewport', geometry);
@@ -220,13 +250,18 @@ async function reply(context: StageContext, selector: string): Promise<void> {
   await record(context, 'reply-banner', { text: banner[0]!.text, exactTargetAuthor: true });
 }
 
-async function quickReaction(context: StageContext, selector: string): Promise<void> {
+async function quickReaction(context: StageContext, target: RowTarget): Promise<void> {
   const { client, fixtures, account, history } = context;
-  await client.longPressCurrent(selector);
+  await bindTarget(client, target, 'Quick-reaction long press targets the exact event');
+  await client.longPressCurrent(target.selector, target.filter);
   await sheetVisible(context);
   await client.tapCurrent('[data-testid="sheet-react-👍"]');
   await elements(context, 'sheet-closed', 'trn-action-sheet', absent);
-  const reaction = await client.visible(`${selector} trn-message-reactions .reaction.reaction--mine[aria-pressed="true"] .reaction__key`, { exactText: '👍' }, 20_000);
+  const key = `${ROW} trn-message-reactions .reaction.reaction--mine[aria-pressed="true"] .reaction__key`;
+  const keyFilter = { exactText: '👍', ...target.within };
+  const reaction = await client.visible(key, keyFilter, 20_000);
+  const keyIdentity = await client.eventIdentity(key, keyFilter, target.eventId);
+  assert(keyIdentity.matches === 1 && keyIdentity.exactEvent, 'Thumbs-up renders inside the exact target event');
   const facts = await waitForNativeShellState(
     () => fixtures.messageActionSheetReactionEvents(account, history.roomId, history.targetEventId),
     (values) => values.length === 1 && (() => {
@@ -239,22 +274,23 @@ async function quickReaction(context: StageContext, selector: string): Promise<v
   await record(context, 'reaction-ready', { visible: reaction.visible, relation: facts[0] });
 }
 
-async function backdrop(context: StageContext, selector: string): Promise<void> {
+async function backdrop(context: StageContext, target: RowTarget): Promise<void> {
   const { client, fixtures, account, history } = context;
-  await client.longPressCurrent(selector);
+  await bindTarget(client, target, 'Backdrop long press targets the exact event');
+  await client.longPressCurrent(target.selector, target.filter);
   await sheetVisible(context);
   await dismissSheet(client);
   await elements(context, 'sheet-closed', 'trn-action-sheet', absent);
   const bannerCount = (await client.elements('.composer__banner')).length;
   const reactionEvents = await fixtures.messageActionSheetReactionEvents(account, history.roomId, history.targetEventId);
-  const target = await fixtures.roomEvent(account, history.roomId, history.targetEventId);
+  const targetEvent = await fixtures.roomEvent(account, history.roomId, history.targetEventId);
   assert(bannerCount === 0, 'Backdrop does not start a reply or edit');
   assert(reactionEvents.length === 0, 'Backdrop does not send a reaction');
-  assert.deepEqual(target['content'], { msgtype: 'm.text', body: history.targetBody }, 'Backdrop does not redact or change the target');
+  assert.deepEqual(targetEvent['content'], { msgtype: 'm.text', body: history.targetBody }, 'Backdrop does not redact or change the target');
   await record(context, 'no-action', { bannerCount, reactionCount: reactionEvents.length, targetUnchanged: true });
 }
 
-async function virtualizedLatest(context: StageContext, selector: string): Promise<void> {
+async function virtualizedLatest(context: StageContext, target: RowTarget): Promise<void> {
   const { client, history } = context;
   assert.equal(history.messageCount, 81);
   assert(history.oldestFillerEventId && history.oldestFillerBody === 'sheet filler v 0');
@@ -269,10 +305,10 @@ async function virtualizedLatest(context: StageContext, selector: string): Promi
     scrollTop: initial.scrollTop, scrollHeight: initial.scrollHeight,
     clientHeight: initial.clientHeight,
   });
-  const oldest = `${TIMELINE} ${rowSelector(history.oldestFillerEventId)}`;
+  const oldest = rowTarget(TIMELINE, history.oldestFillerBody, history.oldestFillerEventId);
   let found = false;
   for (let swipe = 0; swipe <= 30; swipe++) {
-    const rows = await client.elements(oldest);
+    const rows = await client.elements(oldest.selector, oldest.filter);
     if (rows.length === 1 && rows[0]!.text.includes(history.oldestFillerBody)) { found = true; break; }
     assert(swipe < 30, 'Oldest exact filler renders within thirty native history swipes');
     await client.swipeCurrent(TIMELINE, {
@@ -280,10 +316,11 @@ async function virtualizedLatest(context: StageContext, selector: string): Promi
     });
   }
   assert(found, 'Exact oldest filler is rendered');
+  await bindTarget(client, oldest, 'Rendered oldest filler is the exact oldest event');
   await record(context, 'oldest-filler-rendered', { exactEvent: true, exactBody: true, rendered: found });
   await elements(context, 'jump-visible', JUMP, visibleOne);
   await client.tapCurrent(JUMP);
-  await elements(context, 'latest-target-visible', selector, visibleOne);
+  await elements(context, 'latest-target-visible', target.selector, visibleOne, target.filter);
   await elements(context, 'jump-hidden-before', JUMP, hidden);
   const rowCount = await waitForNativeShellState(
     async () => (await client.elements(`${TIMELINE} trn-message-row`)).length,
@@ -292,38 +329,41 @@ async function virtualizedLatest(context: StageContext, selector: string): Promi
   );
   assert(rowCount < 80 && rowCount > 0, 'Virtualized row cap is active');
   await record(context, 'virtual-row-cap', { rowCount });
-  const before = await relativeTop(client, selector);
-  await client.longPressCurrent(selector, {}, { allowBlankPadding: true });
+  const before = await relativeTop(client, target.eventIdSelector);
+  await bindTarget(client, target, 'Padding long press targets the exact latest event');
+  await client.longPressCurrent(target.selector, target.filter, { allowBlankPadding: true });
   await sheetVisible(context);
-  const geometry = await readSheetGeometry(client, selector);
+  const geometry = await readSheetGeometry(client, target.eventIdSelector);
   assert.equal(geometry.rowCount, 1);
   assert.equal(geometry.rowConnected, true);
   await record(context, 'single-connected-target', { rowCount: geometry.rowCount, connected: geometry.rowConnected });
-  await clearance(context, selector);
+  await clearance(context, target.eventIdSelector);
   await elements(context, 'jump-hidden-during', JUMP, hidden);
   await dismissSheet(client);
   await elements(context, 'sheet-closed', SHEET, absent);
-  await elements(context, 'target-visible-after', selector, visibleOne);
-  await restored(context, selector, before);
+  await elements(context, 'target-visible-after', target.selector, visibleOne, target.filter);
+  await restored(context, target.eventIdSelector, before);
   await elements(context, 'jump-hidden-after', JUMP, hidden);
 }
 
-async function threadTarget(context: StageContext, selector: string): Promise<void> {
+async function threadTarget(context: StageContext, target: RowTarget): Promise<void> {
   const { client, history } = context;
-  await client.longPressCurrent(selector);
+  await bindTarget(client, target, 'Thread long press targets the exact event');
+  await client.longPressCurrent(target.selector, target.filter);
   await client.visible(SHEET);
   await reachSheetButton(client, '[data-testid="sheet-thread"]');
   await client.tapCurrent('[data-testid="sheet-thread"]');
   await elements(context, 'thread-visible', THREAD, visibleOne);
-  const threadRow = `${THREAD} ${rowSelector(history.targetEventId)}`;
-  await elements(context, 'thread-row-visible', threadRow, visibleOne);
-  const before = await relativeTop(client, threadRow);
-  await client.longPressCurrent(threadRow);
+  const threadRow = rowTarget(THREAD, history.targetBody, history.targetEventId);
+  await elements(context, 'thread-row-visible', threadRow.selector, visibleOne, threadRow.filter);
+  const before = await relativeTop(client, threadRow.eventIdSelector);
+  await bindTarget(client, threadRow, 'Thread long press targets the exact event in the Thread');
+  await client.longPressCurrent(threadRow.selector, threadRow.filter);
   await sheetVisible(context);
-  await clearance(context, threadRow);
+  await clearance(context, threadRow.eventIdSelector);
   await dismissSheet(client);
   await elements(context, 'sheet-closed', SHEET, absent);
-  await restored(context, threadRow, before);
+  await restored(context, threadRow.eventIdSelector, before);
 }
 
 async function runStage(context: StageContext): Promise<void> {
@@ -333,16 +373,17 @@ async function runStage(context: StageContext): Promise<void> {
   await client.visible('.channel', { text: history.roomName }, 30_000);
   await client.tapCurrent('.channel', { text: history.roomName });
   await elements(context, 'room-ready', '[data-testid="composer-input"]', visibleOne);
-  const selector = rowSelector(history.targetEventId);
-  const target = await client.visible(selector, {}, 30_000);
-  assert(target.text.includes(history.targetBody), 'Exact ready fixture target is visible');
+  const target = rowTarget('', history.targetBody, history.targetEventId);
+  const ready = await client.visible(target.selector, target.filter, 30_000);
+  assert(ready.text.includes(history.targetBody), 'Exact ready fixture target is visible');
+  await bindTarget(client, target, 'Ready fixture target is the exact seeded event');
   await client.record('fixture-receipt', { messageCount: history.messageCount, targetReady: true, exactTargetBody: true, oldestFillerPresent: history.oldestFillerEventId !== null });
   switch (entry.id) {
-    case 'reply': await reply(context, selector); break;
-    case 'quick-reaction': await quickReaction(context, selector); break;
-    case 'backdrop-dismiss': await backdrop(context, selector); break;
-    case 'virtualized-latest': await virtualizedLatest(context, selector); break;
-    case 'thread-target': await threadTarget(context, selector); break;
+    case 'reply': await reply(context, target); break;
+    case 'quick-reaction': await quickReaction(context, target); break;
+    case 'backdrop-dismiss': await backdrop(context, target); break;
+    case 'virtualized-latest': await virtualizedLatest(context, target); break;
+    case 'thread-target': await threadTarget(context, target); break;
   }
   assert.deepEqual([...context.records], [...entry.assertions], 'Each exact stage assertion is recorded in source order');
 }

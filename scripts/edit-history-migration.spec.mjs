@@ -148,7 +148,28 @@ function functionSource(source, name) {
 
 function assertNativeLifecycle(source) {
   const body = functionSource(source, 'runRevisionLifecycle');
-  expect(body).toContain('await openHistoryMarker(client, marker)');
+  expect(body).toContain(
+    'await openHistoryMarker(client, marker(versions[2]!))',
+  );
+  expect(body).toContain(
+    'await openHistoryMarker(client, marker(versions[1]!))',
+  );
+  expect(body).toContain('await openHistoryMarker(client, formattedMarker)');
+  expect(body).toContain(
+    "const formattedMarker = markerIn('deploy on Monday', seed.formatted.originalId);",
+  );
+  expect(body).toContain('() => readEventRow(client, seed.doomed.originalId),');
+  expect(body).toContain('(value) => value.rows === 1 && value.visible,');
+  // Selectors reach the job log: no row selector names an event id, and
+  // read-only observation binds every target to its exact seeded event.
+  expect(source).toContain('const ROW = \'.msg[data-mid^="$"]\';');
+  expect(source).not.toMatch(/data-mid=\$\{/u);
+  expect(functionSource(source, 'timelineText')).toContain(
+    "await bindTarget(client, target, 'Edited wording belongs to the exact seeded event');",
+  );
+  expect(functionSource(source, 'bindTarget')).toContain(
+    'assert(identity.matches === 1 && identity.exactEvent, description);',
+  );
   expect(body).toContain('await client.login(account)');
   expect(body).toContain('await client.tapCurrent(');
   expect(body).toContain('assertNativeTarget(await client.elements(');
@@ -183,6 +204,9 @@ function assertNativeLifecycle(source) {
 function assertNativePixelStage(source) {
   const body = functionSource(source, 'runPixel5LargeText');
   expect(body).toContain('await openHistoryMarker(client, marker)');
+  expect(body).toContain(
+    'const marker = markerIn(seed.versions[2]!, seed.originalId);',
+  );
   const records = [
     ...body.matchAll(/await record\(context,\s*'([^']+)'/gu),
   ].map((match) => match[1]);
@@ -392,6 +416,24 @@ describe('Android edit-history migration contract', () => {
         ),
       ),
     ).toThrow();
+    for (const [before, after] of [
+      [
+        'assert(identity.matches === 1 && identity.exactEvent, description);',
+        'assert(identity.matches === 1, description);',
+      ],
+      [
+        "await bindTarget(client, target, 'Edited wording belongs to the exact seeded event');",
+        '',
+      ],
+      [
+        'const ROW = \'.msg[data-mid^="$"]\';',
+        'const ROW = `.msg[data-mid=${JSON.stringify(id)}]`;',
+      ],
+    ]) {
+      const mutated = journey.replace(before, after);
+      expect(mutated, `mutation replaces ${before}`).not.toBe(journey);
+      expect(() => assertNativeLifecycle(mutated), before).toThrow();
+    }
   });
 
   it('cannot emit a duplicate, out-of-order, or unproved lifecycle identity', async () => {

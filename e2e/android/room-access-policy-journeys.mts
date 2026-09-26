@@ -21,6 +21,7 @@ import {
 } from './room-access-policy-contract.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
 import { withSpaceSettingsVisualFixture } from './space-settings-visual-fixture.mts';
+import { bindRoomControl, roomControl } from './room-control-identity.mts';
 
 function describeFailure(error: unknown): string {
   const message =
@@ -327,13 +328,22 @@ const cases: readonly AccountWorkspaceCase[] = [
       await openAccessPanel(client, assertions.restrictedAccessPanelVisible);
       await client.tapCurrent('[data-testid="room-settings-join-rule"]');
       await client.tapCurrent('[data-testid="join-rule-restricted"]');
-      const spaceOption = `[data-testid=${JSON.stringify(`room-settings-space-${space.id}`)}]`;
+      // Selectors reach the job log: the option is found by its Space name and
+      // bound to the exact Space by read-only observation.
+      const spaceOption = roomControl(
+        '.room-settings__space',
+        'room-settings-space-',
+        space.name,
+        space.id,
+      );
       await observedElements(
         client,
         assertions.restrictedSpaceOptionVisible,
-        spaceOption,
+        spaceOption.selector,
         visibleOne,
+        spaceOption.filter,
       );
+      await bindRoomControl(client, spaceOption, 'Space option is the exact parent Space');
       await client.tapCurrent('[data-testid="room-settings-save"]');
 
       await observedServerValue(
@@ -404,14 +414,23 @@ const cases: readonly AccountWorkspaceCase[] = [
       await client.tapCurrent('[data-testid="open-room-settings"]');
       await client.visible('[data-testid="room-settings"]');
       await openAccessPanel(client, assertions.revokeAccessPanelVisible);
-      const droppedOption = `[data-testid=${JSON.stringify(`room-settings-space-${dropped.id}`)}]`;
+      // Selectors reach the job log, so the option is found by its Space name,
+      // not the Room id in its test id; read-only observation binds it.
+      const droppedOption = roomControl(
+        '.room-settings__space',
+        'room-settings-space-',
+        dropped.name,
+        dropped.id,
+      );
       await observedElements(
         client,
         assertions.revokeDroppedOptionVisible,
-        droppedOption,
+        droppedOption.selector,
         visibleOne,
+        droppedOption.filter,
       );
-      await client.tapCurrent(droppedOption);
+      await bindRoomControl(client, droppedOption, 'Dropped Space option is the exact dropped Space');
+      await client.tapCurrent(droppedOption.selector, droppedOption.filter);
       await client.tapCurrent('[data-testid="room-settings-save"]');
 
       const expectedAllow = [

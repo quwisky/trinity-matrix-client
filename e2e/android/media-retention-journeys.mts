@@ -254,12 +254,23 @@ async function openAndCloseLightbox(
   unique: Set<MediaRetentionAssertion>,
   records: Set<MediaRetentionAssertion>,
 ): Promise<void> {
-  const rowSelector = `[data-mid=${JSON.stringify(attachment.eventId)}]`;
-  const openButtonSelector = `${rowSelector} button[aria-label=${JSON.stringify(
+  // Selectors reach the job log, so the button is found by its accessible name
+  // rather than the event id; read-only observation binds it to the exact
+  // attachment event before the native tap.
+  const openButtonSelector = `.scroll .msg[data-mid^="$"] button[aria-label=${JSON.stringify(
     `Open image ${attachment.filename}`,
   )}]`;
   await client.visible(openButtonSelector, {}, 30_000);
   await client.scrollIntoViewIfNeeded(openButtonSelector, '.scroll');
+  const binding = await client.eventIdentity(
+    openButtonSelector,
+    {},
+    attachment.eventId,
+  );
+  assert(
+    binding.matches === 1 && binding.exactEvent,
+    'Open-image button belongs to the exact attachment event',
+  );
   await client.tapCurrent(openButtonSelector);
   const observation = await waitForNativeShellState(
     () => readLightbox(client, attachment.filename),

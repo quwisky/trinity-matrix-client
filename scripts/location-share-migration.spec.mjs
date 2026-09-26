@@ -138,7 +138,11 @@ function assertRuntimeContract({ adapter, contract, fixtures, journey }) {
     'event.geoUri === LOCATION_SHARE_GEO_URI',
     'event.msc3488Uri === LOCATION_SHARE_GEO_URI',
     "event.assetType === 'm.self'",
-    'const rowSelector = `[data-mid=${JSON.stringify(event.eventId)}]`',
+    '\'.scroll .msg[data-mid^="$"]:has([data-testid="location-card"])\'',
+    'await client.eventIdentity(cardSelector, {}, event.eventId)',
+    'binding.matches === 1 && binding.exactEvent',
+    'await client.eventIdentity(rowSelector, {}, event.eventId)',
+    'rowBinding.matches === 1 && rowBinding.exactEvent',
     'data-testid="location-card"',
     'LOCATION_SHARE_COORDINATES',
     "searchParams.get('mlat')",
@@ -321,8 +325,20 @@ describe('Android location-share migration', () => {
       },
       {
         journey: sources.journey.replace(
-          'const rowSelector = `[data-mid=${JSON.stringify(event.eventId)}]`',
-          "const rowSelector = '.scroll .msg'",
+          '\'.scroll .msg[data-mid^="$"]:has([data-testid="location-card"])\'',
+          "'.scroll .msg'",
+        ),
+      },
+      {
+        journey: sources.journey.replace(
+          'binding.matches === 1 && binding.exactEvent',
+          'binding.matches === 1',
+        ),
+      },
+      {
+        journey: sources.journey.replace(
+          'rowBinding.matches === 1 && rowBinding.exactEvent',
+          'rowBinding.matches === 1',
         ),
       },
       {

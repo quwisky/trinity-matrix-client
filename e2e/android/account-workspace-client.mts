@@ -24,6 +24,7 @@ import { openMaestroTargetPoint, type NativeTargetPoint } from './maestro-target
 import type { createNodeAccount } from '../support/node-account.mts';
 import type { createAccountFixtures } from './account-workspace-fixtures.mts';
 import type { MatrixTestResources } from '../support/test-resources.mts';
+import { hasMatrixIdentifier } from '../support/matrix-identifiers.mts';
 
 type Account = Awaited<ReturnType<typeof createNodeAccount>>;
 export type AccountViewportProfile = Pick<MaestroViewportOptions, 'width' | 'height' | 'isMobile' | 'hasTouch' | 'deviceScaleFactor' | 'userAgent'>;
@@ -73,6 +74,31 @@ export interface AccountElement {
 export interface AccountElementFilter {
   readonly text?: string;
   readonly exactText?: string;
+  /**
+   * The element's closest ancestor (or itself) matching `selector` contains
+   * `text`: one exact timeline row scopes its descendants by visible wording,
+   * so no selector has to carry the row's Matrix event identifier.
+   */
+  readonly within?: { readonly selector: string; readonly text: string };
+}
+
+/** The in-page form of {@link AccountElementFilter}, shared by every read and dispatch. */
+const ELEMENT_FILTER = "(e,filter)=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText)&&(filter.within===undefined||(e.closest(filter.within.selector)?.textContent??'').includes(filter.within.text))";
+
+/**
+ * Selectors reach the job log (native action lines, wait descriptions) and
+ * recorded proofs, so a Matrix Room or event identifier never forms part of
+ * one. Identity is proven by read-only observation instead.
+ */
+function assertIdentifierFreeSelector(
+  selector: string,
+  filter: AccountElementFilter = {},
+): void {
+  assert(
+    !hasMatrixIdentifier(selector) &&
+      !hasMatrixIdentifier(filter.within?.selector ?? ''),
+    'Native selectors never carry a Matrix Room or event identifier',
+  );
 }
 
 interface LongPressTarget {
@@ -379,12 +405,10 @@ export class AccountWorkspaceClient {
   }
 
   async elements(selector: string, filter: AccountElementFilter = {}): Promise<readonly AccountElement[]> {
+    assertIdentifierFreeSelector(selector, filter);
     const value = await evaluateNative(this.webview, `(() => {
       const { selector, filter } = ${JSON.stringify({ selector, filter })};
-      return [...document.querySelectorAll(selector)].filter(e =>
-        (filter.text === undefined || (e.textContent ?? '').includes(filter.text)) &&
-        (filter.exactText === undefined || e.textContent?.trim() === filter.exactText)
-      ).map(e => {
+      return [...document.querySelectorAll(selector)].filter(e => (${ELEMENT_FILTER})(e, filter)).map(e => {
         const r = e.getBoundingClientRect(), style = getComputedStyle(e);
         const x = r.x + r.width / 2, y = r.y + r.height / 2;
         return {
@@ -416,6 +440,56 @@ export class AccountWorkspaceClient {
     })()`);
     assert(Array.isArray(value), 'Account DOM observation is an array');
     return value as AccountElement[];
+  }
+
+  /**
+   * Read-only identity proof for an identifier-free target: exactly one element
+   * matches `selector` and `filter`, and its row's `data-mid` is `eventId`. The
+   * identifier enters only the in-page comparison; it is never returned, logged
+   * or recorded.
+   */
+  async eventIdentity(
+    selector: string,
+    filter: AccountElementFilter,
+    eventId: string,
+  ): Promise<{ readonly matches: number; readonly exactEvent: boolean }> {
+    const { matches, exact } = await this.boundIdentity(selector, filter, 'data-mid', eventId);
+    return { matches, exactEvent: exact };
+  }
+
+  /**
+   * Read-only identity proof for a control whose test id embeds a Room id:
+   * exactly one element matches `selector` and `filter`, and its closest
+   * `data-testid` is `testId`, which enters only the in-page comparison.
+   */
+  async testIdIdentity(
+    selector: string,
+    filter: AccountElementFilter,
+    testId: string,
+  ): Promise<{ readonly matches: number; readonly exactRoom: boolean }> {
+    const { matches, exact } = await this.boundIdentity(selector, filter, 'data-testid', testId);
+    return { matches, exactRoom: exact };
+  }
+
+  private async boundIdentity(
+    selector: string,
+    filter: AccountElementFilter,
+    attribute: 'data-mid' | 'data-testid',
+    expected: string,
+  ): Promise<{ readonly matches: number; readonly exact: boolean }> {
+    assertIdentifierFreeSelector(selector, filter);
+    const value = await evaluateNative(this.webview, `(() => {
+      const {selector,filter,attribute,expected}=${JSON.stringify({ selector, filter, attribute, expected })};
+      const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
+      return {matches:es.length,exact:es.length===1&&es[0].closest('['+attribute+']')?.getAttribute(attribute)===expected};
+    })()`);
+    assert(
+      value && typeof value === 'object' &&
+        typeof (value as { matches?: unknown }).matches === 'number' &&
+        typeof (value as { exact?: unknown }).exact === 'boolean',
+      'Identity observation is a count and a boolean',
+    );
+    return value as { readonly matches: number; readonly exact: boolean };
   }
 
   async waitElements(
@@ -540,6 +614,7 @@ export class AccountWorkspaceClient {
     filter: AccountElementFilter = {},
     options: NativeLongPressOptions = {},
   ): Promise<void> {
+    assertIdentifierFreeSelector(selector, filter);
     const target = await this.longPressTarget(selector, filter, options);
     if (options.allowBlankPadding) {
       assert(target.paddingBounds, 'Opt-in blank-padding press must use measured row padding');
@@ -558,7 +633,7 @@ export class AccountWorkspaceClient {
     await evaluateNative(this.webview, `(() => {
       const {selector,filter,requireNoSelection}=${JSON.stringify({ selector, filter, requireNoSelection: target.paddingBounds !== undefined })};
       if(requireNoSelection&&window.getSelection()?.toString().length!==0)throw new Error('Native padding long press requires no existing text selection');
-      const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+      const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
       if(es.length!==1)throw new Error('Native long-press target changed before dispatch');
       const element=es[0],types=['pointerdown','pointermove','pointerup','pointercancel'];
       const state={element,events:[],types,
@@ -632,7 +707,8 @@ export class AccountWorkspaceClient {
           const selected=window.getSelection(),anchor=selected?.anchorNode,focus=selected?.focusNode;
           const anchorElement=anchor instanceof Element?anchor:anchor?.parentElement;
           const focusElement=focus instanceof Element?focus:focus?.parentElement;
-          const row=document.querySelector(${JSON.stringify(selector)});
+          const {selector,filter}=${JSON.stringify({ selector, filter })};
+          const row=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter))[0];
           const describe=element=>({tagName:element?.tagName??null,className:typeof element?.className==='string'?element.className:null,inRow:Boolean(row&&element&&row.contains(element)),inGutter:Boolean(element?.closest('.msg__gutter')),inBody:Boolean(element?.closest('.msg__body'))});
           return {length:selected?.toString().length??null,anchor:describe(anchorElement),focus:describe(focusElement),hoverNone:matchMedia('(hover: none)').matches,gutterUserSelect:row?.querySelector('.msg__gutter')?getComputedStyle(row.querySelector('.msg__gutter')).userSelect:null};
         })()`);
@@ -697,7 +773,7 @@ export class AccountWorkspaceClient {
       () =>
         evaluateNative(this.webview, `(() => {
           const {selector,filter,allowBlankPadding}=${JSON.stringify({ selector, filter, allowBlankPadding: options.allowBlankPadding === true })};
-          const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+          const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
           if(es.length!==1)return null;
           const element=es[0],rect=element.getBoundingClientRect();
           if(rect.width<=0||rect.height<=0||getComputedStyle(element).visibility!=='visible')return null;
@@ -779,6 +855,7 @@ export class AccountWorkspaceClient {
     expectedValue: string,
     word: string,
   ): Promise<NativeWordSelectionProof> {
+    assertIdentifierFreeSelector(selector);
     assert(word.length > 0, 'Native word selection needs a non-empty word');
     this.signal.throwIfAborted();
     await this.owner.apply();
@@ -1291,10 +1368,14 @@ export class AccountWorkspaceClient {
     }
   }
 
-  async scrollIntoViewIfNeeded(selector: string, container: string): Promise<void> {
+  async scrollIntoViewIfNeeded(
+    selector: string,
+    container: string,
+    filter: AccountElementFilter = {},
+  ): Promise<void> {
     for (let gesture = 0; gesture < 8; gesture++) {
       await this.owner.apply();
-      const row = await this.visible(selector);
+      const row = await this.visible(selector, filter);
       const list = await this.visible(container);
       const center = row.rect.y + row.rect.height / 2;
       if (row.unobstructedCenter && center >= list.rect.y && center <= list.rect.bottom) return;
@@ -1326,7 +1407,7 @@ export class AccountWorkspaceClient {
       if (failure !== undefined) throw failure;
       await this.waitElements(container, rows => rows.length === 1 && rows[0]!.scrollTop !== list.scrollTop, 'native account list scroll changed its offset');
     }
-    const row = await this.visible(selector);
+    const row = await this.visible(selector, filter);
     assert(row.unobstructedCenter, 'Native scrolling made the account row reachable');
   }
 
@@ -1474,7 +1555,7 @@ export class AccountWorkspaceClient {
       () =>
         evaluateNative(this.webview, `(() => {
           const {selector,filter}=${JSON.stringify({ selector, filter })};
-          const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+          const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
           if(es.length!==1)return null;
           const element=es[0],rect=element.getBoundingClientRect(),style=getComputedStyle(element);
           if(rect.width<=0||rect.height<=0||style.visibility!=='visible'||element.matches(':disabled'))return null;
@@ -1517,6 +1598,7 @@ export class AccountWorkspaceClient {
       readonly exposedPoint?: boolean;
     } = {},
   ): Promise<void> {
+    assertIdentifierFreeSelector(selector, filter);
     const currentPoint = options.currentPoint ?? false;
     const allowFocusedInput = options.allowFocusedInput ?? false;
     const allowFocusTransition = options.allowFocusTransition ?? false;
@@ -1540,7 +1622,7 @@ export class AccountWorkspaceClient {
         this.webview,
         `(() => {
           const {selector,filter,expected}=${JSON.stringify({ selector, filter, expected })};
-          const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+          const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
           return es.length===1&&(es[0] instanceof HTMLInputElement||es[0] instanceof HTMLTextAreaElement)&&es[0].value===expected;
         })()`,
       );
@@ -1568,7 +1650,7 @@ export class AccountWorkspaceClient {
     // Observe capture before application listeners can remove the clicked element.
     await evaluateNative(this.webview, `(() => {
       const {selector,filter,fileInputSelector}=${JSON.stringify({ selector, filter, fileInputSelector })};
-      const es=[...document.querySelectorAll(selector)].filter(e=>(filter.text===undefined||(e.textContent??'').includes(filter.text))&&(filter.exactText===undefined||e.textContent?.trim()===filter.exactText));
+      const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
       if(es.length!==1)throw new Error('Native target changed before dispatch');
       const element=es[0];
       const inputs=fileInputSelector===undefined?[]:[...document.querySelectorAll(fileInputSelector)];

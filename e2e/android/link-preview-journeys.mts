@@ -189,8 +189,6 @@ async function runLinkPreviewStage(
   );
   assert.equal(encryptionAfter, undefined, 'Link-preview Room remains plaintext');
   await client.record('plaintext-fixture', {
-    roomId: room.id,
-    eventId,
     preset: 'private_chat',
     encryptionStateAbsentBeforeSend: encryptionBefore === undefined,
     encryptionStateAbsentAfterSend: encryptionAfter === undefined,
@@ -210,13 +208,20 @@ async function runLinkPreviewStage(
   await client.visible('.channel', { text: room.name }, 60_000);
   await client.tapCurrent('.channel', { text: room.name });
 
-  const rowSelector = `[data-mid=${JSON.stringify(eventId)}]`;
-  const cardSelector = `${rowSelector} [data-testid="link-preview"]`;
+  // Selectors reach the job log, so the card is found without the event id:
+  // the Room holds one message, and a read-only observation binds the card
+  // to the exact seeded event.
+  const cardSelector = '.scroll .msg[data-mid^="$"] [data-testid="link-preview"]';
   const card = await client.visible(cardSelector, {}, 60_000);
+  const binding = await client.eventIdentity(cardSelector, {}, eventId);
+  assert(
+    binding.matches === 1 && binding.exactEvent,
+    'Link-preview card belongs to the exact seeded event',
+  );
   await recordAssertion(client, unique, records, assertions.cardVisible, {
     visible: card.visible,
-    eventId,
-    matches: 1,
+    exactEvent: binding.exactEvent,
+    matches: binding.matches,
   });
 
   const title = await client.visible(
@@ -254,7 +259,6 @@ async function runLinkPreviewStage(
   );
   assert.equal(finalEncryption, undefined, 'Link-preview Room stayed plaintext');
   await client.record('plaintext-final', {
-    roomId: room.id,
     encryptionStateAbsent: finalEncryption === undefined,
   });
 }

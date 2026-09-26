@@ -87,6 +87,9 @@ function assertRuntimeContract({ journey, observer, fixtures }) {
     'await client.tapCurrent(\'[data-testid="rail-rooms"]\')',
     "await client.tapCurrent('.channel', { text: room.name })",
     'data-testid="link-preview"',
+    'const cardSelector = \'.scroll .msg[data-mid^="$"] [data-testid="link-preview"]\';',
+    'await client.eventIdentity(cardSelector, {}, eventId)',
+    'binding.matches === 1 && binding.exactEvent',
     'messageBody',
     'LINK_PREVIEW_TITLE',
     'ogUrl',
@@ -286,6 +289,12 @@ describe('Android link-preview migration', () => {
         journey: sources.journey.replace(
           'scanLinkPreviewArtifacts(output, secrets)',
           'Promise.resolve()',
+        ),
+      },
+      {
+        journey: sources.journey.replace(
+          'binding.matches === 1 && binding.exactEvent',
+          'binding.matches === 1',
         ),
       },
       {

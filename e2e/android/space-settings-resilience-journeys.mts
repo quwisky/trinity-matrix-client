@@ -23,6 +23,7 @@ import {
   type MatrixHttpFault,
 } from './matrix-http-fault.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
+import { bindRoomControl, roomControl } from './room-control-identity.mts';
 import { switchBlockedSpaceSettingsAccount } from './space-settings-account-transition.mts';
 
 const partialSource =
@@ -533,9 +534,13 @@ const cases: readonly AccountWorkspaceCase[] = [
         await openSettingsSection(client, 'contents');
         await client.tapCurrent('[data-testid="space-contents-add-existing"]');
         await client.fill('[data-testid="space-contents-search"]', child.name);
-        const picker = `[data-testid="space-contents-pick-${child.id}"]`;
-        await client.visible(picker, {}, 30_000);
-        await client.tapCurrent(picker);
+        // Selectors reach the job log, so Room controls are found by the
+        // Room's name, not the Room id in their test ids; read-only
+        // observation binds each to the exact child Room.
+        const picker = roomControl('.space-contents__candidate', 'space-contents-pick-', child.name, child.id);
+        await client.visible(picker.selector, picker.filter, 30_000);
+        await bindRoomControl(client, picker, 'Candidate pick is the exact child Room');
+        await client.tapCurrent(picker.selector, picker.filter);
         await client.scrollIntoViewIfNeeded(
           '[data-testid="space-contents-add-confirm"]',
           '[data-testid="space-settings-detail"]',
@@ -551,12 +556,14 @@ const cases: readonly AccountWorkspaceCase[] = [
             ),
         );
 
-        const unlink = `[data-testid="space-content-unlink-${child.id}"]`;
+        const unlink = roomControl('.contents-list__row', 'space-content-unlink-', child.name, child.id);
         await client.scrollIntoViewIfNeeded(
-          unlink,
+          unlink.selector,
           '[data-testid="space-settings-detail"]',
+          unlink.filter,
         );
-        await client.tapCurrent(unlink);
+        await bindRoomControl(client, unlink, 'Remove control belongs to the exact child Room');
+        await client.tapCurrent(unlink.selector, unlink.filter);
         await client.tapCurrent('[data-testid="alert-confirm"]');
         await observedServerValue(
           client,

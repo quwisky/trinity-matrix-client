@@ -169,6 +169,8 @@ function assertRuntimeContract({ contract, fixture, journey }) {
     "await client.tapCurrent('.channel', { text: roomName })",
     'await client.tapCurrent(openButtonSelector)',
     "await client.scrollIntoViewIfNeeded(openButtonSelector, '.scroll')",
+    'const openButtonSelector = `.scroll .msg[data-mid^="$"] button[aria-label=${JSON.stringify(',
+    'binding.matches === 1 && binding.exactEvent',
     'await client.tapCurrent(\'[data-testid="lightbox-close"]\')',
     'data-testid="media-bubble"',
     'data-media-state',
@@ -478,6 +480,13 @@ describe('Android media-retention migration', () => {
           sources.journey,
           "await client.scrollIntoViewIfNeeded(openButtonSelector, '.scroll')",
           'void openButtonSelector',
+        ),
+      },
+      {
+        journey: mutated(
+          sources.journey,
+          'binding.matches === 1 && binding.exactEvent',
+          'binding.matches === 1',
         ),
       },
       {

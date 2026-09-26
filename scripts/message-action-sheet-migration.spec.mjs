@@ -238,15 +238,51 @@ function assertNativeRuntime(sources) {
   requireFragments(functionSource(sources.journey, 'virtualizedLatest'), [
     "positionReference: 'bottom'",
     "'history-initial-position'",
-    'const before = await relativeTop(client, selector);',
+    'const before = await relativeTop(client, target.eventIdSelector);',
     'await dismissSheet(client);',
-    'await restored(context, selector, before);',
+    'await restored(context, target.eventIdSelector, before);',
+    "await bindTarget(client, oldest, 'Rendered oldest filler is the exact oldest event');",
+    'await client.longPressCurrent(target.selector, target.filter, { allowBlankPadding: true });',
   ]);
   requireFragments(functionSource(sources.journey, 'threadTarget'), [
-    'const before = await relativeTop(client, threadRow);',
+    'const threadRow = rowTarget(THREAD, history.targetBody, history.targetEventId);',
+    'const before = await relativeTop(client, threadRow.eventIdSelector);',
+    'await client.longPressCurrent(threadRow.selector, threadRow.filter);',
     'await dismissSheet(client);',
-    'await restored(context, threadRow, before);',
+    'await restored(context, threadRow.eventIdSelector, before);',
   ]);
+  // Selectors reach the job log: a target row is identifier-free, scoped by its
+  // body, and a read-only observation binds it to the exact event.
+  requireFragments(sources.journey, [
+    'const ROW = \'.msg[data-mid^="$"]\';',
+    'filter: { text: body },',
+    "within: { within: { selector: '.msg', text: body } },",
+    'eventIdSelector: `${prefix}.msg[data-mid=${JSON.stringify(eventId)}]`,',
+    'const identity = await client.eventIdentity(target.selector, target.filter, target.eventId);',
+    'assert(identity.matches === 1 && identity.exactEvent, description);',
+    'assert(keyIdentity.matches === 1 && keyIdentity.exactEvent,',
+  ]);
+  for (const name of [
+    'reply',
+    'quickReaction',
+    'backdrop',
+    'virtualizedLatest',
+    'threadTarget',
+  ]) {
+    const stage = functionSource(sources.journey, name);
+    expect(
+      stage.indexOf('await bindTarget(client, target,'),
+      `${name} binds its target`,
+    ).toBeGreaterThan(-1);
+    expect(
+      stage.indexOf('await bindTarget(client, target,'),
+      `${name} binds before its long press`,
+    ).toBeLessThan(
+      stage.indexOf(
+        'await client.longPressCurrent(target.selector, target.filter',
+      ),
+    );
+  }
   requireFragments(functionSource(sources.journey, 'restored'), [
     '() => relativeTop(context.client, selector)',
     'assertSheetPositionRestored(before, after);',
@@ -625,13 +661,23 @@ describe('Android message-action-sheet migration', () => {
       ],
       [
         'journey',
-        'await restored(context, selector, before)',
+        'await restored(context, target.eventIdSelector, before)',
         "await record(context, 'position-restored', { unchecked: true })",
+      ],
+      [
+        'journey',
+        'assert(identity.matches === 1 && identity.exactEvent, description);',
+        'assert(identity.matches === 1, description);',
+      ],
+      [
+        'journey',
+        "within: { within: { selector: '.msg', text: body } },",
+        'within: {},',
       ],
       ['journey', "positionReference: 'bottom'", "positionReference: 'top'"],
       [
         'journey',
-        'await restored(context, threadRow, before)',
+        'await restored(context, threadRow.eventIdSelector, before)',
         "await record(context, 'position-restored', { unchecked: true })",
       ],
       [

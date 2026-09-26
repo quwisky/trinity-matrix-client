@@ -20,6 +20,7 @@ import {
   openSpaceSettings,
   visibleOne,
 } from './space-settings-core-observations.mts';
+import { bindRoomControl, roomControl, roomRow } from './room-control-identity.mts';
 
 function memberPower(
   state: Readonly<Record<string, unknown>> | undefined,
@@ -146,13 +147,18 @@ export const spaceSettingsCorePermissionCases: readonly AccountWorkspaceCase[] =
 
         await openSettingsSection(client, 'contents');
         const panel = '[data-testid="space-settings-panel-contents"]';
+        // Selectors reach the job log: contents controls are found by the
+        // Room's name and bound to the exact Room by read-only observation.
+        const childRow = roomRow(`${panel} .contents-list__row`, 'space-content-', child.name, child.id);
+        const childUnlink = roomControl(`${panel} .contents-list__row`, 'space-content-unlink-', child.name, child.id);
         await observedElements(
           client,
           assertions.readonlyChildVisible,
-          `${panel} [data-testid="space-content-${child.id}"] strong`,
+          `${childRow.selector} strong`,
           visibleOne,
           { exactText: child.name },
         );
+        await bindRoomControl(client, childRow, 'Read-only contents row is the exact child Room');
         await observedElements(
           client,
           assertions.readonlyContentsActionsHidden,
@@ -162,8 +168,9 @@ export const spaceSettingsCorePermissionCases: readonly AccountWorkspaceCase[] =
         await observedElements(
           client,
           assertions.readonlyUnlinkHidden,
-          `${panel} [data-testid="space-content-unlink-${child.id}"]`,
+          childUnlink.selector,
           absent,
+          childUnlink.filter,
         );
         await observedElements(
           client,

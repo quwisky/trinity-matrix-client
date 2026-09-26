@@ -10,6 +10,7 @@ import {
   AccountWorkspaceClient,
   PIXEL_5_ACCOUNT_PROFILE,
   type AccountElement,
+  type AccountElementFilter,
 } from './account-workspace-client.mts';
 import {
   createAccountFixtures,
@@ -34,6 +35,11 @@ const COMPOSER = '[data-testid="composer-input"]';
 const COMPOSER_TRIGGER = 'button[aria-label="Insert emoji"]';
 const COMPOSER_PICKER = 'trn-emoji-picker[data-testid="emoji-picker"]';
 const REACTION_DIALOG = '[role="dialog"][aria-label="Pick a reaction"]';
+// Selectors reach the job log, so they never carry the target's event id: the
+// exact row is scoped by its unique body and proven by read-only observation.
+const MESSAGE = '.scroll .msg[data-mid^="$"]';
+const MESSAGE_AVATAR = `${MESSAGE} trn-avatar`;
+const MESSAGE_REACTION_KEY = `${MESSAGE} .reaction .reaction__key`;
 const textArtifactExtensions = new Set([
   '.json',
   '.jsonl',
@@ -190,16 +196,8 @@ async function recordComposerReadiness(
   });
 }
 
-function messageSelector(eventId: string): string {
-  return `.scroll .msg[data-mid=${JSON.stringify(eventId)}]`;
-}
-
-function messageLongPressSelector(eventId: string): string {
-  return `${messageSelector(eventId)} trn-avatar`;
-}
-
-function reactionSelector(eventId: string): string {
-  return `${messageSelector(eventId)} .reaction .reaction__key`;
+function withinMessage(body: string): AccountElementFilter {
+  return { within: { selector: '.msg', text: body } };
 }
 
 async function exactReactionEvent(
@@ -312,23 +310,34 @@ async function runMessageReaction(
   assert(targetEventId.startsWith('$'), 'Reaction target has a Matrix event id');
   context.secrets.SECRET_REACTION_TARGET_EVENT_ID = targetEventId;
 
-  const target = await client.visible(
-    messageSelector(targetEventId),
+  const target = await client.visible(MESSAGE, { text: body }, 30_000);
+  const binding = await client.eventIdentity(
+    MESSAGE,
     { text: body },
-    30_000,
+    targetEventId,
   );
-  assert.equal(target.attributes['data-mid'], targetEventId);
+  assert(
+    binding.matches === 1 && binding.exactEvent,
+    'Reaction target row is the exact seeded event',
+  );
   await recordAssertion(context, assertions.messageTargetVisible, {
     visible: target.visible,
-    exactEventBinding: true,
+    exactEventBinding: binding.exactEvent,
   });
 
-  await client.visible(messageLongPressSelector(targetEventId), {}, 10_000);
-  await client.scrollIntoViewIfNeeded(
-    messageLongPressSelector(targetEventId),
-    '.scroll',
+  const avatar = withinMessage(body);
+  await client.visible(MESSAGE_AVATAR, avatar, 10_000);
+  await client.scrollIntoViewIfNeeded(MESSAGE_AVATAR, '.scroll', avatar);
+  const avatarBinding = await client.eventIdentity(
+    MESSAGE_AVATAR,
+    avatar,
+    targetEventId,
   );
-  await client.longPressCurrent(messageLongPressSelector(targetEventId));
+  assert(
+    avatarBinding.matches === 1 && avatarBinding.exactEvent,
+    'Long-press avatar belongs to the exact target event',
+  );
+  await client.longPressCurrent(MESSAGE_AVATAR, avatar);
   const more = await client.visible('[data-testid="sheet-react-more"]');
   await client.tapCurrent('[data-testid="sheet-react-more"]');
   const dialog = await client.visible(REACTION_DIALOG, {}, 10_000);
@@ -357,14 +366,20 @@ async function runMessageReaction(
   });
   await client.tapCurrent(rocketSelector);
 
-  const reaction = await client.visible(
-    reactionSelector(targetEventId),
-    { exactText: '🚀' },
-    20_000,
+  const rocketKey = { exactText: '🚀', ...withinMessage(body) };
+  const reaction = await client.visible(MESSAGE_REACTION_KEY, rocketKey, 20_000);
+  const reactionBinding = await client.eventIdentity(
+    MESSAGE_REACTION_KEY,
+    rocketKey,
+    targetEventId,
+  );
+  assert(
+    reactionBinding.matches === 1 && reactionBinding.exactEvent,
+    'Rocket reaction key renders inside the exact target event',
   );
   await recordAssertion(context, assertions.messageExactTargetReaction, {
     visible: reaction.visible,
-    exactTarget: true,
+    exactTarget: reactionBinding.exactEvent,
     key: '🚀',
   });
 

@@ -9,10 +9,12 @@ import {
   AccountWorkspaceClient,
   PIXEL_5_ACCOUNT_PROFILE,
   type AccountElement,
+  type AccountElementFilter,
   type AccountWorkspaceCase,
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import { evaluateNative, waitForNativeShellState } from './native-shell-client.mts';
+import { bindRoomControl, roomControl, roomRow } from './room-control-identity.mts';
 
 const openingSource =
   'e2e/browser/journeys/room-administration/space-settings-mobile.spec.mts:105-433';
@@ -103,7 +105,7 @@ async function observedElements(
   assertion: string,
   selector: string,
   accepts: (elements: readonly AccountElement[]) => boolean,
-  filter: { readonly text?: string; readonly exactText?: string } = {},
+  filter: AccountElementFilter = {},
   timeoutMs = 30_000,
 ): Promise<readonly AccountElement[]> {
   try {
@@ -303,7 +305,11 @@ const cases: readonly AccountWorkspaceCase[] = [
       await observedElements(client, assertions.contentsTabTouchTarget, '[data-testid="space-settings-tab-contents"]', touchTarget);
       await client.tapCurrent('[data-testid="space-settings-tab-contents"]');
       await observedElements(client, assertions.contentsHeadingFocused, '[data-testid="space-settings-section-heading"]', focusedOne);
-      await observedElements(client, assertions.contentsRoomVisible, `[data-testid="space-content-${room.id}"]`, visibleOne, {}, 30_000);
+      // Selectors reach the job log, so Room controls are found by the Room's
+      // name, never the Room id in their test ids; read-only observation binds them.
+      const roomRowControl = roomRow('.contents-list__row', 'space-content-', room.name, room.id);
+      await observedElements(client, assertions.contentsRoomVisible, roomRowControl.selector, visibleOne, roomRowControl.filter, 30_000);
+      await bindRoomControl(client, roomRowControl, 'Contents row is the exact linked Room');
       await observedElements(client, assertions.contentsCreateRoomTouchTarget, '[data-testid="space-settings-panel-contents"] button', touchTarget, { exactText: 'Create Room' });
       await observedValue(client, assertions.contentsCreateRoomContained, `(() => {
         const panel=document.querySelector('[data-testid="space-settings-panel-contents"]')?.getBoundingClientRect();
@@ -313,35 +319,43 @@ const cases: readonly AccountWorkspaceCase[] = [
         const g=value as {panelRight?:number;buttonRight?:number}|null;
         return typeof g?.panelRight==='number'&&typeof g.buttonRight==='number'&&g.buttonRight<=g.panelRight;
       });
-      const suggest=`[data-testid="space-content-suggest-control-${room.id}"]`;
-      await observedElements(client, assertions.contentsSuggestedTouchTarget, suggest, touchTarget);
-      await observedValue(client, assertions.contentsSuggestedChecked, `document.querySelector(${JSON.stringify(suggest)})?.querySelector('input')?.checked === true`, (value) => value === true);
-      await observedElements(client, assertions.contentsMoveUpTouchTarget, `[data-testid="space-content-move-up-${room.id}"]`, touchTarget);
-      await observedElements(client, assertions.contentsMoveUpDisabled, `[data-testid="space-content-move-up-${room.id}"]`, (elements) => elements.length===1&&elements[0]!.disabled);
-      await observedElements(client, assertions.contentsMoveDownDisabled, `[data-testid="space-content-move-down-${room.id}"]`, (elements) => elements.length===1&&elements[0]!.disabled);
-      await client.tapCurrent(suggest);
+      const suggest = roomControl('.contents-list__row', 'space-content-suggest-control-', room.name, room.id);
+      await observedElements(client, assertions.contentsSuggestedTouchTarget, suggest.selector, touchTarget, suggest.filter);
+      await bindRoomControl(client, suggest, 'Suggested control belongs to the exact linked Room');
+      await observedValue(client, assertions.contentsSuggestedChecked, `document.querySelector(${JSON.stringify(`[data-testid=${JSON.stringify(suggest.testId)}]`)})?.querySelector('input')?.checked === true`, (value) => value === true);
+      const moveUp = roomControl('.contents-list__row', 'space-content-move-up-', room.name, room.id);
+      const moveDown = roomControl('.contents-list__row', 'space-content-move-down-', room.name, room.id);
+      await observedElements(client, assertions.contentsMoveUpTouchTarget, moveUp.selector, touchTarget, moveUp.filter);
+      await bindRoomControl(client, moveUp, 'Move-up control belongs to the exact linked Room');
+      await observedElements(client, assertions.contentsMoveUpDisabled, moveUp.selector, (elements) => elements.length===1&&elements[0]!.disabled, moveUp.filter);
+      await observedElements(client, assertions.contentsMoveDownDisabled, moveDown.selector, (elements) => elements.length===1&&elements[0]!.disabled, moveDown.filter);
+      await bindRoomControl(client, moveDown, 'Move-down control belongs to the exact linked Room');
+      await client.tapCurrent(suggest.selector, suggest.filter);
       await observedServerValue(client, assertions.contentsSuggestedCleared, () => fixtures.spaceChild(owner, space.id, room.id), (value) => (value as {suggested?:unknown}|undefined)?.suggested !== true);
       await client.tapCurrent('[data-testid="space-contents-add-existing"]');
       await client.fill('[data-testid="space-contents-search"]', candidate.name);
-      const candidatePick=`[data-testid="space-contents-pick-${candidate.id}"]`;
-      await observedElements(client, assertions.contentsCandidatePickVisible, candidatePick, visibleOne, {}, 30_000);
-      await client.tapCurrent(candidatePick);
+      const candidatePick = roomControl('.space-contents__candidate', 'space-contents-pick-', candidate.name, candidate.id);
+      await observedElements(client, assertions.contentsCandidatePickVisible, candidatePick.selector, visibleOne, candidatePick.filter, 30_000);
+      await bindRoomControl(client, candidatePick, 'Candidate pick is the exact candidate Room');
+      await client.tapCurrent(candidatePick.selector, candidatePick.filter);
       await observedElements(client, assertions.contentsAddSelectedEnabled, '[data-testid="space-contents-add-confirm"]', (elements) => elements.length===1&&elements[0]!.visible&&!elements[0]!.disabled);
       await client.scrollIntoViewIfNeeded('[data-testid="space-contents-add-confirm"]', '[data-testid="space-settings-detail"]');
       await client.tapCurrent('[data-testid="space-contents-add-confirm"]');
-      const candidateRow=`[data-testid="space-content-${candidate.id}"]`;
-      await observedElements(client, assertions.contentsCandidateVisible, candidateRow, visibleOne, {}, 30_000);
+      const candidateRow = roomRow('.contents-list__row', 'space-content-', candidate.name, candidate.id);
+      await observedElements(client, assertions.contentsCandidateVisible, candidateRow.selector, visibleOne, candidateRow.filter, 30_000);
+      await bindRoomControl(client, candidateRow, 'Contents row is the exact added candidate Room');
       await observedServerValue(client, assertions.contentsCandidateLinkCreated, () => fixtures.spaceChild(owner, space.id, candidate.id), (value) => Array.isArray((value as {via?:unknown}|undefined)?.via));
       await client.scrollIntoViewIfNeeded('[data-testid="space-contents-create-room"]', '[data-testid="space-settings-detail"]');
       await client.tapCurrent('[data-testid="space-contents-create-room"]');
       await client.tapCurrent('[data-testid="alert-cancel"]');
       await observedElements(client, assertions.contentsCreateCancelled, '[data-testid="alert-surface"]', absent);
-      const candidateUnlink=`[data-testid="space-content-unlink-${candidate.id}"]`;
-      await client.scrollIntoViewIfNeeded(candidateUnlink, '[data-testid="space-settings-detail"]');
-      await client.tapCurrent(candidateUnlink);
+      const candidateUnlink = roomControl('.contents-list__row', 'space-content-unlink-', candidate.name, candidate.id);
+      await client.scrollIntoViewIfNeeded(candidateUnlink.selector, '[data-testid="space-settings-detail"]', candidateUnlink.filter);
+      await bindRoomControl(client, candidateUnlink, 'Remove control belongs to the exact added candidate Room');
+      await client.tapCurrent(candidateUnlink.selector, candidateUnlink.filter);
       await client.tapCurrent('[data-testid="alert-cancel"]');
-      await observedElements(client, assertions.contentsRemoveCancelRetained, candidateRow, visibleOne);
-      await client.tapCurrent(candidateUnlink);
+      await observedElements(client, assertions.contentsRemoveCancelRetained, candidateRow.selector, visibleOne, candidateRow.filter);
+      await client.tapCurrent(candidateUnlink.selector, candidateUnlink.filter);
       await client.tapCurrent('[data-testid="alert-confirm"]');
       await observedServerValue(client, assertions.contentsCandidateLinkRemoved, () => fixtures.spaceChild(owner, space.id, candidate.id), (value) => value !== undefined && Object.keys(value as object).length===0);
       await observedServerValue(client, assertions.contentsCandidateMembershipRetained, () => fixtures.roomMembership(owner, candidate.id, owner), (value) => value==='join');

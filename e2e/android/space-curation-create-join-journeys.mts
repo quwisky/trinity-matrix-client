@@ -9,10 +9,12 @@ import {
   AccountWorkspaceClient,
   PIXEL_5_ACCOUNT_PROFILE,
   type AccountElement,
+  type AccountElementFilter,
   type AccountWorkspaceCase,
 } from './account-workspace-client.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
+import { bindRoomControl, roomControl } from './room-control-identity.mts';
 
 const addSource =
   'e2e/browser/journeys/room-library/space-curation.spec.mts:92-140';
@@ -47,7 +49,7 @@ async function observedElements(
   assertion: string,
   selector: string,
   accepts: (elements: readonly AccountElement[]) => boolean,
-  filter: { readonly text?: string; readonly exactText?: string } = {},
+  filter: AccountElementFilter = {},
   timeoutMs = 30_000,
 ): Promise<readonly AccountElement[]> {
   try {
@@ -135,9 +137,12 @@ const cases: readonly AccountWorkspaceCase[] = [
         '[data-testid="add-to-space"]',
         (elements) => elements.length === 1 && elements[0]!.visible,
       );
-      await client.tapCurrent(
-        `[data-testid="add-to-space-pick-${room.id}"]`,
-      );
+      // Selectors reach the job log, so the pick is found by the Room's name,
+      // not the Room id in its test id; read-only observation binds it.
+      const pick = roomControl('.add-to-space__row', 'add-to-space-pick-', roomName, room.id);
+      await client.visible(pick.selector, pick.filter, 30_000);
+      await bindRoomControl(client, pick, 'Add-to-Space pick is the exact existing Room');
+      await client.tapCurrent(pick.selector, pick.filter);
       await client.tapCurrent('[data-testid="add-to-space-add"]');
 
       const link = await waitForNativeShellState(
@@ -246,19 +251,22 @@ const cases: readonly AccountWorkspaceCase[] = [
 
       await client.login(reader);
       await selectSpace(client, spaceName);
-      const joinSelector = `[data-testid="join-child-${child.id}"]`;
+      const join = roomControl('.joinable', 'join-child-', childName, child.id);
       await observedElements(
         client,
         assertions.joinActionVisible,
-        joinSelector,
+        join.selector,
         (elements) => elements.length === 1 && elements[0]!.visible,
+        join.filter,
       );
-      await client.tapCurrent(joinSelector);
+      await bindRoomControl(client, join, 'Join action is the exact suggested child Room');
+      await client.tapCurrent(join.selector, join.filter);
       await observedElements(
         client,
         assertions.joinActionHidden,
-        joinSelector,
+        join.selector,
         (elements) => elements.length === 0 || elements.every((item) => !item.visible),
+        join.filter,
       );
       fixtures.trackRoomMembership(reader, child.id);
       await observedElements(

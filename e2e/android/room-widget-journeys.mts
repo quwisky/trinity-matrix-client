@@ -262,11 +262,12 @@ async function frameIdForUrl(
         (candidate) => candidate.url === url,
       ),
     (candidate) => candidate !== undefined,
-    `CDP frame ${url}`,
+    // Widget URLs carry the Room id, which never reaches the job log.
+    'CDP frame for the exact widget URL',
     signal,
     15_000,
   );
-  assert(entry, `CDP frame exists for ${url}`);
+  assert(entry, 'CDP frame exists for the exact widget URL');
   return entry.id;
 }
 
@@ -283,7 +284,7 @@ async function evaluateFrame<T>(
   })) as { readonly executionContextId?: unknown };
   assert(
     typeof world.executionContextId === 'number',
-    `CDP isolated world exists for ${url}`,
+    'CDP isolated world exists for the exact widget URL',
   );
   const response = (await connection.send('Runtime.evaluate', {
     expression,
@@ -297,7 +298,7 @@ async function evaluateFrame<T>(
   assert.equal(
     response.exceptionDetails,
     undefined,
-    `CDP frame expression succeeds for ${url}`,
+    'CDP frame expression succeeds for the exact widget URL',
   );
   return response.result?.value as T;
 }

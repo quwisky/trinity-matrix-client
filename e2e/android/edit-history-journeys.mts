@@ -10,6 +10,7 @@ import {
   AccountWorkspaceClient,
   PIXEL_5_ACCOUNT_PROFILE,
   type AccountElement,
+  type AccountElementFilter,
 } from './account-workspace-client.mts';
 import type { NodeWorkspaceAccount } from './account-workspace-fixtures.mts';
 import {
@@ -47,7 +48,7 @@ import type { FontScaleLease } from './maestro-session.mts';
 import { openMaestroDevice } from './maestro-session.mts';
 import { installWithAndroidRuntimeProvenance } from './runtime-provenance.mts';
 import { createAccountFixtures } from './account-workspace-fixtures.mts';
-import { waitForNativeShellState } from './native-shell-client.mts';
+import { evaluateNative, waitForNativeShellState } from './native-shell-client.mts';
 
 const DIALOG = '[data-testid="edit-history"]';
 const CLOSE = '[data-testid="edit-history-close"]';
@@ -92,8 +93,57 @@ const visibleOne = (elements: readonly AccountElement[]): boolean =>
   elements.length === 1 && elements[0]!.visible;
 const hidden = (elements: readonly AccountElement[]): boolean =>
   elements.every((element) => !element.visible);
-const rowSelector = (eventId: string): string =>
-  `.msg[data-mid=${JSON.stringify(eventId)}]`;
+/**
+ * Selectors reach the job log, so none names an event id. A seeded row is an
+ * identifier-free `.msg[data-mid^="$"]` scoped by its current wording, and a
+ * read-only observation binds each target to the exact seeded event before it
+ * is used.
+ */
+const ROW = '.msg[data-mid^="$"]';
+const ROW_TEXT = `${ROW} .msg__text`;
+const MARKER = `${ROW} [data-testid="msg-edited"]`;
+const DELETED_BODY = '(message deleted)';
+
+/** One identifier-free target and the event a read-only observation must bind it to. */
+export interface EventTarget {
+  readonly selector: string;
+  readonly filter: AccountElementFilter;
+  readonly eventId: string;
+}
+
+/** The edited marker of the row whose current wording contains `text`. */
+const markerIn = (text: string, eventId: string): EventTarget => ({
+  selector: MARKER,
+  filter: { within: { selector: '.msg', text: text.trim() } },
+  eventId,
+});
+
+/**
+ * Read-only: the timeline row whose `data-mid` is `eventId`. The identifier is
+ * only an in-page comparison value and never leaves the renderer.
+ */
+async function readEventRow(
+  client: AccountWorkspaceClient,
+  eventId: string,
+): Promise<{ readonly rows: number; readonly visible: boolean; readonly text: string; readonly markers: number }> {
+  const value = await evaluateNative(client.webview, `(() => {
+    const id=${JSON.stringify(eventId)};
+    const rows=[...document.querySelectorAll('.msg[data-mid^="$"]')].filter(row=>row.getAttribute('data-mid')===id);
+    const row=rows[0],box=row?.getBoundingClientRect();
+    return {rows:rows.length,visible:Boolean(row&&box.width>0&&box.height>0&&getComputedStyle(row).visibility==='visible'),text:row?.textContent?.trim()??'',markers:row?row.querySelectorAll('[data-testid="msg-edited"]').length:0};
+  })()`);
+  assert(value && typeof value === 'object', 'Event row observation is an object');
+  return value as { readonly rows: number; readonly visible: boolean; readonly text: string; readonly markers: number };
+}
+
+async function bindTarget(
+  client: Pick<AccountWorkspaceClient, 'eventIdentity'>,
+  target: EventTarget,
+  description: string,
+): Promise<void> {
+  const identity = await client.eventIdentity(target.selector, target.filter, target.eventId);
+  assert(identity.matches === 1 && identity.exactEvent, description);
+}
 
 async function historyRows(
   client: AccountWorkspaceClient,
@@ -133,18 +183,20 @@ async function reachRemove(client: AccountWorkspaceClient): Promise<void> {
 
 async function timelineText(
   client: AccountWorkspaceClient,
-  selector: string,
+  eventId: string,
   expected: string,
 ): Promise<AccountElement> {
+  const target = { selector: ROW_TEXT, filter: { exactText: expected.trim() }, eventId };
   const [value] = await client.waitElements(
-    `${selector} .msg__text`,
+    target.selector,
     (elements) => visibleOne(elements) &&
       matchesTimelineText(elements[0]!.text, expected),
     'exact edited timeline wording',
-    {},
+    target.filter,
     30_000,
   );
   assert(value);
+  await bindTarget(client, target, 'Edited wording belongs to the exact seeded event');
   return value;
 }
 
@@ -156,12 +208,12 @@ export function matchesTimelineText(observed: string, expected: string): boolean
 /** Keep the clipped 44px marker reachable through measured native input. */
 export async function openHistoryMarker(
   client: Pick<AccountWorkspaceClient,
-    'waitElements' | 'visible' | 'swipeCurrent' | 'tapCurrentExposed'>,
-  marker: string,
+    'waitElements' | 'visible' | 'swipeCurrent' | 'tapCurrentExposed' | 'eventIdentity'>,
+  marker: EventTarget,
 ): Promise<void> {
   for (let attempt = 0; attempt <= 8; attempt++) {
-    const [target] = await client.waitElements(marker, visibleOne,
-      'one visible edited marker before native open');
+    const [target] = await client.waitElements(marker.selector, visibleOne,
+      'one visible edited marker before native open', marker.filter);
     assert(target);
     const timeline = await client.visible(TIMELINE);
     const centerY = target.rect.y + target.rect.height / 2;
@@ -175,7 +227,8 @@ export async function openHistoryMarker(
       : proof.afterScrollTop > proof.beforeScrollTop,
     'Native marker swipe advances timeline scroll');
   }
-  await client.tapCurrentExposed(marker);
+  await bindTarget(client, marker, 'Edited marker belongs to the exact seeded event');
+  await client.tapCurrentExposed(marker.selector, marker.filter);
 }
 
 /** Fail if a native swipe cannot expose the final action in eight attempts. */
@@ -206,9 +259,9 @@ export async function runRevisionLifecycle(
   context: RevisionStageContext,
 ): Promise<void> {
   const { client, fixtures, account, seed } = context;
-  const row = rowSelector(seed.plain.originalId);
-  const marker = `${row} [data-testid="msg-edited"]`;
+  const plainId = seed.plain.originalId;
   const versions = seed.plain.versions;
+  const marker = (text: string): EventTarget => markerIn(text, plainId);
   assert.equal(context.entry.id, 'revision-lifecycle');
   const beforeRemoval = await fixtures.serverState(account, seed.roomId,
     seed.plain.originalId, seed.plain.editIds, seed.plain.editIds);
@@ -233,17 +286,17 @@ export async function runRevisionLifecycle(
   await client.tapCurrent('[data-testid="rail-rooms"]');
   await client.visible('.channel', { text: seed.roomName }, 30_000);
   await client.tapCurrent('.channel', { text: seed.roomName });
-  const latest = await timelineText(client, row, versions[2]!);
+  const latest = await timelineText(client, plainId, versions[2]!);
   await record(context, 'room-ready', () => assert(latest.visible), { ready: true });
   await record(context, 'latest-text', () => assert.equal(latest.text, versions[2]),
     { latestExact: true });
 
-  const [firstMarker] = await client.waitElements(marker, visibleOne,
-    'accessible edited marker on original event', {}, 20_000);
+  const [firstMarker] = await client.waitElements(MARKER, visibleOne,
+    'accessible edited marker on original event', marker(versions[2]!).filter, 20_000);
   await record(context, 'marker-visible', () => {
     assert(firstMarker?.visible && /edited/iu.test(firstMarker.text));
   }, { markerVisible: true });
-  const markerTarget = await client.elements(marker);
+  const markerTarget = await client.elements(MARKER, marker(versions[2]!).filter);
   const timeline = await client.visible(TIMELINE);
   await client.record('marker-target-before-open', {
     count: markerTarget.length,
@@ -255,7 +308,7 @@ export async function runRevisionLifecycle(
     timelineScrollHeight: timeline.scrollHeight,
     timelineClientHeight: timeline.clientHeight,
   });
-  await openHistoryMarker(client, marker);
+  await openHistoryMarker(client, marker(versions[2]!));
   let history = await historyRows(client, 3);
   await record(context, 'dialog-visible', () => assert(history.visible),
     { dialogVisible: true });
@@ -316,8 +369,7 @@ export async function runRevisionLifecycle(
   await record(context, 'closed-first', () =>
     assert(hidden(firstClosed), 'Dialog is hidden'), { closed: true });
 
-  const formattedRow = rowSelector(seed.formatted.originalId);
-  const formattedMarker = `${formattedRow} [data-testid="msg-edited"]`;
+  const formattedMarker = markerIn('deploy on Monday', seed.formatted.originalId);
   await openHistoryMarker(client, formattedMarker);
   history = await historyRows(client, 2);
   await record(context, 'formatted-dialog', () => assert(history.visible),
@@ -354,7 +406,7 @@ export async function runRevisionLifecycle(
   await record(context, 'formatted-closed', () =>
     assert(hidden(formattedClosed), 'Formatted dialog is hidden'), { closed: true });
 
-  await openHistoryMarker(client, marker);
+  await openHistoryMarker(client, marker(versions[2]!));
   history = await historyRows(client, 3);
   await record(context, 'plain-reopened', () => assert(history.visible),
     { reopened: true });
@@ -392,15 +444,16 @@ export async function runRevisionLifecycle(
   await record(context, 'closed-after-current-remove', () =>
     assert(hidden(awaitedDialog)), { closed: true });
 
-  const second = await timelineText(client, row, versions[1]!);
+  const second = await timelineText(client, plainId, versions[1]!);
   await record(context, 'timeline-second-draft', () =>
     assert.equal(second.text, versions[1]), { secondDraftExact: true });
-  const repairedMarker = await client.waitElements(marker, visibleOne,
-    'marker remains after current edit removal');
+  const repairedMarker = await client.waitElements(MARKER, visibleOne,
+    'marker remains after current edit removal', marker(versions[1]!).filter);
+  await bindTarget(client, marker(versions[1]!), 'Remaining marker belongs to the exact original event');
   await record(context, 'marker-remains', () =>
     assert(repairedMarker.length === 1 && repairedMarker[0]!.visible &&
       /edited/iu.test(repairedMarker[0]!.text)), { markerVisible: true });
-  await openHistoryMarker(client, marker);
+  await openHistoryMarker(client, marker(versions[1]!));
   history = await historyRows(client, 2);
   await record(context, 'reopened-two', () =>
     assert.equal(history.rows.length, 2), { rowCount: 2 });
@@ -431,23 +484,28 @@ export async function runRevisionLifecycle(
   await record(context, 'closed-after-last-remove', () =>
     assert(hidden(lastDialog)), { closed: true });
 
-  const first = await timelineText(client, row, versions[0]!);
+  const first = await timelineText(client, plainId, versions[0]!);
   await record(context, 'timeline-original', () =>
     assert.equal(first.text, versions[0]), { originalExact: true });
-  const markerAfter = await client.elements(marker);
+  const markerAfter = await client.elements(MARKER, marker(versions[0]!).filter);
   await record(context, 'marker-absent', () =>
     assert.equal(markerAfter.length, 0), { markerCount: 0 });
 
-  const deletedRow = rowSelector(seed.doomed.originalId);
-  const [deleted] = await client.waitElements(deletedRow, visibleOne,
-    'redacted timeline row remains visible', {}, 20_000);
+  // Removing the two plain edits leaves redacted edit rows with the same
+  // "(message deleted)" wording, so no wording names the deleted original.
+  // A read-only observation selects it by comparing `data-mid` in the page;
+  // there is no native action on it.
+  const deleted = await waitForNativeShellState(
+    () => readEventRow(client, seed.doomed.originalId),
+    (value) => value.rows === 1 && value.visible,
+    'redacted timeline row remains visible', client.signal, 20_000);
   await record(context, 'deleted-row-visible', () =>
-    assert(deleted?.visible), { redactedRowVisible: true });
-  const deletedMarker = await client.elements(`${deletedRow} [data-testid="msg-edited"]`);
+    assert(deleted.rows === 1 && deleted.visible), { redactedRowVisible: true });
   await record(context, 'deleted-marker-absent', () =>
-    assert.equal(deletedMarker.length, 0), { markerCount: 0 });
+    assert.equal(deleted.markers, 0), { markerCount: 0 });
   await record(context, 'deleted-body-absent', () =>
-    assert(!deleted!.text.includes(seed.doomed.body)), { oldBodyAbsent: true });
+    assert(deleted.text.includes(DELETED_BODY) && !deleted.text.includes(seed.doomed.body)),
+    { oldBodyAbsent: true });
 }
 
 /** Prove the compact Pixel surface and an actual device-owned large-text state. */
@@ -456,20 +514,19 @@ export async function runPixel5LargeText(
 ): Promise<void> {
   const { client, account, seed } = context;
   assert.equal(context.entry.id, 'pixel5-large-text');
-  const row = rowSelector(seed.originalId);
-  const marker = `${row} [data-testid="msg-edited"]`;
+  const marker = markerIn(seed.versions[2]!, seed.originalId);
   await client.reset(PIXEL_5_ACCOUNT_PROFILE);
   await client.login(account);
   await client.tapCurrent('[data-testid="rail-rooms"]');
   await client.visible('.channel', { text: seed.roomName }, 30_000);
   await client.tapCurrent('.channel', { text: seed.roomName });
-  const latest = await timelineText(client, row, seed.versions[2]!);
+  const latest = await timelineText(client, seed.originalId, seed.versions[2]!);
   await record(context, 'room-ready', () => assert(latest.visible),
     { ready: true });
   await record(context, 'latest-text', () =>
     assert(matchesTimelineText(latest.text, seed.versions[2]!)),
     { latestExact: true });
-  const pixelMarker = await client.elements(marker);
+  const pixelMarker = await client.elements(marker.selector, marker.filter);
   const pixelTimeline = await client.visible(TIMELINE);
   await client.record('pixel-marker-before-open', {
     count: pixelMarker.length,
@@ -524,8 +581,8 @@ export async function runPixel5LargeText(
     await client.tapCurrent('[data-testid="rail-rooms"]');
     await client.visible('.channel', { text: seed.roomName }, 30_000);
     await client.tapCurrent('.channel', { text: seed.roomName });
-    await timelineText(client, row, seed.versions[2]!);
-    const scaledMarker = await client.elements(marker);
+    await timelineText(client, seed.originalId, seed.versions[2]!);
+    const scaledMarker = await client.elements(marker.selector, marker.filter);
     const scaledTimeline = await client.visible(TIMELINE);
     const scaledFont = await readFontProfile(client);
     await client.record('pixel-marker-after-scale', {

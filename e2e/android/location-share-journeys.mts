@@ -248,13 +248,22 @@ async function runLocationShareStage(
     },
   );
 
-  const rowSelector = `[data-mid=${JSON.stringify(event.eventId)}]`;
+  // Selectors reach the job log, so they never carry the event id: the Room's
+  // one location row is found by its card, and read-only observation binds
+  // both the card and the long-press row to the exact echoed event.
+  const rowSelector =
+    '.scroll .msg[data-mid^="$"]:has([data-testid="location-card"])';
   const cardSelector = `${rowSelector} [data-testid="location-card"]`;
   const card = await client.visible(cardSelector, {}, 30_000);
+  const binding = await client.eventIdentity(cardSelector, {}, event.eventId);
+  assert(
+    binding.matches === 1 && binding.exactEvent,
+    'Location card belongs to the exact echoed event',
+  );
   await recordAssertion(client, unique, records, assertions.cardVisible, {
     visible: card.visible,
-    exactEventRow: true,
-    matches: 1,
+    exactEventRow: binding.exactEvent,
+    matches: binding.matches,
   });
 
   const coordinates = await client.visible(
@@ -281,6 +290,11 @@ async function runLocationShareStage(
     exactLatitude: true,
   });
 
+  const rowBinding = await client.eventIdentity(rowSelector, {}, event.eventId);
+  assert(
+    rowBinding.matches === 1 && rowBinding.exactEvent,
+    'Long-press row is the exact echoed event',
+  );
   await client.longPressCurrent(rowSelector);
   const sheet = await client.visible(
     '[data-testid="action-sheet-surface"]',
@@ -289,7 +303,7 @@ async function runLocationShareStage(
   );
   await recordAssertion(client, unique, records, assertions.actionSheetReady, {
     visible: sheet.visible,
-    exactEventRow: true,
+    exactEventRow: rowBinding.exactEvent,
   });
   const copyLink = await client.visible(
     '[data-testid="sheet-copy-link"]',

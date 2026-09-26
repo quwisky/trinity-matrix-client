@@ -67,6 +67,37 @@ Acceptance requires twenty consecutive successful runs of all four journeys on
 unchanged relevant inputs, with zero retries and effective negative cases. A
 successful implementation check or a single CI run does not establish that gate.
 
+## Matrix identifier hygiene
+
+No published Android diagnostic carries a raw Matrix Room or event identifier,
+whether or not a suite registered it as protected
+([#838](https://github.com/quwisky/trinity-matrix-client/issues/838)). Every
+suite shares these layers:
+
+- Native selectors, wait descriptions, console lines and failure messages never
+  interpolate a Room or event identifier. A target is found by an
+  identifier-free selector (for example `.scroll .msg[data-mid^="$"]` with its
+  unique body, an ancestor-scoped `within` filter, an accessible name, or a
+  test-id prefix inside the row that names the Room) and a read-only
+  `eventIdentity`/`testIdIdentity` observation binds it to the exact event or
+  Room; the identifier is only an in-page comparison value. The Account client
+  refuses an identifier-bearing selector at run time, and
+  `scripts/android-matrix-identifier-guard.spec.mjs` checks every journey.
+- Maestro flow output and per-flow `logs/device-logcat.txt` are redacted before
+  they leave the private directory; the Node reporter redacts `process.log`
+  and stdout line by line and shows failures as names, first assertion lines
+  and stack frames, never assertion values.
+- After the Node child exits, the runner redacts every event-id (`$…`) and
+  Room-id (`!…:server`) shape, raw, percent-encoded or as a base64url Room
+  route segment, from the suite's diagnostics and rescans them. A file that
+  still carries one, or is binary and not media, is withheld with every
+  `publication-safe` marker, and the suite fails.
+- `ci-run-command` prints and retains the job log by redacted whole lines, and
+  the upload action redacts and verifies `android-*` report paths and
+  `dist/.ci` before publishing them.
+
+Suites keep their digest-based checks of the identifiers they register.
+
 ## Hosted shard layout
 
 `.github/workflows/ci.yml` is the authority for current Android shard
@@ -3991,8 +4022,10 @@ synchronization that originally regressed.
 The second stage joins a positioning Account, seeds three filler messages from
 it through Matrix REST, then sends the exact target from the signed-in Account
 and retains that final event ID. This preserves a visible sender-avatar/header
-gesture target without weakening the exact event binding. Maestro scrolls that
-avatar into view, long-presses it, chooses `sheet-react-more`, and proves the
+gesture target without weakening the exact event binding. The avatar and the
+resulting 🚀 key are selected inside the row with the unique target body, never
+by event ID, and read-only checks bind each to the retained event. Maestro
+scrolls that avatar into view, long-presses it, chooses `sheet-react-more`, and proves the
 accessible `Pick a reaction` dialog and its full picker, focuses the real search
 field, enters `rocket` through the Android IME and selects the exact
 rocket-labelled result through native touch. The result must appear as a 🚀 key
@@ -4686,8 +4719,9 @@ The REST fixture creates one disposable Account and private Room with no
 selected `http://caddy:8080/og` or netns-loopback URL, and reads the event back
 to prove sender, type, body and id. It proves the encryption state is absent
 before the send, after the send and after the rendered result. Maestro owns
-login and Room navigation. Read-only renderer observation scopes the preview
-to the exact message event, requires the title `Trinity E2E Preview` and
+login and Room navigation. An identifier-free selector finds the Room's one
+preview card and read-only renderer observation binds it to the exact message
+event, requires the title `Trinity E2E Preview` and
 requires the card `href` to equal the seeded URL.
 
 A bounded CDP Network observer starts before login and retains only sanitized
@@ -4816,8 +4850,9 @@ Matrix REST observes a bounded latest-message window until exactly one real
 server echo appears. It must be the signed-in user's `m.room.message` with
 `msgtype: m.location`, body `Shared location`, exact
 `geo:40.7128,-74.006` legacy and MSC3488 URIs, and MSC3488 asset type
-`m.self`. Read-only renderer checks then scope every result to that event id,
-require one visible location card, exact text `40.71280, -74.00600`, and an
+`m.self`. Identifier-free selectors find the Room's one location row and card,
+read-only renderer checks bind both to that event id before the long press, and
+the checks require one visible location card, exact text `40.71280, -74.00600`, and an
 OpenStreetMap destination whose `mlat` is exactly `40.7128`. The native
 long-press must open the action sheet, expose Copy link and omit Edit.
 
@@ -4930,8 +4965,9 @@ fixture requires distinct content URIs and event ids and proves that the
 ciphertext differs from the plaintext before the UI journey begins.
 
 Maestro owns login, Rooms navigation, all five Room openings, six image opens
-and six lightbox closes. Read-only renderer observations are scoped to the
-exact event row and require each image bubble and lightbox image to be complete
+and six lightbox closes. Each open targets its button by accessible name after
+a read-only check binds it to the exact event row. Read-only renderer
+observations are scoped to the exact event row and require each image bubble and lightbox image to be complete
 with positive natural width. The journey checks the initial Room A visit, then
 two complete A-to-B-to-A rounds. Its exact inventory is 47 unique records: five
 Room-readiness assertions, 18 image-readiness assertions and 24 lightbox
@@ -5109,7 +5145,8 @@ selector console logs, duplicated in the shared suite log (12 occurrences
 across two files). Semantic and trusted-point receipts redact these IDs.
 These identifiers are not credentials or media authorization and are outside
 the issue's explicit secret-redaction classes; this is disclosed rather than
-claimed as artifact-wide identifier removal.
+claimed as artifact-wide identifier removal. Matrix identifier hygiene
+(#838) later removed event IDs from these selectors.
 
 This completes the scoped #741 hosted acceptance, not full CI reliability.
 Shard 1 reached its job time limit; shard 2 later failed the separate
@@ -5141,7 +5178,9 @@ fillers and one newest target and reads back every ready event from Synapse.
 
 Maestro owns login, Room opening, 750 ms long presses, timeline and sheet
 swipes, Reply, the exact quick 👍 reaction, jump-to-latest, Thread opening and
-exposed-backdrop taps. Renderer observations are read-only: they measure the
+exposed-backdrop taps. Each target row is `.msg[data-mid^="$"]` with its unique
+body; a read-only check binds it to the exact event before every long press,
+and the event-ID selector appears only inside read-only geometry observations. Renderer observations are read-only: they measure the
 single named Message actions dialog, absence of hover controls, connected
 target bounds inside its own scroller, the eight-pixel sheet gap, viewport and
 Cancel reachability. Native swipes must change the measured scroll offset in
@@ -5234,7 +5273,11 @@ direct event reads prove its edit remains live with the exact wire payload;
 Synapse suppresses relation listings on that redacted parent. Maestro owns
 every product action:
 login, Room and marker navigation, dialog toggles, native scrolling, Remove,
-confirmation and Close. WebView inspection reads exact text, diff markup and
+confirmation and Close. Rows, wording and edited markers are selected by
+their current text rather than event IDs, and a read-only check binds each to
+its seeded event before use. The redacted original shares its
+`(message deleted)` wording with the removed edits, so it is only observed,
+read-only, by comparing its event ID inside the page. WebView inspection reads exact text, diff markup and
 geometry only; it never drives input or changes the viewport. The Pixel 5
 profile is 393×727 CSS pixels at DPR 2.75. A reversible device lease applies
 real Android `font_scale=1.5`, proves the computed WebView root grows to at

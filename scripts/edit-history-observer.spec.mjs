@@ -107,17 +107,31 @@ describe('Android edit-history read-only observer predicates', () => {
           afterScrollTop: options.direction === 'decrease-scroll-top' ? 0 : 200,
         };
       },
-      async tapCurrentExposed() {
+      async tapCurrentExposed(selector, filter) {
+        expect({ selector, filter }).toEqual({
+          selector: target.selector,
+          filter: target.filter,
+        });
         actions.push('exposed-native-tap');
       },
+      async eventIdentity(selector, filter, eventId) {
+        expect({ selector, filter, eventId }).toEqual(target);
+        return { matches: 1, exactEvent: exact };
+      },
     };
-    await openHistoryMarker(client, 'marker');
+    let exact = true;
+    const target = {
+      selector: '.msg[data-mid^="$"] [data-testid="msg-edited"]',
+      filter: { within: { selector: '.msg', text: 'final wording' } },
+      eventId: '$original',
+    };
+    await openHistoryMarker(client, target);
     expect(actions).toEqual(['exposed-native-tap']);
     marker = {
       ...marker,
       rect: { x: 367, y: 680, width: 44, height: 44, right: 411, bottom: 724 },
     };
-    await openHistoryMarker(client, 'marker');
+    await openHistoryMarker(client, target);
     expect(actions).toEqual([
       'exposed-native-tap',
       'increase-scroll-top',
@@ -127,7 +141,7 @@ describe('Android edit-history read-only observer predicates', () => {
       ...marker,
       rect: { x: 373, y: 46, width: 44, height: 44, right: 417, bottom: 90 },
     };
-    await openHistoryMarker(client, 'marker');
+    await openHistoryMarker(client, target);
     expect(actions.slice(-2)).toEqual([
       'decrease-scroll-top',
       'exposed-native-tap',
@@ -141,9 +155,17 @@ describe('Android edit-history read-only observer predicates', () => {
             return { beforeScrollTop: 0, afterScrollTop: 0 };
           },
         },
-        'marker',
+        target,
       ),
     ).rejects.toThrow();
+    // A marker a read-only observation cannot bind to the exact event is never tapped.
+    marker = { ...marker, rect: { ...marker.rect, y: 390, bottom: 434 } };
+    exact = false;
+    const taps = actions.length;
+    await expect(openHistoryMarker(client, target)).rejects.toThrow(
+      'Edited marker belongs to the exact seeded event',
+    );
+    expect(actions).toHaveLength(taps);
   });
 
   it('requires the exact oldest-first labels and visible, complete plain diff', async () => {
