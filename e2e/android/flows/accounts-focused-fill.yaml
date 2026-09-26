@@ -1,6 +1,5 @@
 appId: ${APP_ID}
 ---
-- eraseText
-- eraseText
+# ERASE_TEXT: the harness writes one erase of the measured value here, or none.
 - inputText: ${SECRET_TEXT}
-- hideKeyboard
+# The harness dismisses the keyboard only while Android reports it shown.

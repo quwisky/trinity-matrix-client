@@ -2,5 +2,9 @@ appId: ${APP_ID}
 ---
 - evalScript: ${output.pointResponse = http.get(POINT_URL)}
 - assertTrue: ${output.pointResponse.status === 200}
+# The harness proves the trusted activation and its effect read-only, so Maestro
+# taps once and skips its view-hierarchy "UI changed" settle heuristic.
 - tapOn:
     point: ${output.pointResponse.body}
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1

@@ -177,14 +177,30 @@ function assertRuntimeContract(journey, client) {
       client.indexOf('async hideKeyboard('),
     ),
   );
-  expect(keyboard).toContain("'dumpsys'");
-  expect(keyboard).toContain('mInputShown=true');
+  const shownRead = client.slice(
+    client.indexOf('private async keyboardShown('),
+    client.indexOf('private async waitForInputReady('),
+  );
+  const dismissal = client.slice(
+    client.indexOf('private async dismissKeyboard('),
+    client.indexOf('async key(key: AndroidKeyboardKey)'),
+  );
+  expect(shownRead).toContain("'dumpsys'");
+  expect(shownRead).toContain('mInputShown=true');
+  expect(keyboard).toContain('await this.keyboardShown()');
   expect(keyboard).toContain(
-    "action: shown ? 'maestro-hideKeyboard' : 'already-hidden'",
+    "action: shown ? 'native-back-keyevent' : 'already-hidden'",
   );
-  expect(keyboard.indexOf('if (!shown)')).toBeLessThan(
-    keyboard.indexOf('this.device.runFlow'),
+  expect(keyboard).toContain('await this.dismissKeyboard()');
+  // The Back key event that dismisses the keyboard only runs while Android
+  // reports the keyboard shown, and must leave it hidden with full bounds.
+  expect(dismissal.indexOf('if (shownBefore)')).toBeGreaterThan(-1);
+  expect(dismissal.indexOf('if (shownBefore)')).toBeLessThan(
+    dismissal.indexOf("'input', 'keyevent', '4'"),
   );
+  expect(dismissal).toContain('(shown) => !shown');
+  expect(dismissal).toContain('await this.waitForFullViewportNativeBounds()');
+  expect(dismissal).not.toContain('runFlow');
 
   expect(journey).not.toMatch(/\bretries?\s*[:=]\s*[1-9]/u);
   expect(journey).not.toContain('client.capture(');

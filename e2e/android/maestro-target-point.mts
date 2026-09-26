@@ -138,6 +138,9 @@ export async function openMaestroTargetPoint(
         }
         assert(Number.isFinite(point.x) && Number.isFinite(point.y), 'Native target point is not finite');
         lastPoint = point;
+        // A flow may poll a target that is still appearing: the endpoint reports
+        // the outcome of its latest read, so a later success supersedes an earlier miss.
+        lastError = undefined;
         write(response, 200, `${point.x},${point.y}`);
       } catch (error) {
         if (!requestSignal.aborted) lastError = error;
@@ -181,5 +184,53 @@ export async function openMaestroTargetPoint(
       options.signal.removeEventListener('abort', abort);
       await close();
     },
+  };
+}
+
+export interface MaestroReadinessEndpoint {
+  readonly url: string;
+  /** True once a flow's read found the awaited state. */
+  readonly ready: boolean;
+  readonly lastError: unknown;
+  close(): Promise<void>;
+}
+
+export interface MaestroReadinessOptions {
+  readonly signal: AbortSignal;
+  /** Read-only wait for the state the flow's next native command needs. */
+  readonly waitReady: (signal: AbortSignal) => Promise<void>;
+  readonly readTimeoutMs?: number;
+}
+
+// The readiness body is never used as a coordinate by a flow.
+const READY_POINT: NativeTargetPoint = { x: 0, y: 0 };
+
+/**
+ * A loopback endpoint a flow reads to wait for harness-observed state, for
+ * example a focused input with its keyboard shown, instead of Maestro's
+ * view-hierarchy settle heuristic.
+ */
+export async function openMaestroReadiness(
+  options: MaestroReadinessOptions,
+): Promise<MaestroReadinessEndpoint> {
+  const endpoint = await openMaestroTargetPoint({
+    signal: options.signal,
+    ...(options.readTimeoutMs === undefined
+      ? {}
+      : { readTimeoutMs: options.readTimeoutMs }),
+    readPoint: async (signal) => {
+      await options.waitReady(signal);
+      return READY_POINT;
+    },
+  });
+  return {
+    url: endpoint.url,
+    get ready() {
+      return endpoint.lastPoint !== undefined;
+    },
+    get lastError() {
+      return endpoint.lastError;
+    },
+    close: () => endpoint.close(),
   };
 }

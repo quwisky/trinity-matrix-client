@@ -287,12 +287,15 @@ describe('Android Room roster and live-authority migration', () => {
     expect(client).toMatch(
       /const visibleTop = Math\.max\(list\.rect\.y, 0\);[\s\S]{0,180}?const visibleBottom = Math\.min\(list\.rect\.bottom, viewport\.clientHeight\);/,
     );
+    // The keyboard is dismissed by a Back key event only while Android
+    // reports it shown, never by Maestro's unconditional hideKeyboard.
     expect(client).toContain(
-      'const shown = /mInputShown=true/u.test(inputMethod);',
+      "return /mInputShown=true/u.test(\n      await this.device.adb('shell', 'dumpsys', 'input_method'),",
     );
     expect(client).toContain(
-      '`appId: ${this.applicationId}\\n---\\n- hideKeyboard\\n`,',
+      "if (shownBefore) {\n      await this.device.adb('shell', 'input', 'keyevent', '4');",
     );
+    expect(client).not.toContain('- hideKeyboard\\n');
     for (const mutation of forbiddenProductMutations) {
       expect(journey).not.toMatch(mutation);
     }

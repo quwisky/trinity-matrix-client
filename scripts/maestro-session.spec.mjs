@@ -169,7 +169,7 @@ attempts.push(driverPort);
 writeFileSync(attemptsFile, JSON.stringify(attempts));
 ${driverPortFailures ? `if (attempts.length <= ${driverPortFailures}) { console.error('Requested driver host port ' + driverPort + ' is not available'); process.exit(1); }` : ''}
 const password = args.find((arg) => arg.startsWith('PASSWORD='))?.slice('PASSWORD='.length) ?? '';
-writeFileSync(join(output, 'commands.json'), JSON.stringify({ cliArgs: args, defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
+writeFileSync(join(output, 'commands.json'), JSON.stringify({ cliArgs: args, cliEnvironment: { noAnalytics: process.env.MAESTRO_CLI_NO_ANALYTICS ?? null, opts: process.env.MAESTRO_OPTS ?? null }, defineVariablesCommand: { env: { PASSWORD: password } }, evaluatedCommand: { env: { PASSWORD: password } } }));
 writeFileSync(join(output, 'maestro.log'), 'login started: ' + password + '\\n');
 writeFileSync(join(output, 'screenshot.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]));
 writeFileSync(join(output, 'device-logcat.txt'), ${JSON.stringify(nativeLog)});
@@ -805,6 +805,81 @@ describe('Maestro device ownership', () => {
       f.calls.filter((call) => call.includes('/proc/net/tcp6')),
     ).toHaveLength(2);
     await device.close();
+  });
+
+  it('installs the Maestro driver once per lease and skips CLI-only overhead', async () => {
+    const f = fixture();
+    configureMaestro(f);
+    f.options.environment.MAESTRO_OPTS = '-Xmx1g';
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+    try {
+      await device.runFlow('/flows/first.yaml');
+      await device.runFlow('/flows/second.yaml');
+      const commands = (prefix) => {
+        const name = readdirSync(f.options.artifactDirectory).find((entry) =>
+          entry.startsWith(prefix),
+        );
+        return JSON.parse(
+          readFileSync(
+            join(f.options.artifactDirectory, name, 'commands.json'),
+            'utf8',
+          ),
+        );
+      };
+      const first = commands('first-');
+      const second = commands('second-');
+      expect(first.cliArgs).not.toContain('--no-reinstall-driver');
+      expect(second.cliArgs.indexOf('--no-reinstall-driver')).toBeGreaterThan(
+        second.cliArgs.indexOf('test'),
+      );
+      // Each flow stops the driver instrumentation its CLI leaves running.
+      for (const driverPackage of [
+        'dev.mobile.maestro',
+        'dev.mobile.maestro.test',
+      ]) {
+        expect(
+          f.calls.filter((call) =>
+            call.join(' ').endsWith(`shell am force-stop ${driverPackage}`),
+          ),
+        ).toHaveLength(2);
+      }
+      for (const { cliEnvironment } of [first, second]) {
+        expect(cliEnvironment.noAnalytics).toBe('1');
+        expect(cliEnvironment.opts).toBe(
+          `-Xmx1g -XX:+IgnoreUnrecognizedVMOptions -XX:+AutoCreateSharedArchive -XX:SharedArchiveFile=${join(f.options.workspaceRoot, 'dist/maestro-cds/maestro.jsa')}`,
+        );
+      }
+    } finally {
+      await device.close();
+    }
+  });
+
+  it('keeps reinstalling the Maestro driver until a flow completes', async () => {
+    const f = fixture();
+    configureMaestro(f, { exitCode: 1 });
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+    try {
+      await expect(device.runFlow('/flows/first.yaml')).rejects.toThrow();
+      await expect(device.runFlow('/flows/second.yaml')).rejects.toThrow();
+      const second = readdirSync(f.options.artifactDirectory).find((entry) =>
+        entry.startsWith('second-'),
+      );
+      const { cliArgs } = JSON.parse(
+        readFileSync(
+          join(f.options.artifactDirectory, second, 'commands.json'),
+          'utf8',
+        ),
+      );
+      expect(cliArgs).not.toContain('--no-reinstall-driver');
+    } finally {
+      await device.close();
+    }
   });
 
   it('does not launch Maestro when Android has no eligible driver port', async () => {

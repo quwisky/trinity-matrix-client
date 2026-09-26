@@ -4,6 +4,12 @@ appId: ${APP_ID}
 - assertTrue: ${output.pointResponse.status === 200}
 - tapOn:
     point: ${output.pointResponse.body}
-- eraseText
+    retryTapIfNoChange: false
+    waitToSettleTimeoutMs: 1
+# The harness answers once the tapped input is focused with the soft keyboard
+# shown, instead of Maestro's view-hierarchy settle heuristic.
+- evalScript: ${output.readyResponse = http.get(READY_URL)}
+- assertTrue: ${output.readyResponse.status === 200}
+# ERASE_TEXT: the harness writes one erase of the measured value here, or none.
 - inputText: ${SECRET_TEXT}
-- hideKeyboard
+# The harness dismisses the keyboard only while Android reports it shown.

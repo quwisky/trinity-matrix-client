@@ -49,6 +49,35 @@ const textArtifactExtensions = new Set([
 const imageArtifactExtensions = new Set(['.jpeg', '.jpg', '.png', '.webp']);
 const redactedSecret = '[REDACTED]';
 const maestroDriverPortAttempts = 3;
+const maestroDriverPackages = ['dev.mobile.maestro', 'dev.mobile.maestro.test'];
+
+/**
+ * Per-invocation Maestro CLI overhead that never reaches the device under test.
+ *
+ * Every native action starts one Maestro JVM. It opts out of PostHog analytics
+ * (a network call per invocation), and JDK 19+ reuses one dynamic class-data
+ * archive instead of reloading the CLI classes; an unrecognised option on an
+ * older JVM is ignored rather than fatal. The archive is a disposable cache in
+ * ignored output that the JVM recreates whenever it no longer matches.
+ */
+export function maestroCliEnvironment(
+  environment: NodeJS.ProcessEnv,
+  workspaceRoot: string,
+): NodeJS.ProcessEnv {
+  const archive = join(workspaceRoot, 'dist/maestro-cds/maestro.jsa');
+  return {
+    ...environment,
+    MAESTRO_CLI_NO_ANALYTICS: '1',
+    MAESTRO_OPTS: [
+      environment['MAESTRO_OPTS'],
+      '-XX:+IgnoreUnrecognizedVMOptions',
+      '-XX:+AutoCreateSharedArchive',
+      `-XX:SharedArchiveFile=${archive}`,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  };
+}
 
 const secretValues = (
   variables: Readonly<Record<string, string>>,
@@ -301,6 +330,9 @@ export async function openMaestroDevice(
   let lock: ProcessLock | undefined;
   const installedApplicationIds = new Set<MaestroApplicationId>();
   const maestroDriverPorts = new Set<number>();
+  // The first completed flow of a lease installs the CLI's own driver and
+  // server APKs; later flows reuse them instead of reinstalling both each time.
+  let maestroDriverInstalled = false;
   const reverses: Array<{ local: string; previous: string | undefined }> = [];
   const stagedFiles = new Set<() => Promise<void>>();
   const fontScaleRestorers = new Set<() => Promise<void>>();
@@ -610,6 +642,9 @@ export async function openMaestroDevice(
           randomUUID(),
         );
         await mkdir(privateOutput, { recursive: true, mode: 0o700 });
+        await mkdir(join(options.workspaceRoot, 'dist/maestro-cds'), {
+          recursive: true,
+        });
         let commandStatus: number | string | undefined;
         let descriptorFailure: unknown;
         for (let attempt = 1; attempt <= maestroDriverPortAttempts; attempt++) {
@@ -636,6 +671,7 @@ export async function openMaestroDevice(
                   '--device',
                   serial,
                   'test',
+                  ...(maestroDriverInstalled ? ['--no-reinstall-driver'] : []),
                   '--test-output-dir',
                   privateOutput,
                   '--format',
@@ -650,7 +686,10 @@ export async function openMaestroDevice(
                 ],
                 {
                   cwd: options.workspaceRoot,
-                  environment,
+                  environment: maestroCliEnvironment(
+                    environment,
+                    options.workspaceRoot,
+                  ),
                   signal: options.signal,
                   timeout: 300_000,
                   stdio: ['ignore', descriptor, descriptor],
@@ -658,6 +697,7 @@ export async function openMaestroDevice(
               );
               if (result.status !== 0)
                 commandStatus = result.status ?? 'unknown';
+              else maestroDriverInstalled = true;
             } catch {
               commandStatus = 'unknown';
             }
@@ -680,6 +720,18 @@ export async function openMaestroDevice(
             ))
           )
             break;
+        }
+        // Without a reinstall, Maestro's close leaves its driver instrumentation
+        // running, holding UiAutomation (which `uiautomator dump` then cannot
+        // use) and the accessibility state an uninstall used to clear. Stop it
+        // so every flow still leaves the device as a reinstalling run did.
+        let driverStopFailure: unknown;
+        for (const driverPackage of maestroDriverPackages) {
+          try {
+            await adb('shell', 'am', 'force-stop', driverPackage);
+          } catch (error) {
+            driverStopFailure ??= error;
+          }
         }
         let redactionFailure = false;
         try {
@@ -716,6 +768,7 @@ export async function openMaestroDevice(
           throw new Error(
             `Maestro ${basename(file)} failed (${commandStatus ?? 'output cleanup'}); diagnostics: ${output}`,
           );
+        if (driverStopFailure !== undefined) throw driverStopFailure;
       },
     };
   } catch (error) {

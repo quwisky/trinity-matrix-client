@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { MaestroDevice } from './maestro-session.mts';
 import type { NativeTargetPoint } from './maestro-target-point.mts';
 
 const downloadDirectory = '/sdcard/Download';
+const DOCUMENTS_UI = 'com.google.android.documentsui';
 
 /** Require the native button followed only by its exact product-owned file input. */
 export function assertNativeDocumentActivation(events: unknown): void {
@@ -76,6 +78,39 @@ export function photoPickerOverflowPoint(hierarchy: string): NativeTargetPoint {
   };
 }
 
+/**
+ * Read-only: the native tap that opens the picker no longer waits for
+ * Maestro's settle heuristic, so poll the native hierarchy until the picker's
+ * tab row has rendered and come to rest, within a bound.
+ */
+async function waitForPhotoPickerOverflowPoint(
+  device: MaestroDevice,
+  timeoutMs = 15_000,
+): Promise<NativeTargetPoint> {
+  const deadline = Date.now() + timeoutMs;
+  let previous: NativeTargetPoint | undefined;
+  for (;;) {
+    try {
+      // The picker sheet slides up: use the overflow point once two
+      // consecutive hierarchies place it identically.
+      const point = photoPickerOverflowPoint(
+        await device.adb('exec-out', 'uiautomator', 'dump', '/dev/tty'),
+      );
+      if (previous?.x === point.x && previous.y === point.y) return point;
+      if (Date.now() >= deadline) return point;
+      previous = point;
+    } catch (error) {
+      if (
+        !(error instanceof assert.AssertionError) ||
+        error.message !== 'Photo picker has one Photos/Albums tab row' ||
+        Date.now() >= deadline
+      )
+        throw error;
+    }
+    await delay(500);
+  }
+}
+
 /** Stage a local document in Downloads and select it through Android DocumentsUI. */
 export async function pickAndroidDocument(
   device: MaestroDevice,
@@ -90,8 +125,14 @@ export async function pickAndroidDocument(
   const remove = await device.stageFile(localPath, remotePath);
   const failures: unknown[] = [];
   try {
-    const overflow = photoPickerOverflowPoint(
-      await device.adb('exec-out', 'uiautomator', 'dump', '/dev/tty'),
+    const overflow = await waitForPhotoPickerOverflowPoint(device);
+    // DocumentsUI keeps its last view mode and root across launches on one
+    // emulator, and the flow expects its first-launch grid of Recent: a second
+    // pick in the same emulator found no "List view" to tap.
+    assert.equal(
+      await device.adb('shell', 'pm', 'clear', DOCUMENTS_UI),
+      'Success',
+      'DocumentsUI starts from its first-launch state',
     );
     await device.runFlow(
       join(workspaceRoot, 'e2e/android/flows/accounts-document-pick.yaml'),

@@ -116,8 +116,18 @@ describe('Android Space Settings resilience migration', () => {
         /AbortSignal\.any\(\[signal, AbortSignal\.timeout\(30_000\)\]\)/g,
       ),
     ).toHaveLength(3);
+    // replace() erases exactly the prefilled value it read at the caret's end.
     const focusedFill = readFileSync(focusedFillPath, 'utf8');
-    expect(focusedFill.match(/^- eraseText$/gm)).toHaveLength(2);
+    expect(focusedFill).toMatch(/^# ERASE_TEXT:/mu);
+    const client = readFileSync(clientPath, 'utf8');
+    const replace = client.slice(
+      client.indexOf('async replace('),
+      client.indexOf('async pasteSystemClipboardFocused('),
+    );
+    expect(replace.indexOf("await this.key('end');")).toBeGreaterThan(-1);
+    expect(replace.indexOf("await this.key('end');")).toBeLessThan(
+      replace.indexOf('ERASE_TEXT: await this.inputLength(selector),'),
+    );
   });
 
   it('confines the source-required CDP exception to exact menu and Account-row clicks', () => {
@@ -152,7 +162,15 @@ describe('Android Space Settings resilience migration', () => {
     expect(client).not.toContain(
       "if (allowFocusedInput) await this.key('escape')",
     );
-    expect(readFileSync(pointFillPath, 'utf8')).toContain('hideKeyboard');
+    // The point fill waits for harness-observed focus and keyboard, and the
+    // client dismisses the keyboard only while Android reports it shown.
+    const pointFill = readFileSync(pointFillPath, 'utf8');
+    expect(pointFill).toContain('http.get(READY_URL)');
+    expect(pointFill).not.toMatch(/^- hideKeyboard$/mu);
+    expect(client).toContain('readyForInput: true');
+    expect(client).toContain(
+      'if (options.readyForInput) keyboard = await this.dismissKeyboard();',
+    );
     expect(client).not.toContain('async focusWithKeyboard(');
     expect(client).toContain(
       "await this.fill('#homeserver', account.homeserver)",

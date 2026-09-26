@@ -55,6 +55,30 @@ describe('Maestro current target point endpoint', () => {
     }
   });
 
+  it('reports the latest read, so a later success supersedes an earlier miss', async () => {
+    const controller = new AbortController();
+    let reads = 0;
+    const endpoint = await openMaestroTargetPoint({
+      signal: controller.signal,
+      readPoint: async () => {
+        reads += 1;
+        if (reads === 1) throw new Error('target not rendered yet');
+        return { x: 12, y: 34 };
+      },
+    });
+    try {
+      expect((await fetch(endpoint.url)).status).toBe(500);
+      expect(endpoint.lastError?.message).toBe('target not rendered yet');
+      const ready = await fetch(endpoint.url);
+      expect(ready.status).toBe(200);
+      expect(await ready.text()).toBe('12,34');
+      expect(endpoint.lastError).toBeUndefined();
+      expect(endpoint.lastPoint).toEqual({ x: 12, y: 34 });
+    } finally {
+      await endpoint.close();
+    }
+  });
+
   it('times out an ignored read and surfaces the bounded failure', async () => {
     const controller = new AbortController();
     const endpoint = await openMaestroTargetPoint({

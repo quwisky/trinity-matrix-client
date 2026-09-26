@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { MaestroDevice } from './maestro-session.mts';
@@ -20,7 +20,11 @@ import {
   waitForNativeShellState,
   type NativeShellApplicationId,
 } from './native-shell-client.mts';
-import { openMaestroTargetPoint, type NativeTargetPoint } from './maestro-target-point.mts';
+import {
+  openMaestroReadiness,
+  openMaestroTargetPoint,
+  type NativeTargetPoint,
+} from './maestro-target-point.mts';
 import type { createNodeAccount } from '../support/node-account.mts';
 import type { createAccountFixtures } from './account-workspace-fixtures.mts';
 import type { MatrixTestResources } from '../support/test-resources.mts';
@@ -44,6 +48,15 @@ const LONG_PRESS_DURATION_MS = 750;
 const LONG_PRESS_DRIFT_PX = 2;
 const LONG_PRESS_THRESHOLD_MS = 500;
 const WORD_SELECTION_MINIMUM_OBSERVED_MS = 450;
+// Maestro no longer waits for its view-hierarchy settle heuristic after a tap,
+// so the WebView may still be delivering the trusted click when the flow ends.
+const NATIVE_OUTCOME_TIMEOUT_MS = 5_000;
+// A freshly booted, loaded emulator took more than 5 s to report the IME hidden
+// after Back; Maestro's own hideKeyboard never checked at all.
+const KEYBOARD_HIDE_TIMEOUT_MS = 15_000;
+// Below Maestro's 10 s JavaScript HTTP read timeout, so a slow read fails the
+// flow's own assertion rather than its HTTP client.
+const MAESTRO_READ_TIMEOUT_MS = 9_000;
 
 export interface AccountElement {
   readonly text: string;
@@ -291,6 +304,12 @@ export interface NativeSwipeProof {
   readonly afterClientHeight: number;
 }
 
+/** How one native keyboard dismissal ran; recorded with its action. */
+export interface NativeKeyboardDismissal {
+  readonly shownBefore: boolean;
+  readonly action: 'native-back-keyevent' | 'already-hidden';
+}
+
 export interface AccountWorkspaceCaseContext {
   readonly client: AccountWorkspaceClient;
   readonly fixtures: ReturnType<typeof createAccountFixtures>;
@@ -310,6 +329,7 @@ export class AccountWorkspaceClient {
   private active: Awaited<ReturnType<typeof startNativeShellClient>> | undefined;
   private viewport: MaestroViewport | undefined;
   private action = 0;
+  private materializedFlows = 0;
 
   readonly device: MaestroDevice;
   readonly workspaceRoot: string;
@@ -545,7 +565,10 @@ export class AccountWorkspaceClient {
   }
 
   async tap(selector: string, filter: AccountElementFilter = {}): Promise<void> {
-    await this.nativeAction('accounts-point-tap', selector, filter);
+    // Measure the point when the flow taps: Maestro starts seconds after the
+    // action does, and an Account's encryption banner arriving in between
+    // moved a point measured at the start off its target.
+    await this.tapCurrent(selector, filter);
   }
 
   async tapCurrent(selector: string, filter: AccountElementFilter = {}): Promise<void> {
@@ -1061,12 +1084,18 @@ export class AccountWorkspaceClient {
   }
 
   async fill(selector: string, value: string): Promise<void> {
+    const eraseCount = await this.inputLength(selector);
     await this.nativeAction(
       'accounts-current-point-fill',
       selector,
       {},
       { SECRET_TEXT: value },
-      { allowFocusedInput: true, currentPoint: true },
+      {
+        allowFocusedInput: true,
+        currentPoint: true,
+        readyForInput: true,
+        eraseCount,
+      },
     );
     const matches = await evaluateNative(this.webview, `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`);
     assert.equal(matches, true, `Native input reached ${selector}`);
@@ -1110,12 +1139,12 @@ export class AccountWorkspaceClient {
       let failure: unknown;
       try {
         await this.device.runFlow(
-          join(
-            this.workspaceRoot,
-            'e2e/android/flows/accounts-focused-fill.yaml',
-          ),
+          await this.eraseFlow('accounts-focused-fill', {
+            ERASE_TEXT: await this.inputLength(selector),
+          }),
           { APP_ID: this.applicationId, SECRET_TEXT: `${sentinel}${value}` },
         );
+        await this.dismissKeyboard();
         // Home only reaches the current visual line once the value wraps, which
         // deleted a character of the value and kept the sentinel; the document
         // chord reaches the true start (and end) of a wrapped textarea.
@@ -1299,9 +1328,12 @@ export class AccountWorkspaceClient {
     await this.tapCurrent(selector);
     await this.key('end');
     await this.device.runFlow(
-      join(this.workspaceRoot, 'e2e/android/flows/accounts-focused-fill.yaml'),
+      await this.eraseFlow('accounts-focused-fill', {
+        ERASE_TEXT: await this.inputLength(selector),
+      }),
       { APP_ID: this.applicationId, SECRET_TEXT: value },
     );
+    await this.dismissKeyboard();
     const matches = await evaluateNative(
       this.webview,
       `document.querySelector(${JSON.stringify(selector)})?.value === ${JSON.stringify(value)}`,
@@ -1596,6 +1628,10 @@ export class AccountWorkspaceClient {
       readonly allowDocumentReplacementFrom?: number;
       readonly fileInputSelector?: string;
       readonly exposedPoint?: boolean;
+      /** Serve READY_URL once the tapped input is focused with the keyboard shown. */
+      readonly readyForInput?: boolean;
+      /** Characters the flow erases before typing; see {@link eraseFlow}. */
+      readonly eraseCount?: number;
     } = {},
   ): Promise<void> {
     assertIdentifierFreeSelector(selector, filter);
@@ -1662,8 +1698,10 @@ export class AccountWorkspaceClient {
     })()`);
     let actionError: unknown;
     let pointEndpoint: Awaited<ReturnType<typeof openMaestroTargetPoint>> | undefined;
+    let readyEndpoint: Awaited<ReturnType<typeof openMaestroReadiness>> | undefined;
     let trustedEvents: unknown = null;
     let documentReplaced = false;
+    let keyboard: NativeKeyboardDismissal | null = null;
     try {
       console.info(`[accounts] native action ${actionId}: ${flow} ${selector}`);
       const flowVariables: Record<string, string> = { APP_ID: this.applicationId, POINT: `${initialPoint.x},${initialPoint.y}`, ...variables };
@@ -1674,29 +1712,34 @@ export class AccountWorkspaceClient {
         });
         flowVariables.POINT_URL = pointEndpoint.url;
       }
-      await this.device.runFlow(join(this.workspaceRoot, `e2e/android/flows/${flow}.yaml`), flowVariables);
-      const outcome = await evaluateNative(
-        this.webview,
-        `({events:window.__trinityAccountTap?.events ?? [],documentTimeOrigin:performance.timeOrigin})`,
+      if (options.readyForInput) {
+        readyEndpoint = await openMaestroReadiness({
+          signal: this.signal,
+          waitReady: (operationSignal) =>
+            this.waitForInputReady(selector, filter, operationSignal),
+        });
+        flowVariables.READY_URL = readyEndpoint.url;
+      }
+      await this.device.runFlow(
+        options.eraseCount === undefined
+          ? join(this.workspaceRoot, `e2e/android/flows/${flow}.yaml`)
+          : await this.eraseFlow(flow, { ERASE_TEXT: options.eraseCount }),
+        flowVariables,
       );
-      assert(outcome && typeof outcome === 'object');
-      assert('events' in outcome && Array.isArray(outcome.events));
-      assert(
-        'documentTimeOrigin' in outcome &&
-          typeof outcome.documentTimeOrigin === 'number',
+      const events = await this.nativeActionEvents(
+        selector,
+        filter,
+        (observed, focused) =>
+          observed.activated ||
+          (allowDocumentReplacementFrom !== undefined &&
+            observed.documentTimeOrigin !== allowDocumentReplacementFrom) ||
+          ((allowFocusTransition || allowFocusedInput) && focused),
       );
-      const events = outcome.events;
-      trustedEvents = events;
+      trustedEvents = events.events;
       documentReplaced =
         allowDocumentReplacementFrom !== undefined &&
-        outcome.documentTimeOrigin !== allowDocumentReplacementFrom;
-      const activated = events.some(
-        event =>
-          event &&
-          typeof event === 'object' &&
-          event.trusted === true &&
-          event.matched === true,
-      );
+        events.documentTimeOrigin !== allowDocumentReplacementFrom;
+      const activated = events.activated;
       if (!activated && !documentReplaced && allowFocusTransition) {
         assert.equal(
           initiallyFocused,
@@ -1740,14 +1783,17 @@ export class AccountWorkspaceClient {
           `Native action ${actionId} activated ${selector}`,
         );
       }
-      if (fileInputSelector !== undefined) assertNativeDocumentActivation(events);
-      else assert(documentReplaced || events.every(event => event && typeof event === 'object' && event.matched === true), `Native action ${actionId} hit only ${selector}`);
+      if (fileInputSelector !== undefined) assertNativeDocumentActivation(events.events);
+      else assert(documentReplaced || events.events.every(event => event !== null && typeof event === 'object' && (event as { matched?: unknown }).matched === true), `Native action ${actionId} hit only ${selector}`);
+      if (options.readyForInput) keyboard = await this.dismissKeyboard();
     } catch (error) {
       actionError = error;
     } finally {
       const failures: unknown[] = [];
       if (pointEndpoint?.lastError !== undefined) failures.push(pointEndpoint.lastError);
+      if (readyEndpoint?.lastError !== undefined) failures.push(readyEndpoint.lastError);
       try { await pointEndpoint?.close(); } catch (error) { failures.push(error); }
+      try { await readyEndpoint?.close(); } catch (error) { failures.push(error); }
       if (currentPoint) {
         try {
           await this.record(`current-point-${actionId}`, {
@@ -1757,6 +1803,9 @@ export class AccountWorkspaceClient {
             freshPoint: pointEndpoint?.lastPoint ?? null,
             trustedEvents,
             documentReplaced,
+            ...(options.readyForInput
+              ? { inputReady: readyEndpoint?.ready ?? false, keyboard }
+              : {}),
           });
         } catch (error) { failures.push(error); }
       }
@@ -1766,6 +1815,192 @@ export class AccountWorkspaceClient {
       if (failures.length === 1) throw failures[0];
       if (failures.length) throw new AggregateError(failures, 'Native account action and cleanup failed');
     }
+  }
+
+  /**
+   * Materialize a checked-in flow with exact erases in the ignored proof
+   * directory. Maestro parses `charactersToErase` before it expands variables,
+   * and each separate one-character erase costs a settle, so every `# NAME`
+   * marker line becomes one erase of the measured length, or nothing when the
+   * input was read as empty.
+   */
+  private async eraseFlow(
+    flow: string,
+    erases: Readonly<Record<string, number>>,
+  ): Promise<string> {
+    let text = await readFile(
+      join(this.workspaceRoot, `e2e/android/flows/${flow}.yaml`),
+      'utf8',
+    );
+    for (const [marker, count] of Object.entries(erases)) {
+      assert(
+        Number.isSafeInteger(count) && count >= 0,
+        'Native erase length is a non-negative integer',
+      );
+      const line = new RegExp(`^# ${marker}\\b.*\\n`, 'mu');
+      assert.equal(
+        text.match(new RegExp(line.source, 'gmu'))?.length,
+        1,
+        `Flow ${flow} has one ${marker} marker`,
+      );
+      text = text.replace(
+        line,
+        count === 0 ? '' : `- eraseText:\n    charactersToErase: ${count}\n`,
+      );
+    }
+    const path = join(this.output, `${flow}-${++this.materializedFlows}.yaml`);
+    await writeFile(path, text);
+    return path;
+  }
+
+  /**
+   * Read-only: the trusted clicks captured for one native action. Polls until
+   * `accepts` holds or a bounded deadline passes, then returns the latest
+   * observation for the caller's exact assertions.
+   */
+  private async nativeActionEvents(
+    selector: string,
+    filter: AccountElementFilter,
+    accepts: (
+      observed: {
+        readonly activated: boolean;
+        readonly documentTimeOrigin: number;
+      },
+      focused: boolean,
+    ) => boolean,
+  ): Promise<{
+    readonly events: unknown[];
+    readonly activated: boolean;
+    readonly documentTimeOrigin: number;
+  }> {
+    const deadline = Date.now() + NATIVE_OUTCOME_TIMEOUT_MS;
+    for (;;) {
+      this.signal.throwIfAborted();
+      let observed:
+        | {
+            readonly events: unknown[];
+            readonly activated: boolean;
+            readonly documentTimeOrigin: number;
+            readonly focused: boolean;
+          }
+        | undefined;
+      try {
+        const outcome = await evaluateNative(
+          this.webview,
+          `(() => {
+            const {selector,filter}=${JSON.stringify({ selector, filter })};
+            const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
+            return {events:window.__trinityAccountTap?.events ?? [],documentTimeOrigin:performance.timeOrigin,focused:es.length===1&&document.activeElement===es[0]};
+          })()`,
+        );
+        assert(outcome && typeof outcome === 'object');
+        assert('events' in outcome && Array.isArray(outcome.events));
+        assert(
+          'documentTimeOrigin' in outcome &&
+            typeof outcome.documentTimeOrigin === 'number',
+        );
+        assert('focused' in outcome && typeof outcome.focused === 'boolean');
+        observed = {
+          events: outcome.events,
+          documentTimeOrigin: outcome.documentTimeOrigin,
+          focused: outcome.focused,
+          activated: outcome.events.some(
+            (event: unknown) =>
+              event !== null &&
+              typeof event === 'object' &&
+              (event as { trusted?: unknown }).trusted === true &&
+              (event as { matched?: unknown }).matched === true,
+          ),
+        };
+      } catch (error) {
+        // A replaced document can briefly refuse evaluation while it loads.
+        if (Date.now() >= deadline) throw error;
+      }
+      if (observed && (accepts(observed, observed.focused) || Date.now() >= deadline)) {
+        return observed;
+      }
+      await delay(100, undefined, { signal: this.signal });
+    }
+  }
+
+  /** Read-only: the current value length of exactly one input or textarea. */
+  private async inputLength(
+    selector: string,
+    filter: AccountElementFilter = {},
+  ): Promise<number> {
+    assertIdentifierFreeSelector(selector, filter);
+    const length = await evaluateNative(
+      this.webview,
+      `(() => {
+        const {selector,filter}=${JSON.stringify({ selector, filter })};
+        const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
+        return es.length===1&&(es[0] instanceof HTMLInputElement||es[0] instanceof HTMLTextAreaElement)?es[0].value.length:null;
+      })()`,
+    );
+    assert(
+      typeof length === 'number' && Number.isSafeInteger(length) && length >= 0,
+      `Native input length is readable for exactly one ${selector}`,
+    );
+    return length;
+  }
+
+  private async keyboardShown(): Promise<boolean> {
+    return /mInputShown=true/u.test(
+      await this.device.adb('shell', 'dumpsys', 'input_method'),
+    );
+  }
+
+  /**
+   * Read-only readiness for native typing: exactly one matching input holds
+   * focus and Android reports its soft keyboard shown.
+   */
+  private async waitForInputReady(
+    selector: string,
+    filter: AccountElementFilter,
+    operationSignal: AbortSignal,
+  ): Promise<void> {
+    await waitForNativeShellState(
+      async () => {
+        const focused = await evaluateNative(
+          this.webview,
+          `(() => {
+            const {selector,filter}=${JSON.stringify({ selector, filter })};
+            const es=[...document.querySelectorAll(selector)].filter(e=>(${ELEMENT_FILTER})(e,filter));
+            return es.length===1&&document.activeElement===es[0];
+          })()`,
+        );
+        return focused === true && (await this.keyboardShown());
+      },
+      (ready) => ready,
+      `focused ${selector} with the soft keyboard shown`,
+      operationSignal,
+      MAESTRO_READ_TIMEOUT_MS,
+    );
+  }
+
+  /**
+   * Dismiss the soft keyboard only while Android reports it shown. Maestro's
+   * own hideKeyboard is this Back key event followed by a settle heuristic; an
+   * unconditional Back could instead leave the current route. Afterwards the
+   * keyboard must report hidden and the WebView must regain its full bounds.
+   */
+  private async dismissKeyboard(): Promise<NativeKeyboardDismissal> {
+    const shownBefore = await this.keyboardShown();
+    if (shownBefore) {
+      await this.device.adb('shell', 'input', 'keyevent', '4');
+      await waitForNativeShellState(
+        () => this.keyboardShown(),
+        (shown) => !shown,
+        'soft keyboard hidden after the native Back key event',
+        this.signal,
+        KEYBOARD_HIDE_TIMEOUT_MS,
+      );
+    }
+    await this.waitForFullViewportNativeBounds();
+    return {
+      shownBefore,
+      action: shownBefore ? 'native-back-keyevent' : 'already-hidden',
+    };
   }
 
   async key(key: AndroidKeyboardKey): Promise<void> {
@@ -1819,46 +2054,14 @@ export class AccountWorkspaceClient {
 
   async hideKeyboard(): Promise<void> {
     const actionId = ++this.action;
-    const inputMethod = await this.device.adb(
-      'shell',
-      'dumpsys',
-      'input_method',
-    );
-    const shown = /mInputShown=true/u.test(inputMethod);
+    const shown = await this.keyboardShown();
     await this.record(`keyboard-dismiss-${actionId}`, {
       shownBefore: shown,
-      action: shown ? 'maestro-hideKeyboard' : 'already-hidden',
+      action: shown ? 'native-back-keyevent' : 'already-hidden',
     });
-    if (!shown) {
-      console.info(
-        `[accounts] native action ${actionId}: keyboard already hidden`,
-      );
-      await this.waitForFullViewportNativeBounds();
-      return;
-    }
-    const flow = join(this.output, `accounts-hide-keyboard-${actionId}.yaml`);
-    await writeFile(
-      flow,
-      `appId: ${this.applicationId}\n---\n- hideKeyboard\n`,
-    );
-    console.info(`[accounts] native action ${actionId}: hide keyboard`);
-    let failure: unknown;
-    try {
-      await this.device.runFlow(flow, {});
-    } catch (error) {
-      failure = error;
-    }
-    try {
-      await this.waitForFullViewportNativeBounds();
-    } catch (error) {
-      if (failure !== undefined)
-        throw new AggregateError(
-          [failure, error],
-          'Native keyboard dismissal and viewport restoration failed',
-        );
-      throw error;
-    }
-    if (failure !== undefined) throw failure;
+    if (shown) console.info(`[accounts] native action ${actionId}: hide keyboard`);
+    else console.info(`[accounts] native action ${actionId}: keyboard already hidden`);
+    await this.dismissKeyboard();
   }
 
   installDocumentScript(source: string): Promise<() => Promise<void>> {

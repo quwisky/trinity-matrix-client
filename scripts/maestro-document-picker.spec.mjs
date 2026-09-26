@@ -99,7 +99,8 @@ function device({ flowFailure } = {}) {
       },
       adb: vi.fn(async (...args) => {
         calls.push(['adb', ...args]);
-        return args[0] === 'exec-out' ? pickerHierarchy : '';
+        if (args[0] === 'exec-out') return pickerHierarchy;
+        return args.includes('clear') ? 'Success' : '';
       }),
       runFlow: vi.fn(async (file, variables) => {
         calls.push(['flow', file, variables]);
@@ -122,7 +123,10 @@ describe('Android document picker staging', () => {
 
     expect(fixture.calls).toEqual([
       ['adb', 'push', '/tmp/photo.png', '/sdcard/Download/space-photo.png'],
+      // The overflow point is used once two hierarchies agree on it.
       ['adb', 'exec-out', 'uiautomator', 'dump', '/dev/tty'],
+      ['adb', 'exec-out', 'uiautomator', 'dump', '/dev/tty'],
+      ['adb', 'shell', 'pm', 'clear', 'com.google.android.documentsui'],
       [
         'flow',
         flowPath,
@@ -134,6 +138,32 @@ describe('Android document picker staging', () => {
       ],
       ['adb', 'shell', 'rm', '-f', '/sdcard/Download/space-photo.png'],
     ]);
+  });
+
+  it('waits for the photo picker tab row before measuring its overflow', async () => {
+    const fixture = device();
+    let dumps = 0;
+    fixture.device.adb.mockImplementation(async (...args) => {
+      fixture.calls.push(['adb', ...args]);
+      if (args[0] !== 'exec-out')
+        return args.includes('clear') ? 'Success' : '';
+      dumps += 1;
+      return dumps === 1 ? '<hierarchy></hierarchy>' : pickerHierarchy;
+    });
+
+    await pickAndroidDocument(
+      fixture.device,
+      workspaceRoot,
+      '/tmp/photo.png',
+      'space-photo.png',
+    );
+
+    expect(dumps).toBe(3);
+    expect(fixture.calls.find((call) => call[0] === 'flow')?.[2]).toMatchObject(
+      {
+        OVERFLOW_POINT: '1007,750',
+      },
+    );
   });
 
   it.each(['nested/photo.png', 'nested\\photo.png'])(
@@ -168,7 +198,10 @@ describe('Android document picker staging', () => {
 
     expect(fixture.calls).toEqual([
       ['adb', 'push', '/tmp/photo.png', '/sdcard/Download/space-photo.png'],
+      // The overflow point is used once two hierarchies agree on it.
       ['adb', 'exec-out', 'uiautomator', 'dump', '/dev/tty'],
+      ['adb', 'exec-out', 'uiautomator', 'dump', '/dev/tty'],
+      ['adb', 'shell', 'pm', 'clear', 'com.google.android.documentsui'],
       [
         'flow',
         flowPath,

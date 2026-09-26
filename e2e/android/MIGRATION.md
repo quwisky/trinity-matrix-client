@@ -98,6 +98,38 @@ suite shares these layers:
 
 Suites keep their digest-based checks of the identifiers they register.
 
+## Shared native actions and sign-in
+
+The Account-workspace suites share the native client in
+[`account-workspace-client.mts`](account-workspace-client.mts). Its actions are
+tuned so each proves its outcome read-only instead of paying for Maestro
+heuristics ([#839](https://github.com/quwisky/trinity-matrix-client/issues/839)):
+
+- One device lease installs the Maestro driver with its first completed flow;
+  later flows pass `--no-reinstall-driver`. After every flow the driver's
+  instrumentation is force-stopped, since without the uninstall it would keep
+  holding UiAutomation. Every flow opts out of Maestro analytics and reuses one
+  JVM class-data archive under `dist/maestro-cds`.
+- A point tap taps once, with `retryTapIfNoChange: false` and
+  `waitToSettleTimeoutMs: 1` in place of Maestro's view-hierarchy "UI changed"
+  wait. The client then polls, for up to 5 seconds, for the trusted click on the
+  exact target, or the focus or document replacement the action allows, and
+  still requires every captured click to hit that target.
+- A point fill types only after a loopback readiness read observes the exact
+  input focused with Android's soft keyboard shown. Erases are exact: the
+  client reads the input's value length and writes the checked-in flow, with
+  its `# ERASE_TEXT` marker replaced by one erase of that length or by nothing
+  for an empty input, to the ignored proof directory. Maestro parses
+  `charactersToErase` before it expands variables.
+- The client dismisses the keyboard with the Android Back key event that
+  Maestro's `hideKeyboard` sends, but only while `dumpsys input_method` reports
+  the keyboard shown, and then requires it hidden and the WebView at its full
+  bounds. No shared-client flow sends an unconditional Back.
+- A document pick polls the native hierarchy until the photo picker's tab row
+  has rendered and come to rest, and clears DocumentsUI first: DocumentsUI keeps
+  its view mode across launches, and the pick flow expects its first-launch
+  state, so a second pick on one emulator used to fail.
+
 ## Hosted shard layout
 
 `.github/workflows/ci.yml` is the authority for current Android shard
@@ -4199,7 +4231,7 @@ restored focus.
 
 The second stage natively selects offsets 2–6 and proves both Cancel and
 Preview preserve them. Keyboard dismissal first reads Android IME state: it
-runs Maestro `hideKeyboard` only when the IME is shown, avoiding an accidental
+sends the Back key event only when the IME is shown, avoiding an accidental
 Back navigation after mobile Cancel has already focused the Aa trigger. The
 third stage enters its draft, navigates through the real Settings and
 Appearance UI, selects Larger natively, force-stops the installed host and
