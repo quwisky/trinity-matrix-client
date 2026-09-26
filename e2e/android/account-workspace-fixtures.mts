@@ -42,6 +42,19 @@ export interface WorkspaceImageEvent {
   readonly msgtype: 'm.image';
 }
 
+/** One REST-arranged `m.image`: the uploaded MXC URI and the sent event id. */
+export interface WorkspaceSentImage {
+  readonly contentUri: string;
+  readonly eventId: string;
+}
+
+export interface WorkspaceImageMessage {
+  readonly png: Uint8Array;
+  readonly filename: string;
+  readonly body: string;
+  readonly transactionId: string;
+}
+
 export interface WorkspaceLocationEvent {
   readonly eventId: string;
   readonly sender: string;
@@ -178,6 +191,11 @@ export function createAccountFixtures(
     reason: string,
   ): Promise<void>;
   sendMessage(account: NodeWorkspaceAccount, roomId: string, body: string, transactionId: string): Promise<string>;
+  sendImageMessage(
+    account: NodeWorkspaceAccount,
+    roomId: string,
+    image: WorkspaceImageMessage,
+  ): Promise<WorkspaceSentImage>;
   createMessageActionSheetHistory(
     account: NodeWorkspaceAccount,
     roomName: string,
@@ -671,6 +689,46 @@ export function createAccountFixtures(
       { msgtype: 'm.text', body },
     );
     return stringField(response, 'event_id', 'Matrix fixture sent-message event id');
+  }
+
+  /**
+   * Upload exact PNG bytes as `image/png` under `filename` and send one `m.image`
+   * referencing the returned MXC URI. The access token stays in this closure.
+   */
+  async function sendImageMessage(
+    sender: NodeWorkspaceAccount,
+    roomId: string,
+    image: WorkspaceImageMessage,
+  ): Promise<WorkspaceSentImage> {
+    const session = access(sender);
+    const response = await fetch(
+      `${SYNAPSE_HTTP}/_matrix/media/v3/upload?filename=${encodeURIComponent(image.filename)}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          'Content-Type': 'image/png',
+        },
+        body: new Blob([Uint8Array.from(image.png).buffer], { type: 'image/png' }),
+        signal: requestSignal(signal),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(`Matrix fixture image upload failed with HTTP ${response.status}`);
+    }
+    const uploaded = record(await response.json(), 'Matrix fixture image upload response');
+    const contentUri = stringField(uploaded, 'content_uri', 'Matrix fixture image content uri');
+    assert(contentUri.startsWith('mxc://'), 'Matrix fixture image content uri must be MXC');
+    const sent = await request(
+      session,
+      `/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${encodeURIComponent(image.transactionId)}`,
+      'PUT',
+      { msgtype: 'm.image', body: image.body, url: contentUri },
+    );
+    return {
+      contentUri,
+      eventId: stringField(sent, 'event_id', 'Matrix fixture sent-image event id'),
+    };
   }
 
   async function createMessageActionSheetHistory(
@@ -1310,6 +1368,7 @@ export function createAccountFixtures(
     join,
     ban,
     sendMessage,
+    sendImageMessage,
     createMessageActionSheetHistory,
     messageActionSheetReactionEvents,
     createJumpToDateHistory,

@@ -323,10 +323,11 @@ jobs:
     # durations observed across the ten preceding runs, a 45-minute retained
     # Playwright command budget and 15 minutes for setup/diagnostics:
     # shard 1 about 113 native minutes, shard 2 about 117, shard 3 about 158
-    # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 106.
+    # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 118.
     # Shard 4's figure adds a provisional 30-40 minutes for message-links,
     # shard 5's a provisional 15-20 minutes for message-markdown, and shard
     # 1's a provisional 6-8 minutes for message-poll.
+    # Shard 6's figure adds a provisional 12 minutes for message-quote.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
@@ -449,6 +450,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'space-settings-resilience-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'member-role-live-updates-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'room-widget-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:room-widget-settings; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-quote-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:message-quote; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'account-password-change-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:account-password-change; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'clear-all-data-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:clear-all-data; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'password-registration-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:password-registration; fi
@@ -526,6 +528,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_POLL_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-poll/message-poll/publication-safe' -print -quit)" ]; then
             echo 'message-poll-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-quote diagnostics
+        id: message-quote-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-quote-started == 'true' }}
+        env:
+          MESSAGE_QUOTE_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_QUOTE_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-quote/message-quote/publication-safe' -print -quit)" ]; then
+            echo 'message-quote-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
@@ -979,6 +991,13 @@ jobs:
           surface: android-message-poll
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-poll/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-quote-started == 'true' && steps.message-quote-artifact-gate.outputs.message-quote-safe == 'true' }}
+        with:
+          surface: android-message-quote
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-quote/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}

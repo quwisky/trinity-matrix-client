@@ -5974,3 +5974,153 @@ Three unchanged installed-Android first attempts, the exact Playwright
 predecessor passing sequentially at retry 0, and audited original-attempt
 hosted Android/browser/renderer artifacts form the acceptance gate for #749;
 wiring alone does not establish parity or authorize issue closure.
+
+## Message-quote journeys
+
+Suite `android.message-quote` migrates both definitions of the unchanged quote
+predecessor `e2e/browser/journeys/conversations/message-quote.spec.mts` (218
+lines, SHA-256
+`50b0e8a42aa1d61ee59b1c5dce97664365977aef7bc8b36aa3502e23e731064f`) into one
+serial two-stage installed-Android Node/Maestro suite. The Playwright
+predecessor remains enabled and untouched. The stages map to definition
+42–115 (`quote-block`) and to the Android branches 183–187 and 201–205 of
+definition 117–217 (`quote-capability`); the desktop hover-toolbar and
+overflow-menu branches 88–90, 188–197 and 206–216, and their sites 193, 212
+and 215, are excluded. Both stages expand the predecessor's module-local
+Room-opening helper at 29–37. The guard also pins `e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`),
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`) and
+`e2e/support/message-composer.mts`
+(`4b81585eea679d11dabd285449c9b004b6d70612ca777186ac34e44705c12d9d`), the
+paragraphs `alpha ${runId}` and `omega ${runId}`, the inserted block
+`> ${first}\n>\n> ${second}\n\n`, the answer `my point ${runId}`, the control
+`plain ${runId}`, the Room names `Quote ${runId}` and `Quote none ${runId}`,
+the run suffixes `q` and `qn`, and the image fixture: the 1×1 PNG bytes,
+`image/png`, `filename=shot.png`, transaction `${runId}img` and
+`{ msgtype: 'm.image', body: 'shot.png', url: mxc }`.
+
+The issue pins the predecessor at
+`fdd2a9dc98324aaea47a4d6fd3bf768bd35756119eafd4751faee849da5baf66`, its
+`develop` version. This branch carries the Send-button change, which imported
+`sendComposerDraft` and replaced three `composer.press('Enter')` calls with it;
+the guard reconstructs the `develop` file from the pinned one and proves it
+hashes to the issue pin. Every span therefore sits one line below the issue's.
+`sendComposerDraft` waits for the composer's Send button (helper line 53)
+before its mobile tap, an `expect` the Android path reaches, so each of the
+three sends expands one composer-send readiness record, as in the Markdown
+suite. The issue's 20 records are the 23 below without those three.
+
+The suite records 23 ordered, globally unique identities: 13 direct + 10
+inherited, with stage totals 12/11. The inherited sites are two Room
+readiness (the local `openRoom`, line 34), three composer-send readiness
+(`sendComposerDraft`, line 53), two real-server echoes (`waitForSent`, app
+line 178) and three action-sheet readiness (`openMessageActionSheet`, app
+line 220). Helper expansion is resolved by binding and the desktop branches
+are read from the AST as the `else` of `if (isAndroidE2E)`. `34@71` reads as
+helper line 34 reached from the call on line 71.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `quote-block` | 34@71 | inherited | `openRoom` composer visible | `message-quote.quote-block.room-ready` |
+| `quote-block` | 53@79 | inherited | `sendComposerDraft` Send enabled for the source | `message-quote.quote-block.source-send-enabled` |
+| `quote-block` | 82 | direct | Source row visible | `message-quote.quote-block.source-visible` |
+| `quote-block` | 178@83 | inherited | `waitForSent` source row has a `$` event id | `message-quote.quote-block.source-server-echo` |
+| `quote-block` | 220@86 | inherited | `openMessageActionSheet` sheet visible | `message-quote.quote-block.sheet-ready` |
+| `quote-block` | 94 | direct | Composer is exactly the inserted `>` block | `message-quote.quote-block.composer-quote` |
+| `quote-block` | 53@101 | inherited | `sendComposerDraft` Send enabled for the quote | `message-quote.quote-block.answer-send-enabled` |
+| `quote-block` | 104 | direct | Answer row visible | `message-quote.quote-block.answer-visible` |
+| `quote-block` | 110 | direct | Exactly one blockquote | `message-quote.quote-block.one-blockquote` |
+| `quote-block` | 111 | direct | Blockquote contains the first paragraph | `message-quote.quote-block.quotes-first` |
+| `quote-block` | 112 | direct | Blockquote contains the second paragraph | `message-quote.quote-block.quotes-second` |
+| `quote-block` | 114 | direct | Blockquote excludes the answer | `message-quote.quote-block.answer-outside` |
+| `quote-capability` | 34@172 | inherited | `openRoom` composer visible | `message-quote.quote-capability.room-ready` |
+| `quote-capability` | 53@178 | inherited | `sendComposerDraft` Send enabled for the control | `message-quote.quote-capability.control-send-enabled` |
+| `quote-capability` | 181 | direct | Text control row visible | `message-quote.quote-capability.control-visible` |
+| `quote-capability` | 178@182 | inherited | `waitForSent` control row has a `$` event id | `message-quote.quote-capability.control-server-echo` |
+| `quote-capability` | 220@184 | inherited | `openMessageActionSheet` text sheet visible | `message-quote.quote-capability.text-sheet-ready` |
+| `quote-capability` | 185 | direct | Text sheet shows Quote | `message-quote.quote-capability.text-quote-visible` |
+| `quote-capability` | 187 | direct | Sheet gone after Cancel | `message-quote.quote-capability.text-sheet-closed` |
+| `quote-capability` | 200 | direct | Image row visible | `message-quote.quote-capability.image-visible` |
+| `quote-capability` | 220@202 | inherited | `openMessageActionSheet` image sheet visible | `message-quote.quote-capability.image-sheet-ready` |
+| `quote-capability` | 204 | direct | Image sheet shows Copy | `message-quote.quote-capability.image-copy-visible` |
+| `quote-capability` | 205 | direct | Image sheet has no Quote | `message-quote.quote-capability.image-no-quote` |
+
+Each stage arranges one fresh Account and private Room through real Synapse.
+The quoted source, the answer and the text control are never seeded: Maestro
+owns login, Room opening, every keystroke, every Send, each long press, Quote
+and Cancel. REST sends only the pinned image fixture, through the one additive
+`sendImageMessage` fixture in `account-workspace-fixtures.mts`, and reads the
+Room. The source is typed as the predecessor types it: the first paragraph
+through the shared focused fill, two native Enter presses (a line break each
+on a mobile device) and the second paragraph appended at the caret. Each
+paragraph starts with a lowercase letter that Android capitalises at a new
+paragraph, so it is typed behind the digit sentinel `1` of the Markdown suite;
+the caret walks back, Backspace removes the sentinel and Ctrl+End restores the
+caret. Every injected key waits, read-only, for the exact composer value and
+caret the previous key produced. The answer is appended the same way after
+Quote, which leaves the composer focused with its caret at the end. Every
+send dismisses the keyboard, proves the Send button enabled for the exact
+draft and taps it.
+
+Documented reinterpretations of the predecessor:
+
+- **Server truth.** After line 178 the Room is read with the raw
+  `/messages?dir=b&limit=50` page. It must hold exactly the native sends so
+  far, oldest first, with the reconciled row ids, the active sender, original
+  `m.text` content and the exact bodies, including the source's real blank
+  line.
+- **Quote, not reply.** Before any rendered record the quote event must carry
+  body exactly `> alpha …\n>\n> omega …\n\nmy point …`, `format`
+  `org.matrix.custom.html`, and a `formatted_body` with exactly one
+  `<blockquote>` holding both paragraphs and not the answer, followed by the
+  answer. No `m.relates_to` of any kind, so no `m.in_reply_to`, and no reply
+  fallback.
+- **Rendered blockquote.** Lines 104–114 read the reconciled quote row by its
+  event id: one visible real `blockquote` inside the rendered Markdown text,
+  holding both paragraphs, with the answer rendered outside it.
+- **Exact rows without identifiers.** Each long press targets
+  `.scroll .msg[data-mid^="$"]` with a text filter (the first paragraph, the
+  control, or `shot.png` as the predecessor finds the image row); a read-only
+  observation first proves that exactly one row matches and that it is the
+  proved event.
+- **Android sheets.** Each sheet is proved as the message-forward suite proves
+  it: one visible `Message actions` dialog with one visible Forward action.
+  Cancel, the sheet's last button, is reached with bounded native in-sheet
+  swipes. Quote absence on the image is read from the same open sheet that
+  shows exactly one visible Copy.
+- **Image row.** The pinned fixture carries no `info.mimetype`, so the
+  renderer classifies it as `application/octet-stream` and draws a download
+  tile named `shot.png`, the text the predecessor's `hasText` matches. Line
+  200 requires exactly one such row, the fixture's event id, one media
+  attachment and no message text.
+
+Both stages run at the Pixel 5 profile (393×727 CSS pixels, DPR 2.75, mobile
+and touch) and write `profile-applied.json`. Every Room, Account, event and
+media identifier is registered as a secret before it can reach a diagnostic;
+records hold only digests, and the scan also rejects `access_token` values.
+
+```bash
+pnpm nx run trinity-e2e-android:message-quote --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-quote
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt,
+zero retries, and the suite stops at the first failed stage. Its provisional
+budgets are a 20-minute Node test, a 25-minute Nx timeout and a 30-minute CI
+wrapper, to be re-derived from the local acceptance runs. Shard 6 runs it
+last, after Room widget settings, and its budget comment adds a provisional
+12 minutes (about 118 native minutes). Cleanup runs every bounded step even
+after a failure; a cleanup, scrub or scan failure blocks publication. Failure
+text rethrown to the job log keeps only error names and messages with every
+registered identifier redacted. Diagnostics are scrubbed of raw and encoded
+identifiers, tokens, authorization headers, rasters and Preferences XML. The
+`android-message-quote` upload requires both the started flag and the
+post-scan `publication-safe` marker.
+
+Three unchanged installed-Android first attempts, both exact Playwright
+predecessor definitions passing sequentially at retry 0, and audited
+original-attempt hosted Android/browser/renderer artifacts form the
+acceptance gate for #750; wiring alone does not establish parity or
+authorize issue closure.
