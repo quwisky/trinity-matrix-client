@@ -6375,3 +6375,132 @@ predecessor definition passing sequentially at retry 0, and audited
 original-attempt hosted Android/browser/renderer artifacts form the
 acceptance gate for #752; wiring alone does not establish parity or
 authorize issue closure.
+
+## Message-spoiler journey
+
+Suite `android.message-spoiler` migrates the single spoiler-reveal definition
+of the unchanged predecessor
+`e2e/browser/journeys/conversations/message-spoiler.spec.mts` (111 lines,
+SHA-256
+`d89c5751a43ac54b44329e2d65b9e7b0db2974118f6198d2fff1d6f0d050f673`, the
+issue's pin, which this branch carries unchanged) into one serial one-stage
+installed-Android Node/Maestro suite. The Playwright predecessor
+remains enabled and untouched. The stage maps to definition 84–110
+(`conceal-reveal`) and expands the predecessor's module-local Room-opening
+helper at 71–79; its module-local fixture helper `seedRoomWithSpoiler` at
+20–69 reaches no `expect` site. The guard also pins `e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`), the run
+suffix `s`, the username `spoiler-user-${runId}`, the Room name
+`Spoiler E2E ${runId}` created with no preset, the secret `answer-${runId}`,
+the transaction `spoiler-${runId}`, the exact content (`m.text`, body
+`the secret is ${secret}`, format `org.matrix.custom.html` and formatted body
+`the secret is <span data-mx-spoiler>${secret}</span>`), the leaf locator
+`.scroll .mx-spoiler`, the `/is-revealed/` class matcher and the transparent
+colour `rgba(0, 0, 0, 0)`.
+
+The suite records 6 ordered, unique identities: 5 direct + 1 inherited. The
+inherited site is the Room readiness of the local `openRoom` (line 76).
+Helper expansion is resolved by binding; `seedRoomWithSpoiler`,
+`registerUser` and `login` add no site, and `testResourceId` binds outside
+`support/`. `76@96` reads as helper line 76 reached from the call on line 96.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `conceal-reveal` | 76@96 | inherited | `openRoom` composer visible | `message-spoiler.conceal-reveal.room-ready` |
+| `conceal-reveal` | 101 | direct | Rendered spoiler leaf visible | `message-spoiler.conceal-reveal.spoiler-visible` |
+| `conceal-reveal` | 102 | direct | Leaf begins without `is-revealed` | `message-spoiler.conceal-reveal.initial-unrevealed` |
+| `conceal-reveal` | 104 | direct | Leaf paints its text fully transparent | `message-spoiler.conceal-reveal.initial-transparent` |
+| `conceal-reveal` | 108 | direct | Same leaf gains `is-revealed` | `message-spoiler.conceal-reveal.revealed` |
+| `conceal-reveal` | 109 | direct | Leaf no longer paints transparent text | `message-spoiler.conceal-reveal.revealed-painted` |
+
+REST creates one fresh Account and its Room, and a suite-local fixture
+(`message-spoiler-fixture.mts`) sends the one formatted message through a
+closure-private session that it logs out in a guarded, bounded cleanup; the
+shared fixtures send only plain text, so they stay unchanged. Before any UI
+step the Room, read from real Synapse, must hold exactly that one
+`m.room.message` with content deep-equal to the predecessor's and exactly one
+`data-mx-spoiler` span. Maestro owns login, Room opening and the spoiler
+activation: a native tap on `.scroll .msg[data-mid^="$"] .mx-spoiler` with an
+exact-text filter, which the client proves delivered a trusted click inside
+the leaf. Renderer inspection is read-only; it never calls the reveal
+handler, adds a class or changes a style.
+
+Documented reinterpretations of the predecessor:
+
+- **One exact leaf.** Beyond `.first()`, the Room must render exactly one
+  spoiler leaf; its text is exactly the secret, it has no nested spoiler, it
+  lies in the arranged event's row, and it is visible over the conversation
+  and topmost at its centre.
+- **Computed paint, not markup.** Line 102 and 108 read the leaf's class
+  list; line 104 and 109 read its own computed `color`, parsed for every
+  colour syntax (the device reports `oklch(…)` for the revealed text). The
+  concealed alpha must be exactly 0 and the revealed alpha above 0; a changed
+  class with transparent text fails, and the secret's presence in the DOM is
+  never treated as exposure. The black bar is a receipt: the concealed
+  computed `backgroundColor` has a non-zero alpha (`oklch(0.16 0.014 265)` on
+  the device).
+- **Leaf-scoped visual captures.** After line 104 and after line 109, once no
+  CSS transition is running, the leaf is captured as it appears on the
+  device: its measured box (one unwrapped client rect, inside the viewport
+  and the conversation, unobstructed at its centre and four inset corners) is
+  mapped to device pixels with the same read-only mapping native taps use,
+  the device screen is read with `screencap` and cropped in memory, and only
+  `conceal-reveal/spoiler-concealed.png` and
+  `conceal-reveal/spoiler-revealed.png` (249×16 device pixels on the
+  emulator) are written, each with metadata holding its SHA-256, dimensions,
+  clip, device rectangle, mean luminance and computed paint. A failure writes
+  `spoiler-failed.png` only when the leaf is still in capture scope. The
+  WebView's own `Page.captureScreenshot` is not used: under the Maestro
+  viewport emulation its clip ignores the emulated scale. Rasters are
+  evidence only; no assertion reads a pixel.
+
+The stage runs at the predecessor's wide desktop profile (1280×720 CSS
+pixels, DPR 1, no touch, not mobile): the predecessor has no `test.use` and no
+platform branch, the browser project uses Desktop Chrome and the retained
+Android Playwright project's canonical shell is 1280×720, as #751 runs. The
+tap is still a native touch; the paint claims are computed styles and do not
+depend on the viewport.
+
+Every Account, Room, run, body, secret, transaction and event identifier is
+registered before any UI step. The scrub redacts them in every form from
+every text diagnostic, including Maestro's per-flow `device-logcat.txt`, also
+redacts every Matrix event-id shape (the SDK logs the Room's unregistered
+state-event ids), and deletes every raster except a leaf capture whose
+metadata still matches it; full-screen WebView, device and Maestro
+screenshots, which show the Room name and Account, are never published. The
+fail-closed scan rejects any remaining identifier, event-id shape, token,
+authorization header, native storage payload, unallowlisted raster, raster
+without matching metadata or PNG text chunk. The pixels inside a leaf
+capture are the bar or the secret only: run-scoped test text derived from a
+per-purpose hash of the run namespace, not from the username (a different
+hash) or the password (a random UUID). Records hold only digests, booleans,
+computed paint strings and measured numbers. Failure text rethrown to the job
+log keeps error names and messages only; assertions keep only their first
+line, and every registered value and event-id shape is redacted. No native
+selector carries an identifier.
+
+```bash
+pnpm nx run trinity-e2e-android:message-spoiler --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-spoiler
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries. Its provisional budgets are a 10-minute Node test, a 15-minute
+Nx timeout and a 20-minute CI wrapper; the first passing device run took
+2 m 52 s. Shard 3 runs it last, after message-source, and its budget comment
+adds a provisional 5 minutes (about 173 native minutes of the 240-minute
+job). Cleanup runs every bounded step even after a failure, including the
+fixture session's logout and the Account's Room leave, forget and logout; a
+cleanup, scrub or scan failure blocks publication. The
+`android-message-spoiler` upload requires both the started flag and the
+post-scan `publication-safe` marker, which a passing run receives only with
+both leaf captures and no failure capture.
+
+Three unchanged installed-Android first attempts, the exact Playwright
+predecessor definition passing sequentially at retry 0, and audited
+original-attempt hosted Android/browser/renderer artifacts form the
+acceptance gate for #753; wiring alone does not establish parity or
+authorize issue closure.

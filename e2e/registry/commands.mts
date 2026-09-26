@@ -546,6 +546,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-source'],
   },
   {
+    name: 'e2e:android:message-spoiler',
+    command: 'nx run trinity-e2e-android:message-spoiler',
+    kind: 'canonical',
+    suiteIds: ['android.message-spoiler'],
+  },
+  {
     name: 'e2e:verify',
     command: 'nx run trinity-e2e-protocol:verify-sas',
     kind: 'compatibility',
@@ -938,6 +944,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'message-source-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-source; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-source'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'message-spoiler-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-spoiler; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-spoiler'],
   },
   {
     command:

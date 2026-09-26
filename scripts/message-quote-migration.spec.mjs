@@ -3041,8 +3041,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   expect(workflow).toContain(
     "# Shard 6's figure adds a provisional 12 minutes for message-quote.",
   );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(78);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(71);');
+  expect(ciSpec).toContain('expect(uploads.length).toBe(79);');
+  expect(ciSpec).toContain('expect(lines).toHaveLength(72);');
   expect(ciSpec).toContain("step.with.surface === 'android-message-quote'");
   expect(ciSpec).toContain(
     'runs message-quote after room-widget-settings at the end of shard 6',
@@ -3161,13 +3161,13 @@ describe('Android message-quote hosted wiring and parity ledger', () => {
       withText('workflow', 'shard 6 about 118', 'shard 6 about 106'),
       withText(
         'ciSpec',
+        'expect(uploads.length).toBe(79);',
         'expect(uploads.length).toBe(78);',
-        'expect(uploads.length).toBe(77);',
       ),
       withText(
         'ciSpec',
+        'expect(lines).toHaveLength(72);',
         'expect(lines).toHaveLength(71);',
-        'expect(lines).toHaveLength(70);',
       ),
     ])
       expect(() => assertWiring(mutated)).toThrow();

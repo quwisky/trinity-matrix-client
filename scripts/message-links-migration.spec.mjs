@@ -3809,8 +3809,8 @@ function assertWiring({ project, pkg, workflow, ciSpec }) {
   ).toBeGreaterThan(
     workflow.indexOf('Gate Android message-linkify diagnostics'),
   );
-  expect(ciSpec).toContain('expect(uploads.length).toBe(78);');
-  expect(ciSpec).toContain('expect(lines).toHaveLength(71);');
+  expect(ciSpec).toContain('expect(uploads.length).toBe(79);');
+  expect(ciSpec).toContain('expect(lines).toHaveLength(72);');
   expect(ciSpec).toContain(
     'runs message-links after security-settings and before retained Playwright on shard 4',
   );
@@ -3929,13 +3929,13 @@ describe('Android message-links hosted wiring and parity ledger', () => {
       ),
       withText(
         'ciSpec',
+        'expect(uploads.length).toBe(79);',
         'expect(uploads.length).toBe(78);',
-        'expect(uploads.length).toBe(77);',
       ),
       withText(
         'ciSpec',
+        'expect(lines).toHaveLength(72);',
         'expect(lines).toHaveLength(71);',
-        'expect(lines).toHaveLength(70);',
       ),
     ])
       expect(() => assertWiring(mutated)).toThrow();

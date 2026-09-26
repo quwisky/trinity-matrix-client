@@ -176,30 +176,35 @@ shows identifiers; here the full screen shows the Room name, the Account and
 the timeline, so full-screen rasters are still deleted, and only rasters
 scoped to the one spoiler leaf are kept:
 
-- The capture is a WebView `Page.captureScreenshot` whose `clip` is exactly
-  the leaf's measured box (document coordinates). It is taken only when the
-  leaf passes the D3 identity checks, has one client rect, lies inside the
-  viewport and the conversation, is unobstructed at its centre and at four
-  inset corners (`elementFromPoint`, read-only), and has no running CSS
-  animation or transition (`getAnimations()`), so the bar is fully drawn or
-  fully faded.
-- `conceal-reveal/spoiler-concealed.png` is taken after 104 and the black-bar receipt;
-  `conceal-reveal/spoiler-revealed.png` after 109 once the colour transition has
-  settled. On failure, `spoiler-failed.png` is taken only when the leaf still
-  passes the scope checks; otherwise the failure metadata records that no
-  scoped capture was possible.
-- Each raster has a `<name>.json` metadata file: state, PNG SHA-256 and
-  dimensions, the CSS clip, the device-pixel ratio and the computed paint
-  strings. The PNG dimensions must equal the clip times the ratio (±1 px).
+- The capture is the device screen as the user sees it, cropped to exactly
+  the leaf. The leaf's measured box (viewport CSS pixels) is mapped to device
+  pixels with the client's read-only `nativeRect`, the mapping native taps
+  use; `screencap` is read over adb and cropped in memory, so no full-screen
+  raster is ever written (D10). It is taken only when the leaf passes the D3
+  identity checks, has one client rect, lies inside the viewport and the
+  conversation, is unobstructed at its centre and at four inset corners
+  (`elementFromPoint`, read-only), and has no running CSS animation or
+  transition (`getAnimations()`), so the bar is fully drawn or fully faded.
+- `conceal-reveal/spoiler-concealed.png` is taken after 104 and the black-bar
+  receipt; `conceal-reveal/spoiler-revealed.png` after 109 once the colour
+  transition has settled. On failure, `spoiler-failed.png` is taken only when
+  the leaf still passes the scope checks; otherwise the failure metadata
+  records that no scoped capture was possible.
+- Each raster has a `<name>.json` metadata file: state, source
+  (`device-screencap`), PNG SHA-256 and dimensions, the CSS clip, the device
+  rectangle, the crop's mean luminance and the computed paint strings. The
+  PNG dimensions must equal the device rectangle exactly, and the PNG holds
+  only `IHDR`, `IDAT` and `IEND`.
 - Pixels inside the clip are the bar or the secret only. The secret is
   run-scoped test text (`answer-` plus a hash-derived alias of the run
   namespace); it is not derived from the username (a different per-purpose
   hash) or the password (a random UUID), and no token, Room name, id or
   sender is inside the clip.
 - The scrub deletes every raster that is not one of those three exact paths
-  with valid metadata, and deletes a failure raster from a passing run. The
-  scan fails closed on any other raster, on metadata that does not match its
-  raster, and on a pass without both conceal and reveal captures.
+  with valid metadata. The scan fails closed on any other raster, on
+  metadata that does not match its raster and on a PNG text chunk; the
+  publication marker is refused to a pass without both conceal and reveal
+  captures or with a failure capture.
 - Rasters stay in ignored run output and hosted artifacts only; they are
   never committed and never serve as the assertion oracle.
 
@@ -263,6 +268,30 @@ interpolated id, and any wait description that interpolates a value.
 ### D9. No CHANGELOG, no README
 
 This is a test-only migration with no user impact, like #747–#752.
+
+### D10. Device findings
+
+The first device runs surfaced two refinements, each made at the root and
+never with a retry or a loosened assertion:
+
+- **The WebView capture ignores the emulated scale.** Maestro's viewport
+  emulation draws the 1280-wide desktop profile into the WebView's roughly
+  411-CSS-pixel physical width (`setDeviceMetricsOverride` with a scale of
+  about 0.32). A `Page.captureScreenshot` clipped to the leaf's box returned a
+  761×47 raster at the physical ratio 2.625 of an empty region: the clip is
+  not in the emulated coordinate space. The capture therefore reads the
+  device screen and crops it with `nativeRect`, whose mapping every native
+  tap already proves; the crop is 249×16 device pixels on the emulator.
+- **Each record waits for its own proof.** The first implementation waited
+  for transparent text before recording line 102, so a leaf painted opaque
+  would also have lost the class record. Lines 102 and 104 now each wait for
+  and record their own observation, in source order, so the first failing
+  line is the first missing record.
+
+Measured on the device: the concealed leaf's computed `color` is
+`rgba(0, 0, 0, 0)` on the bar `oklch(0.16 0.014 265)` (crop mean luminance
+20); the revealed leaf paints `oklch(0.3 0.018 265)` on a transparent
+background (mean luminance 203). A passing stage takes about 2 m 52 s.
 
 ## Stage plan: `conceal-reveal`
 
