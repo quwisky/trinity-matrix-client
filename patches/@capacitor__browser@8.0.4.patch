@@ -1,0 +1,23 @@
+diff --git a/android/src/main/java/com/capacitorjs/plugins/browser/BrowserPlugin.java b/android/src/main/java/com/capacitorjs/plugins/browser/BrowserPlugin.java
+index 639bfa0c3526c7ecea774dc39e9ab2e12f6f9d9b..9277de08dcfa072e1784740f4ac286265c07fe97 100644
+--- a/android/src/main/java/com/capacitorjs/plugins/browser/BrowserPlugin.java
++++ b/android/src/main/java/com/capacitorjs/plugins/browser/BrowserPlugin.java
+@@ -64,9 +64,9 @@ public class BrowserPlugin extends Plugin {
+         Intent intent = new Intent(getContext(), BrowserControllerActivity.class);
+         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+-        getContext().startActivity(intent);
+ 
+         Integer finalToolbarColor = toolbarColor;
++        // The controller can reach onCreate on the main thread as soon as it is launched.
+         setBrowserControllerListener((activity) -> {
+             try {
+                 activity.open(implementation, url, finalToolbarColor);
+@@ -77,6 +77,7 @@ public class BrowserPlugin extends Plugin {
+                 call.reject("Unable to display URL");
+             }
+         });
++        getContext().startActivity(intent);
+     }
+ 
+     @PluginMethod

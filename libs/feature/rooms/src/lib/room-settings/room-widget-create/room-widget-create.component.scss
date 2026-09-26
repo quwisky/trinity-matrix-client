@@ -38,6 +38,12 @@
     }
   }
 
+  .room-widget-create__feedback {
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    min-block-size: 1lh;
+  }
+
   .room-widget-create__error {
     color: var(--trinity-danger);
   }

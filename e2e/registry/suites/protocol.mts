@@ -4,6 +4,7 @@ const artifactRoot = 'dist/.playwright/trinity-e2e-protocol/<run-id>';
 
 const synapseProtocol = {
   environment: 'protocol',
+  runner: 'playwright',
   prerequisites: ['docker', 'playwright-chromium'],
   availabilityPolicy: 'required',
   cachePolicy: 'never',
@@ -17,6 +18,7 @@ const synapseProtocol = {
 
 const standaloneProtocol = {
   environment: 'protocol',
+  runner: 'playwright',
   availabilityPolicy: 'required',
   cachePolicy: 'never',
   timeoutClass: 'medium',

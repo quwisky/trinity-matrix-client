@@ -1,0 +1,8 @@
+appId: ${APP_ID}
+---
+# No hideKeyboard here: Maestro implements it as an unconditional Android Back,
+# which leaves the Room whenever the paste already hid the input method. The
+# journey dismisses the keyboard only when the device reports it shown.
+- eraseText
+- setClipboard: ${MESSAGE}
+- pasteText

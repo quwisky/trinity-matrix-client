@@ -21,6 +21,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   DraftStoreService,
   KeyboardShortcutsService,
+  isMobileOs,
 } from '@trinity/platform-native';
 import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
@@ -101,7 +102,8 @@ const SHORTCUT_ACTIONS: Readonly<Record<string, FormatAction>> = {
 let nextPickerId = 0;
 
 /**
- * Discord-style composer: Enter sends, Shift+Enter inserts a newline. In edit mode
+ * Discord-style composer: Enter sends, Shift+Enter inserts a newline; on a mobile device
+ * Enter inserts a newline too and the Send button sends. In edit mode
  * it is prefilled with the message draft and Esc cancels. An emoji button opens a
  * picker that inserts at the cursor.
  *
@@ -296,6 +298,15 @@ export class MessageComposerComponent {
    * names so the template and the consumers of this component see one composer.
    */
   private readonly attachments = inject(ComposerAttachmentsService);
+
+  /** A physical Shift key is down (see {@link withShift}); reset on release and blur. */
+  private shiftHeld = false;
+
+  /**
+   * On a mobile device Enter inserts a line break, as the on-screen keyboard's Return
+   * key does in other messaging apps, and the Send button sends; elsewhere Enter sends.
+   */
+  private readonly enterSends = !isMobileOs();
 
   /** Everything staged for the next submit, in the order it will be sent. */
   readonly staged = this.attachments.staged;
@@ -618,12 +629,16 @@ export class MessageComposerComponent {
    */
   onKeydown(event: Event): void {
     const keyEvent = event as KeyboardEvent;
+    if (keyEvent.key === 'Shift') {
+      this.shiftHeld = true;
+      return;
+    }
     // Never rewrite the buffer mid-composition; the same reason onInput and onEnter guard.
     if (keyEvent.isComposing) {
       return;
     }
 
-    if (keyEvent.key === 'Enter' && keyEvent.shiftKey) {
+    if (keyEvent.key === 'Enter' && this.insertsLineBreak(keyEvent)) {
       this.continueListAtCaret(keyEvent);
       return;
     }
@@ -639,6 +654,28 @@ export class MessageComposerComponent {
   }
 
   /** Carry a list or quote marker onto the next line, or end the list on an empty item. */
+  /** Releasing the physical Shift key ends the held state {@link withShift} reads. */
+  onKeyup(event: Event): void {
+    if ((event as KeyboardEvent).key === 'Shift') {
+      this.shiftHeld = false;
+    }
+  }
+
+  /**
+   * Whether an Enter is a Shift+Enter. Android IMEs such as Gboard re-dispatch a
+   * hardware Shift+Enter in a multi-line field as a bare Enter with `shiftKey`
+   * false, while the physical Shift key's own down and up events still arrive
+   * around it; the held key keeps that Enter a line break instead of a send.
+   */
+  private withShift(event: KeyboardEvent): boolean {
+    return event.shiftKey || this.shiftHeld;
+  }
+
+  /** Enter inserts a line break with Shift, and always on a mobile device. */
+  private insertsLineBreak(event: KeyboardEvent): boolean {
+    return !this.enterSends || this.withShift(event);
+  }
+
   private continueListAtCaret(event: KeyboardEvent): void {
     const el = this.textarea()?.nativeElement;
     const caret = el?.selectionStart ?? this.text().length;
@@ -775,8 +812,8 @@ export class MessageComposerComponent {
       keyEvent.preventDefault();
       return;
     }
-    if (keyEvent.shiftKey) {
-      return; // Shift+Enter → newline (default textarea behavior)
+    if (this.insertsLineBreak(keyEvent)) {
+      return; // a newline Enter → default textarea behavior
     }
     keyEvent.preventDefault();
     this.submit();
@@ -798,6 +835,7 @@ export class MessageComposerComponent {
 
   /** Closing the field hides any open menu; a menu click keeps focus (see template). */
   onBlur(): void {
+    this.shiftHeld = false;
     this.menus.closeAll();
   }
 

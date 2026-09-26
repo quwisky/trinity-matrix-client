@@ -18,15 +18,21 @@
       (keydown.enter)="onEnter($event)"
       data-testid="room-widget-create-name"
     />
-    @if (nameError(); as message) {
-      <p
-        id="room-widget-name-error"
-        class="room-widget-create__error"
-        data-testid="room-widget-create-name-error"
-      >
-        {{ message }}
-      </p>
-    }
+    <div
+      class="room-widget-create__feedback"
+      aria-live="polite"
+      data-testid="room-widget-create-name-feedback"
+    >
+      @if (nameError(); as message) {
+        <p
+          id="room-widget-name-error"
+          class="room-widget-create__error"
+          data-testid="room-widget-create-name-error"
+        >
+          {{ message }}
+        </p>
+      }
+    </div>
   </div>
 
   <div class="room-widget-create__field">
@@ -44,15 +50,21 @@
       (keydown.enter)="onEnter($event)"
       data-testid="room-widget-create-url"
     />
-    @if (urlError(); as message) {
-      <p
-        id="room-widget-url-error"
-        class="room-widget-create__error"
-        data-testid="room-widget-create-url-error"
-      >
-        {{ message }}
-      </p>
-    }
+    <div
+      class="room-widget-create__feedback"
+      aria-live="polite"
+      data-testid="room-widget-create-url-feedback"
+    >
+      @if (urlError(); as message) {
+        <p
+          id="room-widget-url-error"
+          class="room-widget-create__error"
+          data-testid="room-widget-create-url-error"
+        >
+          {{ message }}
+        </p>
+      }
+    </div>
   </div>
 
   @if (serverError(); as message) {

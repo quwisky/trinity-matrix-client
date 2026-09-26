@@ -304,6 +304,19 @@ export class MessageRowComponent {
     if (!anchor) {
       return;
     }
+    // Only bare row padding and its dedicated hit surface cancel selection. Content and
+    // links keep their native selection/menu behavior; scroll/swipe still get the pointer.
+    const paddingTouch =
+      event.target instanceof HTMLElement &&
+      event.target.parentElement === anchor &&
+      event.target.classList.contains('msg__padding-touch');
+    if (
+      this.mobileActions &&
+      event.pointerType === 'touch' &&
+      (event.target === anchor || paddingTouch)
+    ) {
+      event.preventDefault();
+    }
     // Any press already pending is cleared before a new one is scheduled.
     this.cancelLongPress();
     const context = { x: event.clientX, y: event.clientY, anchor };
@@ -329,7 +342,7 @@ export class MessageRowComponent {
   }
 
   /** Whether this row has the actions represented by the desktop bar or mobile sheet. */
-  private hasMessageActions(): boolean {
+  protected hasMessageActions(): boolean {
     const row = this.row();
     return (
       !this.caps().readOnly && !row.decryptionFailed && row.kind !== 'redacted'

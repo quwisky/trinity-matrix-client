@@ -5,6 +5,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // End-to-end for clickable links: a bare URL sent as a plain-text message renders as a
 // real <a> link (linkified on render), not inert text. Needs a Synapse homeserver
@@ -59,7 +60,7 @@ test.describe('Clickable links', () => {
     const composer = page.getByTestId('composer-input');
     await composer.click();
     await composer.fill('look at https://example.com');
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
 
     // The bare URL in the message renders as a clickable link (not plain text).
     await expect(

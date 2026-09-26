@@ -1,0 +1,6 @@
+appId: ${APP_ID}
+---
+# Append one paragraph at the focused composer caret. It never erases and
+# never calls hideKeyboard, which Maestro implements as an unconditional
+# Android Back.
+- inputText: ${SECRET_TEXT}

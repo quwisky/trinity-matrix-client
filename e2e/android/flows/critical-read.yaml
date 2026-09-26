@@ -1,0 +1,7 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- extendedWaitUntil:
+    visible: ${MESSAGE_PATTERN}
+    timeout: 60000
+- takeScreenshot: decrypted-message

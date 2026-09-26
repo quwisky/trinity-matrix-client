@@ -3,7 +3,7 @@
     {
       "id": "cdk-overlay-static",
       "package": "@angular/cdk",
-      "version": "22.1.5",
+      "version": "22.1.7",
       "source": "../../../node_modules/@angular/cdk/overlay-prebuilt.css",
       "layer": "vendor"
     },
@@ -19,7 +19,7 @@
     {
       "id": "codemirror-style-module",
       "package": "@codemirror/view",
-      "version": "6.43.8",
+      "version": "6.43.13",
       "mechanism": "style-mod mounts CodeMirror base and theme modules in the editor document root",
       "seam": "libs/feature/settings/src/lib/advanced/config-editor/config-editor-theme.ts",
       "importPrefixes": ["@codemirror/", "@lezer/highlight"],
@@ -43,7 +43,7 @@
     {
       "id": "cdk-overlay-loader",
       "package": "@angular/cdk",
-      "version": "22.1.5",
+      "version": "22.1.7",
       "mechanism": "CDK creates global overlay and visually-hidden style-loader components and writes overlay geometry inline",
       "seam": "libs/components/overlay/src/index.ts",
       "importPrefixes": [
@@ -102,7 +102,7 @@
     {
       "id": "ng-icon-component",
       "package": "@ng-icons/core",
-      "version": "34.0.0",
+      "version": "36.0.0",
       "mechanism": "NgIcon injects an Angular component stylesheet and writes size, stroke, and color custom properties inline",
       "seam": "libs/components/foundations/src/lib/icon/trn-icon/trn-icon.component.html",
       "importPrefixes": ["@ng-icons/core", "@ng-icons/lucide"],

@@ -48,6 +48,32 @@ const ACTIVE_LIFECYCLE_PROJECTS = new Set([
   'trinity-e2e-protocol',
   'trinity-e2e-web',
 ]);
+const PLAYWRIGHT_PREREQUISITES = new Set([
+  'playwright-chromium',
+  'playwright-firefox',
+  'playwright-webkit',
+]);
+const NODE_TEST_PREREQUISITES = new Set([
+  'chrome',
+  'chromedriver',
+  'electron-chromedriver',
+  'maestro',
+  'node-24',
+]);
+
+/**
+ * Failed-attempt traces are retained, except in CI for a suite whose published
+ * diagnostics must be verified free of Matrix identifiers: a trace is a zip the
+ * identifier scan cannot read, so such a suite turns CI traces off and omits its
+ * zipped reports together.
+ */
+export function playwrightTracePolicyAllows(source) {
+  if (source.includes("trace: 'retain-on-failure'")) return true;
+  return (
+    source.includes("trace: process.env['CI'] ? 'off' : 'retain-on-failure'") &&
+    /identifierSafe:\s*Boolean\(process\.env\['CI'\]\)/u.test(source)
+  );
+}
 
 export const registrySnapshot = () =>
   structuredClone({
@@ -125,6 +151,25 @@ export function validateRegistry(snapshot, now = new Date()) {
   );
 
   for (const suite of snapshot.suites) {
+    if (!['playwright', 'node-test'].includes(suite.runner)) {
+      errors.push(`${suite.id} has an unknown runner: ${suite.runner}`);
+    }
+    if (
+      suite.runner === 'node-test' &&
+      suite.prerequisites.some((prerequisite) =>
+        PLAYWRIGHT_PREREQUISITES.has(prerequisite),
+      )
+    ) {
+      errors.push(`${suite.id} node-test runner must not require Playwright`);
+    }
+    if (
+      suite.runner === 'playwright' &&
+      suite.prerequisites.some((prerequisite) =>
+        NODE_TEST_PREREQUISITES.has(prerequisite),
+      )
+    ) {
+      errors.push(`${suite.id} Playwright runner has Node test prerequisites`);
+    }
     if (suite.capabilities.length === 0 || suite.contractTypes.length === 0) {
       errors.push(`${suite.id} is missing capability or contract annotations`);
     }
@@ -208,10 +253,18 @@ export function validateRegistry(snapshot, now = new Date()) {
   const aggregateTargets = new Set(
     snapshot.aggregateTargets.map(({ target }) => `trinity-e2e:${target}`),
   );
+  const nodeRunnerTargets = new Set(
+    snapshot.suites
+      .filter(({ runner }) => runner === 'node-test')
+      .map(({ currentTarget }) => currentTarget),
+  );
   for (const script of snapshot.packageScripts) {
     if (script.kind !== 'canonical') continue;
     const target = script.command.match(/^nx run ([^ ]+)$/)?.[1];
-    if (!target || !aggregateTargets.has(target)) {
+    if (
+      !target ||
+      (!aggregateTargets.has(target) && !nodeRunnerTargets.has(target))
+    ) {
       errors.push(`${script.name} bypasses the E2E aggregate runner`);
     }
   }
@@ -331,9 +384,9 @@ export const yamlRunCommands = (source) => {
 };
 
 export const yamlReportPaths = (source) =>
-  [...source.matchAll(/^\s*(?:-\s*)?report-path:\s*(\S.*)$/gmu)].map((match) =>
-    match[1].trim(),
-  );
+  [...source.matchAll(/^\s*(?:-\s*)?report-path:\s*(\S.*)$/gmu)]
+    .map((match) => match[1].trim())
+    .filter((path) => path !== '|' && path !== '>');
 
 export const validateCiReportPaths = (errors, source, snapshot) => {
   const paths = yamlReportPaths(source);
@@ -341,6 +394,20 @@ export const validateCiReportPaths = (errors, source, snapshot) => {
   const coveredSuites = new Set();
   for (const path of paths) {
     if (path === 'dist/.playwright/**/**') continue;
+    const nodeMatch = path.match(/^dist\/e2e\/([^/]+)\/\*\/\*\*$/u);
+    if (nodeMatch) {
+      const suite = suitesById.get(nodeMatch[1]);
+      if (!suite) {
+        errors.push(`CI report path references unknown suite: ${path}`);
+      } else if (suite.runner !== 'node-test') {
+        errors.push(
+          `CI report path for ${nodeMatch[1]} is not a Node test suite`,
+        );
+      } else {
+        coveredSuites.add(nodeMatch[1]);
+      }
+      continue;
+    }
     const match = path.match(
       /^dist\/\.playwright\/([^/]+)\/\*\/([^/]+)\/\*\*$/u,
     );
@@ -470,7 +537,7 @@ const validateSuiteFilesAndTargets = (errors, workspaceRoot, snapshot) => {
         if (!source.includes("failOnFlakyTests: Boolean(process.env['CI'])")) {
           errors.push(`${suite.id} must fail on flaky tests in CI`);
         }
-        if (!source.includes("trace: 'retain-on-failure'")) {
+        if (!playwrightTracePolicyAllows(source)) {
           errors.push(`${suite.id} must retain failed-attempt traces`);
         }
         if (!source.includes("screenshot: 'only-on-failure'")) {

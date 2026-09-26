@@ -9,6 +9,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
 // (poll/location/voice) are hidden there because they post to the main room,
@@ -62,7 +63,7 @@ test.describe('Thread composer', () => {
     // Send a message, then open a thread off it via the hover toolbar.
     const composer = page.getByTestId('composer-input');
     await composer.fill(rootBody);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
     const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     // A thread hangs off its root's event id, so the root has to be sent for real
@@ -97,7 +98,7 @@ test.describe('Thread composer', () => {
     // A slash command is parsed in the thread: `/me waves` sends an emote "waves".
     const threadInput = thread.getByTestId('composer-input');
     await threadInput.fill('/me waves');
-    await threadInput.press('Enter');
+    await sendComposerDraft(threadInput);
 
     await expect(
       thread.locator('.msg', { hasText: 'waves' }).first(),
@@ -154,7 +155,7 @@ test.describe('Thread composer', () => {
 
     const composer = page.getByTestId('composer-input');
     await composer.fill(rootBody);
-    await composer.press('Enter');
+    await sendComposerDraft(composer);
     const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());

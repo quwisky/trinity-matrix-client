@@ -1,0 +1,17 @@
+appId: com.android.chrome
+---
+- extendedWaitUntil:
+    visible:
+      id: login
+    timeout: 30000
+- tapOn:
+    id: login
+- eraseText
+- inputText: ${DEX_EMAIL_SECRET}
+- tapOn:
+    id: password
+- eraseText
+- inputText: ${DEX_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: submit-login

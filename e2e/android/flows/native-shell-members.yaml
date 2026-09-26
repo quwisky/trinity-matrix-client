@@ -1,0 +1,8 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- tapOn: More actions
+- tapOn: Members
+- extendedWaitUntil:
+    visible: Filter members
+    timeout: 10000

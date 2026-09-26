@@ -5,6 +5,7 @@ import {
   type SynapseSession,
 } from '../../../support/app.mts';
 import { registerUser } from '../../../support/account.mts';
+import { sendComposerDraft } from '../../../support/message-composer.mts';
 
 // Covers composer slash commands (TimelineService.send → slashCommandContent):
 // /shrug appends the kaomoji, and /plain sends its argument literally (no markdown).
@@ -57,7 +58,7 @@ test.describe('Slash commands', () => {
       await expect(page.getByTestId('composer-send')).toBeEnabled({
         timeout: 20_000,
       });
-      await composer.press('Enter');
+      await sendComposerDraft(composer);
     };
 
     // /shrug appends the kaomoji.

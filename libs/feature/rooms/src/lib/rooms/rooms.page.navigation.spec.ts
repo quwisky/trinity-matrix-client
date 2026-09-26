@@ -412,6 +412,7 @@ describe('RoomsPage mobile navigation', () => {
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomLibraryService, {
+          rooms: signal<RoomSummary[]>([]),
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
@@ -1032,6 +1033,7 @@ describe('RoomsPage account switcher summary', () => {
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomLibraryService, {
+          rooms: signal<RoomSummary[]>([]),
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),
@@ -1441,6 +1443,7 @@ describe('RoomsPage room-in-URL deep link', () => {
         RoomsPage,
         ...SHARED_MOCKS,
         MockProvider(RoomLibraryService, {
+          rooms: signal<RoomSummary[]>([]),
           selectionAvailability: () => 'available',
           clearMarkedUnread: () => of(void 0),
         }),

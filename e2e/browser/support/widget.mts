@@ -5,10 +5,15 @@ export interface WidgetFixtureProbe {
   readonly referrers: () => readonly (string | undefined)[];
 }
 
-/** Serve a cross-origin Widget API peer without contacting the public internet. */
+/**
+ * Serve a cross-origin Widget API peer without contacting the public internet.
+ * The first `heldCapabilityRequests` widget loads never answer the capabilities
+ * request, so forged-response checks cannot race a slow host to the real reply.
+ */
 export async function installWidgetFixture(
   page: Page,
   capabilityDelayMs = 0,
+  heldCapabilityRequests = 0,
 ): Promise<WidgetFixtureProbe> {
   let requests = 0;
   const referrers: (string | undefined)[] = [];
@@ -26,7 +31,9 @@ export async function installWidgetFixture(
     await route.fulfill({
       status: 200,
       contentType: 'text/html',
-      body: widgetHtml(capabilityDelayMs),
+      body: widgetHtml(
+        requests <= heldCapabilityRequests ? null : capabilityDelayMs,
+      ),
     });
   });
   return {
@@ -35,7 +42,7 @@ export async function installWidgetFixture(
   };
 }
 
-function widgetHtml(capabilityDelayMs: number): string {
+function widgetHtml(capabilityDelayMs: number | null): string {
   return `<!doctype html>
 <html>
   <body>
@@ -73,7 +80,7 @@ function widgetHtml(capabilityDelayMs: number): string {
         }
         const reply = () => parent.postMessage({ ...message, response }, event.origin);
         if (message.action === 'capabilities') {
-          setTimeout(reply, ${capabilityDelayMs});
+          ${capabilityDelayMs === null ? '' : `setTimeout(reply, ${capabilityDelayMs});`}
         } else {
           reply();
         }

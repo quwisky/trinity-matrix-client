@@ -1,6 +1,15 @@
 /** The CI graph must fail closed and preserve diagnostics independently of suite success. */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { CODE_JOB_IDS } from './ci-classify.mjs';
 
@@ -9,6 +18,186 @@ const yaml = (path) => parse(readFileSync(resolve(root, path), 'utf8'));
 const workflow = yaml('.github/workflows/ci.yml');
 
 describe('CI execution contract', () => {
+  it('gates message-grouping upload on its exact regular-file safety marker', () => {
+    const gate = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'message-grouping-artifact-gate',
+    );
+    expect(gate.if).toContain(
+      "steps.android.outputs.message-grouping-started == 'true'",
+    );
+    const tempRoot = mkdtempSync(join(tmpdir(), 'trinity-grouping-gate-'));
+    try {
+      const reports = join(tempRoot, 'reports');
+      const output = join(tempRoot, 'github-output');
+      const wrong = join(reports, 'run-1', 'android.message-grouping', 'other');
+      mkdirSync(wrong, { recursive: true });
+      writeFileSync(join(wrong, 'publication-safe'), 'scanned\n');
+      writeFileSync(output, '');
+      const runGate = () =>
+        execFileSync('/bin/bash', ['-e', '-c', gate.run], {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            MESSAGE_GROUPING_DIAGNOSTIC_ROOT: reports,
+            GITHUB_OUTPUT: output,
+          },
+        });
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+      const exact = join(
+        reports,
+        'run-1',
+        'android.message-grouping',
+        'message-grouping',
+      );
+      mkdirSync(exact, { recursive: true });
+      writeFileSync(join(exact, 'publication-safe'), 'scanned\n');
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('message-grouping-safe=true\n');
+      const upload = workflow.jobs['android-e2e'].steps.find(
+        (step) => step.with?.surface === 'android-message-grouping',
+      );
+      expect(upload.if).toContain(
+        "steps.android.outputs.message-grouping-started == 'true'",
+      );
+      expect(upload.if).toContain(
+        "steps.message-grouping-artifact-gate.outputs.message-grouping-safe == 'true'",
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes edit-history diagnostics only for the exact safe marker without rg on PATH', () => {
+    const gate = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'edit-history-artifact-gate',
+    );
+    const tempRoot = mkdtempSync(join(tmpdir(), 'trinity-edit-history-gate-'));
+    try {
+      const bin = join(tempRoot, 'bin');
+      const reports = join(tempRoot, 'reports');
+      const output = join(tempRoot, 'github-output');
+      mkdirSync(bin);
+      const findBinary = execFileSync('/bin/sh', ['-c', 'command -v find'], {
+        encoding: 'utf8',
+      }).trim();
+      symlinkSync(findBinary, join(bin, 'find'));
+      mkdirSync(join(reports, 'run-1', 'android.edit-history', 'unrelated'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(
+          reports,
+          'run-1',
+          'android.edit-history',
+          'unrelated',
+          'publication-safe',
+        ),
+        '',
+      );
+      writeFileSync(output, '');
+      const runGate = () =>
+        execFileSync('/bin/bash', ['-e', '-c', gate.run], {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            PATH: bin,
+            EDIT_HISTORY_DIAGNOSTIC_ROOT: reports,
+            GITHUB_OUTPUT: output,
+          },
+        });
+
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+
+      const exactDirectory = join(
+        reports,
+        'run-1',
+        'android.edit-history',
+        'edit-history',
+      );
+      mkdirSync(exactDirectory, { recursive: true });
+      const exactMarker = join(exactDirectory, 'publication-safe');
+      symlinkSync(
+        join(
+          reports,
+          'run-1',
+          'android.edit-history',
+          'unrelated',
+          'publication-safe',
+        ),
+        exactMarker,
+      );
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+
+      rmSync(exactMarker);
+      const linkedReport = join(tempRoot, 'linked-report');
+      mkdirSync(join(linkedReport, 'android.edit-history', 'edit-history'), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(
+          linkedReport,
+          'android.edit-history',
+          'edit-history',
+          'publication-safe',
+        ),
+        '',
+      );
+      symlinkSync(linkedReport, join(reports, 'run-link'));
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('');
+
+      writeFileSync(exactMarker, '');
+      runGate();
+      expect(readFileSync(output, 'utf8')).toBe('edit-history-safe=true\n');
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('gives shard 1 its measured native prefix, retained Playwright budget, and diagnostics time', () => {
+    const job = workflow.jobs['android-e2e'];
+    const expression = job['timeout-minutes'];
+    const shardOneMinutes = Number(
+      expression.match(/matrix\.shard == 1 && (\d+)/)?.[1] ??
+        expression.match(/\|\| (\d+) \}\}$/)?.[1],
+    );
+    const script = job.steps.find((step) => step.id === 'android').with.script;
+    const retained = script
+      .split('\n')
+      .find((line) => line.includes('pnpm e2e:android --'));
+    const retainedMinutes =
+      Number(retained.match(/--timeout-ms (\d+)/)?.[1]) / 60_000;
+    // Run 35699645053 exceeded 120 minutes. In run 35753147455, shard 1
+    // started at 16:19:06 and reached retained Playwright at 17:57:33.
+    const observedPrefixMinutes = 99;
+    const diagnosticsMinutes = 15;
+    expect(retainedMinutes).toBe(45);
+    expect(shardOneMinutes).toBeGreaterThanOrEqual(
+      observedPrefixMinutes + retainedMinutes + diagnosticsMinutes,
+    );
+    expect(shardOneMinutes).toBeLessThanOrEqual(180);
+    expect(job['continue-on-error']).toBeUndefined();
+  });
+
+  it('lets the complete Storybook matrix finish within a bounded command budget', () => {
+    const job = workflow.jobs.e2e;
+    const storybook = job.steps.find((step) => step.id === 'storybook');
+    const timeoutMs = Number(storybook.run.match(/--timeout-ms (\d+)/)?.[1]);
+    // Original run 35753147455: 157/163 passed by the old 10-minute deadline.
+    // Keep room for all six remaining 30-second tests and lifecycle teardown.
+    const observedElapsedMs = 600_000;
+    const remainingTestBudgetMs = 6 * 30_000;
+    const teardownBudgetMs = 30_000;
+    expect(timeoutMs).toBeGreaterThanOrEqual(
+      observedElapsedMs + remainingTestBudgetMs + teardownBudgetMs,
+    );
+    expect(timeoutMs).toBeLessThan(job['timeout-minutes'] * 60_000);
+    expect(storybook['continue-on-error']).toBeUndefined();
+  });
+
   it('classifies every PR and preserves the full code graph', () => {
     expect(workflow.on.pull_request?.['paths-ignore']).toBeUndefined();
     expect(workflow.jobs.classify.outputs.mode).toContain(
@@ -22,8 +211,11 @@ describe('CI execution contract', () => {
       );
     }
     expect(workflow.jobs['android-e2e'].strategy.matrix.shard).toEqual([
-      1, 2, 3, 4,
+      1, 2, 3, 4, 5, 6,
     ]);
+    expect(workflow.jobs['android-e2e']['timeout-minutes']).toBe(
+      '${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}',
+    );
   });
 
   it('runs the complete documentation gate for docs and code changes', () => {
@@ -47,9 +239,667 @@ describe('CI execution contract', () => {
         (step) =>
           step.uses === './.github/actions/upload-playwright-diagnostics',
       );
-    expect(uploads.length).toBe(8);
+    expect(uploads.length).toBe(79);
+    const uploadIdentities = uploads.map((step) =>
+      [step.with.surface, step.with.shard, step.with['report-path']].join('|'),
+    );
+    expect(new Set(uploadIdentities).size).toBe(uploads.length);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-runner-smoke'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-critical-journeys',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-native-shell'),
+    ).toHaveLength(1);
+    const composerTypingUploads = uploads.filter(
+      (step) => step.with.surface === 'android-composer-typing',
+    );
+    expect(composerTypingUploads).toHaveLength(1);
+    expect(composerTypingUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.composer-typing/**',
+    });
+    const gifPickerUploads = uploads.filter(
+      (step) => step.with.surface === 'android-gif-picker',
+    );
+    expect(gifPickerUploads).toHaveLength(1);
+    expect(gifPickerUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.gif-picker/**',
+    });
+    const hideSystemMessagesUploads = uploads.filter(
+      (step) => step.with.surface === 'android-hide-system-messages',
+    );
+    expect(hideSystemMessagesUploads).toHaveLength(1);
+    expect(hideSystemMessagesUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.hide-system-messages/**',
+    });
+    const jumpToDateUploads = uploads.filter(
+      (step) => step.with.surface === 'android-jump-to-date',
+    );
+    expect(jumpToDateUploads).toHaveLength(1);
+    expect(jumpToDateUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.jump-to-date/**',
+    });
+    const jumpToLatestUploads = uploads.filter(
+      (step) => step.with.surface === 'android-jump-to-latest',
+    );
+    expect(jumpToLatestUploads).toHaveLength(1);
+    expect(jumpToLatestUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.jump-to-latest/**',
+    });
+    const linkPreviewUploads = uploads.filter(
+      (step) => step.with.surface === 'android-link-preview',
+    );
+    expect(linkPreviewUploads).toHaveLength(1);
+    expect(linkPreviewUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.link-preview/**',
+    });
+    const locationShareUploads = uploads.filter(
+      (step) => step.with.surface === 'android-location-share',
+    );
+    expect(locationShareUploads).toHaveLength(1);
+    expect(locationShareUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.location-share/**',
+    });
+    const mediaRetentionUploads = uploads.filter(
+      (step) => step.with.surface === 'android-media-retention',
+    );
+    expect(mediaRetentionUploads).toHaveLength(1);
+    expect(mediaRetentionUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.media-retention/**',
+    });
+    const messageActionSheetUploads = uploads.filter(
+      (step) => step.with.surface === 'android-message-action-sheet',
+    );
+    expect(messageActionSheetUploads).toHaveLength(1);
+    expect(messageActionSheetUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.message-action-sheet/**',
+    });
+    const editHistoryUploads = uploads.filter(
+      (step) => step.with.surface === 'android-edit-history',
+    );
+    expect(editHistoryUploads).toHaveLength(1);
+    expect(editHistoryUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.edit-history/**',
+    });
+    expect(editHistoryUploads[0].if).toContain(
+      "steps.edit-history-artifact-gate.outputs.edit-history-safe == 'true'",
+    );
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-accounts-workspace',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-identity-presence',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-sidebar-filter'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-sidebar-touch'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-tags'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-read-state'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-room-list'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-unread-badges'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-leave-room'),
+    ).toHaveLength(1);
+    const spaceLeaveUploads = uploads.filter(
+      (step) => step.with.surface === 'android-space-leave',
+    );
+    expect(spaceLeaveUploads).toHaveLength(1);
+    expect(spaceLeaveUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.space-leave/**',
+    });
+    const roomTombstoneUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-tombstone',
+    );
+    expect(roomTombstoneUploads).toHaveLength(1);
+    expect(roomTombstoneUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-tombstone/**',
+    });
+    const messageModerationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-message-moderation',
+    );
+    expect(messageModerationUploads).toHaveLength(1);
+    expect(messageModerationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.message-moderation/**',
+    });
+    const memberModerationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-moderation',
+    );
+    expect(memberModerationUploads).toHaveLength(1);
+    expect(memberModerationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-moderation/**',
+    });
+    const memberDetailsPromotionUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-details-promotion',
+    );
+    expect(memberDetailsPromotionUploads).toHaveLength(1);
+    expect(memberDetailsPromotionUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-details-promotion/**',
+    });
+    const memberRoleClassificationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-role-classification',
+    );
+    expect(memberRoleClassificationUploads).toHaveLength(1);
+    expect(memberRoleClassificationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-role-classification/**',
+    });
+    const memberRoleLiveUpdatesUploads = uploads.filter(
+      (step) => step.with.surface === 'android-member-role-live-updates',
+    );
+    expect(memberRoleLiveUpdatesUploads).toHaveLength(1);
+    expect(memberRoleLiveUpdatesUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.member-role-live-updates/**',
+    });
+    const roomUnbanUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-unban',
+    );
+    expect(roomUnbanUploads).toHaveLength(1);
+    expect(roomUnbanUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-unban/**',
+    });
+    const roomRosterLiveAuthorityUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-roster-live-authority',
+    );
+    expect(roomRosterLiveAuthorityUploads).toHaveLength(1);
+    expect(roomRosterLiveAuthorityUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-roster-live-authority/**',
+    });
+    const roomAddressLifecycleUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-address-lifecycle',
+    );
+    expect(roomAddressLifecycleUploads).toHaveLength(1);
+    expect(roomAddressLifecycleUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-address-lifecycle/**',
+    });
+    const roomAccessPolicyUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-access-policy',
+    );
+    expect(roomAccessPolicyUploads).toHaveLength(1);
+    expect(roomAccessPolicyUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-access-policy/**',
+    });
+    const roomProfileSettingsUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-profile-settings',
+    );
+    expect(roomProfileSettingsUploads).toHaveLength(1);
+    expect(roomProfileSettingsUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-profile-settings/**',
+    });
+    const roomForYouUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-for-you',
+    );
+    expect(roomForYouUploads).toHaveLength(1);
+    expect(roomForYouUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-for-you/**',
+    });
+    const roomWidgetSettingsUploads = uploads.filter(
+      (step) => step.with.surface === 'android-room-widget-settings',
+    );
+    expect(roomWidgetSettingsUploads).toHaveLength(1);
+    expect(roomWidgetSettingsUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.room-widget-settings/**',
+    });
+    const accountPasswordChangeUploads = uploads.filter(
+      (step) => step.with.surface === 'android-account-password-change',
+    );
+    expect(accountPasswordChangeUploads).toHaveLength(1);
+    expect(accountPasswordChangeUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.account-password-change/**',
+    });
+    const clearAllDataUploads = uploads.filter(
+      (step) => step.with.surface === 'android-clear-all-data',
+    );
+    expect(clearAllDataUploads).toHaveLength(1);
+    expect(clearAllDataUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.clear-all-data/**',
+    });
+    const passwordRegistrationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-password-registration',
+    );
+    expect(passwordRegistrationUploads).toHaveLength(1);
+    expect(passwordRegistrationUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.password-registration/**',
+    });
+    const oidcLoginUploads = uploads.filter(
+      (step) => step.with.surface === 'android-oidc-login',
+    );
+    expect(oidcLoginUploads).toHaveLength(1);
+    expect(oidcLoginUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.oidc-login/**',
+    });
+    const securitySettingsUploads = uploads.filter(
+      (step) => step.with.surface === 'android-security-settings',
+    );
+    expect(securitySettingsUploads).toHaveLength(1);
+    expect(securitySettingsUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.security-settings/**',
+    });
+    const recoveryResetUploads = uploads.filter(
+      (step) => step.with.surface === 'android-recovery-reset',
+    );
+    expect(recoveryResetUploads).toHaveLength(1);
+    expect(recoveryResetUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.recovery-reset/**',
+    });
+    const legacySsoUploads = uploads.filter(
+      (step) => step.with.surface === 'android-legacy-sso',
+    );
+    expect(legacySsoUploads).toHaveLength(1);
+    expect(legacySsoUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.legacy-sso/**',
+    });
+    const ssoRecoveryResetUploads = uploads.filter(
+      (step) => step.with.surface === 'android-sso-recovery-reset',
+    );
+    expect(ssoRecoveryResetUploads).toHaveLength(1);
+    expect(ssoRecoveryResetUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.sso-recovery-reset/**',
+    });
+    const messageAuthenticityShieldUploads = uploads.filter(
+      (step) => step.with.surface === 'android-message-authenticity-shield',
+    );
+    expect(messageAuthenticityShieldUploads).toHaveLength(1);
+    expect(messageAuthenticityShieldUploads[0]).toMatchObject({
+      if: expect.stringMatching(
+        /!cancelled\(\).*outputs\.message-authenticity-shield-started == 'true'/,
+      ),
+      with: {
+        surface: 'android-message-authenticity-shield',
+        shard: '${{ matrix.shard }}',
+        'report-path':
+          'dist/.playwright/trinity-e2e-android/*/android.message-authenticity-shield/**',
+      },
+    });
+    const crossUserVerificationUploads = uploads.filter(
+      (step) => step.with.surface === 'android-cross-user-verification',
+    );
+    expect(crossUserVerificationUploads).toHaveLength(1);
+    expect(crossUserVerificationUploads[0]).toMatchObject({
+      if: expect.stringMatching(
+        /!cancelled\(\).*outputs\.cross-user-verification-started == 'true'/,
+      ),
+      with: {
+        surface: 'android-cross-user-verification',
+        shard: '${{ matrix.shard }}',
+        'report-path':
+          'dist/.playwright/trinity-e2e-android/*/android.cross-user-verification/**',
+      },
+    });
+    expect(
+      uploads.filter((step) => step.with.surface === 'android-recent-activity'),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-filter-spaceless',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-curation-create-join',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-room-order',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-http-error-recovery',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-room-settings-mobile',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-settings-mobile',
+      ),
+    ).toHaveLength(1);
+    expect(
+      uploads.filter(
+        (step) => step.with.surface === 'android-space-settings-resilience',
+      ),
+    ).toHaveLength(1);
+    const coreUploads = uploads.filter(
+      (step) => step.with.surface === 'android-space-settings-core',
+    );
+    expect(coreUploads).toHaveLength(1);
+    expect(coreUploads[0].with).toMatchObject({
+      shard: '${{ matrix.shard }}',
+      'report-path':
+        'dist/.playwright/trinity-e2e-android/*/android.space-settings-core/**',
+    });
     for (const step of uploads) {
-      expect(step.if).toMatch(/!cancelled\(\).*outputs.started == 'true'/);
+      const gate =
+        step.with.surface === 'android-runner-smoke'
+          ? /!cancelled\(\).*outputs\.smoke-started == 'true'/
+          : step.with.surface === 'android-critical-journeys'
+            ? /!cancelled\(\).*outputs\.critical-started == 'true'/
+            : step.with.surface === 'android-native-shell'
+              ? /!cancelled\(\).*outputs\.native-shell-started == 'true'/
+              : step.with.surface === 'android-accounts-workspace'
+                ? /!cancelled\(\).*outputs\.accounts-started == 'true'/
+                : step.with.surface === 'android-identity-presence'
+                  ? /!cancelled\(\).*outputs\.identity-started == 'true'/
+                  : step.with.surface === 'android-sidebar-filter'
+                    ? /!cancelled\(\).*outputs\.sidebar-filter-started == 'true'/
+                    : step.with.surface === 'android-sidebar-touch'
+                      ? /!cancelled\(\).*outputs\.sidebar-touch-started == 'true'/
+                      : step.with.surface === 'android-room-tags'
+                        ? /!cancelled\(\).*outputs\.room-tags-started == 'true'/
+                        : step.with.surface === 'android-room-read-state'
+                          ? /!cancelled\(\).*outputs\.room-read-state-started == 'true'/
+                          : step.with.surface === 'android-room-list'
+                            ? /!cancelled\(\).*outputs\.room-list-started == 'true'/
+                            : step.with.surface === 'android-unread-badges'
+                              ? /!cancelled\(\).*outputs\.unread-badges-started == 'true'/
+                              : step.with.surface === 'android-leave-room'
+                                ? /!cancelled\(\).*outputs\.leave-room-started == 'true'/
+                                : step.with.surface === 'android-space-leave'
+                                  ? /!cancelled\(\).*outputs\.space-leave-started == 'true'/
+                                  : step.with.surface ===
+                                      'android-room-tombstone'
+                                    ? /!cancelled\(\).*outputs\.room-tombstone-started == 'true'/
+                                    : step.with.surface ===
+                                        'android-message-moderation'
+                                      ? /!cancelled\(\).*outputs\.message-moderation-started == 'true'/
+                                      : step.with.surface ===
+                                          'android-member-moderation'
+                                        ? /!cancelled\(\).*outputs\.member-moderation-started == 'true'/
+                                        : step.with.surface ===
+                                            'android-member-details-promotion'
+                                          ? /!cancelled\(\).*outputs\.member-details-promotion-started == 'true'/
+                                          : step.with.surface ===
+                                              'android-member-role-classification'
+                                            ? /!cancelled\(\).*outputs\.member-role-classification-started == 'true'/
+                                            : step.with.surface ===
+                                                'android-member-role-live-updates'
+                                              ? /!cancelled\(\).*outputs\.member-role-live-updates-started == 'true'/
+                                              : step.with.surface ===
+                                                  'android-room-unban'
+                                                ? /!cancelled\(\).*outputs\.room-unban-started == 'true'/
+                                                : step.with.surface ===
+                                                    'android-room-roster-live-authority'
+                                                  ? /!cancelled\(\).*outputs\.room-roster-live-authority-started == 'true'/
+                                                  : step.with.surface ===
+                                                      'android-room-address-lifecycle'
+                                                    ? /!cancelled\(\).*outputs\.room-address-lifecycle-started == 'true'/
+                                                    : step.with.surface ===
+                                                        'android-room-access-policy'
+                                                      ? /!cancelled\(\).*outputs\.room-access-policy-started == 'true'/
+                                                      : step.with.surface ===
+                                                          'android-room-profile-settings'
+                                                        ? /!cancelled\(\).*outputs\.room-profile-settings-started == 'true'/
+                                                        : step.with.surface ===
+                                                            'android-room-for-you'
+                                                          ? /!cancelled\(\).*outputs\.room-for-you-started == 'true'/
+                                                          : step.with
+                                                                .surface ===
+                                                              'android-room-widget-settings'
+                                                            ? /!cancelled\(\).*outputs\.room-widget-settings-started == 'true'/
+                                                            : step.with
+                                                                  .surface ===
+                                                                'android-account-password-change'
+                                                              ? /!cancelled\(\).*outputs\.account-password-change-started == 'true'/
+                                                              : step.with
+                                                                    .surface ===
+                                                                  'android-clear-all-data'
+                                                                ? /!cancelled\(\).*outputs\.clear-all-data-started == 'true'/
+                                                                : step.with
+                                                                      .surface ===
+                                                                    'android-password-registration'
+                                                                  ? /!cancelled\(\).*outputs\.password-registration-started == 'true'/
+                                                                  : step.with
+                                                                        .surface ===
+                                                                      'android-legacy-sso'
+                                                                    ? /!cancelled\(\).*outputs\.legacy-sso-started == 'true'/
+                                                                    : step.with
+                                                                          .surface ===
+                                                                        'android-sso-recovery-reset'
+                                                                      ? /!cancelled\(\).*outputs\.sso-recovery-reset-started == 'true'/
+                                                                      : step
+                                                                            .with
+                                                                            .surface ===
+                                                                          'android-message-authenticity-shield'
+                                                                        ? /!cancelled\(\).*outputs\.message-authenticity-shield-started == 'true'/
+                                                                        : step
+                                                                              .with
+                                                                              .surface ===
+                                                                            'android-cross-user-verification'
+                                                                          ? /!cancelled\(\).*outputs\.cross-user-verification-started == 'true'/
+                                                                          : step
+                                                                                .with
+                                                                                .surface ===
+                                                                              'android-composer-drafts'
+                                                                            ? /!cancelled\(\).*outputs\.composer-drafts-started == 'true'/
+                                                                            : step
+                                                                                  .with
+                                                                                  .surface ===
+                                                                                'android-composer-formatting'
+                                                                              ? /!cancelled\(\).*outputs\.composer-formatting-started == 'true'/
+                                                                              : step
+                                                                                    .with
+                                                                                    .surface ===
+                                                                                  'android-composer-mentions'
+                                                                                ? /!cancelled\(\).*outputs\.composer-mentions-started == 'true'/
+                                                                                : step
+                                                                                      .with
+                                                                                      .surface ===
+                                                                                    'android-composer-reactions'
+                                                                                  ? /!cancelled\(\).*outputs\.composer-reactions-started == 'true'/
+                                                                                  : step
+                                                                                        .with
+                                                                                        .surface ===
+                                                                                      'android-composer-typing'
+                                                                                    ? /!cancelled\(\).*outputs\.composer-typing-started == 'true'/
+                                                                                    : step
+                                                                                          .with
+                                                                                          .surface ===
+                                                                                        'android-gif-picker'
+                                                                                      ? /!cancelled\(\).*outputs\.gif-picker-started == 'true'/
+                                                                                      : step
+                                                                                            .with
+                                                                                            .surface ===
+                                                                                          'android-hide-system-messages'
+                                                                                        ? /!cancelled\(\).*outputs\.hide-system-messages-started == 'true'/
+                                                                                        : step
+                                                                                              .with
+                                                                                              .surface ===
+                                                                                            'android-jump-to-date'
+                                                                                          ? /!cancelled\(\).*outputs\.jump-to-date-started == 'true'/
+                                                                                          : step
+                                                                                                .with
+                                                                                                .surface ===
+                                                                                              'android-jump-to-latest'
+                                                                                            ? /!cancelled\(\).*outputs\.jump-to-latest-started == 'true'/
+                                                                                            : step
+                                                                                                  .with
+                                                                                                  .surface ===
+                                                                                                'android-link-preview'
+                                                                                              ? /!cancelled\(\).*outputs\.link-preview-started == 'true'/
+                                                                                              : step
+                                                                                                    .with
+                                                                                                    .surface ===
+                                                                                                  'android-location-share'
+                                                                                                ? /!cancelled\(\).*outputs\.location-share-started == 'true'/
+                                                                                                : step
+                                                                                                      .with
+                                                                                                      .surface ===
+                                                                                                    'android-media-retention'
+                                                                                                  ? /!cancelled\(\).*outputs\.media-retention-started == 'true'/
+                                                                                                  : step
+                                                                                                        .with
+                                                                                                        .surface ===
+                                                                                                      'android-oidc-login'
+                                                                                                    ? /!cancelled\(\).*outputs\.oidc-login-started == 'true'/
+                                                                                                    : step
+                                                                                                          .with
+                                                                                                          .surface ===
+                                                                                                        'android-security-settings'
+                                                                                                      ? /!cancelled\(\).*outputs\.security-settings-started == 'true'/
+                                                                                                      : step
+                                                                                                            .with
+                                                                                                            .surface ===
+                                                                                                          'android-recovery-reset'
+                                                                                                        ? /!cancelled\(\).*outputs\.recovery-reset-started == 'true'/
+                                                                                                        : step
+                                                                                                              .with
+                                                                                                              .surface ===
+                                                                                                            'android-recent-activity'
+                                                                                                          ? /!cancelled\(\).*outputs\.recent-activity-started == 'true'/
+                                                                                                          : step
+                                                                                                                .with
+                                                                                                                .surface ===
+                                                                                                              'android-room-filter-spaceless'
+                                                                                                            ? /!cancelled\(\).*outputs\.room-filter-spaceless-started == 'true'/
+                                                                                                            : step
+                                                                                                                  .with
+                                                                                                                  .surface ===
+                                                                                                                'android-space-curation-create-join'
+                                                                                                              ? /!cancelled\(\).*outputs\.space-curation-create-join-started == 'true'/
+                                                                                                              : step
+                                                                                                                    .with
+                                                                                                                    .surface ===
+                                                                                                                  'android-space-room-order'
+                                                                                                                ? /!cancelled\(\).*outputs\.space-room-order-started == 'true'/
+                                                                                                                : step
+                                                                                                                      .with
+                                                                                                                      .surface ===
+                                                                                                                    'android-room-http-error-recovery'
+                                                                                                                  ? /!cancelled\(\).*outputs\.room-http-error-recovery-started == 'true'/
+                                                                                                                  : step
+                                                                                                                        .with
+                                                                                                                        .surface ===
+                                                                                                                      'android-room-settings-mobile'
+                                                                                                                    ? /!cancelled\(\).*outputs\.room-settings-mobile-started == 'true'/
+                                                                                                                    : step
+                                                                                                                          .with
+                                                                                                                          .surface ===
+                                                                                                                        'android-space-settings-mobile'
+                                                                                                                      ? /!cancelled\(\).*outputs\.space-settings-mobile-started == 'true'/
+                                                                                                                      : step
+                                                                                                                            .with
+                                                                                                                            .surface ===
+                                                                                                                          'android-space-settings-resilience'
+                                                                                                                        ? /!cancelled\(\).*outputs\.space-settings-resilience-started == 'true'/
+                                                                                                                        : step
+                                                                                                                              .with
+                                                                                                                              .surface ===
+                                                                                                                            'android-space-settings-core'
+                                                                                                                          ? /!cancelled\(\).*outputs\.space-settings-core-started == 'true'/
+                                                                                                                          : /!cancelled\(\).*outputs\.started == 'true'/;
+      expect(step.if).toMatch(
+        step.with.surface === 'android-message-grouping'
+          ? /!cancelled\(\).*outputs\.message-grouping-started == 'true'.*outputs\.message-grouping-safe == 'true'/
+          : step.with.surface === 'android-message-linkify'
+            ? /!cancelled\(\).*outputs\.message-linkify-started == 'true'.*outputs\.message-linkify-safe == 'true'/
+            : step.with.surface === 'android-message-links'
+              ? /!cancelled\(\).*outputs\.message-links-started == 'true'.*outputs\.message-links-safe == 'true'/
+              : step.with.surface === 'android-message-markdown'
+                ? /!cancelled\(\).*outputs\.message-markdown-started == 'true'.*outputs\.message-markdown-safe == 'true'/
+                : step.with.surface === 'android-message-poll'
+                  ? /!cancelled\(\).*outputs\.message-poll-started == 'true'.*outputs\.message-poll-safe == 'true'/
+                  : step.with.surface === 'android-message-quote'
+                    ? /!cancelled\(\).*outputs\.message-quote-started == 'true'.*outputs\.message-quote-safe == 'true'/
+                    : step.with.surface === 'android-message-receipts'
+                      ? /!cancelled\(\).*outputs\.message-receipts-started == 'true'.*outputs\.message-receipts-safe == 'true'/
+                      : step.with.surface === 'android-message-source'
+                        ? /!cancelled\(\).*outputs\.message-source-started == 'true'.*outputs\.message-source-safe == 'true'/
+                        : step.with.surface === 'android-message-spoiler'
+                          ? /!cancelled\(\).*outputs\.message-spoiler-started == 'true'.*outputs\.message-spoiler-safe == 'true'/
+                          : step.with.surface === 'android-message-action-sheet'
+                            ? /!cancelled\(\).*outputs\.message-action-sheet-started == 'true'/
+                            : step.with.surface === 'android-edit-history'
+                              ? /!cancelled\(\).*outputs\.edit-history-started == 'true'.*outputs\.edit-history-safe == 'true'/
+                              : step.with.surface === 'android-message-forward'
+                                ? /!cancelled\(\).*outputs\.message-forward-started == 'true'.*outputs\.message-forward-safe == 'true'/
+                                : gate,
+      );
       expect(step.with.surface).toBeTruthy();
       expect(step.with['report-path']).toContain('dist/.playwright/');
     }
@@ -61,6 +911,18 @@ describe('CI execution contract', () => {
     );
     expect(upload.with['include-hidden-files']).toBe(true);
     expect(upload.with['if-no-files-found']).toBe('error');
+    const identifiers = action.runs.steps.find(
+      (step) => step.id === 'matrix-identifiers',
+    );
+    expect(action.runs.steps.indexOf(identifiers)).toBe(0);
+    expect(identifiers.if).toBe(
+      "${{ inputs.surface == 'android' || startsWith(inputs.surface, 'android-') }}",
+    );
+    expect(identifiers.run).toBe('node scripts/ci-matrix-identifiers.mjs');
+    expect(identifiers.env.CI_REPORT_PATH).toBe('${{ inputs.report-path }}');
+    expect(upload.if).toBe(
+      "${{ !cancelled() && ((inputs.surface != 'android' && !startsWith(inputs.surface, 'android-')) || steps.matrix-identifiers.outputs.verified == 'true') }}",
+    );
     for (const field of [
       'github.run_id',
       'github.run_attempt',
@@ -71,6 +933,1214 @@ describe('CI execution contract', () => {
     ]) {
       expect(upload.with.name).toContain(field);
     }
+  });
+
+  it('runs composer typing through message-action-sheet consecutively, splitting at GIF for shard 5', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n');
+    const reactions = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:composer-reactions'),
+    );
+    const typing = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:composer-typing'),
+    );
+    const gifPicker = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:gif-picker'),
+    );
+    const hideSystemMessages = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:hide-system-messages'),
+    );
+    const jumpToDate = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:jump-to-date'),
+    );
+    const jumpToLatest = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:jump-to-latest'),
+    );
+    const linkPreview = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:link-preview'),
+    );
+    const locationShare = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:location-share'),
+    );
+    const mediaRetention = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:media-retention'),
+    );
+    const messageActionSheet = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-action-sheet'),
+    );
+    const typingLine = lines[typing];
+    const gifPickerLine = lines[gifPicker];
+    const hideSystemMessagesLine = lines[hideSystemMessages];
+    const jumpToDateLine = lines[jumpToDate];
+    const jumpToLatestLine = lines[jumpToLatest];
+    const linkPreviewLine = lines[linkPreview];
+    const locationShareLine = lines[locationShare];
+    const mediaRetentionLine = lines[mediaRetention];
+
+    expect(reactions).toBeGreaterThan(-1);
+    expect(typing).toBe(reactions + 1);
+    expect(typingLine).toContain('matrix.shard }}" = "2"');
+    expect(typingLine).toContain('composer-typing-started=true');
+    expect(typingLine).toContain('--timeout-ms 1500000');
+    expect(gifPicker).toBe(typing + 1);
+    expect(gifPickerLine).toContain('matrix.shard }}" = "5"');
+    expect(gifPickerLine).toContain('gif-picker-started=true');
+    expect(gifPickerLine).toContain('--timeout-ms 1500000');
+    expect(hideSystemMessages).toBe(gifPicker + 1);
+    expect(hideSystemMessagesLine).toContain('matrix.shard }}" = "5"');
+    expect(hideSystemMessagesLine).toContain(
+      'hide-system-messages-started=true',
+    );
+    expect(hideSystemMessagesLine).toContain('--timeout-ms 1500000');
+    expect(jumpToDate).toBe(hideSystemMessages + 1);
+    expect(jumpToDateLine).toContain('matrix.shard }}" = "5"');
+    expect(jumpToDateLine).toContain('jump-to-date-started=true');
+    expect(jumpToDateLine).toContain('--timeout-ms 1500000');
+    expect(jumpToLatest).toBe(jumpToDate + 1);
+    expect(jumpToLatestLine).toContain('matrix.shard }}" = "5"');
+    expect(jumpToLatestLine).toContain('jump-to-latest-started=true');
+    expect(jumpToLatestLine).toContain('--timeout-ms 1500000');
+    expect(linkPreview).toBe(jumpToLatest + 1);
+    expect(linkPreviewLine).toContain('matrix.shard }}" = "5"');
+    expect(linkPreviewLine).toContain('link-preview-started=true');
+    expect(linkPreviewLine).toContain('--timeout-ms 1500000');
+    expect(locationShare).toBe(linkPreview + 1);
+    expect(locationShareLine).toContain('matrix.shard }}" = "5"');
+    expect(locationShareLine).toContain('location-share-started=true');
+    expect(locationShareLine).toContain('--timeout-ms 1500000');
+    expect(mediaRetention).toBe(locationShare + 1);
+    expect(mediaRetentionLine).toContain('matrix.shard }}" = "5"');
+    expect(mediaRetentionLine).toContain('media-retention-started=true');
+    expect(mediaRetentionLine).toContain('--timeout-ms 1500000');
+    expect(messageActionSheet).toBe(mediaRetention + 1);
+    expect(lines[messageActionSheet]).toContain('matrix.shard }}" = "5"');
+    expect(lines[messageActionSheet]).toContain(
+      'message-action-sheet-started=true',
+    );
+    expect(lines[messageActionSheet]).toContain('--timeout-ms 3300000');
+  });
+
+  it('runs room HTTP recovery after space ordering and before retained Playwright on shard 1', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const filter = script.indexOf('trinity-e2e-android:sidebar-filter');
+    const touch = script.indexOf('trinity-e2e-android:sidebar-touch');
+    const roomTags = script.indexOf('trinity-e2e-android:room-tags');
+    const readState = script.indexOf('trinity-e2e-android:room-read-state');
+    const roomList = script.indexOf('trinity-e2e-android:room-list');
+    const unreadBadges = script.indexOf('trinity-e2e-android:unread-badges');
+    const leaveRoom = script.indexOf('trinity-e2e-android:leave-room');
+    const recentActivity = script.indexOf(
+      'trinity-e2e-android:recent-activity',
+    );
+    const roomFilterSpaceless = script.indexOf(
+      'trinity-e2e-android:room-filter-spaceless',
+    );
+    const spaceCurationCreateJoin = script.indexOf(
+      'trinity-e2e-android:space-curation-create-join',
+    );
+    const spaceRoomOrder = script.indexOf(
+      'trinity-e2e-android:space-room-order',
+    );
+    const roomHttpErrorRecovery = script.indexOf(
+      'trinity-e2e-android:room-http-error-recovery',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const spaceRoomOrderLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-room-order'));
+    const roomHttpErrorRecoveryLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-http-error-recovery'),
+      );
+
+    expect(filter).toBeGreaterThan(-1);
+    expect(touch).toBeGreaterThan(filter);
+    expect(roomTags).toBeGreaterThan(touch);
+    expect(readState).toBeGreaterThan(roomTags);
+    expect(roomList).toBeGreaterThan(readState);
+    expect(unreadBadges).toBeGreaterThan(roomList);
+    expect(leaveRoom).toBeGreaterThan(unreadBadges);
+    expect(recentActivity).toBeGreaterThan(leaveRoom);
+    expect(roomFilterSpaceless).toBeGreaterThan(recentActivity);
+    expect(spaceCurationCreateJoin).toBeGreaterThan(roomFilterSpaceless);
+    expect(spaceRoomOrder).toBeGreaterThan(spaceCurationCreateJoin);
+    expect(roomHttpErrorRecovery).toBeGreaterThan(spaceRoomOrder);
+    expect(playwright).toBeGreaterThan(roomHttpErrorRecovery);
+    expect(spaceRoomOrderLine).toContain('matrix.shard }}" = "1"');
+    expect(spaceRoomOrderLine).toContain('space-room-order-started=true');
+    expect(roomHttpErrorRecoveryLine).toContain('matrix.shard }}" = "1"');
+    expect(roomHttpErrorRecoveryLine).toContain(
+      'room-http-error-recovery-started=true',
+    );
+  });
+
+  it('runs mobile Room Settings after identity and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const identity = script.indexOf('trinity-e2e-android:identity-presence');
+    const roomSettings = script.indexOf(
+      'trinity-e2e-android:room-settings-mobile',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const roomSettingsLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-settings-mobile'),
+      );
+
+    expect(identity).toBeGreaterThan(-1);
+    expect(roomSettings).toBeGreaterThan(identity);
+    expect(playwright).toBeGreaterThan(roomSettings);
+    expect(roomSettingsLine).toContain('matrix.shard }}" = "4"');
+    expect(roomSettingsLine).toContain('room-settings-mobile-started=true');
+  });
+
+  it('runs mobile Space Settings after mobile Room Settings and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomSettings = script.indexOf(
+      'trinity-e2e-android:room-settings-mobile',
+    );
+    const spaceSettings = script.indexOf(
+      'trinity-e2e-android:space-settings-mobile',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    expect(spaceSettings).toBeGreaterThan(roomSettings);
+    expect(playwright).toBeGreaterThan(spaceSettings);
+  });
+
+  it('runs Space Settings resilience on shard 6 after the mobile Space Settings line', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const mobile = script.indexOf('trinity-e2e-android:space-settings-mobile');
+    const resilience = script.indexOf(
+      'trinity-e2e-android:space-settings-resilience',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    expect(resilience).toBeGreaterThan(mobile);
+    expect(playwright).toBeGreaterThan(resilience);
+    expect(
+      script
+        .split('\n')
+        .find((line) =>
+          line.includes('trinity-e2e-android:space-settings-resilience'),
+        ),
+    ).toContain('matrix.shard }}" = "6"');
+  });
+
+  it('runs Room tombstone after Space leave and before retained Playwright on shard 6', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const nativeShell = script.indexOf('trinity-e2e-android:native-shell');
+    const core = script.indexOf('trinity-e2e-android:space-settings-core');
+    const spaceLeave = script.indexOf('trinity-e2e-android:space-leave');
+    const roomTombstone = script.indexOf('trinity-e2e-android:room-tombstone');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const coreLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-settings-core'));
+    const spaceLeaveLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:space-leave'));
+    const roomTombstoneLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-tombstone'));
+
+    expect(nativeShell).toBeGreaterThan(-1);
+    expect(core).toBeGreaterThan(nativeShell);
+    expect(spaceLeave).toBeGreaterThan(core);
+    expect(roomTombstone).toBeGreaterThan(spaceLeave);
+    expect(playwright).toBeGreaterThan(roomTombstone);
+    expect(coreLine).toContain('matrix.shard }}" = "6"');
+    expect(coreLine).toContain('space-settings-core-started=true');
+    expect(coreLine).toContain('--timeout-ms 2700000');
+    expect(spaceLeaveLine).toContain('matrix.shard }}" = "6"');
+    expect(spaceLeaveLine).toContain('space-leave-started=true');
+    expect(spaceLeaveLine).toContain('--timeout-ms 1200000');
+    expect(roomTombstoneLine).toContain('matrix.shard }}" = "6"');
+    expect(roomTombstoneLine).toContain('room-tombstone-started=true');
+    expect(roomTombstoneLine).toContain('--timeout-ms 1200000');
+  });
+
+  it('runs cross-user verification before unrelated shard 2 suites can suppress its evidence', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const legacySso = script.indexOf('trinity-e2e-android:legacy-sso');
+    const ssoRecoveryReset = script.indexOf(
+      'trinity-e2e-android:sso-recovery-reset',
+    );
+    const messageAuthenticityShield = script.indexOf(
+      'trinity-e2e-android:message-authenticity-shield',
+    );
+    const crossUserVerification = script.indexOf(
+      'trinity-e2e-android:cross-user-verification',
+    );
+    const nativeShell = script.indexOf('trinity-e2e-android:native-shell');
+    const messageAuthenticityShieldLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:message-authenticity-shield'),
+      );
+    const crossUserVerificationLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:cross-user-verification'),
+      );
+
+    expect(crossUserVerification).toBeGreaterThan(-1);
+    expect(legacySso).toBeGreaterThan(crossUserVerification);
+    expect(ssoRecoveryReset).toBeGreaterThan(legacySso);
+    expect(messageAuthenticityShield).toBeGreaterThan(ssoRecoveryReset);
+    expect(nativeShell).toBeGreaterThan(messageAuthenticityShield);
+    expect(messageAuthenticityShieldLine).toContain('matrix.shard }}" = "6"');
+    expect(messageAuthenticityShieldLine).toContain(
+      'message-authenticity-shield-started=true',
+    );
+    expect(messageAuthenticityShieldLine).toContain('--timeout-ms 2100000');
+    expect(crossUserVerificationLine).toContain('matrix.shard }}" = "2"');
+    expect(crossUserVerificationLine).toContain(
+      'cross-user-verification-started=true',
+    );
+    expect(crossUserVerificationLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs member details and promotion after Room tombstone and before retained Playwright on shard 6', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomTombstone = script.indexOf('trinity-e2e-android:room-tombstone');
+    const memberDetailsPromotion = script.indexOf(
+      'trinity-e2e-android:member-details-promotion',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberDetailsPromotionLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:member-details-promotion'),
+      );
+
+    expect(roomTombstone).toBeGreaterThan(-1);
+    expect(memberDetailsPromotion).toBeGreaterThan(roomTombstone);
+    expect(playwright).toBeGreaterThan(memberDetailsPromotion);
+    expect(memberDetailsPromotionLine).toContain('matrix.shard }}" = "6"');
+    expect(memberDetailsPromotionLine).toContain(
+      'member-details-promotion-started=true',
+    );
+    expect(memberDetailsPromotionLine).toContain('--timeout-ms 1500000');
+  });
+
+  it('runs member role classification after member details and promotion and before retained Playwright on shard 6', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const memberDetailsPromotion = script.indexOf(
+      'trinity-e2e-android:member-details-promotion',
+    );
+    const memberRoleClassification = script.indexOf(
+      'trinity-e2e-android:member-role-classification',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberRoleClassificationLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:member-role-classification'),
+      );
+
+    expect(memberDetailsPromotion).toBeGreaterThan(-1);
+    expect(memberRoleClassification).toBeGreaterThan(memberDetailsPromotion);
+    expect(playwright).toBeGreaterThan(memberRoleClassification);
+    expect(memberRoleClassificationLine).toContain('matrix.shard }}" = "6"');
+    expect(memberRoleClassificationLine).toContain(
+      'member-role-classification-started=true',
+    );
+    expect(memberRoleClassificationLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs member role live updates on shard 4 after the Space Settings lines and before retained Playwright', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const spaceSettingsResilience = script.indexOf(
+      'trinity-e2e-android:space-settings-resilience',
+    );
+    const memberRoleLiveUpdates = script.indexOf(
+      'trinity-e2e-android:member-role-live-updates',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberRoleLiveUpdatesLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:member-role-live-updates'),
+      );
+
+    expect(spaceSettingsResilience).toBeGreaterThan(-1);
+    expect(memberRoleLiveUpdates).toBeGreaterThan(spaceSettingsResilience);
+    expect(playwright).toBeGreaterThan(memberRoleLiveUpdates);
+    expect(memberRoleLiveUpdatesLine).toContain('matrix.shard }}" = "4"');
+    expect(memberRoleLiveUpdatesLine).toContain(
+      'member-role-live-updates-started=true',
+    );
+    expect(memberRoleLiveUpdatesLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs Room widget settings after live authority updates and before retained Playwright on shard 6', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const liveUpdates = script.indexOf(
+      'trinity-e2e-android:member-role-live-updates',
+    );
+    const widgets = script.indexOf('trinity-e2e-android:room-widget-settings');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const widgetsLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-widget-settings'),
+      );
+
+    expect(widgets).toBeGreaterThan(liveUpdates);
+    expect(playwright).toBeGreaterThan(widgets);
+    expect(widgetsLine).toContain('matrix.shard }}" = "6"');
+    expect(widgetsLine).toContain('room-widget-settings-started=true');
+    expect(widgetsLine).toContain('--timeout-ms 2700000');
+  });
+
+  it('runs account password change on shard 4 after the Room widget line and before retained Playwright', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const widgets = script.indexOf('trinity-e2e-android:room-widget-settings');
+    const passwordChange = script.indexOf(
+      'trinity-e2e-android:account-password-change',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const passwordChangeLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:account-password-change'),
+      );
+
+    expect(passwordChange).toBeGreaterThan(widgets);
+    expect(playwright).toBeGreaterThan(passwordChange);
+    expect(passwordChangeLine).toContain('matrix.shard }}" = "4"');
+    expect(passwordChangeLine).toContain(
+      'account-password-change-started=true',
+    );
+    expect(passwordChangeLine).toContain('--timeout-ms 1200000');
+  });
+
+  it('runs clear all data after password change and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const passwordChange = script.indexOf(
+      'trinity-e2e-android:account-password-change',
+    );
+    const clearAllData = script.indexOf('trinity-e2e-android:clear-all-data');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const clearAllDataLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:clear-all-data'));
+
+    expect(clearAllData).toBeGreaterThan(passwordChange);
+    expect(playwright).toBeGreaterThan(clearAllData);
+    expect(clearAllDataLine).toContain('matrix.shard }}" = "4"');
+    expect(clearAllDataLine).toContain('clear-all-data-started=true');
+    expect(clearAllDataLine).toContain('--timeout-ms 1500000');
+  });
+
+  it('runs password registration after clear all data and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const clearAllData = script.indexOf('trinity-e2e-android:clear-all-data');
+    const registration = script.indexOf(
+      'trinity-e2e-android:password-registration',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const registrationLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:password-registration'),
+      );
+
+    expect(registration).toBeGreaterThan(clearAllData);
+    expect(playwright).toBeGreaterThan(registration);
+    expect(registrationLine).toContain('matrix.shard }}" = "4"');
+    expect(registrationLine).toContain('password-registration-started=true');
+    expect(registrationLine).toContain('--timeout-ms 1200000');
+  });
+
+  it('runs OIDC login after password registration and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const registration = script.indexOf(
+      'trinity-e2e-android:password-registration',
+    );
+    const oidcLogin = script.indexOf('trinity-e2e-android:oidc-login');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const oidcLoginLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:oidc-login'));
+
+    expect(oidcLogin).toBeGreaterThan(registration);
+    expect(playwright).toBeGreaterThan(oidcLogin);
+    expect(oidcLoginLine).toContain('matrix.shard }}" = "4"');
+    expect(oidcLoginLine).toContain('oidc-login-started=true');
+    expect(oidcLoginLine).toContain('--timeout-ms 1500000');
+  });
+
+  it('runs Security settings after OIDC and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const oidcLogin = script.indexOf('trinity-e2e-android:oidc-login');
+    const securitySettings = script.indexOf(
+      'trinity-e2e-android:security-settings',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const securitySettingsLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:security-settings'));
+
+    expect(securitySettings).toBeGreaterThan(oidcLogin);
+    expect(playwright).toBeGreaterThan(securitySettings);
+    expect(securitySettingsLine).toContain('matrix.shard }}" = "4"');
+    expect(securitySettingsLine).toContain('security-settings-started=true');
+    expect(securitySettingsLine).toContain('--timeout-ms 1200000');
+  });
+
+  it('runs message-markdown after SSO recovery reset at the end of shard 5', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const ssoRecoveryReset = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:sso-recovery-reset;'),
+    );
+    const messageMarkdown = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-markdown;'),
+    );
+    const shardFive = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "5" ]'),
+    );
+    const messageMarkdownLine = lines[messageMarkdown];
+
+    expect(ssoRecoveryReset).toBeGreaterThan(-1);
+    expect(messageMarkdown).toBe(ssoRecoveryReset + 1);
+    expect(shardFive.at(-1)).toBe(messageMarkdownLine);
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-markdown'),
+      ),
+    ).toHaveLength(1);
+    expect(messageMarkdownLine).toContain('matrix.shard }}" = "5"');
+    expect(messageMarkdownLine).toContain('message-markdown-started=true');
+    expect(messageMarkdownLine).toContain('--timeout-ms 2100000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-markdown-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-markdown-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-markdown/message-markdown/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-links-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-markdown',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-markdown-started == 'true' && steps.message-markdown-artifact-gate.outputs.message-markdown-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-markdown/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('runs message-poll after message-linkify at the end of shard 1', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const messageLinkify = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-linkify;'),
+    );
+    const messagePoll = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-poll;'),
+    );
+    const shardOne = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "1" ]'),
+    );
+    const messagePollLine = lines[messagePoll];
+
+    expect(messageLinkify).toBeGreaterThan(-1);
+    expect(messagePoll).toBe(messageLinkify + 1);
+    expect(shardOne.at(-1)).toBe(messagePollLine);
+    expect(
+      lines.filter((line) => line.includes('trinity-e2e-android:message-poll')),
+    ).toHaveLength(1);
+    expect(messagePollLine).toContain('matrix.shard }}" = "1"');
+    expect(messagePollLine).toContain('message-poll-started=true');
+    expect(messagePollLine).toContain('--timeout-ms 1500000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find((step) => step.id === 'message-poll-artifact-gate');
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-poll/message-poll/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-markdown-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-poll',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' && steps.message-poll-artifact-gate.outputs.message-poll-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-poll/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-poll in the shard-1 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardOne = Number(
+      comment.match(/shard 1 about (\d+) native minutes/)?.[1],
+    );
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 105 native minutes before message-poll, plus its provisional 6-8 minutes.
+    expect(shardOne).toBe(113);
+    expect(comment).toContain(
+      "1's a provisional 6-8 minutes for message-poll.",
+    );
+    expect(shardOne + retainedMinutes + diagnosticsMinutes).toBeLessThanOrEqual(
+      180,
+    );
+    for (const figure of [
+      'shard 2 about 117',
+      'shard 5 about 110',
+      'shard 6 about 118',
+    ])
+      expect(comment).toContain(figure);
+  });
+
+  it('runs message-quote after room-widget-settings at the end of shard 6', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const widgets = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:room-widget-settings;'),
+    );
+    const messageQuote = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-quote;'),
+    );
+    const shardSix = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "6" ]'),
+    );
+    const messageQuoteLine = lines[messageQuote];
+
+    expect(widgets).toBeGreaterThan(-1);
+    expect(messageQuote).toBe(widgets + 1);
+    expect(shardSix.at(-1)).toBe(messageQuoteLine);
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-quote'),
+      ),
+    ).toHaveLength(1);
+    expect(messageQuoteLine).toContain('matrix.shard }}" = "6"');
+    expect(messageQuoteLine).toContain('message-quote-started=true');
+    expect(messageQuoteLine).toContain('--timeout-ms 1800000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-quote-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-quote-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-quote/message-quote/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-poll-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-quote',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-quote-started == 'true' && steps.message-quote-artifact-gate.outputs.message-quote-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-quote/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-quote in the shard-6 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardSix = Number(comment.match(/shard 6 about (\d+)\./)?.[1]);
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 106 native minutes before message-quote, plus its provisional 12 minutes.
+    expect(shardSix).toBe(118);
+    expect(comment).toContain(
+      "Shard 6's figure adds a provisional 12 minutes for message-quote.",
+    );
+    expect(shardSix + retainedMinutes + diagnosticsMinutes).toBeLessThanOrEqual(
+      180,
+    );
+  });
+
+  it('runs message-receipts after member-moderation, followed only by message-source and message-spoiler on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const memberModeration = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:member-moderation;'),
+    );
+    const messageReceipts = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-receipts;'),
+    );
+    const shardThree = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'),
+    );
+    const messageReceiptsLine = lines[messageReceipts];
+
+    expect(memberModeration).toBeGreaterThan(-1);
+    expect(messageReceipts).toBe(memberModeration + 1);
+    expect(shardThree.at(-3)).toBe(messageReceiptsLine);
+    expect(shardThree.at(-2)).toContain('trinity-e2e-android:message-source;');
+    expect(shardThree.at(-1)).toContain('trinity-e2e-android:message-spoiler;');
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-receipts'),
+      ),
+    ).toHaveLength(1);
+    expect(messageReceiptsLine).toContain('matrix.shard }}" = "3"');
+    expect(messageReceiptsLine).toContain('message-receipts-started=true');
+    expect(messageReceiptsLine).toContain('--timeout-ms 1200000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-receipts-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-receipts/message-receipts/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-quote-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-receipts',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' && steps.message-receipts-artifact-gate.outputs.message-receipts-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-receipts/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-receipts in the shard-3 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardThree = Number(
+      comment.match(/shard 3 about (\d+) \(240\)/)?.[1],
+    );
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 158 native minutes before message-receipts, plus its provisional 5
+    // minutes and the provisional 5 minutes each of message-source and
+    // message-spoiler.
+    expect(shardThree).toBe(173);
+    expect(comment).toContain(
+      "Shard 3's figure adds a provisional 5 minutes for message-receipts.",
+    );
+    expect(
+      shardThree + retainedMinutes + diagnosticsMinutes,
+    ).toBeLessThanOrEqual(240);
+  });
+
+  it('runs message-source after message-receipts, followed only by message-spoiler on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const messageReceipts = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-receipts;'),
+    );
+    const messageSource = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-source;'),
+    );
+    const shardThree = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'),
+    );
+    const messageSourceLine = lines[messageSource];
+
+    expect(messageReceipts).toBeGreaterThan(-1);
+    expect(messageSource).toBe(messageReceipts + 1);
+    expect(shardThree.at(-2)).toBe(messageSourceLine);
+    expect(shardThree.at(-1)).toContain('trinity-e2e-android:message-spoiler;');
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-source'),
+      ),
+    ).toHaveLength(1);
+    expect(messageSourceLine).toContain('matrix.shard }}" = "3"');
+    expect(messageSourceLine).toContain('message-source-started=true');
+    expect(messageSourceLine).toContain('--timeout-ms 1200000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-source-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-source-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-source/message-source/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-receipts-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-source',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-source-started == 'true' && steps.message-source-artifact-gate.outputs.message-source-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-source/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-source in the shard-3 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardThree = Number(
+      comment.match(/shard 3 about (\d+) \(240\)/)?.[1],
+    );
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 163 native minutes before message-source, plus its provisional 5
+    // minutes and message-spoiler's provisional 5 minutes.
+    expect(shardThree).toBe(173);
+    expect(comment).toContain(
+      "Shard 3's figure also adds a provisional 5 minutes for message-source.",
+    );
+    expect(
+      shardThree + retainedMinutes + diagnosticsMinutes,
+    ).toBeLessThanOrEqual(240);
+  });
+
+  it('runs message-spoiler after message-source at the end of shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const messageSource = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-source;'),
+    );
+    const messageSpoiler = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-spoiler;'),
+    );
+    const shardThree = lines.filter((line) =>
+      line.startsWith('if [ "${{ matrix.shard }}" = "3" ]'),
+    );
+    const messageSpoilerLine = lines[messageSpoiler];
+
+    expect(messageSource).toBeGreaterThan(-1);
+    expect(messageSpoiler).toBe(messageSource + 1);
+    expect(shardThree.at(-1)).toBe(messageSpoilerLine);
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-spoiler'),
+      ),
+    ).toHaveLength(1);
+    expect(messageSpoilerLine).toContain('matrix.shard }}" = "3"');
+    expect(messageSpoilerLine).toContain('message-spoiler-started=true');
+    expect(messageSpoilerLine).toContain('--timeout-ms 1200000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-spoiler-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-spoiler-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-spoiler/message-spoiler/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-source-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-spoiler',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-spoiler-started == 'true' && steps.message-spoiler-artifact-gate.outputs.message-spoiler-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-spoiler/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('budgets message-spoiler in the shard-3 figure of the Android budget comment', () => {
+    const text = readFileSync(
+      resolve(root, '.github/workflows/ci.yml'),
+      'utf8',
+    );
+    const comment = text
+      .split('\n  android-e2e:\n')[1]
+      .split('    timeout-minutes:')[0]
+      .split('\n')
+      .map((line) => line.trim().replace(/^# ?/, ''))
+      .join(' ');
+    const shardThree = Number(
+      comment.match(/shard 3 about (\d+) \(240\)/)?.[1],
+    );
+    const retainedMinutes = 45;
+    const diagnosticsMinutes = 15;
+    // 168 native minutes before message-spoiler, plus its provisional 5 minutes.
+    expect(shardThree).toBe(173);
+    expect(comment).toContain(
+      "Shard 3's figure also adds a provisional 5 minutes for message-spoiler.",
+    );
+    expect(
+      shardThree + retainedMinutes + diagnosticsMinutes,
+    ).toBeLessThanOrEqual(240);
+  });
+
+  it('runs message-links after security-settings and before retained Playwright on shard 4', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script.split('\n').map((line) => line.trim());
+    const securitySettings = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:security-settings'),
+    );
+    const messageLinks = lines.findIndex((line) =>
+      line.includes('trinity-e2e-android:message-links;'),
+    );
+    const started = lines.indexOf('echo \'started=true\' >> "$GITHUB_OUTPUT"');
+    const playwright = lines.findIndex((line) =>
+      line.includes('pnpm e2e:android --'),
+    );
+    const messageLinksLine = lines[messageLinks];
+
+    expect(securitySettings).toBeGreaterThan(-1);
+    expect(messageLinks).toBe(securitySettings + 1);
+    expect(started).toBe(messageLinks + 1);
+    expect(playwright).toBe(started + 1);
+    expect(
+      lines.filter((line) =>
+        line.includes('trinity-e2e-android:message-links'),
+      ),
+    ).toHaveLength(1);
+    expect(messageLinksLine).toContain('matrix.shard }}" = "4"');
+    expect(messageLinksLine).toContain('message-links-started=true');
+    expect(messageLinksLine).toContain('--timeout-ms 3300000');
+
+    const steps = workflow.jobs['android-e2e'].steps;
+    const gate = steps.find(
+      (step) => step.id === 'message-links-artifact-gate',
+    );
+    expect(gate.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-links-started == 'true' }}",
+    );
+    expect(gate.run).toContain(
+      "-path '*/android.message-links/message-links/publication-safe'",
+    );
+    expect(steps.indexOf(gate)).toBeGreaterThan(
+      steps.findIndex((step) => step.id === 'message-linkify-artifact-gate'),
+    );
+    const upload = steps.find(
+      (step) => step.with?.surface === 'android-message-links',
+    );
+    expect(upload.if).toBe(
+      "${{ !cancelled() && steps.android.outputs.message-links-started == 'true' && steps.message-links-artifact-gate.outputs.message-links-safe == 'true' }}",
+    );
+    expect(upload.with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-android/*/android.message-links/**',
+    );
+    expect(steps.indexOf(upload)).toBeGreaterThan(steps.indexOf(gate));
+  });
+
+  it('runs recovery reset immediately after smoke and before other shard 4 suites', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const runnerSmoke = script.indexOf('trinity-e2e-android:runner-smoke');
+    const recoveryReset = script.indexOf('trinity-e2e-android:recovery-reset');
+    const identity = script.indexOf('trinity-e2e-android:identity-presence');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const recoveryResetLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:recovery-reset'));
+
+    expect(runnerSmoke).toBeGreaterThan(-1);
+    expect(recoveryReset).toBeGreaterThan(runnerSmoke);
+    expect(identity).toBeGreaterThan(recoveryReset);
+    expect(playwright).toBeGreaterThan(recoveryReset);
+    expect(recoveryResetLine).toContain('matrix.shard }}" = "4"');
+    expect(recoveryResetLine).toContain('recovery-reset-started=true');
+    expect(recoveryResetLine).toContain('--timeout-ms 3000000');
+  });
+
+  it('runs message moderation after Accounts and before retained Playwright on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const accounts = script.indexOf('trinity-e2e-android:accounts-workspace');
+    const moderation = script.indexOf('trinity-e2e-android:message-moderation');
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const moderationLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:message-moderation'));
+
+    expect(accounts).toBeGreaterThan(-1);
+    expect(moderation).toBeGreaterThan(accounts);
+    expect(playwright).toBeGreaterThan(moderation);
+    expect(moderationLine).toContain('matrix.shard }}" = "3"');
+    expect(moderationLine).toContain('message-moderation-started=true');
+    expect(moderationLine).toContain('--timeout-ms 1500000');
+  });
+
+  it('runs member moderation after message moderation and before retained Playwright on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const messageModeration = script.indexOf(
+      'trinity-e2e-android:message-moderation',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const playwright = script.indexOf('pnpm e2e:android --');
+    const memberModerationLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:member-moderation'));
+
+    expect(messageModeration).toBeGreaterThan(-1);
+    expect(memberModeration).toBeGreaterThan(messageModeration);
+    expect(playwright).toBeGreaterThan(memberModeration);
+    expect(memberModerationLine).toContain('matrix.shard }}" = "3"');
+    expect(memberModerationLine).toContain('member-moderation-started=true');
+    expect(memberModerationLine).toContain('--timeout-ms 1800000');
+  });
+
+  it('runs Room unban after message moderation and before member moderation on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const messageModeration = script.indexOf(
+      'trinity-e2e-android:message-moderation',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const roomUnban = script.indexOf('trinity-e2e-android:room-unban');
+    const roomUnbanLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-unban'));
+
+    expect(messageModeration).toBeGreaterThan(-1);
+    expect(roomUnban).toBeGreaterThan(messageModeration);
+    expect(memberModeration).toBeGreaterThan(roomUnban);
+    expect(roomUnbanLine).toContain('matrix.shard }}" = "3"');
+    expect(roomUnbanLine).toContain('room-unban-started=true');
+    expect(roomUnbanLine).toContain('--timeout-ms 900000');
+  });
+
+  it('runs Room roster live authority after Room unban and before member moderation on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomUnban = script.indexOf('trinity-e2e-android:room-unban');
+    const roomRosterLiveAuthority = script.indexOf(
+      'trinity-e2e-android:room-roster-live-authority',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const roomRosterLiveAuthorityLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-roster-live-authority'),
+      );
+
+    expect(roomUnban).toBeGreaterThan(-1);
+    expect(roomRosterLiveAuthority).toBeGreaterThan(roomUnban);
+    expect(memberModeration).toBeGreaterThan(roomRosterLiveAuthority);
+    expect(roomRosterLiveAuthorityLine).toContain('matrix.shard }}" = "3"');
+    expect(roomRosterLiveAuthorityLine).toContain(
+      'room-roster-live-authority-started=true',
+    );
+    expect(roomRosterLiveAuthorityLine).toContain('--timeout-ms 2100000');
+  });
+
+  it('runs Room address lifecycle after Room roster and before member moderation on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomRosterLiveAuthority = script.indexOf(
+      'trinity-e2e-android:room-roster-live-authority',
+    );
+    const roomAddressLifecycle = script.indexOf(
+      'trinity-e2e-android:room-address-lifecycle',
+    );
+    const memberModeration = script.indexOf(
+      'trinity-e2e-android:member-moderation',
+    );
+    const roomAddressLifecycleLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-address-lifecycle'),
+      );
+
+    expect(roomRosterLiveAuthority).toBeGreaterThan(-1);
+    expect(roomAddressLifecycle).toBeGreaterThan(roomRosterLiveAuthority);
+    expect(memberModeration).toBeGreaterThan(roomAddressLifecycle);
+    expect(roomAddressLifecycleLine).toContain('matrix.shard }}" = "3"');
+    expect(roomAddressLifecycleLine).toContain(
+      'room-address-lifecycle-started=true',
+    );
+    expect(roomAddressLifecycleLine).toContain('--timeout-ms 900000');
+  });
+
+  it('runs Room access policy before Accounts on shard 3 so predecessor failures cannot suppress its evidence', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomAccessPolicy = script.indexOf(
+      'trinity-e2e-android:room-access-policy',
+    );
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
+    );
+    const roomAccessPolicyLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-access-policy'));
+
+    expect(roomAccessPolicy).toBeGreaterThan(-1);
+    expect(accountsWorkspace).toBeGreaterThan(roomAccessPolicy);
+    expect(roomAccessPolicyLine).toContain('matrix.shard }}" = "3"');
+    expect(roomAccessPolicyLine).toContain('room-access-policy-started=true');
+    expect(roomAccessPolicyLine).toContain('--timeout-ms 2400000');
+  });
+
+  it('runs Room profile settings after Room access policy and before Accounts on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomAccessPolicy = script.indexOf(
+      'trinity-e2e-android:room-access-policy',
+    );
+    const roomProfileSettings = script.indexOf(
+      'trinity-e2e-android:room-profile-settings',
+    );
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
+    );
+    const roomProfileSettingsLine = script
+      .split('\n')
+      .find((line) =>
+        line.includes('trinity-e2e-android:room-profile-settings'),
+      );
+
+    expect(roomProfileSettings).toBeGreaterThan(roomAccessPolicy);
+    expect(accountsWorkspace).toBeGreaterThan(roomProfileSettings);
+    expect(roomProfileSettingsLine).toContain('matrix.shard }}" = "3"');
+    expect(roomProfileSettingsLine).toContain(
+      'room-profile-settings-started=true',
+    );
+    expect(roomProfileSettingsLine).toContain('--timeout-ms 2400000');
+  });
+
+  it('runs Room For-you after Room profile settings and before Accounts on shard 3', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const roomProfileSettings = script.indexOf(
+      'trinity-e2e-android:room-profile-settings',
+    );
+    const roomForYou = script.indexOf('trinity-e2e-android:room-for-you');
+    const accountsWorkspace = script.indexOf(
+      'trinity-e2e-android:accounts-workspace',
+    );
+    const roomForYouLine = script
+      .split('\n')
+      .find((line) => line.includes('trinity-e2e-android:room-for-you'));
+
+    expect(roomForYou).toBeGreaterThan(roomProfileSettings);
+    expect(accountsWorkspace).toBeGreaterThan(roomForYou);
+    expect(roomForYouLine).toContain('matrix.shard }}" = "3"');
+    expect(roomForYouLine).toContain('room-for-you-started=true');
+    expect(roomForYouLine).toContain('--timeout-ms 2100000');
   });
 
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
@@ -101,5 +2171,44 @@ describe('CI execution contract', () => {
           !step.with.path.includes('.gradle'),
       ),
     ).toBe(true);
+  });
+
+  it('keeps Android animations enabled for installed-WebView motion contracts', () => {
+    const emulator = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    );
+
+    expect(emulator.with['disable-animations']).toBe(false);
+  });
+
+  it('installs the pinned Chrome fixture runtime only for the legacy SSO shard', () => {
+    const steps = workflow.jobs['android-e2e'].steps;
+    const chrome = steps.find(
+      (step) => step.name === 'Install pinned Chrome fixture prerequisite',
+    );
+    const emulator = steps.findIndex((step) => step.id === 'android');
+
+    expect(chrome).toBeDefined();
+    expect(chrome.if).toBe('${{ matrix.shard == 5 }}');
+    expect(chrome.run).toBe(
+      'node scripts/ci-runner-prerequisites.mjs chromium',
+    );
+    expect(steps.indexOf(chrome)).toBeLessThan(emulator);
+  });
+
+  it('keeps emulator-runner script commands valid as standalone shell lines', () => {
+    const script = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with.script;
+    const lines = script
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replaceAll('${{ matrix.shard }}', '1'));
+
+    expect(lines).toHaveLength(72);
+    for (const line of lines) {
+      expect(() => execFileSync('sh', ['-n', '-c', line])).not.toThrow();
+    }
   });
 });

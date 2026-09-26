@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -124,6 +125,7 @@ describe('Playwright config primitives', () => {
     expect(JSON.stringify(report.reporter)).toContain('junit/results.xml');
     expect(JSON.stringify(report.reporter)).toContain('html-report');
     expect(JSON.stringify(report.reporter)).toContain('suite-summary.json');
+    expect(JSON.stringify(report.reporter)).toContain('test-progress.jsonl');
   });
 
   it('enables CI flaky failure and GitHub reporting while retaining HTML', () => {
@@ -150,6 +152,22 @@ describe('Playwright config primitives', () => {
       if (previousCi === undefined) delete process.env['CI'];
       else process.env['CI'] = previousCi;
     }
+  });
+
+  it('omits the zipped reports an identifier scan cannot read for identifier-safe suites', () => {
+    installSession();
+    const reporters = (options?: { identifierSafe: boolean }): string[] => {
+      const { reporter } = e2eReportConfig(reportingSuite, options);
+      assert(Array.isArray(reporter), 'reporters are a list');
+      return reporter.map((entry) => String(entry[0]));
+    };
+    expect(reporters()).toEqual(
+      expect.arrayContaining(['blob', 'html', 'junit']),
+    );
+    const safe = reporters({ identifierSafe: true });
+    expect(safe).toEqual(expect.arrayContaining(['junit']));
+    expect(safe).not.toContain('blob');
+    expect(safe).not.toContain('html');
   });
 
   it('restores registry identity after the worker replaces annotations', () => {
@@ -186,6 +204,104 @@ describe('Playwright config primitives', () => {
       { type: 'worker', description: 'preserved' },
       ...testCase.annotations,
     ]);
+  });
+
+  it('writes begin and end progress synchronously before suite summary finalization', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-progress-'));
+    directories.push(directory);
+    const progressFile = join(directory, 'test-progress.jsonl');
+    const project = { project: () => ({ name: 'chromium' }) };
+    const testCase = {
+      id: 'one',
+      title: 'first test',
+      titlePath: () => ['suite', 'first test'],
+      location: { file: '/workspace/e2e/first.spec.mts', line: 3, column: 1 },
+      parent: project,
+      annotations: [] as Array<{ type: string; description?: string }>,
+    };
+    const retry = {
+      id: 'two',
+      title: 'retry test',
+      titlePath: () => ['suite', 'retry test'],
+      location: { file: '/workspace/e2e/retry.spec.mts', line: 8, column: 1 },
+      parent: project,
+      annotations: [] as Array<{ type: string; description?: string }>,
+    };
+    const reporter = new RegistryMetadataReporter({
+      metadata: { 'trinity.e2e.suite': 'web.production-pwa' },
+      progressFile,
+    });
+
+    reporter.onBegin({} as never, { allTests: () => [] } as never);
+    writeFileSync(progressFile, `${JSON.stringify({ stale: true })}\n`);
+    const resumedReporter = new RegistryMetadataReporter({
+      metadata: { 'trinity.e2e.suite': 'web.production-pwa' },
+      progressFile,
+    });
+    resumedReporter.onBegin({} as never, { allTests: () => [] } as never);
+    resumedReporter.onTestBegin(
+      testCase as never,
+      {
+        retry: 0,
+        workerIndex: 1,
+        duration: 0,
+        status: 'skipped',
+      } as never,
+    );
+    resumedReporter.onTestEnd(
+      testCase as never,
+      {
+        retry: 0,
+        workerIndex: 1,
+        duration: 24,
+        status: 'passed',
+        annotations: [],
+      } as never,
+    );
+    resumedReporter.onTestBegin(
+      retry as never,
+      {
+        retry: 1,
+        workerIndex: 2,
+        duration: 0,
+        status: 'skipped',
+      } as never,
+    );
+
+    const entries = readFileSync(progressFile, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    expect(entries).toHaveLength(3);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event: 'begin',
+          testId: 'one',
+          title: 'suite > first test',
+          project: 'chromium',
+          retry: 0,
+          workerIndex: 1,
+        }),
+        expect.objectContaining({
+          event: 'end',
+          testId: 'one',
+          title: 'suite > first test',
+          durationMs: 24,
+          status: 'passed',
+        }),
+        expect.objectContaining({
+          event: 'begin',
+          testId: 'two',
+          title: 'suite > retry test',
+          retry: 1,
+          workerIndex: 2,
+        }),
+      ]),
+    );
+    expect(entries[0]).not.toHaveProperty('durationMs');
+    expect(entries[0]).not.toHaveProperty('status');
+    expect(readFileSync(progressFile, 'utf8')).not.toContain('stale');
   });
 
   it('preserves registry identity in generated JUnit XML', () => {

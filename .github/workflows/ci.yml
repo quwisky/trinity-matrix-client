@@ -136,6 +136,8 @@ jobs:
           artifact-name: ${{ needs.renderer.outputs.artifact-name }}
           manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
           destination: dist/renderer-download
+      - name: Install pinned Node runner prerequisites
+        run: node scripts/ci-runner-prerequisites.mjs electron
       # The binary download is NOT skipped any more, and that is the point of this job.
       # It used to be, on the reasoning that "nothing here launches Electron" — which was
       # true and was the problem: a two-major Chromium bump had no gate at all, and the
@@ -162,11 +164,20 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm nx run trinity-e2e-electron:full-prebuilt
+      - id: electron-runner-smoke
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- xvfb-run -a pnpm nx run trinity-e2e-electron:runner-smoke
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.electron.outputs.started == 'true' }}
         with:
           surface: electron
           report-path: dist/.playwright/trinity-e2e-electron/*/electron.full/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.electron-runner-smoke.outputs.started == 'true' }}
+        with:
+          surface: electron-runner-smoke
+          report-path: dist/.playwright/trinity-e2e-electron/*/runner.electron/**
 
       # The app journeys, driven against a disposable Synapse + Caddy stack in Docker.
       - name: Verify Desktop left the worktree unchanged
@@ -197,6 +208,8 @@ jobs:
       - uses: ./.github/actions/setup-playwright
         with:
           install: 'false'
+      - name: Install pinned Chromium runner prerequisites
+        run: node scripts/ci-runner-prerequisites.mjs chromium
       - name: Prepare e2e prerequisites
         id: prerequisites
         run: node scripts/ci-prerequisites.mjs
@@ -211,10 +224,12 @@ jobs:
 
       # Separate from the Synapse suite: this builds and serves the component Storybook, then
       # verifies its palette × mode canvas and focused text contrast in the installed browser.
+      # The full 163-test matrix reached 157 passes at 10 minutes on a standard runner.
+      # Allow the remaining tests and teardown to finish; retain a finite command deadline.
       - id: storybook
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
-          node scripts/ci-run-command.mjs --timeout-ms 600000 -- pnpm exec nx run trinity-e2e-components:storybook
+          node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-components:storybook
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.storybook.outputs.started == 'true' }}
         with:
@@ -262,11 +277,20 @@ jobs:
         run: |
           echo 'started=true' >> "$GITHUB_OUTPUT"
           node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e
+      - id: chromium-runner-smoke
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:runner-smoke
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
         with:
           surface: browser
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.chromium-runner-smoke.outputs.started == 'true' }}
+        with:
+          surface: chromium-runner-smoke
+          report-path: dist/.playwright/trinity-e2e-browser/*/runner.chromium/**
 
       # The QR protocol harness owns the same fixed Synapse stack, so run it only after
       # the main suite has completed and torn its stack down. Its synthetic camera feeds
@@ -287,16 +311,31 @@ jobs:
   android-e2e:
     needs: [classify, renderer]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
-    name: Android E2E (Capacitor WebView, shard ${{ matrix.shard }}/4)
+    name: Android E2E (Capacitor WebView, shard ${{ matrix.shard }}/6)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read
-    timeout-minutes: 75
+    # Six shards keep every emulator session under four hours. Run 36064938227
+    # showed four could not: shard 2 queued about 263 native minutes, its
+    # emulator stopped answering adb after 3h15m, and shard 4 hit its 180-minute
+    # limit inside retained Playwright. Budgets use the slowest native target
+    # durations observed across the ten preceding runs, a 45-minute retained
+    # Playwright command budget and 15 minutes for setup/diagnostics:
+    # shard 1 about 113 native minutes, shard 2 about 117, shard 3 about 173
+    # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 118.
+    # Shard 4's figure adds a provisional 30-40 minutes for message-links,
+    # shard 5's a provisional 15-20 minutes for message-markdown, and shard
+    # 1's a provisional 6-8 minutes for message-poll.
+    # Shard 6's figure adds a provisional 12 minutes for message-quote.
+    # Shard 3's figure adds a provisional 5 minutes for message-receipts.
+    # Shard 3's figure also adds a provisional 5 minutes for message-source.
+    # Shard 3's figure also adds a provisional 5 minutes for message-spoiler.
+    timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -307,6 +346,11 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: ./.github/actions/setup
+      - name: Install pinned Maestro prerequisite
+        run: node scripts/ci-runner-prerequisites.mjs maestro
+      - name: Install pinned Chrome fixture prerequisite
+        if: ${{ matrix.shard == 5 }}
+        run: node scripts/ci-runner-prerequisites.mjs chromium
       - uses: ./.github/actions/restore-verified-renderer
         with:
           sha: ${{ needs.renderer.outputs.sha }}
@@ -347,9 +391,190 @@ jobs:
           profile: pixel_6
           avd-name: trinity_api_36_ci
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
           script: |
+            echo 'smoke-started=true' >> "$GITHUB_OUTPUT"
+            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:runner-smoke
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3000000 -- pnpm exec nx run trinity-e2e-android:recovery-reset; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'critical-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:critical-journeys; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-filter-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-filter; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'sidebar-touch-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:sidebar-touch; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-tags-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-tags; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-read-state-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-read-state; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-list-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-list; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'unread-badges-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:unread-badges; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'leave-room-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:leave-room; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'recent-activity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:recent-activity; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-filter-spaceless-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-filter-spaceless; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-curation-create-join-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-curation-create-join; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-room-order-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-room-order; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-http-error-recovery-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-http-error-recovery; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'message-linkify-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-linkify; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'message-poll-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:message-poll; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'edit-history-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm nx run trinity-e2e-android:edit-history; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-forward-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-forward; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'message-grouping-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm nx run trinity-e2e-android:message-grouping; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'cross-user-verification-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:cross-user-verification; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-drafts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:composer-drafts; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-formatting-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:composer-formatting; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-mentions-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:composer-mentions; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-reactions-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:composer-reactions; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'composer-typing-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:composer-typing; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'gif-picker-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:gif-picker; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'hide-system-messages-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:hide-system-messages; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'jump-to-date-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:jump-to-date; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'jump-to-latest-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:jump-to-latest; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'link-preview-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:link-preview; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'location-share-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:location-share; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'media-retention-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:media-retention; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'message-action-sheet-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3300000 -- pnpm exec nx run trinity-e2e-android:message-action-sheet; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'legacy-sso-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:legacy-sso; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'sso-recovery-reset-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:sso-recovery-reset; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'message-markdown-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-markdown; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-authenticity-shield-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:message-authenticity-shield; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'native-shell-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:native-shell; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'space-settings-core-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:space-settings-core; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'space-leave-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:space-leave; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'room-tombstone-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-tombstone; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'member-details-promotion-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:member-details-promotion; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'member-role-classification-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-classification; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-access-policy-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2400000 -- pnpm exec nx run trinity-e2e-android:room-access-policy; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-profile-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2400000 -- pnpm exec nx run trinity-e2e-android:room-profile-settings; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-for-you-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:room-for-you; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:message-moderation; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-unban-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-android:room-unban; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-roster-live-authority-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:room-roster-live-authority; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-address-lifecycle-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-android:room-address-lifecycle; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'member-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:member-moderation; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-receipts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-receipts; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-source-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-source; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-spoiler-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-spoiler; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'room-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'space-settings-resilience-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'member-role-live-updates-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'room-widget-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:room-widget-settings; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-quote-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:message-quote; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'account-password-change-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:account-password-change; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'clear-all-data-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:clear-all-data; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'password-registration-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:password-registration; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'oidc-login-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:oidc-login; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'security-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:security-settings; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'message-links-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3300000 -- pnpm exec nx run trinity-e2e-android:message-links; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
-            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/4
+            TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/6
+
+      - name: Gate Android edit-history diagnostics
+        id: edit-history-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.edit-history-started == 'true' }}
+        env:
+          EDIT_HISTORY_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$EDIT_HISTORY_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.edit-history/edit-history/publication-safe' -print -quit)" ]; then
+            echo 'edit-history-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-forward diagnostics
+        id: message-forward-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-forward-started == 'true' }}
+        env:
+          MESSAGE_FORWARD_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_FORWARD_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-forward/message-forward/publication-safe' -print -quit)" ]; then
+            echo 'message-forward-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-grouping diagnostics
+        id: message-grouping-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-grouping-started == 'true' }}
+        env:
+          MESSAGE_GROUPING_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_GROUPING_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-grouping/message-grouping/publication-safe' -print -quit)" ]; then
+            echo 'message-grouping-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-linkify diagnostics
+        id: message-linkify-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-linkify-started == 'true' }}
+        env:
+          MESSAGE_LINKIFY_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_LINKIFY_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-linkify/message-linkify/publication-safe' -print -quit)" ]; then
+            echo 'message-linkify-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-links diagnostics
+        id: message-links-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-links-started == 'true' }}
+        env:
+          MESSAGE_LINKS_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_LINKS_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-links/message-links/publication-safe' -print -quit)" ]; then
+            echo 'message-links-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-markdown diagnostics
+        id: message-markdown-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-markdown-started == 'true' }}
+        env:
+          MESSAGE_MARKDOWN_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_MARKDOWN_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-markdown/message-markdown/publication-safe' -print -quit)" ]; then
+            echo 'message-markdown-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-poll diagnostics
+        id: message-poll-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' }}
+        env:
+          MESSAGE_POLL_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_POLL_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-poll/message-poll/publication-safe' -print -quit)" ]; then
+            echo 'message-poll-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-quote diagnostics
+        id: message-quote-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-quote-started == 'true' }}
+        env:
+          MESSAGE_QUOTE_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_QUOTE_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-quote/message-quote/publication-safe' -print -quit)" ]; then
+            echo 'message-quote-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-receipts diagnostics
+        id: message-receipts-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' }}
+        env:
+          MESSAGE_RECEIPTS_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_RECEIPTS_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-receipts/message-receipts/publication-safe' -print -quit)" ]; then
+            echo 'message-receipts-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-source diagnostics
+        id: message-source-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-source-started == 'true' }}
+        env:
+          MESSAGE_SOURCE_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_SOURCE_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-source/message-source/publication-safe' -print -quit)" ]; then
+            echo 'message-source-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-spoiler diagnostics
+        id: message-spoiler-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-spoiler-started == 'true' }}
+        env:
+          MESSAGE_SPOILER_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_SPOILER_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-spoiler/message-spoiler/publication-safe' -print -quit)" ]; then
+            echo 'message-spoiler-safe=true' >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.started == 'true' }}
@@ -357,6 +582,479 @@ jobs:
           surface: android
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.installed-webview/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.smoke-started == 'true' }}
+        with:
+          surface: android-runner-smoke
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/runner.android/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.critical-started == 'true' }}
+        with:
+          surface: android-critical-journeys
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.critical-journeys/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.native-shell-started == 'true' }}
+        with:
+          surface: android-native-shell
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.native-shell/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-settings-core-started == 'true' }}
+        with:
+          surface: android-space-settings-core
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-settings-core/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-leave-started == 'true' }}
+        with:
+          surface: android-space-leave
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-leave/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-tombstone-started == 'true' }}
+        with:
+          surface: android-room-tombstone
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-tombstone/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.member-details-promotion-started == 'true' }}
+        with:
+          surface: android-member-details-promotion
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.member-details-promotion/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.member-role-classification-started == 'true' }}
+        with:
+          surface: android-member-role-classification
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.member-role-classification/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.member-role-live-updates-started == 'true' }}
+        with:
+          surface: android-member-role-live-updates
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.member-role-live-updates/**
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.accounts-started == 'true' }}
+        with:
+          surface: android-accounts-workspace
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.accounts-workspace/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-moderation-started == 'true' }}
+        with:
+          surface: android-message-moderation
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-moderation/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.member-moderation-started == 'true' }}
+        with:
+          surface: android-member-moderation
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.member-moderation/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-unban-started == 'true' }}
+        with:
+          surface: android-room-unban
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-unban/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-roster-live-authority-started == 'true' }}
+        with:
+          surface: android-room-roster-live-authority
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-roster-live-authority/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-address-lifecycle-started == 'true' }}
+        with:
+          surface: android-room-address-lifecycle
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-address-lifecycle/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-access-policy-started == 'true' }}
+        with:
+          surface: android-room-access-policy
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-access-policy/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-profile-settings-started == 'true' }}
+        with:
+          surface: android-room-profile-settings
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-profile-settings/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-for-you-started == 'true' }}
+        with:
+          surface: android-room-for-you
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-for-you/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.identity-started == 'true' }}
+        with:
+          surface: android-identity-presence
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.identity-presence/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-settings-mobile-started == 'true' }}
+        with:
+          surface: android-room-settings-mobile
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-settings-mobile/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-settings-mobile-started == 'true' }}
+        with:
+          surface: android-space-settings-mobile
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-settings-mobile/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-settings-resilience-started == 'true' }}
+        with:
+          surface: android-space-settings-resilience
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-settings-resilience/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-widget-settings-started == 'true' }}
+        with:
+          surface: android-room-widget-settings
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-widget-settings/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.account-password-change-started == 'true' }}
+        with:
+          surface: android-account-password-change
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.account-password-change/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.clear-all-data-started == 'true' }}
+        with:
+          surface: android-clear-all-data
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.clear-all-data/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.password-registration-started == 'true' }}
+        with:
+          surface: android-password-registration
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.password-registration/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.oidc-login-started == 'true' }}
+        with:
+          surface: android-oidc-login
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.oidc-login/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.security-settings-started == 'true' }}
+        with:
+          surface: android-security-settings
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.security-settings/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.recovery-reset-started == 'true' }}
+        with:
+          surface: android-recovery-reset
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.recovery-reset/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.legacy-sso-started == 'true' }}
+        with:
+          surface: android-legacy-sso
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.legacy-sso/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.sso-recovery-reset-started == 'true' }}
+        with:
+          surface: android-sso-recovery-reset
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.sso-recovery-reset/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-authenticity-shield-started == 'true' }}
+        with:
+          surface: android-message-authenticity-shield
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-authenticity-shield/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.cross-user-verification-started == 'true' }}
+        with:
+          surface: android-cross-user-verification
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.cross-user-verification/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.composer-drafts-started == 'true' }}
+        with:
+          surface: android-composer-drafts
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.composer-drafts/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.composer-formatting-started == 'true' }}
+        with:
+          surface: android-composer-formatting
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.composer-formatting/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.composer-mentions-started == 'true' }}
+        with:
+          surface: android-composer-mentions
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.composer-mentions/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.composer-reactions-started == 'true' }}
+        with:
+          surface: android-composer-reactions
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.composer-reactions/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.composer-typing-started == 'true' }}
+        with:
+          surface: android-composer-typing
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.composer-typing/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.gif-picker-started == 'true' }}
+        with:
+          surface: android-gif-picker
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.gif-picker/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.hide-system-messages-started == 'true' }}
+        with:
+          surface: android-hide-system-messages
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.hide-system-messages/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.jump-to-date-started == 'true' }}
+        with:
+          surface: android-jump-to-date
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.jump-to-date/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.jump-to-latest-started == 'true' }}
+        with:
+          surface: android-jump-to-latest
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.jump-to-latest/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.link-preview-started == 'true' }}
+        with:
+          surface: android-link-preview
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.link-preview/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.location-share-started == 'true' }}
+        with:
+          surface: android-location-share
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.location-share/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.media-retention-started == 'true' }}
+        with:
+          surface: android-media-retention
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.media-retention/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-action-sheet-started == 'true' }}
+        with:
+          surface: android-message-action-sheet
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-action-sheet/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.edit-history-started == 'true' && steps.edit-history-artifact-gate.outputs.edit-history-safe == 'true' }}
+        with:
+          surface: android-edit-history
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.edit-history/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-forward-started == 'true' && steps.message-forward-artifact-gate.outputs.message-forward-safe == 'true' }}
+        with:
+          surface: android-message-forward
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-forward/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-grouping-started == 'true' && steps.message-grouping-artifact-gate.outputs.message-grouping-safe == 'true' }}
+        with:
+          surface: android-message-grouping
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-grouping/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.sidebar-filter-started == 'true' }}
+        with:
+          surface: android-sidebar-filter
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.sidebar-filter/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.sidebar-touch-started == 'true' }}
+        with:
+          surface: android-sidebar-touch
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.sidebar-touch/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-tags-started == 'true' }}
+        with:
+          surface: android-room-tags
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-tags/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-read-state-started == 'true' }}
+        with:
+          surface: android-room-read-state
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-read-state/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-list-started == 'true' }}
+        with:
+          surface: android-room-list
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-list/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.unread-badges-started == 'true' }}
+        with:
+          surface: android-unread-badges
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.unread-badges/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.leave-room-started == 'true' }}
+        with:
+          surface: android-leave-room
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.leave-room/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.recent-activity-started == 'true' }}
+        with:
+          surface: android-recent-activity
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.recent-activity/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-filter-spaceless-started == 'true' }}
+        with:
+          surface: android-room-filter-spaceless
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-filter-spaceless/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-curation-create-join-started == 'true' }}
+        with:
+          surface: android-space-curation-create-join
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-curation-create-join/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.space-room-order-started == 'true' }}
+        with:
+          surface: android-space-room-order
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.space-room-order/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.room-http-error-recovery-started == 'true' }}
+        with:
+          surface: android-room-http-error-recovery
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.room-http-error-recovery/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-linkify-started == 'true' && steps.message-linkify-artifact-gate.outputs.message-linkify-safe == 'true' }}
+        with:
+          surface: android-message-linkify
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-linkify/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-links-started == 'true' && steps.message-links-artifact-gate.outputs.message-links-safe == 'true' }}
+        with:
+          surface: android-message-links
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-links/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-markdown-started == 'true' && steps.message-markdown-artifact-gate.outputs.message-markdown-safe == 'true' }}
+        with:
+          surface: android-message-markdown
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-markdown/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-poll-started == 'true' && steps.message-poll-artifact-gate.outputs.message-poll-safe == 'true' }}
+        with:
+          surface: android-message-poll
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-poll/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-quote-started == 'true' && steps.message-quote-artifact-gate.outputs.message-quote-safe == 'true' }}
+        with:
+          surface: android-message-quote
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-quote/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-receipts-started == 'true' && steps.message-receipts-artifact-gate.outputs.message-receipts-safe == 'true' }}
+        with:
+          surface: android-message-receipts
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-receipts/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-source-started == 'true' && steps.message-source-artifact-gate.outputs.message-source-safe == 'true' }}
+        with:
+          surface: android-message-source
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-source/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-spoiler-started == 'true' && steps.message-spoiler-artifact-gate.outputs.message-spoiler-safe == 'true' }}
+        with:
+          surface: android-message-spoiler
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-spoiler/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}

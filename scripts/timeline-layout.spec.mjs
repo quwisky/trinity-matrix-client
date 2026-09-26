@@ -114,8 +114,9 @@ describe('modern timeline layout contracts', () => {
       /\.msg__body\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/s,
     );
     expect(rowCss).toMatch(
-      /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*margin-inline-start:\s*var\(--trinity-space-3\);/s,
+      /\.msg__shield\s*\{[^}]*grid-row:\s*1;[^}]*grid-column:\s*2;[^}]*justify-self:\s*end;[^}]*padding-inline-start:\s*var\(--trinity-space-3\);/s,
     );
+    expect(rowCss).not.toMatch(/\.msg__shield\s*\{[^}]*margin-inline-start:/s);
     expect(rowCss).not.toMatch(/\.msg__body\s*\{[^}]*column-gap:/s);
     expect(rowCss).toMatch(
       /\.msg__receipts\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*justify-self:\s*end;/s,

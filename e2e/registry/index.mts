@@ -12,16 +12,18 @@ import { BROWSER_E2E_SUITES } from './suites/browser.mts';
 import { COMPONENT_E2E_SUITES } from './suites/components.mts';
 import { HOST_E2E_SUITES } from './suites/hosts.mts';
 import { PROTOCOL_E2E_SUITES } from './suites/protocol.mts';
+import { RUNNER_E2E_SUITES } from './suites/runners.mts';
 
 export const E2E_SUITES = [
   ...BROWSER_E2E_SUITES,
   ...COMPONENT_E2E_SUITES,
   ...HOST_E2E_SUITES,
   ...PROTOCOL_E2E_SUITES,
+  ...RUNNER_E2E_SUITES,
 ] as const;
 
 export const E2E_INVENTORY = {
-  canonicalBrowserSpecCount: 122,
+  canonicalBrowserSpecCount: 123,
   trackedTargetProjects: [
     {
       project: 'trinity-e2e',

@@ -1,0 +1,10 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+- scrollUntilVisible:
+    element:
+      id: ${DENSITY_TRIGGER_ID}
+    direction: DOWN
+- tapOn:
+    id: ${DENSITY_TRIGGER_ID}
+- tapOn: Compact

@@ -13,14 +13,24 @@ inputs:
 runs:
   using: composite
   steps:
+    # Android diagnostics never publish a raw Matrix Room or event identifier.
+    # The redaction also covers the shared dist/.ci logs this upload includes.
+    - name: Redact Matrix identifiers from Android diagnostics
+      id: matrix-identifiers
+      if: ${{ inputs.surface == 'android' || startsWith(inputs.surface, 'android-') }}
+      shell: bash
+      env:
+        CI_REPORT_PATH: ${{ inputs.report-path }}
+      run: node scripts/ci-matrix-identifiers.mjs
     - name: Require suite diagnostics
       shell: bash
       env:
         CI_REPORT_PATH: ${{ inputs.report-path }}
       run: node scripts/ci-diagnostics.mjs
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-      # Still retain process logs if report validation failed during startup/timeout.
-      if: ${{ !cancelled() }}
+      # Still retain process logs if report validation failed during startup/timeout,
+      # but never Android diagnostics the identifier redaction did not verify.
+      if: ${{ !cancelled() && ((inputs.surface != 'android' && !startsWith(inputs.surface, 'android-')) || steps.matrix-identifiers.outputs.verified == 'true') }}
       with:
         name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-${{ github.job }}-${{ inputs.surface }}-${{ inputs.shard }}
         path: |

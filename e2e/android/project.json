@@ -4,11 +4,7 @@
   "projectType": "application",
   "sourceRoot": "e2e/android",
   "tags": ["type:e2e", "scope:trinity", "environment:android"],
-  "implicitDependencies": [
-    "trinity",
-    "trinity-android",
-    "trinity-e2e-support"
-  ],
+  "implicitDependencies": ["trinity", "trinity-android", "trinity-e2e-support"],
   "targets": {
     "e2e": {
       "//": "Owns the API 36 emulator, installed applications, adb bridge and support-owned disposable Synapse lifecycle.",
@@ -19,6 +15,991 @@
       "options": {
         "command": "node run.mts",
         "cwd": "{projectRoot}"
+      }
+    },
+    "runner-smoke": {
+      "//": "Node test runner smoke against the verified production renderer, API 36 emulator and support-owned Synapse lifecycle.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        {
+          "projects": ["trinity-android"],
+          "target": "build-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=runner.android --entrypoint=e2e/android/runner-smoke.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "critical-journeys": {
+      "//": "Critical native journeys against the verified production renderer and both primary and secondary Android APKs.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" },
+        {
+          "projects": ["trinity-android"],
+          "target": "build-secondary-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.critical-journeys --entrypoint=e2e/android/critical-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "native-shell": {
+      "//": "Native shell, Back, keyboard, formatting and Appearance parity against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.native-shell --entrypoint=e2e/android/native-shell-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "accounts-workspace": {
+      "//": "All fourteen account lifecycle and mixed workspace definitions against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.accounts-workspace --timeout-ms=4800000 --entrypoint=e2e/android/account-workspace-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "identity-presence": {
+      "//": "DM avatar and ordinary member/DM presence definitions against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.identity-presence --timeout-ms=1080000 --entrypoint=e2e/android/identity-presence-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "sidebar-filter": {
+      "//": "Sidebar room filtering, accent folding, clear and Escape definitions against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.sidebar-filter --timeout-ms=1080000 --entrypoint=e2e/android/sidebar-filter-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "sidebar-touch": {
+      "//": "Sidebar touch targets, menu hierarchy and narrow identity-dock parity against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.sidebar-touch --timeout-ms=1080000 --entrypoint=e2e/android/sidebar-touch-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-tags": {
+      "//": "Favourite, low-priority and double-tag room ordering against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-tags --timeout-ms=1080000 --entrypoint=e2e/android/room-tags-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-read-state": {
+      "//": "Mark-all-read and local/remote marked-unread round trips against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-read-state --timeout-ms=1080000 --entrypoint=e2e/android/room-read-state-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-list": {
+      "//": "Room-row preview structure and muted unread-count behavior against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-list --timeout-ms=1080000 --entrypoint=e2e/android/room-list-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "unread-badges": {
+      "//": "Aggregate Rooms-rail and native platform unread badges against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.unread-badges --timeout-ms=1080000 --entrypoint=e2e/android/unread-badges-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "leave-room": {
+      "//": "Touch-visible room menu, destructive leave confirmation and membership projection against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.leave-room --timeout-ms=1080000 --entrypoint=e2e/android/leave-room-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "recent-activity": {
+      "//": "Recent mixed-view scoping, favourite order, space-child inclusion and unread badge against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.recent-activity --timeout-ms=1080000 --entrypoint=e2e/android/recent-activity-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-filter-spaceless": {
+      "//": "Spaceless flat-Rooms filtering and space-child navigation against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-filter-spaceless --timeout-ms=1080000 --entrypoint=e2e/android/room-filter-spaceless-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-curation-create-join": {
+      "//": "Existing-room linking, nested-space creation and live child joins against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-curation-create-join --timeout-ms=1080000 --entrypoint=e2e/android/space-curation-create-join-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-room-order": {
+      "//": "Per-Space, Account-default and live recency room ordering against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-room-order --timeout-ms=1080000 --entrypoint=e2e/android/space-room-order-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-http-error-recovery": {
+      "//": "Outbound invite and incoming join HTTP failure release and same-action retry against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-http-error-recovery --timeout-ms=1080000 --entrypoint=e2e/android/room-http-error-recovery-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-settings-mobile": {
+      "//": "Mobile Room Settings directory, personal preferences, draft protection and navigation against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-settings-mobile --timeout-ms=1080000 --entrypoint=e2e/android/room-settings-mobile-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-settings-mobile": {
+      "//": "Mobile Space Settings directory, drafts, contents, members and readonly navigation against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-settings-mobile --timeout-ms=1380000 --entrypoint=e2e/android/space-settings-mobile-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-settings-resilience": {
+      "//": "Space Settings partial-save recovery and opening-Account exact-target continuity against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-settings-resilience --timeout-ms=1380000 --entrypoint=e2e/android/space-settings-resilience-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-settings-core": {
+      "//": "All seven core Space Settings definitions and 85 assertion identities against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-settings-core --timeout-ms=2520000 --entrypoint=e2e/android/space-settings-core-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "space-leave": {
+      "//": "Space leave confirmation, cancellation safety and child-Room membership retention against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.space-leave --timeout-ms=1080000 --entrypoint=e2e/android/space-leave-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-tombstone": {
+      "//": "Room-upgrade banner, layout and successor navigation against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-tombstone --timeout-ms=1080000 --entrypoint=e2e/android/room-tombstone-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "member-details-promotion": {
+      "//": "Member details, native clipboard, and promotion journeys against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.member-details-promotion --timeout-ms=1380000 --entrypoint=e2e/android/member-details-promotion-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "member-role-classification": {
+      "//": "Member role grouping, trusted-DM equality, and owner/admin classification against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        "trinity-android:build-prebuilt"
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.member-role-classification --timeout-ms=1980000 --entrypoint=e2e/android/member-role-classification-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "member-role-live-updates": {
+      "//": "Live member-role transitions, permission loss, read-only settings, and blocked-action feedback against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        "trinity-android:build-prebuilt"
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.member-role-live-updates --timeout-ms=1980000 --entrypoint=e2e/android/member-role-live-updates-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-moderation": {
+      "//": "Message reporting and moderator redaction against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-moderation --timeout-ms=1380000 --entrypoint=e2e/android/message-moderation-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "member-moderation": {
+      "//": "Member Block, Kick, and Ban journeys against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.member-moderation --timeout-ms=1680000 --entrypoint=e2e/android/member-moderation-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-unban": {
+      "//": "Room banned-list unban and exact confirmation feedback against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-unban --timeout-ms=780000 --entrypoint=e2e/android/room-unban-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-roster-live-authority": {
+      "//": "Room roster, member-detail, live authority and moderation continuity against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-roster-live-authority --timeout-ms=1980000 --entrypoint=e2e/android/room-roster-live-authority-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-address-lifecycle": {
+      "//": "Room address add, primary, removal and rejected-add continuity against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-address-lifecycle --timeout-ms=780000 --entrypoint=e2e/android/room-address-lifecycle-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-access-policy": {
+      "//": "Room access, history visibility, Space allow-list, revocation and member read-only journeys against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-access-policy --timeout-ms=2100000 --entrypoint=e2e/android/room-access-policy-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-profile-settings": {
+      "//": "Room profile, photo, partial retry and opening-Account continuity journeys against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-profile-settings --timeout-ms=2100000 --entrypoint=e2e/android/room-profile-settings-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-for-you": {
+      "//": "Room For-you preference loading, partial retry and opening-Account isolation journeys against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-for-you --timeout-ms=1800000 --entrypoint=e2e/android/room-for-you-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "room-widget-settings": {
+      "//": "Room widget mobile reachability, restricted bridge, opening-Account management and live-authority journeys against the verified production Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.room-widget-settings --timeout-ms=2400000 --entrypoint=e2e/android/room-widget-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "account-password-change": {
+      "//": "Account password rejection, success and server credential verification against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.account-password-change --timeout-ms=900000 --entrypoint=e2e/android/account-password-change-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "clear-all-data": {
+      "//": "Signed-in and signed-out installation wipe plus destructive styling against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.clear-all-data --timeout-ms=1200000 --entrypoint=e2e/android/clear-all-data-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "password-registration": {
+      "//": "Password registration availability, UIA, encryption setup and exact server identity against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.password-registration --timeout-ms=900000 --entrypoint=e2e/android/password-registration-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "oidc-login": {
+      "//": "OIDC-native discovery, authorization-code callbacks, PKCE redemption and password fallback against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.oidc-login --timeout-ms=1200000 --entrypoint=e2e/android/oidc-login-journeys.mts --platform=android --bundle-manifest --resource=android-avd",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "security-settings": {
+      "//": "Fresh Security posture, recovery setup and narrow verification return against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.security-settings --timeout-ms=900000 --entrypoint=e2e/android/security-settings-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "recovery-reset": {
+      "//": "Recovery-reset replacement, cancellation, original-key and second-package escape-hatch journeys against two installed Android APKs.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" },
+        {
+          "projects": ["trinity-android"],
+          "target": "build-secondary-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.recovery-reset --timeout-ms=2700000 --entrypoint=e2e/android/recovery-reset-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "legacy-sso": {
+      "//": "Real legacy Synapse/Dex provider, forged callbacks and persisted installed-Android sessions.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.legacy-sso --timeout-ms=1200000 --entrypoint=e2e/android/legacy-sso-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "sso-recovery-reset": {
+      "//": "Real legacy Synapse/Dex recovery-reset refusal and server-side crypto atomicity against the installed Android APK.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.sso-recovery-reset --timeout-ms=1200000 --entrypoint=e2e/android/sso-recovery-reset-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-authenticity-shield": {
+      "//": "Plaintext negative control and real unsigned-device authenticity shield, tooltip, receipt and bidirectional geometry against two installed Android APKs.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" },
+        {
+          "projects": ["trinity-android"],
+          "target": "build-secondary-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-authenticity-shield --timeout-ms=1800000 --entrypoint=e2e/android/message-authenticity-shield-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "cross-user-verification": {
+      "//": "Real two-account cross-user verification starts, including an exact delayed counterpart identity query, against two installed Android APKs.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" },
+        {
+          "projects": ["trinity-android"],
+          "target": "build-secondary-prebuilt"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.cross-user-verification --timeout-ms=1800000 --entrypoint=e2e/android/cross-user-verification-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "composer-drafts": {
+      "//": "Per-Room composer draft isolation, durable native Preferences and installed-host cold relaunch restoration.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.composer-drafts --timeout-ms=1200000 --entrypoint=e2e/android/composer-drafts-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "composer-formatting": {
+      "//": "Native selected-text formatting, Cancel/Preview continuity and compact larger-text reachability.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.composer-formatting --timeout-ms=1200000 --entrypoint=e2e/android/composer-formatting-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "composer-mentions": {
+      "//": "Native mention touch/keyboard acceptance, exact rendered styling and server m.mentions semantics.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.composer-mentions --timeout-ms=900000 --entrypoint=e2e/android/composer-mentions-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "composer-reactions": {
+      "//": "Native composer-picker synchronization and exact-message full reaction picker semantics.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.composer-reactions --timeout-ms=900000 --entrypoint=e2e/android/composer-reactions-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "composer-typing": {
+      "//": "Native typing-indicator copy, reserved geometry, animation, reduced-motion and sidebar projection semantics.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.composer-typing --timeout-ms=1200000 --entrypoint=e2e/android/composer-typing-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "gif-picker": {
+      "//": "Native GIF settings, unconfigured tray, hermetic image send and active-Account sender semantics.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.gif-picker --timeout-ms=1200000 --entrypoint=e2e/android/gif-picker-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "hide-system-messages": {
+      "//": "Native membership-line filtering, message survival and durable preference semantics.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.hide-system-messages --timeout-ms=1200000 --entrypoint=e2e/android/hide-system-messages-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "jump-to-date": {
+      "//": "Native current-date selection and real Matrix history backfill to an exact event.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.jump-to-date --timeout-ms=1200000 --entrypoint=e2e/android/jump-to-date-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "jump-to-latest": {
+      "//": "Native timeline swipe, jump-to-latest activation and exact bottom-bound geometry.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.jump-to-latest --timeout-ms=1200000 --entrypoint=e2e/android/jump-to-latest-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "link-preview": {
+      "//": "Plaintext link preview, exact card metadata and authenticated homeserver-fetch provenance.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.link-preview --timeout-ms=1200000 --entrypoint=e2e/android/link-preview-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "location-share": {
+      "//": "Native GPS location sharing, exact Matrix echo/card and message-action-sheet semantics.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.location-share --timeout-ms=1200000 --entrypoint=e2e/android/location-share-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "media-retention": {
+      "//": "Plaintext and encrypted image retention across repeated Room navigation and native lightbox interactions.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.media-retention --timeout-ms=1200000 --entrypoint=e2e/android/media-retention-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-action-sheet": {
+      "//": "Five native phone message-action-sheet journeys with exact geometry and restoration parity.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-action-sheet --timeout-ms=3000000 --entrypoint=e2e/android/message-action-sheet-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "edit-history": {
+      "//": "Installed Android edit-history lifecycle and Pixel 5 large-text parity.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.edit-history --timeout-ms=2400000 --entrypoint=e2e/android/edit-history-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-forward": {
+      "//": "Native Android source-to-target Room forwarding with server event proof.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-forward --timeout-ms=1200000 --entrypoint=e2e/android/message-forward-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-grouping": {
+      "//": "Native Android cosy-to-Compact message grouping with source-mapped geometry proof.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-grouping --timeout-ms=1200000 --entrypoint=e2e/android/message-grouping-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-linkify": {
+      "//": "Native Android bare-URL linkification sent through the installed composer.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-linkify --timeout-ms=1200000 --entrypoint=e2e/android/message-linkify-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-links": {
+      "//": "Native Android Matrix room and user links against the primary and federated secondary Synapse servers.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-links --timeout-ms=3000000 --entrypoint=e2e/android/message-links-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-markdown": {
+      "//": "Native Android Markdown formatting, task lists and code captions typed through the installed composer.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-markdown --timeout-ms=1800000 --entrypoint=e2e/android/message-markdown-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-poll": {
+      "//": "Native Android poll creation, voting and ending through the installed composer tray.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-poll --timeout-ms=1200000 --entrypoint=e2e/android/message-poll-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-quote": {
+      "//": "Native Android quoting: a two-paragraph message quoted through the action sheet, and Quote offered for text but not for an image.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-quote --timeout-ms=1500000 --entrypoint=e2e/android/message-quote-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-receipts": {
+      "//": "Native Android read receipts: a reader sees the seer's avatar on the exact message they read, labelled and clear of its text.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-receipts --timeout-ms=900000 --entrypoint=e2e/android/message-receipts-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-source": {
+      "//": "Native Android View source: the exact sent event's raw JSON in an opaque dialog over the conversation, opened from the message-action sheet.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-source --timeout-ms=900000 --entrypoint=e2e/android/message-source-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "message-spoiler": {
+      "//": "Native Android spoiler reveal: the exact formatted spoiler renders as a transparent black bar and a native tap reveals its painted text.",
+      "cache": false,
+      "parallelism": false,
+      "dependsOn": [
+        { "projects": ["trinity-android"], "target": "build-prebuilt" }
+      ],
+      "outputs": ["{workspaceRoot}/dist/.playwright/trinity-e2e-android"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node scripts/web-bundle-manifest.mjs verify dist/web-bundle-manifest.json www && TRINITY_E2E_PROJECT=trinity-e2e-android TRINITY_E2E_PREBUILT_WWW=1 node e2e/support/run-node.mts --suite=android.message-spoiler --timeout-ms=900000 --entrypoint=e2e/android/message-spoiler-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse",
+        "cwd": "{workspaceRoot}"
       }
     },
     "lint": {

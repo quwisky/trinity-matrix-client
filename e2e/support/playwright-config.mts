@@ -38,6 +38,12 @@ interface E2ELifecycleConfigOptions {
 interface E2EReportConfigOptions {
   /** Reporters that add suite-specific annotations before artifact reporters serialize. */
   readonly reportersAfterMetadata?: readonly ReporterDescription[];
+  /**
+   * Omit the blob and HTML reporters. Both are zip archives, which the Matrix
+   * identifier scan cannot read, so a suite whose diagnostics must be verified
+   * id-free before publication cannot produce them.
+   */
+  readonly identifierSafe?: boolean;
 }
 
 function sessionForConfig(): E2ESessionDescriptor | undefined {
@@ -97,17 +103,29 @@ export function e2eReportConfig(
     [consoleReporter],
     [
       join(import.meta.dirname, 'registry-metadata.reporter.mts'),
-      { metadata, outputFile: artifact('suite-summary.json') },
+      {
+        metadata,
+        outputFile: artifact('suite-summary.json'),
+        progressFile: artifact('test-progress.jsonl'),
+      },
     ],
     ...(options.reportersAfterMetadata ?? []),
-    ['blob', { outputDir: artifact('blob-report') }],
+    ...(options.identifierSafe
+      ? []
+      : [
+          [
+            'blob',
+            { outputDir: artifact('blob-report') },
+          ] as ReporterDescription,
+        ]),
     ['junit', { outputFile: artifact('junit/results.xml') }],
   ];
   if (process.env['CI']) reporter.push(['github']);
-  reporter.push([
-    'html',
-    { outputFolder: artifact('html-report'), open: 'never' },
-  ]);
+  if (!options.identifierSafe)
+    reporter.push([
+      'html',
+      { outputFolder: artifact('html-report'), open: 'never' },
+    ]);
   return {
     metadata,
     outputDir: artifact('test-output'),

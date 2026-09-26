@@ -6,12 +6,13 @@ import type {
   TestCase,
   TestResult,
 } from '@playwright/test/reporter';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, relative } from 'node:path';
 
 interface RegistryMetadataReporterOptions {
   readonly metadata: Readonly<Record<string, string>>;
   readonly outputFile?: string;
+  readonly progressFile?: string;
 }
 
 interface AnnotationTarget {
@@ -24,6 +25,7 @@ export default class RegistryMetadataReporter implements Reporter {
   private attemptDurationMs = 0;
   private readonly attemptsByStatus = new Map<string, number>();
   private readonly retriesByTest = new Map<string, number>();
+  private progressInitialized = false;
 
   constructor(private readonly options: RegistryMetadataReporterOptions) {}
 
@@ -32,9 +34,14 @@ export default class RegistryMetadataReporter implements Reporter {
   }
 
   onBegin(_config: FullConfig, suite: Suite): void {
+    this.initializeProgress();
     for (const test of suite.allTests()) {
       this.annotate(test);
     }
+  }
+
+  onTestBegin(test: TestCase, result: TestResult): void {
+    this.writeProgress('begin', test, result);
   }
 
   onTestEnd(test: TestCase, result: TestResult): void {
@@ -53,6 +60,7 @@ export default class RegistryMetadataReporter implements Reporter {
       test.id,
       Math.max(this.retriesByTest.get(test.id) ?? 0, result.retry),
     );
+    this.writeProgress('end', test, result);
   }
 
   onEnd(result: FullResult): void {
@@ -84,5 +92,37 @@ export default class RegistryMetadataReporter implements Reporter {
         .filter(([type]) => !existing.has(type))
         .map(([type, description]) => ({ type, description })),
     );
+  }
+
+  private initializeProgress(): void {
+    if (this.progressInitialized || !this.options.progressFile) return;
+    mkdirSync(dirname(this.options.progressFile), { recursive: true });
+    writeFileSync(this.options.progressFile, '');
+    this.progressInitialized = true;
+  }
+
+  private writeProgress(
+    event: 'begin' | 'end',
+    test: TestCase,
+    result: TestResult,
+  ): void {
+    if (!this.options.progressFile || !this.progressInitialized) return;
+    const location = test.location
+      ? relative(process.cwd(), test.location.file)
+      : undefined;
+    const entry = {
+      event,
+      timestamp: new Date().toISOString(),
+      testId: test.id,
+      title: test.titlePath().join(' > '),
+      project: test.parent.project()?.name,
+      ...(location ? { location } : {}),
+      retry: result.retry,
+      workerIndex: result.workerIndex,
+      ...(event === 'end'
+        ? { durationMs: result.duration, status: result.status }
+        : {}),
+    };
+    appendFileSync(this.options.progressFile, `${JSON.stringify(entry)}\n`);
   }
 }

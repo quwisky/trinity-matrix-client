@@ -77,7 +77,7 @@ requirements.
 | `renderer`         | One verified production web renderer build, recorded as a SHA/configuration/file manifest artifact              | Inspect the renderer workflow's build, manifest, or upload step. Downstream hosts must consume this artifact.                                         |
 | `desktop`          | Electron install, compile, typecheck, unit tests, and launched-shell E2E using the verified renderer            | Use the [desktop guide](../../apps/docs-developers/src/content/docs/platforms/electron.md) to reproduce the matching shell or packaging step.         |
 | `e2e`              | Component Storybook, production renderer, styling, disposable-Synapse browser journeys, then QR verification    | Read the Playwright report and reproduce the smallest owned journey. The Synapse-backed flows use a fixed disposable stack, so run them sequentially. |
-| `android-e2e`      | Four API 36 Pixel 6 WebView shards using the verified renderer                                                  | Use the [Android guide](../../apps/docs-developers/src/content/docs/platforms/android.md) and the Android-specific failure output.                    |
+| `android-e2e`      | Six API 36 Pixel 6 WebView shards using the verified renderer                                                   | Use the [Android guide](../../apps/docs-developers/src/content/docs/platforms/android.md) and the Android-specific failure output.                    |
 | `ios-native-build` | Unsigned iOS Simulator host compile on `macos-26`, using the verified renderer and checking only Cordova extras | Inspect the retained Xcode log and result bundle; this is a compile gate, not installed-device evidence.                                              |
 | `scheduled-e2e`    | Chromium, Firefox, and WebKit scheduled suite                                                                   | This weekly Sunday 03:23 UTC job is separate from pull-request jobs; diagnose its browser-specific artifact and environment.                          |
 
@@ -87,6 +87,16 @@ Each artifact identifies the run, attempt, commit, job, surface and shard, with
 seven-day retention. HTML, blob, JUnit and GitHub reporting remain enabled in CI;
 failed attempts retain traces and screenshots. CI allows one diagnostic retry
 and rejects pass-on-retry results.
+
+`test-progress.jsonl` records test starts and finishes as they happen, including
+the browser project, retry, worker and elapsed test duration. After a timeout,
+use starts without matching finishes to identify interrupted attempts; the
+progress log does not replace the suite's final status or required reports.
+Android failed-test directories also contain `logcat.txt`, `activity.txt` and
+`package.txt`, attached to the Playwright report. Inspect these for the failure
+interval; `host-output/logcat-final.txt` is a separate suite-end snapshot.
+Older reports may embed the failed-test text directly inside their blob or HTML
+attachments rather than expose standalone files.
 
 Uploads run after ordinary failures and managed suite timeouts. A soft timeout
 terminates the owned process group before the job deadline, leaving time for

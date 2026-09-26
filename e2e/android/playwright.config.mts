@@ -5,7 +5,9 @@ import { e2eReportConfig } from '../support/playwright-config.mts';
 export default defineConfig({
   testDir: '..',
   testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts'],
-  ...e2eReportConfig(ANDROID_INSTALLED_WEBVIEW_SUITE),
+  // Published Android diagnostics must be verified free of Matrix identifiers,
+  // so CI keeps no zipped report or trace the identifier scan cannot read.
+  ...e2eReportConfig(ANDROID_INSTALLED_WEBVIEW_SUITE, { identifierSafe: Boolean(process.env['CI']) }),
   fullyParallel: false,
   workers: 1,
   retries: process.env['CI'] ? 1 : 0,
@@ -17,7 +19,7 @@ export default defineConfig({
     viewport: { width: 1280, height: 720 },
     hasTouch: false,
     isMobile: false,
-    trace: 'retain-on-failure',
+    trace: process.env['CI'] ? 'off' : 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'android-webview' }],

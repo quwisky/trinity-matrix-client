@@ -30,6 +30,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Shift+Enter from a hardware keyboard inserts a line break on Android instead of sending,
+  even when the on-screen keyboard delivers the Enter without its Shift.
+
+- Bottom sheets such as Room information, reactions and message actions stay inside
+  their sheet on wide touch screens, so actions like Open room remain on screen on tablets
+  and landscape phones instead of extending past the right edge.
+
+- Keep grouped message timestamps from taking over touch long-press selection while
+  preserving the message body and links, so Android message actions open from row padding.
+
 - Keep Renovate's repository configuration schema-valid so dependency processing reaches
   extraction instead of aborting on an explanatory, unsupported option.
 
@@ -42,6 +52,9 @@ All notable changes to this project are documented here. The format is based on
   addressing the current Angular transfer-cache and Vitest mocker advisories.
 
 ### Changed
+
+- On phones and tablets, Enter in the message composer starts a new line, and lists continue
+  as they do with Shift+Enter; the Send button sends. On desktop, Enter still sends.
 
 - Replace the legacy Markdown documentation tree with separate Starlight sites for
   release users and `develop`-branch developers, plus private maintainer and decision records.
@@ -98,6 +111,10 @@ All notable changes to this project are documented here. The format is based on
 - Refine the bottom Account bar and switching menu with clearer identity rows, aligned
   status indicators, grouped account actions, and explicit account-removal wording.
   Settings and System Status remain directly available across desktop and mobile.
+
+- E2E artifacts preserve test progress before suite shutdown and expose Android
+  failure-time logs as standalone files, making timeout and native handoff failures
+  easier to diagnose.
 
 - CI now compiles the production web renderer once per run from the exact checked-out SHA,
   records a version 2 file and digest manifest, and makes desktop, Android, iOS, and the
@@ -1211,6 +1228,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Keep Android test-server TLS handling active before page inspection and across
+  WebView recreation, preventing false certificate failures in native login smoke tests.
+
 - Older-history loading indicators preserve the reader's latest timeline position even
   when the browser has not yet delivered its scroll event.
 
@@ -1223,6 +1243,9 @@ All notable changes to this project are documented here. The format is based on
 - Loading older timeline history preserves deliberate reading offsets even near the bottom.
   Jumping to the latest message cancels pending history corrections so they cannot pull the
   reader back to an older message.
+
+- Android sign-in can no longer lose the Custom Tab launch when the browser controller
+  starts before the native plugin registers its callback.
 
 - Tooltips no longer open from touch-generated focus or disappear when the pointer
   leaves while their trigger retains keyboard focus, preventing blocked navigation

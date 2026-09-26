@@ -29,7 +29,7 @@ test.describe('Room settings', () => {
     const rawUrl =
       'https://widgets.example/board?room=$matrix_room_id' +
       '&user=$matrix_user_id&board=$board_id';
-    const widgetFixture = await installWidgetFixture(page, 1_500);
+    const widgetFixture = await installWidgetFixture(page, 1_500, 2);
 
     await registerUser(request, user, pass);
     const { access_token, user_id } = await request
@@ -393,6 +393,13 @@ test.describe('Room settings', () => {
       waitForIframeLoad: true,
     });
 
+    // The post-create focus target is empty and becomes touched on pointer-down.
+    // Its reserved feedback row must prevent that blur from moving the button
+    // before pointer-up and swallowing the user's removal click.
+    await expect(
+      page.getByTestId('room-widget-create-name-feedback'),
+    ).toBeVisible();
+    await expect(page.getByTestId('room-widget-create-name')).toBeFocused();
     const widgetId = declaration?.state_key as string;
     await page.getByTestId(`room-widget-remove-${widgetId}`).click();
     const confirmation = page.locator('trn-alert-dialog');

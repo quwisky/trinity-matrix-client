@@ -1,0 +1,12 @@
+appId: ${APP_ID}
+androidWebViewHierarchy: devtools
+---
+# The flow never calls hideKeyboard: Maestro implements it as an unconditional
+# Android Back, which leaves the Room whenever the paste has already hidden the
+# input method. Send stays reachable above a shown keyboard because the WebView
+# resizes natively. Setting the clipboard first keeps focus and paste adjacent.
+- setClipboard: ${MESSAGE}
+- tapOn:
+    id: composer-input
+- eraseText
+- pasteText

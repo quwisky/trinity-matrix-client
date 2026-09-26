@@ -147,6 +147,11 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'visual',
   },
   {
+    path: 'journeys/conversations/message-gutter-touch-selection.spec.mts',
+    capability: 'conversations',
+    contractType: 'visual',
+  },
+  {
     path: 'journeys/conversations/message-linkify.spec.mts',
     capability: 'conversations',
     contractType: 'security',
