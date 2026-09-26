@@ -79,7 +79,7 @@
     "ios:build:prebuilt": "node scripts/nx.mjs run trinity-ios:build-prebuilt"
   },
   "private": true,
-  "packageManager": "pnpm@11.27.1",
+  "packageManager": "pnpm@12.6.0",
   "//engines": "The `>= 26` half of this range was removed rather than gaining a CI leg: nothing has ever built, tested or packaged this workspace on Node 26, so the range was advertising support that no gate backed. Widening it again is a deliberate act — add the matrix leg first (the Electron job alone rebuilds a native binary), then the range.",
   "engines": {
     "node": "^24.15.0",
