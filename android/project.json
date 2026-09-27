@@ -57,7 +57,8 @@
     },
     "build-secondary-prebuilt": {
       "cache": false,
-      "dependsOn": ["sync-prebuilt"],
+      "//": "Waits for build-prebuilt: two Gradle runs of this project would share and corrupt its Kotlin incremental caches.",
+      "dependsOn": ["sync-prebuilt", "build-prebuilt"],
       "outputs": ["{projectRoot}/app/build/outputs/apk/secondaryDebug"],
       "executor": "nx:run-commands",
       "options": {
