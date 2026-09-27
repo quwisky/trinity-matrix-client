@@ -94,6 +94,19 @@ const ANDROID_NATIVE_PLACEMENT = [
 ];
 
 describe('CI execution contract', () => {
+  it('sizes the Android emulator so its adb connection survives app load', () => {
+    // The action's 2-core default dropped the emulator's adb connection under
+    // app, WebView and Chrome load, removing every port forward mid-suite.
+    const emulator = workflow.jobs['android-e2e'].steps.find(
+      (step) => step.id === 'android',
+    ).with;
+    expect(Number(emulator.cores)).toBeGreaterThanOrEqual(4);
+    expect(Number.parseInt(emulator['ram-size'], 10)).toBeGreaterThanOrEqual(
+      4096,
+    );
+    expect(emulator['ram-size']).toMatch(/^\d+M$/u);
+  });
+
   it('gates message-grouping upload on its exact regular-file safety marker', () => {
     const gate = workflow.jobs['android-e2e'].steps.find(
       (step) => step.id === 'message-grouping-artifact-gate',

@@ -396,6 +396,11 @@ jobs:
           arch: x86_64
           profile: pixel_6
           avd-name: trinity_api_36_ci
+          # The action's 2-core default dropped the emulator's adb connection under app,
+          # WebView and Chrome load, which removed every port forward mid-suite. The
+          # 4-vCPU/16 GB runner fits a 4-core, 4 GB emulator beside Synapse and Gradle.
+          cores: 4
+          ram-size: 4096M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: |
