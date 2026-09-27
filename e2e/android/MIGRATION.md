@@ -96,6 +96,16 @@ suite shares these layers:
   the upload action redacts and verifies `android-*` report paths and
   `dist/.ci` before publishing them.
 
+The same scrub and fail-closed scan cover Matrix credentials: Synapse and
+Matrix Authentication Service access and refresh tokens (`syt_`, `syr_`,
+`mat_`, `mar_`), `Bearer` values, the value of any `accessToken`,
+`access_token`, `refreshToken` or `refresh_token` field (raw, JSON-escaped or
+percent-encoded), and the whole payload of a Capacitor `SecureStorage` bridge
+call. The debug APK logs those calls with their data, and the retained
+installed-webview logcats (`host-output/logcat-final.txt`, per-test
+`logcat.txt` and their attachments) carried access tokens until run
+36310731922.
+
 Suites keep their digest-based checks of the identifiers they register.
 
 ## Shared native actions and sign-in

@@ -52,6 +52,8 @@ function workspace() {
   return { root, suite };
 }
 
+const token = `syt_${'dGVzdA'}_${'AbCdEfGhIjKlMnOpQrSt'}_0a1B2c`;
+
 describe('Android upload identifier boundary', () => {
   it('redacts every Room and event id shape from uploaded text diagnostics', async () => {
     const { root, suite } = workspace();
@@ -91,5 +93,35 @@ describe('Android upload identifier boundary', () => {
     await expect(
       protectUploadDiagnostics({ root: tmpdir(), reportPath: '' }),
     ).rejects.toThrow(/CI_REPORT_PATH/u);
+  });
+  it('redacts access tokens from the retained installed-webview layout', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'trinity-ci-credentials-'));
+    roots.push(root);
+    const suite = join(
+      root,
+      'dist/.playwright/trinity-e2e-android/run/android.installed-webview',
+    );
+    const payload = `V Capacitor: callback: 1, pluginId: SecureStorage, methodName: internalSetItem, methodData: {"prefixedKey":"capacitor-storage_matrix.accessToken:@u:localhost","data":"\"${token}\"","sync":false}\n`;
+    const files = [
+      'host-output/logcat-final.txt',
+      'test-output/journey-android-webview/logcat.txt',
+      'test-output/journey-android-webview/attachments/logcat-txt-0a1b.txt',
+    ];
+    for (const file of files) {
+      mkdirSync(join(suite, file, '..'), { recursive: true });
+      writeFileSync(join(suite, file), payload);
+    }
+    const result = await protectUploadDiagnostics({
+      root,
+      reportPath:
+        'dist/.playwright/trinity-e2e-android/*/android.installed-webview/**',
+    });
+    expect(result.withheld).toEqual([]);
+    expect(result.redacted).toHaveLength(3);
+    for (const file of files) {
+      const published = readFileSync(join(suite, file), 'utf8');
+      expect(published).not.toContain('syt_');
+      expect(published).toContain('methodData: [REDACTED]');
+    }
   });
 });

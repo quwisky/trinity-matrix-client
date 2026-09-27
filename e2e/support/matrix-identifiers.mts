@@ -3,8 +3,9 @@ import { basename, extname, join, relative } from 'node:path';
 
 /**
  * Published Android diagnostics never carry a raw Matrix Room or event
- * identifier, whether or not a suite registered it as protected. These shapes
- * are recognised independently of any registered value; a suite's own
+ * identifier, whether or not a suite registered it as protected, nor a Matrix
+ * access or refresh token or secure-storage payload. These shapes are
+ * recognised independently of any registered value; a suite's own
  * digest-based checks remain responsible for the identifiers it knows.
  */
 export const MATRIX_IDENTIFIER_REDACTION = '[REDACTED]';
@@ -35,6 +36,61 @@ const ENCODED_ROOM_ID = /^![A-Za-z0-9_=-]{8,}:[A-Za-z0-9.[\]:-]+$/u;
 const identifierPattern = (): RegExp =>
   new RegExp(`${EVENT_ID}|${ROOM_ID}`, 'gu');
 
+/*
+ * Matrix credentials. Published diagnostics never carry one either: the debug
+ * APK's Capacitor bridge logs every secure-storage call with its payload, for
+ * example `pluginId: SecureStorage, methodName: internalSetItem, methodData:
+ * {"prefixedKey":"capacitor-storage_matrix.accessToken:@user:server","data":
+ * "\"syt_…\""}`, and that logcat reached the retained Android upload.
+ */
+
+/** Characters of an access or refresh token, and its minimum length. */
+const TOKEN_VALUE = '[A-Za-z0-9._~+/=-]{8,}';
+
+/**
+ * Synapse (`syt_`, `syr_`) and Matrix Authentication Service (`mat_`, `mar_`)
+ * access and refresh tokens. The word boundary keeps `…format_` from matching.
+ */
+const TOKEN_SHAPE = /\b(?:syt|syr|mat|mar)_[A-Za-z0-9_]{16,}/gu;
+
+/** `Bearer <token>`, with a raw or percent-encoded space. */
+const BEARER = new RegExp(
+  `((?<![A-Za-z])Bearer(?:\\s+|${encoded('20')}|\\+))${TOKEN_VALUE}`,
+  'giu',
+);
+
+/**
+ * The value of an `accessToken`/`access_token`/`refreshToken`/`refresh_token`
+ * field, whether JSON (raw or escaped), a query parameter or a header, with any
+ * of its delimiters percent-encoded.
+ */
+const DELIMITER = `(?:\\s|\\\\|"|:|=|${encoded('22')}|${encoded('3A')}|${encoded('3D')}|${encoded('5C')}|${encoded('20')})`;
+const TOKEN_FIELD = new RegExp(
+  `((?:access|refresh)_?[Tt]oken${DELIMITER}+)${TOKEN_VALUE}`,
+  'gu',
+);
+
+/** A Capacitor secure-storage bridge call: its whole payload is secret. */
+const SECURE_STORAGE_PAYLOAD =
+  /(\bpluginId:[ \t]*SecureStorage\b[^\r\n]*?\bmethodData:[ \t]*)([^\r\n]*)/gu;
+
+function redactCredentials(text: string): string {
+  return text
+    .replace(SECURE_STORAGE_PAYLOAD, `$1${MATRIX_IDENTIFIER_REDACTION}`)
+    .replace(TOKEN_SHAPE, MATRIX_IDENTIFIER_REDACTION)
+    .replace(BEARER, `$1${MATRIX_IDENTIFIER_REDACTION}`)
+    .replace(TOKEN_FIELD, `$1${MATRIX_IDENTIFIER_REDACTION}`);
+}
+
+function hasCredential(text: string): boolean {
+  for (const match of text.matchAll(SECURE_STORAGE_PAYLOAD))
+    if (match[2]?.trim() !== MATRIX_IDENTIFIER_REDACTION) return true;
+  return [TOKEN_SHAPE, BEARER, TOKEN_FIELD].some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(text);
+  });
+}
+
 const isEncodedRoomId = (token: string): boolean =>
   ENCODED_ROOM_ID.test(Buffer.from(token, 'base64url').toString('latin1'));
 
@@ -46,7 +102,7 @@ const isEncodedRoomId = (token: string): boolean =>
 const ANSI_SEQUENCE = /(?:\u001b|\\u001[bB])\[[0-9;]*[A-Za-z]/gu;
 
 function redactShapes(text: string): string {
-  return text
+  return redactCredentials(text)
     .replace(identifierPattern(), MATRIX_IDENTIFIER_REDACTION)
     .replace(BASE64URL_TOKEN, (token) =>
       isEncodedRoomId(token) ? MATRIX_IDENTIFIER_REDACTION : token,
@@ -54,6 +110,7 @@ function redactShapes(text: string): string {
 }
 
 function hasShape(text: string): boolean {
+  if (hasCredential(text)) return true;
   if (identifierPattern().test(text)) return true;
   for (const [token] of text.matchAll(BASE64URL_TOKEN))
     if (isEncodedRoomId(token)) return true;

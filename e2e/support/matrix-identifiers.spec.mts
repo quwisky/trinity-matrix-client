@@ -32,6 +32,104 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
 });
 
+// Synthetic credentials in the shapes the debug APK's Capacitor bridge and
+// Matrix clients log; none is a real token.
+const synapseToken = `syt_${'dGVzdA'}_${'AbCdEfGhIjKlMnOpQrSt'}_0a1B2c`;
+const masToken = `mat_${'Q'.repeat(30)}_1a2B3c`;
+const secureStoragePut = `V Capacitor: callback: 1, pluginId: SecureStorage, methodName: internalSetItem, methodData: {"prefixedKey":"capacitor-storage_matrix.refreshToken:@u:localhost","data":"\"opaque-refresh-${'r'.repeat(24)}\"","sync":false}`;
+
+describe('Matrix credential redaction', () => {
+  it.each([
+    [
+      'a Synapse access token',
+      `token ${synapseToken} end`,
+      'token [REDACTED] end',
+    ],
+    ['a Synapse refresh token', `syr_${'x'.repeat(20)}_AbCdEf`, '[REDACTED]'],
+    ['a MAS access token', `mas ${masToken}`, 'mas [REDACTED]'],
+    [
+      'a bearer header',
+      'Authorization: Bearer abcdefghij.KLM-0123',
+      'Authorization: Bearer [REDACTED]',
+    ],
+    [
+      'a percent-encoded bearer header',
+      'Authorization%3A%20Bearer%20abcdefghij0123',
+      'Authorization%3A%20Bearer%20[REDACTED]',
+    ],
+    [
+      'a JSON access_token field',
+      '{"access_token":"opaque0123456789"}',
+      '{"access_token":"[REDACTED]"}',
+    ],
+    [
+      'a JSON-escaped accessToken field',
+      '{\\"accessToken\\":\\"opaque0123456789\\"}',
+      '{\\"accessToken\\":\\"[REDACTED]\\"}',
+    ],
+    [
+      'a query refresh_token',
+      '/token?refresh_token=opaque0123456789&x=1',
+      '/token?refresh_token=[REDACTED]&x=1',
+    ],
+    [
+      'a percent-encoded field',
+      'body=%7B%22refresh_token%22%3A%22opaque0123456789%22%7D',
+      'body=%7B%22refresh_token%22%3A%22[REDACTED]%22%7D',
+    ],
+    [
+      'a secure-storage payload',
+      secureStoragePut,
+      secureStoragePut.replace(/methodData: .*$/u, 'methodData: [REDACTED]'),
+    ],
+  ])('redacts %s and flags it before redaction', (_name, text, expected) => {
+    expect(hasMatrixIdentifier(text)).toBe(true);
+    expect(redactMatrixIdentifiers(text)).toBe(expected);
+    expect(hasMatrixIdentifier(expected)).toBe(false);
+  });
+
+  it.each([
+    [
+      'a texture format name',
+      'GL_EXT_texture_format_BGRA8888 GL_OES_rgb8_rgba8',
+    ],
+    [
+      'a secure-storage key without a value',
+      'methodName: internalRemoveItem, prefixedKey:"capacitor-storage_matrix.refreshToken:@u:localhost"',
+    ],
+    [
+      'a token lifetime setting',
+      'refresh_token_lifetime: 5m access_token: null',
+    ],
+    [
+      'a Gboard password IME line',
+      'imeDef=kyj{stringId=password, PasswordIme.onActivate()',
+    ],
+    [
+      'a public key id',
+      'created_keys=["curve25519:AAAAAAAAAAB"] device_id=QIXNPFVWIO',
+    ],
+  ])('leaves %s alone', (_name, text) => {
+    expect(hasMatrixIdentifier(text)).toBe(false);
+    expect(redactMatrixIdentifiers(text)).toBe(text);
+  });
+
+  it('withholds nothing once a published logcat is scrubbed', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-credentials-'));
+    directories.push(directory);
+    const logcat = join(directory, 'logcat.txt');
+    writeFileSync(
+      logcat,
+      `${secureStoragePut.replace('opaque-refresh', synapseToken)}\n`,
+    );
+    const result = await enforceMatrixIdentifierFreeArtifacts(directory);
+    expect(result).toEqual({ redacted: ['logcat.txt'], unsafe: [] });
+    const published = readFileSync(logcat, 'utf8');
+    expect(published).not.toContain('syt_');
+    expect(published).not.toContain('opaque');
+  });
+});
+
 describe('Matrix identifier redaction', () => {
   it.each([
     [
