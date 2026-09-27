@@ -248,8 +248,16 @@ describe('Android Account client native actions', () => {
     const { ANDROID_IME_VISIBILITY_COMMAND, parseAndroidImeShown } =
       await import('../e2e/android/android-ime.mts');
     expect(ANDROID_IME_VISIBILITY_COMMAND).toBe(
-      "dumpsys input_method | grep -m 1 -o 'mInputShown=[a-z]*' || true",
+      "dumpsys input_method 2>/dev/null | grep -m 1 -o 'mInputShown=[a-z]*' || true",
     );
+    // The legacy `shell:` service (Playwright's Android backend) merges stderr
+    // into stdout. Stopping dumpsys early writes a Broken pipe line to stderr,
+    // so an unsilenced read is rejected rather than accepted by the parser.
+    expect(() =>
+      parseAndroidImeShown(
+        'mInputShown=false\nFailed to write while dumping service input_method: Broken pipe\n',
+      ),
+    ).toThrow('Android reports its IME visibility');
     expect(parseAndroidImeShown('mInputShown=true\n')).toBe(true);
     expect(parseAndroidImeShown('mInputShown=false')).toBe(false);
     for (const output of ['', 'mInputShown=maybe', 'x mInputShown=true'])

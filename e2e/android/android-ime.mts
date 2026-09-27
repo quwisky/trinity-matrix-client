@@ -7,9 +7,12 @@
  * The device-side grep returns the manager's single `mInputShown` line and
  * stops dumpsys before the keyboard app's section; `|| true` leaves a missing
  * field to {@link parseAndroidImeShown} instead of a bare grep exit status.
+ * Stopping dumpsys early makes it report "Broken pipe" on stderr, which the
+ * legacy `shell:` service that Playwright's Android backend uses merges into
+ * stdout, so dumpsys's stderr is discarded on the device.
  */
 export const ANDROID_IME_VISIBILITY_COMMAND =
-  "dumpsys input_method | grep -m 1 -o 'mInputShown=[a-z]*' || true";
+  "dumpsys input_method 2>/dev/null | grep -m 1 -o 'mInputShown=[a-z]*' || true";
 
 /** Parse {@link ANDROID_IME_VISIBILITY_COMMAND} output; a missing field throws. */
 export function parseAndroidImeShown(output: string): boolean {
