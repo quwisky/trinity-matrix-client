@@ -242,6 +242,41 @@ describe('Android Account client native actions', () => {
     }
   });
 
+  it('reads IME visibility as one device-filtered line, never the full dump', async () => {
+    // The unfiltered dump is about 800 KB of Gboard state per poll; polling it
+    // coincided with hosted emulators dropping the adb transport and forwards.
+    expect(client).not.toMatch(/'dumpsys',\s*'input_method'/u);
+    const { AccountWorkspaceClient } =
+      await import('../e2e/android/account-workspace-client.mts');
+    const calls = [];
+    let reply = 'mInputShown=true\n';
+    const device = {
+      adb: async (...args) => {
+        calls.push(args);
+        return reply;
+      },
+    };
+    const reader = new AccountWorkspaceClient(
+      device,
+      root,
+      root,
+      new AbortController().signal,
+    );
+    await expect(reader.keyboardShown()).resolves.toBe(true);
+    reply = 'mInputShown=false';
+    await expect(reader.keyboardShown()).resolves.toBe(false);
+    reply = '';
+    await expect(reader.keyboardShown()).rejects.toThrow(
+      'Android reports its IME visibility',
+    );
+    expect(calls).toEqual(
+      Array(3).fill([
+        'shell',
+        "dumpsys input_method | grep -m 1 -o 'mInputShown=[a-z]*' || true",
+      ]),
+    );
+  });
+
   it('dismisses the keyboard only while Android reports it shown', () => {
     const dismissal = between(
       client,

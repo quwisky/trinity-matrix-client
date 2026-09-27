@@ -290,7 +290,7 @@ describe('Android Room roster and live-authority migration', () => {
     // The keyboard is dismissed by a Back key event only while Android
     // reports it shown, never by Maestro's unconditional hideKeyboard.
     expect(client).toContain(
-      "return /mInputShown=true/u.test(\n      await this.device.adb('shell', 'dumpsys', 'input_method'),",
+      "const state = await this.device.adb('shell', IME_VISIBILITY_COMMAND);",
     );
     expect(client).toContain(
       "if (shownBefore) {\n      await this.device.adb('shell', 'input', 'keyevent', '4');",

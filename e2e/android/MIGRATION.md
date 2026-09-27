@@ -124,7 +124,11 @@ heuristics ([#839](https://github.com/quwisky/trinity-matrix-client/issues/839))
 - The client dismisses the keyboard with the Android Back key event that
   Maestro's `hideKeyboard` sends, but only while `dumpsys input_method` reports
   the keyboard shown, and then requires it hidden and the WebView at its full
-  bounds. No shared-client flow sends an unconditional Back.
+  bounds. No shared-client flow sends an unconditional Back. IME visibility is
+  read as one `mInputShown` line filtered on the device: the full
+  `dumpsys input_method` carries about 800 KB of Gboard state, and polling it
+  through adb coincided with hosted emulators dropping the adb transport and
+  every forward (run 36283529271, shards 3 and 4).
 - A document pick polls the native hierarchy until the photo picker's tab row
   has rendered and come to rest, and clears DocumentsUI first: DocumentsUI keeps
   its view mode across launches, and the pick flow expects its first-launch

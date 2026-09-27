@@ -185,8 +185,11 @@ function assertRuntimeContract(journey, client) {
     client.indexOf('private async dismissKeyboard('),
     client.indexOf('async key(key: AndroidKeyboardKey)'),
   );
-  expect(shownRead).toContain("'dumpsys'");
-  expect(shownRead).toContain('mInputShown=true');
+  expect(shownRead).toContain('IME_VISIBILITY_COMMAND');
+  expect(shownRead).toContain('/^mInputShown=(true|false)$/u');
+  expect(client).toContain(
+    '"dumpsys input_method | grep -m 1 -o \'mInputShown=[a-z]*\' || true"',
+  );
   expect(keyboard).toContain('await this.keyboardShown()');
   expect(keyboard).toContain(
     "action: shown ? 'native-back-keyevent' : 'already-hidden'",
