@@ -460,8 +460,19 @@ describe('CI execution contract', () => {
     );
     expect(identifiers.run).toBe('node scripts/ci-matrix-identifiers.mjs');
     expect(identifiers.env.CI_REPORT_PATH).toBe('${{ inputs.report-path }}');
+    // Every other surface, browser and Electron included, passes the
+    // credential redaction, which also rewrites blob, HTML and trace archives.
+    const credentials = action.runs.steps.find(
+      (step) => step.id === 'matrix-credentials',
+    );
+    expect(action.runs.steps.indexOf(credentials)).toBe(1);
+    expect(credentials.if).toBe(
+      "${{ inputs.surface != 'android' && !startsWith(inputs.surface, 'android-') }}",
+    );
+    expect(credentials.run).toBe('node scripts/ci-matrix-credentials.mjs');
+    expect(credentials.env.CI_REPORT_PATH).toBe('${{ inputs.report-path }}');
     expect(upload.if).toBe(
-      "${{ !cancelled() && ((inputs.surface != 'android' && !startsWith(inputs.surface, 'android-')) || steps.matrix-identifiers.outputs.verified == 'true') }}",
+      "${{ !cancelled() && (steps.matrix-identifiers.outputs.verified == 'true' || steps.matrix-credentials.outputs.verified == 'true') }}",
     );
     for (const field of [
       'github.run_id',

@@ -101,6 +101,25 @@ const isEncodedRoomId = (token: string): boolean =>
  */
 const ANSI_SEQUENCE = /(?:\u001b|\\u001[bB])\[[0-9;]*[A-Za-z]/gu;
 
+/**
+ * Redact every Matrix access or refresh token, bearer value, token field and
+ * secure-storage payload, leaving Room and event identifiers intact. This is
+ * the boundary for published browser and desktop diagnostics, which keep
+ * identifiers for debugging but never a credential.
+ */
+export function redactMatrixCredentials(text: string): string {
+  const redacted = redactCredentials(text);
+  const plain = redacted.replace(ANSI_SEQUENCE, '');
+  return plain !== redacted && hasCredential(plain)
+    ? redactCredentials(plain)
+    : redacted;
+}
+
+/** Whether text still carries a Matrix credential, even between colour sequences. */
+export function hasMatrixCredential(text: string): boolean {
+  return hasCredential(text) || hasCredential(text.replace(ANSI_SEQUENCE, ''));
+}
+
 function redactShapes(text: string): string {
   return redactCredentials(text)
     .replace(identifierPattern(), MATRIX_IDENTIFIER_REDACTION)

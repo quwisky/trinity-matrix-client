@@ -13,7 +13,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   MatrixIdentifierLineRedactor,
   enforceMatrixIdentifierFreeArtifacts,
+  hasMatrixCredential,
   hasMatrixIdentifier,
+  redactMatrixCredentials,
   redactMatrixIdentifiers,
 } from './matrix-identifiers.mts';
 import {
@@ -86,6 +88,9 @@ describe('Matrix credential redaction', () => {
     expect(hasMatrixIdentifier(text)).toBe(true);
     expect(redactMatrixIdentifiers(text)).toBe(expected);
     expect(hasMatrixIdentifier(expected)).toBe(false);
+    expect(hasMatrixCredential(text)).toBe(true);
+    expect(redactMatrixCredentials(text)).toBe(expected);
+    expect(hasMatrixCredential(expected)).toBe(false);
   });
 
   it.each([
@@ -112,6 +117,31 @@ describe('Matrix credential redaction', () => {
   ])('leaves %s alone', (_name, text) => {
     expect(hasMatrixIdentifier(text)).toBe(false);
     expect(redactMatrixIdentifiers(text)).toBe(text);
+    expect(hasMatrixCredential(text)).toBe(false);
+    expect(redactMatrixCredentials(text)).toBe(text);
+  });
+
+  it('redacts only credentials for browser and desktop reports', () => {
+    // The Playwright step title that leaked: a serialized Synapse login.
+    const login = `{"user_id":"@link-user:localhost","access_token":"${synapseToken}","home_server":"caddy:9448"}`;
+    const text = `${login} in ${roomId} at ${eventId}`;
+    expect(hasMatrixCredential(text)).toBe(true);
+    expect(redactMatrixCredentials(text)).toBe(
+      `{"user_id":"@link-user:localhost","access_token":"[REDACTED]","home_server":"caddy:9448"} in ${roomId} at ${eventId}`,
+    );
+    expect(hasMatrixCredential(`${roomId} ${eventId}`)).toBe(false);
+  });
+
+  it('redacts a token split by colour sequences, raw or JSON-escaped', () => {
+    for (const escape of ['\u001b', '\\u001b']) {
+      const split = [...synapseToken]
+        .map((character) => `${escape}[31m${character}${escape}[39m`)
+        .join('');
+      expect(hasMatrixCredential(`Received: ${split}`)).toBe(true);
+      const redacted = redactMatrixCredentials(`Received: ${split}`);
+      expect(redacted).toBe('Received: [REDACTED]');
+      expect(hasMatrixCredential(redacted)).toBe(false);
+    }
   });
 
   it('withholds nothing once a published logcat is scrubbed', async () => {

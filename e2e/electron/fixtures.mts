@@ -2,6 +2,7 @@ import {
   expect,
   test as environmentTest,
   type APIRequestContext,
+  type APIResponse,
   type Page,
 } from '@playwright/test';
 import {
@@ -46,4 +47,4 @@ export const test = environmentTest.extend<{
 });
 
 export { expect, testResourceId };
-export type { APIRequestContext, Page };
+export type { APIRequestContext, APIResponse, Page };

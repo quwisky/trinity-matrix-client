@@ -2,10 +2,11 @@ import {
   testResourceId,
   expect,
   test,
-  type APIRequestContext,
+  type APIResponse,
   type Page,
 } from './fixtures.mts';
 
+import { passwordLogin } from '../support/account.mts';
 import { login, synapseSession, type Navigate } from '../support/app.mts';
 import { launchApp } from './support/launch.mts';
 
@@ -18,16 +19,19 @@ const electronNavigate: Navigate = async (page: Page, path: string) => {
   });
 };
 
-async function loginApi(request: APIRequestContext): Promise<string> {
-  const response = await request.post(`${session.hs}/_matrix/client/v3/login`, {
-    data: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: session.user },
-      password: session.pass,
-    },
-  });
-  expect(response.ok(), await response.text()).toBe(true);
-  return ((await response.json()) as { access_token: string }).access_token;
+/**
+ * Fail with the server's answer only when a request failed. A custom `expect`
+ * message is the report step title even when the assertion passes, so a
+ * successful login response, access token included, never becomes one.
+ */
+async function requireOk(
+  response: APIResponse,
+  operation: string,
+): Promise<void> {
+  if (!response.ok())
+    throw new Error(
+      `${operation} → ${response.status()} ${await response.text()}`,
+    );
 }
 
 test.describe('Electron room-link preview', () => {
@@ -38,14 +42,19 @@ test.describe('Electron room-link preview', () => {
   }) => {
     test.slow();
     const runId = testResourceId('run');
-    const token = await loginApi(request);
-    const headers = { Authorization: `Bearer ${token}` };
+    const { accessToken } = await passwordLogin(
+      request,
+      session.hs as string,
+      session.user as string,
+      session.pass as string,
+    );
+    const headers = { Authorization: `Bearer ${accessToken}` };
     const createRoom = async (name: string): Promise<string> => {
       const response = await request.post(
         `${session.hs}/_matrix/client/v3/createRoom`,
         { headers, data: { name } },
       );
-      expect(response.ok(), await response.text()).toBe(true);
+      await requireOk(response, `create room ${name}`);
       return ((await response.json()) as { room_id: string }).room_id;
     };
     const sourceName = `Electron link source ${runId}`;
@@ -64,7 +73,7 @@ test.describe('Electron room-link preview', () => {
         },
       },
     );
-    expect(send.ok(), await send.text()).toBe(true);
+    await requireOk(send, 'send the room link');
 
     const app = await launchApp();
     try {
