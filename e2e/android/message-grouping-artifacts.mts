@@ -10,7 +10,7 @@ import {
 const raster = new Set([
   '.avif', '.bmp', '.gif', '.ico', '.jpeg', '.jpg', '.png', '.tif', '.tiff', '.webp',
 ]);
-const publishableText = new Set(['.json', '.jsonl', '.log', '.txt', '.xml']);
+const publishableText = new Set(['.json', '.jsonl', '.log', '.txt', '.xml', '.yaml']);
 
 export interface GroupingPublicationSafety {
   unsafeSecrets: boolean;

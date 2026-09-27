@@ -539,6 +539,17 @@ describe('installed Android message-grouping ownership and publication', () => {
         '<?xml version="1.0"?><testsuites/>',
       );
       await expect(scanGroupingArtifacts(output, {})).resolves.toBeUndefined();
+      // Shared native actions copy their Maestro flow next to the diagnostics;
+      // it is text, scanned like every other file.
+      const flow = join(output, 'accounts-sign-in-1.yaml');
+      await writeFile(flow, 'appId: ${APP_ID}\n---\n- tapOn: Sign in\n');
+      await expect(scanGroupingArtifacts(output, {})).resolves.toBeUndefined();
+      await writeFile(flow, '- inputText: password-for-grouping\n');
+      await expect(
+        scanGroupingArtifacts(output, {
+          SECRET_PASSWORD: 'password-for-grouping',
+        }),
+      ).rejects.toThrow();
     } finally {
       await rm(output, { recursive: true, force: true });
     }
