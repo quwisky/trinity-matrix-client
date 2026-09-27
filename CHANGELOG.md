@@ -48,6 +48,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Security
 
+- Android and iOS builds no longer write Capacitor bridge logs to the device log. These logs
+  recorded every native call with its data, including the saved Matrix access token, and
+  copied the app's console output, where other apps with log access could read them.
+
 - Update Angular to the patched 22.1.5 line and Vitest to 4.1.11 in both dependency trees,
   addressing the current Angular transfer-cache and Vitest mocker advisories.
 

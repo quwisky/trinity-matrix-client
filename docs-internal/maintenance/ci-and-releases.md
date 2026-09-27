@@ -104,6 +104,9 @@ progress log does not replace the suite's final status or required reports.
 Android failed-test directories also contain `logcat.txt`, `activity.txt` and
 `package.txt`, attached to the Playwright report. Inspect these for the failure
 interval; `host-output/logcat-final.txt` is a separate suite-end snapshot.
+Trinity sets Capacitor's `loggingBehavior` to `none`, so logcat carries system,
+WebView and crash output but neither plugin calls nor the app's console; read
+app console output through WebView remote debugging instead.
 Older reports may embed the failed-test text directly inside their blob or HTML
 attachments rather than expose standalone files.
 

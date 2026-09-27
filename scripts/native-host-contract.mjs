@@ -249,6 +249,16 @@ export function validateNativeHostContract(input, errors, selectedHosts) {
   if (!/webDir:\s*['"]www['"]/u.test(input.capacitor)) {
     errors.push('Capacitor hosts must consume the shared flat www artifact');
   }
+  // Capacitor logs every plugin call with its arguments, secure-storage
+  // writes of Matrix credentials included, unless logging is off.
+  const logging = [
+    ...input.capacitor.matchAll(/\bloggingBehavior\b\s*:\s*(['"]?)(\w*)\1/gu),
+  ].map((match) => match[2]);
+  if (logging.length !== 1 || logging[0] !== 'none') {
+    errors.push(
+      "Capacitor hosts must set loggingBehavior: 'none' once, with no platform override",
+    );
+  }
   if (!capabilityCode.includes('capacitorSupportedOperations(')) {
     errors.push('Capacitor capability support must be explicit at composition');
   }

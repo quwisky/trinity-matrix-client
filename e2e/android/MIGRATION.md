@@ -104,7 +104,9 @@ percent-encoded), and the whole payload of a Capacitor `SecureStorage` bridge
 call. The debug APK logs those calls with their data, and the retained
 installed-webview logcats (`host-output/logcat-final.txt`, per-test
 `logcat.txt` and their attachments) carried access tokens until run
-36310731922.
+36310731922. The app now sets Capacitor's `loggingBehavior` to `none`, so no
+build logs plugin calls or forwards its console to logcat; the scrub remains the
+publication boundary for anything else a device logs.
 
 Suites keep their digest-based checks of the identifiers they register.
 

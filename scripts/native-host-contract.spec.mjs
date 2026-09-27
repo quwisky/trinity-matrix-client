@@ -81,7 +81,7 @@ function validInput() {
         'ios:verify': 'nx run trinity-ios:verify',
       },
     },
-    capacitor: "webDir: 'www'",
+    capacitor: "webDir: 'www', loggingBehavior: 'none'",
     capabilityAdapter: [
       'capacitorSupportedOperations(',
       "platform === 'android' ? (['back'] as const) : []",
@@ -122,6 +122,27 @@ function validInput() {
 describe('native host contract', () => {
   it('validates the checked-in Android and iOS hosts', () => {
     expect(validateCurrentNativeHosts).not.toThrow();
+  });
+
+  it.each([
+    ['is missing', "webDir: 'www'"],
+    ['logs debug builds', "webDir: 'www', loggingBehavior: 'debug'"],
+    ['logs every build', 'webDir: "www", loggingBehavior: "production"'],
+    [
+      'is overridden for a platform',
+      "webDir: 'www', loggingBehavior: 'none', android: { loggingBehavior: 'debug' }",
+    ],
+    ['is not a literal', "webDir: 'www', loggingBehavior: behavior"],
+  ])('rejects Capacitor plugin-call logging that %s', (_name, capacitor) => {
+    const input = validInput();
+    input.capacitor = capacitor;
+    const errors = [];
+
+    validateNativeHostContract(input, errors);
+
+    expect(errors).toEqual([
+      "Capacitor hosts must set loggingBehavior: 'none' once, with no platform override",
+    ]);
   });
 
   it('rejects a native lifecycle hidden outside Nx', () => {
