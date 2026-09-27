@@ -187,6 +187,14 @@ jobs:
       - name: Verify Desktop left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+      # The diagnostics action defers its failures through GITHUB_ENV so later suites still run.
+      - name: Fail on unverified diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "${TRINITY_UNVERIFIED_DIAGNOSTICS:-}" ]; then
+            echo "::error::Diagnostics were not verified: ${TRINITY_UNVERIFIED_DIAGNOSTICS}"
+            exit 1
+          fi
 
   e2e:
     needs: [classify, renderer]
@@ -308,6 +316,14 @@ jobs:
         with:
           surface: qr
           report-path: dist/.playwright/trinity-e2e-protocol/*/protocol.verify-qr/**
+      # The diagnostics action defers its failures through GITHUB_ENV so later suites still run.
+      - name: Fail on unverified diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "${TRINITY_UNVERIFIED_DIAGNOSTICS:-}" ]; then
+            echo "::error::Diagnostics were not verified: ${TRINITY_UNVERIFIED_DIAGNOSTICS}"
+            exit 1
+          fi
 
   # A separate job because it boots an API 36 emulator and drives the installed
   # Capacitor WebView. Browser E2E cannot substitute for native Back, process
@@ -1069,6 +1085,14 @@ jobs:
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}
         run: git diff --exit-code
+      # The diagnostics action defers its failures through GITHUB_ENV so later suites still run.
+      - name: Fail on unverified diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "${TRINITY_UNVERIFIED_DIAGNOSTICS:-}" ]; then
+            echo "::error::Diagnostics were not verified: ${TRINITY_UNVERIFIED_DIAGNOSTICS}"
+            exit 1
+          fi
 
   ios-native-build:
     name: iOS Native Build
@@ -1142,3 +1166,11 @@ jobs:
         with:
           surface: scheduled
           report-path: dist/.playwright/**/**
+      # The diagnostics action defers its failures through GITHUB_ENV so later suites still run.
+      - name: Fail on unverified diagnostics
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -n "${TRINITY_UNVERIFIED_DIAGNOSTICS:-}" ]; then
+            echo "::error::Diagnostics were not verified: ${TRINITY_UNVERIFIED_DIAGNOSTICS}"
+            exit 1
+          fi

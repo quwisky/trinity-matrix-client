@@ -62,8 +62,39 @@ const isKnownBinary = (bytes) =>
   );
 
 /** The HTML reporter embeds its report data as one base64 ZIP payload. */
-const HTML_REPORT_PAYLOAD =
-  /(<template id="playwrightReportBase64">data:application\/zip;base64,)([A-Za-z0-9+/=]*)(<\/template>)/gu;
+const PAYLOAD_OPEN =
+  '<template id="playwrightReportBase64">data:application/zip;base64,';
+const PAYLOAD_CLOSE = '</template>';
+
+/**
+ * Split an HTML report into its page text and embedded base64 payloads. The
+ * payload is megabytes of base64, so it is located by string search: a regex
+ * spanning it exhausts V8's backtrack stack (RangeError) on a 13 MB report.
+ */
+export function htmlReportParts(text) {
+  const parts = [];
+  let cursor = 0;
+  for (;;) {
+    const open = text.indexOf(PAYLOAD_OPEN, cursor);
+    if (open < 0) break;
+    const start = open + PAYLOAD_OPEN.length;
+    const end = text.indexOf(PAYLOAD_CLOSE, start);
+    if (end < 0) break;
+    parts.push({ text: text.slice(cursor, start) });
+    parts.push({ payload: text.slice(start, end) });
+    cursor = end;
+  }
+  parts.push({ text: text.slice(cursor) });
+  return parts;
+}
+
+/** Decode a payload, or fail when it is not canonical base64. */
+function decodePayload(payload) {
+  const bytes = Buffer.from(payload, 'base64');
+  if (bytes.toString('base64') !== payload)
+    throw new ZipFormatError('the HTML report payload is not base64');
+  return bytes;
+}
 
 /** Nested archives: a blob report holds traces, which hold their resources. */
 const MAX_ARCHIVE_DEPTH = 4;
@@ -108,10 +139,21 @@ function visitTexts(name, bytes, visit, depth = 0) {
     return;
   }
   if (bytes.includes(0)) return;
-  const text = bytes.toString('utf8');
-  for (const [, payload] of text.matchAll(HTML_REPORT_PAYLOAD))
-    visitTexts('report.zip', Buffer.from(payload, 'base64'), visit, depth + 1);
-  visit(name, text);
+  const pageText = [];
+  for (const part of htmlReportParts(bytes.toString('utf8'))) {
+    if (part.text !== undefined) pageText.push(part.text);
+    else {
+      let payload;
+      try {
+        payload = decodePayload(part.payload);
+      } catch (error) {
+        if (error instanceof ZipFormatError) continue;
+        throw error;
+      }
+      visitTexts('report.zip', payload, visit, depth + 1);
+    }
+  }
+  visit(name, pageText.join(''));
 }
 
 /** Every password the context rules find in the upload, for redaction everywhere. */
@@ -190,14 +232,26 @@ export function scrubArchive(bytes, secrets = HARNESS_SECRETS, depth = 0) {
   return { bytes: changed ? writeZip(kept) : bytes, changed, withheld };
 }
 
-function scrubHtmlReport(text, withheld, secrets) {
-  return text.replace(HTML_REPORT_PAYLOAD, (_, open, payload, close) => {
-    const archive = scrubArchive(Buffer.from(payload, 'base64'), secrets);
-    withheld.push(...archive.withheld.map((name) => `#report!${name}`));
-    return archive.changed
-      ? `${open}${archive.bytes.toString('base64')}${close}`
-      : `${open}${payload}${close}`;
-  });
+/**
+ * Scrub page text and embedded report archives separately, so no text rule
+ * runs over base64. `undefined` means the page still carries a credential.
+ */
+function scrubPage(text, name, secrets, withheld) {
+  const output = [];
+  for (const part of htmlReportParts(text)) {
+    if (part.text !== undefined) {
+      const scrubbed = scrubText(part.text, name, secrets);
+      if (scrubbed === undefined) return undefined;
+      output.push(scrubbed);
+      continue;
+    }
+    const archive = scrubArchive(decodePayload(part.payload), secrets);
+    withheld.push(...archive.withheld.map((member) => `#report!${member}`));
+    output.push(
+      archive.changed ? archive.bytes.toString('base64') : part.payload,
+    );
+  }
+  return output.join('');
 }
 
 /**
@@ -222,11 +276,7 @@ export function scrubReportFile(path, secrets = HARNESS_SECRETS) {
       return { state: isKnownBinary(bytes) ? 'media' : 'unsafe', withheld };
     else {
       const text = bytes.toString('utf8');
-      const scrubbed = scrubText(
-        scrubHtmlReport(text, withheld, secrets),
-        path,
-        secrets,
-      );
+      const scrubbed = scrubPage(text, path, secrets, withheld);
       if (scrubbed === undefined) return { state: 'unsafe', withheld };
       output = scrubbed === text ? bytes : Buffer.from(scrubbed, 'utf8');
     }

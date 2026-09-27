@@ -486,6 +486,57 @@ describe('CI execution contract', () => {
     }
   });
 
+  it('defers a diagnostics failure to the end of the job, so later suites still run', () => {
+    // Run 36325006948: the Storybook upload's redaction failed, the failed step
+    // skipped every later step, and the canonical, renderer, styling and QR
+    // suites never ran.
+    const action = yaml(
+      '.github/actions/upload-playwright-diagnostics/action.yml',
+    );
+    const steps = action.runs.steps;
+    const verifying = ['matrix-identifiers', 'matrix-credentials', 'reports'];
+    for (const id of verifying) {
+      const step = steps.find((candidate) => candidate.id === id);
+      expect(step?.['continue-on-error'], id).toBe(true);
+    }
+    // Every other step either cannot fail on verification or is the upload.
+    for (const step of steps)
+      if (step.run && !verifying.includes(step.id))
+        expect(step.run).not.toMatch(/\bexit [1-9]|node scripts\//u);
+    const deferral = steps.at(-1);
+    expect(deferral.name).toBe(
+      'Defer unverified diagnostics to the end of the job',
+    );
+    expect(deferral.if).toBe(
+      "${{ !cancelled() && (steps.matrix-identifiers.outcome == 'failure' || steps.matrix-credentials.outcome == 'failure' || steps.reports.outcome == 'failure') }}",
+    );
+    expect(deferral.run).toContain('TRINITY_UNVERIFIED_DIAGNOSTICS=');
+    expect(deferral.run).toContain('>> "$GITHUB_ENV"');
+
+    const isUpload = (step) =>
+      step.uses === './.github/actions/upload-playwright-diagnostics';
+    const jobs = Object.entries(workflow.jobs).filter(([, job]) =>
+      (job.steps ?? []).some(isUpload),
+    );
+    expect(jobs.map(([name]) => name).sort()).toEqual([
+      'android-e2e',
+      'desktop',
+      'e2e',
+      'scheduled-e2e',
+    ]);
+    for (const [name, job] of jobs) {
+      const final = job.steps.at(-1);
+      expect(final.name, name).toBe('Fail on unverified diagnostics');
+      // The shell reads the deferred list: GITHUB_ENV reaches later steps'
+      // environments, so the check does not depend on expression evaluation.
+      expect(final.if, name).toBe('${{ !cancelled() }}');
+      expect(final.run, name).toContain(
+        'if [ -n "${TRINITY_UNVERIFIED_DIAGNOSTICS:-}" ]; then',
+      );
+      expect(final.run, name).toContain('exit 1');
+    }
+  });
+
   it('runs every native Android suite once, on its own shard, before retained Playwright', () => {
     const job = workflow.jobs['android-e2e'];
     const lines = job.steps

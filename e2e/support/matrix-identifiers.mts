@@ -11,15 +11,23 @@ import { HARNESS_SECRETS } from './synapse/credentials.mjs';
  */
 export const MATRIX_IDENTIFIER_REDACTION = '[REDACTED]';
 
+/*
+ * Every quantifier below is bounded. V8 keeps one backtrack entry per
+ * iteration of an unbounded quantifier, so a pattern such as `[A-Za-z0-9]{40,}`
+ * applied to a multi-megabyte base64 run (an embedded HTML report or an image)
+ * exhausts its stack with a RangeError. The bounds are far above any real
+ * identifier or token; a longer run is still redacted up to the bound.
+ */
+
 /** `%24`, `%2524`, …: one percent-encoded byte at any nesting depth. */
 const encoded = (hex: string): string =>
-  `%(?:25)*${hex.replace(/[A-F]/gu, (digit) => `[${digit}${digit.toLowerCase()}]`)}`;
+  `%(?:25){0,8}${hex.replace(/[A-F]/gu, (digit) => `[${digit}${digit.toLowerCase()}]`)}`;
 
 /**
  * A room-version 3+ event id: `$` and 43 URL-safe base64 characters, raw or
  * percent-encoded. Forty is the floor so a truncated capture still matches.
  */
-const EVENT_ID = `(?:\\$|${encoded('24')})[A-Za-z0-9_-]{40,}`;
+const EVENT_ID = `(?:\\$|${encoded('24')})[A-Za-z0-9_-]{40,512}`;
 
 /**
  * A Room id (`!localpart:server`, optionally with a port), raw or
@@ -27,12 +35,12 @@ const EVENT_ID = `(?:\\$|${encoded('24')})[A-Za-z0-9_-]{40,}`;
  * The whole identifier is redacted, like a registered Room id would be.
  */
 const COLON = `(?::|${encoded('3A')})`;
-const ROOM_ID = `(?:!|${encoded('21')})[A-Za-z0-9_=-]{8,}${COLON}(?:\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*)(?:${COLON}[0-9]{1,5}(?![0-9]))?`;
+const ROOM_ID = `(?:!|${encoded('21')})[A-Za-z0-9_=-]{8,512}${COLON}(?:\\[[0-9A-Fa-f:.]{1,64}\\]|[A-Za-z0-9-]{1,63}(?:\\.[A-Za-z0-9-]{1,63}){0,16})(?:${COLON}[0-9]{1,5}(?![0-9]))?`;
 
 /** A base64url token long enough to hold `!localpart:server`, as in `/rooms/<segment>`. */
 const BASE64URL_TOKEN =
-  /(?<![A-Za-z0-9_-])I[A-Za-z0-9_-]{15,}(?![A-Za-z0-9_-])/gu;
-const ENCODED_ROOM_ID = /^![A-Za-z0-9_=-]{8,}:[A-Za-z0-9.[\]:-]+$/u;
+  /(?<![A-Za-z0-9_-])I[A-Za-z0-9_-]{15,1024}(?![A-Za-z0-9_-])/gu;
+const ENCODED_ROOM_ID = /^![A-Za-z0-9_=-]{8,512}:[A-Za-z0-9.[\]:-]{1,512}$/u;
 
 const identifierPattern = (): RegExp =>
   new RegExp(`${EVENT_ID}|${ROOM_ID}`, 'gu');
@@ -46,17 +54,17 @@ const identifierPattern = (): RegExp =>
  */
 
 /** Characters of an access or refresh token, and its minimum length. */
-const TOKEN_VALUE = '[A-Za-z0-9._~+/=-]{8,}';
+const TOKEN_VALUE = '[A-Za-z0-9._~+/=-]{8,4096}';
 
 /**
  * Synapse (`syt_`, `syr_`) and Matrix Authentication Service (`mat_`, `mar_`)
  * access and refresh tokens. The word boundary keeps `…format_` from matching.
  */
-const TOKEN_SHAPE = /\b(?:syt|syr|mat|mar)_[A-Za-z0-9_]{16,}/gu;
+const TOKEN_SHAPE = /\b(?:syt|syr|mat|mar)_[A-Za-z0-9_]{16,4096}/gu;
 
 /** `Bearer <token>`, with a raw or percent-encoded space. */
 const BEARER = new RegExp(
-  `((?<![A-Za-z])Bearer(?:\\s+|${encoded('20')}|\\+))${TOKEN_VALUE}`,
+  `((?<![A-Za-z])Bearer(?:\\s{1,16}|${encoded('20')}|\\+))${TOKEN_VALUE}`,
   'giu',
 );
 
@@ -67,25 +75,54 @@ const BEARER = new RegExp(
  */
 const DELIMITER = `(?:\\s|\\\\|"|:|=|${encoded('22')}|${encoded('3A')}|${encoded('3D')}|${encoded('5C')}|${encoded('20')})`;
 const TOKEN_FIELD = new RegExp(
-  `((?:access|refresh)_?[Tt]oken${DELIMITER}+)${TOKEN_VALUE}`,
+  `((?:access|refresh)_?[Tt]oken${DELIMITER}{1,16})${TOKEN_VALUE}`,
   'gu',
 );
 
-/** A Capacitor secure-storage bridge call: its whole payload is secret. */
-const SECURE_STORAGE_PAYLOAD =
-  /(\bpluginId:[ \t]*SecureStorage\b[^\r\n]*?\bmethodData:[ \t]*)([^\r\n]*)/gu;
+/**
+ * A Capacitor secure-storage bridge call: its whole payload, to the end of
+ * the line, is secret. The line end is found by string search, since a class
+ * spanning an arbitrarily long payload would exhaust V8's backtrack stack.
+ */
+const SECURE_STORAGE_CALL =
+  /\bpluginId:[ \t]{0,8}SecureStorage\b[^\r\n]{0,4096}?\bmethodData:[ \t]{0,8}/gu;
+
+/** Each secure-storage payload: from its `methodData:` to the end of its line. */
+function secureStoragePayloads(
+  text: string,
+): { start: number; end: number; value: string }[] {
+  const payloads: { start: number; end: number; value: string }[] = [];
+  for (const call of text.matchAll(SECURE_STORAGE_CALL)) {
+    const start = (call.index ?? 0) + call[0].length;
+    const newline = text.indexOf('\n', start);
+    let end = newline < 0 ? text.length : newline;
+    if (end > start && text[end - 1] === '\r') end -= 1;
+    payloads.push({ start, end, value: text.slice(start, end) });
+  }
+  return payloads;
+}
+
+function redactSecureStorage(text: string): string {
+  let output = '';
+  let cursor = 0;
+  for (const { start, end } of secureStoragePayloads(text)) {
+    if (start < cursor) continue;
+    output += text.slice(cursor, start) + MATRIX_IDENTIFIER_REDACTION;
+    cursor = end;
+  }
+  return output + text.slice(cursor);
+}
 
 function redactCredentials(text: string): string {
-  return text
-    .replace(SECURE_STORAGE_PAYLOAD, `$1${MATRIX_IDENTIFIER_REDACTION}`)
+  return redactSecureStorage(text)
     .replace(TOKEN_SHAPE, MATRIX_IDENTIFIER_REDACTION)
     .replace(BEARER, `$1${MATRIX_IDENTIFIER_REDACTION}`)
     .replace(TOKEN_FIELD, `$1${MATRIX_IDENTIFIER_REDACTION}`);
 }
 
 function hasCredential(text: string): boolean {
-  for (const match of text.matchAll(SECURE_STORAGE_PAYLOAD))
-    if (match[2]?.trim() !== MATRIX_IDENTIFIER_REDACTION) return true;
+  for (const { value } of secureStoragePayloads(text))
+    if (value.trim() !== MATRIX_IDENTIFIER_REDACTION) return true;
   return [TOKEN_SHAPE, BEARER, TOKEN_FIELD].some((pattern) => {
     pattern.lastIndex = 0;
     return pattern.test(text);
@@ -100,7 +137,7 @@ const isEncodedRoomId = (token: string): boolean =>
  * diff of an assertion message when colour is forced (as under Nx), which
  * splits an identifier into single characters between escape sequences.
  */
-const ANSI_SEQUENCE = /(?:\u001b|\\u001[bB])\[[0-9;]*[A-Za-z]/gu;
+const ANSI_SEQUENCE = /(?:\u001b|\\u001[bB])\[[0-9;]{0,32}[A-Za-z]/gu;
 
 /**
  * Redact every Matrix access or refresh token, bearer value, token field and
@@ -131,12 +168,14 @@ export function hasMatrixCredential(text: string): boolean {
  */
 
 /** A password field name: `password`, `new_password`, `newPassword`, `passphrase`, `pass`. */
-const PASSWORD_KEY = String.raw`(?<![A-Za-z_-])(?:[A-Za-z_]*[Pp]ass(?:word|phrase)|pass)(?![A-Za-z0-9_])`;
+const PASSWORD_KEY = String.raw`(?<![A-Za-z_-])(?:[A-Za-z_]{0,32}[Pp]ass(?:word|phrase)|pass)(?![A-Za-z0-9_])`;
 /** A quote at any JSON escape depth, as an XML entity, percent-encoded, or a JS quote. */
-const QUOTE = String.raw`\\*"|&quot;|%(?:25)*22|'|${'`'}`;
-const SEPARATOR = String.raw`\s*(?::|=|%(?:25)*3[Aa]|%(?:25)*3[Dd])\s*`;
+const QUOTE = String.raw`\\{0,8}"|&quot;|%(?:25){0,8}22|'|${'`'}`;
+const SEPARATOR = String.raw`\s{0,8}(?::|=|%(?:25){0,8}3[Aa]|%(?:25){0,8}3[Dd])\s{0,8}`;
+/** The longest password value the context rules consider, and harvest. */
+const MAX_SECRET_LENGTH = 256;
 const PASSWORD_FIELD = new RegExp(
-  String.raw`(${PASSWORD_KEY}(?:${QUOTE})?${SEPARATOR})(?:(${QUOTE})(.*?)\2|(\[REDACTED\]|[^\s"'${'`'}\\&,;)}\]<>%]+))`,
+  String.raw`(${PASSWORD_KEY}(?:${QUOTE})?${SEPARATOR})(?:(${QUOTE})(.{0,${MAX_SECRET_LENGTH}}?)\2|(\[REDACTED\]|[^\s"'${'`'}\\&,;)}\]<>%]{1,${MAX_SECRET_LENGTH}}))`,
   'gu',
 );
 /**
@@ -144,13 +183,13 @@ const PASSWORD_FIELD = new RegExp(
  * the only quoting whose values are harvested. Source text quotes a password
  * variable or template with single quotes or backticks instead.
  */
-const DOUBLE_QUOTE = /^(?:\\*"|&quot;|%(?:25)*22)$/u;
+const DOUBLE_QUOTE = /^(?:\\{0,8}"|&quot;|%(?:25){0,8}22)$/u;
 /** A `Fill "…"` or `Type "…"` step title, raw or JSON-escaped. */
-const FILL_TITLE = /\b(?:Fill|Type)\s+(\\*"|&quot;)/gu;
+const FILL_TITLE = /\b(?:Fill|Type)\s{1,8}(\\{0,8}"|&quot;)/gu;
 /** A flat JSON object: fill parameters and snapshotted input attributes. */
-const FLAT_OBJECT = /\{[^{}]*\}/gu;
+const FLAT_OBJECT = /\{[^{}]{0,16384}\}/gu;
 const OBJECT_VALUE =
-  /((\\*)"(?:value|__playwright_value_)\2"\s*:\s*\2")(.*?)(?<!\\)\2"/gu;
+  /((\\{0,8})"(?:value|__playwright_value_)\2"\s{0,8}:\s{0,8}\2")(.{0,4096}?)(?<!\\)\2"/gu;
 const MENTIONS_PASSWORD = /pass(?:word|phrase)/iu;
 /** Harvested values shorter than this are redacted only in their context. */
 const MIN_SECRET_LENGTH = 6;
@@ -223,7 +262,8 @@ const secretPatterns = new Map<string, RegExp>();
 function secretPattern(secrets: Iterable<string>): RegExp {
   const forms = new Set<string>();
   for (const secret of new Set([...HARNESS_SECRETS, ...secrets])) {
-    if (secret.length < MIN_SECRET_LENGTH) continue;
+    if (secret.length < MIN_SECRET_LENGTH || secret.length > MAX_SECRET_LENGTH)
+      continue;
     let escaped = secret;
     for (let depth = 0; depth < 4; depth += 1) {
       forms.add(escaped);
@@ -303,7 +343,10 @@ export function collectAccountPasswords(text: string): string[] {
   for (const { value } of [...fillTitles(text), ...passwordObjects(text)])
     values.add(value);
   return [...values].filter(
-    (value) => value.length >= MIN_SECRET_LENGTH && !isRedacted(value),
+    (value) =>
+      value.length >= MIN_SECRET_LENGTH &&
+      value.length <= MAX_SECRET_LENGTH &&
+      !isRedacted(value),
   );
 }
 

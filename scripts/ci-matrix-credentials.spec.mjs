@@ -6,10 +6,14 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { protectReportCredentials } from './ci-matrix-credentials.mjs';
+import {
+  htmlReportParts,
+  protectReportCredentials,
+} from './ci-matrix-credentials.mjs';
 import { isZip, readZip, writeZip } from './zip-archive.mjs';
 
 const roots = [];
@@ -89,12 +93,13 @@ function published(bytes) {
     return readZip(bytes)
       .map(({ data }) => published(data))
       .join('\n');
-  const content = bytes.toString('latin1');
-  const payload =
-    /data:application\/zip;base64,([A-Za-z0-9+/=]*)<\/template>/u.exec(content);
-  return payload
-    ? `${content}\n${published(Buffer.from(payload[1], 'base64'))}`
-    : content;
+  // String search, like the gate: a regex over a large payload overflows V8.
+  return htmlReportParts(bytes.toString('latin1'))
+    .map(
+      (part) =>
+        part.text ?? `\n${published(Buffer.from(part.payload, 'base64'))}`,
+    )
+    .join('');
 }
 
 const html = (archive) =>
@@ -385,6 +390,72 @@ describe('Browser and desktop upload credential boundary', () => {
         published(readFileSync(join(suite, 'blob-report/report-1.zip'))),
       ).not.toContain(password);
     });
+  });
+
+  it('scrubs a 15 MB HTML report, blob report and trace in bounded time', () => {
+    // A real 13 MB Storybook HTML report once failed the gate with a RangeError.
+    const size = 15 * 1024 * 1024;
+    const base64 = 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo'.repeat(size / 34);
+    const jsonl = `${JSON.stringify({ title: login })}\n`.repeat(size / 200);
+    const bigTrace = writeZip([
+      text(
+        '0-trace.trace',
+        `${JSON.stringify({ screenshot: `I${base64}` })}\n${jsonl}`,
+      ),
+    ]);
+    const { root, suite } = workspace({
+      // Random data does not compress, so the page carries ~17 MB of base64.
+      // Its script holds text outside Latin-1, as the real report's does, so
+      // V8 matches the page as a two-byte string: the failing case.
+      'html-report/index.html': `<script>const more = '\u2026';</script>${html(
+        writeZip([
+          text('report.json', JSON.stringify({ title: login })),
+          text(
+            'data.json',
+            `"${randomBytes(12 * 1024 * 1024).toString('base64')}"`,
+          ),
+        ]),
+      )}`,
+      'blob-report/report-1.zip': writeZip([
+        text('report.jsonl', jsonl),
+        { name: 'resources/trace.zip', data: bigTrace },
+      ]),
+      'test-output/a/trace.zip': bigTrace,
+    });
+    const started = performance.now();
+    const original = readFileSync(join(suite, 'html-report/index.html'));
+    expect(original.length).toBeGreaterThan(size);
+    const result = protectReportCredentials({ root, reportPath });
+    expect(performance.now() - started).toBeLessThan(60_000);
+    expect(result.withheld).toEqual([]);
+    expect(result.redacted).toHaveLength(3);
+    for (const file of [
+      'blob-report/report-1.zip',
+      'test-output/a/trace.zip',
+    ]) {
+      const content = published(readFileSync(join(suite, file)));
+      expect(content).not.toContain('syt_');
+      expect(content).toContain(base64.slice(0, 1000));
+    }
+    const rewritten = readFileSync(join(suite, 'html-report/index.html'));
+    expect(rewritten.subarray(0, 40).equals(original.subarray(0, 40))).toBe(
+      true,
+    );
+    const page = published(rewritten);
+    expect(page).not.toContain('syt_');
+    expect(page).toContain('\\"access_token\\":\\"[REDACTED]\\"');
+  }, 120_000);
+
+  it('withholds an HTML report whose payload is not canonical base64', () => {
+    // Node's base64 decoder skips characters such as `_`, so a token inside
+    // the payload text would reach the page unscanned.
+    const payload = writeZip([text('report.json', '{}')]).toString('base64');
+    const { root, suite } = workspace({
+      'html-report/index.html': `<template id="playwrightReportBase64">data:application/zip;base64,${payload}${token}</template>`,
+    });
+    const result = protectReportCredentials({ root, reportPath });
+    expect(result.withheld).toHaveLength(1);
+    expect(existsSync(join(suite, 'html-report/index.html'))).toBe(false);
   });
 
   it('rejects an empty report path', () => {

@@ -1,5 +1,8 @@
 name: Upload Playwright diagnostics
-description: Require report output from a started suite and retain hidden diagnostic files.
+description: >-
+  Require report output from a started suite and retain hidden diagnostic files. A redaction or
+  report failure withholds what was not verified and fails the job at its final step, so the
+  job's later suites still run.
 inputs:
   surface:
     description: Suite surface used in the immutable artifact name.
@@ -15,9 +18,12 @@ runs:
   steps:
     # Android diagnostics never publish a raw Matrix Room or event identifier.
     # The redaction also covers the shared dist/.ci logs this upload includes.
+    # Verification failures continue so later suites still run; the deferral
+    # step below records them and the job's final step fails the job.
     - name: Redact Matrix identifiers from Android diagnostics
       id: matrix-identifiers
       if: ${{ inputs.surface == 'android' || startsWith(inputs.surface, 'android-') }}
+      continue-on-error: true
       shell: bash
       env:
         CI_REPORT_PATH: ${{ inputs.report-path }}
@@ -27,11 +33,14 @@ runs:
     - name: Redact Matrix credentials from diagnostics
       id: matrix-credentials
       if: ${{ inputs.surface != 'android' && !startsWith(inputs.surface, 'android-') }}
+      continue-on-error: true
       shell: bash
       env:
         CI_REPORT_PATH: ${{ inputs.report-path }}
       run: node scripts/ci-matrix-credentials.mjs
     - name: Require suite diagnostics
+      id: reports
+      continue-on-error: true
       shell: bash
       env:
         CI_REPORT_PATH: ${{ inputs.report-path }}
@@ -48,3 +57,12 @@ runs:
         include-hidden-files: true
         if-no-files-found: error
         retention-days: 7
+    - name: Defer unverified diagnostics to the end of the job
+      if: ${{ !cancelled() && (steps.matrix-identifiers.outcome == 'failure' || steps.matrix-credentials.outcome == 'failure' || steps.reports.outcome == 'failure') }}
+      shell: bash
+      env:
+        SURFACE: ${{ inputs.surface }}
+        SHARD: ${{ inputs.shard }}
+      run: |
+        echo "::error title=Diagnostics not verified::${SURFACE} (shard ${SHARD}): redaction or report verification failed; unverified files were withheld."
+        echo "TRINITY_UNVERIFIED_DIAGNOSTICS=${TRINITY_UNVERIFIED_DIAGNOSTICS:+${TRINITY_UNVERIFIED_DIAGNOSTICS},}${SURFACE}/${SHARD}" >> "$GITHUB_ENV"

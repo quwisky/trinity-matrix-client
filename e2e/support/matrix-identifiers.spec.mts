@@ -291,6 +291,15 @@ describe('Test-account password redaction', () => {
     ).toBe(`${code}"[REDACTED]"`);
   });
 
+  it('harvests no value longer than a password', () => {
+    const long = 'p'.repeat(1000);
+    const title = `{"title":"Fill \\"${long}\\" getByLabel('Password')"}`;
+    expect(collectAccountPasswords(title)).toEqual([]);
+    expect(redactAccountPasswords(title)).toBe(
+      `{"title":"Fill \\"[REDACTED]\\" getByLabel('Password')"}`,
+    );
+  });
+
   it('finds no secret where none is known', () => {
     expect(hasAccountPassword('plain text', [], { structured: false })).toBe(
       false,
@@ -353,6 +362,55 @@ describe('Android password scrub', () => {
     expect(readFileSync(join(directory, 'flow/commands.json'), 'utf8')).toBe(
       '{"inputTextCommand":{"text":"[REDACTED]"}}',
     );
+  });
+});
+
+describe('Large diagnostics', () => {
+  // V8 keeps one backtrack entry per iteration of an unbounded quantifier;
+  // a 13 MB HTML report's base64 payload once exhausted it (RangeError).
+  const size = 15 * 1024 * 1024;
+  const base64 = (first: string): string =>
+    first + 'QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo'.repeat(size / 34);
+  // One character outside Latin-1 makes V8 store the whole text as a two-byte
+  // string, where a Unicode-mode class may match a surrogate pair and so needs
+  // a backtrack entry per character: the real report's case.
+  const twoByte = (text: string): string => `\u2026${text}`;
+  const shapes: Record<string, string> = {
+    'a base64url run that starts like a Room route': base64('I'),
+    'an event-id prefix before a base64 run': `$${base64('A')}`,
+    'a bearer prefix before a base64 run': `Bearer ${base64('A')}`,
+    'a token field before a base64 run': `access_token=${base64('A')}`,
+    'a Synapse token prefix before a long run': `syt_${'A'.repeat(size)}`,
+    'a Room-id prefix before a long run': `!${'a'.repeat(size)}:localhost`,
+    'an unterminated password value': `"password":"${'x'.repeat(size)}`,
+    'a password field before a base64 run': `password=${base64('A')}`,
+    'an unterminated fill title': `Fill \\"${'x'.repeat(size)}`,
+    'a huge fill object': `{"value":"${'y'.repeat(size)}","selector":"Password"}`,
+    'a secure-storage call with a long payload': `pluginId: SecureStorage, methodData: ${'z'.repeat(size)}`,
+    'a long JSONL log': '{"type":"log","message":"  fill(\\"abc\\")"}\n'.repeat(
+      size / 44,
+    ),
+  };
+
+  it.each(Object.entries(shapes))(
+    'scrubs %s in bounded time',
+    (_name, oneByte) => {
+      const text = twoByte(oneByte);
+      const started = performance.now();
+      expect(() => redactMatrixIdentifiers(text)).not.toThrow();
+      expect(() => hasMatrixIdentifier(text)).not.toThrow();
+      expect(() => redactMatrixCredentials(text)).not.toThrow();
+      expect(() => hasMatrixCredential(text)).not.toThrow();
+      expect(() => collectAccountPasswords(text)).not.toThrow();
+      expect(performance.now() - started).toBeLessThan(20_000);
+    },
+    60_000,
+  );
+
+  it('still redacts a long token up to its bound', () => {
+    const redacted = redactMatrixCredentials(`syt_${'A'.repeat(size)}`);
+    expect(redacted.startsWith('[REDACTED]')).toBe(true);
+    expect(redacted.length).toBeLessThan(size);
   });
 });
 
