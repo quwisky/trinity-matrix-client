@@ -12,14 +12,11 @@ import {
   collectAccountPasswords,
   hasAccountPassword,
   hasMatrixCredential,
+  isStructuredDiagnostic,
   redactAccountPasswords,
   redactMatrixCredentials,
 } from '../e2e/support/matrix-identifiers.mts';
-import {
-  REGISTRATION_SHARED_SECRET,
-  SSO_PASS,
-  TEST_PASS,
-} from '../e2e/support/synapse/start.mjs';
+import { HARNESS_SECRETS } from '../e2e/support/synapse/credentials.mjs';
 import { ZipFormatError, isZip, readZip, writeZip } from './zip-archive.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -71,31 +68,9 @@ const HTML_REPORT_PAYLOAD =
 /** Nested archives: a blob report holds traces, which hold their resources. */
 const MAX_ARCHIVE_DEPTH = 4;
 
-/** The harness's own fixed test-account passwords and registration secret. */
-export const HARNESS_SECRETS = Object.freeze([
-  TEST_PASS,
-  SSO_PASS,
-  REGISTRATION_SHARED_SECRET,
-]);
-
-/**
- * Bundled code (the report and trace viewers, snapshotted page styles and
- * scripts) is not a diagnostic: a minified library's `password:e` is not a
- * test account's password. It is checked only for known secrets.
- */
-const CODE_EXTENSIONS = new Set([
-  '.css',
-  '.htm',
-  '.html',
-  '.js',
-  '.map',
-  '.mjs',
-  '.svg',
-  '.webmanifest',
-]);
-
+/** Bundled viewer code is checked only for known secrets. */
 const passwordOptions = (name) => ({
-  structured: !CODE_EXTENSIONS.has(extname(name).toLowerCase()),
+  structured: isStructuredDiagnostic(name),
 });
 
 /**

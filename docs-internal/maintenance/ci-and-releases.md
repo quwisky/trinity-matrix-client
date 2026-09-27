@@ -88,11 +88,13 @@ seven-day retention. HTML, blob, JUnit and GitHub reporting remain enabled in CI
 failed attempts retain traces and screenshots. CI allows one diagnostic retry
 and rejects pass-on-retry results.
 
-No upload publishes a Matrix credential. Before an Android upload,
-`scripts/ci-matrix-identifiers.mjs` also redacts every Room and event identifier.
-Every other surface passes `scripts/ci-matrix-credentials.mjs`, which redacts
-access and refresh tokens, bearer values, token fields and test-account passwords
-but keeps Room and event identifiers for debugging. A password is found by its
+No upload publishes a Matrix credential or test-account password. Before an
+Android upload, `scripts/ci-matrix-identifiers.mjs` also redacts every Room and
+event identifier and withholds every archive, traces included. Every other surface
+passes `scripts/ci-matrix-credentials.mjs`, which redacts access and refresh tokens,
+bearer values, token fields and test-account passwords but keeps Room and event
+identifiers for debugging. Both gates, the Android post-run scrub and the job-log
+redaction share the password rules. A password is found by its
 context (a password field in a request body, or a fill of a password input:
 its step title, parameter and snapshot); each value found is then redacted
 wherever else it appears, such as a `fill("…")` log line, together with the

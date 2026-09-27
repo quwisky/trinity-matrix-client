@@ -1,5 +1,6 @@
 import { readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, extname, join, relative } from 'node:path';
+import { HARNESS_SECRETS } from './synapse/credentials.mjs';
 
 /**
  * Published Android diagnostics never carry a raw Matrix Room or event
@@ -213,10 +214,15 @@ function passwordFields(text: string): PasswordMatch[] {
   return matches;
 }
 
-/** An exact secret, raw, JSON-escaped at any depth or percent-encoded. */
-function secretPattern(secrets: Iterable<string>): RegExp | undefined {
+const secretPatterns = new Map<string, RegExp>();
+
+/**
+ * An exact secret, raw, JSON-escaped at any depth or percent-encoded. The
+ * harness's fixed passwords and registration secret are always included.
+ */
+function secretPattern(secrets: Iterable<string>): RegExp {
   const forms = new Set<string>();
-  for (const secret of secrets) {
+  for (const secret of new Set([...HARNESS_SECRETS, ...secrets])) {
     if (secret.length < MIN_SECRET_LENGTH) continue;
     let escaped = secret;
     for (let depth = 0; depth < 4; depth += 1) {
@@ -226,11 +232,21 @@ function secretPattern(secrets: Iterable<string>): RegExp | undefined {
     forms.add(encodeURIComponent(secret));
     forms.add(encodeURIComponent(encodeURIComponent(secret)));
   }
-  if (forms.size === 0) return undefined;
   const alternatives = [...forms]
-    .sort((left, right) => right.length - left.length)
+    .sort(
+      (left, right) => right.length - left.length || (left < right ? -1 : 1),
+    )
     .map((form) => form.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'));
-  return new RegExp(alternatives.join('|'), 'gu');
+  // With no secret at all the pattern must match nothing, not the empty string.
+  const source = alternatives.join('|') || '(?!)';
+  let pattern = secretPatterns.get(source);
+  if (!pattern) {
+    if (secretPatterns.size > 64) secretPatterns.clear();
+    pattern = new RegExp(source, 'gu');
+    secretPatterns.set(source, pattern);
+  }
+  pattern.lastIndex = 0;
+  return pattern;
 }
 
 function replaceRanges(text: string, ranges: readonly PasswordMatch[]): string {
@@ -244,8 +260,15 @@ function replaceRanges(text: string, ranges: readonly PasswordMatch[]): string {
   return output + text.slice(cursor);
 }
 
+/**
+ * Values that are never a secret: already redacted, empty, a flag such as
+ * Android accessibility's `password: false`, or a source template such as
+ * `${user}-pass` in an error context's code frame.
+ */
 const isRedacted = (value: string): boolean =>
-  value === MATRIX_IDENTIFIER_REDACTION || value === '';
+  value === MATRIX_IDENTIFIER_REDACTION ||
+  value.includes('${') ||
+  /^(?:|true|false|null|undefined)$/u.test(value);
 
 export interface AccountPasswordOptions {
   /**
@@ -267,9 +290,15 @@ export function collectAccountPasswords(text: string): string[] {
   for (const field of text.matchAll(PASSWORD_FIELD)) {
     const quote = field[2];
     if (quote === undefined) {
-      if (/=$/u.test(field[1]!)) values.add(field[4]!);
-    } else if (DOUBLE_QUOTE.test(quote) && !field[3]!.includes('${'))
-      values.add(field[3]!);
+      // Only a form or query field (`?password=…`, `&password=…`): a log's
+      // `isPassword=disabled` is a setting, not a password.
+      const before = text[(field.index ?? 0) - 1] ?? '';
+      if (
+        /^(?:new_|old_)?pass(?:word|phrase)?=$/u.test(field[1]!) &&
+        /^[?&\s]?$/u.test(before)
+      )
+        values.add(field[4]!);
+    } else if (DOUBLE_QUOTE.test(quote)) values.add(field[3]!);
   }
   for (const { value } of [...fillTitles(text), ...passwordObjects(text)])
     values.add(value);
@@ -293,10 +322,7 @@ export function redactAccountPasswords(
       passwordFields(redacted).filter(({ value }) => !isRedacted(value)),
     );
   }
-  const pattern = secretPattern(secrets);
-  return pattern
-    ? redacted.replace(pattern, MATRIX_IDENTIFIER_REDACTION)
-    : redacted;
+  return redacted.replace(secretPattern(secrets), MATRIX_IDENTIFIER_REDACTION);
 }
 
 /** Whether text still carries a test-account password by context or a known secret. */
@@ -305,8 +331,7 @@ export function hasAccountPassword(
   secrets: Iterable<string> = [],
   { structured = true }: AccountPasswordOptions = {},
 ): boolean {
-  const pattern = secretPattern(secrets);
-  if (pattern?.test(text)) return true;
+  if (secretPattern(secrets).test(text)) return true;
   if (!structured) return false;
   return [
     ...fillTitles(text),
@@ -331,20 +356,48 @@ function hasShape(text: string): boolean {
   return false;
 }
 
-/**
- * Redact every Matrix event-id and Room-id shape, raw, percent-encoded or as
- * a base64url Room route segment. Colour sequences are kept unless they hide
- * an identifier, in which case the text is uncoloured and then redacted.
- */
-export function redactMatrixIdentifiers(text: string): string {
-  const redacted = redactShapes(text);
-  const plain = redacted.replace(ANSI_SEQUENCE, '');
-  return plain !== redacted && hasShape(plain) ? redactShapes(plain) : redacted;
+export interface MatrixIdentifierOptions extends AccountPasswordOptions {
+  /**
+   * Passwords already known to the caller: registered by a suite or harvested
+   * from other diagnostics of the same upload. Values the context rules find
+   * in the text itself are always added.
+   */
+  readonly secrets?: Iterable<string>;
 }
 
-/** Whether text still carries any Matrix event-id or Room-id shape, even between colour sequences. */
-export function hasMatrixIdentifier(text: string): boolean {
-  return hasShape(text) || hasShape(text.replace(ANSI_SEQUENCE, ''));
+/**
+ * The strict Android scrub: every Matrix event-id and Room-id shape (raw,
+ * percent-encoded or as a base64url Room route segment), every credential and
+ * every test-account password. Colour sequences are kept unless they hide a
+ * shape, in which case the text is uncoloured and then redacted.
+ */
+export function redactMatrixIdentifiers(
+  text: string,
+  { secrets = [], structured = true }: MatrixIdentifierOptions = {},
+): string {
+  const known = new Set(secrets);
+  if (structured)
+    for (const value of collectAccountPasswords(text)) known.add(value);
+  const redact = (value: string): string =>
+    redactAccountPasswords(redactShapes(value), known, { structured });
+  const has = (value: string): boolean =>
+    hasShape(value) || hasAccountPassword(value, known, { structured });
+  const redacted = redact(text);
+  const plain = redacted.replace(ANSI_SEQUENCE, '');
+  return plain !== redacted && has(plain) ? redact(plain) : redacted;
+}
+
+/**
+ * Whether text still carries a Matrix event-id or Room-id shape, a credential
+ * or a test-account password, even between colour sequences.
+ */
+export function hasMatrixIdentifier(
+  text: string,
+  { secrets = [], structured = true }: MatrixIdentifierOptions = {},
+): boolean {
+  const has = (value: string): boolean =>
+    hasShape(value) || hasAccountPassword(value, secrets, { structured });
+  return has(text) || has(text.replace(ANSI_SEQUENCE, ''));
 }
 
 /**
@@ -355,10 +408,18 @@ export function hasMatrixIdentifier(text: string): boolean {
 export class MatrixIdentifierLineRedactor {
   private pending = '';
 
+  /** Passwords seen so far, redacted in every later line too. */
+  private readonly secrets = new Set<string>();
+
   private readonly maxPending: number;
 
   constructor(maxPending = 64 * 1024) {
     this.maxPending = maxPending;
+  }
+
+  private redact(text: string): string {
+    for (const value of collectAccountPasswords(text)) this.secrets.add(value);
+    return redactMatrixIdentifiers(text, { secrets: this.secrets });
   }
 
   write(chunk: string): string {
@@ -366,7 +427,7 @@ export class MatrixIdentifierLineRedactor {
     const end = text.lastIndexOf('\n');
     if (end >= 0) {
       this.pending = text.slice(end + 1);
-      return redactMatrixIdentifiers(text.slice(0, end + 1)) + this.overflow();
+      return this.redact(text.slice(0, end + 1)) + this.overflow();
     }
     this.pending = text;
     return this.overflow();
@@ -375,7 +436,7 @@ export class MatrixIdentifierLineRedactor {
   flush(): string {
     const rest = this.pending;
     this.pending = '';
-    return redactMatrixIdentifiers(rest);
+    return this.redact(rest);
   }
 
   private overflow(): string {
@@ -387,7 +448,7 @@ export class MatrixIdentifierLineRedactor {
     const cut = run > 0 ? run : limit;
     const released = this.pending.slice(0, cut);
     this.pending = this.pending.slice(cut);
-    return redactMatrixIdentifiers(released);
+    return this.redact(released);
   }
 }
 
@@ -428,31 +489,79 @@ export type MatrixIdentifierFileState =
   'clean' | 'redacted' | 'unsafe' | 'media';
 
 /**
+ * Bundled code (a report or trace viewer, snapshotted page styles and
+ * scripts) is not a diagnostic: a minified library's `password:e` is not a
+ * test account's password, so only known secrets are checked there.
+ */
+const CODE_EXTENSIONS = new Set([
+  '.css',
+  '.htm',
+  '.html',
+  '.js',
+  '.map',
+  '.mjs',
+  '.svg',
+  '.webmanifest',
+]);
+
+/** Whether the context rules apply to a file or archive member of this name. */
+export const isStructuredDiagnostic = (name: string): boolean =>
+  !CODE_EXTENSIONS.has(extname(name).toLowerCase());
+
+/**
+ * Every password the context rules find in these text diagnostics, so each
+ * is redacted wherever else it appears in the same publication.
+ */
+export async function harvestAccountPasswords(
+  paths: Iterable<string>,
+): Promise<Set<string>> {
+  const secrets = new Set<string>(HARNESS_SECRETS);
+  for (const path of paths) {
+    if (!isStructuredDiagnostic(path)) continue;
+    if (MEDIA_EXTENSIONS.has(extname(path).toLowerCase())) continue;
+    const bytes = await readFile(path);
+    if (bytes.includes(0)) continue;
+    for (const value of collectAccountPasswords(bytes.toString('utf8')))
+      secrets.add(value);
+  }
+  return secrets;
+}
+
+/**
  * Redact one diagnostic in place and rescan it. Media files are skipped; any
  * other file with a NUL byte is binary and cannot be verified, so it is unsafe
  * like a file that still carries an identifier after the scrub.
  */
 export async function scrubMatrixIdentifierFile(
   path: string,
+  secrets: Iterable<string> = [],
 ): Promise<MatrixIdentifierFileState> {
   if (MEDIA_EXTENSIONS.has(extname(path).toLowerCase())) return 'media';
   const bytes = await readFile(path);
   if (bytes.includes(0)) return 'unsafe';
   const text = bytes.toString('utf8');
-  const scrubbed = redactMatrixIdentifiers(text);
+  const options = { secrets, structured: isStructuredDiagnostic(path) };
+  const scrubbed = redactMatrixIdentifiers(text, options);
   if (scrubbed !== text) await writeFile(path, scrubbed, 'utf8');
-  if (hasMatrixIdentifier(await readFile(path, 'utf8'))) return 'unsafe';
+  if (hasMatrixIdentifier(await readFile(path, 'utf8'), options))
+    return 'unsafe';
   return scrubbed === text ? 'clean' : 'redacted';
 }
 
-/** Redact every text diagnostic below `directory` in place, then rescan it. */
+/**
+ * Redact every text diagnostic below `directory` in place, then rescan it.
+ * Passwords found in any file are redacted in all of them.
+ */
 export async function scrubMatrixIdentifierArtifacts(
   directory: string,
 ): Promise<MatrixIdentifierScanResult> {
   const redacted: string[] = [];
   const unsafe: string[] = [];
-  for await (const path of regularFiles(directory)) {
-    const state = await scrubMatrixIdentifierFile(path);
+  const paths: string[] = [];
+  for await (const path of regularFiles(directory)) paths.push(path);
+  const secrets = await harvestAccountPasswords(paths);
+  for (const path of paths) {
+    const state = await scrubMatrixIdentifierFile(path, secrets);
     if (state === 'redacted') redacted.push(relative(directory, path));
     else if (state === 'unsafe') unsafe.push(relative(directory, path));
   }
@@ -474,7 +583,7 @@ export async function enforceMatrixIdentifierFreeArtifacts(
   for await (const path of regularFiles(directory))
     if (basename(path) === 'publication-safe') await rm(path, { force: true });
   return {
-    redacted: result.redacted.map(redactMatrixIdentifiers),
-    unsafe: result.unsafe.map(redactMatrixIdentifiers),
+    redacted: result.redacted.map((name) => redactMatrixIdentifiers(name)),
+    unsafe: result.unsafe.map((name) => redactMatrixIdentifiers(name)),
   };
 }

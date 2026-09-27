@@ -261,6 +261,11 @@ describe('Test-account password redaction', () => {
       'internal:label=\\"Password\\"s and input[type=password]',
     ],
     ['a password input type', '["INPUT",{"type":"password"}]'],
+    ['a source template', '   11 |   const pass = `${user}-pass`;'],
+    [
+      'an accessibility password flag',
+      'enabled: true; password: false; scrollable: false; "password":null',
+    ],
     ['a Room id and user id', `!AbCdEfGhIjKl:localhost @${user}:localhost`],
   ])('leaves %s alone', (_name, text) => {
     expect(collectAccountPasswords(text)).toEqual([]);
@@ -286,12 +291,68 @@ describe('Test-account password redaction', () => {
     ).toBe(`${code}"[REDACTED]"`);
   });
 
+  it('finds no secret where none is known', () => {
+    expect(hasAccountPassword('plain text', [], { structured: false })).toBe(
+      false,
+    );
+    expect(
+      hasAccountPassword('plain text', ['short'], { structured: false }),
+    ).toBe(false);
+  });
+
   it('does not harvest short or template values', () => {
     expect(
       collectAccountPasswords(
         '{"password":"abc"} const password = `${user}-pass`',
       ),
     ).toEqual([]);
+  });
+});
+
+describe('Android password scrub', () => {
+  const password = 'Trinity-registration-android-w0-r0-0a1b2c3d4e';
+
+  it('redacts passwords with the identifier scrub and flags them', () => {
+    const text = `- textbox "Password": ${password} in ${roomId}`;
+    expect(hasMatrixIdentifier(text)).toBe(true);
+    expect(redactMatrixIdentifiers(text)).toBe(
+      '- textbox "Password": [REDACTED] in [REDACTED]',
+    );
+    expect(hasMatrixIdentifier('login verify-e2e-pass-123')).toBe(true);
+    expect(redactMatrixIdentifiers('login verify-e2e-pass-123')).toBe(
+      'login [REDACTED]',
+    );
+    expect(
+      hasMatrixIdentifier(`typed ${password}`, { secrets: [password] }),
+    ).toBe(true);
+  });
+
+  it('redacts a password in every later line of a stream once seen', () => {
+    const redactor = new MatrixIdentifierLineRedactor();
+    const output =
+      redactor.write(`{"password":"${password}"}\n`) +
+      redactor.write(`typed ${password}\n`) +
+      redactor.flush();
+    expect(output).toBe('{"password":"[REDACTED]"}\ntyped [REDACTED]\n');
+  });
+
+  it('redacts a password found in one artifact from all of them', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trinity-passwords-'));
+    directories.push(directory);
+    mkdirSync(join(directory, 'flow'));
+    writeFileSync(
+      join(directory, 'request.json'),
+      JSON.stringify({ username: 'signup', password }),
+    );
+    writeFileSync(
+      join(directory, 'flow/commands.json'),
+      JSON.stringify({ inputTextCommand: { text: password } }),
+    );
+    const result = await enforceMatrixIdentifierFreeArtifacts(directory);
+    expect(result.unsafe).toEqual([]);
+    expect(readFileSync(join(directory, 'flow/commands.json'), 'utf8')).toBe(
+      '{"inputTextCommand":{"text":"[REDACTED]"}}',
+    );
   });
 });
 

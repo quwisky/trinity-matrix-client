@@ -2,6 +2,7 @@ import { appendFileSync, globSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
+  harvestAccountPasswords,
   redactMatrixIdentifiers,
   scrubMatrixIdentifierFile,
 } from '../e2e/support/matrix-identifiers.mts';
@@ -30,9 +31,10 @@ function filesUnder(root, pattern) {
 
 /**
  * The Android publication boundary: redact every Matrix Room and event
- * identifier shape from the files an upload would publish (its report globs
- * and `dist/.ci`), withhold any file that still carries one or is not text,
- * and report whether every file was verified.
+ * identifier shape, credential and test-account password from the files an
+ * upload would publish (its report globs and `dist/.ci`), withhold any file
+ * that still carries one or is not text, and report whether every file was
+ * verified. A password found in one file is redacted in all of them.
  */
 export async function protectUploadDiagnostics({
   root = ROOT,
@@ -41,14 +43,23 @@ export async function protectUploadDiagnostics({
   const files = new Set();
   for (const pattern of [...patternsFrom(reportPath), 'dist/.ci/**'])
     for (const path of filesUnder(root, pattern)) files.add(path);
+  const sorted = [...files].sort();
+  const secrets = await harvestAccountPasswords(
+    sorted.map((path) => join(root, path)),
+  );
   const redacted = [];
   const withheld = [];
-  for (const path of [...files].sort()) {
-    const state = await scrubMatrixIdentifierFile(join(root, path));
+  for (const path of sorted) {
+    const state = await scrubMatrixIdentifierFile(join(root, path), secrets);
     if (state === 'redacted') redacted.push(path);
     if (state === 'unsafe') {
       rmSync(join(root, path), { force: true });
-      withheld.push(redactMatrixIdentifiers(relative('.', path)));
+      withheld.push(
+        redactMatrixIdentifiers(relative('.', path), {
+          secrets,
+          structured: false,
+        }),
+      );
     }
   }
   return { files: files.size, redacted, withheld };

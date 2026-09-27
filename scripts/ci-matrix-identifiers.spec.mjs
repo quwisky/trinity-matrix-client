@@ -124,4 +124,64 @@ describe('Android upload identifier boundary', () => {
       expect(published).toContain('methodData: [REDACTED]');
     }
   });
+
+  it('redacts test-account passwords from the installed-webview and native layouts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'trinity-ci-passwords-'));
+    roots.push(root);
+    const password = 'probe-user-android-webview-w0-r0-0a1b2c3d4e-run-pass';
+    const suite = join(
+      root,
+      'dist/.playwright/trinity-e2e-android/run/android.example',
+    );
+    const files = {
+      // The failing probe's page snapshot: a filled password textbox.
+      'test-output/probe/error-context.md': `- textbox "Username": probe-user\n- textbox "Password": ${password}\n- button "Show password"\n`,
+      // A request body names the password; the Maestro command does not.
+      'test-output/probe/attachments/request-0a1b.json': JSON.stringify({
+        identifier: { user: 'probe-user' },
+        password,
+      }),
+      'flow/commands.json': JSON.stringify([
+        { command: { inputTextCommand: { text: password } } },
+      ]),
+      'junit/results.xml': `<system-out>  - fill(&quot;${password}&quot;) in ${roomId}</system-out>\n`,
+      'host-output/logcat-final.txt':
+        'I Maestro: enabled: true; password: false; scrollable: false\n',
+      'report/trace/viewer.js': 'constructor({password:e,rawPassword:t}){}',
+    };
+    for (const [file, content] of Object.entries(files)) {
+      mkdirSync(join(suite, file, '..'), { recursive: true });
+      writeFileSync(join(suite, file), content);
+    }
+    mkdirSync(join(root, 'dist/.ci'), { recursive: true });
+    writeFileSync(
+      join(root, 'dist/.ci/suite.log'),
+      '[suite] stdout: login verify-e2e-pass-123\n',
+    );
+    const result = await protectUploadDiagnostics({
+      root,
+      reportPath: 'dist/.playwright/trinity-e2e-android/*/android.example/**',
+    });
+    expect(result.withheld).toEqual([]);
+    for (const file of Object.keys(files))
+      expect(readFileSync(join(suite, file), 'utf8')).not.toContain(password);
+    expect(
+      readFileSync(join(suite, 'test-output/probe/error-context.md'), 'utf8'),
+    ).toContain('- textbox "Password": [REDACTED]\n');
+    expect(readFileSync(join(suite, 'flow/commands.json'), 'utf8')).toContain(
+      '"text":"[REDACTED]"',
+    );
+    expect(readFileSync(join(suite, 'junit/results.xml'), 'utf8')).toBe(
+      '<system-out>  - fill(&quot;[REDACTED]&quot;) in [REDACTED]</system-out>\n',
+    );
+    expect(
+      readFileSync(join(suite, 'host-output/logcat-final.txt'), 'utf8'),
+    ).toBe(files['host-output/logcat-final.txt']);
+    expect(readFileSync(join(suite, 'report/trace/viewer.js'), 'utf8')).toBe(
+      files['report/trace/viewer.js'],
+    );
+    expect(readFileSync(join(root, 'dist/.ci/suite.log'), 'utf8')).toBe(
+      '[suite] stdout: login [REDACTED]\n',
+    );
+  });
 });

@@ -18,8 +18,10 @@ import { describe, expect, it } from 'vitest';
  * than "user exists" was silent and the spec failed later, somewhere else, for a reason that
  * had nothing to do with the cause.
  *
- * The values now come from `e2e/support/synapse/start.mjs`, which patches them into
- * `homeserver.yaml` — one definition, on the side that actually configures Synapse.
+ * The values now come from the Synapse harness, which patches them into `homeserver.yaml`:
+ * one definition each, on the side that actually configures Synapse. The secret lives in
+ * `credentials.mjs` with the harness's other fixed credentials, so the publication scrub can
+ * redact them without loading the harness lifecycle; `start.mjs` re-exports it.
  *
  * `compact-room-routing.spec.mts` keeps a registration routine of its own, and is allowed to: it
  * registers in `beforeAll`, where Playwright's test-scoped `request` fixture does not exist,
@@ -37,11 +39,16 @@ const RESTATED = [
   {
     what: 'the registration shared secret',
     pattern: /trinity-e2e-shared-secret/,
+    definition: 'e2e/support/synapse/credentials.mjs',
   },
-  { what: "Synapse's base URL", pattern: /(?:localhost|127\.0\.0\.1):8008/ },
+  {
+    what: "Synapse's base URL",
+    pattern: /(?:localhost|127\.0\.0\.1):8008/,
+    definition: 'e2e/support/synapse/start.mjs',
+  },
 ];
 
-/** The one file allowed to define them: the harness that writes them into homeserver.yaml. */
+/** The harness that writes them into homeserver.yaml, and exports both. */
 const DEFINITION = 'e2e/support/synapse/start.mjs';
 
 /** Where the shared helpers live — `registerUser`'s home, not a copy of it. */
@@ -91,7 +98,8 @@ const configuredE2eSources = globSync(
 describe('e2e harness constants', () => {
   it('declares the complete E2E module corpus in the scripts:test inputs', () => {
     expect(configuredE2eSources).toEqual(e2eSources);
-    expect(configuredE2eSources).toContain(DEFINITION);
+    for (const { definition } of RESTATED)
+      expect(configuredE2eSources).toContain(definition);
   });
 
   it('finds the specs at all, so an empty sweep cannot pass', () => {
@@ -100,9 +108,8 @@ describe('e2e harness constants', () => {
     expect(specs.some((file) => file.endsWith('.mjs'))).toBe(true);
     // And the definition really does define them, so the assertion below is about
     // duplication rather than about a value that has been renamed out of existence.
-    const source = read(DEFINITION);
-    for (const { pattern } of RESTATED) {
-      expect(source).toMatch(pattern);
+    for (const { pattern, definition } of RESTATED) {
+      expect(read(definition)).toMatch(pattern);
     }
   });
 

@@ -108,6 +108,13 @@ installed-webview logcats (`host-output/logcat-final.txt`, per-test
 build logs plugin calls or forwards its console to logcat; the scrub remains the
 publication boundary for anything else a device logs.
 
+The same scrub also removes test-account passwords: a password field in a
+request body or page snapshot (`textbox "Password": …` in an error context),
+a fill of a password field, the harness's fixed passwords and registration
+secret, and every value those rules find anywhere else in the same upload or
+job log. Suites still redact the secrets they register, such as a typed
+`SECRET_TEXT`, from their own Maestro artifacts.
+
 Suites keep their digest-based checks of the identifiers they register.
 
 ## Shared native actions and sign-in

@@ -28,6 +28,12 @@ import {
   resolveNetworkContainer,
 } from './paths.mjs';
 import { acquireSynapseLease, releaseSynapseLease } from './lease.mts';
+import {
+  REGISTRATION_SHARED_SECRET,
+  SSO_PASS,
+  TEST_PASS,
+  TEST_USER,
+} from './credentials.mjs';
 
 const exec = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,18 +71,14 @@ export const SYNAPSE_HTTP = 'http://localhost:8008';
 export const SECONDARY_HTTP = 'http://localhost:8009';
 export const HS_TLS = 'https://localhost:8448';
 export const SERVER_NAME = 'localhost';
-export const REGISTRATION_SHARED_SECRET = 'trinity-e2e-shared-secret';
-
-// Test credentials the verify-sas runner logs in with on both contexts.
-export const TEST_USER = process.env.TRINITY_USER ?? 'verify-e2e';
-export const TEST_PASS = process.env.TRINITY_PASS ?? 'verify-e2e-pass-123';
+// The fixed credentials live in credentials.mjs, which the publication scrub reads.
+export { REGISTRATION_SHARED_SECRET, TEST_USER, TEST_PASS, SSO_PASS };
 
 // The Dex-backed SSO account. It has no Matrix password by construction — Synapse
 // creates it through `oidc_providers` — which is exactly what the specs need it for.
 // These must match e2e/support/synapse/dex.yaml.
 export const DEX_ISSUER = 'http://localhost:5556/dex';
 export const SSO_EMAIL = 'sso-e2e@trinity.test';
-export const SSO_PASS = 'sso-e2e-pass-123';
 /** Localpart Synapse derives from the Dex identity, via `localpart_template` below. */
 export const SSO_USER = 'sso-e2e';
 
