@@ -52,6 +52,39 @@ const maestroDriverPortAttempts = 3;
 const maestroDriverPackages = ['dev.mobile.maestro', 'dev.mobile.maestro.test'];
 
 /**
+ * Maestro 2.10 augments a flow that declares `androidWebViewHierarchy:
+ * devtools` by reading every `webview_devtools_remote_<pid>` socket in
+ * /proc/net/unix in turn (`/json`, then `Runtime.evaluate` on visible pages)
+ * within one 10 s budget per hierarchy read. The emulator image is debuggable,
+ * so every WebView process owns such a socket, and Android's cached-app freezer
+ * freezes background processes: a frozen owner (the Google app, or Trinity
+ * behind Chrome) keeps its socket but never answers, so each hierarchy read of
+ * the flow waits out the budget. Before such a flow, the owners of those
+ * sockets are unfrozen sticky, which also keeps a still-running one from being
+ * frozen later in its lifetime, and none may remain frozen.
+ */
+export const WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND =
+  'pids=$(grep -o "webview_devtools_remote_[0-9]*" /proc/net/unix | sed "s/.*_//" | sort -u); ' +
+  'for p in $pids; do am unfreeze --sticky "$p" >/dev/null 2>&1; done; frozen=0; ' +
+  'for p in $pids; do case "$(cat /sys/fs/cgroup/apps/uid_*/pid_$p/cgroup.freeze 2>/dev/null)" in 1) frozen=$((frozen+1));; esac; done; ' +
+  'echo "sockets=$(echo $pids | wc -w) frozen=$frozen"';
+
+/** Parse {@link WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND} output into its socket and frozen counts. */
+export function parseWebviewDevtoolsUnfreeze(output: string): {
+  readonly sockets: number;
+  readonly frozen: number;
+} {
+  const match = /^sockets=(\d+) frozen=(\d+)$/u.exec(output.trim());
+  if (!match) throw new Error('Android WebView DevTools owners are readable');
+  return { sockets: Number(match[1]), frozen: Number(match[2]) };
+}
+
+/** A flow asks Maestro to augment its hierarchy through WebView DevTools. */
+export function flowUsesWebviewDevtools(flow: string): boolean {
+  return /^androidWebViewHierarchy:[ \t]*devtools[ \t]*$/mu.test(flow);
+}
+
+/**
  * Per-invocation Maestro CLI overhead that never reaches the device under test.
  *
  * Every native action starts one Maestro JVM. It opts out of PostHog analytics
@@ -632,6 +665,18 @@ export async function openMaestroDevice(
         );
       },
       async runFlow(file, variables = {}) {
+        if (
+          flowUsesWebviewDevtools(await readFile(file, 'utf8').catch(() => ''))
+        ) {
+          const owners = parseWebviewDevtoolsUnfreeze(
+            await adb('shell', WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND),
+          );
+          assert.equal(
+            owners.frozen,
+            0,
+            'No WebView DevTools socket owner stays frozen before a DevTools-augmented flow',
+          );
+        }
         const output = join(
           options.artifactDirectory,
           `${basename(file, '.yaml')}-${randomUUID()}`,

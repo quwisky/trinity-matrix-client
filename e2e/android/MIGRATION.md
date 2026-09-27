@@ -129,6 +129,15 @@ heuristics ([#839](https://github.com/quwisky/trinity-matrix-client/issues/839))
   `dumpsys input_method` carries about 800 KB of Gboard state, and polling it
   through adb coincided with hosted emulators dropping the adb transport and
   every forward (run 36283529271, shards 3 and 4).
+- Before a flow that declares `androidWebViewHierarchy: devtools`, the device
+  lease unfreezes, sticky, every owner of a `webview_devtools_remote_<pid>`
+  socket and requires none to stay frozen. Maestro 2.10 reads each of those
+  sockets in turn within one 10 s budget per hierarchy read, and Android's
+  cached-app freezer freezes background WebView processes (the Google app, or
+  Trinity behind Chrome), whose sockets then accept but never answer. That
+  made every hierarchy read of such a flow time out ("WebView hierarchy
+  augmentation timed out after PT10S"), the long-standing
+  critical-login/native-shell/legacy-sso flake in #665.
 - A document pick polls the native hierarchy until the photo picker's tab row
   has rendered and come to rest, and clears DocumentsUI first: DocumentsUI keeps
   its view mode across launches, and the pick flow expects its first-launch

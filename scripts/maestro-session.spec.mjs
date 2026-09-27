@@ -857,6 +857,95 @@ describe('Maestro device ownership', () => {
     }
   });
 
+  it('unfreezes every WebView DevTools owner before a DevTools-augmented flow', async () => {
+    const {
+      WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND,
+      flowUsesWebviewDevtools,
+      parseWebviewDevtoolsUnfreeze,
+    } = await import('../e2e/android/maestro-session.mts');
+    // Maestro reads every webview_devtools_remote socket in turn; a frozen owner
+    // never answers, so each hierarchy read would wait out its 10 s budget.
+    for (const needle of [
+      'grep -o "webview_devtools_remote_[0-9]*" /proc/net/unix',
+      'am unfreeze --sticky "$p"',
+      '/sys/fs/cgroup/apps/uid_*/pid_$p/cgroup.freeze',
+    ])
+      expect(WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND).toContain(needle);
+    expect(parseWebviewDevtoolsUnfreeze('sockets=2 frozen=0\n')).toEqual({
+      sockets: 2,
+      frozen: 0,
+    });
+    expect(() => parseWebviewDevtoolsUnfreeze('')).toThrow(
+      'Android WebView DevTools owners are readable',
+    );
+    expect(
+      flowUsesWebviewDevtools(
+        'appId: x\nandroidWebViewHierarchy: devtools\n---\n',
+      ),
+    ).toBe(true);
+    expect(flowUsesWebviewDevtools('appId: x\n---\n- tapOn: devtools\n')).toBe(
+      false,
+    );
+
+    const f = fixture();
+    configureMaestro(f);
+    let reply = 'sockets=2 frozen=0';
+    const run = f.commands.run;
+    f.commands.run = async (command, args, options) => {
+      if (args.at(-1) === WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND) {
+        f.calls.push([command, ...args]);
+        return reply;
+      }
+      return run(command, args, options);
+    };
+    const flows = join(f.options.workspaceRoot, 'flows');
+    mkdirSync(flows, { recursive: true });
+    const augmented = join(flows, 'augmented.yaml');
+    const native = join(flows, 'native.yaml');
+    writeFileSync(
+      augmented,
+      'appId: x\nandroidWebViewHierarchy: devtools\n---\n',
+    );
+    writeFileSync(native, 'appId: x\n---\n- tapOn: devtools\n');
+    const device = await openMaestroDevice(
+      { ...f.options, serial: 'emulator-5554' },
+      f.commands,
+    );
+    const unfreezes = () =>
+      f.calls.filter(
+        (call) => call.at(-1) === WEBVIEW_DEVTOOLS_UNFREEZE_COMMAND,
+      ).length;
+    const launches = () =>
+      existsSync(
+        join(f.options.workspaceRoot, 'maestro-driver-port-attempts.json'),
+      )
+        ? JSON.parse(
+            readFileSync(
+              join(
+                f.options.workspaceRoot,
+                'maestro-driver-port-attempts.json',
+              ),
+              'utf8',
+            ),
+          ).length
+        : 0;
+    try {
+      await device.runFlow(native);
+      expect(unfreezes()).toBe(0);
+      await device.runFlow(augmented);
+      expect(unfreezes()).toBe(1);
+      expect(launches()).toBe(2);
+      // A socket owner that stays frozen fails before Maestro starts.
+      reply = 'sockets=2 frozen=1';
+      await expect(device.runFlow(augmented)).rejects.toThrow(
+        'No WebView DevTools socket owner stays frozen before a DevTools-augmented flow',
+      );
+      expect(launches()).toBe(2);
+    } finally {
+      await device.close();
+    }
+  });
+
   it('keeps reinstalling the Maestro driver until a flow completes', async () => {
     const f = fixture();
     configureMaestro(f, { exitCode: 1 });
