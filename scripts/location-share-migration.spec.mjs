@@ -215,7 +215,7 @@ describe('Android location-share migration', () => {
     );
     const fixture = sourceLines(
       androidFixtureSource,
-      '30f3489a4cac27685b03812e957a599d9ae4bef90985a55760f463fc702bfe8a',
+      '2cd9ad758532ee3fe4e3a3dfc810a86fb1a2adf014a56af89365bbf59f20e8bc',
     );
     const app = sourceLines(
       appSource,
@@ -255,8 +255,8 @@ describe('Android location-share migration', () => {
         .match(/await expect\(/gu),
     ).toHaveLength(3);
 
-    const nativeLocationSource = fixture.slice(288, 297).join('\n');
-    const nativeAdapter = fixture.slice(501, 617).join('\n');
+    const nativeLocationSource = fixture.slice(292, 301).join('\n');
+    const nativeAdapter = fixture.slice(505, 621).join('\n');
     expect(nativeLocationSource).toContain(
       'cmd location providers set-test-provider-location gps',
     );

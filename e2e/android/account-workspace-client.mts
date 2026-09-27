@@ -29,6 +29,10 @@ import type { createNodeAccount } from '../support/node-account.mts';
 import type { createAccountFixtures } from './account-workspace-fixtures.mts';
 import type { MatrixTestResources } from '../support/test-resources.mts';
 import { hasMatrixIdentifier } from '../support/matrix-identifiers.mts';
+import {
+  ANDROID_IME_VISIBILITY_COMMAND,
+  parseAndroidImeShown,
+} from './android-ime.mts';
 
 type Account = Awaited<ReturnType<typeof createNodeAccount>>;
 export type AccountViewportProfile = Pick<MaestroViewportOptions, 'width' | 'height' | 'isMobile' | 'hasTouch' | 'deviceScaleFactor' | 'userAgent'>;
@@ -54,10 +58,6 @@ const NATIVE_OUTCOME_TIMEOUT_MS = 5_000;
 // A freshly booted, loaded emulator took more than 5 s to report the IME hidden
 // after Back; Maestro's own hideKeyboard never checked at all.
 const KEYBOARD_HIDE_TIMEOUT_MS = 15_000;
-// One line of the IME manager's state; `|| true` keeps a missing field to the
-// explicit assertion in keyboardShown rather than a bare grep exit status.
-const IME_VISIBILITY_COMMAND =
-  "dumpsys input_method | grep -m 1 -o 'mInputShown=[a-z]*' || true";
 // Below Maestro's 10 s JavaScript HTTP read timeout, so a slow read fails the
 // flow's own assertion rather than its HTTP client.
 const MAESTRO_READ_TIMEOUT_MS = 9_000;
@@ -2013,18 +2013,11 @@ export class AccountWorkspaceClient {
     return length;
   }
 
-  /**
-   * Read-only Android IME visibility, filtered on the device. The full
-   * `dumpsys input_method` carries Gboard's own service state, about 800 KB,
-   * and polling it through adb coincided with the emulator's adb transport
-   * dropping (and every adb forward with it) on hosted runners. The device-side
-   * grep returns one line and stops dumpsys after the manager's own section.
-   */
+  /** Read-only Android IME visibility; see {@link ANDROID_IME_VISIBILITY_COMMAND}. */
   private async keyboardShown(): Promise<boolean> {
-    const state = await this.device.adb('shell', IME_VISIBILITY_COMMAND);
-    const match = /^mInputShown=(true|false)$/u.exec(state.trim());
-    assert(match, 'Android reports its IME visibility');
-    return match[1] === 'true';
+    return parseAndroidImeShown(
+      await this.device.adb('shell', ANDROID_IME_VISIBILITY_COMMAND),
+    );
   }
 
   /**

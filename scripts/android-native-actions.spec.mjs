@@ -245,7 +245,46 @@ describe('Android Account client native actions', () => {
   it('reads IME visibility as one device-filtered line, never the full dump', async () => {
     // The unfiltered dump is about 800 KB of Gboard state per poll; polling it
     // coincided with hosted emulators dropping the adb transport and forwards.
-    expect(client).not.toMatch(/'dumpsys',\s*'input_method'/u);
+    const { ANDROID_IME_VISIBILITY_COMMAND, parseAndroidImeShown } =
+      await import('../e2e/android/android-ime.mts');
+    expect(ANDROID_IME_VISIBILITY_COMMAND).toBe(
+      "dumpsys input_method | grep -m 1 -o 'mInputShown=[a-z]*' || true",
+    );
+    expect(parseAndroidImeShown('mInputShown=true\n')).toBe(true);
+    expect(parseAndroidImeShown('mInputShown=false')).toBe(false);
+    for (const output of ['', 'mInputShown=maybe', 'x mInputShown=true'])
+      expect(() => parseAndroidImeShown(output)).toThrow(
+        'Android reports its IME visibility',
+      );
+
+    // One implementation: every module under e2e/android reads the IME only
+    // through the shared helper, and no flow or module sends the full dump.
+    const files = [];
+    const walk = (directory) => {
+      for (const entry of readdirSync(resolve(root, directory), {
+        withFileTypes: true,
+      })) {
+        const path = `${directory}/${entry.name}`;
+        if (entry.isDirectory()) walk(path);
+        else if (/\.(?:mts|ts|mjs|js|yaml)$/u.test(entry.name))
+          files.push(path);
+      }
+    };
+    walk('e2e/android');
+    const readers = files.filter((path) =>
+      /input_method|mInputShown/u.test(read(path)),
+    );
+    expect(readers.sort()).toEqual(['e2e/android/android-ime.mts']);
+    for (const path of [
+      'e2e/android/account-workspace-client.mts',
+      'e2e/android/fixtures.mts',
+      'e2e/android/native-shell-journeys.mts',
+    ]) {
+      expect(read(path), path).toMatch(
+        /parseAndroidImeShown\(\s*await [^;]*ANDROID_IME_VISIBILITY_COMMAND\)/u,
+      );
+    }
+
     const { AccountWorkspaceClient } =
       await import('../e2e/android/account-workspace-client.mts');
     const calls = [];
@@ -270,10 +309,7 @@ describe('Android Account client native actions', () => {
       'Android reports its IME visibility',
     );
     expect(calls).toEqual(
-      Array(3).fill([
-        'shell',
-        "dumpsys input_method | grep -m 1 -o 'mInputShown=[a-z]*' || true",
-      ]),
+      Array(3).fill(['shell', ANDROID_IME_VISIBILITY_COMMAND]),
     );
   });
 

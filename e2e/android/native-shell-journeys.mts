@@ -9,6 +9,7 @@ import { createNodeEncryptedRoom } from '../support/node-encrypted-room.mts';
 import { openMaestroDevice } from './maestro-session.mts';
 import { openMaestroViewport } from './maestro-viewport.mts';
 import { redactMaestroArtifacts } from './maestro-session.mts';
+import { ANDROID_IME_VISIBILITY_COMMAND, parseAndroidImeShown } from './android-ime.mts';
 import {
   captureNativeShellProof,
   evaluateNative,
@@ -341,8 +342,8 @@ void test(
             await record('composer-format-formatted-surface', formatted);
             assert.deepEqual(formatted.selection, { start: 5, end: 10 });
             await waitForNativeShellState(() => readNativeShellUiState(current().webview), (value) => !value.sheetVisible && value.composerVisible, 'format sheet hidden with composer visible', signal);
-            const inputMethod = await waitForNativeShellState(() => device.adb('shell', 'dumpsys', 'input_method'), (value) => /mInputShown=true/.test(value), 'native IME restored after formatting', signal, 10_000);
-            await record('composer-format-native-ime', { shown: /mInputShown=true/.test(inputMethod) });
+            const imeShown = await waitForNativeShellState(async () => parseAndroidImeShown(await device.adb('shell', ANDROID_IME_VISIBILITY_COMMAND)), (shown) => shown, 'native IME restored after formatting', signal, 10_000);
+            await record('composer-format-native-ime', { shown: imeShown });
             await capture('composer-formatting');
             await flow('native-shell-format-open');
             const secondMenu = await waitForNativeShellState(() => readNativeShellUiState(current().webview), (value) => value.sheetVisible && value.formatCancelVisible, 'second visible composer format sheet and Cancel', signal);

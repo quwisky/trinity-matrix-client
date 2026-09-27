@@ -28,6 +28,10 @@ import {
 } from './health.mts';
 import { navigateApplication } from '../support/navigation.mts';
 import { setAndroidTouchViewport, touchAndroidControl } from './touch.mts';
+import {
+  ANDROID_IME_VISIBILITY_COMMAND,
+  parseAndroidImeShown,
+} from './android-ime.mts';
 import { resourceFixtureDefinitions } from '../support/resource-fixtures.mts';
 import type {
   AuthCallbackKind,
@@ -954,8 +958,8 @@ const androidTest = base.extend<AndroidFixtures, AndroidWorkerFixtures>({
           );
         }
         const keyboardShown = async () =>
-          /mInputShown=true/.test(
-            await shell(app.device, 'dumpsys input_method'),
+          parseAndroidImeShown(
+            await shell(app.device, ANDROID_IME_VISIBILITY_COMMAND),
           );
         if (await keyboardShown()) {
           await app.pressBack();
