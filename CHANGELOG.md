@@ -30,6 +30,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- On narrow screens, the browser Back button from an open room shows the room list again
+  instead of snapping back into the room. Back pressed as the window widens past the
+  narrow layout follows the browser history to the previous page.
+
 - Shift+Enter from a hardware keyboard inserts a line break on Android instead of sending,
   even when the on-screen keyboard delivers the Enter without its Shift.
 

@@ -61,6 +61,16 @@ export class WorkspaceLocationAdapter {
     };
   }
 
+  /** The serialized app URL of `destination`, for a Router redirect that Workspace chose. */
+  urlOf(destination: WorkspaceDestination): string {
+    const projection = workspaceUrlOf(destination);
+    return this.router.serializeUrl(
+      this.router.createUrlTree([...projection.commands], {
+        queryParams: { ...projection.queryParams },
+      }),
+    );
+  }
+
   project(
     destination: WorkspaceDestination,
     options: WorkspaceLocationProjection,

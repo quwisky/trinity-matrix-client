@@ -1,7 +1,11 @@
 import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
-import { DefaultUrlSerializer, Router } from '@angular/router';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import { DefaultUrlSerializer, RedirectCommand, Router } from '@angular/router';
+import {
+  WorkspaceBackService,
+  WorkspaceBrowserBackService,
+  type WorkspaceSurface,
+} from '@trinity/application/workspace';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-surface.adapter';
 import {
@@ -21,15 +25,26 @@ function setup(
     readonly dialogOpen?: boolean;
     readonly activeOwnsTopmostOverlay?: boolean;
     readonly routedOwnsActive?: boolean;
+    readonly surface?: WorkspaceSurface;
+    readonly traversalRedirect?: string | null;
   },
 ) {
+  const surface: WorkspaceSurface = options.surface ?? {
+    layer: 'application',
+    surface: { kind: 'settings', section: null },
+  };
   const back = vi.fn(() => of({ kind: 'dismissed' } as const));
+  const traversalRedirect = vi.fn(() => options.traversalRedirect ?? null);
+  const serializer = new DefaultUrlSerializer();
   const closeTopmost = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       {
         provide: Router,
-        useValue: { currentNavigation: () => ({ trigger }) },
+        useValue: {
+          currentNavigation: () => ({ trigger }),
+          parseUrl: (url: string) => serializer.parse(url),
+        },
       },
       {
         provide: WorkspaceBackService,
@@ -38,13 +53,7 @@ function setup(
           activeOwnsTopmostOverlay: () =>
             options.activeOwnsTopmostOverlay ?? false,
           back,
-          activeSurface: () =>
-            options.active
-              ? {
-                  layer: 'application',
-                  surface: { kind: 'settings', section: null },
-                }
-              : null,
+          activeSurface: () => (options.active ? surface : null),
         },
       },
       {
@@ -60,10 +69,14 @@ function setup(
           closeTopmost,
         },
       },
+      {
+        provide: WorkspaceBrowserBackService,
+        useValue: { traversalRedirect },
+      },
     ],
   });
   const result = TestBed.runInInjectionContext(workspaceBrowserBackGuard);
-  return { back, closeTopmost, result };
+  return { back, closeTopmost, traversalRedirect, result };
 }
 
 describe('workspaceBrowserBackGuard', () => {
@@ -91,6 +104,7 @@ describe('workspaceBrowserBackGuard', () => {
           },
         },
         { provide: Location, useValue: { back: vi.fn() } },
+        { provide: WorkspaceBrowserBackService, useValue: {} },
         {
           provide: TrnDialogService,
           useValue: { hasOpen: () => false, closeTopmost: vi.fn() },
@@ -130,6 +144,76 @@ describe('workspaceBrowserBackGuard', () => {
 
     expect(await firstValueFrom(result as Observable<boolean>)).toBe(false);
     expect(back).toHaveBeenCalledOnce();
+  });
+
+  describe('compact Conversation', () => {
+    const conversation: WorkspaceSurface = {
+      layer: 'conversation',
+      surface: {
+        kind: 'conversation',
+        accountId: '@alice:example.org',
+        roomId: '!room:example.org',
+      },
+    };
+
+    it('redirects the traversal to the list pane instead of dismissing inside it', () => {
+      const list = '/rooms/IXJvb20?account=@alice:example.org&pane=list';
+      const { back, traversalRedirect, result } = setup('popstate', {
+        active: true,
+        surface: conversation,
+        traversalRedirect: list,
+      });
+
+      expect(back).not.toHaveBeenCalled();
+      expect(traversalRedirect).toHaveBeenCalledWith(conversation.surface);
+      expect(result).toBeInstanceOf(RedirectCommand);
+      expect(
+        new DefaultUrlSerializer().serialize(
+          (result as RedirectCommand).redirectTo,
+        ),
+      ).toBe(list);
+      expect((result as RedirectCommand).navigationBehaviorOptions).toEqual({
+        replaceUrl: true,
+      });
+    });
+
+    it('follows browser history when Workspace says the layout is no longer compact', () => {
+      const { back, result } = setup('popstate', {
+        active: true,
+        surface: conversation,
+        traversalRedirect: null,
+      });
+
+      expect(result).toBe(true);
+      expect(back).not.toHaveBeenCalled();
+    });
+
+    it('lets an unowned dialog take the Back first', () => {
+      const { back, closeTopmost, traversalRedirect, result } = setup(
+        'popstate',
+        {
+          active: true,
+          surface: conversation,
+          dialogOpen: true,
+        },
+      );
+
+      expect(result).toBe(false);
+      expect(closeTopmost).toHaveBeenCalledOnce();
+      expect(back).not.toHaveBeenCalled();
+      expect(traversalRedirect).not.toHaveBeenCalled();
+    });
+  });
+
+  it('still offers browser history to a Room surface above the Conversation', async () => {
+    const { back, traversalRedirect, result } = setup('popstate', {
+      active: true,
+      surface: { layer: 'room', surface: { kind: 'members' } },
+    });
+
+    expect(await firstValueFrom(result as Observable<boolean>)).toBe(false);
+    expect(back).toHaveBeenCalledOnce();
+    expect(traversalRedirect).not.toHaveBeenCalled();
   });
 
   it('offers an unowned topmost overlay its dismissal guard before Workspace', () => {

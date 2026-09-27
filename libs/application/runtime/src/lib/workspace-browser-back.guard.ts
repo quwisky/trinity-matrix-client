@@ -1,16 +1,20 @@
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { WorkspaceBackService } from '@trinity/application/workspace';
+import { RedirectCommand, Router, type GuardResult } from '@angular/router';
+import {
+  WorkspaceBackService,
+  WorkspaceBrowserBackService,
+} from '@trinity/application/workspace';
 import { TrnDialogService } from '@trinity/components/overlay';
 import { map, take, type Observable } from 'rxjs';
 import { WorkspaceRoutedSurfaceAdapter } from './composition/workspace-routed-surface.adapter';
 
 /** Offer browser-history navigation to the active semantic surface before changing routes. */
-export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
+export function workspaceBrowserBackGuard(): GuardResult | Observable<boolean> {
   const router = inject(Router);
   const back = inject(WorkspaceBackService);
   const dialog = inject(TrnDialogService);
   const routed = inject(WorkspaceRoutedSurfaceAdapter);
+  const browserBack = inject(WorkspaceBrowserBackService);
   if (router.currentNavigation()?.trigger !== 'popstate') {
     return true;
   }
@@ -24,6 +28,15 @@ export function workspaceBrowserBackGuard(): boolean | Observable<boolean> {
   if (!dialog.hasOpen()) {
     const active = back.activeSurface();
     if (active !== null && routed.owns(active)) return true;
+    // Dismissing the compact Conversation is itself a Workspace navigation. Started here it
+    // would supersede this traversal and roll the Room URL back over the entry Back reached,
+    // so the Router performs the one replacing navigation to the list pane instead.
+    if (active?.layer === 'conversation') {
+      const list = browserBack.traversalRedirect(active.surface);
+      return list
+        ? new RedirectCommand(router.parseUrl(list), { replaceUrl: true })
+        : true;
+    }
   }
   if (back.hasActive()) {
     return back.back().pipe(
