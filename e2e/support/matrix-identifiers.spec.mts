@@ -12,9 +12,12 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   MatrixIdentifierLineRedactor,
+  collectAccountPasswords,
   enforceMatrixIdentifierFreeArtifacts,
+  hasAccountPassword,
   hasMatrixCredential,
   hasMatrixIdentifier,
+  redactAccountPasswords,
   redactMatrixCredentials,
   redactMatrixIdentifiers,
 } from './matrix-identifiers.mts';
@@ -157,6 +160,138 @@ describe('Matrix credential redaction', () => {
     const published = readFileSync(logcat, 'utf8');
     expect(published).not.toContain('syt_');
     expect(published).not.toContain('opaque');
+  });
+});
+
+describe('Test-account password redaction', () => {
+  // The shapes Playwright recorded for one synthetic per-run password.
+  const password = 'link-user-chromium-w0-r0-0a1b2c3d4e-runl-pass';
+  const user = 'link-user-chromium-w0-r0-0a1b2c3d4e-runl';
+
+  it.each([
+    [
+      'a login request body',
+      `{"identifier":{"type":"m.id.user","user":"${user}"},"password":"${password}"}`,
+      `{"identifier":{"type":"m.id.user","user":"${user}"},"password":"[REDACTED]"}`,
+    ],
+    [
+      'a JSON-escaped registration body',
+      `"jsonData":"{\\"username\\":\\"${user}\\",\\"password\\":\\"${password}\\",\\"admin\\":false}"`,
+      `"jsonData":"{\\"username\\":\\"${user}\\",\\"password\\":\\"[REDACTED]\\",\\"admin\\":false}"`,
+    ],
+    [
+      'a Fill step title',
+      `{"title":"Fill \\"${password}\\" getByLabel('Password', { exact: true })"}`,
+      `{"title":"Fill \\"[REDACTED]\\" getByLabel('Password', { exact: true })"}`,
+    ],
+    [
+      'a fill parameter',
+      `{"params":{"selector":"internal:label=\\"Password\\"s","value":"${password}","strict":true}}`,
+      `{"params":{"selector":"internal:label=\\"Password\\"s","value":"[REDACTED]","strict":true}}`,
+    ],
+    [
+      'a password input snapshot',
+      `["INPUT",{"__playwright_value_":"${password}","type":"password"}]`,
+      `["INPUT",{"__playwright_value_":"[REDACTED]","type":"password"}]`,
+    ],
+    [
+      'an XML-escaped failure message',
+      `<failure message="&quot;password&quot;:&quot;${password}&quot;"/>`,
+      '<failure message="&quot;password&quot;:&quot;[REDACTED]&quot;"/>',
+    ],
+    [
+      'a form or query field',
+      `user=${user}&password=${password}&x=1`,
+      `user=${user}&password=[REDACTED]&x=1`,
+    ],
+    [
+      'a percent-encoded body',
+      `%7B%22new_password%22%3A%22${password}%22%7D`,
+      '%7B%22new_password%22%3A%22[REDACTED]%22%7D',
+    ],
+  ])('redacts %s and harvests its value', (_name, text, expected) => {
+    expect(collectAccountPasswords(text)).toEqual([password]);
+    expect(hasAccountPassword(text)).toBe(true);
+    expect(redactAccountPasswords(text)).toBe(expected);
+    expect(hasAccountPassword(expected)).toBe(false);
+  });
+
+  it('redacts a registered secret in its escaped and percent-encoded forms', () => {
+    const secret = 'p@ss "w0rd"/+';
+    const forms = [
+      `raw ${secret}`,
+      `json ${JSON.stringify(secret)}`,
+      `nested ${JSON.stringify(JSON.stringify(secret))}`,
+      `query ${encodeURIComponent(secret)}`,
+    ];
+    for (const text of forms) {
+      expect(hasAccountPassword(text, [secret]), text).toBe(true);
+      const redacted = redactAccountPasswords(text, [secret], {
+        structured: false,
+      });
+      expect(hasAccountPassword(redacted, [secret]), redacted).toBe(false);
+      expect(redacted).toContain('[REDACTED]');
+    }
+  });
+
+  it('redacts a harvested value where no rule sees its context', () => {
+    const log = `{"type":"log","message":"  fill(\\"${password}\\")"}`;
+    expect(hasAccountPassword(log)).toBe(false);
+    expect(hasAccountPassword(log, [password])).toBe(true);
+    expect(redactAccountPasswords(log, [password])).toBe(
+      '{"type":"log","message":"  fill(\\"[REDACTED]\\")"}',
+    );
+    expect(
+      redactAccountPasswords(encodeURIComponent(`a ${password}`), [password]),
+    ).toBe('a%20[REDACTED]');
+  });
+
+  it.each([
+    [
+      'a username fill',
+      `{"title":"Fill \\"${user}\\" getByLabel('Username')"}`,
+    ],
+    [
+      'a text input snapshot',
+      `["INPUT",{"__playwright_value_":"${user}","type":"text"}]`,
+    ],
+    ['a Matrix login type', '{"type":"m.login.password","identifier":{}}'],
+    [
+      'a password selector',
+      'internal:label=\\"Password\\"s and input[type=password]',
+    ],
+    ['a password input type', '["INPUT",{"type":"password"}]'],
+    ['a Room id and user id', `!AbCdEfGhIjKl:localhost @${user}:localhost`],
+  ])('leaves %s alone', (_name, text) => {
+    expect(collectAccountPasswords(text)).toEqual([]);
+    expect(hasAccountPassword(text)).toBe(false);
+    expect(redactAccountPasswords(text)).toBe(text);
+  });
+
+  it('keeps a username fill that precedes a password fill', () => {
+    const steps = `{"title":"Fill \\"${user}\\" getByLabel('Username')","snippet":"fill(page, 'Password', pass)"},{"title":"Fill \\"${password}\\" getByLabel('Password')"}`;
+    expect(collectAccountPasswords(steps)).toEqual([password]);
+    expect(redactAccountPasswords(steps)).toBe(
+      `{"title":"Fill \\"${user}\\" getByLabel('Username')","snippet":"fill(page, 'Password', pass)"},{"title":"Fill \\"[REDACTED]\\" getByLabel('Password')"}`,
+    );
+  });
+
+  it('checks bundled code only for known secrets', () => {
+    const code = 'constructor({password:e,rawPassword:t}){this.password=e}';
+    const options = { structured: false };
+    expect(hasAccountPassword(code, [], options)).toBe(false);
+    expect(redactAccountPasswords(code, [], options)).toBe(code);
+    expect(
+      redactAccountPasswords(`${code}"${password}"`, [password], options),
+    ).toBe(`${code}"[REDACTED]"`);
+  });
+
+  it('does not harvest short or template values', () => {
+    expect(
+      collectAccountPasswords(
+        '{"password":"abc"} const password = `${user}-pass`',
+      ),
+    ).toEqual([]);
   });
 });
 

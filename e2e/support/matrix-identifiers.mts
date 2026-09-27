@@ -120,6 +120,201 @@ export function hasMatrixCredential(text: string): boolean {
   return hasCredential(text) || hasCredential(text.replace(ANSI_SEQUENCE, ''));
 }
 
+/*
+ * Test-account passwords. Playwright serializes every one it handles: request
+ * bodies (`"password":"…"`) in traces and API step parameters, `Fill "…"`
+ * step titles, the `value` parameter and `fill("…")` log line of a fill, and
+ * the `__playwright_value_` of each snapshotted input. Structured rules find a
+ * password by its context; the values they find are then redacted wherever
+ * else they appear, together with any secret the caller registers.
+ */
+
+/** A password field name: `password`, `new_password`, `newPassword`, `passphrase`, `pass`. */
+const PASSWORD_KEY = String.raw`(?<![A-Za-z_-])(?:[A-Za-z_]*[Pp]ass(?:word|phrase)|pass)(?![A-Za-z0-9_])`;
+/** A quote at any JSON escape depth, as an XML entity, percent-encoded, or a JS quote. */
+const QUOTE = String.raw`\\*"|&quot;|%(?:25)*22|'|${'`'}`;
+const SEPARATOR = String.raw`\s*(?::|=|%(?:25)*3[Aa]|%(?:25)*3[Dd])\s*`;
+const PASSWORD_FIELD = new RegExp(
+  String.raw`(${PASSWORD_KEY}(?:${QUOTE})?${SEPARATOR})(?:(${QUOTE})(.*?)\2|(\[REDACTED\]|[^\s"'${'`'}\\&,;)}\]<>%]+))`,
+  'gu',
+);
+/**
+ * A double quote at any escape depth: with a bare form field (`password=…`),
+ * the only quoting whose values are harvested. Source text quotes a password
+ * variable or template with single quotes or backticks instead.
+ */
+const DOUBLE_QUOTE = /^(?:\\*"|&quot;|%(?:25)*22)$/u;
+/** A `Fill "…"` or `Type "…"` step title, raw or JSON-escaped. */
+const FILL_TITLE = /\b(?:Fill|Type)\s+(\\*"|&quot;)/gu;
+/** A flat JSON object: fill parameters and snapshotted input attributes. */
+const FLAT_OBJECT = /\{[^{}]*\}/gu;
+const OBJECT_VALUE =
+  /((\\*)"(?:value|__playwright_value_)\2"\s*:\s*\2")(.*?)(?<!\\)\2"/gu;
+const MENTIONS_PASSWORD = /pass(?:word|phrase)/iu;
+/** Harvested values shorter than this are redacted only in their context. */
+const MIN_SECRET_LENGTH = 6;
+
+interface PasswordMatch {
+  readonly start: number;
+  readonly end: number;
+  readonly value: string;
+}
+
+/** Where a `Fill "…"` title's value ends, and whether its target is a password field. */
+function fillTitles(text: string): PasswordMatch[] {
+  const matches: PasswordMatch[] = [];
+  for (const match of text.matchAll(FILL_TITLE)) {
+    const quote = match[1] ?? '"';
+    const start = (match.index ?? 0) + match[0].length;
+    const end = text.indexOf(quote, start);
+    if (end < 0) continue;
+    // The title is a string one escape level up: it ends at the first quote
+    // of that level, or at the end of the line for an unescaped title.
+    const depth = quote.startsWith('\\') ? (quote.length - 2) / 2 : -1;
+    const rest = text.slice(end + quote.length, end + quote.length + 400);
+    const terminator =
+      depth < 0
+        ? /[\r\n]/u
+        : new RegExp(String.raw`(?<!\\)${'\\\\'.repeat(depth)}"`, 'u');
+    const close = rest.search(terminator);
+    const title = close < 0 ? rest : rest.slice(0, close);
+    if (MENTIONS_PASSWORD.test(title))
+      matches.push({ start, end, value: text.slice(start, end) });
+  }
+  return matches;
+}
+
+/** Fill `value` parameters and input snapshots of an object that names a password. */
+function passwordObjects(text: string): PasswordMatch[] {
+  const matches: PasswordMatch[] = [];
+  for (const object of text.matchAll(FLAT_OBJECT)) {
+    const body = object[0];
+    const outside = body.replace(OBJECT_VALUE, '$1');
+    if (!MENTIONS_PASSWORD.test(outside)) continue;
+    for (const field of body.matchAll(OBJECT_VALUE)) {
+      const start = (object.index ?? 0) + (field.index ?? 0) + field[1]!.length;
+      matches.push({ start, end: start + field[3]!.length, value: field[3]! });
+    }
+  }
+  return matches;
+}
+
+function passwordFields(text: string): PasswordMatch[] {
+  const matches: PasswordMatch[] = [];
+  for (const field of text.matchAll(PASSWORD_FIELD)) {
+    const quote = field[2];
+    const value = quote === undefined ? field[4]! : field[3]!;
+    const start =
+      (field.index ?? 0) +
+      field[1]!.length +
+      (quote === undefined ? 0 : quote.length);
+    matches.push({ start, end: start + value.length, value });
+  }
+  return matches;
+}
+
+/** An exact secret, raw, JSON-escaped at any depth or percent-encoded. */
+function secretPattern(secrets: Iterable<string>): RegExp | undefined {
+  const forms = new Set<string>();
+  for (const secret of secrets) {
+    if (secret.length < MIN_SECRET_LENGTH) continue;
+    let escaped = secret;
+    for (let depth = 0; depth < 4; depth += 1) {
+      forms.add(escaped);
+      escaped = JSON.stringify(escaped).slice(1, -1);
+    }
+    forms.add(encodeURIComponent(secret));
+    forms.add(encodeURIComponent(encodeURIComponent(secret)));
+  }
+  if (forms.size === 0) return undefined;
+  const alternatives = [...forms]
+    .sort((left, right) => right.length - left.length)
+    .map((form) => form.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'));
+  return new RegExp(alternatives.join('|'), 'gu');
+}
+
+function replaceRanges(text: string, ranges: readonly PasswordMatch[]): string {
+  let output = '';
+  let cursor = 0;
+  for (const { start, end } of [...ranges].sort((a, b) => a.start - b.start)) {
+    if (start < cursor) continue;
+    output += text.slice(cursor, start) + MATRIX_IDENTIFIER_REDACTION;
+    cursor = end;
+  }
+  return output + text.slice(cursor);
+}
+
+const isRedacted = (value: string): boolean =>
+  value === MATRIX_IDENTIFIER_REDACTION || value === '';
+
+export interface AccountPasswordOptions {
+  /**
+   * Apply the context rules. Off for bundled viewer code, where a password
+   * field of a minified library is not a test account's password; registered
+   * and harvested secrets are still redacted there.
+   */
+  readonly structured?: boolean;
+}
+
+/**
+ * Every password value the context rules find in text, long enough to be
+ * redacted wherever else it appears: a double-quoted or form-encoded password
+ * field, a fill of a password field (its title, `value` parameter and input
+ * snapshot).
+ */
+export function collectAccountPasswords(text: string): string[] {
+  const values = new Set<string>();
+  for (const field of text.matchAll(PASSWORD_FIELD)) {
+    const quote = field[2];
+    if (quote === undefined) {
+      if (/=$/u.test(field[1]!)) values.add(field[4]!);
+    } else if (DOUBLE_QUOTE.test(quote) && !field[3]!.includes('${'))
+      values.add(field[3]!);
+  }
+  for (const { value } of [...fillTitles(text), ...passwordObjects(text)])
+    values.add(value);
+  return [...values].filter(
+    (value) => value.length >= MIN_SECRET_LENGTH && !isRedacted(value),
+  );
+}
+
+/** Redact test-account passwords by context and every registered or harvested secret. */
+export function redactAccountPasswords(
+  text: string,
+  secrets: Iterable<string> = [],
+  { structured = true }: AccountPasswordOptions = {},
+): string {
+  let redacted = text;
+  if (structured) {
+    redacted = replaceRanges(redacted, fillTitles(redacted));
+    redacted = replaceRanges(redacted, passwordObjects(redacted));
+    redacted = replaceRanges(
+      redacted,
+      passwordFields(redacted).filter(({ value }) => !isRedacted(value)),
+    );
+  }
+  const pattern = secretPattern(secrets);
+  return pattern
+    ? redacted.replace(pattern, MATRIX_IDENTIFIER_REDACTION)
+    : redacted;
+}
+
+/** Whether text still carries a test-account password by context or a known secret. */
+export function hasAccountPassword(
+  text: string,
+  secrets: Iterable<string> = [],
+  { structured = true }: AccountPasswordOptions = {},
+): boolean {
+  const pattern = secretPattern(secrets);
+  if (pattern?.test(text)) return true;
+  if (!structured) return false;
+  return [
+    ...fillTitles(text),
+    ...passwordObjects(text),
+    ...passwordFields(text),
+  ].some(({ value }) => !isRedacted(value));
+}
+
 function redactShapes(text: string): string {
   return redactCredentials(text)
     .replace(identifierPattern(), MATRIX_IDENTIFIER_REDACTION)

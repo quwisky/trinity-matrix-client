@@ -91,10 +91,15 @@ and rejects pass-on-retry results.
 No upload publishes a Matrix credential. Before an Android upload,
 `scripts/ci-matrix-identifiers.mjs` also redacts every Room and event identifier.
 Every other surface passes `scripts/ci-matrix-credentials.mjs`, which redacts
-access and refresh tokens, bearer values and token fields but keeps identifiers
-for debugging. It also rewrites the blob report, the HTML report's embedded data
-and each trace archive member by member, so traces keep their network timeline
-with redacted headers and bodies. Either gate removes a file or archive member it
+access and refresh tokens, bearer values, token fields and test-account passwords
+but keeps Room and event identifiers for debugging. A password is found by its
+context (a password field in a request body, or a fill of a password input:
+its step title, parameter and snapshot); each value found is then redacted
+wherever else it appears, such as a `fill("…")` log line, together with the
+harness's fixed passwords. The gate also rewrites the blob report, the HTML
+report's embedded data and each trace archive member by member, so traces keep
+their network timeline with redacted headers and bodies. Bundled viewer code is
+checked only for those known values. Either gate removes a file or archive member it
 cannot verify, names it in the step log and fails the step; the rest still uploads.
 
 `test-progress.jsonl` records test starts and finishes as they happen, including

@@ -245,6 +245,148 @@ describe('Browser and desktop upload credential boundary', () => {
       expect(published(readFileSync(join(suite, file)))).not.toContain('syt_');
   });
 
+  describe('test-account passwords', () => {
+    // A synthetic per-run password and the harness's fixed one, in every
+    // shape Playwright recorded them.
+    const password = 'link-user-chromium-w0-r0-0a1b2c3d4e-runl-pass';
+    const user = 'link-user-chromium-w0-r0-0a1b2c3d4e-runl';
+    const viewerCode = 'constructor({password:e,rawPassword:t}){}';
+    const passwordTrace = () =>
+      writeZip([
+        text(
+          '0-trace.network',
+          `${JSON.stringify({ snapshot: { request: { postData: { text: JSON.stringify({ identifier: { user }, password }) } } } })}\n`,
+        ),
+        text(
+          '0-trace.trace',
+          [
+            JSON.stringify({
+              type: 'before',
+              title: `Fill "${password}" getByLabel('Password')`,
+              params: {
+                selector: 'internal:label="Password"s',
+                value: password,
+              },
+            }),
+            JSON.stringify({ type: 'log', message: `  fill("${password}")` }),
+            JSON.stringify({
+              type: 'frame-snapshot',
+              html: [
+                'INPUT',
+                { __playwright_value_: password, type: 'password' },
+              ],
+            }),
+            JSON.stringify({
+              type: 'frame-snapshot',
+              html: ['INPUT', { __playwright_value_: user, type: 'text' }],
+            }),
+          ].join('\n'),
+        ),
+        text('resources/viewer.js', viewerCode),
+      ]);
+    const passwordBlob = () =>
+      writeZip([
+        text(
+          'report.jsonl',
+          `${JSON.stringify({ params: { step: { title: `Fill "${password}" getByLabel('Password')` } } })}\n` +
+            `${JSON.stringify({ params: { step: { title: `Fill "${user}" getByLabel('Username')`, room: roomId } } })}\n`,
+        ),
+        { name: 'resources/0a1b.zip', data: passwordTrace() },
+      ]);
+
+    it('redacts every recorded password but keeps users and Room ids', () => {
+      const { root, suite } = workspace({
+        'blob-report/report-1.zip': passwordBlob(),
+        'test-output/a/trace.zip': passwordTrace(),
+        'html-report/index.html': html(
+          writeZip([
+            text(
+              '0a.json',
+              JSON.stringify({
+                title: `Fill "${password}" getByLabel('Password')`,
+              }),
+            ),
+          ]),
+        ),
+        'html-report/trace/sw.bundle.js': viewerCode,
+        'junit/results.xml': `<system-out>  - fill(&quot;${password}&quot;) in ${roomId}</system-out>\n`,
+        'dist/.ci/suite.log': '[login] verify-e2e with verify-e2e-pass-123\n',
+      });
+      const result = protectReportCredentials({ root, reportPath });
+      expect(result.withheld).toEqual([]);
+      const files = [
+        'blob-report/report-1.zip',
+        'test-output/a/trace.zip',
+        'html-report/index.html',
+        'junit/results.xml',
+      ];
+      for (const file of files) {
+        const content = published(readFileSync(join(suite, file)));
+        expect(content).not.toContain(password);
+        expect(content).toContain('[REDACTED]');
+      }
+      const blobText = published(
+        readFileSync(join(suite, 'blob-report/report-1.zip')),
+      );
+      expect(blobText).toContain(`Fill \\"${user}\\" getByLabel('Username')`);
+      expect(blobText).toContain(`"__playwright_value_":"${user}"`);
+      expect(blobText).toContain(roomId);
+      expect(blobText).toContain(viewerCode);
+      expect(readFileSync(join(suite, 'junit/results.xml'), 'utf8')).toBe(
+        `<system-out>  - fill(&quot;[REDACTED]&quot;) in ${roomId}</system-out>\n`,
+      );
+      expect(readFileSync(join(root, 'dist/.ci/suite.log'), 'utf8')).toBe(
+        '[login] verify-e2e with [REDACTED]\n',
+      );
+      expect(
+        readFileSync(join(suite, 'html-report/trace/sw.bundle.js'), 'utf8'),
+      ).toBe(viewerCode);
+    });
+
+    it('redacts a password harvested from one file wherever else it appears', () => {
+      const { root, suite } = workspace({
+        'test-output/a/trace.zip': passwordTrace(),
+        'test-output/a/stdout.txt': `typed ${password} into the form\n`,
+      });
+      protectReportCredentials({ root, reportPath });
+      expect(
+        readFileSync(join(suite, 'test-output/a/stdout.txt'), 'utf8'),
+      ).toBe('typed [REDACTED] into the form\n');
+    });
+
+    it('withholds what still carries a password after the scrub', async () => {
+      vi.doMock('../e2e/support/matrix-identifiers.mts', async (original) => ({
+        ...(await original()),
+        redactAccountPasswords: (value) => value,
+      }));
+      vi.resetModules();
+      const { protectReportCredentials: unredacted } =
+        await import('./ci-matrix-credentials.mjs');
+      const { root, suite } = workspace({
+        'blob-report/report-1.zip': passwordBlob(),
+        'dist/.ci/suite.log': 'verify-e2e-pass-123\n',
+      });
+      const result = unredacted({ root, reportPath });
+      expect(result.withheld).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/report-1\.zip!report\.jsonl$/u),
+          expect.stringMatching(
+            /report-1\.zip!resources\/0a1b\.zip!0-trace\.trace$/u,
+          ),
+          expect.stringMatching(
+            /report-1\.zip!resources\/0a1b\.zip!0-trace\.network$/u,
+          ),
+          expect.stringMatching(/dist\/\.ci\/suite\.log$/u),
+        ]),
+      );
+      expect(result.withheld.join('\n')).not.toContain(password);
+      expect(existsSync(join(root, 'dist/.ci/suite.log'))).toBe(false);
+      expect(
+        published(readFileSync(join(suite, 'blob-report/report-1.zip'))),
+      ).not.toContain(password);
+    });
+  });
+
   it('rejects an empty report path', () => {
     expect(() =>
       protectReportCredentials({ root: tmpdir(), reportPath: '' }),

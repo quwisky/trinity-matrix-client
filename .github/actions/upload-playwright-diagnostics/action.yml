@@ -22,8 +22,8 @@ runs:
       env:
         CI_REPORT_PATH: ${{ inputs.report-path }}
       run: node scripts/ci-matrix-identifiers.mjs
-    # Every other surface keeps Room and event ids for debugging but never
-    # publishes a Matrix credential, including inside blob, HTML and trace archives.
+    # Every other surface keeps Room and event ids for debugging but never publishes
+    # a Matrix credential or test-account password, inside blob, HTML and trace archives too.
     - name: Redact Matrix credentials from diagnostics
       id: matrix-credentials
       if: ${{ inputs.surface != 'android' && !startsWith(inputs.surface, 'android-') }}

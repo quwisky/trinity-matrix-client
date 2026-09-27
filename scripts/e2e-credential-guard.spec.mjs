@@ -21,11 +21,12 @@ function sourceFiles(directory) {
  * assertion, passing or not, and serializes titles, attachments and console
  * output into the blob, HTML and JUnit reports. A response body used there
  * published Synapse login responses, access tokens included. These sinks
- * therefore never receive a response body or a credential; a failure message
- * built only after a failed status check is still allowed.
+ * therefore never receive a response body or a credential, test-account
+ * passwords included; a failure message built only after a failed status
+ * check may still carry the response body.
  */
 const CREDENTIAL_NAME =
-  /^(?:(?:access|refresh)_?tokens?|tokens?|bearer|authorization|auth|headers|session_?token)$/iu;
+  /^(?:(?:access|refresh)_?tokens?|tokens?|bearer|authorization|auth|headers|session_?token|(?:\w*_)?pass|\w*pass(?:word|phrase)s?|pw|pwd)$/iu;
 /** Response body readers; `JSON.stringify` also counts in titles and messages. */
 const BODY_READERS = new Set(['text', 'json', 'body']);
 const LOG_METHODS = new Set(['log', 'info', 'warn', 'error', 'debug', 'trace']);
@@ -34,7 +35,7 @@ const LOG_METHODS = new Set(['log', 'info', 'warn', 'error', 'debug', 'trace']);
 const isRedaction = (node) =>
   ts.isCallExpression(node) && /redact|scrub/iu.test(node.expression.getText());
 
-function leaks(node, { stringify }) {
+function leaks(node, { stringify, bodies = true }) {
   let found;
   const visit = (current) => {
     if (found || isRedaction(current)) return;
@@ -53,7 +54,7 @@ function leaks(node, { stringify }) {
     else if (
       ts.isCallExpression(current) &&
       ts.isPropertyAccessExpression(current.expression) &&
-      (BODY_READERS.has(current.expression.name.text) ||
+      ((bodies && BODY_READERS.has(current.expression.name.text)) ||
         (stringify &&
           current.expression.expression.getText() === 'JSON' &&
           current.expression.name.text === 'stringify'))
@@ -88,6 +89,14 @@ function sinks(file) {
     findings.push(`${relative(root, file)}:${line + 1} ${sink}: ${value}`);
   };
   const visit = (node) => {
+    // A thrown error is the report's failure message. A failed response's
+    // body may explain it, but a credential never does.
+    if (ts.isNewExpression(node) && /Error$/u.test(node.expression.getText())) {
+      const found = (node.arguments ?? [])
+        .map((argument) => leaks(argument, { stringify: false, bodies: false }))
+        .find(Boolean);
+      if (found) report(node, 'error message', found);
+    }
     if (ts.isCallExpression(node)) {
       const [first, second] = node.arguments;
       const assertion = expectCall(node);

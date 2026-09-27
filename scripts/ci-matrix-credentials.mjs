@@ -9,9 +9,17 @@ import {
 import { extname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
+  collectAccountPasswords,
+  hasAccountPassword,
   hasMatrixCredential,
+  redactAccountPasswords,
   redactMatrixCredentials,
 } from '../e2e/support/matrix-identifiers.mts';
+import {
+  REGISTRATION_SHARED_SECRET,
+  SSO_PASS,
+  TEST_PASS,
+} from '../e2e/support/synapse/start.mjs';
 import { ZipFormatError, isZip, readZip, writeZip } from './zip-archive.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -63,9 +71,85 @@ const HTML_REPORT_PAYLOAD =
 /** Nested archives: a blob report holds traces, which hold their resources. */
 const MAX_ARCHIVE_DEPTH = 4;
 
-function scrubText(text) {
-  const scrubbed = redactMatrixCredentials(text);
-  return hasMatrixCredential(scrubbed) ? undefined : scrubbed;
+/** The harness's own fixed test-account passwords and registration secret. */
+export const HARNESS_SECRETS = Object.freeze([
+  TEST_PASS,
+  SSO_PASS,
+  REGISTRATION_SHARED_SECRET,
+]);
+
+/**
+ * Bundled code (the report and trace viewers, snapshotted page styles and
+ * scripts) is not a diagnostic: a minified library's `password:e` is not a
+ * test account's password. It is checked only for known secrets.
+ */
+const CODE_EXTENSIONS = new Set([
+  '.css',
+  '.htm',
+  '.html',
+  '.js',
+  '.map',
+  '.mjs',
+  '.svg',
+  '.webmanifest',
+]);
+
+const passwordOptions = (name) => ({
+  structured: !CODE_EXTENSIONS.has(extname(name).toLowerCase()),
+});
+
+/**
+ * Redact credentials and passwords, then rescan. `secrets` holds every
+ * password harvested from the upload plus the harness's own, so a password
+ * is also redacted where no rule recognises its context, as in a
+ * `fill("…")` log line.
+ */
+function scrubText(text, name, secrets) {
+  const options = passwordOptions(name);
+  const scrubbed = redactAccountPasswords(
+    redactMatrixCredentials(text),
+    secrets,
+    options,
+  );
+  return hasMatrixCredential(scrubbed) ||
+    hasAccountPassword(scrubbed, secrets, options)
+    ? undefined
+    : scrubbed;
+}
+
+/** Call `visit(name, text)` for every text member, descending into archives. */
+function visitTexts(name, bytes, visit, depth = 0) {
+  if (isZip(bytes)) {
+    if (depth >= MAX_ARCHIVE_DEPTH) return;
+    let entries;
+    try {
+      entries = readZip(bytes);
+    } catch (error) {
+      if (error instanceof ZipFormatError) return;
+      throw error;
+    }
+    for (const entry of entries)
+      visitTexts(entry.name, entry.data, visit, depth + 1);
+    return;
+  }
+  if (bytes.includes(0)) return;
+  const text = bytes.toString('utf8');
+  for (const [, payload] of text.matchAll(HTML_REPORT_PAYLOAD))
+    visitTexts('report.zip', Buffer.from(payload, 'base64'), visit, depth + 1);
+  visit(name, text);
+}
+
+/** Every password the context rules find in the upload, for redaction everywhere. */
+export function harvestAccountPasswords(paths) {
+  const secrets = new Set(HARNESS_SECRETS);
+  for (const path of paths) {
+    if (MEDIA_EXTENSIONS.has(extname(path).toLowerCase())) continue;
+    visitTexts(path, readFileSync(path), (name, text) => {
+      if (!passwordOptions(name).structured) return;
+      for (const value of collectAccountPasswords(text)) secrets.add(value);
+    });
+  }
+  return secrets;
 }
 
 /**
@@ -73,7 +157,7 @@ function scrubText(text) {
  * Members that remain unverifiable (unknown binary content or a credential
  * that survives the scrub) are dropped and named in `withheld`.
  */
-export function scrubArchive(bytes, depth = 0) {
+export function scrubArchive(bytes, secrets = HARNESS_SECRETS, depth = 0) {
   if (depth >= MAX_ARCHIVE_DEPTH)
     throw new ZipFormatError('archives are nested too deeply');
   const entries = readZip(bytes);
@@ -89,7 +173,7 @@ export function scrubArchive(bytes, depth = 0) {
     if (isZip(data)) {
       let nested;
       try {
-        nested = scrubArchive(data, depth + 1);
+        nested = scrubArchive(data, secrets, depth + 1);
       } catch (error) {
         if (!(error instanceof ZipFormatError)) throw error;
         nested = undefined;
@@ -115,7 +199,7 @@ export function scrubArchive(bytes, depth = 0) {
       continue;
     }
     const text = data.toString('utf8');
-    const scrubbed = scrubText(text);
+    const scrubbed = scrubText(text, entry.name, secrets);
     if (scrubbed === undefined) {
       withheld.push(entry.name);
       changed = true;
@@ -131,9 +215,9 @@ export function scrubArchive(bytes, depth = 0) {
   return { bytes: changed ? writeZip(kept) : bytes, changed, withheld };
 }
 
-function scrubHtmlReport(text, withheld) {
+function scrubHtmlReport(text, withheld, secrets) {
   return text.replace(HTML_REPORT_PAYLOAD, (_, open, payload, close) => {
-    const archive = scrubArchive(Buffer.from(payload, 'base64'));
+    const archive = scrubArchive(Buffer.from(payload, 'base64'), secrets);
     withheld.push(...archive.withheld.map((name) => `#report!${name}`));
     return archive.changed
       ? `${open}${archive.bytes.toString('base64')}${close}`
@@ -142,12 +226,13 @@ function scrubHtmlReport(text, withheld) {
 }
 
 /**
- * Redact every Matrix credential from one published file in place: text
- * directly, Playwright archives member by member and the HTML report through
- * its embedded payload. `unsafe` means the file cannot be verified and must
- * not be published; `withheld` names archive members that were dropped.
+ * Redact every Matrix credential and test-account password from one published
+ * file in place: text directly, Playwright archives member by member and the
+ * HTML report through its embedded payload. `unsafe` means the file cannot be
+ * verified and must not be published; `withheld` names archive members that
+ * were dropped.
  */
-export function scrubReportFile(path) {
+export function scrubReportFile(path, secrets = HARNESS_SECRETS) {
   if (MEDIA_EXTENSIONS.has(extname(path).toLowerCase()))
     return { state: 'media', withheld: [] };
   const bytes = readFileSync(path);
@@ -155,14 +240,18 @@ export function scrubReportFile(path) {
   let output;
   try {
     if (isZip(bytes)) {
-      const archive = scrubArchive(bytes);
+      const archive = scrubArchive(bytes, secrets);
       withheld.push(...archive.withheld);
       output = archive.bytes;
     } else if (bytes.includes(0))
       return { state: isKnownBinary(bytes) ? 'media' : 'unsafe', withheld };
     else {
       const text = bytes.toString('utf8');
-      const scrubbed = scrubText(scrubHtmlReport(text, withheld));
+      const scrubbed = scrubText(
+        scrubHtmlReport(text, withheld, secrets),
+        path,
+        secrets,
+      );
       if (scrubbed === undefined) return { state: 'unsafe', withheld };
       output = scrubbed === text ? bytes : Buffer.from(scrubbed, 'utf8');
     }
@@ -197,9 +286,10 @@ function filesUnder(root, pattern) {
 
 /**
  * The browser, desktop and component publication boundary: redact every
- * Matrix credential from the files an upload would publish (its report globs
- * and `dist/.ci`), including inside blob, HTML and trace archives, and
- * withhold any file or archive member that cannot be verified.
+ * Matrix credential and test-account password from the files an upload would
+ * publish (its report globs and `dist/.ci`), including inside blob, HTML and
+ * trace archives, and withhold any file or archive member that cannot be
+ * verified. Room and event identifiers are kept for debugging.
  */
 export function protectReportCredentials({
   root = ROOT,
@@ -208,20 +298,26 @@ export function protectReportCredentials({
   const files = new Set();
   for (const pattern of [...patternsFrom(reportPath), 'dist/.ci/**'])
     for (const path of filesUnder(root, pattern)) files.add(path);
+  const sorted = [...files].sort();
+  const secrets = harvestAccountPasswords(
+    sorted.map((path) => join(root, path)),
+  );
+  const shown = (path) =>
+    redactAccountPasswords(redactMatrixCredentials(path), secrets, {
+      structured: false,
+    });
   const redacted = [];
   const withheld = [];
-  for (const path of [...files].sort()) {
-    const result = scrubReportFile(join(root, path));
-    const shown = redactMatrixCredentials(relative('.', path));
-    if (result.state === 'redacted') redacted.push(shown);
+  for (const path of sorted) {
+    const result = scrubReportFile(join(root, path), secrets);
+    const name = shown(relative('.', path));
+    if (result.state === 'redacted') redacted.push(name);
     withheld.push(
-      ...result.withheld.map((name) =>
-        redactMatrixCredentials(`${shown}!${name}`),
-      ),
+      ...result.withheld.map((member) => shown(`${name}!${member}`)),
     );
     if (result.state === 'unsafe') {
       rmSync(join(root, path), { force: true });
-      withheld.push(shown);
+      withheld.push(name);
     }
   }
   return { files: files.size, redacted, withheld };
