@@ -29,6 +29,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['message-poll', 1, 'message-poll', 1_500_000],
   ['recent-activity', 1, 'recent-activity', 1_200_000],
   ['room-filter-spaceless', 1, 'room-filter-spaceless', 1_200_000],
+  ['room-for-you', 1, 'room-for-you', 2_100_000],
   ['room-http-error-recovery', 1, 'room-http-error-recovery', 1_200_000],
   ['room-list', 1, 'room-list', 1_200_000],
   ['room-read-state', 1, 'room-read-state', 1_200_000],
@@ -37,6 +38,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['sidebar-touch', 1, 'sidebar-touch', 1_200_000],
   ['space-curation-create-join', 1, 'space-curation-create-join', 1_200_000],
   ['space-room-order', 1, 'space-room-order', 1_200_000],
+  ['space-settings-mobile', 1, 'space-settings-mobile', 1_500_000],
   ['unread-badges', 1, 'unread-badges', 1_200_000],
   ['composer-drafts', 2, 'composer-drafts', 1_500_000],
   ['composer-formatting', 2, 'composer-formatting', 1_500_000],
@@ -45,31 +47,29 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['composer-typing', 2, 'composer-typing', 1_500_000],
   ['cross-user-verification', 2, 'cross-user-verification', 2_100_000],
   ['edit-history', 2, 'edit-history', 2_700_000],
+  ['member-moderation', 2, 'member-moderation', 1_800_000],
+  ['member-role-live-updates', 2, 'member-role-live-updates', 2_100_000],
   ['message-forward', 2, 'message-forward', 1_500_000],
   ['message-grouping', 2, 'message-grouping', 1_500_000],
   ['accounts-workspace', 3, 'accounts', 5_100_000],
-  ['member-moderation', 3, 'member-moderation', 1_800_000],
   ['message-moderation', 3, 'message-moderation', 1_500_000],
   ['message-receipts', 3, 'message-receipts', 1_200_000],
   ['message-source', 3, 'message-source', 1_200_000],
   ['message-spoiler', 3, 'message-spoiler', 1_200_000],
   ['room-access-policy', 3, 'room-access-policy', 2_400_000],
   ['room-address-lifecycle', 3, 'room-address-lifecycle', 900_000],
-  ['room-for-you', 3, 'room-for-you', 2_100_000],
   ['room-profile-settings', 3, 'room-profile-settings', 2_400_000],
   ['room-roster-live-authority', 3, 'room-roster-live-authority', 2_100_000],
   ['room-unban', 3, 'room-unban', 900_000],
   ['account-password-change', 4, 'account-password-change', 1_200_000],
   ['clear-all-data', 4, 'clear-all-data', 1_500_000],
   ['identity-presence', 4, 'identity', 1_200_000],
-  ['member-role-live-updates', 4, 'member-role-live-updates', 2_100_000],
   ['message-links', 4, 'message-links', 3_300_000],
   ['oidc-login', 4, 'oidc-login', 1_500_000],
   ['password-registration', 4, 'password-registration', 1_200_000],
   ['recovery-reset', 4, 'recovery-reset', 3_000_000],
   ['room-settings-mobile', 4, 'room-settings-mobile', 1_200_000],
   ['security-settings', 4, 'security-settings', 1_200_000],
-  ['space-settings-mobile', 4, 'space-settings-mobile', 1_500_000],
   ['gif-picker', 5, 'gif-picker', 1_500_000],
   ['hide-system-messages', 5, 'hide-system-messages', 1_500_000],
   ['jump-to-date', 5, 'jump-to-date', 1_500_000],
@@ -80,6 +80,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['media-retention', 5, 'media-retention', 1_500_000],
   ['message-action-sheet', 5, 'message-action-sheet', 3_300_000],
   ['message-markdown', 5, 'message-markdown', 2_100_000],
+  ['space-settings-resilience', 5, 'space-settings-resilience', 1_500_000],
   ['sso-recovery-reset', 5, 'sso-recovery-reset', 1_500_000],
   ['member-details-promotion', 6, 'member-details-promotion', 1_500_000],
   ['member-role-classification', 6, 'member-role-classification', 2_100_000],
@@ -90,7 +91,6 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['room-widget-settings', 6, 'room-widget-settings', 2_700_000],
   ['space-leave', 6, 'space-leave', 1_200_000],
   ['space-settings-core', 6, 'space-settings-core', 2_700_000],
-  ['space-settings-resilience', 6, 'space-settings-resilience', 1_500_000],
 ];
 
 describe('CI execution contract', () => {
@@ -604,18 +604,9 @@ describe('CI execution contract', () => {
         timeoutFor(shard),
       );
     }
-    for (const suite of [
-      'message-links',
-      'message-markdown',
-      'message-poll',
-      'message-quote',
-      'message-receipts',
-      'message-source',
-      'message-spoiler',
-    ])
-      expect(comment).toMatch(
-        new RegExp(`provisional [0-9-]+ minutes for ${suite}[.,]`, 'u'),
-      );
+    // The figures come from measured hosted runs, not provisional additions.
+    expect(comment).toMatch(/\bruns \d{11} and \d{11}\b/u);
+    expect(comment).not.toMatch(/provisional/u);
   });
   it('waits for KVM udev completion and separates browser and Gradle caches', () => {
     const steps = workflow.jobs['android-e2e'].steps;
@@ -664,6 +655,12 @@ describe('CI execution contract', () => {
 
     expect(chrome).toBeDefined();
     expect(chrome.if).toBe('${{ matrix.shard == 5 }}');
+    // Both SSO suites drive the pinned Chrome fixture, so they share its shard.
+    for (const target of ['legacy-sso', 'sso-recovery-reset'])
+      expect(
+        ANDROID_NATIVE_PLACEMENT.find(([name]) => name === target)?.[1],
+        target,
+      ).toBe(5);
     expect(chrome.run).toBe(
       'node scripts/ci-runner-prerequisites.mjs chromium',
     );

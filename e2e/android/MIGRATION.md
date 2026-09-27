@@ -227,6 +227,25 @@ diagnostics upload. The other shards start with their first suite; statements
 below that a suite runs after the runner smoke record their acceptance-time
 placement.
 
+On 2026-09-27
+([#839](https://github.com/quwisky/trinity-matrix-client/issues/839)) five
+suites moved to balance the shards. The placement uses the slower per-suite wall
+time from the original-attempt green runs 36332091719 and 36325006948. Before
+the move, shards 3, 4 and 6 took 101–106 minutes and shards 1, 2 and 5 took 72–78.
+After it, each emulator step is estimated at 87–90 minutes, including the first
+suite's cold APK build and the shard's retained Playwright.
+
+| Suite | Shard |
+| --- | --- |
+| `room-for-you` | 1 (from 3) |
+| `space-settings-mobile` | 1 (from 4) |
+| `member-moderation` | 2 (from 3) |
+| `member-role-live-updates` | 2 (from 4) |
+| `space-settings-resilience` | 5 (from 6) |
+
+Both SSO suites remain on shard 5 with the Chrome fixture runtime, and
+`accounts-workspace` remains a single target on shard 3.
+
 ## Predecessor retirement
 
 On 2026-09-26 the user decided, in

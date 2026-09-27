@@ -2381,9 +2381,6 @@ function assertWiring({ project, pkg, workflow }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-poll/**',
   );
-  expect(workflow).toContain(
-    "# 1's a provisional 6-8 minutes for message-poll.",
-  );
 }
 
 describe('Android message-poll hosted wiring and parity ledger', () => {

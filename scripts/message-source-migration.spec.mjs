@@ -2908,9 +2908,6 @@ function assertWiring({ project, pkg, workflow }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-source/**',
   );
-  expect(workflow).toContain(
-    "# Shard 3's figure also adds a provisional 5 minutes for message-source.",
-  );
 }
 
 describe('Android message-source hosted wiring and parity ledger', () => {

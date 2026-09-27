@@ -3046,9 +3046,6 @@ function assertWiring({ project, pkg, workflow }) {
   expect(upload).toContain(
     'report-path: dist/.playwright/trinity-e2e-android/*/android.message-quote/**',
   );
-  expect(workflow).toContain(
-    "# Shard 6's figure adds a provisional 12 minutes for message-quote.",
-  );
 }
 
 describe('Android message-quote hosted wiring and parity ledger', () => {

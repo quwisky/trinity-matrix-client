@@ -339,20 +339,16 @@ jobs:
     # Six shards keep every emulator session under four hours. Run 36064938227
     # showed four could not: shard 2 queued about 263 native minutes, its
     # emulator stopped answering adb after 3h15m, and shard 4 hit its 180-minute
-    # limit inside retained Playwright. Budgets use the slowest native target
-    # durations observed across the ten preceding runs, a 45-minute retained
-    # Playwright command budget and 15 minutes for setup/diagnostics:
-    # shard 1 about 113 native minutes, shard 2 about 117, shard 3 about 173
-    # (240), shard 4 about 165 (240), shard 5 about 110 and shard 6 about 118.
-    # Shard 4's figure adds a provisional 30-40 minutes for message-links,
-    # shard 5's a provisional 15-20 minutes for message-markdown, and shard
-    # 1's a provisional 6-8 minutes for message-poll.
-    # Shard 6's figure adds a provisional 12 minutes for message-quote.
-    # Shard 3's figure adds a provisional 5 minutes for message-receipts.
-    # Shard 3's figure also adds a provisional 5 minutes for message-source.
-    # Shard 3's figure also adds a provisional 5 minutes for message-spoiler.
+    # limit inside retained Playwright. Placement uses the slower per-suite wall
+    # time from original-attempt green runs 36332091719 and 36325006948; the
+    # first suite on each shard also carries the 2-minute cold APK build:
+    # shard 1 about 84 native minutes, shard 2 about 75, shard 3 about 78,
+    # shard 4 about 75, shard 5 about 78 and shard 6 about 75. Measured retained
+    # Playwright adds 5-15 minutes, so each emulator step is about 87-90 minutes.
+    # Every figure still fits the 45-minute retained Playwright command timeout
+    # and 15 minutes for setup/diagnostics inside its job limit.
     # Runner smoke runs on shard 1 only; the other shards start with their first
-    # suite, and their figures still include its 3-5 minutes until the rebalance.
+    # suite. The Chrome fixture runtime installs on shard 5 for the SSO suites.
     timeout-minutes: ${{ matrix.shard == 3 && 240 || matrix.shard == 4 && 240 || 180 }}
     strategy:
       fail-fast: false
@@ -466,21 +462,21 @@ jobs:
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'member-role-classification-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-classification; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-access-policy-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2400000 -- pnpm exec nx run trinity-e2e-android:room-access-policy; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-profile-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2400000 -- pnpm exec nx run trinity-e2e-android:room-profile-settings; fi
-            if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-for-you-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:room-for-you; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'room-for-you-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:room-for-you; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'accounts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 5100000 -- pnpm exec nx run trinity-e2e-android:accounts-workspace; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:message-moderation; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-unban-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-android:room-unban; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-roster-live-authority-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:room-roster-live-authority; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'room-address-lifecycle-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 900000 -- pnpm exec nx run trinity-e2e-android:room-address-lifecycle; fi
-            if [ "${{ matrix.shard }}" = "3" ]; then echo 'member-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:member-moderation; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'member-moderation-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:member-moderation; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-receipts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-receipts; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-source-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-source; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-spoiler-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-spoiler; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'room-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi
-            if [ "${{ matrix.shard }}" = "4" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
-            if [ "${{ matrix.shard }}" = "6" ]; then echo 'space-settings-resilience-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi
-            if [ "${{ matrix.shard }}" = "4" ]; then echo 'member-role-live-updates-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi
+            if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
+            if [ "${{ matrix.shard }}" = "5" ]; then echo 'space-settings-resilience-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-resilience; fi
+            if [ "${{ matrix.shard }}" = "2" ]; then echo 'member-role-live-updates-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'room-widget-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:room-widget-settings; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-quote-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:message-quote; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'account-password-change-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:account-password-change; fi
