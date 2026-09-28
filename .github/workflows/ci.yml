@@ -476,6 +476,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-receipts-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-receipts; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-source-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-source; fi
             if [ "${{ matrix.shard }}" = "3" ]; then echo 'message-spoiler-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-spoiler; fi
+            if [ "${{ matrix.shard }}" = "3" ]; then echo 'pinned-message-panel-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:pinned-message-panel; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'identity-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:identity-presence; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'room-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:room-settings-mobile; fi
             if [ "${{ matrix.shard }}" = "1" ]; then echo 'space-settings-mobile-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:space-settings-mobile; fi
@@ -612,6 +613,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_UNREAD_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-unread/message-unread/publication-safe' -print -quit)" ]; then
             echo 'message-unread-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android pinned-message-panel diagnostics
+        id: pinned-message-panel-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.pinned-message-panel-started == 'true' }}
+        env:
+          PINNED_MESSAGE_PANEL_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$PINNED_MESSAGE_PANEL_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.pinned-message-panel/pinned-message-panel/publication-safe' -print -quit)" ]; then
+            echo 'pinned-message-panel-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - name: Gate Android message-swipe diagnostics
@@ -1110,6 +1121,13 @@ jobs:
           surface: android-message-unread
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-unread/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.pinned-message-panel-started == 'true' && steps.pinned-message-panel-artifact-gate.outputs.pinned-message-panel-safe == 'true' }}
+        with:
+          surface: android-pinned-message-panel
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.pinned-message-panel/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.message-swipe-started == 'true' && steps.message-swipe-artifact-gate.outputs.message-swipe-safe == 'true' }}

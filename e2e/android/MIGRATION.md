@@ -7590,3 +7590,105 @@ following the 2026-09-26 retirement policy of
 [#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
 [Predecessor retirement](#predecessor-retirement) lists what was retired and
 what stays desktop-only.
+
+## Pinned-message panel journey
+
+Suite `android.pinned-message-panel` migrates the single pinned-panel
+definition of the unchanged predecessor
+`e2e/browser/journeys/conversations/pinned-message-panel.spec.mts` (161 lines,
+SHA-256
+`d30470d1c2129818a096aefdf50768d31c4eae995ce17b5300e69afc696d56c0`) into one
+serial one-stage installed-Android Node/Maestro suite. The stage maps to
+definition 96–160 and its arrangement helper at 34–91. The guard also pins
+`e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`).
+
+The suite records 12 ordered, unique identities: 12 direct + 0 inherited.
+`seedPinnedRoom`, `registerUser`, `login` and `synapseSession` add no site.
+
+| Stage | Source line | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `list-unpin` | 119 | direct | Pinned panel visible | `pinned-message-panel.list-unpin.panel-visible` |
+| `list-unpin` | 120 | direct | Exactly two pinned items | `pinned-message-panel.list-unpin.two-pinned-items` |
+| `list-unpin` | 135 | direct | Room header has a box | `pinned-message-panel.list-unpin.room-header-measured` |
+| `list-unpin` | 136 | direct | Panel header has a box | `pinned-message-panel.list-unpin.panel-header-measured` |
+| `list-unpin` | 137 | direct | Panel title has a box | `pinned-message-panel.list-unpin.panel-title-measured` |
+| `list-unpin` | 139 | direct | Panel header as tall as the Room header | `pinned-message-panel.list-unpin.header-heights-equal` |
+| `list-unpin` | 140 | direct | Panel title inset 12 px | `pinned-message-panel.list-unpin.title-inset` |
+| `list-unpin` | 145 | direct | Panel title centred within 2 px | `pinned-message-panel.list-unpin.title-centred` |
+| `list-unpin` | 154 | direct | Exactly one pinned item after the native unpin | `pinned-message-panel.list-unpin.one-pinned-item` |
+| `list-unpin` | 157 | direct | Panel stays open | `pinned-message-panel.list-unpin.panel-stays-open` |
+| `list-unpin` | 158 | direct | Panel still contains the kept message | `pinned-message-panel.list-unpin.keep-remains` |
+| `list-unpin` | 159 | direct | Panel no longer contains the unpinned message | `pinned-message-panel.list-unpin.unpin-removed` |
+
+REST arranges one Account, one private Room `Pinned Room <run>`, the messages
+`unpin-me-<run>` and `keep-me-<run>` (each sent with its body as transaction
+id) and `m.room.pinned_events` `[unpin, keep]`, all read back before any UI
+step. Maestro owns sign-in, Room opening, the toolbar overflow button and its
+"Pinned messages" item, and the unpin tap scoped to the `unpin-me` row. The
+Pixel 5 profile is applied at launch. The six geometry records come from one
+settled read: two identical, non-animating one-turn reads at least 500 ms
+apart. After the unpin, the panel must hold exactly the kept row on every read
+for 2 s, and Synapse's `m.room.pinned_events` must converge to `[keep]`. Every
+wait window starts at the event it waits for, never before a native tap.
+
+Before any UI step the suite registers the Account (user id, username and
+password), the Room id and name, both bodies and transactions and both event
+ids. The shared strict scrub and fail-closed scan cover every registered form,
+plus every raw Matrix Room- and event-id shape, and delete every raster; the
+gated `android-pinned-message-panel` upload runs only once the scan marks the
+run `publication-safe`. Records hold counts, booleans, order labels, measured
+boxes and digests only, never row text. Failure text rethrown to the job log
+keeps only error names and first message lines: Node appends an assertion's
+actual and expected values to its message, so `redactStageFailure` keeps
+just the first line, and every registered value and Matrix identifier shape
+is redacted from what remains; a failed teardown step is rethrown through
+`redactCleanupFailure`, never as the raw error.
+
+Documented reinterpretations of the predecessor:
+
+- **Toolbar pinned control.** At Pixel 5 the desktop `open-pinned` button is
+  `max-md:hidden`; the suite taps the toolbar overflow button (the same
+  `header-pin` control with the pin badge) and its "Pinned messages" item,
+  which call the same `openPinnedPanel()`. A receipt proves `open-pinned` is
+  hidden, and the stage fails closed if it ever shows.
+- **Panel layout.** The predecessor measures a side column at 1280×720; at
+  Pixel 5 the panel is a full-screen overlay over the Room header. The three
+  bounding boxes do not depend on occlusion, and every predicate is unchanged.
+- **REST login and Account naming.** The shared fixture's session and
+  namespaced Account replace the predecessor's separate password login and
+  `pinner-<run>`/`pinner-pass-<run>`.
+- **Visibility and bounds.** Visible means one element with a non-empty box
+  and `visibility: visible`; polls use at least the predecessor's bounds, and
+  its 5 s `expect` defaults become 20 s under host load.
+- **Held claims.** `toBeVisible`, `toContainText` and `not.toContainText`
+  after the unpin must hold on every read for 2 s, never on a closed or empty
+  panel.
+- **Pin order.** The predecessor asserts only the count; a fail-closed receipt
+  also proves the rendered order equals the published `[unpin, keep]`.
+- **Server convergence.** A fail-closed receipt reads Synapse's
+  `m.room.pinned_events` back as exactly `[keep]` after the unpin.
+- **Identity without identifiers.** The Room is opened by exact name and the
+  unpin control is scoped to its row by body; no selector or wait description
+  carries an event or Room id.
+- **Desktop path not exercised (known limitation).** The desktop
+  `open-pinned` button and the side-column layout are not exercised on
+  Android; the predecessor covers them until its retirement.
+- **Safe-area growth not exercised (known limitation).**
+  `env(safe-area-inset-top)` is 0 under the emulated profile, so the panel
+  header's growth on a notched device is not exercised.
+
+```bash
+pnpm nx run trinity-e2e-android:pinned-message-panel --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:pinned-message-panel
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 3
+runs it last, after message-spoiler.
+
+Predecessor status: enabled; the coordinator retires it after hosted
+acceptance.

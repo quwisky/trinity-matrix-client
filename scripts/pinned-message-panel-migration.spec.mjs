@@ -7,7 +7,7 @@ import { basename, join, posix, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -28,8 +28,13 @@ const loadObserver = () =>
 const loadArtifacts = () =>
   import('../e2e/android/pinned-message-panel-artifacts.mts');
 const loadClient = () => import('../e2e/android/account-workspace-client.mts');
+const loadJourneys = () =>
+  import('../e2e/android/pinned-message-panel-journeys.mts');
 
 const FIXTURES = 'e2e/android/account-workspace-fixtures.mts';
+const JOURNEYS = 'e2e/android/pinned-message-panel-journeys.mts';
+const OBSERVER_PATH = 'e2e/android/pinned-message-panel-observer.mts';
+const ARTIFACTS_PATH = 'e2e/android/pinned-message-panel-artifacts.mts';
 
 /** The predecessor working-tree file, pinned by SHA-256. */
 const PREDECESSOR_SHA256 =
@@ -1460,5 +1465,1043 @@ describe('Android pinned-message-panel diagnostics safety', () => {
     expect(read('e2e/android/pinned-message-panel-artifacts.mts')).toContain(
       'redactMatrixIdentifiers(redactSecretText(text, secrets))',
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Native journey against a simulated installed app [RF-1][RF-3][RF-4]        */
+/* -------------------------------------------------------------------------- */
+
+const SUFFIXES = STAGE.suffixes;
+
+const JOURNEY_PINNER = {
+  userId: '@pinned-journey-pinner:localhost',
+  username: 'pinned-journey-pinner',
+  password: 'pinned-journey-pinner-secret-pw',
+};
+const JOURNEY_ROOM_ID = '!Pinned_Journey_Room:localhost';
+const JOURNEY_UNPIN_ID = '$Pinned_Journey_unpin';
+const JOURNEY_KEEP_ID = '$Pinned_Journey_keep';
+const JOURNEY_RUN = 'trn-pinned-journey-0a1b2c';
+
+const jbox = (x, y, width, height) => ({ x, y, width, height });
+
+function journeyProbeView() {
+  return {
+    roomHeader: {
+      count: 1,
+      first: jbox(0, 160.76, 393.14, 56),
+      namesRoom: true,
+    },
+    panel: {
+      count: 1,
+      visible: true,
+      box: jbox(0, 0, 393.14, 727.24),
+      containsKeep: true,
+      containsUnpin: true,
+      animating: false,
+    },
+    panelHeader: { count: 1, box: jbox(0, 0, 393.14, 56) },
+    panelTitle: { count: 1, box: jbox(12, 15.62, 317.14, 24) },
+    items: { count: 2, order: ['unpin', 'keep'] },
+    rows: [
+      {
+        label: 'unpin',
+        box: jbox(8, 64, 377, 65.5),
+        unpinCount: 1,
+        unpin: jbox(337.14, 74.75, 44, 44),
+        unobstructed: true,
+      },
+      {
+        label: 'keep',
+        box: jbox(8, 129.5, 377, 65.5),
+        unpinCount: 1,
+        unpin: jbox(337.14, 140.25, 44, 44),
+        unobstructed: true,
+      },
+    ],
+    openPinned: { count: 1, box: jbox(0, 0, 0, 0) },
+  };
+}
+
+function journeyAfterView() {
+  const probe = journeyProbeView();
+  return {
+    ...probe,
+    panel: { ...probe.panel, containsUnpin: false },
+    items: { count: 1, order: ['keep'] },
+    rows: [{ ...probe.rows[1], box: jbox(8, 64, 377, 65.5) }],
+  };
+}
+
+/**
+ * One minimal simulated installed app: a fake `AccountWorkspaceClient` and
+ * `AccountFixtures` pair that drives the real, imported `runListUnpin`
+ * end to end. `faults` injects exactly one negative control at a time.
+ */
+async function simulatedPinnedPanelApp(faults = {}) {
+  const { pinnedRoomName, unpinBody, keepBody } = await loadContract();
+  const { pinnedViewExpression, appliedProfileExpression } =
+    await loadObserver();
+  const TEXTS = {
+    roomName: pinnedRoomName(JOURNEY_RUN),
+    unpinBody: unpinBody(JOURNEY_RUN),
+    keepBody: keepBody(JOURNEY_RUN),
+  };
+  const PINNED_VIEW_EXPR = pinnedViewExpression(TEXTS);
+  const APPLIED_PROFILE_EXPR = appliedProfileExpression();
+  const controller = new AbortController();
+  const label = (text) =>
+    text === TEXTS.roomName
+      ? 'room'
+      : text === TEXTS.unpinBody
+        ? 'unpin'
+        : text === TEXTS.keepBody
+          ? 'keep'
+          : text;
+  const state = {
+    actions: [],
+    written: [],
+    unpinTapped: false,
+    tapReturnAt: null,
+    heldReads: 0,
+    serverPins: faults.arrangedReversed
+      ? [JOURNEY_KEEP_ID, JOURNEY_UNPIN_ID]
+      : [JOURNEY_UNPIN_ID, JOURNEY_KEEP_ID],
+  };
+
+  function currentView() {
+    let switched = state.unpinTapped;
+    if (faults.anchoredSwitchMs !== undefined) {
+      switched =
+        state.tapReturnAt !== null &&
+        Date.now() - state.tapReturnAt >= faults.anchoredSwitchMs;
+    }
+    let view = switched ? journeyAfterView() : journeyProbeView();
+    if (faults.neverVisible)
+      view = {
+        ...view,
+        panel: { ...view.panel, count: 0, visible: false, box: null },
+      };
+    if (faults.openPinnedVisible)
+      view = { ...view, openPinned: { count: 1, box: jbox(300, 172, 32, 32) } };
+    if (faults.threeItems)
+      view = {
+        ...view,
+        items: { count: 3, order: [...view.items.order, 'other'] },
+      };
+    if (faults.reversedOrder && !switched)
+      view = { ...view, items: { count: 2, order: ['keep', 'unpin'] } };
+    if (faults.geometryDrift) {
+      state.driftTick = (state.driftTick ?? 0) + 1;
+      const x = state.driftTick % 2 === 0 ? 12 : 40;
+      view = {
+        ...view,
+        panelTitle: { count: 1, box: jbox(x, 15.62, 317.14, 24) },
+      };
+    }
+    if (faults.unpinInsideKeepRow && !switched) {
+      const [unpinRow, keepRow] = view.rows;
+      view = {
+        ...view,
+        rows: [{ ...unpinRow, unpin: keepRow.unpin }, keepRow],
+      };
+    }
+    if (faults.closesOnThirdHeldRead && switched) {
+      state.heldReads += 1;
+      if (state.heldReads >= 3)
+        view = {
+          ...view,
+          panel: { ...view.panel, count: 0, visible: false, box: null },
+        };
+    }
+    return view;
+  }
+
+  const client = {
+    device: { clearApplicationData: async () => {} },
+    signal: controller.signal,
+    webview: {
+      diagnostics: {
+        send: async (_method, { expression }) => {
+          if (expression === PINNED_VIEW_EXPR) {
+            // Each fake webview read advances the simulated Date by 1 s, so the
+            // anchored-window controls can cross their threshold without a real wait.
+            if (faults.anchoredSwitchMs !== undefined)
+              vi.setSystemTime(Date.now() + 1_000);
+            return { result: { value: currentView() } };
+          }
+          if (expression === APPLIED_PROFILE_EXPR)
+            return {
+              result: {
+                value: {
+                  innerWidth: 393,
+                  innerHeight: 727,
+                  devicePixelRatio: 2.75,
+                  coarsePointer: true,
+                  hoverNone: true,
+                  platform: 'android',
+                },
+              },
+            };
+          throw new Error(`Unmodelled simulated evaluate: ${expression}`);
+        },
+      },
+    },
+    async reset(profile) {
+      state.actions.push(`reset:${profile.width}`);
+    },
+    async login() {
+      state.actions.push('login');
+    },
+    async hideKeyboard() {
+      state.actions.push('hideKeyboard');
+    },
+    async visible(_selector, filter = {}) {
+      return {
+        text: filter.text ?? '',
+        visible: true,
+        rect: { x: 0, y: 0, width: 10, height: 10, bottom: 10, right: 10 },
+      };
+    },
+    async tapCurrent(selector, filter = {}) {
+      if (filter.within)
+        state.actions.push(
+          `tap:${selector}|within ${filter.within.selector} ${label(filter.within.text)}`,
+        );
+      else
+        state.actions.push(
+          `tap:${selector}${filter.text ? `|${label(filter.text)}` : ''}`,
+        );
+      if (selector === '[data-testid="pinned-unpin"]') {
+        if (faults.anchoredSwitchMs !== undefined)
+          vi.setSystemTime(Date.now() + 45_000);
+        state.unpinTapped = true;
+        state.tapReturnAt = Date.now();
+        if (!faults.serverPinsRejects) state.serverPins = [JOURNEY_KEEP_ID];
+      }
+    },
+    async record(name, value) {
+      state.written.push({ name, value });
+    },
+    async capture() {},
+  };
+
+  const fixtures = {
+    async account() {
+      return { ...JOURNEY_PINNER };
+    },
+    async createRoom(_account, content) {
+      return { id: JOURNEY_ROOM_ID, name: content.name };
+    },
+    async sendMessage(_account, _roomId, body) {
+      if (body === TEXTS.unpinBody) return JOURNEY_UNPIN_ID;
+      if (body === TEXTS.keepBody) return JOURNEY_KEEP_ID;
+      throw new Error(`Unmodelled simulated sendMessage body ${body}`);
+    },
+    async setRoomState() {},
+    async roomMessages() {
+      return {
+        chunk: [
+          {
+            type: 'm.room.message',
+            event_id: JOURNEY_KEEP_ID,
+            room_id: JOURNEY_ROOM_ID,
+            sender: JOURNEY_PINNER.userId,
+            content: { msgtype: 'm.text', body: TEXTS.keepBody },
+          },
+          {
+            type: 'm.room.message',
+            event_id: JOURNEY_UNPIN_ID,
+            room_id: JOURNEY_ROOM_ID,
+            sender: JOURNEY_PINNER.userId,
+            content: { msgtype: 'm.text', body: TEXTS.unpinBody },
+          },
+          {
+            type: 'm.room.create',
+            event_id: '$create',
+            room_id: JOURNEY_ROOM_ID,
+            sender: JOURNEY_PINNER.userId,
+            state_key: '',
+            content: {},
+          },
+        ],
+        start: 's',
+        end: 'e',
+      };
+    },
+    async roomState() {
+      // The convergence poll rejects immediately on a genuine (id-free) read
+      // failure, exactly as a real REST error would surface [step 5 note].
+      if (faults.serverPinsRejects && state.unpinTapped)
+        throw new Error(
+          'Simulated Matrix fixture GET room-state failed with HTTP 500',
+        );
+      return { pinned: state.serverPins };
+    },
+  };
+
+  return { client, fixtures, state, controller };
+}
+
+/** Builds one simulated stage context and cleans up its real temp directory. */
+async function withSimulatedPinnedPanelStage(faults, run) {
+  const { PINNED_PANEL_STAGES } = await loadContract();
+  const directory = await mkdtemp(join(tmpdir(), 'trinity-panel-journey-'));
+  try {
+    const app = await simulatedPinnedPanelApp(faults);
+    const context = {
+      entry: PINNED_PANEL_STAGES[0],
+      records: [],
+      identities: new Set(),
+      receipts: 0,
+      client: app.client,
+      fixtures: app.fixtures,
+      secrets: {},
+      safety: { unsafeSecrets: true, cleanupFailed: false, scrubFailed: false },
+      native: false,
+      directory,
+      signal: app.controller.signal,
+      ledger: {
+        run: JOURNEY_RUN,
+        accounts: [],
+        rooms: [],
+        texts: [],
+        eventIds: [],
+        transactions: [],
+      },
+    };
+    return await run({ context, state: app.state });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+describe('Android pinned-message-panel native journey against a simulated installed app', () => {
+  it('drives the exact native sequence and records all twelve identities in order', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage({}, async ({ context, state }) => {
+      await runListUnpin(context);
+      expect(state.actions).toEqual([
+        'reset:393',
+        'login',
+        'hideKeyboard',
+        'tap:[data-testid="rail-rooms"]',
+        'tap:.channel|room',
+        'tap:[data-testid="room-actions-overflow"]',
+        'tap:[data-testid="overflow-open-pinned"]',
+        'tap:[data-testid="pinned-unpin"]|within .pin-item unpin',
+      ]);
+      expect(context.records).toEqual(
+        SUFFIXES.map((s) => `pinned-message-panel.list-unpin.${s}`),
+      );
+    });
+  });
+
+  it('fails closed when open-pinned is visible at Pixel 5 [revisit D3]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { openPinnedVisible: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(/revisit D3/u);
+      },
+    );
+  });
+
+  it('fails closed when the pinned panel never becomes visible', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { neverVisible: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(
+          /pinned panel is visible/u,
+        );
+      },
+    );
+  }, 35_000);
+
+  it('fails closed on a stable, wrong pinned-item count [three items]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { threeItems: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(/Exactly 2/u);
+      },
+    );
+  });
+
+  it('fails closed on a reversed rendered order', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { reversedOrder: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(/published order/u);
+      },
+    );
+  });
+
+  it('fails closed when the geometry never settles [RF-2]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { geometryDrift: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(
+          /panel geometry did not settle/u,
+        );
+      },
+    );
+  }, 25_000);
+
+  it('fails closed when the unpin control is observed inside the keep row [RF-3]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { unpinInsideKeepRow: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(
+          /inside its own row only/u,
+        );
+      },
+    );
+  });
+
+  it('fails closed when the panel closes on the third held read [RF-3]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { closesOnThirdHeldRead: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(
+          /pinned panel is visible/u,
+        );
+      },
+    );
+  });
+
+  it('rejects when the server pinned state never converges to the kept event [RF-4]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    // Covers both listed sub-cases: the fake fixture's immediate, id-free read
+    // failure stands in for pins that stay [unpin, keep] or become [unpin].
+    await withSimulatedPinnedPanelStage(
+      { serverPinsRejects: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow();
+      },
+    );
+  });
+
+  it('rejects before any native action when the arranged pins are published out of order', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { arrangedReversed: true },
+      async ({ context, state }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(/published order/u);
+        expect(state.actions).toEqual([]);
+      },
+    );
+  });
+
+  it('anchors the one-pinned-item window at the observed tap: passes at 25 s, rejects past 30 s [RF-1]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await withSimulatedPinnedPanelStage(
+        { anchoredSwitchMs: 25_000 },
+        async ({ context }) => {
+          await expect(runListUnpin(context)).resolves.toBeUndefined();
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20_000);
+
+  it('rejects on Exactly 1 when the switch lands after the anchored window [RF-1]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await withSimulatedPinnedPanelStage(
+        { anchoredSwitchMs: 31_000 },
+        async ({ context }) => {
+          await expect(runListUnpin(context)).rejects.toThrow(/Exactly 1/u);
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20_000);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Teardown and redaction guards [RF-5]                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('Android pinned-message-panel teardown and redaction guards [RF-5]', () => {
+  it('rethrows stage failures to the job log without identifiers or assertion values', async () => {
+    const { pinnedPanelSecrets } = await loadArtifacts();
+    const { redactStageFailure, redactCleanupFailure } = await loadJourneys();
+    const { AssertionError } = await import('node:assert');
+    const secrets = pinnedPanelSecrets(STAGE.id, ARTIFACT_IDS);
+    const segment = Buffer.from(ROOM.id).toString('base64url');
+    const OTHER_ID = '$Pinned_other';
+    const failure = new AssertionError({
+      actual: '$Pinned_unpin',
+      expected: OTHER_ID,
+      operator: 'strictEqual',
+      message: 'The unpin message has the arranged event id',
+    });
+    const leaked = new Error(
+      `GET /rooms/${encodeURIComponent(ROOM.id)}/messages for ${PINNER.userId} at /rooms/${segment} on $Pinned_unpin body ${UNPIN_BODY}`,
+    );
+    const error = redactStageFailure(
+      STAGE.id,
+      [new AggregateError([failure, leaked], 'Native action failed')],
+      secrets,
+    );
+    expect(error).not.toBeInstanceOf(AggregateError);
+    expect(Object.keys(error)).toEqual([]);
+    expect(error.message).toContain(
+      'Android pinned-message-panel list-unpin failed',
+    );
+    expect(error.message).toContain(
+      'The unpin message has the arranged event id',
+    );
+    expect(error.message).toContain('[REDACTED]');
+    for (const value of [
+      ROOM.id,
+      encodeURIComponent(ROOM.id),
+      segment,
+      '$Pinned_unpin',
+      PINNER.userId,
+      UNPIN_BODY,
+      ROOM.name,
+    ])
+      expect(error.message).not.toContain(value);
+    // Node appends an assertion's actual/expected values to its message,
+    // contiguous or as an interleaved character diff; the rethrow keeps
+    // exactly the first line, so no fragment of that block reaches the log,
+    // nor does any unregistered event-id shape.
+    const [firstLine, ...appended] = failure.message.split('\n');
+    expect(firstLine).toBe('The unpin message has the arranged event id');
+    expect(appended.join('\n').trim()).not.toBe('');
+    expect(error.message.split('\n')).toContain(`AssertionError: ${firstLine}`);
+    for (const fragment of appended.map((line) => line.trim()))
+      if (fragment.length >= 3) expect(error.message).not.toContain(fragment);
+    expect(error.message).not.toContain(OTHER_ID);
+    expect(error.message).not.toContain('actual');
+    const unregistered = '$SJXdpxxWrrm9mq1XxwAx1Kq-JhfVCWzpxntFokS4Ox4';
+    const shaped = redactStageFailure(
+      STAGE.id,
+      [
+        new Error(`Event ${unregistered} already in timeline`),
+        (() => {
+          try {
+            assert.equal(unregistered, OTHER_ID);
+          } catch (generated) {
+            return generated;
+          }
+        })(),
+        (() => {
+          try {
+            assert.deepEqual({ event_id: '$x' }, { event_id: '$y' }, 'Fields');
+          } catch (diffed) {
+            return diffed;
+          }
+        })(),
+      ],
+      {},
+    );
+    expect(shaped.message).toBe(
+      'Android pinned-message-panel list-unpin failed\nError: Event [REDACTED] already in timeline\nAssertionError: strictEqual assertion failed\nAssertionError: Fields',
+    );
+    const cleanup = redactCleanupFailure(
+      'fixtures',
+      Object.assign(new Error(`leave ${ROOM.id}`), { status: 403 }),
+    );
+    expect(cleanup.message).toBe(
+      'Pinned-message-panel cleanup failed: fixtures (Error HTTP 403)',
+    );
+    const journey = read(JOURNEYS);
+    expect(journey).toContain(
+      'throw redactStageFailure(entry.id, failures, secrets);',
+    );
+    expect(journey).not.toMatch(/throw new AggregateError\(failures/u);
+    expect(journey).not.toMatch(/throw failures\[0\]/u);
+    const guardStart = journey.indexOf(
+      'export function guardPinnedPanelCleanup',
+    );
+    expect(guardStart).toBeGreaterThan(-1);
+    const guardBody = journey.slice(
+      guardStart,
+      journey.indexOf('\n}', guardStart),
+    );
+    expect(guardBody).toContain('throw redactCleanupFailure(label, error);');
+    expect(guardBody).not.toMatch(/throw error;/u);
+    // Removing the redaction leaks the identifiers again.
+    expect(redactStageFailure(STAGE.id, [leaked], {}).message).toContain(
+      '$Pinned_unpin',
+    );
+  });
+
+  it('marks a failed guarded cleanup, blocks publication and rethrows an id-free error', async () => {
+    const { guardPinnedPanelCleanup } = await loadJourneys();
+    const registered = [];
+    const state = {
+      safety: {
+        unsafeSecrets: false,
+        cleanupFailed: false,
+        scrubFailed: false,
+      },
+      report: {
+        status: 'passed',
+        stages: [{ status: 'passed', failureCount: 0 }],
+      },
+      saves: 0,
+      async save() {
+        this.saves++;
+      },
+    };
+    const guarded = guardPinnedPanelCleanup(
+      (label, action) => registered.push({ label, action }),
+      state,
+    );
+    guarded('Room cleanup', async () => {
+      throw new Error(`forget ${ROOM.id}`);
+    });
+    await expect(registered[0].action()).rejects.toThrow(
+      'Pinned-message-panel cleanup failed: Room cleanup (Error)',
+    );
+    expect(state.safety.cleanupFailed).toBe(true);
+    expect(state.report.status).toBe('failed');
+    expect(state.report.stages[0]).toMatchObject({
+      status: 'failed',
+      failureCount: 1,
+    });
+    expect(state.report.stages[0].error).toContain(ROOM.id);
+    expect(state.saves).toBe(1);
+    const early = { ...state, report: { status: 'running', stages: [] } };
+    const later = [];
+    guardPinnedPanelCleanup((label, action) => later.push(action), early)(
+      'Device',
+      async () => {
+        throw new Error('device');
+      },
+    );
+    await expect(later[0]()).rejects.toThrow();
+    expect(early.report.cleanupErrors).toHaveLength(1);
+  });
+
+  it('runs close then clear, even when close throws [RF-5]', async () => {
+    const { pinnedPanelTeardown } = await loadJourneys();
+    const { runPinnedPanelStageCleanup } = await loadArtifacts();
+    const order = [];
+    const client = {
+      close: async () => {
+        order.push('close');
+        throw new Error('close');
+      },
+    };
+    const device = {
+      clearApplicationData: async (id) => {
+        order.push(`clear:${id}`);
+      },
+    };
+    const failures = [];
+    await runPinnedPanelStageCleanup(
+      pinnedPanelTeardown(client, device),
+      failures,
+    );
+    expect(order).toEqual(['close', 'clear:eu.qwky.trinity']);
+    expect(failures).toHaveLength(1);
+  });
+
+  it('fails when the teardown steps are reordered or a step is dropped', async () => {
+    const { pinnedPanelTeardown } = await loadJourneys();
+    const client = { close: async () => {} };
+    const device = { clearApplicationData: async () => {} };
+    const steps = pinnedPanelTeardown(client, device);
+    expect(steps).toHaveLength(2);
+    const order = [];
+    const track = (name, fn) => async () => {
+      order.push(name);
+      return fn();
+    };
+    // The real order: close, then clear. A guard that let close run after
+    // clear, or dropped either step, must not be indistinguishable from this.
+    await track('close', steps[0])();
+    await track('clear', steps[1])();
+    expect(order).toEqual(['close', 'clear']);
+    const reversed = [];
+    await track('clear', steps[1])().then(() => reversed.push('clear'));
+    order.length = 0;
+    reversed.length = 0;
+    await steps[1]();
+    reversed.push('clear');
+    await steps[0]();
+    reversed.push('close');
+    expect(reversed).toEqual(['clear', 'close']);
+    expect(reversed).not.toEqual(['close', 'clear']);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Source rules: journeys, observer and artifacts                            */
+/* -------------------------------------------------------------------------- */
+
+const PANEL_FORBIDDEN_TOKENS = [
+  ['.click(', /\.click\(/u],
+  ['.focus(', /\.focus\(/u],
+  ['dispatchEvent', /dispatchEvent/u],
+  ['scrollIntoView', /scrollIntoView/u],
+  ['scrollTo(', /\.scrollTo\(/u],
+  ['setViewportSize', /setViewportSize/u],
+  ['value write', /\.value\s*=(?!=)|setRangeText|insertText/u],
+  [
+    'classList mutation',
+    /classList\.(?:add|remove|toggle|replace)\(|className\s*=(?!=)/u,
+  ],
+  ['setAttribute', /setAttribute|removeAttribute|toggleAttribute/u],
+  [
+    '.style. write',
+    /\.style\.[\w-]+\s*=(?!=)|\.style\.(?:setProperty|removeProperty)\(|\.style\s*=(?!=)/u,
+  ],
+  ['location =', /location\s*=(?!=)|location\.href\s*=(?!=)/u],
+  ['location.assign', /location\.(?:assign|replace)\(/u],
+  ['history.', /\bhistory\.\w+\(/u],
+  ['Input.dispatch', /Input\.dispatch/u],
+  ['input_method', /input_method/u],
+  ['dumpsys', /dumpsys/u],
+  ['non-zero retries', /retries:(?!\s*0\b)/u],
+  [
+    'CSS class or screenshot paint',
+    /classList\.contains\(['"](?:border|shadow|bg-)|shadow-overlay|\.screenshot\(|toHaveScreenshot|captureScreenshot/u,
+  ],
+];
+
+function assertNoPanelForbiddenTokens(source, name) {
+  for (const [token, pattern] of PANEL_FORBIDDEN_TOKENS)
+    expect(pattern.test(source), `${name} must not contain ${token}`).toBe(
+      false,
+    );
+  // The product's unpin( call is forbidden outside the 'pinned-unpin' selector string.
+  const stripped = source.split("'pinned-unpin'").join('');
+  expect(
+    /\bunpin\(/u.test(stripped),
+    `${name} must not call unpin( outside 'pinned-unpin'`,
+  ).toBe(false);
+}
+
+function assertPanelReadOnlyObserver(source) {
+  expect(source).not.toMatch(
+    /\.(?:click|focus|blur|dispatchEvent|scrollIntoView|scrollTo|scrollBy|submit|requestSubmit|select|setSelectionRange)\s*\(/u,
+  );
+  expect(source).not.toMatch(
+    /(?:\.scrollTop|\.scrollLeft|\.value|\.selectionStart|\.selectionEnd|\.innerHTML|\.textContent|\.style\.[\w]+)\s*=(?!=)/u,
+  );
+  expect(source).not.toMatch(
+    /Input\.dispatch|\.goto\s*\(|window\.location\s*=|location\.assign\s*\(|\.style\.(?:setProperty|removeProperty)\s*\(|appendChild|insertBefore|replaceChildren/u,
+  );
+}
+
+/** Every `waitForNativeShellState` call carries an explicit finite bound argument. */
+function assertPanelBoundedWaits(source, name) {
+  const tree = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true);
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const called = node.expression.getText(tree).split('.').at(-1);
+      if (called === 'waitForNativeShellState') {
+        const bound = node.arguments[4];
+        expect(
+          bound,
+          `${name}: ${node.getText(tree).slice(0, 80)} is bounded`,
+        ).toBeDefined();
+        expect(bound.getText(tree)).not.toMatch(/Infinity|undefined/u);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+}
+
+describe('Android pinned-message-panel source rules', () => {
+  it('keeps the journeys, observer and artifacts read-only, bounded and free of forbidden actions', () => {
+    for (const path of [JOURNEYS, OBSERVER_PATH, ARTIFACTS_PATH]) {
+      const source = read(path);
+      assertNoPanelForbiddenTokens(source, path);
+    }
+    for (const path of [JOURNEYS, OBSERVER_PATH]) {
+      assertPanelBoundedWaits(read(path), path);
+      assertPanelReadOnlyObserver(read(path));
+    }
+  });
+
+  it('fails the forbidden-token, unpin( and read-only rules under each effective mutation', () => {
+    const observer = read(OBSERVER_PATH);
+    for (const mutation of [
+      'element.click()',
+      'element.focus()',
+      'input.value = "x"',
+      'element.dispatchEvent(new MouseEvent("click"))',
+      'element.scrollIntoView()',
+      'element.scrollTo(0, 0)',
+      'page.setViewportSize({ width: 1, height: 1 })',
+      'device.adb("shell", "dumpsys", "input_method")',
+      'surface.classList.add("bg-popover")',
+      'surface.setAttribute("style", "background: white")',
+      'window.location = "/rooms"',
+      'history.pushState({}, "", "/rooms")',
+      'const report = { retries: 1 }',
+      'client.unpin(eventId)',
+    ])
+      expect(() =>
+        assertNoPanelForbiddenTokens(`${observer}\n${mutation}`, OBSERVER_PATH),
+      ).toThrow();
+    // The selector string itself never trips the unpin( rule.
+    expect(() =>
+      assertNoPanelForbiddenTokens(observer, OBSERVER_PATH),
+    ).not.toThrow();
+    for (const mutation of [
+      'element.click()',
+      'input.focus()',
+      'row.scrollTo(0, 0)',
+      'input.value = "x"',
+      'row.appendChild(node)',
+    ])
+      expect(() =>
+        assertPanelReadOnlyObserver(`${observer}\n${mutation}`),
+      ).toThrow();
+    expect(() =>
+      assertPanelBoundedWaits(
+        `${observer}\nawait waitForNativeShellState(read, accepts, "x", signal);`,
+        OBSERVER_PATH,
+      ),
+    ).toThrow();
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Hosted wiring and parity ledger                                           */
+/* -------------------------------------------------------------------------- */
+
+const PANEL_NX_COMMAND =
+  '--suite=android.pinned-message-panel --timeout-ms=900000 --entrypoint=e2e/android/pinned-message-panel-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse';
+const PANEL_CI_LINE =
+  'if [ "${{ matrix.shard }}" = "3" ]; then echo \'pinned-message-panel-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:pinned-message-panel; fi';
+const PANEL_GATE_PATH =
+  "-path '*/android.pinned-message-panel/pinned-message-panel/publication-safe'";
+const PANEL_UPLOAD_IF =
+  "${{ !cancelled() && steps.android.outputs.pinned-message-panel-started == 'true' && steps.pinned-message-panel-artifact-gate.outputs.pinned-message-panel-safe == 'true' }}";
+
+function panelWiringInputs() {
+  return {
+    project: JSON.parse(read('e2e/android/project.json')),
+    pkg: JSON.parse(read('package.json')),
+    workflow: read('.github/workflows/ci.yml'),
+  };
+}
+
+/** Every hosted wiring rule for pinned-message-panel, as a pure function of the files' text. */
+function assertPanelWiring({ project, pkg, workflow }) {
+  const target = project.targets['pinned-message-panel'];
+  expect(target.cache).toBe(false);
+  expect(target.parallelism).toBe(false);
+  expect(target.dependsOn).toEqual([
+    { projects: ['trinity-android'], target: 'build-prebuilt' },
+  ]);
+  expect(target.options.command).toContain('web-bundle-manifest.mjs verify');
+  expect(target.options.command).toContain(PANEL_NX_COMMAND);
+  expect(pkg.scripts['e2e:android:pinned-message-panel']).toBe(
+    'node scripts/nx.mjs run trinity-e2e-android:pinned-message-panel',
+  );
+  const lines = workflow.split('\n').map((line) => line.trim());
+  const runner = lines.indexOf(PANEL_CI_LINE);
+  expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
+  expect(
+    lines.filter((line) =>
+      line.includes('trinity-e2e-android:pinned-message-panel'),
+    ),
+  ).toHaveLength(1);
+  const gate = workflow
+    .split('      - name: Gate Android pinned-message-panel diagnostics\n')[1]
+    ?.split('\n      - ')[0];
+  expect(gate).toBeDefined();
+  expect(gate).toContain('id: pinned-message-panel-artifact-gate');
+  expect(gate).toContain(
+    "if: ${{ !cancelled() && steps.android.outputs.pinned-message-panel-started == 'true' }}",
+  );
+  expect(gate).toContain(PANEL_GATE_PATH);
+  expect(gate).toContain(
+    'echo \'pinned-message-panel-safe=true\' >> "$GITHUB_OUTPUT"',
+  );
+  const upload = workflow
+    .split('\n      - uses: ./.github/actions/upload-playwright-diagnostics\n')
+    .find((step) => step.includes('surface: android-pinned-message-panel\n'));
+  expect(upload).toBeDefined();
+  expect(upload.split('\n')[0].trim()).toBe(`if: ${PANEL_UPLOAD_IF}`);
+  expect(upload).toContain(
+    'report-path: dist/.playwright/trinity-e2e-android/*/android.pinned-message-panel/**',
+  );
+}
+
+describe('Android pinned-message-panel hosted wiring and parity ledger', () => {
+  it('registers one serialized uncached target, script, registry suite and commands', async () => {
+    assertPanelWiring(panelWiringInputs());
+    const { RUNNER_E2E_SUITES } =
+      await import('../e2e/registry/suites/runners.mts');
+    const { E2E_PACKAGE_SCRIPTS, E2E_CI_ENTRYPOINTS } =
+      await import('../e2e/registry/commands.mts');
+    const suites = RUNNER_E2E_SUITES.filter(
+      (suite) => suite.id === 'android.pinned-message-panel',
+    );
+    expect(suites).toHaveLength(1);
+    expect(suites[0]).toMatchObject({
+      environment: 'android',
+      runner: 'node-test',
+      currentTarget: 'trinity-e2e-android:pinned-message-panel',
+      canonicalScript: 'e2e:android:pinned-message-panel',
+      availabilityPolicy: 'required',
+      ciTier: 'pull-request',
+      cachePolicy: 'never',
+      serializationKeys: ['android-avd', 'synapse'],
+    });
+    expect([...suites[0].sourceEntrypoints]).toEqual([
+      JOURNEYS,
+      'e2e/android/pinned-message-panel-contract.mts',
+      OBSERVER_PATH,
+      ARTIFACTS_PATH,
+    ]);
+    expect(
+      E2E_PACKAGE_SCRIPTS.filter(
+        (item) => item.name === 'e2e:android:pinned-message-panel',
+      ),
+    ).toEqual([
+      {
+        name: 'e2e:android:pinned-message-panel',
+        command: 'nx run trinity-e2e-android:pinned-message-panel',
+        kind: 'canonical',
+        suiteIds: ['android.pinned-message-panel'],
+      },
+    ]);
+    const entrypoints = E2E_CI_ENTRYPOINTS.filter((item) =>
+      item.suiteIds.includes('android.pinned-message-panel'),
+    );
+    expect(entrypoints).toHaveLength(1);
+    expect(entrypoints[0].tier).toBe('pull-request');
+    expect(entrypoints[0].command).toContain(
+      'if [ "${{ matrix.shard }}" = "3" ]',
+    );
+    expect(entrypoints[0].command).toContain(
+      'pnpm exec nx run trinity-e2e-android:pinned-message-panel',
+    );
+    expect(read(JOURNEYS)).toContain('timeout: 900_000');
+  });
+
+  it('fails the wiring guard for every effective mutation', () => {
+    const valid = panelWiringInputs();
+    const clone = () => structuredClone(valid);
+    const withTarget = (change) => {
+      const inputs = clone();
+      change(inputs.project.targets['pinned-message-panel']);
+      return inputs;
+    };
+    const withText = (key, from, to) => {
+      const inputs = clone();
+      expect(inputs[key]).toContain(from);
+      inputs[key] = inputs[key].replace(from, to);
+      return inputs;
+    };
+    for (const mutated of [
+      withTarget((target) => (target.cache = true)),
+      withTarget((target) => (target.parallelism = true)),
+      withTarget((target) => (target.dependsOn = [])),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            ' --resource=synapse',
+            '',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            'pinned-message-panel-journeys.mts',
+            'message-source-journeys.mts',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            '--timeout-ms=900000',
+            '--timeout-ms=90000',
+          )),
+      ),
+      (() => {
+        const inputs = clone();
+        delete inputs.pkg.scripts['e2e:android:pinned-message-panel'];
+        return inputs;
+      })(),
+      withText(
+        'workflow',
+        PANEL_CI_LINE,
+        PANEL_CI_LINE.replace('= "3"', '= "4"'),
+      ),
+      withText(
+        'workflow',
+        PANEL_CI_LINE,
+        PANEL_CI_LINE.replace('1200000', '600000'),
+      ),
+      withText('workflow', `${PANEL_CI_LINE}\n`, ''),
+      withText(
+        'workflow',
+        PANEL_GATE_PATH,
+        "-path '*/android.pinned-message-panel/publication-safe'",
+      ),
+      withText(
+        'workflow',
+        PANEL_UPLOAD_IF,
+        "${{ !cancelled() && steps.android.outputs.pinned-message-panel-started == 'true' }}",
+      ),
+    ])
+      expect(() => assertPanelWiring(mutated)).toThrow();
+    // The runner moved after the retained Playwright command.
+    const inputs = clone();
+    const lines = inputs.workflow.split('\n');
+    const index = lines.findIndex((line) => line.trim() === PANEL_CI_LINE);
+    const [line] = lines.splice(index, 1);
+    const retained = lines.findIndex((entry) =>
+      entry.includes('pnpm e2e:android --'),
+    );
+    lines.splice(retained + 1, 0, line);
+    inputs.workflow = lines.join('\n');
+    expect(() => assertPanelWiring(inputs)).toThrow();
+  });
+
+  it('documents exactly the 12 identities with their source lines and the 12/0 prose', () => {
+    const migration = read('e2e/android/MIGRATION.md');
+    const section = migration
+      .split('## Pinned-message panel journey')[1]
+      ?.split('\n## ')[0];
+    expect(section).toBeTruthy();
+    const rows = [
+      ...section.matchAll(
+        /^\| `([a-z-]+)` \| (\d+) \| direct \| [^\n]+ \| `(pinned-message-panel\.[^`]+)` \|$/gmu,
+      ),
+    ];
+    expect(rows.map((row) => row[3])).toEqual(ALL_IDENTITIES);
+    expect(rows.map((row) => Number(row[2]))).toEqual(STAGE.direct);
+    expect(rows.map((row) => row[1])).toEqual(
+      ALL_IDENTITIES.map(() => STAGE.id),
+    );
+    expect(section).toContain('12 direct + 0');
+    expect(section).toContain(PREDECESSOR_SHA256);
+    for (const hash of Object.values(SHARED_SHA256))
+      expect(section).toContain(hash);
+    expect(section).toContain('Suite `android.pinned-message-panel`');
+    expect(section).toContain('Predecessor status: enabled');
+    expect(section).toContain(
+      'Documented reinterpretations of the predecessor:',
+    );
+    expect(section).not.toContain('pnpm exec nx');
   });
 });

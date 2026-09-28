@@ -552,6 +552,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-unread'],
   },
   {
+    name: 'e2e:android:pinned-message-panel',
+    command: 'nx run trinity-e2e-android:pinned-message-panel',
+    kind: 'canonical',
+    suiteIds: ['android.pinned-message-panel'],
+  },
+  {
     name: 'e2e:android:message-spoiler',
     command: 'nx run trinity-e2e-android:message-spoiler',
     kind: 'canonical',
@@ -962,6 +968,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "3" ]; then echo \'message-spoiler-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-spoiler; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-spoiler'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "3" ]; then echo \'pinned-message-panel-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:pinned-message-panel; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.pinned-message-panel'],
   },
   {
     command:
