@@ -350,11 +350,19 @@ describe('Android Account client native actions', () => {
 
 describe('Android shared stage Account', () => {
   const sharedSuites = [
+    'message-swipe-journeys.mts',
     'room-access-policy-journeys.mts',
     'room-profile-settings-journeys.mts',
     'space-curation-create-join-journeys.mts',
     'space-settings-mobile-journeys.mts',
   ];
+  // message-swipe does not follow the case-based shape below: it drives three
+  // explicit `suite.shared.enter(...)` sites gated by `options.freshApp`
+  // (see `launch` in message-swipe-journeys.mts), not `entry.profile ?? X` /
+  // `const cases`. It gets its own pin further down.
+  const caseBasedSuites = sharedSuites.filter(
+    (name) => name !== 'message-swipe-journeys.mts',
+  );
 
   it('signs in once, then relaunches the host and proves the same Account', async () => {
     const { SharedStageAccount } =
@@ -404,7 +412,7 @@ describe('Android shared stage Account', () => {
         read(`e2e/android/${name}`).includes('new SharedStageAccount('),
     );
     expect(journeys.sort()).toEqual(sharedSuites);
-    for (const name of sharedSuites) {
+    for (const name of caseBasedSuites) {
       const text = read(`e2e/android/${name}`);
       expect(text.match(/new SharedStageAccount\(/gu), name).toHaveLength(1);
       // The runner attaches every stage through the shared Account.
@@ -435,5 +443,30 @@ describe('Android shared stage Account', () => {
         }
       }
     }
+
+    // message-swipe's own pin: exactly one shared Account, every
+    // `suite.shared.enter(...)` call carries the Pixel 5 profile, and
+    // `fresh: true` appears exactly once, only on the freshApp path.
+    const swipeName = 'message-swipe-journeys.mts';
+    const swipeText = read(`e2e/android/${swipeName}`);
+    expect(
+      swipeText.match(/new SharedStageAccount\(/gu),
+      swipeName,
+    ).toHaveLength(1);
+    const enters = swipeText.match(/suite\.shared\.enter\([^)]*\)/gu) ?? [];
+    expect(enters.length, swipeName).toBe(3);
+    for (const call of enters) {
+      expect(call, swipeName).toContain('PIXEL_5_ACCOUNT_PROFILE');
+    }
+    expect(swipeText.match(/fresh: true/gu), swipeName).toHaveLength(1);
+    const freshEnter = enters.find((call) => call.includes('fresh: true'));
+    expect(freshEnter, swipeName).toBeDefined();
+    const freshAppStart = swipeText.indexOf('if (options.freshApp) {');
+    const freshAppEnd = swipeText.indexOf('} else {', freshAppStart);
+    expect(freshAppStart, swipeName).toBeGreaterThan(-1);
+    expect(freshAppEnd, swipeName).toBeGreaterThan(freshAppStart);
+    const freshEnterPosition = swipeText.indexOf(freshEnter, freshAppStart);
+    expect(freshEnterPosition, swipeName).toBeGreaterThan(freshAppStart);
+    expect(freshEnterPosition, swipeName).toBeLessThan(freshAppEnd);
   });
 });
