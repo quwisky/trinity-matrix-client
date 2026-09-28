@@ -3092,6 +3092,13 @@ function assertJourneyRules(journeys) {
     ],
     'nativeSwipe',
   );
+  // Every gesture receipt that proves a gesture records the long-press margin.
+  expect(nativeSwipe).toContain(
+    'const { moves, durationMs, windowMs } = await proveGesture(context, events, plan, ending);',
+  );
+  expect(nativeSwipe).toContain(
+    'const proof = { name, plan, moves, durationMs, windowMs };',
+  );
   const nativePress = functionSource(journeys, 'nativePress');
   assertOrder(
     nativePress,
@@ -3103,8 +3110,29 @@ function assertJourneyRules(journeys) {
     ],
     'nativePress',
   );
-  expect(functionSource(journeys, 'nativeMoveHeld')).toContain(
-    "proveGesture(context, events, { from, to }, 'held')",
+  expect(nativePress).toContain(
+    "const { moves, windowMs } = await proveGesture(context, events, { from, to }, 'held');",
+  );
+  expect(nativePress).toContain(
+    'await receipt(context, `held-${name}`, { from, to, moves, windowMs, held: true });',
+  );
+  // M2: a held move polls the same trusted stream, and bound, that
+  // nativePress uses, until the held proof holds or the wait times out.
+  const nativeMoveHeld = functionSource(journeys, 'nativeMoveHeld');
+  assertOrder(
+    nativeMoveHeld,
+    [
+      /await touch\.moveTo\(to\);/u,
+      /waitForNativeShellState\(/u,
+      /passes\(\(value\) => assertNativeGesture\(value, \{ from, to \}, 'held'\)\)/u,
+      /`native \$\{name\} move held`/u,
+      /STYLE_MS/u,
+      /proveGesture\(context, events, \{ from, to \}, 'held'\)/u,
+    ],
+    'nativeMoveHeld',
+  );
+  expect(nativeMoveHeld).toContain(
+    'await receipt(context, `held-${name}`, { to, moves, windowMs, held: true });',
   );
   // The opened drawer's focused filter raises the soft keyboard; it is
   // dismissed before the closing drag measures the timeline.
@@ -3158,6 +3186,14 @@ function assertJourneyRules(journeys) {
       /context\.client\.record\('feasibility'/u,
     ],
     'probeCompositorPanning',
+  );
+  // M3: only the wait's own timeout reads as "no pan"; every other error
+  // (an aborted signal, a broken read) still propagates and fails closed.
+  expect(functionSource(journeys, 'probeCompositorPanning')).toContain(
+    "if (!(error instanceof Error) || !error.message.startsWith('Timed out waiting for'))",
+  );
+  expect(functionSource(journeys, 'probeCompositorPanning')).toContain(
+    'throw error;',
   );
   assertOrder(
     functionSource(journeys, 'dragTimeline'),
@@ -3441,12 +3477,35 @@ describe('Android message-swipe source rules', () => {
       `${journeys}\nawait client.swipeCurrent('.scroll', { direction: 'increase-scroll-top' });`,
       // The gesture is no longer proven as trusted native input.
       replace(
-        /const \{ moves, durationMs \} = await proveGesture\(context, events, plan, ending\);/u,
-        'const { moves, durationMs } = { moves: 0, durationMs: 0 };',
+        /const \{ moves, durationMs, windowMs \} = await proveGesture\(context, events, plan, ending\);/u,
+        'const { moves, durationMs, windowMs } = { moves: 0, durationMs: 0, windowMs: 0 };',
       ),
       replace(
-        /const \{ moves \} = await proveGesture\(context, events, \{ from, to \}, 'held'\);/u,
+        /const \{ moves, windowMs \} = await proveGesture\(context, events, \{ from, to \}, 'held'\);/u,
         'const moves = 0;',
+      ),
+      // I3: a gesture receipt drops the long-press margin it proved.
+      replace(
+        /const proof = \{ name, plan, moves, durationMs, windowMs \};/u,
+        'const proof = { name, plan, moves, durationMs };',
+      ),
+      replace(
+        /await receipt\(context, `held-\$\{name\}`, \{ from, to, moves, windowMs, held: true \}\);/u,
+        'await receipt(context, `held-${name}`, { from, to, moves, held: true });',
+      ),
+      replace(
+        /await receipt\(context, `held-\$\{name\}`, \{ to, moves, windowMs, held: true \}\);/u,
+        'await receipt(context, `held-${name}`, { to, moves, held: true });',
+      ),
+      // M2: a held move reads pointer events once instead of polling for the proof.
+      replace(
+        /passes\(\(value\) => assertNativeGesture\(value, \{ from, to \}, 'held'\)\)/u,
+        '() => true',
+      ),
+      // M3: every error, not just the wait's timeout, is read as "no pan".
+      replace(
+        /      if \(!\(error instanceof Error\) \|\| !error\.message\.startsWith\('Timed out waiting for'\)\)\n        throw error;\n/u,
+        '',
       ),
       // A failed gesture proof leaves no diagnosable unmet-gesture artifact.
       replace(

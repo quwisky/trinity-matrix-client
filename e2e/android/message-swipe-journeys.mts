@@ -585,6 +585,7 @@ interface GestureProof {
   readonly plan: GesturePlan;
   readonly moves: number;
   readonly durationMs: number;
+  readonly windowMs: number;
 }
 
 /** A complete native swipe, proven as trusted device input reaching the renderer. */
@@ -601,8 +602,8 @@ async function nativeSwipe(context: MessageSwipeStageContext, name: string, from
     STYLE_MS,
   );
   const plan = { from, to };
-  const { moves, durationMs } = await proveGesture(context, events, plan, ending);
-  const proof = { name, plan, moves, durationMs };
+  const { moves, durationMs, windowMs } = await proveGesture(context, events, plan, ending);
+  const proof = { name, plan, moves, durationMs, windowMs };
   await receipt(context, `gesture-${name}`, {
     ...proof,
     device: touch.log.flatMap((command) => command.phases.map(({ phase, device }) => ({ phase, device }))),
@@ -625,17 +626,29 @@ async function nativePress(context: MessageSwipeStageContext, name: string, from
     context.client.signal,
     STYLE_MS,
   );
-  const { moves } = await proveGesture(context, events, { from, to }, 'held');
-  await receipt(context, `held-${name}`, { from, to, moves, held: true });
+  const { moves, windowMs } = await proveGesture(context, events, { from, to }, 'held');
+  await receipt(context, `held-${name}`, { from, to, moves, windowMs, held: true });
   return touch;
 }
 
+/**
+ * Extends a held drag to a new point, then polls the same trusted pointer
+ * stream — the `nativePress` pattern and bound — until the held proof holds
+ * or the wait times out. A blind single read can catch the stream mid-move,
+ * before the renderer's next frame lands; the gesture itself is issued once.
+ */
 async function nativeMoveHeld(context: MessageSwipeStageContext, touch: NativeTouch, name: string,
   from: CssPoint, to: CssPoint): Promise<void> {
   await touch.moveTo(to);
-  const events = await readPointerEvents(context.client);
-  await proveGesture(context, events, { from, to }, 'held');
-  await receipt(context, `held-${name}`, { to, moves: events.length - 1, held: true });
+  const events = await waitForNativeShellState(
+    () => readPointerEvents(context.client),
+    passes((value) => assertNativeGesture(value, { from, to }, 'held')),
+    `native ${name} move held`,
+    context.client.signal,
+    STYLE_MS,
+  );
+  const { moves, windowMs } = await proveGesture(context, events, { from, to }, 'held');
+  await receipt(context, `held-${name}`, { to, moves, windowMs, held: true });
 }
 
 async function nativeRelease(context: MessageSwipeStageContext, touch: NativeTouch,
@@ -889,13 +902,22 @@ async function probeCompositorPanning(context: MessageSwipeStageContext,
   let during = before;
   try {
     await touch.press(from, to);
-    const panned = await waitForNativeShellState(
-      () => readSwipeView(context.client, targets, { description: 'held vertical pan' }),
-      (value) => value.scroll.scrollTop !== before,
-      'the held vertical drag panned the timeline',
-      context.client.signal,
-      SCROLL_MS,
-    ).catch(() => null);
+    let panned: SwipeViewObservation | null;
+    try {
+      panned = await waitForNativeShellState(
+        () => readSwipeView(context.client, targets, { description: 'held vertical pan' }),
+        (value) => value.scroll.scrollTop !== before,
+        'the held vertical drag panned the timeline',
+        context.client.signal,
+        SCROLL_MS,
+      );
+    } catch (error) {
+      // Only the wait's own timeout means "no pan happened"; anything else
+      // (an aborted signal, a broken read) must not be read as that.
+      if (!(error instanceof Error) || !error.message.startsWith('Timed out waiting for'))
+        throw error;
+      panned = null;
+    }
     during = panned?.scroll.scrollTop ?? before;
     events = await readPointerEvents(context.client);
   } finally {
