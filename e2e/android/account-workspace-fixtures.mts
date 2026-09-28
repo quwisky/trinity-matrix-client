@@ -121,6 +121,7 @@ type WorkspaceRoomStateEventType =
   | 'm.room.history_visibility'
   | 'm.room.join_rules'
   | 'm.room.name'
+  | 'm.room.pinned_events'
   | 'm.room.power_levels'
   | 'm.room.tombstone'
   | 'm.room.topic'
