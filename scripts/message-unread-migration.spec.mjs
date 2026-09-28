@@ -862,6 +862,34 @@ describe('Android message-unread trajectory classifier', () => {
       ...settle(80, 138.3),
     ];
     expect(k(animatedReaim)).toBe('ambiguous');
+    expect(k(animatedReaim)).not.toBe('automatic');
+    // a re-aim that is not smooth-shaped leaves an instant jump automatic:
+    // 3 frames inside 32 ms...
+    const fastReaim = [
+      ...still(40, 298.7),
+      ...at([
+        [640, 42.7],
+        [656, 42.7],
+        [672, 80],
+        [688, 110],
+        [704, 138.3],
+      ]),
+      ...settle(80, 138.3),
+    ];
+    expect(k(fastReaim)).toBe('automatic');
+    // ...or 3 frames where one step covers 97 % of the re-aim
+    const steppedReaim = [
+      ...still(40, 298.7),
+      ...at([
+        [640, 42.7],
+        [656, 42.7],
+        [700, 43.9],
+        [750, 137.1],
+        [800, 138.3],
+      ]),
+      ...settle(80, 138.3),
+    ];
+    expect(k(steppedReaim)).toBe('automatic');
   });
   it('fails each negative control', async () => {
     const c = await loadContract();
