@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -1660,6 +1661,160 @@ describe('Android message-unread diagnostics safety', () => {
     expect(() =>
       messageUnreadSecrets(STAGE.id, { ...ARTIFACT_IDS, texts: [''] }),
     ).toThrow();
+  });
+
+  it('rethrows stage failures to the job log without identifiers or assertion values [I2]', async () => {
+    const { messageUnreadSecrets } = await loadArtifacts();
+    const { redactStageFailure, redactCleanupFailure } = await loadJourneys();
+    const { AssertionError } = await import('node:assert');
+    const secrets = messageUnreadSecrets(STAGE.id, ARTIFACT_IDS);
+    const segment = Buffer.from(ROOM_A.id).toString('base64url');
+    const OTHER_ID = '$Unread_other';
+    const failure = new AssertionError({
+      actual: '$Unread_root',
+      expected: OTHER_ID,
+      operator: 'strictEqual',
+      message: 'The thread root is the arranged unread event',
+    });
+    const leaked = new Error(
+      `GET /rooms/${encodeURIComponent(ROOM_A.id)}/messages for ${READER.userId} at /rooms/${segment} on $Unread_root body ${SEEN_BODY}`,
+    );
+    const error = redactStageFailure(
+      STAGE.id,
+      [new AggregateError([failure, leaked], 'Native action failed')],
+      secrets,
+    );
+    expect(error).not.toBeInstanceOf(AggregateError);
+    expect(Object.keys(error)).toEqual([]);
+    expect(error.message).toContain(
+      'Android message-unread divider-jump failed',
+    );
+    expect(error.message).toContain(
+      'The thread root is the arranged unread event',
+    );
+    expect(error.message).toContain('[REDACTED]');
+    for (const value of [
+      ROOM_A.id,
+      encodeURIComponent(ROOM_A.id),
+      segment,
+      '$Unread_root',
+      READER.userId,
+      SEEN_BODY,
+      'trn-unread-0a1b2cu',
+    ])
+      expect(error.message).not.toContain(value);
+    // Node appends an assertion's actual/expected values to a custom message,
+    // contiguous or as an interleaved character diff depending on the
+    // terminal. The rethrow keeps exactly the first line, so no fragment of
+    // that block reaches the job log, nor does any unregistered event-id shape.
+    const [firstLine, ...appended] = failure.message.split('\n');
+    expect(firstLine).toBe('The thread root is the arranged unread event');
+    expect(appended.join('\n').trim()).not.toBe('');
+    expect(error.message.split('\n')).toContain(`AssertionError: ${firstLine}`);
+    for (const fragment of appended.map((line) => line.trim()))
+      if (fragment.length >= 3) expect(error.message).not.toContain(fragment);
+    expect(error.message).not.toContain(OTHER_ID);
+    expect(error.message).not.toContain('actual');
+    const unregistered = '$SJXdpxxWrrm9mq1XxwAx1Kq-JhfVCWzpxntFokS4Ox4';
+    const shaped = redactStageFailure(
+      STAGE.id,
+      [
+        new Error(`Event ${unregistered} already in timeline`),
+        (() => {
+          try {
+            assert.equal(unregistered, OTHER_ID);
+          } catch (generated) {
+            return generated;
+          }
+        })(),
+        (() => {
+          try {
+            assert.deepEqual({ event_id: '$x' }, { event_id: '$y' }, 'Fields');
+          } catch (diffed) {
+            return diffed;
+          }
+        })(),
+      ],
+      {},
+    );
+    expect(shaped.message).toBe(
+      'Android message-unread divider-jump failed\nError: Event [REDACTED] already in timeline\nAssertionError: strictEqual assertion failed\nAssertionError: Fields',
+    );
+    const cleanup = redactCleanupFailure(
+      'fixtures',
+      Object.assign(new Error(`leave ${ROOM_A.id}`), { status: 403 }),
+    );
+    expect(cleanup.message).toBe(
+      'Message-unread cleanup failed: fixtures (Error HTTP 403)',
+    );
+    const journey = read(JOURNEYS);
+    expect(journey).toContain(
+      'throw redactStageFailure(entry.id, failures, secrets);',
+    );
+    expect(journey).not.toMatch(/throw new AggregateError\(failures/u);
+    expect(journey).not.toMatch(/throw failures\[0\]/u);
+    const guardStart = journey.indexOf(
+      'export function guardMessageUnreadCleanup',
+    );
+    expect(guardStart).toBeGreaterThan(-1);
+    const guardBody = journey.slice(
+      guardStart,
+      journey.indexOf('\n}', guardStart),
+    );
+    expect(guardBody).toContain('throw redactCleanupFailure(label, error);');
+    expect(guardBody).not.toMatch(/throw error;/u);
+    // Removing the redaction leaks the identifiers again.
+    expect(redactStageFailure(STAGE.id, [leaked], {}).message).toContain(
+      '$Unread_root',
+    );
+  });
+
+  it('marks a failed guarded cleanup, blocks publication and rethrows an id-free error [I2]', async () => {
+    const { guardMessageUnreadCleanup } = await loadJourneys();
+    const registered = [];
+    const state = {
+      safety: {
+        unsafeSecrets: false,
+        cleanupFailed: false,
+        scrubFailed: false,
+      },
+      report: {
+        status: 'passed',
+        stages: [{ status: 'passed', failureCount: 0 }],
+      },
+      saves: 0,
+      async save() {
+        this.saves++;
+      },
+    };
+    const guarded = guardMessageUnreadCleanup(
+      (label, action) => registered.push({ label, action }),
+      state,
+    );
+    guarded('Room cleanup', async () => {
+      throw new Error(`forget ${ROOM_A.id}`);
+    });
+    await expect(registered[0].action()).rejects.toThrow(
+      'Message-unread cleanup failed: Room cleanup (Error)',
+    );
+    expect(state.safety.cleanupFailed).toBe(true);
+    expect(state.report.status).toBe('failed');
+    expect(state.report.stages[0]).toMatchObject({
+      status: 'failed',
+      failureCount: 1,
+    });
+    expect(state.report.stages[0].error).toContain(ROOM_A.id);
+    expect(state.saves).toBe(1);
+    const early = { ...state, report: { status: 'running', stages: [] } };
+    const later = [];
+    guardMessageUnreadCleanup((label, action) => later.push(action), early)(
+      'Device',
+      async () => {
+        throw new Error('device');
+      },
+    );
+    await expect(later[0]()).rejects.toThrow();
+    expect(early.report.cleanupErrors).toHaveLength(1);
   });
 
   it('rejects every raw, escaped, encoded, sliced and base64url identifier, credential and token', async () => {
