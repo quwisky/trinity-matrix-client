@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join, posix, resolve } from 'node:path';
+import { basename, dirname, join, posix, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
@@ -26,7 +26,11 @@ const loadFixture = () => import('../e2e/android/message-unread-fixture.mts');
 const loadArtifacts = () =>
   import('../e2e/android/message-unread-artifacts.mts');
 const loadClient = () => import('../e2e/android/account-workspace-client.mts');
+const loadJourneys = () => import('../e2e/android/message-unread-journeys.mts');
 
+const JOURNEYS = 'e2e/android/message-unread-journeys.mts';
+const OBSERVER_PATH = 'e2e/android/message-unread-observer.mts';
+const FIXTURE_PATH = 'e2e/android/message-unread-fixture.mts';
 const ARTIFACTS = 'e2e/android/message-unread-artifacts.mts';
 
 /** The predecessor working-tree file, pinned by SHA-256. */
@@ -1843,5 +1847,1023 @@ describe('Android message-unread diagnostics safety', () => {
     expect(read(ARTIFACTS)).toContain(
       'redactMatrixIdentifiers(redactSecretText(text, secrets))',
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Native journey against a simulated installed app [RF-1][RF-4][RF-5]        */
+/* -------------------------------------------------------------------------- */
+
+const UNREAD_READER = {
+  userId: '@unread-journey-reader:localhost',
+  username: 'unread-journey-reader',
+  password: 'unread-journey-reader-secret-pw',
+};
+const UNREAD_MEMBER = {
+  userId: '@unread-journey-member:localhost',
+  username: 'unread-journey-member',
+  password: 'unread-journey-member-secret-pw',
+};
+const UNREAD_ROOM_A_ID = '!Unread_Journey_A:localhost';
+const UNREAD_ROOM_B_ID = '!Unread_Journey_B:localhost';
+
+const SUFFIXES = [
+  'room-ready',
+  'divider-text',
+  'one-thread-connector',
+  'connector-above',
+  'connector-below',
+  'divider-styled',
+  'jump-visible',
+  'jump-hidden',
+  'smooth-trajectory',
+  'reduced-motion-query',
+  'jump-visible-at-latest',
+  'reduced-jump-hidden',
+  'reduced-scrolled',
+  'automatic-only',
+];
+
+const stillFrames = (n, top) =>
+  Array.from({ length: n }, (_, i) => [i * 16, top, false]);
+const pathFrames = (start, tops, inView = false) =>
+  tops.map((top, i) => [(start + i) * 16, top, inView]);
+const tailFrames = (from, n, top, inView = true) =>
+  Array.from({ length: n }, (_, i) => [(from + i) * 16, top, inView]);
+const SMOOTH_TRAJECTORY = [
+  ...stillFrames(40, 298.67),
+  ...pathFrames(40, [298.2, 270, 187, 153, 106, 80]),
+  ...pathFrames(46, [80, 138, 138.3]),
+  ...tailFrames(49, 60, 137.5),
+];
+const AUTOMATIC_TRAJECTORY = [
+  ...stillFrames(40, 298.67),
+  ...pathFrames(40, [43, 43, 43, 43, 80, 80, 80, 138, 138.3]),
+  ...tailFrames(49, 60, 138.3),
+];
+
+const UNREAD_BOX = (top, height = 24) => ({
+  left: 16,
+  top,
+  right: 377,
+  bottom: top + height,
+  width: 361,
+  height,
+});
+const UNREAD_SCROLLER_BOX = {
+  left: 0,
+  top: 56,
+  right: 393,
+  bottom: 456,
+  width: 393,
+  height: 400,
+};
+
+/** The unread view the simulated app reports, given only its own phase state. */
+function unreadViewFor(state) {
+  if (state.room === null) {
+    return {
+      scroller: null,
+      divider: null,
+      jump: { count: 0, visible: false, box: null },
+      latest: { count: 0, visible: false, box: null },
+      reducedMotion: state.reducedMotionApplied,
+    };
+  }
+  const divider = (aboveScreen) => ({
+    count: 1,
+    textContent: 'New messages',
+    innerText: 'NEW MESSAGES',
+    box: aboveScreen ? UNREAD_BOX(-40) : UNREAD_BOX(200),
+    connectorCount: 1,
+    above: 10,
+    below: 10,
+    display: 'flex',
+    alignItems: 'center',
+    fontWeight: '600',
+    ruleFlexGrow: '1',
+  });
+  const pill = (visible, top = 225) => ({
+    count: visible ? 1 : 0,
+    visible,
+    box: visible ? UNREAD_BOX(top, 44) : null,
+  });
+  const scroller = (atBottom) =>
+    atBottom
+      ? { top: 400, height: 800, clientHeight: 400, box: UNREAD_SCROLLER_BOX }
+      : { top: 100, height: 800, clientHeight: 400, box: UNREAD_SCROLLER_BOX };
+
+  if (state.room === 'motion') {
+    const tapped = state.jumpTapped.motion;
+    return {
+      scroller: scroller(false),
+      divider: divider(!tapped),
+      jump: pill(!tapped),
+      latest: pill(false),
+      reducedMotion: false,
+    };
+  }
+  // state.room === 'reduced'
+  if (!state.jumpTapped.reduced1)
+    return {
+      scroller: scroller(false),
+      divider: divider(true),
+      jump: pill(true),
+      latest: pill(false),
+      reducedMotion: state.reducedMotionApplied,
+    };
+  if (!state.latestTapped)
+    return {
+      scroller: scroller(false),
+      divider: divider(false),
+      jump: pill(false),
+      latest: pill(true, 599),
+      reducedMotion: state.reducedMotionApplied,
+    };
+  if (!state.jumpTapped.reduced2)
+    return {
+      scroller: scroller(true),
+      divider: divider(false),
+      jump: pill(true),
+      latest: pill(false),
+      reducedMotion: state.reducedMotionApplied,
+    };
+  return {
+    scroller: scroller(false),
+    divider: divider(false),
+    jump: pill(false),
+    latest: pill(false),
+    reducedMotion: state.reducedMotionApplied,
+  };
+}
+
+function appliedUnreadProfileFor(state, faults) {
+  const width =
+    state.launch === 'relaunch' && faults.relaunchWidth412 ? 412 : 393;
+  return {
+    innerWidth: width,
+    innerHeight: 727,
+    devicePixelRatio: 2.75,
+    coarsePointer: true,
+    hoverNone: true,
+    platform: 'android',
+  };
+}
+
+/** A minimal simulated installed app: only the phases the journey drives through. */
+async function simulatedUnreadApp(faults = {}, directory) {
+  const { unreadViewExpression, appliedProfileExpression } =
+    await loadObserver();
+  const UNREAD_VIEW_EXPR = unreadViewExpression();
+  const APPLIED_PROFILE_EXPR = appliedProfileExpression();
+  const controller = new AbortController();
+  const state = {
+    actions: [],
+    written: [],
+    navigationMode: faults.navigationMode ?? '2',
+    animator: 'null',
+    launch: null,
+    reducedMotionApplied: false,
+    room: null,
+    jumpTapped: { motion: false, reduced1: false, reduced2: false },
+    latestTapped: false,
+    rooms: {
+      motion: { id: UNREAD_ROOM_A_ID, events: [], fullyRead: undefined },
+      reduced: { id: UNREAD_ROOM_B_ID, events: [], fullyRead: undefined },
+    },
+  };
+  let eventCounter = 0;
+  let roomBFullyReadCalls = 0;
+  let samplerCalls = 0;
+  const roomById = (id) =>
+    id === UNREAD_ROOM_A_ID ? state.rooms.motion : state.rooms.reduced;
+
+  const client = {
+    device: {
+      adb: async (...args) => {
+        state.actions.push(`adb:${args.slice(1).join(' ')}`);
+        const [, , op, scope, key] = args;
+        if (op === 'get' && scope === 'secure' && key === 'navigation_mode')
+          return state.navigationMode;
+        if (
+          op === 'get' &&
+          scope === 'global' &&
+          key === 'animator_duration_scale'
+        )
+          return state.animator;
+        if (
+          op === 'put' &&
+          scope === 'global' &&
+          key === 'animator_duration_scale'
+        ) {
+          state.animator = args[5];
+          if (args[5] === '0')
+            state.reducedMotionApplied = !faults.neverReduced;
+          return '';
+        }
+        if (
+          op === 'delete' &&
+          scope === 'global' &&
+          key === 'animator_duration_scale'
+        ) {
+          state.animator = 'null';
+          state.reducedMotionApplied = false;
+          return '';
+        }
+        throw new Error(`Unmodelled simulated adb ${args.join(' ')}`);
+      },
+      clearApplicationData: async () => {},
+    },
+    signal: controller.signal,
+    webview: {
+      diagnostics: {
+        send: async (_method, { expression }) => {
+          if (expression === UNREAD_VIEW_EXPR)
+            return { result: { value: unreadViewFor(state) } };
+          if (expression === APPLIED_PROFILE_EXPR)
+            return {
+              result: { value: appliedUnreadProfileFor(state, faults) },
+            };
+          if (
+            expression ===
+            "matchMedia('(prefers-reduced-motion: reduce)').matches"
+          )
+            return { result: { value: state.reducedMotionApplied } };
+          if (expression.includes('Object.defineProperty(window, key')) {
+            samplerCalls++;
+            return { result: { value: true } };
+          }
+          if (expression.includes('s.samples.slice()')) {
+            const samples =
+              samplerCalls <= 1
+                ? SMOOTH_TRAJECTORY
+                : samplerCalls === 2
+                  ? SMOOTH_TRAJECTORY
+                  : AUTOMATIC_TRAJECTORY;
+            return { result: { value: { done: true, samples } } };
+          }
+          throw new Error(`Unmodelled simulated evaluate: ${expression}`);
+        },
+      },
+    },
+    async reset(profile) {
+      state.actions.push(`reset:${profile.width}`);
+      state.launch = 'reset';
+    },
+    async relaunch(profile) {
+      state.actions.push(`relaunch:${profile.width}`);
+      state.launch = 'relaunch';
+    },
+    async login() {
+      state.actions.push('login');
+    },
+    async hideKeyboard() {
+      state.actions.push('hideKeyboard');
+    },
+    async visible(_selector, filter = {}) {
+      return {
+        text: filter.text ?? '',
+        visible: true,
+        rect: { x: 0, y: 0, width: 10, height: 10, bottom: 10, right: 10 },
+      };
+    },
+    async tapCurrent(selector, filter = {}) {
+      state.actions.push(
+        `tap:${selector}${filter.text ? `|${filter.text}` : ''}`,
+      );
+      if (selector === '[data-testid="rail-rooms"]') return;
+      if (selector === '.channel') {
+        state.room = filter.text;
+        return;
+      }
+      if (selector === '[data-testid="jump-to-unread"]') {
+        if (state.room === 'motion') state.jumpTapped.motion = true;
+        else if (!state.jumpTapped.reduced1) state.jumpTapped.reduced1 = true;
+        else state.jumpTapped.reduced2 = true;
+        return;
+      }
+      if (selector === '[data-testid="jump-to-latest"]') {
+        state.latestTapped = true;
+        return;
+      }
+      throw new Error(`Unmodelled simulated tap ${selector}`);
+    },
+    async record(name, value) {
+      state.written.push({ name, value });
+      if (directory) {
+        const path = join(directory, `${name}.json`);
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+      }
+    },
+    async capture() {},
+  };
+
+  const fixtures = {
+    async account(role) {
+      return role.includes('member')
+        ? { ...UNREAD_MEMBER }
+        : { ...UNREAD_READER };
+    },
+    async createRoom(_account, content) {
+      const key = content.name.endsWith('-motion') ? 'motion' : 'reduced';
+      return { id: state.rooms[key].id, name: key };
+    },
+    async join() {},
+    async sendMessage(account, roomId, body) {
+      const room = roomById(roomId);
+      const eventId = `$unread-evt-${++eventCounter}`;
+      room.events.push({
+        type: 'm.room.message',
+        event_id: eventId,
+        room_id: roomId,
+        sender: account.userId,
+        content: { msgtype: 'm.text', body },
+      });
+      return eventId;
+    },
+    async roomMessages(_account, roomId) {
+      const room = roomById(roomId);
+      return {
+        chunk: [
+          ...room.events,
+          {
+            type: 'm.room.create',
+            event_id: '$create',
+            room_id: roomId,
+            sender: UNREAD_READER.userId,
+            state_key: '',
+            content: {},
+          },
+        ].reverse(),
+        start: 's',
+        end: 'e',
+      };
+    },
+  };
+
+  const unreadFixtures = {
+    async setReadMarkers(_account, roomId, eventId) {
+      roomById(roomId).fullyRead = eventId;
+    },
+    async sendThreadReply(account, roomId, _transactionId, rootId) {
+      const room = roomById(roomId);
+      const eventId = `$unread-evt-${++eventCounter}`;
+      room.events.push({
+        type: 'm.room.message',
+        event_id: eventId,
+        room_id: roomId,
+        sender: account.userId,
+        content: {
+          msgtype: 'm.text',
+          body: 'Thread after the unread marker',
+          'm.relates_to': {
+            rel_type: 'm.thread',
+            event_id: rootId,
+            'm.in_reply_to': { event_id: rootId },
+          },
+        },
+      });
+      return eventId;
+    },
+    async fullyRead(_account, roomId) {
+      if (roomId === UNREAD_ROOM_B_ID) {
+        roomBFullyReadCalls++;
+        if (faults.roomBFullyReadWrongFirst && roomBFullyReadCalls === 2)
+          return '$unread-wrong-marker';
+        if (faults.roomBFullyReadWrongSecond && roomBFullyReadCalls === 3)
+          return '$unread-wrong-marker';
+      }
+      return roomById(roomId).fullyRead;
+    },
+    tokens: () => ['unread-fake-token'],
+  };
+
+  return { client, fixtures, unreadFixtures, state, controller };
+}
+
+/** Builds one simulated stage context and cleans up its real temp directory. */
+async function withSimulatedUnreadStage(faults, run) {
+  const { MESSAGE_UNREAD_STAGES } = await loadContract();
+  const directory = await mkdtemp(join(tmpdir(), 'trinity-unread-journey-'));
+  try {
+    const app = await simulatedUnreadApp(faults, directory);
+    const context = {
+      entry: MESSAGE_UNREAD_STAGES[0],
+      records: [],
+      identities: new Set(),
+      receipts: 0,
+      client: app.client,
+      fixtures: app.fixtures,
+      unreadFixtures: app.unreadFixtures,
+      secrets: {},
+      safety: { unsafeSecrets: true, cleanupFailed: false, scrubFailed: false },
+      native: false,
+      animatorApplied: false,
+      animatorPrior: 'null',
+      samplers: 0,
+      directory,
+      signal: app.controller.signal,
+      ledger: {
+        run: 'trn-unread-journey-0a1b2cu',
+        accounts: [],
+        rooms: [],
+        texts: [],
+        eventIds: [],
+        transactions: [],
+        tokens: [],
+      },
+    };
+    return await run({ context, state: app.state });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+describe('Android message-unread native journey against a simulated installed app', () => {
+  it('drives the exact native sequence and records all fourteen identities in order', async () => {
+    const { runDividerJump, restoreAnimatorDurationScale } =
+      await loadJourneys();
+    await withSimulatedUnreadStage({}, async ({ context, state }) => {
+      await runDividerJump(context);
+      await restoreAnimatorDurationScale(context.client, context.animatorPrior);
+      expect(context.records).toEqual(
+        SUFFIXES.map((s) => `message-unread.divider-jump.${s}`),
+      );
+      expect(state.actions).toEqual([
+        'adb:settings get secure navigation_mode',
+        'reset:393',
+        'login',
+        'hideKeyboard',
+        'tap:[data-testid="rail-rooms"]',
+        'tap:.channel|motion',
+        'tap:[data-testid="jump-to-unread"]',
+        'adb:settings get global animator_duration_scale',
+        'adb:settings put global animator_duration_scale 0',
+        'relaunch:393',
+        'hideKeyboard',
+        'tap:[data-testid="rail-rooms"]',
+        'tap:.channel|reduced',
+        'tap:[data-testid="jump-to-unread"]',
+        'tap:[data-testid="jump-to-latest"]',
+        'tap:[data-testid="jump-to-unread"]',
+        'adb:settings delete global animator_duration_scale',
+        'adb:settings get global animator_duration_scale',
+      ]);
+    });
+  });
+
+  it('fails closed when the emulator is not in gesture navigation mode', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { navigationMode: '0' },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /navigation mode/u,
+        );
+      },
+    );
+  });
+
+  it('writes feasibility.json with feasible: false and rejects when the query never becomes true', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { neverReduced: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow();
+        const feasibility = JSON.parse(
+          await readFile(
+            join(context.directory, 'reduced-motion', 'feasibility.json'),
+            'utf8',
+          ),
+        );
+        expect(feasibility.feasible).toBe(false);
+      },
+    );
+  }, 25_000);
+
+  it('fails closed when Room B was read before the reduced-motion relaunch [RF-4]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { roomBFullyReadWrongFirst: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /Room B was read before the reduced-motion relaunch/u,
+        );
+      },
+    );
+  });
+
+  it('fails closed when Room B was read again right before it opens [RF-4]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { roomBFullyReadWrongSecond: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /Room B was read before the reduced-motion relaunch/u,
+        );
+      },
+    );
+  });
+
+  it('fails closed when the relaunched profile is not Pixel 5 [RF-5]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { relaunchWidth412: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /applied profile is Pixel 5/u,
+        );
+      },
+    );
+  });
+
+  it('restores animator_duration_scale before a throwing close, in teardown order [RF-1]', async () => {
+    const { restoreAnimatorDurationScale } = await loadJourneys();
+    const { runMessageUnreadStageCleanup } = await loadArtifacts();
+    const actions = [];
+    const client = {
+      device: {
+        adb: async (...args) => {
+          actions.push(`adb:${args.slice(1).join(' ')}`);
+          return args[2] === 'get' ? 'null' : '';
+        },
+      },
+      record: async () => {},
+      close: async () => {
+        actions.push('close');
+        throw new Error('client close failed');
+      },
+    };
+    const failures = [];
+    await runMessageUnreadStageCleanup(
+      [
+        async () => {
+          await restoreAnimatorDurationScale(client, 'null');
+        },
+        () => client.close(),
+        () => Promise.resolve(),
+      ],
+      failures,
+    );
+    expect(failures).toHaveLength(1);
+    expect(actions).toEqual([
+      'adb:settings delete global animator_duration_scale',
+      'adb:settings get global animator_duration_scale',
+      'close',
+    ]);
+  });
+
+  it('fails when the restored value does not read back exactly [RF-1]', async () => {
+    const { restoreAnimatorDurationScale } = await loadJourneys();
+    const client = {
+      device: { adb: async (...args) => (args[2] === 'get' ? '0.5' : '') },
+      record: async () => {},
+    };
+    await expect(restoreAnimatorDurationScale(client, 'null')).rejects.toThrow(
+      /animator_duration_scale restored/u,
+    );
+  });
+
+  it('restores a non-null prior value with put, not delete [RF-1]', async () => {
+    const { restoreAnimatorDurationScale } = await loadJourneys();
+    const actions = [];
+    const client = {
+      device: {
+        adb: async (...args) => {
+          actions.push(args.join(' '));
+          return args[2] === 'get' ? '1.0' : '';
+        },
+      },
+      record: async () => {},
+    };
+    await restoreAnimatorDurationScale(client, '1.0');
+    expect(
+      actions.some((a) => a.includes('put global animator_duration_scale 1.0')),
+    ).toBe(true);
+    expect(actions.some((a) => a.includes('delete'))).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Source rules: journeys, observer, fixture and artifacts                    */
+/* -------------------------------------------------------------------------- */
+
+const UNREAD_FORBIDDEN_TOKENS = [
+  ['.click(', /\.click\(/u],
+  ['.focus(', /\.focus\(/u],
+  ['dispatchEvent', /dispatchEvent/u],
+  ['scrollIntoView', /scrollIntoView/u],
+  ['scrollTo(', /\.scrollTo\(/u],
+  ['scrollTop =', /scrollTop\s*=[^=]/u],
+  ['setViewportSize', /setViewportSize/u],
+  ['emulateMedia', /emulateMedia/u],
+  ['setEmulatedMedia', /setEmulatedMedia/u],
+  ['input_method', /input_method/u],
+  ['dumpsys', /dumpsys/u],
+  ['new SharedStageAccount(', /new SharedStageAccount\(/u],
+  ['value write', /\.value\s*=(?!=)|setRangeText|insertText/u],
+  [
+    'classList mutation',
+    /classList\.(?:add|remove|toggle|replace)\(|className\s*=(?!=)/u,
+  ],
+  ['setAttribute', /setAttribute|removeAttribute|toggleAttribute/u],
+  [
+    '.style. write',
+    /\.style\.[\w-]+\s*=(?!=)|\.style\.(?:setProperty|removeProperty)\(|\.style\s*=(?!=)/u,
+  ],
+  ['location =', /location\s*=(?!=)|location\.href\s*=(?!=)/u],
+  ['location.assign', /location\.(?:assign|replace)\(/u],
+  ['Input.dispatch', /Input\.dispatch/u],
+  // Unlike message-source, message-unread's REST arrangement legitimately
+  // seeds every message and the thread reply (D2), so REST text seeding is
+  // not itself forbidden here.
+  [
+    'CSS class or screenshot paint',
+    /classList\.contains\(['"](?:border|shadow|bg-)|shadow-overlay|\.screenshot\(|toHaveScreenshot|captureScreenshot/u,
+  ],
+  ['seedPreference', /seedPreference/u],
+  ['trinity-e2e-shared-secret', /trinity-e2e-shared-secret/u],
+  ['non-zero retries', /retries:(?!\s*0\b)/u],
+  // The sampler's one allowed definition is stripped before this pattern runs.
+  ['Object.defineProperty', /Object\.defineProperty\(/u],
+  ['.prototype. write', /\.prototype\.\w+\s*=[^=]/u],
+];
+
+const ALLOWED_SAMPLER_DEFINITION = 'Object.defineProperty(window, key';
+
+function assertNoUnreadForbiddenTokens(source, name) {
+  const stripped = source.split(ALLOWED_SAMPLER_DEFINITION).join('');
+  for (const [token, pattern] of UNREAD_FORBIDDEN_TOKENS)
+    expect(pattern.test(stripped), `${name} must not contain ${token}`).toBe(
+      false,
+    );
+}
+
+/** Every polling wait carries an explicit finite bound argument. */
+function assertUnreadBoundedWaits(source, name) {
+  const tree = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true);
+  const visit = (node) => {
+    if (ts.isCallExpression(node)) {
+      const called = node.expression.getText(tree).split('.').at(-1);
+      if (called === 'waitForNativeShellState' || called === 'waitElements') {
+        const bound = node.arguments[4];
+        expect(
+          bound,
+          `${name}: ${node.getText(tree).slice(0, 80)} is bounded`,
+        ).toBeDefined();
+        expect(bound.getText(tree)).not.toMatch(/Infinity|undefined/u);
+      }
+      if (called === 'readUnreadView' || called === 'readAppliedProfile') {
+        const options = node.arguments[1];
+        if (options)
+          expect(options.getText(tree), `${name}: bounded read`).toMatch(
+            /timeoutMs:\s*[A-Z_]+|timeoutMs,/u,
+          );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+}
+
+/** The house read-only observer rule, applied to the journeys too. */
+function assertUnreadReadOnlyObserver(source) {
+  const stripped = source.split(ALLOWED_SAMPLER_DEFINITION).join('');
+  expect(stripped).not.toMatch(
+    /\.(?:click|focus|blur|dispatchEvent|scrollIntoView|scrollTo|scrollBy|submit|requestSubmit|select|setSelectionRange)\s*\(/u,
+  );
+  expect(stripped).not.toMatch(
+    /(?:\.scrollTop|\.scrollLeft|\.value|\.selectionStart|\.selectionEnd|\.innerHTML|\.textContent|\.style\.[\w]+)\s*=(?!=)/u,
+  );
+  expect(stripped).not.toMatch(
+    /Input\.dispatch|\.goto\s*\(|window\.location\s*=|location\.assign\s*\(|\.style\.(?:setProperty|removeProperty)\s*\(|appendChild|insertBefore|replaceChildren/u,
+  );
+}
+
+describe('Android message-unread source rules', () => {
+  it('keeps the journeys, observer, fixture and artifacts read-only, bounded and free of forbidden actions', () => {
+    for (const path of [JOURNEYS, OBSERVER_PATH, FIXTURE_PATH, ARTIFACTS]) {
+      const source = read(path);
+      assertNoUnreadForbiddenTokens(source, path);
+    }
+    for (const path of [JOURNEYS, OBSERVER_PATH]) {
+      assertUnreadBoundedWaits(read(path), path);
+      assertUnreadReadOnlyObserver(read(path));
+    }
+    const observer = read(OBSERVER_PATH);
+    expect(observer).toContain('Object.defineProperty(window, key');
+  });
+
+  it('fails the forbidden-token and read-only rules under each effective mutation', () => {
+    const observer = read(OBSERVER_PATH);
+    for (const mutation of [
+      'element.click()',
+      'element.focus()',
+      'input.value = "x"',
+      'element.dispatchEvent(new MouseEvent("click"))',
+      'element.scrollIntoView()',
+      'element.scrollTo(0, 0)',
+      'scroller.scrollTop = 0',
+      'page.setViewportSize({ width: 1, height: 1 })',
+      'page.emulateMedia({ reducedMotion: "reduce" })',
+      'client.setEmulatedMedia(...)',
+      'device.adb("shell", "dumpsys", "input_method")',
+      'new SharedStageAccount(role)',
+      'surface.classList.add("bg-popover")',
+      'surface.setAttribute("style", "background: white")',
+      'window.location = "/rooms"',
+      'const report = { retries: 1 }',
+      'Object.defineProperty(navigator, "x", {})',
+      'Element.prototype.scrollIntoView = () => {}',
+    ])
+      expect(() =>
+        assertNoUnreadForbiddenTokens(
+          `${observer}\n${mutation}`,
+          OBSERVER_PATH,
+        ),
+      ).toThrow();
+    for (const mutation of [
+      'element.click()',
+      'input.focus()',
+      'row.scrollTo(0, 0)',
+      'input.value = "x"',
+      'row.appendChild(node)',
+    ])
+      expect(() =>
+        assertUnreadReadOnlyObserver(`${observer}\n${mutation}`),
+      ).toThrow();
+    for (const unbounded of [
+      'await waitForNativeShellState(read, accepts, "x", signal);',
+      'await client.waitElements(SHEET, accepts, "x");',
+    ])
+      expect(() =>
+        assertUnreadBoundedWaits(`${observer}\n${unbounded}`, OBSERVER_PATH),
+      ).toThrow();
+  });
+
+  it('never defines a property except the sampler window key', () => {
+    const observer = read(OBSERVER_PATH);
+    expect(() =>
+      assertNoUnreadForbiddenTokens(observer, OBSERVER_PATH),
+    ).not.toThrow();
+    const extra = observer.replace(
+      'Object.defineProperty(window, key, { value: state, writable: false, configurable: false, enumerable: false });',
+      "Object.defineProperty(window, key, { value: state, writable: false, configurable: false, enumerable: false });\n    Object.defineProperty(window, 'other', {});",
+    );
+    expect(extra).not.toBe(observer);
+    expect(() => assertNoUnreadForbiddenTokens(extra, OBSERVER_PATH)).toThrow();
+  });
+
+  it('restores animator_duration_scale before close and clearApplicationData, in source order [RF-1]', () => {
+    const journeys = read(JOURNEYS);
+    const runnerStart = journeys.indexOf(
+      'export async function runMessageUnreadSuite',
+    );
+    expect(runnerStart).toBeGreaterThan(-1);
+    const runner = journeys.slice(runnerStart);
+    const restoreIdx = runner.indexOf(
+      'await restoreAnimatorDurationScale(client, context.animatorPrior)',
+    );
+    const closeIdx = runner.indexOf('() => client.close()');
+    const clearIdx = runner.indexOf(
+      '() => device.clearApplicationData(APPLICATION_ID)',
+    );
+    expect(restoreIdx).toBeGreaterThan(-1);
+    expect(closeIdx).toBeGreaterThan(restoreIdx);
+    expect(clearIdx).toBeGreaterThan(closeIdx);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Hosted wiring and parity ledger                                           */
+/* -------------------------------------------------------------------------- */
+
+const UNREAD_NX_COMMAND =
+  '--suite=android.message-unread --timeout-ms=900000 --entrypoint=e2e/android/message-unread-journeys.mts --platform=android --bundle-manifest --resource=android-avd --resource=synapse';
+const UNREAD_CI_LINE =
+  'if [ "${{ matrix.shard }}" = "4" ]; then echo \'message-unread-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-unread; fi';
+const UNREAD_GATE_PATH =
+  "-path '*/android.message-unread/message-unread/publication-safe'";
+const UNREAD_UPLOAD_IF =
+  "${{ !cancelled() && steps.android.outputs.message-unread-started == 'true' && steps.message-unread-artifact-gate.outputs.message-unread-safe == 'true' }}";
+
+function unreadWiringInputs() {
+  return {
+    project: JSON.parse(read('e2e/android/project.json')),
+    pkg: JSON.parse(read('package.json')),
+    workflow: read('.github/workflows/ci.yml'),
+  };
+}
+
+/** Every hosted wiring rule for message-unread, as a pure function of the files' text. */
+function assertUnreadWiring({ project, pkg, workflow }) {
+  const target = project.targets['message-unread'];
+  expect(target.cache).toBe(false);
+  expect(target.parallelism).toBe(false);
+  expect(target.dependsOn).toEqual([
+    { projects: ['trinity-android'], target: 'build-prebuilt' },
+  ]);
+  expect(target.options.command).toContain('web-bundle-manifest.mjs verify');
+  expect(target.options.command).toContain(UNREAD_NX_COMMAND);
+  expect(pkg.scripts['e2e:android:message-unread']).toBe(
+    'node scripts/nx.mjs run trinity-e2e-android:message-unread',
+  );
+  const lines = workflow.split('\n').map((line) => line.trim());
+  const runner = lines.indexOf(UNREAD_CI_LINE);
+  expect(runner).toBeGreaterThan(-1);
+  expect(runner).toBeLessThan(
+    lines.findIndex((line) => line.includes('pnpm e2e:android --')),
+  );
+  expect(
+    lines.filter((line) => line.includes('trinity-e2e-android:message-unread')),
+  ).toHaveLength(1);
+  const gate = workflow
+    .split('      - name: Gate Android message-unread diagnostics\n')[1]
+    ?.split('\n      - ')[0];
+  expect(gate).toBeDefined();
+  expect(gate).toContain('id: message-unread-artifact-gate');
+  expect(gate).toContain(
+    "if: ${{ !cancelled() && steps.android.outputs.message-unread-started == 'true' }}",
+  );
+  expect(gate).toContain(UNREAD_GATE_PATH);
+  expect(gate).toContain(
+    'echo \'message-unread-safe=true\' >> "$GITHUB_OUTPUT"',
+  );
+  const upload = workflow
+    .split('\n      - uses: ./.github/actions/upload-playwright-diagnostics\n')
+    .find((step) => step.includes('surface: android-message-unread\n'));
+  expect(upload).toBeDefined();
+  expect(upload.split('\n')[0].trim()).toBe(`if: ${UNREAD_UPLOAD_IF}`);
+  expect(upload).toContain(
+    'report-path: dist/.playwright/trinity-e2e-android/*/android.message-unread/**',
+  );
+}
+
+describe('Android message-unread hosted wiring and parity ledger', () => {
+  it('registers one serialized uncached target, script, registry suite and commands', async () => {
+    assertUnreadWiring(unreadWiringInputs());
+    const { RUNNER_E2E_SUITES } =
+      await import('../e2e/registry/suites/runners.mts');
+    const { E2E_PACKAGE_SCRIPTS, E2E_CI_ENTRYPOINTS } =
+      await import('../e2e/registry/commands.mts');
+    const suites = RUNNER_E2E_SUITES.filter(
+      (suite) => suite.id === 'android.message-unread',
+    );
+    expect(suites).toHaveLength(1);
+    expect(suites[0]).toMatchObject({
+      environment: 'android',
+      runner: 'node-test',
+      currentTarget: 'trinity-e2e-android:message-unread',
+      canonicalScript: 'e2e:android:message-unread',
+      availabilityPolicy: 'required',
+      ciTier: 'pull-request',
+      cachePolicy: 'never',
+      serializationKeys: ['android-avd', 'synapse'],
+    });
+    expect([...suites[0].sourceEntrypoints]).toEqual([
+      JOURNEYS,
+      'e2e/android/message-unread-contract.mts',
+      OBSERVER_PATH,
+      FIXTURE_PATH,
+      ARTIFACTS,
+    ]);
+    expect(
+      E2E_PACKAGE_SCRIPTS.filter(
+        (item) => item.name === 'e2e:android:message-unread',
+      ),
+    ).toEqual([
+      {
+        name: 'e2e:android:message-unread',
+        command: 'nx run trinity-e2e-android:message-unread',
+        kind: 'canonical',
+        suiteIds: ['android.message-unread'],
+      },
+    ]);
+    const entrypoints = E2E_CI_ENTRYPOINTS.filter((item) =>
+      item.suiteIds.includes('android.message-unread'),
+    );
+    expect(entrypoints).toHaveLength(1);
+    expect(entrypoints[0].tier).toBe('pull-request');
+    expect(entrypoints[0].command).toContain(
+      'if [ "${{ matrix.shard }}" = "4" ]',
+    );
+    expect(entrypoints[0].command).toContain(
+      'pnpm exec nx run trinity-e2e-android:message-unread',
+    );
+    expect(read(JOURNEYS)).toContain('timeout: 900_000');
+  });
+
+  it('fails the wiring guard for every effective mutation', () => {
+    const valid = unreadWiringInputs();
+    const clone = () => structuredClone(valid);
+    const withTarget = (change) => {
+      const inputs = clone();
+      change(inputs.project.targets['message-unread']);
+      return inputs;
+    };
+    const withText = (key, from, to) => {
+      const inputs = clone();
+      expect(inputs[key]).toContain(from);
+      inputs[key] = inputs[key].replace(from, to);
+      return inputs;
+    };
+    for (const mutated of [
+      withTarget((target) => (target.cache = true)),
+      withTarget((target) => (target.parallelism = true)),
+      withTarget((target) => (target.dependsOn = [])),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            ' --resource=synapse',
+            '',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            'message-unread-journeys.mts',
+            'message-source-journeys.mts',
+          )),
+      ),
+      withTarget(
+        (target) =>
+          (target.options.command = target.options.command.replace(
+            '--timeout-ms=900000',
+            '--timeout-ms=90000',
+          )),
+      ),
+      (() => {
+        const inputs = clone();
+        delete inputs.pkg.scripts['e2e:android:message-unread'];
+        return inputs;
+      })(),
+      withText(
+        'workflow',
+        UNREAD_CI_LINE,
+        UNREAD_CI_LINE.replace('= "4"', '= "3"'),
+      ),
+      withText(
+        'workflow',
+        UNREAD_CI_LINE,
+        UNREAD_CI_LINE.replace('1200000', '600000'),
+      ),
+      withText('workflow', `${UNREAD_CI_LINE}\n`, ''),
+      withText(
+        'workflow',
+        UNREAD_GATE_PATH,
+        "-path '*/android.message-unread/publication-safe'",
+      ),
+      withText(
+        'workflow',
+        UNREAD_UPLOAD_IF,
+        "${{ !cancelled() && steps.android.outputs.message-unread-started == 'true' }}",
+      ),
+    ])
+      expect(() => assertUnreadWiring(mutated)).toThrow();
+    // The runner moved after the retained Playwright command.
+    const inputs = clone();
+    const lines = inputs.workflow.split('\n');
+    const index = lines.findIndex((line) => line.trim() === UNREAD_CI_LINE);
+    const [line] = lines.splice(index, 1);
+    const retained = lines.findIndex((entry) =>
+      entry.includes('pnpm e2e:android --'),
+    );
+    lines.splice(retained + 1, 0, line);
+    inputs.workflow = lines.join('\n');
+    expect(() => assertUnreadWiring(inputs)).toThrow();
+  });
+
+  it('documents exactly the 14 identities with their source lines and the 13/1 prose', () => {
+    const migration = read('e2e/android/MIGRATION.md');
+    const section = migration
+      .split('## Message-unread journey')[1]
+      ?.split('\n## ')[0];
+    expect(section).toBeTruthy();
+    const rows = [
+      ...section.matchAll(
+        /^\| `([a-z-]+)` \| ([^|]+) \| (direct|inherited) \| [^\n]+ \| `(message-unread\.[^`]+)` \|$/gmu,
+      ),
+    ];
+    expect(rows.map((row) => row[4])).toEqual(ALL_IDENTITIES);
+    expect(rows.map((row) => row[2].trim())).toEqual(
+      ledgerTuples().map((tuple) =>
+        tuple[0] === 'direct' ? String(tuple[1]) : `${tuple[1]}@${tuple[3]}`,
+      ),
+    );
+    expect(rows.map((row) => row[1])).toEqual(
+      ALL_IDENTITIES.map(() => STAGE.id),
+    );
+    expect(rows.map((row) => row[3])).toEqual(
+      ledgerTuples().map((tuple) => tuple[0]),
+    );
+    expect(section).toContain('13 direct + 1');
+    expect(section).toContain(PREDECESSOR_SHA256);
+    for (const hash of Object.values(SHARED_SHA256))
+      expect(section).toContain(hash);
+    expect(section).toContain('Suite `android.message-unread`');
+    expect(section).toContain('Predecessor status: enabled');
+    expect(section).toContain('reduced-motion/feasibility.json');
+    expect(section).not.toContain('pnpm exec nx');
   });
 });

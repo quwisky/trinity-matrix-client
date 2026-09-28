@@ -488,6 +488,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'oidc-login-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:oidc-login; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'security-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:security-settings; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'message-links-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 3300000 -- pnpm exec nx run trinity-e2e-android:message-links; fi
+            if [ "${{ matrix.shard }}" = "4" ]; then echo 'message-unread-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:message-unread; fi
             echo 'started=true' >> "$GITHUB_OUTPUT"
             TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm e2e:android -- --fail-on-flaky-tests --shard=${{ matrix.shard }}/6
 
@@ -599,6 +600,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_SPOILER_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-spoiler/message-spoiler/publication-safe' -print -quit)" ]; then
             echo 'message-spoiler-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-unread diagnostics
+        id: message-unread-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-unread-started == 'true' }}
+        env:
+          MESSAGE_UNREAD_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_UNREAD_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-unread/message-unread/publication-safe' -print -quit)" ]; then
+            echo 'message-unread-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - name: Gate Android message-swipe diagnostics
@@ -1090,6 +1101,13 @@ jobs:
           surface: android-message-spoiler
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-spoiler/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-unread-started == 'true' && steps.message-unread-artifact-gate.outputs.message-unread-safe == 'true' }}
+        with:
+          surface: android-message-unread
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-unread/**
 
       - uses: ./.github/actions/upload-playwright-diagnostics
         if: ${{ !cancelled() && steps.android.outputs.message-swipe-started == 'true' && steps.message-swipe-artifact-gate.outputs.message-swipe-safe == 'true' }}

@@ -546,6 +546,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     suiteIds: ['android.message-source'],
   },
   {
+    name: 'e2e:android:message-unread',
+    command: 'nx run trinity-e2e-android:message-unread',
+    kind: 'canonical',
+    suiteIds: ['android.message-unread'],
+  },
+  {
     name: 'e2e:android:message-spoiler',
     command: 'nx run trinity-e2e-android:message-spoiler',
     kind: 'canonical',
@@ -1160,6 +1166,12 @@ export const E2E_CI_ENTRYPOINTS = [
       'if [ "${{ matrix.shard }}" = "4" ]; then echo \'message-links-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-links; fi',
     tier: 'pull-request',
     suiteIds: ['android.message-links'],
+  },
+  {
+    command:
+      'if [ "${{ matrix.shard }}" = "4" ]; then echo \'message-unread-started=true\' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" pnpm exec nx run trinity-e2e-android:message-unread; fi',
+    tier: 'pull-request',
+    suiteIds: ['android.message-unread'],
   },
   {
     command: 'pnpm e2e:scheduled',

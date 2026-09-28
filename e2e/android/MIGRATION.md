@@ -7392,3 +7392,64 @@ following the 2026-09-26 retirement policy of
 [#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
 [Predecessor retirement](#predecessor-retirement) lists what was retired and
 what stays desktop-only.
+
+## Message-unread journey
+
+Suite `android.message-unread` migrates the single unread-divider and
+jump-to-unread definition of the unchanged predecessor
+`e2e/browser/journeys/conversations/message-unread.spec.mts` (278 lines,
+SHA-256
+`f66ad80bb41f3cc32fb45935a88ad5a94582d1a8921069517f5f0a891d40b8bd`) into one
+serial one-stage installed-Android Node/Maestro suite. The stage maps to
+definition 72–277 and expands the predecessor's module-local Room-opening
+helper at 59–67. The guard also pins `e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`).
+
+The suite records 14 ordered, unique identities: 13 direct + 1 inherited (the
+Room readiness of `openRoom`, line 64, reached from line 164). `apiToken`,
+`sendText`, `registerUser` and `login` add no site.
+
+| Stage | Source line (helper@call) | Kind | Canonical assertion | Android parity identity |
+| --- | --- | --- | --- | --- |
+| `divider-jump` | 64@164 | inherited | `openRoom` composer visible | `message-unread.divider-jump.room-ready` |
+| `divider-jump` | 168 | direct | Divider text matches New messages | `message-unread.divider-jump.divider-text` |
+| `divider-jump` | 171 | direct | Exactly one thread connector | `message-unread.divider-jump.one-thread-connector` |
+| `divider-jump` | 184 | direct | Connector extends at least 7.99 px above | `message-unread.divider-jump.connector-above` |
+| `divider-jump` | 185 | direct | Connector extends at least 7.99 px below | `message-unread.divider-jump.connector-below` |
+| `divider-jump` | 206 | direct | Divider computed flex, center, 600, rule grow 1 | `message-unread.divider-jump.divider-styled` |
+| `divider-jump` | 217 | direct | Jump pill visible on open | `message-unread.divider-jump.jump-visible` |
+| `divider-jump` | 240 | direct | Jump pill hidden after the native tap | `message-unread.divider-jump.jump-hidden` |
+| `divider-jump` | 246 | direct | Smooth multi-frame trajectory | `message-unread.divider-jump.smooth-trajectory` |
+| `divider-jump` | 256 | direct | Reduced-motion media query matches | `message-unread.divider-jump.reduced-motion-query` |
+| `divider-jump` | 267 | direct | Jump pill visible at the newest message | `message-unread.divider-jump.jump-visible-at-latest` |
+| `divider-jump` | 272 | direct | Jump pill hidden after the reduced-motion tap | `message-unread.divider-jump.reduced-jump-hidden` |
+| `divider-jump` | 275 | direct | The reduced-motion jump scrolled | `message-unread.divider-jump.reduced-scrolled` |
+| `divider-jump` | 276 | direct | Every reduced-motion movement was a discrete jump | `message-unread.divider-jump.automatic-only` |
+
+REST arranges two identical Rooms, `Unread E2E <run>-motion` and
+`Unread E2E <run>-reduced`. Each Room gets `seen already`, both reader markers
+on it, `unread message 0`–`13` and the thread reply rooted at unread message 2.
+The product advances `m.fully_read` when a Room is viewed, and Synapse keeps
+the marker monotonic. The reduced-motion half therefore runs in the second
+Room, which is never opened before the relaunch. Maestro owns sign-in, Room
+opening, both jump-to-unread taps and the jump-to-latest return. The Pixel 5
+profile is applied at launch, and the journey never resizes it. A passive
+animation-frame sampler replaces the predecessor's `scrollIntoView` patch.
+Android's `animator_duration_scale 0` and a cold relaunch replace media
+emulation, behind a hard gate (`reduced-motion/feasibility.json`), and the
+setting is restored exactly in teardown.
+
+```bash
+pnpm nx run trinity-e2e-android:message-unread --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-unread
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 4
+runs it last, after message-links.
+
+Predecessor status: enabled; the coordinator retires it after hosted
+acceptance.

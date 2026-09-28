@@ -65,6 +65,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['clear-all-data', 4, 'clear-all-data', 1_500_000],
   ['identity-presence', 4, 'identity', 1_200_000],
   ['message-links', 4, 'message-links', 3_300_000],
+  ['message-unread', 4, 'message-unread', 1_200_000],
   ['oidc-login', 4, 'oidc-login', 1_500_000],
   ['password-registration', 4, 'password-registration', 1_200_000],
   ['recovery-reset', 4, 'recovery-reset', 3_000_000],
