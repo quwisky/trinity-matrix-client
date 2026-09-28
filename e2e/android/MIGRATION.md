@@ -7507,29 +7507,35 @@ zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 4
 runs it last, after message-links; its budget comment adds the 4-minute local
 run time (about 79 native minutes of the 240-minute job).
 
-Local acceptance used the unchanged Pixel 5 API 36 profile with SHA-256
+Accepted locally at `8cd20548`. Local acceptance used the unchanged Pixel 5
+API 36 profile with SHA-256
 `3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`,
 production renderer manifest SHA-256
-`0772cb22288c83a892390a8fc9d27d364a21b9455628b986f2246f0b15853922`
+`18c9d6fd8764612f15ec23565b2b56705c8a337d07064f12f991f26b2978b84a`
 and debug APK SHA-256
 `1e2df15654a93cb25109e96f95c9c385a59a94f28f68a978e4b6335dee4f24d8`.
 Three unchanged-input uncached invocations passed:
 
-- `mulkidsk-0aad4205-d402-4d95-a8aa-cc82e9bfb8ce` in 146.966 seconds;
-- `mulkmz9g-aacfc7c5-5ad2-4420-b00f-6a90a9b95415` in 166.755 seconds;
-- `mulkrcur-976e3fbe-04f4-46b1-9da3-2af4d12810fa` in 182.529 seconds.
+- `mulqwhxi-a89978f0-9888-4190-8dc1-93fd4cb87e01` in 173.666 seconds;
+- `mulr1h7e-359d71de-8bd6-42f8-b442-db205123d5cd` in 156.360 seconds;
+- `mulr5xoe-c8267bbc-a776-410d-bcc9-b73be5849bb3` in 160.583 seconds.
 
 Every invocation recorded one passed stage, 14/14 unique assertion records,
 attempt 1, zero retries and zero failures, with matching built and installed
 APK digests, `feasible: true`, and the post-scan `publication-safe` marker.
-Each retained tree held no raster files, and the leak grep's
-`$$ExternalSyntheticLambda`/Java Nest-accessor class-name hits and the
-`"password"` tap-point key were inspected and accepted; none exposed a Room,
-event or token identifier.
+Each default jump classified `smooth` under the run-based, time-based
+classifier (D4): `jumpFrames` 5, 8 and 8; `jumpSpanMs` 450, 384 and 400;
+`jumpMaxStepShare` 0.295, 0.358 and 0.248. Each reduced-motion jump
+classified `automatic` (`jumpFrames` 1, `jumpSpanMs` 0, `jumpMaxStepShare` 1
+in all three). Each retained tree held no raster files, and the leak grep's
+`$ExternalSyntheticLambda`/`$TransitionPlayerImpl` Java class-name hits and
+the `"password"` tap-point key were inspected and accepted; none exposed a
+Room, event or token identifier.
 
 The complete browser predecessor also passed with one worker and zero
 retries in invocation `mulkxlho-446f1a4e-7ccc-483f-bbda-52aadd9f465c` (one
-test in 6.7 seconds; 8.1-second suite).
+test in 6.7 seconds; 8.1-second suite); the predecessor file is unchanged, so
+this retry-0 result still stands.
 
 Predecessor status: enabled; the coordinator retires it after hosted
 acceptance.
