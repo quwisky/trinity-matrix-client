@@ -223,6 +223,27 @@ so a late banner, drawer or drag state fails it.
   document (`performance.timeOrigin` unchanged): no reload.
 - **Viewport sizes.** `page.viewportSize()` is the renderer's `innerWidth` and
   `innerHeight`.
+- **Right-edge start.** The predecessor starts the `right-edge` swipe at
+  `width − 4` (`message-swipe.spec.mts:522`). On the installed WebView, under
+  three-button navigation, no trusted `pointerdown` ever reaches the page at
+  that point: `754-dev6.log` captured the resulting stream as nine trusted
+  `pointermove` events and one `pointerup`, zero `pointerdown`, the first move
+  already ~30 CSS px left of the planned start. A follow-up probe (native
+  `input motionevent` presses stepped inward from the edge, in the same
+  post-reply-banner state the stage reaches before this swipe) found that
+  `width − 4` fails to deliver a trusted `pointerdown` at the planned point
+  while `width − 24` does. The measured native mapping explains why: the
+  `.scroll` box's own affine map (factorX ≈ 2.62, from `client.nativeRect`)
+  extrapolates the CSS viewport's right edge to device x ≈ 1030, against the
+  physical screen's 1080 px width — a ≈ 50 device-px shortfall between the
+  WebView's own interactive surface and the true screen edge. The
+  predecessor's `width − 4` (device x ≈ 1019–1020) falls inside that
+  shortfall; `width − 24` (device x ≈ 967) does not. The suite starts the
+  right-edge swipe at `width − 24`, still 24 CSS px inside the product's
+  56 px dead zone (32 px of margin), with the full D3 native proof
+  unchanged: a trusted `pointerdown` at the planned start, the interpolated
+  path, and the `pointerup`/`pointercancel` ending. The left-edge start stays
+  at 4 CSS px, which already passes.
 
 ### D9. Protection
 
