@@ -7452,5 +7452,29 @@ zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 4
 runs it last, after message-links; its budget comment adds the 4-minute local
 run time (about 79 native minutes of the 240-minute job).
 
+Local acceptance used the unchanged Pixel 5 API 36 profile with SHA-256
+`3bacc567648982dd6b92b0e62b085908ad33cdced196ac6776d397a3a5d65157`,
+production renderer manifest SHA-256
+`0772cb22288c83a892390a8fc9d27d364a21b9455628b986f2246f0b15853922`
+and debug APK SHA-256
+`1e2df15654a93cb25109e96f95c9c385a59a94f28f68a978e4b6335dee4f24d8`.
+Three unchanged-input uncached invocations passed:
+
+- `mulkidsk-0aad4205-d402-4d95-a8aa-cc82e9bfb8ce` in 146.966 seconds;
+- `mulkmz9g-aacfc7c5-5ad2-4420-b00f-6a90a9b95415` in 166.755 seconds;
+- `mulkrcur-976e3fbe-04f4-46b1-9da3-2af4d12810fa` in 182.529 seconds.
+
+Every invocation recorded one passed stage, 14/14 unique assertion records,
+attempt 1, zero retries and zero failures, with matching built and installed
+APK digests, `feasible: true`, and the post-scan `publication-safe` marker.
+Each retained tree held no raster files, and the leak grep's
+`$$ExternalSyntheticLambda`/Java Nest-accessor class-name hits and the
+`"password"` tap-point key were inspected and accepted; none exposed a Room,
+event or token identifier.
+
+The complete browser predecessor also passed with one worker and zero
+retries in invocation `mulkxlho-446f1a4e-7ccc-483f-bbda-52aadd9f465c` (one
+test in 6.7 seconds; 8.1-second suite).
+
 Predecessor status: enabled; the coordinator retires it after hosted
 acceptance.
