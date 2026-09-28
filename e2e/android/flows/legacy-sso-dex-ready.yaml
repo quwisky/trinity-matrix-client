@@ -10,7 +10,7 @@ androidWebViewHierarchy: devtools
 - extendedWaitUntil:
     visible:
       id: login
-    timeout: 180000
+    timeout: 30000
 - assertVisible:
     id: password
 - assertVisible:

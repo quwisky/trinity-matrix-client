@@ -3751,16 +3751,35 @@ Maestro completes Chrome's native first-run prompts and localhost certificate
 warning when present, then fills and submits the pinned Dex form. A disposable
 Chrome profile, bounded command line and native Chrome setup preserve loopback
 and certificate handling without installing the Playwright Android driver.
-UIAutomator proves package ownership. A bounded DevTools-backed readiness probe
-observes the exact form controls, then the credential flow switches to the
-native hierarchy so hosted DevTools latency cannot stall input. CDP never
-operates Trinity or Dex. Host Playwright is restricted to the isolated
+UIAutomator proves package ownership. A readiness flow observes the exact form
+controls through Chrome's native accessibility tree, then the credential flow
+fills them. Maestro's DevTools augmentation reads only WebView sockets, never
+Chrome's, so it contributes nothing to the Custom Tab. CDP never operates
+Trinity or Dex.
+
+The 30-second Dex readiness wait replaced a 180-second one. Every passing hosted
+readiness flow found the form within 0.22 s of the certificate bypass. In the
+one hosted failure (run 36454318595), Chrome exposed the Dex document's web
+root without any children for the whole 180 s, while the page was rendered and
+focused, so waiting longer cannot help. After a miss, the provider first
+records a stale-state probe in the stage's artifacts: a fresh Maestro session
+(`legacy-sso-dex-probe.yaml`), a fresh UIAutomator dump, and a second dump
+after an F5 reload. It then force-stops Chrome, repeats the Chrome preparation,
+and asks the journey to tap "Continue with SSO" again through its launch
+callback, which first registers the superseded SSO state as a secret. Each
+provider allows one recovery; a second miss fails the stage and keeps the
+first probe. Every recovery appends its outcome, whether it was forced, and
+the first probe step that showed the form to `dex-recovery.json`, so hosted
+runs collect evidence toward Chrome's root cause.
+`TRINITY_E2E_LEGACY_SSO_FORCE_DEX_MISS=1` forces the first provider's first
+wait to count as a miss, to prove the recovery on a device. Host Playwright is restricted to the isolated
 adversarial-token fixture and cannot stand in for native provider completion.
 
 Provider credentials, Matrix login tokens, access tokens and every persisted or
 forged state value are registered as secrets for artifact redaction. Each stage
 records pass/failure device and WebView proof, one attempt, zero retries, source
-ownership and bounded cleanup. Chrome command-line/profile state, observers,
+ownership and bounded cleanup; the Dex recovery above happens inside a stage and
+does not retry it. Chrome command-line/profile state, observers,
 host-browser contexts, Matrix observation sessions, WebViews, the device and
 Synapse are all closed through aggregate cleanup.
 
@@ -3847,6 +3866,7 @@ stage budget. The final flow therefore confines DevTools to readiness, uses the
 native hierarchy for credential actions, normalizes a valid product-autofocused
 homeserver input through a verified native Tab transition, and gives the exact
 Dex-control readiness wait 180 seconds within the four-minute provider bound.
+That wait is now 30 seconds with one probed recovery, as described above.
 
 Final acceptance now requires a fresh original-attempt hosted
 Android/browser/renderer artifact audit from the exact consolidated tree. The
@@ -3875,7 +3895,8 @@ observation session, seeds cross-signing, an empty key backup and the recovery
 pointer needed by native Security navigation only when missing, and reads the
 exact server state before and after the product flow.
 The installed Pixel 5-profile app performs its separate real SSO login through
-the native Chrome handoff. Every Trinity and Dex action is driven by Maestro;
+the native Chrome handoff, which shares the legacy SSO provider's 30-second Dex
+readiness wait, stale-state probe and single recovery. Every Trinity and Dex action is driven by Maestro;
 renderer access is read-only. The refusal therefore proves that Trinity stopped
 before destructive reset work, rather than merely showing the expected copy
 after deleting the backup.

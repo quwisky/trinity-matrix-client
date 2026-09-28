@@ -139,8 +139,9 @@ async function runRefusalStage(
   await client.tapCurrent('button', { exactText: 'Continue' });
   await client.visible('button', { exactText: 'Continue with SSO' }, 30_000);
   await client.hideKeyboard();
-  await provider.prepare();
-  await client.tapCurrent('button', { exactText: 'Continue with SSO' });
+  await provider.start(async () => {
+    await client.tapCurrent('button', { exactText: 'Continue with SSO' });
+  });
   await provider.completeDexSignIn(identity.email, identity.pass);
   await waitForRooms(client);
 

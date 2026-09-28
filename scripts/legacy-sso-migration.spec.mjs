@@ -260,6 +260,8 @@ describe('Android legacy SSO migration', () => {
     expect(provider).toContain('legacy-sso-dex.yaml');
     expect(provider).toContain('legacy-sso-chrome-setup.yaml');
     expect(provider).toContain('legacy-sso-dex-ready.yaml');
+    expect(provider).toContain('legacy-sso-dex-probe.yaml');
+    expect(provider).toContain('dex-recovery.json');
     expect(provider).toContain('device.runFlow(');
     expect(provider).toContain('DEX_EMAIL_SECRET');
     expect(provider).toContain('DEX_PASSWORD');
@@ -280,7 +282,7 @@ describe('Android legacy SSO migration', () => {
     expect(dexReadyFlow).toContain("tapOn: 'Advanced'");
     expect(dexReadyFlow).toContain('Proceed to localhost.*');
     expect(dexReadyFlow).toContain('id: login');
-    expect(dexReadyFlow).toContain('timeout: 180000');
+    expect(dexReadyFlow).toContain('timeout: 30000');
     expect(dexReadyFlow).toContain('id: password');
     expect(dexReadyFlow).toContain('id: submit-login');
     for (const mutation of forbiddenDomActions) {
@@ -601,6 +603,9 @@ describe('Android legacy SSO migration', () => {
     );
     expect(section).toContain('23 assertion identities');
     expect(section).toContain('Chrome Custom Tab');
+    expect(section).toContain('30-second Dex readiness wait');
+    expect(section).toContain('`dex-recovery.json`');
+    expect(section).not.toContain('DevTools-backed readiness probe');
     expect(section).toContain('Predecessor status: retired on 2026-09-26');
     expect(existsSync(resolve(root, predecessorSource))).toBe(false);
     expect(catalog).not.toContain(

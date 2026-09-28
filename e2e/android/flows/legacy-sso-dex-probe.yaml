@@ -1,0 +1,6 @@
+appId: com.android.chrome
+---
+- extendedWaitUntil:
+    visible:
+      id: login
+    timeout: 5000

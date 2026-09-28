@@ -20,6 +20,7 @@ import {
 } from './legacy-sso-contract.mts';
 import {
   openLegacySsoProvider,
+  type DexLaunch,
   type LegacySsoProvider,
 } from './legacy-sso-provider.mts';
 import {
@@ -347,16 +348,36 @@ async function readPersistedSsoState(
   return state;
 }
 
+/**
+ * Open the provider from the sign-in screen. The provider calls this again for
+ * its one Dex recovery; that tap replaces the persisted SSO state, so the
+ * superseded value is registered for redaction first.
+ */
+function ssoLaunch(
+  client: AccountWorkspaceClient,
+  device: MaestroDevice,
+  secrets: Record<string, string>,
+  signal: AbortSignal,
+): DexLaunch {
+  return async (attempt) => {
+    if (attempt > 1) {
+      secrets[
+        `SSO_STATE_SECRET_SUPERSEDED_${Object.keys(secrets).length}`
+      ] = await readPersistedSsoState(device, signal);
+    }
+    await client.tapCurrent('button', { exactText: 'Continue with SSO' });
+  };
+}
+
 async function startLegitimateSso(
   client: AccountWorkspaceClient,
   provider: LegacySsoProvider,
   homeserver: string,
+  launch: DexLaunch,
 ): Promise<void> {
   await enterHomeserver(client, homeserver);
   await client.hideKeyboard();
-  await provider.prepare();
-  await client.tapCurrent('button', { exactText: 'Continue with SSO' });
-  await provider.waitForDex();
+  await provider.start(launch);
 }
 
 async function injectSsoCallback(
@@ -470,9 +491,7 @@ function createCases(): readonly LegacySsoCase[] {
         );
         const failures: unknown[] = [];
         try {
-          await provider.prepare();
-          await client.tapCurrent('button', { exactText: 'Continue with SSO' });
-          await provider.waitForDex();
+          await provider.start(ssoLaunch(client, device, secrets, signal));
           secrets.SSO_STATE_SECRET_1 = await readPersistedSsoState(
             device,
             signal,
@@ -644,6 +663,7 @@ function createCases(): readonly LegacySsoCase[] {
             client,
             firstProvider,
             homeserver,
+            ssoLaunch(client, device, secrets, signal),
           );
           secrets.SSO_STATE_SECRET_2 = await readPersistedSsoState(
             device,
@@ -806,7 +826,12 @@ function createCases(): readonly LegacySsoCase[] {
             client.output,
             signal,
           );
-          await startLegitimateSso(client, secondProvider, homeserver);
+          await startLegitimateSso(
+            client,
+            secondProvider,
+            homeserver,
+            ssoLaunch(client, device, secrets, signal),
+          );
           secrets.SSO_STATE_SECRET_3 = await readPersistedSsoState(
             device,
             signal,
