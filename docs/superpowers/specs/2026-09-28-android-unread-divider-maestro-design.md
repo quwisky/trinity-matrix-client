@@ -228,11 +228,19 @@ has never been viewed.
 Before each jump, the observer starts a fresh sampler under a new,
 never-reused window key. On each `requestAnimationFrame` it only reads the
 `.scroll` scroller's `scrollTop` and the divider's rect, then appends
-`[t, scrollTop, dividerInView]` to its own array. It stops itself after 60
-unchanged frames following the first movement, or at a 45 s cap (a tap takes
-up to 17 s). Node then polls its `done` flag. Nothing is patched, called,
-assigned, focused or cleared: a second window gets a new key rather than an
-emptied array. This also replaces the `__scrolls = []` reset at 268–270.
+`[t, scrollTop, dividerInView]` to its own array. A passive capture
+listener only notes that the tap's `click` arrived. The sampler stops itself
+after 60 unchanged frames following the first movement, or 45 s after the
+first frame following that `click`. The 45 s window is anchored at the
+observed tap, not at the sampler start, because the native tap's end-to-end
+latency is unbounded under host load: Maestro's cold start alone reached 37 s,
+and the tap landed about 44 s after the sampler started in a failed local
+acceptance run. A 120 s ceiling, measured from the sampler start, ends every
+loop. A window that never saw the `click`, or that the ceiling ended, fails
+closed and is never classified. Node polls the `done` flag for up to 135 s
+after the tap returns. Nothing is patched, called, assigned, focused or
+cleared: a second window gets a new key rather than an emptied array. This
+also replaces the `__scrolls = []` reset at 268–270.
 
 The pure classifier in the contract takes the samples:
 
@@ -390,6 +398,9 @@ For each control, the guard must fail when its protection is removed:
 - **Initial gating.** A pill hidden at open, and a divider in view at open.
 - **Default trajectory.** A single jump, a 3-frame run, no baseline, and a
   divider not in view after settling.
+- **Sampler window.** 46 s of stillness before a late `click` must not end the
+  window, and a window without a `click` must stop at the 120 s ceiling and
+  fail closed.
 - **Reduced motion.** A `false` query, `feasible: false`, a relaunch skipped,
   a 4-frame run, and no movement.
 - **Native ownership.** A tap replaced by a renderer dispatch, and a missing
