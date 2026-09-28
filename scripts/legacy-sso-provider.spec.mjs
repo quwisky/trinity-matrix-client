@@ -193,6 +193,65 @@ describe('Android legacy SSO Dex readiness recovery', () => {
     expect(await readFile(join(directory, reloaded), 'utf8')).toBe(dexDump);
   });
 
+  it('registers the replaced SSO state before the probe writes anything', async () => {
+    const { calls, device } = fakeDevice(directory, {
+      ready: ['miss', 'pass'],
+      probe: ['miss'],
+      dumps: [staleDump, dexDump],
+    });
+    let registered = false;
+    const probeStepsBeforeRegistration = [];
+    const guardedDevice = {
+      ...device,
+      async runFlow(file, variables) {
+        if (basename(file) === 'legacy-sso-dex-probe.yaml' && !registered)
+          probeStepsBeforeRegistration.push(basename(file));
+        return device.runFlow(file, variables);
+      },
+      async adb(...args) {
+        if (args.includes('uiautomator') && missed && !registered)
+          probeStepsBeforeRegistration.push(args.join(' '));
+        return device.adb(...args);
+      },
+    };
+    let missed = false;
+    const { openLegacySsoProvider } = await import(providerPath);
+    const provider = await openLegacySsoProvider(
+      guardedDevice,
+      root,
+      directory,
+      new AbortController().signal,
+      { reloadSettleMs: 0 },
+    );
+    const launch = Object.assign(
+      async (attempt) => {
+        calls.push(`launch ${attempt}`);
+        if (attempt === 1) missed = true;
+      },
+      {
+        beforeProbe: async () => {
+          calls.push('beforeProbe');
+          registered = true;
+        },
+      },
+    );
+    await provider.start(launch);
+    expect(missed).toBe(true);
+    expect(
+      probeStepsBeforeRegistration,
+      'probe steps that ran before the replaced SSO state was registered',
+    ).toEqual([]);
+    expect(registered, 'beforeProbe ran on the miss').toBe(true);
+    expectOrdered(calls, [
+      'launch 1',
+      'flow legacy-sso-dex-ready.yaml',
+      'beforeProbe',
+      'flow legacy-sso-dex-probe.yaml',
+      'launch 2',
+    ]);
+    expect(calls.filter((call) => call === 'beforeProbe')).toHaveLength(1);
+  });
+
   it('fails on a second miss and keeps the first attempt diagnostics', async () => {
     const { calls, launches, launch, provider } = await openProvider(
       directory,
@@ -323,7 +382,8 @@ describe('Android legacy SSO journey launch contract', () => {
       registration,
     );
     expect(journey).toMatch(
-      /function ssoLaunch\([\s\S]*?if \(attempt > 1\)[\s\S]*?secrets\[\s*`SSO_STATE_SECRET_SUPERSEDED_\$\{[^`]+\}`\s*\] = await readPersistedSsoState\(device, signal\);[\s\S]*?await client\.tapCurrent\('button', \{ exactText: 'Continue with SSO' \}\);/u,
+      /function ssoLaunch\([\s\S]*?beforeProbe: async \(\) => \{\s*secrets\[\s*`SSO_STATE_SECRET_SUPERSEDED_\$\{[^`]+\}`\s*\] = await readPersistedSsoState\(device, signal\);/u,
     );
+    expect(journey).not.toContain('attempt > 1');
   });
 });

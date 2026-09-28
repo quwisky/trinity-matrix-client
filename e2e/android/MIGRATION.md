@@ -3755,7 +3755,8 @@ UIAutomator proves package ownership. A readiness flow observes the exact form
 controls through Chrome's native accessibility tree, then the credential flow
 fills them. Maestro's DevTools augmentation reads only WebView sockets, never
 Chrome's, so it contributes nothing to the Custom Tab. CDP never operates
-Trinity or Dex.
+Trinity or Dex. Host Playwright is restricted to the isolated adversarial-token
+fixture and cannot stand in for native provider completion.
 
 The 30-second Dex readiness wait replaced a 180-second one. Every passing hosted
 readiness flow found the form within 0.22 s of the certificate bypass. In the
@@ -3764,16 +3765,16 @@ root without any children for the whole 180 s, while the page was rendered and
 focused, so waiting longer cannot help. After a miss, the provider first
 records a stale-state probe in the stage's artifacts: a fresh Maestro session
 (`legacy-sso-dex-probe.yaml`), a fresh UIAutomator dump, and a second dump
-after an F5 reload. It then force-stops Chrome, repeats the Chrome preparation,
-and asks the journey to tap "Continue with SSO" again through its launch
-callback, which first registers the superseded SSO state as a secret. Each
+after an F5 reload. Before the probe writes anything, the journey's launch
+callback registers the persisted SSO state as a secret, because the recovery
+tap will replace it. The provider then force-stops Chrome, repeats the Chrome
+preparation and asks the journey to tap "Continue with SSO" again. Each
 provider allows one recovery; a second miss fails the stage and keeps the
 first probe. Every recovery appends its outcome, whether it was forced, and
 the first probe step that showed the form to `dex-recovery.json`, so hosted
 runs collect evidence toward Chrome's root cause.
 `TRINITY_E2E_LEGACY_SSO_FORCE_DEX_MISS=1` forces the first provider's first
-wait to count as a miss, to prove the recovery on a device. Host Playwright is restricted to the isolated
-adversarial-token fixture and cannot stand in for native provider completion.
+wait to count as a miss, to prove the recovery on a device.
 
 Provider credentials, Matrix login tokens, access tokens and every persisted or
 forged state value are registered as secrets for artifact redaction. Each stage

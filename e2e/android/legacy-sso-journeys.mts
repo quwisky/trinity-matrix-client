@@ -349,9 +349,9 @@ async function readPersistedSsoState(
 }
 
 /**
- * Open the provider from the sign-in screen. The provider calls this again for
- * its one Dex recovery; that tap replaces the persisted SSO state, so the
- * superseded value is registered for redaction first.
+ * Open the provider from the sign-in screen. The provider taps again for its
+ * one Dex recovery, which replaces the persisted SSO state, so on a miss the
+ * current value is registered for redaction before any probe artifact exists.
  */
 function ssoLaunch(
   client: AccountWorkspaceClient,
@@ -359,14 +359,18 @@ function ssoLaunch(
   secrets: Record<string, string>,
   signal: AbortSignal,
 ): DexLaunch {
-  return async (attempt) => {
-    if (attempt > 1) {
-      secrets[
-        `SSO_STATE_SECRET_SUPERSEDED_${Object.keys(secrets).length}`
-      ] = await readPersistedSsoState(device, signal);
-    }
-    await client.tapCurrent('button', { exactText: 'Continue with SSO' });
-  };
+  return Object.assign(
+    async () => {
+      await client.tapCurrent('button', { exactText: 'Continue with SSO' });
+    },
+    {
+      beforeProbe: async () => {
+        secrets[
+          `SSO_STATE_SECRET_SUPERSEDED_${Object.keys(secrets).length}`
+        ] = await readPersistedSsoState(device, signal);
+      },
+    },
+  );
 }
 
 async function startLegitimateSso(

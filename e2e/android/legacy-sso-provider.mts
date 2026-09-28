@@ -37,7 +37,14 @@ export interface DexCompletionProof extends DexSurfaceProof {
 }
 
 /** Opens the provider from Trinity; attempt 2 is the one recovery launch. */
-export type DexLaunch = (attempt: 1 | 2) => Promise<void>;
+export interface DexLaunch {
+  (attempt: 1 | 2): Promise<void>;
+  /**
+   * Runs once on a miss, before the stale-state probe writes any artifact, so
+   * state that the recovery launch will replace is registered as a secret first.
+   */
+  readonly beforeProbe?: () => Promise<void>;
+}
 
 export interface LegacySsoProviderOptions {
   /** Test hook: treat the first readiness wait as a miss to run the recovery. */
@@ -52,6 +59,15 @@ interface DexProbeResult {
   readonly step: DexProbeStep;
   readonly content: boolean;
   readonly artifact: string;
+}
+
+/** One entry of `dex-recovery.json`. */
+interface DexRecoveryRecord {
+  readonly forced: boolean;
+  readonly attempts: 2;
+  readonly probe: readonly DexProbeResult[];
+  readonly firstContentStep: DexProbeStep | null;
+  readonly recovered: boolean;
 }
 
 export interface LegacySsoProvider {
@@ -172,8 +188,10 @@ export async function openLegacySsoProvider(
 
   // A readiness flow shows the Dex form within 0.22 s of the certificate
   // bypass on every passing hosted run, while a stale Chrome web tree (a root
-  // with no children) never recovers in the same Custom Tab. The flow therefore
-  // waits 30 s, and each attempt keeps a bound of its own.
+  // with no children) never recovers in the same Custom Tab, so the flow waits
+  // 30 s for the form. This signal bounds the whole attempt instead: Maestro
+  // start-up plus the certificate-warning taps, whose hierarchy reads may each
+  // spend up to 10 s on DevTools augmentation before the 30 s wait begins.
   const waitForDex = async (): Promise<DexSurfaceProof> => {
     assert(prepared, 'SSO provider must be prepared before Dex observation');
     return waitForDexSurface(
@@ -227,7 +245,7 @@ export async function openLegacySsoProvider(
     return probe;
   };
 
-  const recordRecovery = async (record: object): Promise<void> => {
+  const recordRecovery = async (record: DexRecoveryRecord): Promise<void> => {
     const file = join(artifactDirectory, 'dex-recovery.json');
     const records: unknown[] = JSON.parse(
       await readFile(file, 'utf8').catch(() => '[]'),
@@ -339,13 +357,14 @@ export async function openLegacySsoProvider(
       signal.throwIfAborted();
       firstMiss = error;
     }
+    await launch.beforeProbe?.();
     const probe = await probeStaleDex();
     const record = {
       forced,
       attempts: 2,
       probe,
       firstContentStep: probe.find((result) => result.content)?.step ?? null,
-    };
+    } as const;
     try {
       await prepare();
       await launch(2);
