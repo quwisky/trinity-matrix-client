@@ -7174,3 +7174,143 @@ Predecessor status: retired on 2026-09-26 under
 [#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
 [Predecessor retirement](#predecessor-retirement) lists what was retired and
 what stays desktop-only.
+
+## Message-swipe journeys
+
+[Migrate Android message-swipe journeys](https://github.com/quwisky/trinity-matrix-client/issues/754)
+owns the fourteen message-swipe and edge-gesture definitions of
+`e2e/browser/journeys/conversations/message-swipe.spec.mts` (626 lines, SHA-256
+`435f360188e627c7942e29988f62dd4654955317eb23f0980adabea23fd7bdb4`). The guard
+also pins `e2e/support/journeys/navigation.mts`
+(`43232dafbf9e80df6977442f366974100ccfa315b20ab680f893d4300ab46f81`),
+`e2e/support/touch-platform.mts`
+(`8bbf71ffc3e83010599c30ed5c2c347972f5a7b559daa6394613e33af2c43ee1`),
+`e2e/support/app.mts`
+(`60ea972bfcb1f4b75bd2db65be0f3c1481e9121ff96c97682d8fcb28478537e3`) and
+`e2e/support/account.mts`
+(`ac6ad399ec77fae180f06bf5e394cfb7154d0e8f4f3524f130b63c49b6460594`).
+
+Suite `android.message-swipe` runs them as fourteen serial stages with 38 direct + 36
+helper-expanded = 74 records. `openRoom` expands lines 112 and 118 on every call
+and 127 only for the two 30-filler Rooms; `openSettingsSection` and
+`closeSettings` expand along their Android branch. The Playwright-skipped
+compositor definition is a full stage here.
+
+| Stage | Source (helper@call) | Kind | Canonical assertion | Identity |
+| --- | --- | --- | --- | --- |
+| `edit-own` | 112@184 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.edit-own.room-ready` |
+| `edit-own` | 118@184 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.edit-own.encryption-banner` |
+| `edit-own` | 188 | direct | Banner says Editing and the composer holds the own body | `message-swipe.edit-own.editing` |
+| `reply-other` | 112@197 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.reply-other.room-ready` |
+| `reply-other` | 118@197 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.reply-other.encryption-banner` |
+| `reply-other` | 201 | direct | Banner says Replying to the other Account; composer empty | `message-swipe.reply-other.replying` |
+| `partial-affordance` | 112@211 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.partial-affordance.room-ready` |
+| `partial-affordance` | 118@211 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.partial-affordance.encryption-banner` |
+| `partial-affordance` | 234 | direct | Own row affordance has a box part-way | `message-swipe.partial-affordance.own-affordance-visible` |
+| `partial-affordance` | 238 | direct | Own row affordance says `edit` | `message-swipe.partial-affordance.own-edit-affordance` |
+| `partial-affordance` | 242 | direct | Other row affordance says `reply` | `message-swipe.partial-affordance.other-reply-affordance` |
+| `progressive-feedback` | 112@253 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.progressive-feedback.room-ready` |
+| `progressive-feedback` | 118@253 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.progressive-feedback.encryption-banner` |
+| `progressive-feedback` | 309 | direct | Held partial drag: affordance opacity above 0 | `message-swipe.progressive-feedback.partial-opacity-positive` |
+| `progressive-feedback` | 311 | direct | Held partial drag: affordance opacity below 1 | `message-swipe.progressive-feedback.partial-opacity-below-one` |
+| `progressive-feedback` | 314 | direct | Held drag past the threshold: opacity 1, armed | `message-swipe.progressive-feedback.armed-opacity-one` |
+| `progressive-feedback` | 317 | direct | Armed icon scale differs from the partial one | `message-swipe.progressive-feedback.armed-scale-changed` |
+| `progressive-feedback` | 318 | direct | Armed colour differs from the partial one | `message-swipe.progressive-feedback.armed-colour-changed` |
+| `off-inert` | 112@333 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.off-inert.room-ready` |
+| `off-inert` | 118@333 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.off-inert.encryption-banner` |
+| `off-inert` | 335 | direct | Off renders no affordance | `message-swipe.off-inert.no-affordance` |
+| `off-inert` | 338 | direct | No composer banner, held for 2 s | `message-swipe.off-inert.no-banner` |
+| `left-direction` | 112@345 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.left-direction.room-ready` |
+| `left-direction` | 118@345 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.left-direction.encryption-banner` |
+| `left-direction` | 349 | direct | Left rejects a rightward drag, held for 2 s | `message-swipe.left-direction.right-drag-rejected` |
+| `left-direction` | 361 | direct | A leftward drag replies to the other Account | `message-swipe.left-direction.left-drag-replying` |
+| `left-strip-geometry` | 112@377 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.left-strip-geometry.room-ready` |
+| `left-strip-geometry` | 118@377 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.left-strip-geometry.encryption-banner` |
+| `left-strip-geometry` | 411 | direct | Held: icon centre past the moved row end | `message-swipe.left-strip-geometry.icon-past-row-end` |
+| `left-strip-geometry` | 412 | direct | Held: icon centre inside the original row, trailing | `message-swipe.left-strip-geometry.icon-inside-original-row` |
+| `vertical-abandon` | 112@426 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.vertical-abandon.room-ready` |
+| `vertical-abandon` | 118@426 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.vertical-abandon.encryption-banner` |
+| `vertical-abandon` | 127@426 | inherited | `openRoom` native back-pagination loaded the own row | `message-swipe.vertical-abandon.history-loaded` |
+| `vertical-abandon` | 440 | direct | No composer banner, held for 2 s | `message-swipe.vertical-abandon.no-banner` |
+| `vertical-abandon` | 441 | direct | No residual `--swipe-drag`, held for 2 s | `message-swipe.vertical-abandon.no-drag-style` |
+| `vertical-scroll` | 112@459 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.vertical-scroll.room-ready` |
+| `vertical-scroll` | 118@459 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.vertical-scroll.encryption-banner` |
+| `vertical-scroll` | 127@459 | inherited | `openRoom` native back-pagination loaded the own row | `message-swipe.vertical-scroll.history-loaded` |
+| `vertical-scroll` | 488 | direct | A native vertical drag moved `scrollTop` | `message-swipe.vertical-scroll.timeline-moved` |
+| `vertical-scroll` | 489 | direct | No composer banner, held for 2 s | `message-swipe.vertical-scroll.no-banner` |
+| `edge-dead-zones` | 112@500 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.edge-dead-zones.room-ready` |
+| `edge-dead-zones` | 118@500 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.edge-dead-zones.encryption-banner` |
+| `edge-dead-zones` | 508 | direct | A 4 px left-edge start never arms or acts | `message-swipe.edge-dead-zones.left-edge-no-banner` |
+| `edge-dead-zones` | 516 | direct | An 80 px start replies to the other Account | `message-swipe.edge-dead-zones.inset-control-replying` |
+| `edge-dead-zones` | 523 | direct | A right-edge start opens no drawer, held for 2 s | `message-swipe.edge-dead-zones.right-edge-drawer-hidden` |
+| `edge-dead-zones` | 532 | direct | The inset band opens the drawer | `message-swipe.edge-dead-zones.inset-drawer-visible` |
+| `drawer-left` | 112@545 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.drawer-left.room-ready` |
+| `drawer-left` | 118@545 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.drawer-left.encryption-banner` |
+| `drawer-left` | 555 | direct | The drawer starts hidden | `message-swipe.drawer-left.drawer-initially-hidden` |
+| `drawer-left` | 561 | direct | The inset edge drag opens the drawer | `message-swipe.drawer-left.drawer-opened` |
+| `drawer-left` | 564 | direct | The rightward drag closes the drawer | `message-swipe.drawer-left.drawer-closed` |
+| `drawer-off` | 112@545 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.drawer-off.room-ready` |
+| `drawer-off` | 118@545 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.drawer-off.encryption-banner` |
+| `drawer-off` | 555 | direct | The drawer starts hidden | `message-swipe.drawer-off.drawer-initially-hidden` |
+| `drawer-off` | 561 | direct | The inset edge drag opens the drawer | `message-swipe.drawer-off.drawer-opened` |
+| `drawer-off` | 564 | direct | The rightward drag closes the drawer | `message-swipe.drawer-off.drawer-closed` |
+| `drawer-right` | 112@572 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.drawer-right.room-ready` |
+| `drawer-right` | 118@572 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.drawer-right.encryption-banner` |
+| `drawer-right` | 575 | direct | The drawer starts hidden | `message-swipe.drawer-right.drawer-initially-hidden` |
+| `drawer-right` | 583 | direct | The inset edge drag opens the drawer | `message-swipe.drawer-right.drawer-opened` |
+| `drawer-right` | 587 | direct | No row affordance over the open drawer | `message-swipe.drawer-right.row-swipe-suppressed` |
+| `drawer-right` | 590 | direct | The rightward drag closes the drawer | `message-swipe.drawer-right.drawer-closed` |
+| `live-setting` | 112@599 | inherited | `openRoom` composer visible for the exact Room | `message-swipe.live-setting.room-ready` |
+| `live-setting` | 118@599 | inherited | `openRoom` Set up encryption banner visible | `message-swipe.live-setting.encryption-banner` |
+| `live-setting` | 600 | direct | The unseeded install renders no affordance | `message-swipe.live-setting.initially-no-affordance` |
+| `live-setting` | 19@605 | inherited | `openSettingsFromRooms` Account-qualified Rooms route | `message-swipe.live-setting.settings-rooms-route` |
+| `live-setting` | 32@605 | inherited | `openSettingsFromRooms` Settings sections visible | `message-swipe.live-setting.settings-sections-visible` |
+| `live-setting` | 59@605 | inherited | `openSettingsSection` Appearance detail not empty | `message-swipe.live-setting.settings-detail-ready` |
+| `live-setting` | 69@612 | inherited | `closeSettings` Back left the section | `message-swipe.live-setting.settings-section-unwound` |
+| `live-setting` | 84@612 | inherited | `closeSettings` Account-qualified Rooms route | `message-swipe.live-setting.rooms-route-restored` |
+| `live-setting` | 99@612 | inherited | `closeSettings` no `trn-settings` remains | `message-swipe.live-setting.settings-detached` |
+| `live-setting` | 613 | direct | No visible Settings dialog | `message-swipe.live-setting.settings-dialog-hidden` |
+| `live-setting` | 614 | direct | The route is not a Settings route | `message-swipe.live-setting.no-settings-path` |
+| `live-setting` | 621 | direct | One affordance in the same document (no reload) | `message-swipe.live-setting.affordance-live` |
+
+Every stage runs at the Pixel 5 profile (393×727 CSS pixels, DPR 2.75, mobile
+and touch), asserted at launch together with the Android platform. One shared
+signed-in Account plays the predecessor's own user in stages 1–13 and each
+stage creates a fresh other Account and Room through real Synapse; the raw
+`/messages` page must hold exactly the arranged events in order before any UI
+step. `live-setting` starts from a cleared app with a new sign-in. The swipe
+direction is written only to the native `CapacitorStorage.xml` with the app
+force-stopped, only that entry changes, and it is read back before and after
+the relaunch.
+
+Every gesture is Android's own `input motionevent` DOWN/MOVE/UP/CANCEL at
+device coordinates mapped through the measured timeline box. A passive
+recorder proves each one as a single trusted touch pointer that starts within
+3 CSS px of the plan, moves along it and leaves the product's 500 ms/10 px
+long-press window in time. Partial, progressive and trailing-strip claims are
+read while the native pointer is still down. Negative claims hold on every
+read for 2 s. The `vertical-scroll` stage first repeats the held-pan
+feasibility gate (`vertical-scroll/feasibility.json`, required by the
+publication marker); a failed gate fails the stage closed and nothing
+scrolls the renderer. `edge-dead-zones` runs under three-button navigation,
+set and restored with the app stopped, because gesture navigation claims both
+screen edges as system Back.
+
+Records hold digests, booleans, computed styles and measured numbers only.
+Both Accounts, the Room, every body, transaction and event id are registered
+before any UI step; the shared strict scrub and fail-closed scan, the gated
+`android-message-swipe` upload and the id-free selectors follow the #752
+policy.
+
+```bash
+pnpm nx run trinity-e2e-android:message-swipe --skipNxCache
+# Equivalent package command:
+pnpm e2e:android:message-swipe
+```
+
+The uncached serial target owns `android-avd` and `synapse`: one attempt and
+zero retries, with a 30-minute Node test, a 35-minute Nx timeout and a
+40-minute CI wrapper. Shard 6 runs it last, after message-quote.
+
+Predecessor status: enabled; the coordinator retires it after hosted
+acceptance.

@@ -479,6 +479,7 @@ jobs:
             if [ "${{ matrix.shard }}" = "2" ]; then echo 'member-role-live-updates-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2100000 -- pnpm exec nx run trinity-e2e-android:member-role-live-updates; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'room-widget-settings-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2700000 -- pnpm exec nx run trinity-e2e-android:room-widget-settings; fi
             if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-quote-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1800000 -- pnpm exec nx run trinity-e2e-android:message-quote; fi
+            if [ "${{ matrix.shard }}" = "6" ]; then echo 'message-swipe-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 2400000 -- pnpm exec nx run trinity-e2e-android:message-swipe; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'account-password-change-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:account-password-change; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'clear-all-data-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1500000 -- pnpm exec nx run trinity-e2e-android:clear-all-data; fi
             if [ "${{ matrix.shard }}" = "4" ]; then echo 'password-registration-started=true' >> "$GITHUB_OUTPUT"; TRINITY_ANDROID_SERIAL="$ANDROID_SERIAL" node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-android:password-registration; fi
@@ -596,6 +597,16 @@ jobs:
         run: |
           if [ -n "$(find "$MESSAGE_SPOILER_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-spoiler/message-spoiler/publication-safe' -print -quit)" ]; then
             echo 'message-spoiler-safe=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Gate Android message-swipe diagnostics
+        id: message-swipe-artifact-gate
+        if: ${{ !cancelled() && steps.android.outputs.message-swipe-started == 'true' }}
+        env:
+          MESSAGE_SWIPE_DIAGNOSTIC_ROOT: dist/.playwright/trinity-e2e-android
+        run: |
+          if [ -n "$(find "$MESSAGE_SWIPE_DIAGNOSTIC_ROOT" -type f -name publication-safe -path '*/android.message-swipe/message-swipe/publication-safe' -print -quit)" ]; then
+            echo 'message-swipe-safe=true' >> "$GITHUB_OUTPUT"
           fi
 
       - uses: ./.github/actions/upload-playwright-diagnostics
@@ -1077,6 +1088,13 @@ jobs:
           surface: android-message-spoiler
           shard: ${{ matrix.shard }}
           report-path: dist/.playwright/trinity-e2e-android/*/android.message-spoiler/**
+
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.android.outputs.message-swipe-started == 'true' && steps.message-swipe-artifact-gate.outputs.message-swipe-safe == 'true' }}
+        with:
+          surface: android-message-swipe
+          shard: ${{ matrix.shard }}
+          report-path: dist/.playwright/trinity-e2e-android/*/android.message-swipe/**
 
       - name: Verify Android E2E left the worktree unchanged
         if: ${{ !cancelled() }}

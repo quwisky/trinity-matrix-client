@@ -86,6 +86,7 @@ const ANDROID_NATIVE_PLACEMENT = [
   ['member-role-classification', 6, 'member-role-classification', 2_100_000],
   ['message-authenticity-shield', 6, 'message-authenticity-shield', 2_100_000],
   ['message-quote', 6, 'message-quote', 1_800_000],
+  ['message-swipe', 6, 'message-swipe', 2_400_000],
   ['native-shell', 6, 'native-shell', 1_200_000],
   ['room-tombstone', 6, 'room-tombstone', 1_200_000],
   ['room-widget-settings', 6, 'room-widget-settings', 2_700_000],
