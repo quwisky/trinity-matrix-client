@@ -1188,6 +1188,27 @@ describe('Android message-unread read-only renderer observation (jsdom)', () => 
       c.parseSamplerWindow({ ...window, tapped: true, ended: 'tap-window' }),
     ).not.toThrow();
   });
+
+  it('ends the tap window 45 s after the click when nothing settles [RF-2]', async () => {
+    const c = await loadContract();
+    const sampler = await samplerHarness();
+    sampler.frames(46_000);
+    expect(sampler.read().done).toBe(false);
+    sampler.tap();
+    // The scroller never moves, so the 60-unchanged-frame 'settled' branch
+    // can never fire: only the 45 s tap window can end this loop.
+    sampler.frames(44_000);
+    expect(sampler.read().done).toBe(false);
+    sampler.frames(2_000);
+    const window = sampler.read();
+    expect(window).toMatchObject({
+      done: true,
+      tapped: true,
+      ended: 'tap-window',
+    });
+    expect(sampler.scheduled()).toBe(false);
+    expect(() => c.parseSamplerWindow(window)).not.toThrow();
+  });
 });
 
 /* -------------------------------------------------------------------------- */
