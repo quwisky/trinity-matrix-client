@@ -299,6 +299,37 @@ describe('Android legacy SSO Dex readiness recovery', () => {
     ]);
   });
 
+  it('propagates a cancellation during state registration without recording it', async () => {
+    const { calls, device } = fakeDevice(directory, {
+      ready: ['miss', 'pass'],
+      probe: ['pass'],
+    });
+    const controller = new AbortController();
+    const { openLegacySsoProvider } = await import(providerPath);
+    const provider = await openLegacySsoProvider(
+      device,
+      root,
+      directory,
+      controller.signal,
+      { reloadSettleMs: 0 },
+    );
+    const cancellation = new Error('suite cancelled');
+    const launch = Object.assign(
+      async (attempt) => {
+        calls.push(`launch ${attempt}`);
+      },
+      {
+        beforeProbe: async () => {
+          controller.abort(cancellation);
+          throw new Error('persisted SSO state poll aborted');
+        },
+      },
+    );
+    await expect(provider.start(launch)).rejects.toBe(cancellation);
+    expect(calls.filter((call) => call.includes('dex-probe'))).toEqual([]);
+    expect(await readdir(directory)).not.toContain('dex-recovery.json');
+  });
+
   it('fails on a second miss and keeps the first attempt diagnostics', async () => {
     const { calls, launches, launch, provider } = await openProvider(
       directory,

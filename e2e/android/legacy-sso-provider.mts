@@ -360,6 +360,7 @@ export async function openLegacySsoProvider(
     try {
       await launch.beforeProbe?.();
     } catch (registration) {
+      signal.throwIfAborted();
       // Without the registration the probe could publish unredacted state, so
       // the recovery ends here, recording that no probe ran.
       await recordRecovery({

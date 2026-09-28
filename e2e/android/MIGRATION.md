@@ -3772,7 +3772,13 @@ preparation and asks the journey to tap "Continue with SSO" again. Each
 provider allows one recovery; a second miss fails the stage and keeps the
 first probe. Every recovery appends its outcome, whether it was forced, and
 the first probe step that showed the form to `dex-recovery.json`, so hosted
-runs collect evidence toward Chrome's root cause.
+runs collect evidence toward Chrome's root cause. An entry has one of three
+outcomes: recovered (`attempts: 2`, `recovered: true`), a second miss
+(`attempts: 2`, `recovered: false`), or a failed state registration. In the
+last case no probe or recovery runs, because the probe could publish the
+unregistered state: the entry records `attempts: 1`, an empty probe, no content
+step and `recovered: false`, and the stage fails with both the miss and the
+registration error. A cancellation is not recorded.
 `TRINITY_E2E_LEGACY_SSO_FORCE_DEX_MISS=1` forces the first provider's first
 wait to count as a miss, to prove the recovery on a device.
 
