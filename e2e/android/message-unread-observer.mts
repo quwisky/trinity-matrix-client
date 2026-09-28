@@ -166,7 +166,13 @@ export function samplerKey(n: number): string {
   return `__trinityUnreadTrajectory${n}`;
 }
 
-/** Passive: reads scrollTop and the divider rect once per frame into its own never-reused key. */
+/**
+ * Passive: reads scrollTop and the divider rect once per frame into its own
+ * never-reused key. A passive capture listener only notes that the tap's click
+ * arrived. The 45 s window counts from the first frame after that click,
+ * because the native tap's latency is unbounded under load; a 120 s ceiling
+ * from the start ends every loop, and the contract fails that window closed.
+ */
 export function startSamplerExpression(key: string): string {
   assert(/^__trinityUnreadTrajectory[1-9]\d*$/u.test(key), 'Sampler key');
   return `(() => {
@@ -174,22 +180,28 @@ export function startSamplerExpression(key: string): string {
     if (Object.prototype.hasOwnProperty.call(window, key)) return false;
     const scroller = document.querySelector('.scroll[data-message-scroller]');
     if (!scroller) return false;
-    const state = { samples: [], done: false };
+    const state = { samples: [], done: false, tapped: false, ended: null };
     Object.defineProperty(window, key, { value: state, writable: false, configurable: false, enumerable: false });
+    document.addEventListener('click', () => { state.tapped = true; }, { capture: true, once: true, passive: true });
     const inView = () => {
       const divider = scroller.querySelector('[data-testid="new-messages-divider"]');
       if (!divider) return false;
       const d = divider.getBoundingClientRect(), s = scroller.getBoundingClientRect();
       return d.height > 0 && d.top >= s.top && d.bottom <= s.bottom;
     };
-    let start, last = scroller.scrollTop, moved = false, still = 0;
+    let start, tappedAt, last = scroller.scrollTop, moved = false, still = 0;
     const tick = (now) => {
       start ??= now;
+      if (state.tapped) tappedAt ??= now;
       const top = scroller.scrollTop;
       state.samples.push([Math.round(now - start), top, inView()]);
       if (top !== last) { moved = true; still = 0; } else still++;
       last = top;
-      if ((moved && still >= 60) || now - start > 45000) { state.done = true; return; }
+      state.ended = moved && still >= 60 ? 'settled'
+        : tappedAt !== undefined && now - tappedAt > 45000 ? 'tap-window'
+        : now - start > 120000 ? 'ceiling'
+        : null;
+      if (state.ended) { state.done = true; return; }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
@@ -199,5 +211,5 @@ export function startSamplerExpression(key: string): string {
 
 export function readSamplerExpression(key: string): string {
   assert(/^__trinityUnreadTrajectory[1-9]\d*$/u.test(key), 'Sampler key');
-  return `(() => { const s = window[${JSON.stringify(key)}]; return s ? { done: s.done, samples: s.samples.slice() } : null; })()`;
+  return `(() => { const s = window[${JSON.stringify(key)}]; return s ? { done: s.done, tapped: s.tapped, ended: s.ended, samples: s.samples.slice() } : null; })()`;
 }

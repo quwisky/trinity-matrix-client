@@ -584,6 +584,20 @@ export function parseTrajectory(value: unknown): readonly TrajectorySample[] {
   });
 }
 
+/**
+ * D4: a sampler window is evidence only if it saw the tap's click and ended by
+ * settling or by the 45 s window after that click. A window that never saw the
+ * tap, or that the 120 s ceiling cut short, fails closed before classification.
+ */
+export function parseSamplerWindow(value: unknown): readonly TrajectorySample[] {
+  const window = object(value, 'Sampler window');
+  assert.equal(window['done'], true, 'The sampler finished');
+  assert.equal(window['tapped'], true, 'The sampler observed the tap');
+  assert(window['ended'] === 'settled' || window['ended'] === 'tap-window',
+    'The sampler window ended before its 120 s ceiling');
+  return parseTrajectory(window['samples']);
+}
+
 export function classifyTrajectory(samples: readonly TrajectorySample[]): TrajectoryClass {
   let movements = 0;
   let longestRun = 0;

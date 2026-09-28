@@ -44,7 +44,7 @@ import {
   authoritativeRoomMessages,
   classifyTrajectory,
   messageUnreadAssertion,
-  parseTrajectory,
+  parseSamplerWindow,
   transactionId,
   unreadBody,
   unreadRoomName,
@@ -84,7 +84,9 @@ const ANIMATOR = ['global', 'animator_duration_scale'] as const;
 const ROOM_OPEN_MS = 30_000;
 const OBSERVE_MS = 20_000;
 const REDUCED_MOTION_MS = 20_000;
-const SAMPLER_MS = 50_000;
+// The sampler's 120 s ceiling counts from its start, before the tap, so this bound
+// (started after the tap returns) always outlasts it.
+const SAMPLER_MS = 135_000;
 
 const digest = (value: string): string =>
   createHash('sha256').update(value).digest('hex');
@@ -397,7 +399,7 @@ async function sampleJump(
     () => evaluateNative(context.client.webview, readSamplerExpression(key)),
     (value) => !!value && typeof value === 'object' && (value as { done?: unknown }).done === true,
     'sampler did not finish', context.signal, SAMPLER_MS);
-  return { samples: parseTrajectory((finished as { samples: unknown }).samples) };
+  return { samples: parseSamplerWindow(finished) };
 }
 
 // The one stage: D6, the unread divider and jump-to-unread across two Rooms.

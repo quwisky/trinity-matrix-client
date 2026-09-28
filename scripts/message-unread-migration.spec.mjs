@@ -1068,11 +1068,12 @@ describe('Android message-unread read-only renderer observation (jsdom)', () => 
     expect(() => readSamplerExpression('not-a-key')).toThrow();
   });
 
-  it('keeps the sampler passive: rAF, a 45s cap, 60-frame stillness, and read-only scrollTop', async () => {
+  it('keeps the sampler passive: rAF, a 45s tap window, a 120s ceiling, 60-frame stillness, and read-only scrollTop', async () => {
     const { startSamplerExpression } = await loadObserver();
     const source = startSamplerExpression('__trinityUnreadTrajectory1');
     expect(source).toContain('requestAnimationFrame');
     expect(source).toContain('45000');
+    expect(source).toContain('120000');
     expect(source).toContain('>= 60');
     expect(source).toContain('.scrollTop');
     for (const forbidden of [
@@ -1088,6 +1089,104 @@ describe('Android message-unread read-only renderer observation (jsdom)', () => 
       /\.prototype\.\w+\s*=[^=]/u,
     ])
       expect(source).not.toMatch(forbidden);
+  });
+
+  /** Drive one sampler window with a manual rAF clock and a controllable scroller. */
+  async function samplerHarness() {
+    const { samplerKey, startSamplerExpression, readSamplerExpression } =
+      await loadObserver();
+    const window = unreadWindow(sceneHtml());
+    const { document } = window;
+    const scroller = document.querySelector('.scroll[data-message-scroller]');
+    const divider = scroller.querySelector(
+      '[data-testid="new-messages-divider"]',
+    );
+    const view = { top: 394.3, inView: false };
+    Object.defineProperty(scroller, 'scrollTop', { get: () => view.top });
+    divider.getBoundingClientRect = () =>
+      rect(
+        view.inView
+          ? { left: 16, top: 300, right: 377, bottom: 324 }
+          : DIVIDER_BOX,
+      );
+    let pending;
+    let now = 0;
+    const run = (expression) =>
+      runInNewContext(expression, {
+        window,
+        document,
+        requestAnimationFrame: (callback) => {
+          pending = callback;
+          return 1;
+        },
+      });
+    const key = samplerKey(1);
+    expect(run(startSamplerExpression(key))).toBe(true);
+    return {
+      view,
+      frames(ms) {
+        for (const end = now + ms; now < end && pending; now += 16) {
+          const callback = pending;
+          pending = undefined;
+          callback(now);
+        }
+      },
+      tap: () =>
+        document
+          .querySelector('[data-testid="jump-to-unread"]')
+          .dispatchEvent(new window.MouseEvent('click', { bubbles: true })),
+      read: () => run(readSamplerExpression(key)),
+      scheduled: () => pending !== undefined,
+    };
+  }
+
+  it('anchors the 45 s window at the observed tap, not at the sampler start [RF-2]', async () => {
+    const c = await loadContract();
+    const sampler = await samplerHarness();
+    sampler.frames(46_000);
+    expect(sampler.read().done).toBe(false);
+    sampler.tap();
+    sampler.frames(32);
+    Object.assign(sampler.view, { top: 138.3, inView: true });
+    sampler.frames(2_000);
+    const window = sampler.read();
+    expect(window).toMatchObject({
+      done: true,
+      tapped: true,
+      ended: 'settled',
+    });
+    expect(sampler.scheduled()).toBe(false);
+    const automatic = c.classifyTrajectory(c.parseSamplerWindow(window));
+    expect(automatic).toMatchObject({
+      kind: 'automatic',
+      movements: 1,
+      settledInView: true,
+    });
+    expect(() => c.assertReducedScrolled(automatic)).not.toThrow();
+    expect(() => c.assertAutomaticOnly(automatic)).not.toThrow();
+  });
+
+  it('stops a never-tapped window at the 120 s ceiling and fails closed [RF-2]', async () => {
+    const c = await loadContract();
+    const sampler = await samplerHarness();
+    sampler.frames(119_000);
+    expect(sampler.read().done).toBe(false);
+    sampler.frames(2_000);
+    const window = sampler.read();
+    expect(window).toMatchObject({
+      done: true,
+      tapped: false,
+      ended: 'ceiling',
+    });
+    expect(sampler.scheduled()).toBe(false);
+    expect(() => c.parseSamplerWindow(window)).toThrow(/tap/u);
+    // A tapped window cut by the ceiling fails closed too.
+    expect(() => c.parseSamplerWindow({ ...window, tapped: true })).toThrow(
+      /ceiling/u,
+    );
+    expect(() =>
+      c.parseSamplerWindow({ ...window, tapped: true, ended: 'tap-window' }),
+    ).not.toThrow();
   });
 });
 
@@ -2103,7 +2202,11 @@ async function simulatedUnreadApp(faults = {}, directory) {
                 : samplerCalls === 2
                   ? SMOOTH_TRAJECTORY
                   : AUTOMATIC_TRAJECTORY;
-            return { result: { value: { done: true, samples } } };
+            return {
+              result: {
+                value: { done: true, tapped: true, ended: 'settled', samples },
+              },
+            };
           }
           throw new Error(`Unmodelled simulated evaluate: ${expression}`);
         },
