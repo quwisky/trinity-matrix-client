@@ -7449,7 +7449,8 @@ pnpm e2e:android:message-unread
 
 The uncached serial target owns `android-avd` and `synapse`: one attempt and
 zero retries, with a 15-minute Node test and a 20-minute CI wrapper. Shard 4
-runs it last, after message-links.
+runs it last, after message-links; its budget comment adds the 4-minute local
+run time (about 79 native minutes of the 240-minute job).
 
 Predecessor status: enabled; the coordinator retires it after hosted
 acceptance.
