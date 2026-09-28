@@ -351,6 +351,7 @@ authorize retirement, describe that time.
 | `conversations/message-receipts.spec.mts` | #751 | file deleted | — |
 | `conversations/message-source.spec.mts` | #752 | 0 retired | “shows an event’s raw JSON in the view-source dialog” |
 | `conversations/message-spoiler.spec.mts` | #753 | file deleted | — |
+| `conversations/message-swipe.spec.mts` | #754 | file deleted | — |
 
 ## Native shell, Back and Appearance batch
 

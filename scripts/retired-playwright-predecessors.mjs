@@ -861,6 +861,28 @@ export const RETIRED_PREDECESSORS = Object.freeze([
     retired: ['conceals a spoiler and reveals it on click'],
     desktopOnly: [],
   },
+  {
+    path: 'e2e/browser/journeys/conversations/message-swipe.spec.mts',
+    sha256: '435f360188e627c7942e29988f62dd4654955317eb23f0980adabea23fd7bdb4',
+    issues: [754],
+    deleted: true,
+    retired: [
+      'swiping your own message opens the editor for it',
+      "swiping someone else's message starts a reply to it",
+      'shows which action it will take, part-way through the drag',
+      'the action fades and grows in as the drag approaches committing',
+      'does nothing at all while the setting is off',
+      'follows the direction it was set to, and only that one',
+      'the affordance waits in the strip the row uncovers',
+      'a drag that turns vertical abandons the action',
+      'a vertical drag still scrolls the timeline',
+      'refuses to start from either screen edge',
+      'leaves the drawer gesture working with the setting ${setting}',
+      'leaves the drawer gesture working',
+      'takes effect as soon as it is changed, with no reload',
+    ],
+    desktopOnly: [],
+  },
 ]);
 
 if (

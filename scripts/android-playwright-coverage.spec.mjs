@@ -119,11 +119,6 @@ describe('Android Playwright canonical coverage', () => {
         'raises a notification for a live message to a background account',
         'native notification delivery and collapse tags need',
       ],
-      [
-        'conversations/message-swipe.spec.mts',
-        'a vertical drag still scrolls the timeline',
-        'does not expose compositor touch panning',
-      ],
     ];
     for (const [spec, title, reason] of explicitSkips) {
       const source = readFileSync(

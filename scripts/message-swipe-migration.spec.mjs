@@ -778,7 +778,8 @@ describe('Android message-swipe predecessor pins', () => {
     ]);
   });
 
-  it('keeps the predecessor enabled and unchanged in both Playwright inventories', async () => {
+  it('deletes the retired predecessor from both Playwright inventories', async () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
     const { BROWSER_JOURNEYS } =
       await import('../e2e/browser/journey-catalog.mts');
     expect(
@@ -786,7 +787,15 @@ describe('Android message-swipe predecessor pins', () => {
         (journey) =>
           journey.path === 'journeys/conversations/message-swipe.spec.mts',
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
+    const android = read('e2e/android/playwright.config.mts');
+    expect(android).toContain(
+      "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
+    );
+    for (const config of [android, read('e2e/browser/playwright.config.mts')]) {
+      expect(config).not.toContain('testIgnore');
+      expect(config).not.toContain('message-swipe');
+    }
   });
 
   it('maps every Android-path direct and helper site of the fourteen definitions', () => {
@@ -2954,7 +2963,7 @@ describe('Android message-swipe hosted wiring and parity ledger', () => {
     expect(section).toContain('input motionevent');
     expect(section).toContain('feasibility');
     expect(section).toContain('three-button navigation');
-    expect(section).toContain('Predecessor status: enabled');
+    expect(section).toContain('Predecessor status: retired');
     expect(section).not.toContain('pnpm exec nx');
     const design = read(
       'docs/superpowers/specs/2026-09-27-android-message-swipe-maestro-design.md',

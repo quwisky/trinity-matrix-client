@@ -112,11 +112,6 @@ export const BROWSER_JOURNEYS = defineBrowserJourneys([
     contractType: 'journey',
   },
   {
-    path: 'journeys/conversations/message-swipe.spec.mts',
-    capability: 'conversations',
-    contractType: 'journey',
-  },
-  {
     path: 'journeys/conversations/message-unread.spec.mts',
     capability: 'conversations',
     contractType: 'journey',

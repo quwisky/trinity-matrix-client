@@ -15,12 +15,14 @@ const read = (path) => readFileSync(resolve(root, path), 'utf8');
 
 // Android batches accepted when the user decided the retirement on 2026-09-26: every batch
 // closed under #660 plus #751-#753, accepted on hosted evidence. Open batches are excluded.
+// #754 (message-swipe) was accepted and retired separately on 2026-09-28 under the same
+// policy.
 const ACCEPTED_BATCHES = new Set([
   670, 672, 674, 676, 687, 688, 689, 690, 691, 692, 693, 694, 695, 696, 697,
   698, 699, 700, 701, 706, 707, 708, 709, 710, 711, 712, 713, 714, 715, 716,
   717, 718, 719, 720, 721, 722, 723, 724, 725, 726, 727, 728, 729, 730, 731,
   732, 733, 734, 735, 736, 737, 738, 739, 740, 741, 742, 743, 744, 745, 746,
-  747, 748, 749, 750, 751, 752, 753,
+  747, 748, 749, 750, 751, 752, 753, 754,
 ]);
 
 const titleOf = (argument) =>
@@ -144,7 +146,7 @@ describe('retired Playwright predecessors', () => {
     const working = inputs(partial).workingSource;
     for (const [entry, sources] of [
       [{ ...partial, sha256: '0'.repeat(64) }, inputs(partial)],
-      [{ ...partial, issues: [754] }, inputs(partial)],
+      [{ ...partial, issues: [839] }, inputs(partial)],
       [
         { ...partial, retired: [...partial.retired, 'no such test'] },
         inputs(partial),
