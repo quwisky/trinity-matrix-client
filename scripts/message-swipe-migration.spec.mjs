@@ -3067,7 +3067,7 @@ function assertJourneyRules(journeys) {
       /installPointerRecorder\(context\.client\)/u,
       /touch\.swipe\(from, to\)/u,
       /readPointerEvents\(context\.client\)/u,
-      /assertNativeGesture\(events, plan, ending\)/u,
+      /proveGesture\(context, events, plan, ending\)/u,
     ],
     'nativeSwipe',
   );
@@ -3078,12 +3078,16 @@ function assertJourneyRules(journeys) {
       /installPointerRecorder\(context\.client\)/u,
       /context\.touch = touch/u,
       /touch\.press\(from, to\)/u,
-      /assertNativeGesture\(events, \{ from, to \}, 'held'\)/u,
+      /proveGesture\(context, events, \{ from, to \}, 'held'\)/u,
     ],
     'nativePress',
   );
   expect(functionSource(journeys, 'nativeMoveHeld')).toContain(
-    "assertNativeGesture(events, { from, to }, 'held')",
+    "proveGesture(context, events, { from, to }, 'held')",
+  );
+  // A failed gesture proof is as diagnosable as a failed view() wait.
+  expect(functionSource(journeys, 'proveGesture')).toContain(
+    "await context.client.record('unmet-gesture', { plan, ending, events });",
   );
   expect(functionSource(journeys, 'nativeRelease')).toContain(
     "assert.equal(events.at(-1)!.type, 'pointerup', 'The held pointer was released');",
@@ -3111,7 +3115,7 @@ function assertJourneyRules(journeys) {
       /touch\.press\(from, to, steps\)/u,
       /touch\.release\(\)/u,
       /readPointerEvents\(context\.client\)/u,
-      /assertNativeGesture\(events, \{ from, to \}, 'up-or-cancel'\)/u,
+      /proveGesture\(context, events, \{ from, to \}, 'up-or-cancel'\)/u,
     ],
     'dragTimeline',
   );
@@ -3378,12 +3382,17 @@ describe('Android message-swipe source rules', () => {
       `${journeys}\nawait client.swipeCurrent('.scroll', { direction: 'increase-scroll-top' });`,
       // The gesture is no longer proven as trusted native input.
       replace(
-        /const \{ moves, durationMs \} = assertNativeGesture\(events, plan, ending\);/u,
+        /const \{ moves, durationMs \} = await proveGesture\(context, events, plan, ending\);/u,
         'const { moves, durationMs } = { moves: 0, durationMs: 0 };',
       ),
       replace(
-        /const \{ moves \} = assertNativeGesture\(events, \{ from, to \}, 'held'\);/u,
+        /const \{ moves \} = await proveGesture\(context, events, \{ from, to \}, 'held'\);/u,
         'const moves = 0;',
+      ),
+      // A failed gesture proof leaves no diagnosable unmet-gesture artifact.
+      replace(
+        /await context\.client\.record\('unmet-gesture', \{ plan, ending, events \}\);\n\s+throw error;\n/u,
+        'throw error;\n',
       ),
       // A held observation is read after release.
       replace(

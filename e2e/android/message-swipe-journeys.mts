@@ -72,6 +72,7 @@ import {
   rowFor,
   swipeRoomName,
   type Box,
+  type GestureEnding,
   type GesturePlan,
   type MessageSwipeAssertion,
   type MessageSwipeStage,
@@ -527,7 +528,7 @@ async function dragTimeline(context: MessageSwipeStageContext, name: string,
     context.client.signal,
     STYLE_MS,
   );
-  const { moves, windowMs } = assertNativeGesture(events, { from, to }, 'up-or-cancel');
+  const { moves, windowMs } = await proveGesture(context, events, { from, to }, 'up-or-cancel');
   await receipt(context, `timeline-drag-${name}`, {
     toward, travel, steps, moves, windowMs, terminal: events.at(-1)!.type,
   });
@@ -549,6 +550,25 @@ async function placeRows(context: MessageSwipeStageContext, targets: readonly Ro
     if (high < scroller.top + margin)
       await dragTimeline(context, 'place', 'older', scroller.top + margin - high + 24);
     else await dragTimeline(context, 'place', 'newer', low - scroller.bottom + margin + 24);
+  }
+}
+
+/**
+ * `assertNativeGesture`, but a failed proof first records the raw trusted
+ * pointer events it was given (scrubbed like every other diagnostic), so a
+ * failing gesture is as diagnosable as a failing `view()` wait.
+ */
+async function proveGesture(
+  context: MessageSwipeStageContext,
+  events: readonly TrustedPointerEvent[],
+  plan: GesturePlan,
+  ending: GestureEnding,
+): Promise<{ readonly moves: number; readonly durationMs: number; readonly windowMs: number }> {
+  try {
+    return assertNativeGesture(events, plan, ending);
+  } catch (error) {
+    await context.client.record('unmet-gesture', { plan, ending, events });
+    throw error;
   }
 }
 
@@ -578,7 +598,7 @@ async function nativeSwipe(context: MessageSwipeStageContext, name: string, from
     STYLE_MS,
   );
   const plan = { from, to };
-  const { moves, durationMs } = assertNativeGesture(events, plan, ending);
+  const { moves, durationMs } = await proveGesture(context, events, plan, ending);
   const proof = { name, plan, moves, durationMs };
   await receipt(context, `gesture-${name}`, {
     ...proof,
@@ -602,7 +622,7 @@ async function nativePress(context: MessageSwipeStageContext, name: string, from
     context.client.signal,
     STYLE_MS,
   );
-  const { moves } = assertNativeGesture(events, { from, to }, 'held');
+  const { moves } = await proveGesture(context, events, { from, to }, 'held');
   await receipt(context, `held-${name}`, { from, to, moves, held: true });
   return touch;
 }
@@ -611,7 +631,7 @@ async function nativeMoveHeld(context: MessageSwipeStageContext, touch: NativeTo
   from: CssPoint, to: CssPoint): Promise<void> {
   await touch.moveTo(to);
   const events = await readPointerEvents(context.client);
-  assertNativeGesture(events, { from, to }, 'held');
+  await proveGesture(context, events, { from, to }, 'held');
   await receipt(context, `held-${name}`, { to, moves: events.length - 1, held: true });
 }
 
