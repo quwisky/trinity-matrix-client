@@ -148,7 +148,7 @@ must be unchanged, and the value is read back before the relaunch. The
 predecessor's seed-then-boot is exactly that relaunch. After launch the same
 value is read again. The document never reaches an argument, log or error.
 
-### D5. Hard feasibility gate (held interpolation and compositor panning)
+### D5. Hard feasibility gate (native pan stream and compositor panning)
 
 Local probe (APK from `266dcc1d`, API 36 emulator, 4 cores, 4 GB):
 
@@ -164,13 +164,18 @@ Local probe (APK from `266dcc1d`, API 36 emulator, 4 cores, 4 GB):
   scroller moved from 164 to 595 CSS px.
 
 The suite repeats this gate in `vertical-scroll` before its records: one
-held, pure vertical 120 CSS px drag must deliver at least two trusted moves
-and change the scroller's `scrollTop` while the finger is down. The result is
-`vertical-scroll/feasibility.json`, which the publication marker requires to
-be feasible. If the gate fails, the stage fails closed with that artifact; no
-renderer or CDP scroll ever substitutes. Line 127's back-pagination is also
-native: slow vertical drags that pause before lifting (no fling), bounded to
-twelve drags and the predecessor's 30 s.
+held, pure vertical 120 CSS px drag must deliver a native stream (one trusted
+touch pointer, at least one trusted move, then at most one platform
+`pointercancel` and no `pointerup`) and change the scroller's `scrollTop`
+while the finger is down. Chromium cancels the pointer when it takes the pan,
+so a pan delivers one move, as the probe above showed; held interpolation (at
+least two moves with the finger down) is proven by the held horizontal
+stages. The result is `vertical-scroll/feasibility.json`, which the
+publication marker requires to be feasible. If the gate fails, the stage
+fails closed with that artifact; no renderer or CDP scroll ever substitutes.
+Line 127's back-pagination is also native: slow vertical drags that pause
+before lifting (no fling), bounded to twelve drags and the predecessor's
+30 s.
 
 ### D6. Gesture navigation owns the screen edges
 
