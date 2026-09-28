@@ -281,7 +281,9 @@ function isPixel5Profile(applied: Awaited<ReturnType<typeof readAppliedProfile>>
   return applied.innerWidth === PIXEL_5_ACCOUNT_PROFILE.width
     && applied.innerHeight === PIXEL_5_ACCOUNT_PROFILE.height
     && Math.abs(applied.devicePixelRatio - PIXEL_5_ACCOUNT_PROFILE.deviceScaleFactor!) < 1e-6
-    && applied.coarsePointer;
+    && applied.coarsePointer
+    && applied.hoverNone
+    && applied.platform === 'android';
 }
 
 /** The applied profile is read back after each launch and must be exactly Pixel 5. */

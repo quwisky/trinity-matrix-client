@@ -2316,8 +2316,8 @@ function appliedUnreadProfileFor(state, faults) {
     innerHeight: 727,
     devicePixelRatio: 2.75,
     coarsePointer: true,
-    hoverNone: true,
-    platform: 'android',
+    hoverNone: !faults.hoverCapable,
+    platform: faults.notAndroid ? 'ios' : 'android',
   };
 }
 
@@ -2769,6 +2769,30 @@ describe('Android message-unread native journey against a simulated installed ap
     const { runDividerJump } = await loadJourneys();
     await withSimulatedUnreadStage(
       { resetWidth412: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /applied profile is Pixel 5/u,
+        );
+      },
+    );
+  });
+
+  it('fails closed when the applied profile reports a hover-capable pointer [RF-5][M8]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { hoverCapable: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /applied profile is Pixel 5/u,
+        );
+      },
+    );
+  });
+
+  it('fails closed when the applied profile is not android [RF-5][M8]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { notAndroid: true },
       async ({ context }) => {
         await expect(runDividerJump(context)).rejects.toThrow(
           /applied profile is Pixel 5/u,
