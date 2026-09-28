@@ -108,6 +108,7 @@ import {
   type MessageSwipePublicationSafety,
   type MessageSwipeSecretIds,
 } from './message-swipe-artifacts.mts';
+import { ANDROID_IME_VISIBILITY_COMMAND, parseAndroidImeShown } from './android-ime.mts';
 import { openMaestroDevice } from './maestro-session.mts';
 import { waitForNativeShellState } from './native-shell-client.mts';
 import { installWithAndroidRuntimeProvenance } from './runtime-provenance.mts';
@@ -125,6 +126,7 @@ const SCROLL_MS = 5_000;
 const SETTINGS_MS = 20_000;
 const AFFORDANCE_MS = 20_000;
 const STYLE_MS = 5_000;
+const KEYBOARD_MS = 10_000;
 /** A negative claim is observed for this long before it is recorded. */
 const SETTLE_MS = 2_000;
 /** Native vertical drags allowed to reach the older rows of a long Room. */
@@ -975,6 +977,27 @@ async function useThreeButtonNavigation(context: MessageSwipeStageContext): Prom
   await receipt(context, 'three-button-navigation', { original, applied: '0' });
 }
 
+/**
+ * A reply focuses the composer and an opened drawer focuses its member filter,
+ * so Android raises its soft keyboard and the WebView resizes above it: the
+ * timeline's lower part leaves the attached WebView, where no native point
+ * maps (D3). The predecessor's browser has no soft keyboard, so the keyboard
+ * is dismissed natively (Back, while Android reports it shown) and the full
+ * WebView bounds are awaited before the next measurement. Focus stays where
+ * the product put it, so the reply stays armed and the drawer open.
+ */
+async function dismissSoftKeyboard(context: MessageSwipeStageContext, raisedBy: string): Promise<void> {
+  const { client } = context;
+  await waitForNativeShellState(
+    async () => parseAndroidImeShown(await client.device.adb('shell', ANDROID_IME_VISIBILITY_COMMAND)),
+    (shown) => shown,
+    `${raisedBy} raised the soft keyboard`,
+    client.signal,
+    KEYBOARD_MS,
+  );
+  await client.hideKeyboard();
+}
+
 export async function runEdgeDeadZones(context: MessageSwipeStageContext): Promise<void> {
   const { arranged, targets } = await stageStart(context);
   assert(context.navigationRestore, 'The edge stage runs under three-button navigation');
@@ -999,6 +1022,7 @@ export async function runEdgeDeadZones(context: MessageSwipeStageContext): Promi
   await record(context, 'inset-control-replying', () => assertReplying(replying, arranged.friend.username), {
     banner: 'Replying to', namesOther: true,
   });
+  await dismissSoftKeyboard(context, 'the reply');
   // The reply banner just armed above the composer, changing the timeline's
   // measured height: the row position is re-measured before it is reused.
   current = await placeRows(context, targets);
@@ -1030,6 +1054,7 @@ async function drawerCycle(context: MessageSwipeStageContext, targets: readonly 
   const opened = await view(context, targets, assertDrawerVisible, 'the edge drag opened the drawer',
     DRAWER_MS);
   await record(context, 'drawer-opened', () => assertDrawerVisible(opened), { drawer: true });
+  await dismissSoftKeyboard(context, 'the drawer');
   if (suppressed) {
     const quiet = await view(context, targets, (value) => assertNoAffordance(value, suppressed.body),
       'row swipe is off over the open drawer', STYLE_MS);

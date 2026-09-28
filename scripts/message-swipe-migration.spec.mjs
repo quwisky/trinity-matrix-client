@@ -3090,6 +3090,27 @@ function assertJourneyRules(journeys) {
   expect(functionSource(journeys, 'nativeMoveHeld')).toContain(
     "proveGesture(context, events, { from, to }, 'held')",
   );
+  // The opened drawer's focused filter raises the soft keyboard; it is
+  // dismissed before the closing drag measures the timeline.
+  assertOrder(
+    functionSource(journeys, 'drawerCycle'),
+    [
+      recordOf('drawer-opened'),
+      /await dismissSoftKeyboard\(context, 'the drawer'\);/u,
+      /nativeSwipe\(context, 'drawer-close'/u,
+    ],
+    'drawerCycle',
+  );
+  // A soft keyboard is dismissed only after Android reports it shown.
+  assertOrder(
+    functionSource(journeys, 'dismissSoftKeyboard'),
+    [
+      /parseAndroidImeShown\(await client\.device\.adb\('shell', ANDROID_IME_VISIBILITY_COMMAND\)\)/u,
+      /\(shown\) => shown,/u,
+      /await client\.hideKeyboard\(\);/u,
+    ],
+    'dismissSoftKeyboard',
+  );
   // A failed gesture proof is as diagnosable as a failed view() wait.
   expect(functionSource(journeys, 'proveGesture')).toContain(
     "await context.client.record('unmet-gesture', { plan, ending, events });",
@@ -3181,6 +3202,9 @@ function assertJourneyRules(journeys) {
         recordOf('left-edge-no-banner'),
         /nativeSwipe\(context, 'inset-control', \{ x: 80, y \}/u,
         recordOf('inset-control-replying'),
+        // The reply raised the soft keyboard over the timeline: it is
+        // dismissed natively before anything is measured again.
+        /await dismissSoftKeyboard\(context, 'the reply'\);/u,
         // The reply banner changed the timeline's height: the row position
         // is re-measured before the remaining gestures reuse it.
         /box = rowFor\(current, arranged\.other\.body\)\.box!;\n\s+y = rowCentre\(box\);/u,
@@ -3435,6 +3459,15 @@ describe('Android message-swipe source rules', () => {
       replace(
         /\n  \/\/ The reply banner just armed above the composer, changing the timeline's\n  \/\/ measured height: the row position is re-measured before it is reused\.\n  current = await placeRows\(context, targets\);\n  box = rowFor\(current, arranged\.other\.body\)\.box!;\n  y = rowCentre\(box\);\n/u,
         '\n',
+      ),
+      // A stage measures while the reply's or the drawer's soft keyboard
+      // covers the timeline, or dismisses it without waiting for Android.
+      replace(/  await dismissSoftKeyboard\(context, 'the reply'\);\n/u, ''),
+      replace(/  await dismissSoftKeyboard\(context, 'the drawer'\);\n/u, ''),
+      replace(/    \(shown\) => shown,\n/u, '    () => true,\n'),
+      replace(
+        /  await client\.hideKeyboard\(\);\n\}\n\nexport async function runEdgeDeadZones/u,
+        '}\n\nexport async function runEdgeDeadZones',
       ),
       // D8: the predecessor's exact width - 4 right-edge start no longer
       // reaches the page as a trusted pointerdown on the installed WebView.
