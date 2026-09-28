@@ -1209,6 +1209,39 @@ describe('Android message-unread read-only renderer observation (jsdom)', () => 
     expect(sampler.scheduled()).toBe(false);
     expect(() => c.parseSamplerWindow(window)).not.toThrow();
   });
+
+  it('never ends the window on pre-tap drift or movement, only after the tap lands [RF-3]', async () => {
+    const sampler = await samplerHarness();
+    // Sub-pixel drift (under the classifier's own 1 CSS px MOVEMENT_PX) must
+    // never register as movement, however many frames follow it.
+    sampler.view.top = 298.67;
+    sampler.frames(16);
+    sampler.view.top = 298.4;
+    sampler.frames(16);
+    sampler.view.top = 298.67;
+    sampler.frames(64 * 16);
+    expect(sampler.read()).toMatchObject({ done: false, tapped: false });
+
+    // A real pre-tap movement (>= 1 CSS px) is movement, but with no tap
+    // observed yet the window must still not settle.
+    sampler.view.top = 290;
+    sampler.frames(16);
+    sampler.frames(64 * 16);
+    expect(sampler.read()).toMatchObject({ done: false, tapped: false });
+
+    // Only once the tap lands and the divider settles does the window end.
+    sampler.tap();
+    sampler.frames(32);
+    Object.assign(sampler.view, { top: 138.3, inView: true });
+    sampler.frames(2_000);
+    const window = sampler.read();
+    expect(window).toMatchObject({
+      done: true,
+      tapped: true,
+      ended: 'settled',
+    });
+    expect(sampler.scheduled()).toBe(false);
+  });
 });
 
 /* -------------------------------------------------------------------------- */

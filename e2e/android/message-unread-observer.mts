@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AccountWorkspaceClient } from './account-workspace-client.mts';
 import {
+  MOVEMENT_PX,
   parseAppliedProfile,
   parseUnreadView,
   type AppliedProfileObservation,
@@ -17,9 +18,11 @@ import {
  * Every builder returns one pure expression string. It reads the DOM, computed
  * style, hit-testing and `matchMedia` only: no click, focus, key, scroll,
  * class, style, attribute or location write, and no handler is invoked.
- * Window-level values are reached through `document.defaultView`, so a guard
- * can execute the same text in jsdom with only `document` in scope. The
- * passive sampler follows the same rule for `requestAnimationFrame`.
+ * `unreadViewExpression` and `appliedProfileExpression` reach window-level
+ * values through `document.defaultView`, so a guard can execute the same
+ * text in jsdom with only `document` in scope. The passive sampler instead
+ * reads the bare `window` and `requestAnimationFrame` globals, because its
+ * own guard (`samplerHarness`) already provides both in scope.
  */
 
 const OBSERVATION_TIMEOUT_MS = 15_000;
@@ -172,6 +175,9 @@ export function samplerKey(n: number): string {
  * arrived. The 45 s window counts from the first frame after that click,
  * because the native tap's latency is unbounded under load; a 120 s ceiling
  * from the start ends every loop, and the contract fails that window closed.
+ * D4: a frame-to-frame change under `MOVEMENT_PX` is drift, not movement, and
+ * `'settled'` (60 unchanged frames after movement) can only end the window
+ * once the tap has actually landed, so pre-tap drift or jitter never ends it.
  */
 export function startSamplerExpression(key: string): string {
   assert(/^__trinityUnreadTrajectory[1-9]\d*$/u.test(key), 'Sampler key');
@@ -195,9 +201,9 @@ export function startSamplerExpression(key: string): string {
       if (state.tapped) tappedAt ??= now;
       const top = scroller.scrollTop;
       state.samples.push([Math.round(now - start), top, inView()]);
-      if (top !== last) { moved = true; still = 0; } else still++;
+      if (Math.abs(top - last) >= ${MOVEMENT_PX}) { moved = true; still = 0; } else still++;
       last = top;
-      state.ended = moved && still >= 60 ? 'settled'
+      state.ended = moved && tappedAt !== undefined && still >= 60 ? 'settled'
         : tappedAt !== undefined && now - tappedAt > 45000 ? 'tap-window'
         : now - start > 120000 ? 'ceiling'
         : null;
