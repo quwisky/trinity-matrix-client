@@ -64,7 +64,7 @@ interface DexProbeResult {
 /** One entry of `dex-recovery.json`. */
 interface DexRecoveryRecord {
   readonly forced: boolean;
-  readonly attempts: 2;
+  readonly attempts: 1 | 2;
   readonly probe: readonly DexProbeResult[];
   readonly firstContentStep: DexProbeStep | null;
   readonly recovered: boolean;
@@ -357,7 +357,23 @@ export async function openLegacySsoProvider(
       signal.throwIfAborted();
       firstMiss = error;
     }
-    await launch.beforeProbe?.();
+    try {
+      await launch.beforeProbe?.();
+    } catch (registration) {
+      // Without the registration the probe could publish unredacted state, so
+      // the recovery ends here, recording that no probe ran.
+      await recordRecovery({
+        forced,
+        attempts: 1,
+        probe: [],
+        firstContentStep: null,
+        recovered: false,
+      });
+      throw new AggregateError(
+        [firstMiss, registration],
+        'Dex readiness missed and the state it replaces could not be registered; no probe or recovery ran',
+      );
+    }
     const probe = await probeStaleDex();
     const record = {
       forced,

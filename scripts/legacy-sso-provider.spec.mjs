@@ -252,6 +252,53 @@ describe('Android legacy SSO Dex readiness recovery', () => {
     expect(calls.filter((call) => call === 'beforeProbe')).toHaveLength(1);
   });
 
+  it('ends the recovery without probing when the state registration fails', async () => {
+    const { calls, device } = fakeDevice(directory, {
+      ready: ['miss', 'pass'],
+      probe: ['pass'],
+    });
+    const { openLegacySsoProvider } = await import(providerPath);
+    const provider = await openLegacySsoProvider(
+      device,
+      root,
+      directory,
+      new AbortController().signal,
+      { reloadSettleMs: 0 },
+    );
+    const registration = new Error('persisted SSO state unavailable');
+    const launch = Object.assign(
+      async (attempt) => {
+        calls.push(`launch ${attempt}`);
+      },
+      {
+        beforeProbe: async () => {
+          throw registration;
+        },
+      },
+    );
+    const failure = await provider.start(launch).catch((error) => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure.errors).toHaveLength(2);
+    expect(failure.errors[0].message).toMatch(
+      /legacy-sso-dex-ready\.yaml failed/u,
+    );
+    expect(failure.errors[1]).toBe(registration);
+    expect(calls.filter((call) => call.includes('dex-probe'))).toEqual([]);
+    expect(calls.filter((call) => call.includes('uiautomator'))).toEqual([]);
+    expect(calls.filter((call) => call.startsWith('launch'))).toEqual([
+      'launch 1',
+    ]);
+    expect(await readRecovery(directory)).toEqual([
+      {
+        forced: false,
+        attempts: 1,
+        probe: [],
+        firstContentStep: null,
+        recovered: false,
+      },
+    ]);
+  });
+
   it('fails on a second miss and keeps the first attempt diagnostics', async () => {
     const { calls, launches, launch, provider } = await openProvider(
       directory,
