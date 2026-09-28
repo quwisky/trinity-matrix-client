@@ -3176,6 +3176,9 @@ function assertJourneyRules(journeys) {
         recordOf('left-edge-no-banner'),
         /nativeSwipe\(context, 'inset-control', \{ x: 80, y \}/u,
         recordOf('inset-control-replying'),
+        // The reply banner changed the timeline's height: the row position
+        // is re-measured before the remaining gestures reuse it.
+        /box = rowFor\(current, arranged\.other\.body\)\.box!;\n\s+y = rowCentre\(box\);/u,
         /nativeSwipe\(context, 'right-edge', \{ x: width - 4, y \}/u,
         recordOf('right-edge-drawer-hidden'),
         /nativeSwipe\(context, 'drawer-inset', \{ x: width - DRAWER_OPEN_FROM_RIGHT_PX, y \}/u,
@@ -3422,6 +3425,12 @@ describe('Android message-swipe source rules', () => {
         'const quiet = await view(context, targets, (value) => {\n    assertNoBanner(value);\n    assertRowSettled',
       ),
       replace(/const SETTLE_MS = 2_000;/u, 'const SETTLE_MS = 0;'),
+      // The edge stage reuses a row position measured before the reply
+      // banner changed the timeline's height.
+      replace(
+        /\n  \/\/ The reply banner just armed above the composer, changing the timeline's\n  \/\/ measured height: the row position is re-measured before it is reused\.\n  current = await placeRows\(context, targets\);\n  box = rowFor\(current, arranged\.other\.body\)\.box!;\n  y = rowCentre\(box\);\n/u,
+        '\n',
+      ),
       // Three-button navigation is never restored, or set with the app running.
       replace(
         /  context\.navigationRestore = async \(\) => \{[\s\S]*?\n  \};\n/u,

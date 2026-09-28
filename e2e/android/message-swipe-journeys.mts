@@ -978,8 +978,8 @@ export async function runEdgeDeadZones(context: MessageSwipeStageContext): Promi
   const { arranged, targets } = await stageStart(context);
   assert(context.navigationRestore, 'The edge stage runs under three-button navigation');
   let current = await placeRows(context, targets);
-  const box = rowFor(current, arranged.other.body).box!;
-  const y = rowCentre(box);
+  let box = rowFor(current, arranged.other.body).box!;
+  let y = rowCentre(box);
   const width = current.innerWidth;
   // Line 507: from 4 px, inside the left dead zone. Held first, to see that it never arms.
   const leftFrom = { x: 4, y };
@@ -998,6 +998,11 @@ export async function runEdgeDeadZones(context: MessageSwipeStageContext): Promi
   await record(context, 'inset-control-replying', () => assertReplying(replying, arranged.friend.username), {
     banner: 'Replying to', namesOther: true,
   });
+  // The reply banner just armed above the composer, changing the timeline's
+  // measured height: the row position is re-measured before it is reused.
+  current = await placeRows(context, targets);
+  box = rowFor(current, arranged.other.body).box!;
+  y = rowCentre(box);
   // Line 522: the extreme right is native-history territory.
   await nativeSwipe(context, 'right-edge', { x: width - 4, y }, { x: width * 0.2, y }, 'up');
   current = await settled(context, targets, assertDrawerHidden, 'the right edge opened nothing');
