@@ -274,15 +274,22 @@ async function assertGestureNavigation(context: MessageUnreadStageContext): Prom
   assert.equal(mode, '2', 'The emulator uses gesture navigation mode 2');
 }
 
-/** The applied profile is read back after each launch and must be exactly Pixel 5. */
-async function assertProfile(context: MessageUnreadStageContext, launch: 'reset' | 'relaunch'): Promise<void> {
-  const applied = await readAppliedProfile(context.client);
-  await context.client.record(`profile-applied-${launch}`, { requested: PIXEL_5_ACCOUNT_PROFILE, ...applied });
-  assert(applied.innerWidth === PIXEL_5_ACCOUNT_PROFILE.width
+/** The one predicate both launches share: the applied profile is exactly Pixel 5. */
+function isPixel5Profile(applied: Awaited<ReturnType<typeof readAppliedProfile>>): boolean {
+  return applied.innerWidth === PIXEL_5_ACCOUNT_PROFILE.width
     && applied.innerHeight === PIXEL_5_ACCOUNT_PROFILE.height
     && Math.abs(applied.devicePixelRatio - PIXEL_5_ACCOUNT_PROFILE.deviceScaleFactor!) < 1e-6
-    && applied.coarsePointer,
-  'The applied profile is Pixel 5');
+    && applied.coarsePointer;
+}
+
+/** The applied profile is read back after each launch and must be exactly Pixel 5. */
+async function assertProfile(
+  context: MessageUnreadStageContext, launch: 'reset' | 'relaunch',
+): Promise<Awaited<ReturnType<typeof readAppliedProfile>>> {
+  const applied = await readAppliedProfile(context.client);
+  await context.client.record(`profile-applied-${launch}`, { requested: PIXEL_5_ACCOUNT_PROFILE, ...applied });
+  assert(isPixel5Profile(applied), 'The applied profile is Pixel 5');
+  return applied;
 }
 
 /** Reset to the Pixel 5 phone profile and record the unsuffixed diagnostic baseline. */
@@ -292,17 +299,12 @@ async function startNative(context: MessageUnreadStageContext): Promise<void> {
   const { client } = context;
   await client.reset(PIXEL_5_ACCOUNT_PROFILE);
   context.native = true;
-  const applied = await readAppliedProfile(client);
+  const applied = await assertProfile(context, 'reset');
   await client.record('profile-applied', {
     requested: PIXEL_5_ACCOUNT_PROFILE,
     digest: digest(JSON.stringify(PIXEL_5_ACCOUNT_PROFILE)),
     ...applied,
   });
-  assert(applied.innerWidth === PIXEL_5_ACCOUNT_PROFILE.width
-    && applied.innerHeight === PIXEL_5_ACCOUNT_PROFILE.height
-    && Math.abs(applied.devicePixelRatio - PIXEL_5_ACCOUNT_PROFILE.deviceScaleFactor!) < 1e-6
-    && applied.coarsePointer,
-  'The applied profile is Pixel 5');
 }
 
 /** Restore `animator_duration_scale` to its exact prior value, then prove the readback. */

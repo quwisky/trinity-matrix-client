@@ -1999,7 +1999,10 @@ function unreadViewFor(state) {
 
 function appliedUnreadProfileFor(state, faults) {
   const width =
-    state.launch === 'relaunch' && faults.relaunchWidth412 ? 412 : 393;
+    (state.launch === 'relaunch' && faults.relaunchWidth412) ||
+    (state.launch === 'reset' && faults.resetWidth412)
+      ? 412
+      : 393;
   return {
     innerWidth: width,
     innerHeight: 727,
@@ -2370,6 +2373,18 @@ describe('Android message-unread native journey against a simulated installed ap
     const { runDividerJump } = await loadJourneys();
     await withSimulatedUnreadStage(
       { relaunchWidth412: true },
+      async ({ context }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /applied profile is Pixel 5/u,
+        );
+      },
+    );
+  });
+
+  it('fails closed when the initial reset profile is not Pixel 5 [RF-5]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { resetWidth412: true },
       async ({ context }) => {
         await expect(runDividerJump(context)).rejects.toThrow(
           /applied profile is Pixel 5/u,
