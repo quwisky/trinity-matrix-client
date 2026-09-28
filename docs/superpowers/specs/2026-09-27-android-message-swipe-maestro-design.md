@@ -241,8 +241,9 @@ so a late banner, drawer or drag state fails it.
   delivered complete streams. A quiet Room without overflow has no
   scrollbar, which is why an earlier probe saw `width − 4` succeed there. The
   suite starts the right-edge swipe at `width − 24`, 16 CSS px clear of the
-  scrollbar and still inside the product's 56 px dead zone (32 px of
-  margin), with the full D3 native proof unchanged: a trusted `pointerdown`
+  8 px scrollbar and 8 CSS px short of the drawer's 32 px native-history
+  strip (`NATIVE_HISTORY_EDGE_PX`, `drawer-swipe.directive.ts:56`), with the
+  full D3 native proof unchanged: a trusted `pointerdown`
   at the planned start, the interpolated path, and the ending. The left-edge
   start stays at 4 CSS px; the scrollbar is on the right.
 

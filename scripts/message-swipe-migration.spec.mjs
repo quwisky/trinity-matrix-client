@@ -737,11 +737,27 @@ describe('Android message-swipe predecessor pins', () => {
       `export const SWIPE_DEAD_ZONE_PX = ${contract.SWIPE_DEAD_ZONE_PX};`,
     );
     expect(contract.SWIPE_DEAD_ZONE_PX).toBe(56);
-    // D8: the right-edge start stays inside the dead zone, 8 px of margin at least.
-    expect(contract.RIGHT_EDGE_START_INSET_PX).toBe(24);
-    expect(contract.RIGHT_EDGE_START_INSET_PX).toBeLessThanOrEqual(
-      contract.SWIPE_DEAD_ZONE_PX - 8,
+    // The drawer's native-history strip: the binding boundary for the right edge.
+    expect(
+      read('libs/feature/rooms/src/lib/rooms/drawer-swipe.directive.ts'),
+    ).toContain(
+      `export const NATIVE_HISTORY_EDGE_PX = ${contract.NATIVE_HISTORY_EDGE_PX};`,
     );
+    expect(contract.NATIVE_HISTORY_EDGE_PX).toBe(32);
+    // D8: the right-edge start clears the 8 px scrollbar and stays short of
+    // the native-history strip, 8 px of margin at least either side.
+    expect(contract.RIGHT_EDGE_START_INSET_PX).toBe(24);
+    expect(contract.RIGHT_EDGE_START_INSET_PX).toBeGreaterThanOrEqual(8);
+    const assertRightEdgeInsetClearsHistory = (inset, historyEdgePx) =>
+      expect(inset).toBeLessThanOrEqual(historyEdgePx - 8);
+    assertRightEdgeInsetClearsHistory(
+      contract.RIGHT_EDGE_START_INSET_PX,
+      contract.NATIVE_HISTORY_EDGE_PX,
+    );
+    // Negative control: an inset of 40 starts inside the native-history strip.
+    expect(() =>
+      assertRightEdgeInsetClearsHistory(40, contract.NATIVE_HISTORY_EDGE_PX),
+    ).toThrow();
     const run = 'trn-x-e';
     expect([
       contract.swipeRoomName(run),

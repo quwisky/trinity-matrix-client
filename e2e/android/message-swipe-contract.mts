@@ -380,11 +380,19 @@ export const DRAWER_OPEN_FROM_RIGHT_PX = 44;
 /** The product's dead zone, `SWIPE_DEAD_ZONE_PX`, pinned by the guard. */
 export const SWIPE_DEAD_ZONE_PX = 56;
 /**
+ * The extreme right-edge strip Android's own history gesture claims,
+ * `NATIVE_HISTORY_EDGE_PX`, pinned by the guard from
+ * `drawer-swipe.directive.ts`. The drawer's own opening band starts past it;
+ * `RIGHT_EDGE_START_INSET_PX` must stay clear of both.
+ */
+export const NATIVE_HISTORY_EDGE_PX = 32;
+/**
  * D8: the predecessor's `right-edge` start (`width - 4`) lands on the
  * overflowing timeline's 8 px scrollbar, which takes the touch, so no trusted
  * `pointerdown` reaches the page. The suite starts that swipe
- * `width - RIGHT_EDGE_START_INSET_PX` instead, clear of the scrollbar and still
- * inside `SWIPE_DEAD_ZONE_PX` with at least 8 px of margin.
+ * `width - RIGHT_EDGE_START_INSET_PX` instead: 16 px clear of the scrollbar
+ * and 8 px short of `NATIVE_HISTORY_EDGE_PX`, the native-history strip where
+ * the drawer itself begins to open.
  */
 export const RIGHT_EDGE_START_INSET_PX = 24;
 export const LONG_ROOM_FILLER = 30;
