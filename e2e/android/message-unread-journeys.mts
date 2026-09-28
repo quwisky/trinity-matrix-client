@@ -320,6 +320,19 @@ export async function restoreAnimatorDurationScale(
 }
 
 /**
+ * RF-1 teardown action: only `applyReducedMotion`'s own `animatorApplied` flag
+ * (set before its `settings put`, so it survives a later throw) says whether
+ * the device was actually left with reduced motion. A stage that never
+ * reached the write must not touch the setting on the way out.
+ */
+export async function restoreAnimatorIfApplied(
+  context: Pick<MessageUnreadStageContext, 'animatorApplied' | 'animatorPrior'>,
+  client: Pick<AccountWorkspaceClient, 'device' | 'record'>,
+): Promise<void> {
+  if (context.animatorApplied) await restoreAnimatorDurationScale(client, context.animatorPrior);
+}
+
+/**
  * D5: apply real reduced motion behind a hard feasibility gate. Returns the
  * prior `animator_duration_scale` value, for teardown.
  */
@@ -788,7 +801,7 @@ export async function runMessageUnreadSuite(testContext: TestContext): Promise<v
             } finally {
               const stageFailures = failures.length;
               await runMessageUnreadStageCleanup([
-                async () => { if (context.animatorApplied) await restoreAnimatorDurationScale(client, context.animatorPrior); },
+                () => restoreAnimatorIfApplied(context, client),
                 () => client.close(),
                 () => device.clearApplicationData(APPLICATION_ID),
               ], failures);

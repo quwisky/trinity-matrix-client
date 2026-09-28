@@ -2502,6 +2502,78 @@ describe('Android message-unread native journey against a simulated installed ap
     );
   }, 25_000);
 
+  it('marks animatorApplied once the write lands, even when the stage then fails the feasibility gate [RF-1]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { neverReduced: true },
+      async ({ context, state }) => {
+        await expect(runDividerJump(context)).rejects.toThrow();
+        expect(state.actions).toContain(
+          'adb:settings put global animator_duration_scale 0',
+        );
+        expect(context.animatorApplied).toBe(true);
+      },
+    );
+  }, 25_000);
+
+  it('marks animatorApplied once the write lands, even when the post-relaunch profile check then fails [RF-1]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { relaunchWidth412: true },
+      async ({ context, state }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /applied profile is Pixel 5/u,
+        );
+        expect(state.actions).toContain(
+          'adb:settings put global animator_duration_scale 0',
+        );
+        expect(context.animatorApplied).toBe(true);
+      },
+    );
+  });
+
+  it('never marks animatorApplied when the stage fails before the write [RF-1]', async () => {
+    const { runDividerJump } = await loadJourneys();
+    await withSimulatedUnreadStage(
+      { navigationMode: '0' },
+      async ({ context, state }) => {
+        await expect(runDividerJump(context)).rejects.toThrow(
+          /navigation mode/u,
+        );
+        expect(state.actions).not.toContain(
+          'adb:settings put global animator_duration_scale 0',
+        );
+        expect(context.animatorApplied).toBe(false);
+      },
+    );
+  });
+
+  it('restoreAnimatorIfApplied restores exactly when animatorApplied is true, and is a no-op otherwise [RF-1]', async () => {
+    const { restoreAnimatorIfApplied } = await loadJourneys();
+    const actionsFor = async (animatorApplied) => {
+      const actions = [];
+      const client = {
+        device: {
+          adb: async (...args) => {
+            actions.push(`adb:${args.slice(1).join(' ')}`);
+            return args[2] === 'get' ? 'null' : '';
+          },
+        },
+        record: async () => {},
+      };
+      await restoreAnimatorIfApplied(
+        { animatorApplied, animatorPrior: 'null' },
+        client,
+      );
+      return actions;
+    };
+    expect(await actionsFor(true)).toEqual([
+      'adb:settings delete global animator_duration_scale',
+      'adb:settings get global animator_duration_scale',
+    ]);
+    expect(await actionsFor(false)).toEqual([]);
+  });
+
   it('fails closed when Room B was read before the reduced-motion relaunch [RF-4]', async () => {
     const { runDividerJump } = await loadJourneys();
     await withSimulatedUnreadStage(
@@ -2795,7 +2867,7 @@ describe('Android message-unread source rules', () => {
     expect(runnerStart).toBeGreaterThan(-1);
     const runner = journeys.slice(runnerStart);
     const restoreIdx = runner.indexOf(
-      'await restoreAnimatorDurationScale(client, context.animatorPrior)',
+      '() => restoreAnimatorIfApplied(context, client)',
     );
     const closeIdx = runner.indexOf('() => client.close()');
     const clearIdx = runner.indexOf(
