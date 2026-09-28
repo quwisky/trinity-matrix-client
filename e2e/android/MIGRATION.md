@@ -7368,5 +7368,26 @@ zero retries, with a 30-minute Node test, a 35-minute Nx timeout and a
 comment adds the 14-minute local run time (about 89 native minutes of the
 180-minute job).
 
-Predecessor status: enabled; the coordinator retires it after hosted
-acceptance.
+Accepted at `1b71a81f`. Hosted run 36436865291 (merge sha
+`ef3b1b1c301b057376cc20ebdea15d252a14b54e`) passed every job. Android shard 6
+ran `android.message-swipe` as invocation `mulfgaek`: 14/14 stages, 74/74
+assertion records, attempt 1, zero retries, stage durations summing to
+13.0 min, and a max halfway-swipe `windowMs` of 100 against the 500 ms
+long-press window; the shard-6 job took 107 min against s1 92, s2 87, s3 74,
+s4 88 and s5 88. The unchanged predecessor ran in the same run's canonical
+browser job as invocation `muld4w8p`: 14 tests, 14 results, all passed at
+retry 0. A leak audit over all 86 artifacts (14,741 files, nested zips
+extracted) found 0 Room-id and 0 event-id shapes in any Android artifact and
+0 `syt_` tokens, 0 Bearer values, 0 harness secrets and 0 password fields in
+any artifact; the only id shapes are in the browser blob report, which keeps
+Room and event ids by the 2026-09-27 decision. The predecessor file is
+byte-identical at `dd0cb53c` and HEAD (blob
+`49ff19262c16dbc3d82fa3604f44a6c10a80b013`), so it stays pinned at the
+existing `RETIRED_PREDECESSOR_COMMIT`; no new fetch is needed.
+
+Predecessor status: retired on 2026-09-28 under
+[#754](https://github.com/quwisky/trinity-matrix-client/issues/754),
+following the 2026-09-26 retirement policy of
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
