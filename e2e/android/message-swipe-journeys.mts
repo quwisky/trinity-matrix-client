@@ -24,6 +24,7 @@ import {
   LONG_ROOM_FILLER,
   MESSAGE_SWIPE_ASSERTION_RECORDS,
   MESSAGE_SWIPE_STAGES,
+  RIGHT_EDGE_START_INSET_PX,
   assertAccountRooms,
   assertAffordanceAction,
   assertAffordanceLive,
@@ -1003,8 +1004,11 @@ export async function runEdgeDeadZones(context: MessageSwipeStageContext): Promi
   current = await placeRows(context, targets);
   box = rowFor(current, arranged.other.body).box!;
   y = rowCentre(box);
-  // Line 522: the extreme right is native-history territory.
-  await nativeSwipe(context, 'right-edge', { x: width - 4, y }, { x: width * 0.2, y }, 'up');
+  // Line 522: the extreme right is native-history territory. D8: started
+  // RIGHT_EDGE_START_INSET_PX in, not the predecessor's exact width - 4 (see
+  // the contract's constant).
+  await nativeSwipe(context, 'right-edge', { x: width - RIGHT_EDGE_START_INSET_PX, y },
+    { x: width * 0.2, y }, 'up');
   current = await settled(context, targets, assertDrawerHidden, 'the right edge opened nothing');
   await record(context, 'right-edge-drawer-hidden', () => assertDrawerHidden(current), { drawer: false });
   // Line 527: the drawer owns the adjacent inset band.

@@ -737,6 +737,11 @@ describe('Android message-swipe predecessor pins', () => {
       `export const SWIPE_DEAD_ZONE_PX = ${contract.SWIPE_DEAD_ZONE_PX};`,
     );
     expect(contract.SWIPE_DEAD_ZONE_PX).toBe(56);
+    // D8: the right-edge start stays inside the dead zone, 8 px of margin at least.
+    expect(contract.RIGHT_EDGE_START_INSET_PX).toBe(24);
+    expect(contract.RIGHT_EDGE_START_INSET_PX).toBeLessThanOrEqual(
+      contract.SWIPE_DEAD_ZONE_PX - 8,
+    );
     const run = 'trn-x-e';
     expect([
       contract.swipeRoomName(run),
@@ -3179,7 +3184,7 @@ function assertJourneyRules(journeys) {
         // The reply banner changed the timeline's height: the row position
         // is re-measured before the remaining gestures reuse it.
         /box = rowFor\(current, arranged\.other\.body\)\.box!;\n\s+y = rowCentre\(box\);/u,
-        /nativeSwipe\(context, 'right-edge', \{ x: width - 4, y \}/u,
+        /nativeSwipe\(context, 'right-edge', \{ x: width - RIGHT_EDGE_START_INSET_PX, y \}/u,
         recordOf('right-edge-drawer-hidden'),
         /nativeSwipe\(context, 'drawer-inset', \{ x: width - DRAWER_OPEN_FROM_RIGHT_PX, y \}/u,
         recordOf('inset-drawer-visible'),
@@ -3430,6 +3435,12 @@ describe('Android message-swipe source rules', () => {
       replace(
         /\n  \/\/ The reply banner just armed above the composer, changing the timeline's\n  \/\/ measured height: the row position is re-measured before it is reused\.\n  current = await placeRows\(context, targets\);\n  box = rowFor\(current, arranged\.other\.body\)\.box!;\n  y = rowCentre\(box\);\n/u,
         '\n',
+      ),
+      // D8: the predecessor's exact width - 4 right-edge start no longer
+      // reaches the page as a trusted pointerdown on the installed WebView.
+      replace(
+        /nativeSwipe\(context, 'right-edge', \{ x: width - RIGHT_EDGE_START_INSET_PX, y \}/u,
+        "nativeSwipe(context, 'right-edge', { x: width - 4, y }",
       ),
       // Three-button navigation is never restored, or set with the app running.
       replace(
