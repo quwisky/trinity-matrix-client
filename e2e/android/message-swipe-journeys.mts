@@ -834,7 +834,7 @@ export async function runVerticalAbandon(context: MessageSwipeStageContext): Pro
 
 export interface CompositorFeasibility {
   readonly feasible: boolean;
-  readonly heldInterpolation: boolean;
+  readonly nativePanStream: boolean;
   readonly compositorPanning: boolean;
   readonly moves: number;
   readonly scrollDelta: number;
@@ -880,11 +880,11 @@ async function probeCompositorPanning(context: MessageSwipeStageContext,
     context.touch = null;
   }
   const moves = events.filter((event) => event.type === 'pointermove').length;
-  const heldInterpolation = passes(() => assertNativeGesture(events, { from, to }, 'held-pan'))(undefined);
+  const nativePanStream = passes(() => assertNativeGesture(events, { from, to }, 'held-pan'))(undefined);
   const compositorPanning = during !== before;
   const result: CompositorFeasibility = {
-    feasible: heldInterpolation && compositorPanning,
-    heldInterpolation,
+    feasible: nativePanStream && compositorPanning,
+    nativePanStream,
     compositorPanning,
     moves,
     scrollDelta: during - before,

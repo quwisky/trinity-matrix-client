@@ -1227,16 +1227,14 @@ describe('Android message-swipe record proofs (negative controls)', () => {
     ];
     expect(c.assertNativeGesture(pan, PLAN, 'held-pan').moves).toBe(3);
     c.assertNativeGesture(gesture(null), PLAN, 'held-pan');
-    for (const events of [
-      [
-        pointer('pointerdown', 138, 330),
-        ...path(1),
-        pointer('pointercancel', 373, 330, { timeStamp: 40 }),
-      ],
-      [...pan.slice(0, -1), pointer('pointerup', 208, 330, { timeStamp: 40 })],
-      [...pan, pointer('pointermove', 220, 330, { timeStamp: 50 })],
-    ])
-      expect(() => c.assertNativeGesture(events, PLAN, 'held-pan')).toThrow();
+    // Chromium cancels the pointer the moment it takes the pan, so one
+    // trusted move before the cancel is enough to prove the native stream.
+    const onemovePan = [
+      pointer('pointerdown', 138, 330),
+      ...path(1),
+      pointer('pointercancel', 373, 330, { timeStamp: 40 }),
+    ];
+    expect(c.assertNativeGesture(onemovePan, PLAN, 'held-pan').moves).toBe(1);
     // A cancelled or either-ended gesture still needs a path of moves.
     const pathless = [
       pointer('pointerdown', 138, 330),
@@ -1245,6 +1243,20 @@ describe('Android message-swipe record proofs (negative controls)', () => {
     expect(() => c.assertNativeGesture(pathless, PLAN, 'cancel')).toThrow();
     expect(() =>
       c.assertNativeGesture(pathless, PLAN, 'up-or-cancel'),
+    ).toThrow();
+    for (const events of [
+      pathless, // a held-pan stream with no move at all before the cancel
+      [...pan.slice(0, -1), pointer('pointerup', 208, 330, { timeStamp: 40 })],
+      [...pan, pointer('pointermove', 220, 330, { timeStamp: 50 })],
+    ])
+      expect(() => c.assertNativeGesture(events, PLAN, 'held-pan')).toThrow();
+    // The held (unpanned) ending still needs an interpolated path of two moves.
+    expect(() =>
+      c.assertNativeGesture(
+        [pointer('pointerdown', 138, 330), ...path(1)],
+        PLAN,
+        'held',
+      ),
     ).toThrow();
     // The stage runs at Pixel 5 metrics on the Android platform.
     const applied = {
@@ -2471,7 +2483,7 @@ describe('Android message-swipe diagnostics safety', () => {
     };
     const gate = {
       feasible: true,
-      heldInterpolation: true,
+      nativePanStream: true,
       compositorPanning: true,
       moves: 11,
       scrollDelta: 431,
@@ -2555,7 +2567,7 @@ describe('Android message-swipe diagnostics safety', () => {
       for (const feasibility of [
         { ...gate, feasible: false },
         { ...gate, compositorPanning: false },
-        { ...gate, heldInterpolation: false },
+        { ...gate, nativePanStream: false },
       ]) {
         await arrange(report(), feasibility);
         await refused(report());
@@ -3111,7 +3123,7 @@ function assertJourneyRules(journeys) {
   );
   // The feasibility gate is feasible only when both controls held.
   expect(functionSource(journeys, 'probeCompositorPanning')).toContain(
-    'feasible: heldInterpolation && compositorPanning,',
+    'feasible: nativePanStream && compositorPanning,',
   );
   // Held observations happen before the release.
   for (const [name, steps] of [
@@ -3382,7 +3394,7 @@ describe('Android message-swipe source rules', () => {
       // The feasibility gate is skipped or no longer fails closed.
       replace(/  assert\(gate\.feasible, [^\n]+\n/u, ''),
       replace(
-        /feasible: heldInterpolation && compositorPanning,/u,
+        /feasible: nativePanStream && compositorPanning,/u,
         'feasible: true,',
       ),
       replace(/\{ from, to \}, 'held-pan'\)/u, "{ from, to }, 'held')"),

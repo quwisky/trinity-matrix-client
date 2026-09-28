@@ -312,7 +312,7 @@ export async function markMessageSwipeDiagnosticsSafe(
         await requireTextFile(join(output, entry.id, name));
     }
     const gate = await readJsonObject(join(output, 'vertical-scroll', 'feasibility.json'));
-    assert(gate['feasible'] === true && gate['heldInterpolation'] === true &&
+    assert(gate['feasible'] === true && gate['nativePanStream'] === true &&
       gate['compositorPanning'] === true,
     'The compositor-scroll stage passed its native feasibility gate');
     await scanMessageSwipeArtifacts(output, secrets);

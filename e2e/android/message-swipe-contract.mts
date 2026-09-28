@@ -897,9 +897,12 @@ export const LONG_PRESS_MS = 500;
 export const LONG_PRESS_SLOP_PX = 10;
 
 /**
- * `held`: the pointer is still down and no terminal event arrived.
+ * `held`: the pointer is still down and no terminal event arrived; an
+ * interpolated path of at least two moves is required.
  * `held-pan`: the pointer is still down, but the platform may have taken it
  * for a pan (`pointercancel`); a release (`pointerup`) is never allowed.
+ * Chromium cancels the pointer as soon as it takes the pan, so only one
+ * trusted move is required before that cancel.
  */
 export type GestureEnding = 'up' | 'cancel' | 'up-or-cancel' | 'held' | 'held-pan';
 
@@ -940,7 +943,7 @@ export function assertNativeGesture(
     if (ending === 'cancel') assert.equal(terminal[0]!.type, 'pointercancel', 'The platform took the pointer');
   }
   const moves = events.filter((event) => event.type === 'pointermove');
-  if (ending === 'cancel' || ending === 'up-or-cancel') {
+  if (ending === 'cancel' || ending === 'up-or-cancel' || ending === 'held-pan') {
     assert(moves.length >= 1, 'The renderer received a path of moves before the gesture ended');
   } else {
     assert(moves.length >= 2, 'The renderer received an interpolated path of moves');
