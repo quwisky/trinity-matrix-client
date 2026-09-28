@@ -1564,6 +1564,7 @@ async function simulatedPinnedPanelApp(faults = {}) {
     written: [],
     unpinTapped: false,
     tapReturnAt: null,
+    panelOpenedAt: null,
     heldReads: 0,
     serverPins: faults.arrangedReversed
       ? [JOURNEY_KEEP_ID, JOURNEY_UNPIN_ID]
@@ -1592,6 +1593,14 @@ async function simulatedPinnedPanelApp(faults = {}) {
       };
     if (faults.reversedOrder && !switched)
       view = { ...view, items: { count: 2, order: ['keep', 'unpin'] } };
+    if (faults.twoItemsDelayed && !switched) {
+      // The second pin renders a short beat behind the panel's own visibility:
+      // only a poll anchored at record 1's read can observe the settled count.
+      const elapsed =
+        state.panelOpenedAt === null ? 0 : Date.now() - state.panelOpenedAt;
+      if (elapsed < 150)
+        view = { ...view, items: { count: 1, order: ['unpin'] } };
+    }
     if (faults.geometryDrift) {
       state.driftTick = (state.driftTick ?? 0) + 1;
       const x = state.driftTick % 2 === 0 ? 12 : 40;
@@ -1673,6 +1682,8 @@ async function simulatedPinnedPanelApp(faults = {}) {
         state.actions.push(
           `tap:${selector}${filter.text ? `|${label(filter.text)}` : ''}`,
         );
+      if (selector === '[data-testid="overflow-open-pinned"]')
+        state.panelOpenedAt = Date.now();
       if (selector === '[data-testid="pinned-unpin"]') {
         if (faults.anchoredSwitchMs !== undefined)
           vi.setSystemTime(Date.now() + 45_000);
@@ -1836,6 +1847,19 @@ describe('Android pinned-message-panel native journey against a simulated instal
       { reversedOrder: true },
       async ({ context }) => {
         await expect(runListUnpin(context)).rejects.toThrow(/published order/u);
+      },
+    );
+  });
+
+  // D4: "two items (record 2) | 20 s | the first read that satisfied record 1".
+  // A single unconditional read right after record 1 races the second pin's
+  // own render; only a poll anchored at record 1's read can settle on it.
+  it('passes when the second pin renders a short beat behind panel visibility [D4]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { twoItemsDelayed: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).resolves.toBeUndefined();
       },
     );
   });

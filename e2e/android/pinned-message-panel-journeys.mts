@@ -335,9 +335,9 @@ export async function runListUnpin(context: PinnedPanelStageContext): Promise<vo
 
   const shown = await settle(context, a, passes(assertPanelVisible), PANEL_MS, 'the pinned panel is visible');
   await record(context, 'panel-visible', () => assertPanelVisible(shown), { panel: shown.panel });
-  // The panel's own visibility is polled above; its item count and order render
-  // in the same DOM turn, so this second read is a single unconditional check.
-  const two = await readPinnedView(client, a.texts);
+  // D4: record 2's 20 s window is anchored at the read that satisfied record 1,
+  // not a single unconditional read; the second pin can render a beat later.
+  const two = await settle(context, a, (v) => v.items.count === 2, OBSERVE_MS, 'two pinned items');
   await record(context, 'two-pinned-items', () => assertItemCount(two, 2), { count: two.items.count });
   assertPinOrder(two);
   await receipt(context, 'pin-order', { order: two.items.order });
