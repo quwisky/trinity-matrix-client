@@ -7302,6 +7302,60 @@ before any UI step; the shared strict scrub and fail-closed scan, the gated
 `android-message-swipe` upload and the id-free selectors follow the #752
 policy.
 
+Documented reinterpretations of the predecessor:
+
+- **Action binding.** Editing requires the composer to hold exactly the own
+  body; replying requires the banner's `<strong>` to name the other Account
+  and the composer to stay empty.
+- **Identity without identifiers.** Rows are found by body among
+  `.scroll .msg[data-mid]` (system lines excluded), taking the last as the
+  predecessor does; a read-only in-page comparison proves that row's
+  `data-mid` is the arranged event. No selector carries an identifier.
+- **Held observation.** Partial, progressive and left-strip-geometry claims
+  are read while the native pointer is still down; the predecessor's closing
+  `touchEnd` becomes a native release.
+- **Settings on Android.** The navigation helpers' Android branch becomes
+  native taps on `open-settings`, `settings-nav-appearance`, the select and
+  its `message-swipe-right` option and the in-app Back button, with the
+  native Preference read after the choice; `performance.timeOrigin` must
+  stay unchanged, so no reload.
+- **Viewport sizes.** `page.viewportSize()` is the renderer's `innerWidth`
+  and `innerHeight`.
+- **Right-edge start.** The predecessor's `width − 4` lands on the
+  overflowing timeline's 8 px scrollbar (`offsetWidth` 393, `clientWidth`
+  385), which takes the touch before a trusted `pointerdown` reaches the
+  page. The suite starts the right-edge swipe at `width − 24` instead: 16 CSS
+  px clear of the scrollbar and 8 CSS px short of the drawer's 32 px
+  native-history strip (`NATIVE_HISTORY_EDGE_PX`), with the full native
+  proof unchanged. The left-edge start stays at 4 CSS px; the scrollbar is on
+  the right.
+- **Held-pan feasibility bound (D5).** Chromium cancels a held pure-vertical
+  drag's pointer once it takes the pan, delivering one trusted move before
+  the `pointercancel`; the `vertical-scroll` gate therefore requires only one
+  trusted move (the held horizontal stages still require at least two), so a
+  single-move native stream plus a measured `scrollTop` change while the
+  finger is down is both feasible and the bound the gate proves.
+- **Soft-keyboard dismissal.** The reply banner and the drawer's filter each
+  focus a control and raise the soft keyboard, shrinking the WebView; both
+  are dismissed natively, read only after Android reports the keyboard
+  shown, before the next measurement.
+- **Gesture-navigation precondition.** Before stage 1 the suite reads
+  `navigation_mode`, records it to `navigation-mode.json` and fails closed
+  unless it is `2` (gesture). `edge-dead-zones` is the only stage that
+  switches to three-button navigation, with the app stopped, and restores
+  the original mode with the app stopped again.
+- **M4: native back-pagination unexercised.** Line 127's back-pagination
+  (`loadHistory`), bounded to twelve native drags and the predecessor's 30 s,
+  recorded `nativeDrags: 0` in every acceptance run: the long Room's own row
+  was already in view without a back-pagination drag, so that bound has not
+  itself been exercised on a device.
+- **M1: an aborted run can leave three-button navigation set (known
+  limitation).** `edge-dead-zones`' restore runs from the suite's own abort
+  signal; an in-process abort during the stage can leave that signal already
+  interrupted, so the restore can be skipped and the device left in
+  three-button navigation. Fixing it needs a shared-harness change to the
+  abort/restore lifecycle beyond #754's scope; parked as a follow-up.
+
 ```bash
 pnpm nx run trinity-e2e-android:message-swipe --skipNxCache
 # Equivalent package command:
