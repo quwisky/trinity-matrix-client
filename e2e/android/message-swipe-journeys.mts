@@ -1355,6 +1355,12 @@ export async function runMessageSwipeSuite(testContext: TestContext): Promise<vo
             profile: PIXEL_5_ACCOUNT_PROFILE,
             output: join(output, 'runtime-provenance.json'),
           });
+          // D6: every stage but the edge stage runs under the device's own gesture
+          // navigation. A mode left behind by an earlier run fails closed here.
+          const navigationMode = (await device.adb('shell', 'settings', 'get', 'secure', 'navigation_mode')).trim();
+          await writeFile(join(output, 'navigation-mode.json'),
+            `${JSON.stringify({ navigationMode, required: '2' }, null, 2)}\n`);
+          assert.equal(navigationMode, '2', 'The device runs gesture navigation before the first stage');
           const identities = new Set<string>();
           const suite: SuiteState = { shared: new SharedStageAccount('swipe-actor'), signedIn: false };
           for (const entry of MESSAGE_SWIPE_STAGES) {

@@ -3101,6 +3101,17 @@ function assertJourneyRules(journeys) {
     ],
     'drawerCycle',
   );
+  // D6: gesture navigation is verified and recorded once, before stage 1.
+  assertOrder(
+    functionSource(journeys, 'runMessageSwipeSuite'),
+    [
+      /await device\.adb\('shell', 'settings', 'get', 'secure', 'navigation_mode'\)/u,
+      /writeFile\(join\(output, 'navigation-mode\.json'\)/u,
+      /assert\.equal\(navigationMode, '2', /u,
+      /for \(const entry of MESSAGE_SWIPE_STAGES\)/u,
+    ],
+    'runMessageSwipeSuite',
+  );
   // A soft keyboard is dismissed only after Android reports it shown.
   assertOrder(
     functionSource(journeys, 'dismissSoftKeyboard'),
@@ -3460,6 +3471,8 @@ describe('Android message-swipe source rules', () => {
         /\n  \/\/ The reply banner just armed above the composer, changing the timeline's\n  \/\/ measured height: the row position is re-measured before it is reused\.\n  current = await placeRows\(context, targets\);\n  box = rowFor\(current, arranged\.other\.body\)\.box!;\n  y = rowCentre\(box\);\n/u,
         '\n',
       ),
+      // The suite starts in whatever navigation mode an earlier run left.
+      replace(/          assert\.equal\(navigationMode, '2', [^\n]+\n/u, ''),
       // A stage measures while the reply's or the drawer's soft keyboard
       // covers the timeline, or dismisses it without waiting for Android.
       replace(/  await dismissSoftKeyboard\(context, 'the reply'\);\n/u, ''),

@@ -196,6 +196,8 @@ activity and its WebView, so it is never done mid-stage. The left-edge
 gesture is held first, and the row must carry no drag state while the finger
 is down, before the release and the settled no-banner record. All other
 stages run under the device's own gesture navigation.
+Before stage 1 the suite reads `navigation_mode`, records it in
+`navigation-mode.json` and fails closed unless it is `2` (gesture).
 
 ### D7. Negative claims are observed, not sampled
 
