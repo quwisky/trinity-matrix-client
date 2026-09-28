@@ -563,14 +563,22 @@ export interface TrajectoryClass {
   readonly baselineFrames: number;
   readonly movements: number;
   readonly longestRun: number;
+  /** The jump is the first run; later runs are the re-aim after layout. */
+  readonly jumpFrames: number;
+  readonly jumpSpanMs: number;
+  readonly jumpMaxStepShare: number;
   readonly startTop: number;
   readonly endTop: number;
   readonly settledInView: boolean;
 }
 export const MOVEMENT_PX = 1;
 export const BASELINE_FRAMES = 30;
-export const SMOOTH_RUN_FRAMES = 4;
-export const AUTOMATIC_MAX_RUN = 2;
+/** D4: a smooth run passes 2 positions strictly between its ends... */
+export const SMOOTH_MIN_INTERMEDIATES = 2;
+/** ...spread over at least 45 ms from its first to its last movement... */
+export const SMOOTH_MIN_SPAN_MS = 45;
+/** ...with no single frame covering 80 % or more of its travel. */
+export const SMOOTH_MAX_STEP_SHARE = 0.8;
 
 export function parseTrajectory(value: unknown): readonly TrajectorySample[] {
   assert(Array.isArray(value) && value.length > 0, 'Trajectory samples are an array');
@@ -598,37 +606,72 @@ export function parseSamplerWindow(value: unknown): readonly TrajectorySample[] 
   return parseTrajectory(window['samples']);
 }
 
+interface Run {
+  readonly frames: number;
+  readonly spanMs: number;
+  readonly maxStepShare: number;
+}
+
+/**
+ * D4: a run is a sequence of consecutive frames that move in the same
+ * direction; a still frame or a reversal ends it. A run is smooth-shaped when
+ * it shows an animation over time, not a frame count: frame starvation under
+ * host load spreads a real animation over as few as 3 frames.
+ */
+function smoothShaped(run: Run): boolean {
+  return run.frames - 1 >= SMOOTH_MIN_INTERMEDIATES
+    && run.spanMs >= SMOOTH_MIN_SPAN_MS
+    && run.maxStepShare < SMOOTH_MAX_STEP_SHARE;
+}
+
 export function classifyTrajectory(samples: readonly TrajectorySample[]): TrajectoryClass {
+  const runs: Run[] = [];
   let movements = 0;
-  let longestRun = 0;
-  let run = 0;
-  let direction = 0;
   let first = -1;
+  let steps: number[] = [];
+  let startT = 0;
+  let lastT = 0;
+  const close = (): void => {
+    if (steps.length === 0) return;
+    const travel = steps.reduce((sum, step) => sum + step, 0);
+    runs.push({ frames: steps.length, spanMs: lastT - startT, maxStepShare: Math.max(...steps) / travel });
+    steps = [];
+  };
+  let direction = 0;
   for (let i = 1; i < samples.length; i++) {
     const delta = samples[i]![1] - samples[i - 1]![1];
     if (Math.abs(delta) < MOVEMENT_PX) {
-      run = 0;
+      close();
       direction = 0;
       continue;
     }
     movements++;
     if (first < 0) first = i;
     const sign = Math.sign(delta);
-    run = sign === direction ? run + 1 : 1;
+    if (sign !== direction) {
+      close();
+      startT = samples[i]![0];
+    }
     direction = sign;
-    longestRun = Math.max(longestRun, run);
+    lastT = samples[i]![0];
+    steps.push(Math.abs(delta));
   }
+  close();
+  const jump = runs[0];
   const kind =
-    movements === 0 ? 'still'
-    : longestRun >= SMOOTH_RUN_FRAMES ? 'smooth'
-    : longestRun <= AUTOMATIC_MAX_RUN ? 'automatic'
+    jump === undefined ? 'still'
+    : smoothShaped(jump) ? 'smooth'
+    : jump.frames === 1 && !runs.some(smoothShaped) ? 'automatic'
     : 'ambiguous';
   return {
     kind,
     frames: samples.length,
     baselineFrames: first < 0 ? samples.length : first,
     movements,
-    longestRun,
+    longestRun: Math.max(0, ...runs.map((run) => run.frames)),
+    jumpFrames: jump?.frames ?? 0,
+    jumpSpanMs: jump?.spanMs ?? 0,
+    jumpMaxStepShare: jump?.maxStepShare ?? 0,
     startTop: samples[0]![1],
     endTop: samples.at(-1)![1],
     settledInView: samples.at(-1)![2],

@@ -758,6 +758,111 @@ describe('Android message-unread trajectory classifier', () => {
     expect(() => c.assertReducedScrolled(automatic)).not.toThrow();
     expect(() => c.assertAutomaticOnly(automatic)).not.toThrow();
   });
+  // D4 fixtures: every default and reduced-motion jump recorded on the local
+  // device (13 runs, loaded and unloaded), cut to the 30 still frames before
+  // the first movement and flattened to [t, scrollTop, inView 0/1] numbers.
+  const recorded = JSON.parse(read('scripts/message-unread-trajectories.json'));
+  const unflatten = (flat) =>
+    Array.from({ length: flat.length / 3 }, (_, i) => [
+      flat[i * 3],
+      flat[i * 3 + 1],
+      flat[i * 3 + 2] === 1,
+    ]);
+  it('classifies every recorded device trajectory, starved or not [D4]', async () => {
+    const c = await loadContract();
+    const kinds = (group) =>
+      Object.entries(recorded[group]).map(([name, flat]) => [
+        name,
+        c.classifyTrajectory(c.parseTrajectory(unflatten(flat))).kind,
+      ]);
+    expect(Object.keys(recorded.smooth)).toHaveLength(13);
+    expect(Object.keys(recorded.automatic)).toHaveLength(20);
+    // The frame-starved default jumps: 3 frames at 50-300 ms gaps.
+    for (const name of ['rc-diag-load1 default', 'fix-accept2 default'])
+      expect(recorded.smooth[name]).toBeDefined();
+    for (const [name, kind] of kinds('smooth'))
+      expect([name, kind]).toEqual([name, 'smooth']);
+    for (const [name, kind] of kinds('automatic'))
+      expect([name, kind]).toEqual([name, 'automatic']);
+    for (const flat of Object.values(recorded.smooth))
+      expect(() =>
+        c.assertSmoothTrajectory(
+          c.classifyTrajectory(c.parseTrajectory(unflatten(flat))),
+        ),
+      ).not.toThrow();
+    for (const flat of Object.values(recorded.automatic))
+      expect(() =>
+        c.assertAutomaticOnly(
+          c.classifyTrajectory(c.parseTrajectory(unflatten(flat))),
+        ),
+      ).not.toThrow();
+  });
+  it('never passes an instant jump as smooth, however starved [D4]', async () => {
+    const c = await loadContract();
+    const k = (s) => c.classifyTrajectory(c.parseTrajectory(s)).kind;
+    const at = (points) => points.map(([t, top]) => [t, top, false]);
+    const settle = (from, top) => tail(from, 60, top);
+    // an instant jump, at 60 fps and between 300 ms-starved frames
+    expect(k([...still(40, 298.7), ...settle(40, 42.7)])).toBe('automatic');
+    expect(
+      k([
+        ...still(40, 298.7),
+        ...at([
+          [940, 298.7],
+          [1240, 42.7],
+          [1540, 42.7],
+        ]),
+        ...settle(100, 42.7),
+      ]),
+    ).toBe('automatic');
+    // an instant jump followed by a two-step re-aim, as recorded
+    expect(
+      k([
+        ...still(40, 298.7),
+        ...at([
+          [640, 42.7],
+          [990, 80.4],
+          [1240, 137.9],
+        ]),
+        ...settle(80, 137.9),
+      ]),
+    ).toBe('automatic');
+    // 1 px blips around an instant jump: 3 frames, one step is ~99 % of it
+    const blips = [
+      ...still(40, 298.7),
+      ...at([
+        [640, 297.5],
+        [940, 43.9],
+        [1240, 42.7],
+      ]),
+      ...settle(80, 42.7),
+    ];
+    expect(k(blips)).toBe('ambiguous');
+    // a two-frame "animation": one intermediate position is not enough
+    const twoFrame = [
+      ...still(40, 298.7),
+      ...at([
+        [640, 170.7],
+        [1040, 42.7],
+      ]),
+      ...settle(80, 42.7),
+    ];
+    expect(k(twoFrame)).toBe('ambiguous');
+    // an instant jump whose later re-aim animates is neither smooth nor
+    // automatic: the jump itself, the first run, is what is classified
+    const animatedReaim = [
+      ...still(40, 298.7),
+      ...at([
+        [640, 42.7],
+        [656, 42.7],
+        [700, 80],
+        [750, 110],
+        [800, 138.3],
+      ]),
+      ...settle(80, 138.3),
+    ];
+    expect(k(animatedReaim)).toBe('ambiguous');
+  });
   it('fails each negative control', async () => {
     const c = await loadContract();
     const k = (s) => c.classifyTrajectory(c.parseTrajectory(s));
@@ -767,7 +872,7 @@ describe('Android message-unread trajectory classifier', () => {
     ).toThrow();
     // smooth run claimed automatic
     expect(() => c.assertAutomaticOnly(k(probeSmooth))).toThrow();
-    // a 3-frame run is ambiguous and fails both
+    // a 3-frame run inside 32 ms is too brief to be smooth: ambiguous
     const three = k([
       ...still(40, 300),
       ...path(40, [250, 200, 150]),

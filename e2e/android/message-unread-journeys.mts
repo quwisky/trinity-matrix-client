@@ -476,6 +476,8 @@ export async function runDividerJump(context: MessageUnreadStageContext): Promis
   const defaultClass = classifyTrajectory(defaultJump.samples);
   await record(context, 'smooth-trajectory', () => assertSmoothTrajectory(defaultClass), {
     kind: defaultClass.kind, longestRun: defaultClass.longestRun, movements: defaultClass.movements,
+    jumpFrames: defaultClass.jumpFrames, jumpSpanMs: defaultClass.jumpSpanMs,
+    jumpMaxStepShare: defaultClass.jumpMaxStepShare,
   });
 
   const assertRoomBUnread = async (moment: string): Promise<void> => {
@@ -542,7 +544,7 @@ export async function runDividerJump(context: MessageUnreadStageContext): Promis
     movements: reducedClass.movements,
   });
   await record(context, 'automatic-only', () => assertAutomaticOnly(reducedClass), {
-    kind: reducedClass.kind, longestRun: reducedClass.longestRun,
+    kind: reducedClass.kind, longestRun: reducedClass.longestRun, jumpFrames: reducedClass.jumpFrames,
   });
 }
 

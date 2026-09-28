@@ -247,13 +247,37 @@ The pure classifier in the contract takes the samples:
 - **Baseline.** At least 30 unchanged frames before the first movement, so
   the scroller was still when the tap began.
 - **Movement.** A movement is a frame-to-frame change of at least 1 CSS px.
-  A run is a sequence of consecutive frames that move in the same direction.
-- **Smooth** (line 246). At least one run of 4 or more frames. Probe 3 had a
-  run of 5.
-- **Automatic** (line 276). At least one movement, and no run longer than 2
-  frames. Probe 8 had isolated steps (runs of 1).
-- **Ambiguous.** A longest run of exactly 3 is neither smooth nor automatic,
-  and fails closed.
+  A run is a sequence of consecutive frames that move in the same direction;
+  a still frame or a reversal ends it.
+- **Jump and re-aim.** The first run is the jump. Later runs are the re-aim,
+  where the product corrects toward the divider once the target rows lay
+  out (for example 42.7 → 80.4 → 137.9, then 137.5 → 175.2 → 137.1).
+- **Smooth-shaped run.** A run is smooth-shaped when it shows an animation
+  over time: at least 2 positions strictly between its ends (3 or more
+  frames), at least 45 ms from its first to its last movement, and no single
+  frame covering 80 % or more of its travel.
+- **Smooth** (line 246). The jump is smooth-shaped.
+- **Automatic** (line 276). The jump lands in 1 frame, and no run, re-aim
+  included, is smooth-shaped.
+- **Ambiguous.** Anything else fails closed. That covers an instant jump
+  with 1 px blips around it, a 2-frame move with 1 intermediate position, a
+  3-frame burst inside 45 ms, and an instant jump with an animated re-aim.
+- **Evidence.** Host load starves the WebView's frames, so a real animation
+  can reach the sampler as 3 frames. Under 12 busy loops (load about 14 on 8
+  cores) the default jump went 298.7 → 291.8 → 136.4 → 54.5 in 3 frames over
+  317 ms, with its largest step 64 % of the travel. Under a peer session's
+  load (about 13) it went 298.7 → 291.8 → 187.0 → 42.7 over 450 ms, largest
+  step 56 %. A 4-frame run rule classified both as ambiguous. Across all 13
+  recorded default jumps, the jump took 3–10 frames over 316–450 ms, and its
+  largest step was 23–64 % of the travel. Across all 20 recorded reduced
+  jumps, the jump took 1 frame (0 ms, 100 %), and no re-aim ran longer than
+  2 frames. At 60 fps a 3-frame run spans about 33 ms and a 4-frame run about
+  50 ms, so without starvation a smooth jump still needs 4 or more frames,
+  as before. The margins: the most starved jump has exactly 2
+  intermediate positions (no margin on that count; a real animation starved
+  to 2 frames fails closed), its shortest span is 7 times the 45 ms floor,
+  and its largest step (64 %) sits 16 points under the 80 % ceiling, which
+  sits 20 points under a single-frame jump's 100 %.
 - **Settled.** After the last movement, the divider lies inside the
   scroller's box.
 
