@@ -380,11 +380,11 @@ export const DRAWER_OPEN_FROM_RIGHT_PX = 44;
 /** The product's dead zone, `SWIPE_DEAD_ZONE_PX`, pinned by the guard. */
 export const SWIPE_DEAD_ZONE_PX = 56;
 /**
- * D8: the predecessor's `right-edge` start (`width - 4`) never reaches the
- * page as a trusted `pointerdown` on the installed WebView (its own mapped
- * surface falls short of the physical screen edge under three-button
- * navigation). The suite starts that swipe `width - RIGHT_EDGE_START_INSET_PX`
- * instead, still inside `SWIPE_DEAD_ZONE_PX` with at least 8 px of margin.
+ * D8: the predecessor's `right-edge` start (`width - 4`) lands on the
+ * overflowing timeline's 8 px scrollbar, which takes the touch, so no trusted
+ * `pointerdown` reaches the page. The suite starts that swipe
+ * `width - RIGHT_EDGE_START_INSET_PX` instead, clear of the scrollbar and still
+ * inside `SWIPE_DEAD_ZONE_PX` with at least 8 px of margin.
  */
 export const RIGHT_EDGE_START_INSET_PX = 24;
 export const LONG_ROOM_FILLER = 30;

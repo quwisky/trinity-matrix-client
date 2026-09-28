@@ -224,26 +224,25 @@ so a late banner, drawer or drag state fails it.
 - **Viewport sizes.** `page.viewportSize()` is the renderer's `innerWidth` and
   `innerHeight`.
 - **Right-edge start.** The predecessor starts the `right-edge` swipe at
-  `width − 4` (`message-swipe.spec.mts:522`). On the installed WebView, under
-  three-button navigation, no trusted `pointerdown` ever reaches the page at
-  that point: `754-dev6.log` captured the resulting stream as nine trusted
-  `pointermove` events and one `pointerup`, zero `pointerdown`, the first move
-  already ~30 CSS px left of the planned start. A follow-up probe (native
-  `input motionevent` presses stepped inward from the edge, in the same
-  post-reply-banner state the stage reaches before this swipe) found that
-  `width − 4` fails to deliver a trusted `pointerdown` at the planned point
-  while `width − 24` does. The measured native mapping explains why: the
-  `.scroll` box's own affine map (factorX ≈ 2.62, from `client.nativeRect`)
-  extrapolates the CSS viewport's right edge to device x ≈ 1030, against the
-  physical screen's 1080 px width — a ≈ 50 device-px shortfall between the
-  WebView's own interactive surface and the true screen edge. The
-  predecessor's `width − 4` (device x ≈ 1019–1020) falls inside that
-  shortfall; `width − 24` (device x ≈ 967) does not. The suite starts the
-  right-edge swipe at `width − 24`, still 24 CSS px inside the product's
-  56 px dead zone (32 px of margin), with the full D3 native proof
-  unchanged: a trusted `pointerdown` at the planned start, the interpolated
-  path, and the `pointerup`/`pointercancel` ending. The left-edge start stays
-  at 4 CSS px, which already passes.
+  `width − 4` (`message-swipe.spec.mts:522`). On the installed WebView no
+  trusted `pointerdown` reaches the page at that point: `754-dev6.log`
+  captured nine trusted `pointermove` events and one `pointerup`, zero
+  `pointerdown`. The timeline `.scroll` overflows in this stage
+  (`scrollHeight` 466 against `clientHeight` 416, 364 with the reply banner)
+  and draws the product's classic 8 px scrollbar (`--trinity-scrollbar-size`;
+  `offsetWidth` 393, `clientWidth` 385). A touch that starts on a scrollbar
+  belongs to the scrollbar, so the page gets only the moves after the finger
+  leaves it. Native probes in the stage (`754-probe-f1b.log`,
+  `754-probe-f1c.log`) confirm it: starts at `width − 4` and `width − 6`
+  lost the `pointerdown` every time, before the reply as well as after it
+  with the soft keyboard dismissed; starts at `width − 8` and further in
+  delivered complete streams. A quiet Room without overflow has no
+  scrollbar, which is why an earlier probe saw `width − 4` succeed there. The
+  suite starts the right-edge swipe at `width − 24`, 16 CSS px clear of the
+  scrollbar and still inside the product's 56 px dead zone (32 px of
+  margin), with the full D3 native proof unchanged: a trusted `pointerdown`
+  at the planned start, the interpolated path, and the ending. The left-edge
+  start stays at 4 CSS px; the scrollbar is on the right.
 
 ### D9. Protection
 
