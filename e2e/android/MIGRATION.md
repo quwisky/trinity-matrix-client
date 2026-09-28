@@ -7441,6 +7441,61 @@ Android's `animator_duration_scale 0` and a cold relaunch replace media
 emulation, behind a hard gate (`reduced-motion/feasibility.json`), and the
 setting is restored exactly in teardown.
 
+Before any UI step the suite registers both Accounts (user ids, usernames and
+passwords), both Room ids and names, every transaction, all 32 event ids and
+the fixture's access tokens. The shared strict scrub and fail-closed scan
+cover every registered form, plus every raw Matrix Room- and event-id shape,
+and delete every raster, so no screenshot reaches an artifact; the gated
+`android-message-unread` upload runs only once the scan marks the run
+`publication-safe`. Records hold digests, booleans, texts fixed by the
+predecessor, measured numbers and computed styles only, never the raw JSON.
+Failure text rethrown to the job log keeps only error names and first
+message lines: Node appends an assertion's actual and expected values to its
+message even when a custom message is given, so `redactStageFailure` keeps
+just the first line, and every registered value and Matrix identifier shape
+is redacted from what remains; a failed local teardown step is rethrown the
+same way through `redactCleanupFailure`, never as the raw error.
+
+Documented reinterpretations of the predecessor:
+
+- **Viewport.** The predecessor sets 1000×400 so the divider starts
+  off-screen; here the Pixel 5 profile is applied at launch and produces the
+  same off-screen precondition.
+- **Recorded `behavior`.** The predecessor reads the `behavior` option passed
+  to `scrollIntoView`; the issue forbids inferring behaviour from an option,
+  so the suite records the observed frame trajectory instead, through the
+  passive sampler and classifier.
+- **Media emulation.** The predecessor's CDP media emulation becomes the
+  real Android `animator_duration_scale 0` setting and a cold relaunch, with
+  the reduced-motion query read read-only and never written.
+- **Direct `scrollTo`.** The predecessor's direct `scrollTo` call becomes a
+  native tap on `jump-to-latest`.
+- **Reduced-motion jump in Room B.** The predecessor repeats the jump in the
+  same Room. Here it runs in an identically arranged Room that has never
+  been opened, because the product advances `m.fully_read` on open and
+  Synapse keeps the marker monotonic; Room B's own first jump and return to
+  newest recreate the predecessor's state before its own reduced-motion jump.
+- **Text.** Playwright's `toHaveText` reads `textContent`, matched against
+  `/New messages/i`; the rendered uppercase `innerText` is also recorded.
+- **Geometry.** Both boxes are read in one renderer turn, keeping the
+  predecessor's 0.01 px tolerance (a probe measured 7.99999 against the 8 px
+  minimum).
+- **Visibility.** Visible means one element with a non-empty box and
+  `visibility: visible`; hidden means absent or not visible. Each claim is
+  polled for up to the predecessor's 20 s.
+- **Room readiness.** The composer must be visible within the helper's 15 s
+  after the native open; the record also proves the route names Room A.
+- **Identity without identifiers.** Rooms are opened by exact name, rows are
+  found by body, and no selector or wait description carries an event or
+  Room id.
+- **M5: an aborted run can leave `animator_duration_scale` at 0 (known
+  limitation).** The teardown restore runs through `client.device.adb`,
+  which carries the suite's own abort signal; an in-process abort during the
+  stage can leave that signal already interrupted, so the restore can be
+  skipped and the emulator left with animations off. Fixing it needs a
+  shared-harness change to the abort/restore lifecycle beyond #755's scope;
+  parked as a follow-up.
+
 ```bash
 pnpm nx run trinity-e2e-android:message-unread --skipNxCache
 # Equivalent package command:
