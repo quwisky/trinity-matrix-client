@@ -883,6 +883,14 @@ export const RETIRED_PREDECESSORS = Object.freeze([
     ],
     desktopOnly: [],
   },
+  {
+    path: 'e2e/browser/journeys/conversations/message-unread.spec.mts',
+    sha256: 'f66ad80bb41f3cc32fb45935a88ad5a94582d1a8921069517f5f0a891d40b8bd',
+    issues: [755],
+    deleted: true,
+    retired: ['shows a divider and a jump pill for unread messages'],
+    desktopOnly: [],
+  },
 ]);
 
 if (

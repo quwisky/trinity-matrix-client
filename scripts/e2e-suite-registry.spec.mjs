@@ -276,7 +276,7 @@ describe('E2E suite registry', () => {
       );
       const report = JSON.parse(readFileSync(outputFile, 'utf8'));
       expect(report).toMatchObject({
-        expectedSpecCount: 76,
+        expectedSpecCount: 75,
         collectedSpecCount: 1,
         testCount: 1,
         attempts: 1,

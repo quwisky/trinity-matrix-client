@@ -24,16 +24,18 @@ const EXTRACTED_ASSERTION_SUPPORT = [
  * Android predecessors (#839, scripts/retired-playwright-predecessors.mjs) removed 46 files,
  * 141 definitions and 1271 assertion calls. The 2026-09-28 retirement of the accepted
  * message-swipe predecessor (#754) removed 1 more file, 13 definitions and 38 assertion calls.
+ * The 2026-09-28 retirement of the accepted message-unread predecessor (#755) removed 1 more
+ * file, 1 definition and 14 assertion calls.
  */
 export const BROWSER_ASSERTION_BASELINE = Object.freeze({
   baselineSpecFiles: 103,
-  currentSpecFiles: 76,
-  testDefinitions: 158,
-  assertionCalls: 1450,
+  currentSpecFiles: 75,
+  testDefinitions: 157,
+  assertionCalls: 1436,
   testFingerprint:
-    '226c19f532e499023879f56924aff343bf243beabda206adfcec6bc5ff3cbcec',
+    '9b68e212451fb1fb2387a0863d51253176c7ae93252034193f79f82249f3794a',
   assertionFingerprint:
-    'dcd2c58b0b86a20e0cf9d7134058e1ebc35a7bf5aa63f45e5cfa2346ca3b295a',
+    'c9aeef7a0bd2a9332e3310f670194900e7cd6f9122ec1096d8f81e8494913631',
 });
 
 const normalizeSource = (source) => source.replace(/\s+/gu, ' ').trim();

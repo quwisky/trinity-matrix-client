@@ -8,6 +8,7 @@ import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import { readRetiredPredecessor } from './retired-playwright-predecessors.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const predecessor =
@@ -15,12 +16,9 @@ const predecessor =
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const digest = (path) => sha256(readFileSync(resolve(root, path)));
-/**
- * Unlike the message-source/spoiler predecessors, message-unread's stays
- * enabled and unchanged in the working tree: it is retired only after hosted
- * acceptance (design "Intent and source boundary"). It is read directly.
- */
-const readPredecessor = () => read(predecessor);
+/** The retired predecessor's exact bytes at its retirement commit. */
+const readPredecessor = () =>
+  readRetiredPredecessor(predecessor).toString('utf8');
 const loadContract = () => import('../e2e/android/message-unread-contract.mts');
 const loadObserver = () => import('../e2e/android/message-unread-observer.mts');
 const loadFixture = () => import('../e2e/android/message-unread-fixture.mts');
@@ -379,7 +377,26 @@ describe('Android message-unread predecessor pins', () => {
       openRoom: span(OPEN_ROOM_SPAN),
       definitions: { [STAGE.id]: span(STAGE.span) },
     });
-    expect(existsSync(resolve(root, predecessor))).toBe(true);
+  });
+
+  it('deletes the retired predecessor from both Playwright inventories', async () => {
+    expect(existsSync(resolve(root, predecessor))).toBe(false);
+    const { BROWSER_JOURNEYS } =
+      await import('../e2e/browser/journey-catalog.mts');
+    expect(
+      BROWSER_JOURNEYS.filter(
+        (journey) =>
+          journey.path === 'journeys/conversations/message-unread.spec.mts',
+      ),
+    ).toHaveLength(0);
+    const android = read('e2e/android/playwright.config.mts');
+    expect(android).toContain(
+      "testMatch: ['browser/journeys/**/*.spec.mts', 'android/**/*.spec.mts']",
+    );
+    for (const config of [android, read('e2e/browser/playwright.config.mts')]) {
+      expect(config).not.toContain('testIgnore');
+      expect(config).not.toContain('message-unread');
+    }
   });
 
   it('maps the exact direct and helper sites with the house AST rule', () => {
@@ -3418,7 +3435,7 @@ describe('Android message-unread hosted wiring and parity ledger', () => {
     for (const hash of Object.values(SHARED_SHA256))
       expect(section).toContain(hash);
     expect(section).toContain('Suite `android.message-unread`');
-    expect(section).toContain('Predecessor status: enabled');
+    expect(section).toContain('Predecessor status: retired');
     expect(section).toContain('reduced-motion/feasibility.json');
     expect(section).not.toContain('pnpm exec nx');
   });

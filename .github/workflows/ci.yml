@@ -204,7 +204,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # 76 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
+    # 75 canonical browser specs, each doing a cold UI login (Rust-crypto init + first
     # /sync), at workers: 2 with one diagnostic retry — plus browser installation, three Docker image
     # pulls and a full development build. The measured critical path is 8-11 minutes
     # (developer testing guide); the 75-minute ceiling is hang containment, not an
