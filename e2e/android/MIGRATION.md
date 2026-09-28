@@ -7565,5 +7565,27 @@ retries in invocation `mulkxlho-446f1a4e-7ccc-483f-bbda-52aadd9f465c` (one
 test in 6.7 seconds; 8.1-second suite); the predecessor file is unchanged, so
 this retry-0 result still stands.
 
-Predecessor status: enabled; the coordinator retires it after hosted
-acceptance.
+Accepted at `8cd20548`, hosted as part of head `854d9898`. Hosted run
+36488221868 (merge sha `854d98982c596683f2a95efc1e9a2acc14d35ab6`) passed
+every job. Android shard 4 ran `android.message-unread` as invocation
+`mulv44bu`: 1/1 stage, 14/14 assertion records, attempt 1, zero retries and a
+156.5 s stage; the default jump classified `smooth` (`jumpFrames` 5,
+`jumpSpanMs` 334, `jumpMaxStepShare` 0.374) and the reduced jump classified
+`automatic` (`jumpFrames` 1); the shard-4 job took 100 min against s1 66, s2
+89, s3 67, s5 88 and s6 101. The unchanged predecessor ran in the same run's
+canonical browser job as invocation `mulsi5k2`: 1 test, passed on its single
+attempt, retry 0. A leak audit over all 87 artifacts (14,892 files, nested
+zips extracted) found 0 Room-id and 0 event-id shapes in any Android
+artifact and 0 `syt_` tokens, 0 Bearer values and 0 password values in any
+artifact; the only id shapes are in the browser blob report, which keeps
+Room and event ids by the 2026-09-27 decision. The predecessor file is
+byte-identical at `dd0cb53c` and HEAD (blob
+`44035234a93d155070b10d9d2157051374190991`), so it stays pinned at the
+existing `RETIRED_PREDECESSOR_COMMIT`; no new fetch is needed.
+
+Predecessor status: retired on 2026-09-28 under
+[#755](https://github.com/quwisky/trinity-matrix-client/issues/755),
+following the 2026-09-26 retirement policy of
+[#839](https://github.com/quwisky/trinity-matrix-client/issues/839);
+[Predecessor retirement](#predecessor-retirement) lists what was retired and
+what stays desktop-only.
