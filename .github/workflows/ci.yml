@@ -343,8 +343,10 @@ jobs:
     # time from original-attempt green runs 36332091719 and 36325006948; the
     # first suite on each shard also carries the 2-minute cold APK build:
     # shard 1 about 84 native minutes, shard 2 about 75, shard 3 about 78,
-    # shard 4 about 75, shard 5 about 78 and shard 6 about 75. Measured retained
+    # shard 4 about 75, shard 5 about 78 and shard 6 about 89. Measured retained
     # Playwright adds 5-15 minutes, so each emulator step is about 87-90 minutes.
+    # Shard 6 also carries message-swipe at its 14-minute local acceptance time
+    # until a hosted run measures it.
     # Every figure still fits the 45-minute retained Playwright command timeout
     # and 15 minutes for setup/diagnostics inside its job limit.
     # Runner smoke runs on shard 1 only; the other shards start with their first

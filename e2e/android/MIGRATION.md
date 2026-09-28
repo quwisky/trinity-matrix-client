@@ -7310,7 +7310,9 @@ pnpm e2e:android:message-swipe
 
 The uncached serial target owns `android-avd` and `synapse`: one attempt and
 zero retries, with a 30-minute Node test, a 35-minute Nx timeout and a
-40-minute CI wrapper. Shard 6 runs it last, after message-quote.
+40-minute CI wrapper. Shard 6 runs it last, after message-quote; its budget
+comment adds the 14-minute local run time (about 89 native minutes of the
+180-minute job).
 
 Predecessor status: enabled; the coordinator retires it after hosted
 acceptance.
