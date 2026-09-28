@@ -2144,6 +2144,39 @@ describe('Android message-swipe diagnostics safety', () => {
       await expect(receipt(context, name, {})).rejects.toThrow();
   });
 
+  it('leaves one unmet-observation.json for every failed view() wait', async () => {
+    const { view: observeView } = await loadJourneys();
+    const written = [];
+    const observation = view();
+    const client = {
+      signal: new AbortController().signal,
+      webview: {
+        diagnostics: {
+          async send() {
+            return { result: { value: observation } };
+          },
+        },
+      },
+      async record(name, value) {
+        written.push({ name, value });
+      },
+    };
+    await expect(
+      observeView(
+        { client },
+        [],
+        () => {
+          throw new Error('never satisfied');
+        },
+        'never satisfied',
+        30,
+      ),
+    ).rejects.toThrow(/Timed out waiting for never satisfied/);
+    expect(written).toEqual([
+      { name: 'unmet-observation', value: observation },
+    ]);
+  });
+
   it('rethrows stage failures to the job log without identifiers or assertion values', async () => {
     const { messageSwipeSecrets } = await loadArtifacts();
     const { redactStageFailure, redactCleanupFailure } = await loadJourneys();

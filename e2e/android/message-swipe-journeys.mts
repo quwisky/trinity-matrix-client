@@ -398,7 +398,7 @@ async function launch(context: MessageSwipeStageContext, account: NodeWorkspaceA
   await receipt(context, 'native-preference-launched', live);
 }
 
-async function view(
+export async function view(
   context: MessageSwipeStageContext,
   targets: readonly RowTarget[],
   check: (value: SwipeViewObservation) => unknown,
