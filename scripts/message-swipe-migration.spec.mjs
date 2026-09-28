@@ -1261,6 +1261,7 @@ describe('Android message-swipe record proofs (negative controls)', () => {
       { innerHeight: 720 },
       { devicePixelRatio: 1 },
       { coarsePointer: false },
+      { hoverNone: false },
       { platform: 'web' },
     ])
       expect(() => c.assertAppliedProfile({ ...applied, ...drift })).toThrow();

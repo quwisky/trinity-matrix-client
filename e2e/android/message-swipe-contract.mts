@@ -970,5 +970,6 @@ export function assertAppliedProfile(value: unknown): void {
   const dpr = applied['devicePixelRatio'];
   assert(typeof dpr === 'number' && Math.abs(dpr - 2.75) < 0.001, 'The renderer runs at DPR 2.75');
   assert.equal(applied['coarsePointer'], true, 'The renderer has a coarse touch pointer');
+  assert.equal(applied['hoverNone'], true, 'The renderer has no hover (touch-only)');
   assert.equal(applied['platform'], 'android', 'The installed app reports Android');
 }
