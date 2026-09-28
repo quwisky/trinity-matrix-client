@@ -1,8 +1,8 @@
 # Android Unread-Divider Maestro Migration Design
 
-- Issue: #755, part of #660; blocked by #754 until its original-attempt hosted evidence is accepted
-- Status: Design recorded autonomously for coordinator review; open questions at the end
-- Branch: local `wip/755-unread-divider` from `1b71a81f` (the head of PR #677 with the #754 message-swipe suite); PR #677 stays draft and unmerged
+- Issue: #755, part of #660
+- Status: Accepted; the coordinator's rulings on the open questions below are recorded in the SDD progress ledger's pre-flight scan
+- Branch: local `wip/755-unread-divider`, rebased onto `964da6a9` (the #754 message-swipe suite's record and retirement, head of PR #677); PR #677 stays draft and unmerged
 
 This document records the design for the installed-Android
 `android.message-unread` suite. Implementation and acceptance evidence are
@@ -424,17 +424,28 @@ For each control, the guard must fail when its protection is removed:
 5. Hosted: the coordinator audits the original-attempt shard-4 artifact, then
    retires the predecessor.
 
-## Open questions for the coordinator
+## Open questions for the coordinator, with rulings
 
 1. **"Production Android viewport."** This design reads it as the shared
    Pixel 5 profile, applied once at launch. The unemulated native WebView
    viewport (about 411×914 on the Pixel 6 AVD) would need a shared
    `AccountWorkspaceClient` change, because `reset` and `relaunch` always apply
    a profile. No shared root cause justifies that change.
+   **Ruling: accepted.** Every migrated suite uses the standard Pixel 5
+   profile, and the shared client always applies one; changing that is a
+   shared change outside #755. If wrong, a documented reinterpretation is
+   revisited.
 2. **Room B.** The reduced-motion repeat runs in a second, identically
    arranged Room (D2, D7). Probes 5–7 show the alternative is impossible
    without the renderer or server writes the issue forbids. Please confirm
    that this reinterpretation is acceptable against "send exactly fourteen
    later unread events", which each Room satisfies on its own.
+   **Ruling: accepted.** Forced by the fully-read marker being monotonic
+   (Synapse won't move it back) plus the cold-restart requirement; each Room
+   holds exactly the issue's 14 unread events plus the thread. If wrong, the
+   predecessor mapping is slightly less literal.
 3. **Shard 2 or 4.** They tie at 75. This design picks shard 4 for its
    240-minute headroom. Shard 2 also fits: 81 + 60 = 141 ≤ 180.
+   **Ruling: accepted, shard 4.** Ties at 75 with shard 2, but shard 4 has
+   more headroom (240-minute job limit against shard 2's 180). If wrong, one
+   `ci.yml` line moves.
