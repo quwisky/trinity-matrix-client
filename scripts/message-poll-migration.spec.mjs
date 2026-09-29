@@ -736,19 +736,24 @@ describe('Android message-poll contract ledger', () => {
     expect(menu).toContain("'Add to message',");
     const wire = read('libs/util/matrix/src/lib/poll.ts');
     for (const hook of [
-      "kind: 'm.poll.disclosed',",
+      '[M_POLL_START.name]: {',
+      'question: { [M_TEXT.name]: question, body: question },',
+      'kind: M_POLL_KIND_DISCLOSED.name,',
       'max_selections: 1,',
       'id: `a${index}`,',
-      "'m.poll.response': { answers: [answerId] },",
+      '[M_TEXT.name]: text,',
+      'body: text,',
+      '[M_POLL_RESPONSE.name]: { answers: [answerId] },',
       "'m.relates_to': { rel_type: 'm.reference', event_id: pollId },",
-      "'m.poll.end': {},",
+      '[M_POLL_END.name]: {},',
+      "[M_TEXT.name]: 'The poll has ended.',",
     ])
       expect(wire).toContain(hook);
     const actions = read(
       'libs/data-access/timeline/src/lib/timeline-actions.service.ts',
     );
-    for (const type of ["'m.poll.start'", "'m.poll.response'", "'m.poll.end'"])
-      expect(actions).toContain(`${type} as never`);
+    for (const type of ['M_POLL_START', 'M_POLL_RESPONSE', 'M_POLL_END'])
+      expect(actions).toContain(`${type}.name as never`);
   });
 });
 
@@ -767,18 +772,18 @@ const startEvent = (content = {}) => ({
   event_id: POLL_ID,
   room_id: ROOM,
   sender: SENDER,
-  type: 'm.poll.start',
+  type: 'org.matrix.msc3381.poll.start',
   content: {
-    'm.poll.start': {
-      question: { 'm.text': QUESTION, body: QUESTION },
-      kind: 'm.poll.disclosed',
+    'org.matrix.msc3381.poll.start': {
+      question: { 'org.matrix.msc1767.text': QUESTION, body: QUESTION },
+      kind: 'org.matrix.msc3381.poll.disclosed',
       max_selections: 1,
       answers: [
-        { id: 'a0', 'm.text': 'Apple', body: 'Apple' },
-        { id: 'a1', 'm.text': 'Pear', body: 'Pear' },
+        { id: 'a0', 'org.matrix.msc1767.text': 'Apple', body: 'Apple' },
+        { id: 'a1', 'org.matrix.msc1767.text': 'Pear', body: 'Pear' },
       ],
     },
-    'm.text': `${QUESTION}\n1. Apple\n2. Pear`,
+    'org.matrix.msc1767.text': `${QUESTION}\n1. Apple\n2. Pear`,
     ...content,
   },
 });
@@ -786,9 +791,9 @@ const responseEvent = (pollId = POLL_ID, answers = ['a0'], overrides = {}) => ({
   event_id: RESPONSE_ID,
   room_id: ROOM,
   sender: SENDER,
-  type: 'm.poll.response',
+  type: 'org.matrix.msc3381.poll.response',
   content: {
-    'm.poll.response': { answers },
+    'org.matrix.msc3381.poll.response': { answers },
     'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
   },
   ...overrides,
@@ -797,10 +802,10 @@ const endEvent = (pollId = POLL_ID, overrides = {}) => ({
   event_id: END_ID,
   room_id: ROOM,
   sender: SENDER,
-  type: 'm.poll.end',
+  type: 'org.matrix.msc3381.poll.end',
   content: {
-    'm.poll.end': {},
-    'm.text': 'The poll has ended.',
+    'org.matrix.msc3381.poll.end': {},
+    'org.matrix.msc1767.text': 'The poll has ended.',
     'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
   },
   ...overrides,
@@ -826,7 +831,7 @@ describe('Android message-poll authoritative MSC3381 contract', () => {
     const events = authoritativePollEvents(
       messagesPage(startEvent(), responseEvent(), {
         ...endEvent(),
-        type: 'org.matrix.msc3381.poll.end',
+        type: 'm.poll.end',
       }),
     );
     expect(events.map((event) => event.event_id)).toEqual([
@@ -859,7 +864,7 @@ describe('Android message-poll authoritative MSC3381 contract', () => {
     });
     const start = (patch) => {
       const event = startEvent();
-      patch(event.content['m.poll.start'], event);
+      patch(event.content['org.matrix.msc3381.poll.start'], event);
       return event;
     };
     const failing = [
@@ -872,7 +877,7 @@ describe('Android message-poll authoritative MSC3381 contract', () => {
       ['start', startEvent(), startEvent()],
       ['start', { ...startEvent(), sender: '@other:example.test' }],
       ['start', { ...startEvent(), room_id: '!other:example.test' }],
-      ['start', { ...startEvent(), type: 'org.matrix.msc3381.poll.start' }],
+      ['start', { ...startEvent(), type: 'm.poll.start' }],
       [
         'start',
         startEvent({
@@ -884,18 +889,49 @@ describe('Android message-poll authoritative MSC3381 contract', () => {
         'start',
         start(
           (body) =>
-            (body.question['m.text'] = QUESTION.replace('Best', 'best')),
+            (body.question['org.matrix.msc1767.text'] = QUESTION.replace(
+              'Best',
+              'best',
+            )),
         ),
       ],
       ['start', start((body) => (body.question = { body: QUESTION }))],
-      ['start', start((body) => (body.answers[0]['m.text'] = 'apple'))],
+      [
+        'start',
+        (() => {
+          const event = startEvent();
+          event.content = {
+            'm.poll.start': event.content['org.matrix.msc3381.poll.start'],
+          };
+          return event;
+        })(),
+      ],
+      [
+        'start',
+        start((body) => {
+          body.question = { 'm.text': QUESTION, body: QUESTION };
+        }),
+      ],
+      ['start', start((body) => (body.question.body = 'other'))],
+      ['start', start((body) => (body.answers[0].body = 'other'))],
+      ['start', start((body) => (body.kind = 'm.poll.disclosed'))],
+      ['start', startEvent({ 'org.matrix.msc1767.text': 'other' })],
+      [
+        'start',
+        start((body) => (body.answers[0]['org.matrix.msc1767.text'] = 'apple')),
+      ],
       ['start', start((body) => (body.answers[1].id = 'a2'))],
       ['start', start((body) => body.answers.reverse())],
       [
         'start',
-        start((body) => body.answers.push({ id: 'a2', 'm.text': 'Plum' })),
+        start((body) =>
+          body.answers.push({ id: 'a2', 'org.matrix.msc1767.text': 'Plum' }),
+        ),
       ],
-      ['start', start((body) => (body.kind = 'm.poll.undisclosed'))],
+      [
+        'start',
+        start((body) => (body.kind = 'org.matrix.msc3381.poll.undisclosed')),
+      ],
       ['start', start((body) => (body.max_selections = 2))],
       // Vote: missing, another poll, another answer, two answers, another sender or relation.
       ['response', startEvent()],
@@ -913,7 +949,7 @@ describe('Android message-poll authoritative MSC3381 contract', () => {
         startEvent(),
         responseEvent(POLL_ID, ['a0'], {
           content: {
-            'm.poll.response': { answers: ['a0'] },
+            'org.matrix.msc3381.poll.response': { answers: ['a0'] },
             'm.relates_to': { rel_type: 'm.annotation', event_id: POLL_ID },
           },
         }),
@@ -933,7 +969,18 @@ describe('Android message-poll authoritative MSC3381 contract', () => {
         'end',
         startEvent(),
         responseEvent(),
-        endEvent(POLL_ID, { content: { 'm.poll.end': {} } }),
+        endEvent(POLL_ID, { content: { 'org.matrix.msc3381.poll.end': {} } }),
+      ],
+      [
+        'end',
+        startEvent(),
+        responseEvent(),
+        endEvent(POLL_ID, { type: 'm.poll.end' }),
+      ],
+      [
+        'response',
+        startEvent(),
+        responseEvent(POLL_ID, ['a0'], { type: 'm.poll.response' }),
       ],
       [
         'end',
@@ -990,17 +1037,21 @@ function simulatedPollApp(faults = {}) {
   const serverStart = () => {
     const answers = state.poll.options.map((text, index) => ({
       id: faults.swappedAnswerIds ? `a${1 - index}` : `a${index}`,
-      'm.text': text,
+      'org.matrix.msc1767.text': text,
       body: text,
     }));
     state.events.push(
       startEvent({
-        'm.poll.start': {
-          question: { 'm.text': question(), body: question() },
-          kind: 'm.poll.disclosed',
+        'org.matrix.msc3381.poll.start': {
+          question: { 'org.matrix.msc1767.text': question(), body: question() },
+          kind: 'org.matrix.msc3381.poll.disclosed',
           max_selections: 1,
           answers,
         },
+        'org.matrix.msc1767.text': [
+          question(),
+          ...state.poll.options.map((text, index) => `${index + 1}. ${text}`),
+        ].join('\n'),
       }),
     );
     if (faults.startIdMismatch) state.events.at(-1).event_id = '$Elsewhere';
@@ -1021,10 +1072,11 @@ function simulatedPollApp(faults = {}) {
     const poll = state.poll;
     const responses = state.events.filter(
       (event) =>
-        event.type === 'm.poll.response' &&
+        event.type === 'org.matrix.msc3381.poll.response' &&
         event.content['m.relates_to']?.event_id === poll.rowId,
     );
-    const latest = responses.at(-1)?.content['m.poll.response'].answers[0];
+    const latest =
+      responses.at(-1)?.content['org.matrix.msc3381.poll.response'].answers[0];
     return poll.options.map((_, index) =>
       faults.pearCounted && latest ? 1 : latest === `a${index}` ? 1 : 0,
     );
@@ -1051,7 +1103,9 @@ function simulatedPollApp(faults = {}) {
       if (poll) {
         const votes = tally();
         const total = votes.reduce((sum, count) => sum + count, 0);
-        const ended = state.events.some((event) => event.type === 'm.poll.end');
+        const ended = state.events.some(
+          (event) => event.type === 'org.matrix.msc3381.poll.end',
+        );
         const pending = poll.rowId.startsWith('~');
         const disabled =
           (ended && !faults.optionsStayEnabled) ||
@@ -1372,9 +1426,9 @@ describe('Android message-poll native journey against a simulated installed app'
     expect(context.records).toEqual(ALL_IDENTITIES);
     expect(state.actions).toEqual(EXPECTED_ACTIONS);
     expect(state.events.map((event) => event.type)).toEqual([
-      'm.poll.start',
-      'm.poll.response',
-      'm.poll.end',
+      'org.matrix.msc3381.poll.start',
+      'org.matrix.msc3381.poll.response',
+      'org.matrix.msc3381.poll.end',
     ]);
     expect(context.ledger.eventIds).toEqual([POLL_ID, RESPONSE_ID, END_ID]);
     const receipts = state.written

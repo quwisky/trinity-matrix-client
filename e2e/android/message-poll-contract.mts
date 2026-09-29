@@ -238,18 +238,27 @@ export const MESSAGE_POLL_OPTIONS = ['Apple', 'Pear'] as const;
 /** `pollStartContent` numbers answers in option order. */
 export const MESSAGE_POLL_ANSWER_IDS = ['a0', 'a1'] as const;
 export const MESSAGE_POLL_VOTE_ANSWER = 'a0';
-export const MESSAGE_POLL_KIND = 'm.poll.disclosed';
-export const POLL_START_TYPE = 'm.poll.start';
-export const POLL_RESPONSE_TYPE = 'm.poll.response';
-export const POLL_END_TYPE = 'm.poll.end';
-/** Every namespace the renderer accepts; any of them counts toward the exact chain. */
+/**
+ * The exact wire Trinity sends (#844): the unstable MSC3381 event types and
+ * keys, MSC1767 text, and the unstable disclosed kind, so FluffyChat can read it.
+ */
+export const MESSAGE_POLL_KIND = 'org.matrix.msc3381.poll.disclosed';
+export const POLL_START_TYPE = 'org.matrix.msc3381.poll.start';
+export const POLL_RESPONSE_TYPE = 'org.matrix.msc3381.poll.response';
+export const POLL_END_TYPE = 'org.matrix.msc3381.poll.end';
+export const POLL_TEXT_KEY = 'org.matrix.msc1767.text';
+/**
+ * Every namespace the renderer accepts (Trinity reads both); any of them counts
+ * toward the exact chain, so a stray stable event fails the length check and a
+ * stable event in the chain fails the exact envelope check.
+ */
 export const POLL_EVENT_TYPES = [
   POLL_START_TYPE,
-  'org.matrix.msc3381.poll.start',
+  'm.poll.start',
   POLL_RESPONSE_TYPE,
-  'org.matrix.msc3381.poll.response',
+  'm.poll.response',
   POLL_END_TYPE,
-  'org.matrix.msc3381.poll.end',
+  'm.poll.end',
 ] as const;
 /**
  * Typed before each field value, then removed by the focused fill. Every poll
@@ -644,16 +653,29 @@ export function assertPollStartEvent(
   assert.equal(id, expected.pollId, 'The start event is the reconciled poll row');
   const body = content(event);
   assert(!('m.relates_to' in body), 'The poll start is an original event');
-  const start = object(body[POLL_START_TYPE], 'm.poll.start content');
-  assert.equal(object(start['question'], 'Poll question')['m.text'], expected.question,
+  assert(!('m.poll.start' in body), 'The start uses only the unstable poll key');
+  const start = object(body[POLL_START_TYPE], 'poll start content');
+  const question = object(start['question'], 'Poll question');
+  assert.equal(question[POLL_TEXT_KEY], expected.question,
     'The start event carries the exact question');
+  assert.equal(question['body'], expected.question,
+    'The question keeps its body');
+  assert(!('m.text' in question), 'The question uses only the MSC1767 text key');
+  assert.equal(body[POLL_TEXT_KEY],
+    [expected.question, ...MESSAGE_POLL_OPTIONS.map((text, index) => `${index + 1}. ${text}`)]
+      .join('\n'),
+  'The start event carries the numbered fallback text');
   assert.equal(start['kind'], MESSAGE_POLL_KIND, 'The poll is disclosed');
   assert.equal(start['max_selections'], 1, 'The poll is single-select');
   const answers = arrayField(start, 'answers').map((answer, index) =>
     object(answer, `Poll answer ${index}`));
-  assert.deepEqual(answers.map((answer) => [answer['id'], answer['m.text']]),
+  assert.deepEqual(answers.map((answer) => [answer['id'], answer[POLL_TEXT_KEY]]),
     MESSAGE_POLL_OPTIONS.map((text, index) => [MESSAGE_POLL_ANSWER_IDS[index], text]),
   'The start event carries exactly a0 Apple and a1 Pear');
+  assert.deepEqual(answers.map((answer) => answer['body']), [...MESSAGE_POLL_OPTIONS],
+    'The answers keep their bodies');
+  assert(answers.every((answer) => !('m.text' in answer)),
+    'The answers use only the MSC1767 text key');
 }
 
 /** The native vote: one Apple answer, related to the exact poll. */
@@ -663,7 +685,7 @@ export function assertPollResponseEvent(
 ): string {
   const id = assertEnvelope(event, POLL_RESPONSE_TYPE, expected);
   assertReference(event, expected.pollId);
-  const response = object(content(event)[POLL_RESPONSE_TYPE], 'm.poll.response content');
+  const response = object(content(event)[POLL_RESPONSE_TYPE], 'poll response content');
   assert.deepEqual(response['answers'], [MESSAGE_POLL_VOTE_ANSWER],
     'The response selects exactly Apple (a0)');
   return id;
@@ -676,7 +698,9 @@ export function assertPollEndEvent(
 ): string {
   const id = assertEnvelope(event, POLL_END_TYPE, expected);
   assertReference(event, expected.pollId);
-  object(content(event)[POLL_END_TYPE], 'm.poll.end content');
+  object(content(event)[POLL_END_TYPE], 'poll end content');
+  assert.equal(content(event)[POLL_TEXT_KEY], 'The poll has ended.',
+    'The end event carries its MSC1767 fallback text');
   return id;
 }
 

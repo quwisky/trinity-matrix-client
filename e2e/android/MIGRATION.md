@@ -6555,15 +6555,18 @@ Documented reinterpretations of the predecessor:
   Line 75 also requires both options at `0 (0%)` and none chosen.
 - **Server readiness before the vote.** After line 178, the Room is read with
   the raw `/messages?dir=b&limit=50` page. It must hold exactly one poll event:
-  the `m.poll.start` with the reconciled row id, the active sender, the exact
-  question, `m.poll.disclosed`, `max_selections: 1` and exactly `a0 Apple` and
-  `a1 Pear`. Only then, with every option enabled, is Apple tapped.
+  the `org.matrix.msc3381.poll.start` (the unstable MSC3381 wire Trinity sends
+  since #844, so FluffyChat can read it) with the reconciled row id, the active
+  sender, the exact question and answers under `org.matrix.msc1767.text` (bodies
+  kept, numbered fallback text), `org.matrix.msc3381.poll.disclosed`,
+  `max_selections: 1` and exactly `a0 Apple` and `a1 Pear`. A stable `m.poll.*`
+  event is rejected by the exact assertions. Only then, with every option enabled, is Apple tapped.
 - **Vote on the wire first.** Before lines 86–87 the Room must hold exactly
-  the start and one `m.poll.response` from the active sender selecting `a0`,
+  the start and one `org.matrix.msc3381.poll.response` from the active sender selecting `a0`,
   with an `m.reference` relation to the start event. The same poll row must
   then read `1 vote`, and Apple `1 (100%)`, chosen, with Pear `0 (0%)`.
 - **End on the wire first.** Before line 91 the Room must hold exactly the
-  start, the response and one `m.poll.end` from the active sender, related to
+  start, the response and one `org.matrix.msc3381.poll.end` from the active sender, related to
   the same start event. The same row must then read `1 vote · Final results`,
   keep Apple at `1 (100%)`, disable both options and render no End control.
 
