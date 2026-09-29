@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Polls created in Trinity, and votes and closures cast in it, now appear in FluffyChat
+  and other clients that read only the MSC3381 poll event types.
+
 - Keep Renovate's repository configuration schema-valid so dependency processing reaches
   extraction instead of aborting on an explanatory, unsupported option.
 
