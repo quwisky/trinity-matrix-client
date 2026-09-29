@@ -390,8 +390,9 @@ export function assertPinOrder(v: PinnedView): void {
   assert.deepEqual(v.items.order, ['unpin', 'keep'], 'The panel lists the pins in published order');
 }
 export function assertOpenPinnedHidden(v: PinnedView): void {
+  assert.equal(v.openPinned.count, 1, 'open-pinned exists in the document at Pixel 5');
   const b = v.openPinned.box;
-  assert(v.openPinned.count === 1 && (!b || b.width === 0 || b.height === 0),
+  assert(!b || b.width === 0 || b.height === 0,
     'open-pinned is visible at Pixel 5; revisit D3');
 }
 export function assertHeaderNamesRoom(v: PinnedView): void {

@@ -814,6 +814,14 @@ describe('Android pinned-message-panel asserters', () => {
         v({ openPinned: { count: 1, box: box(300, 172, 32, 32) } }),
       ),
     ).toThrow(/revisit D3/u);
+    // [M1] The count-0 case is a missing element, not a visible one: its own
+    // message, never the "is visible" wording that fits only a shown box.
+    expect(() =>
+      c.assertOpenPinnedHidden(v({ openPinned: { count: 0, box: null } })),
+    ).toThrow(/exists in the document/u);
+    expect(() =>
+      c.assertOpenPinnedHidden(v({ openPinned: { count: 0, box: null } })),
+    ).not.toThrow(/revisit D3/u);
     const [unpinRow, keepRow] = probe().rows;
     expect(() =>
       c.assertUnpinTarget(
@@ -1609,6 +1617,11 @@ async function simulatedPinnedPanelApp(faults = {}) {
         panelTitle: { count: 1, box: jbox(x, 15.62, 317.14, 24) },
       };
     }
+    if (faults.geometryHeaderWrongRoom && state.panelOpenedAt !== null) {
+      // Only after the panel opens (the geometry phase), never on the
+      // earlier room-open header check.
+      view = { ...view, roomHeader: { ...view.roomHeader, namesRoom: false } };
+    }
     if (faults.unpinInsideKeepRow && !switched) {
       const [unpinRow, keepRow] = view.rows;
       view = {
@@ -1634,10 +1647,25 @@ async function simulatedPinnedPanelApp(faults = {}) {
       diagnostics: {
         send: async (_method, { expression }) => {
           if (expression === PINNED_VIEW_EXPR) {
-            // Each fake webview read advances the simulated Date by 1 s, so the
-            // anchored-window controls can cross their threshold without a real wait.
-            if (faults.anchoredSwitchMs !== undefined)
-              vi.setSystemTime(Date.now() + 1_000);
+            // Each fake webview read advances the simulated Date by 1 s (every
+            // phase, not only after the tap): the D5 settle loop compares
+            // `Date.now()` gaps between reads, so a frozen Date would hang it
+            // just as it would the anchored-window and hold-loop controls.
+            // serverPinsAnchorProbe burns 10 s per post-tap read instead, so
+            // the server-convergence window is nearly exhausted before the
+            // poll even starts: only a window measured from `tapped` — not a
+            // fresh UNPIN_MS granted wherever the poll happens to begin —
+            // rejects the probe's late convergence below.
+            if (
+              faults.anchoredSwitchMs !== undefined ||
+              faults.serverPinsLagMs !== undefined ||
+              faults.serverPinsNeverConverge ||
+              faults.serverPinsAnchorProbe
+            ) {
+              const exhausting =
+                faults.serverPinsAnchorProbe && state.unpinTapped;
+              vi.setSystemTime(Date.now() + (exhausting ? 10_000 : 1_000));
+            }
             return { result: { value: currentView() } };
           }
           if (expression === APPLIED_PROFILE_EXPR)
@@ -1689,7 +1717,15 @@ async function simulatedPinnedPanelApp(faults = {}) {
           vi.setSystemTime(Date.now() + 45_000);
         state.unpinTapped = true;
         state.tapReturnAt = Date.now();
-        if (!faults.serverPinsRejects) state.serverPins = [JOURNEY_KEEP_ID];
+        // These faults model the server pins separately (below), instead of
+        // flipping in lock-step with the UI tap.
+        if (
+          !faults.serverPinsRejects &&
+          !faults.serverPinsNeverConverge &&
+          faults.serverPinsLagMs === undefined &&
+          !faults.serverPinsAnchorProbe
+        )
+          state.serverPins = [JOURNEY_KEEP_ID];
       }
     },
     async record(name, value) {
@@ -1742,12 +1778,38 @@ async function simulatedPinnedPanelApp(faults = {}) {
       };
     },
     async roomState() {
-      // The convergence poll rejects immediately on a genuine (id-free) read
-      // failure, exactly as a real REST error would surface [step 5 note].
+      // serverPinsRejects models a hard read failure (a genuine, id-free HTTP
+      // 500), never a wrong-but-valid pinned state [step 5 note]. The D6 step
+      // 10 wrong-state cases — pins that stay [unpin, keep], or converge too
+      // late — are modelled below by serverPinsNeverConverge, serverPinsLagMs
+      // and serverPinsAnchorProbe, each returning a well-formed `{ pinned }`.
       if (faults.serverPinsRejects && state.unpinTapped)
         throw new Error(
           'Simulated Matrix fixture GET room-state failed with HTTP 500',
         );
+      if (
+        state.unpinTapped &&
+        (faults.serverPinsLagMs !== undefined || faults.serverPinsNeverConverge)
+      ) {
+        // Each poll tick advances the simulated Date by 1 s, so the lag and
+        // never-converge controls can cross or exhaust the 30 s bound
+        // without a real multi-second wait.
+        vi.setSystemTime(Date.now() + 1_000);
+        if (
+          faults.serverPinsLagMs !== undefined &&
+          Date.now() - state.tapReturnAt >= faults.serverPinsLagMs
+        )
+          state.serverPins = [JOURNEY_KEEP_ID];
+        // faults.serverPinsNeverConverge: state.serverPins never flips.
+      } else if (state.unpinTapped && faults.serverPinsAnchorProbe) {
+        vi.setSystemTime(Date.now() + 1_000);
+        state.anchorProbePolls = (state.anchorProbePolls ?? 0) + 1;
+        // Converges 5 poll ticks (~5 s of simulated poll time) in: well
+        // within a fresh 30 s window from the poll's own start, but past the
+        // 30 s bound measured from the tap once the pre-poll reads above
+        // have already spent most of it.
+        if (state.anchorProbePolls >= 5) state.serverPins = [JOURNEY_KEEP_ID];
+      }
       return { pinned: state.serverPins };
     },
   };
@@ -1876,6 +1938,28 @@ describe('Android pinned-message-panel native journey against a simulated instal
     );
   }, 25_000);
 
+  it('fails closed when the settled Room header stops naming the Room [M2]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage(
+      { geometryHeaderWrongRoom: true },
+      async ({ context }) => {
+        await expect(runListUnpin(context)).rejects.toThrow(/Room header/u);
+      },
+    );
+  });
+
+  it('holds at least 4 reads, the last at least 2 s after the first [I3]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    await withSimulatedPinnedPanelStage({}, async ({ context, state }) => {
+      await runListUnpin(context);
+      const held = state.written.find(
+        (w) => w.name === 'pinned-message-panel.list-unpin.panel-stays-open',
+      );
+      expect(held.value.observation.reads).toBeGreaterThanOrEqual(4);
+      expect(held.value.observation.spanMs).toBeGreaterThanOrEqual(2_000);
+    });
+  }, 10_000);
+
   it('fails closed when the unpin control is observed inside the keep row [RF-3]', async () => {
     const { runListUnpin } = await loadJourneys();
     await withSimulatedPinnedPanelStage(
@@ -1900,10 +1984,10 @@ describe('Android pinned-message-panel native journey against a simulated instal
     );
   });
 
-  it('rejects when the server pinned state never converges to the kept event [RF-4]', async () => {
+  it('rejects when the server pinned-state read fails [RF-4]', async () => {
     const { runListUnpin } = await loadJourneys();
-    // Covers both listed sub-cases: the fake fixture's immediate, id-free read
-    // failure stands in for pins that stay [unpin, keep] or become [unpin].
+    // Models a hard read failure (an id-free HTTP 500), distinct from the
+    // wrong-but-valid pinned states covered by the tests below.
     await withSimulatedPinnedPanelStage(
       { serverPinsRejects: true },
       async ({ context }) => {
@@ -1911,6 +1995,60 @@ describe('Android pinned-message-panel native journey against a simulated instal
       },
     );
   });
+
+  it('passes when the server pins converge a few seconds into the poll, well inside the window measured from the tap [D4 receipt][I2]', async () => {
+    // 15 s clears the ~5 s the pre-poll reads (the one-item settle, then the
+    // hold) already advance past the tap, so the pins genuinely converge
+    // mid-poll rather than on the poll's first read: only a window correctly
+    // measured from `tapped` — not one collapsed by an early anchor — lets
+    // this converge in time.
+    const { runListUnpin } = await loadJourneys();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await withSimulatedPinnedPanelStage(
+        { serverPinsLagMs: 15_000 },
+        async ({ context }) => {
+          await expect(runListUnpin(context)).resolves.toBeUndefined();
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20_000);
+
+  it('rejects when the server pins stay [unpin, keep] for the whole window [D6 step 10][I2]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await withSimulatedPinnedPanelStage(
+        { serverPinsNeverConverge: true },
+        async ({ context }) => {
+          await expect(runListUnpin(context)).rejects.toThrow(
+            /server pinned state/u,
+          );
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20_000);
+
+  it('rejects a server convergence that misses the window measured from the tap, even though it beats a fresh 30 s from the poll [I2]', async () => {
+    const { runListUnpin } = await loadJourneys();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await withSimulatedPinnedPanelStage(
+        { serverPinsAnchorProbe: true },
+        async ({ context }) => {
+          await expect(runListUnpin(context)).rejects.toThrow(
+            /server pinned state/u,
+          );
+        },
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 20_000);
 
   it('rejects before any native action when the arranged pins are published out of order', async () => {
     const { runListUnpin } = await loadJourneys();
@@ -2113,9 +2251,13 @@ describe('Android pinned-message-panel teardown and redaction guards [RF-5]', ()
     expect(early.report.cleanupErrors).toHaveLength(1);
   });
 
-  it('runs close then clear, even when close throws [RF-5]', async () => {
-    const { pinnedPanelTeardown } = await loadJourneys();
-    const { runPinnedPanelStageCleanup } = await loadArtifacts();
+  it("runs close then clear through the runner's own finishPinnedPanelStage call, even when close throws [RF-5][I1]", async () => {
+    // Drives the exact function the runner's finally block calls (journeys.mts),
+    // not the raw pinnedPanelTeardown/runPinnedPanelStageCleanup building blocks
+    // directly: a runner mutation that truncates or reorders the call (e.g.
+    // `pinnedPanelTeardown(...).slice(0, 1)`) is inside this function and so
+    // turns this test red.
+    const { finishPinnedPanelStage } = await loadJourneys();
     const order = [];
     const client = {
       close: async () => {
@@ -2129,40 +2271,28 @@ describe('Android pinned-message-panel teardown and redaction guards [RF-5]', ()
       },
     };
     const failures = [];
-    await runPinnedPanelStageCleanup(
-      pinnedPanelTeardown(client, device),
+    const cleanupFailed = await finishPinnedPanelStage(
+      client,
+      device,
       failures,
     );
     expect(order).toEqual(['close', 'clear:eu.qwky.trinity']);
     expect(failures).toHaveLength(1);
+    expect(cleanupFailed).toBe(true);
   });
 
-  it('fails when the teardown steps are reordered or a step is dropped', async () => {
-    const { pinnedPanelTeardown } = await loadJourneys();
+  it('reports no cleanup failure when both teardown steps succeed [I1]', async () => {
+    const { finishPinnedPanelStage } = await loadJourneys();
     const client = { close: async () => {} };
     const device = { clearApplicationData: async () => {} };
-    const steps = pinnedPanelTeardown(client, device);
-    expect(steps).toHaveLength(2);
-    const order = [];
-    const track = (name, fn) => async () => {
-      order.push(name);
-      return fn();
-    };
-    // The real order: close, then clear. A guard that let close run after
-    // clear, or dropped either step, must not be indistinguishable from this.
-    await track('close', steps[0])();
-    await track('clear', steps[1])();
-    expect(order).toEqual(['close', 'clear']);
-    const reversed = [];
-    await track('clear', steps[1])().then(() => reversed.push('clear'));
-    order.length = 0;
-    reversed.length = 0;
-    await steps[1]();
-    reversed.push('clear');
-    await steps[0]();
-    reversed.push('close');
-    expect(reversed).toEqual(['clear', 'close']);
-    expect(reversed).not.toEqual(['close', 'clear']);
+    const failures = [];
+    const cleanupFailed = await finishPinnedPanelStage(
+      client,
+      device,
+      failures,
+    );
+    expect(failures).toHaveLength(0);
+    expect(cleanupFailed).toBe(false);
   });
 });
 

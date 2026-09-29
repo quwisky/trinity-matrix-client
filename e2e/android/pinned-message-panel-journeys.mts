@@ -307,6 +307,22 @@ export function pinnedPanelTeardown(
   ];
 }
 
+/**
+ * RF-5: the stage's own teardown, run from `finally` so every step executes
+ * even after the stage failed. Extracted so a guard can drive it with fakes
+ * and catch a dropped or truncated call, which the runner's `finally` body
+ * could not otherwise expose.
+ */
+export async function finishPinnedPanelStage(
+  client: Pick<AccountWorkspaceClient, 'close'>,
+  device: { clearApplicationData(id: string): Promise<unknown> },
+  failures: unknown[],
+): Promise<boolean> {
+  const before = failures.length;
+  await runPinnedPanelStageCleanup(pinnedPanelTeardown(client, device), failures);
+  return failures.length > before;
+}
+
 // The one stage: D5/D4, listing the pins and unpinning one in place.
 
 export async function runListUnpin(context: PinnedPanelStageContext): Promise<void> {
@@ -344,7 +360,9 @@ export async function runListUnpin(context: PinnedPanelStageContext): Promise<vo
 
   const g = await settledGeometry(context, a);
   const geometry = { roomHeader: g.roomHeader, panelHeader: g.panelHeader, panelTitle: g.panelTitle };
-  await record(context, 'room-header-measured', () => assertMeasured(g.roomHeader.first, 'Room header'), geometry);
+  await record(context, 'room-header-measured', () => {
+    assertHeaderNamesRoom(g); assertMeasured(g.roomHeader.first, 'Room header');
+  }, geometry);
   await record(context, 'panel-header-measured', () => {
     assert.equal(g.panelHeader.count, 1, 'One panel header'); assertMeasured(g.panelHeader.box, 'Panel header');
   }, geometry);
@@ -365,15 +383,22 @@ export async function runListUnpin(context: PinnedPanelStageContext): Promise<vo
   const one = await settle(context, a, (v) => v.items.count === 1, UNPIN_MS, 'one pinned item');
   await record(context, 'one-pinned-item', () => assertItemCount(one, 1), { count: one.items.count });
 
+  // D6 step 9: hold at least HOLD_READS reads, the last of them at least
+  // HOLD_MS after holdStart. The exit condition is checked right after each
+  // read, before sleeping, so the reported span is the last read's own time,
+  // never a trailing sleep with no read behind it.
   const held: PinnedView[] = [];
   const holdStart = Date.now();
-  while (held.length < HOLD_READS || Date.now() - holdStart < HOLD_MS) {
+  let lastReadAt = holdStart;
+  for (;;) {
     const v = await readPinnedView(client, a.texts);
+    lastReadAt = Date.now();
     assertHeldAfterUnpin(v);
     held.push(v);
+    if (held.length >= HOLD_READS && lastReadAt - holdStart >= HOLD_MS) break;
     await delay(HOLD_MS / HOLD_READS, undefined, { signal: context.signal });
   }
-  const summary = { reads: held.length, spanMs: Date.now() - holdStart };
+  const summary = { reads: held.length, spanMs: lastReadAt - holdStart };
   await record(context, 'panel-stays-open', () => held.forEach(assertPanelVisible), summary);
   await record(context, 'keep-remains', () => held.forEach((v) => assert(v.panel.containsKeep)), summary);
   await record(context, 'unpin-removed', () => held.forEach(assertHeldAfterUnpin), summary);
@@ -636,9 +661,7 @@ export async function runPinnedMessagePanelSuite(testContext: TestContext): Prom
               try { if (context.native) await client.capture('failed'); }
               catch (captureError) { failures.push(captureError); }
             } finally {
-              const stageFailures = failures.length;
-              await runPinnedPanelStageCleanup(pinnedPanelTeardown(client, device), failures);
-              if (failures.length > stageFailures) safety.cleanupFailed = true;
+              if (await finishPinnedPanelStage(client, device, failures)) safety.cleanupFailed = true;
               stage.assertions = [...records];
               stage.assertionRecords = records.length;
               stage.receipts = context.receipts;
