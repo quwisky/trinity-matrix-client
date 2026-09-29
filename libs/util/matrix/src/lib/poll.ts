@@ -123,22 +123,26 @@ export function pollStartContent(
   };
 }
 
-/** Content for an `m.poll.response` casting `answerId` on `pollId`. */
+/**
+ * Content for a poll response casting `answerId` on `pollId`. Sent in the unstable
+ * MSC3381 namespace (`M_POLL_RESPONSE.name`): FluffyChat reads only that, and
+ * Element sends it too; we still read both.
+ */
 export function pollResponseContent(
   pollId: string,
   answerId: string,
 ): Record<string, unknown> {
   return {
-    'm.poll.response': { answers: [answerId] },
+    [M_POLL_RESPONSE.name]: { answers: [answerId] },
     'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
   };
 }
 
-/** Content for an `m.poll.end` closing `pollId`. */
+/** Content for a poll end closing `pollId` (unstable namespace, like responses). */
 export function pollEndContent(pollId: string): Record<string, unknown> {
   return {
-    'm.poll.end': {},
-    'm.text': 'The poll has ended.',
+    [M_POLL_END.name]: {},
+    [M_TEXT.name]: 'The poll has ended.',
     'm.relates_to': { rel_type: 'm.reference', event_id: pollId },
   };
 }

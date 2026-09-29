@@ -144,21 +144,23 @@ describe('TimelineActionsService', () => {
     expect(sent.some((c) => c[0] === 'event')).toBe(false);
   });
 
-  it('casts a poll vote via an m.poll.response event', async () => {
+  it('casts a poll vote via an MSC3381 poll response event', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
     await firstValueFrom(svc.votePoll('$p', 'a1'));
     const event = sent.find((c) => c[0] === 'event');
-    expect(event?.[1]).toBe('m.poll.response');
+    expect(event?.[1]).toBe('org.matrix.msc3381.poll.response');
     const content = event?.[2] as Record<string, { answers: string[] }>;
-    expect(content['m.poll.response'].answers).toEqual(['a1']);
+    expect(content['org.matrix.msc3381.poll.response'].answers).toEqual(['a1']);
   });
 
-  it('ends a poll via an m.poll.end event', async () => {
+  it('ends a poll via an MSC3381 poll end event', async () => {
     const sent: unknown[][] = [];
     const svc = setupActions([], sent);
     await firstValueFrom(svc.endPoll('$p'));
-    expect(sent.find((c) => c[0] === 'event')?.[1]).toBe('m.poll.end');
+    expect(sent.find((c) => c[0] === 'event')?.[1]).toBe(
+      'org.matrix.msc3381.poll.end',
+    );
   });
 
   describe('sendMedia', () => {

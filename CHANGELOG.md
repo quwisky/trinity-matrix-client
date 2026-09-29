@@ -30,6 +30,9 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- Poll votes and poll closures cast in Trinity now count in FluffyChat and other clients
+  that read only the MSC3381 poll event types.
+
 - Keep Renovate's repository configuration schema-valid so dependency processing reaches
   extraction instead of aborting on an explanatory, unsupported option.
 

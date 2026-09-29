@@ -197,15 +197,16 @@ describe('poll content builders', () => {
   });
 
   it('builds a response referencing the poll', () => {
+    // Unstable namespace: FluffyChat (matrix-dart-sdk) and Element only read MSC3381 keys.
     expect(pollResponseContent('$p', 'a1')).toEqual({
-      'm.poll.response': { answers: ['a1'] },
+      'org.matrix.msc3381.poll.response': { answers: ['a1'] },
       'm.relates_to': { rel_type: 'm.reference', event_id: '$p' },
     });
   });
 
   it('builds an end event referencing the poll', () => {
     const content = pollEndContent('$p') as Record<string, unknown>;
-    expect(content['m.poll.end']).toEqual({});
+    expect(content['org.matrix.msc3381.poll.end']).toEqual({});
     expect(content['m.relates_to']).toEqual({
       rel_type: 'm.reference',
       event_id: '$p',
